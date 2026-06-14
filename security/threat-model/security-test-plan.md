@@ -159,9 +159,9 @@ Each row: **precondition → steps → expected (secure) result → threat id �
 - **Threat:** T-AI-01 → T-AI-07, T-TOOL-02 · **Claim:** C6 · **Component:** C1/C10 · **Boundary:** B6
 - **Precondition:** Trusted/YOLO session enabled.
 - **Steps:** Have a tool return attacker content instructing `shell_run_unrestricted`; assert what executes.
-- **Expected:** Non-YOLO: `shell_run` is `sandbox-exec`-confined (`OpenAICompatibleChatGatewayClient.swift:344-357,662`), network denied. Pin **T-TOOL-02/T-AI-07 (Critical)**: under `.trusted`+`.shellUnrestricted`, `runShellUnrestricted` (`:367`) runs `/bin/zsh` unsandboxed with **only a SHA-256 audit, no per-N-action re-auth** (TODO `:381`) — a red test must show injection-to-RCE is reachable when YOLO is opted in, and that MAS build blocks `.shellUnrestricted` but **not** the CLI `--dangerously-skip-permissions` flags.
+- **Expected:** Non-YOLO: `shell_run` is `sandbox-exec`-confined (`OpenAICompatibleChatGatewayClient.swift`), network denied, writes confined to the workspace, and parent-process secret environment is not inherited. Spawned CLI paths must never receive vendor dangerous-autonomy flags (`--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`), even in trusted mode. Pin **T-TOOL-02/T-AI-07** as a regression target: under `.trusted`+`.shellUnrestricted`, unrestricted shell execution still needs bounded local reauth and an audit record; hostile tool output must not create an unattended shell burst.
 - **Existing:** `AgentLensTests/Active/Security/PromptInjectionHardeningTests.swift`; `functions/src/__tests__/panic.test.ts`.
-- **MISSING — recommend:** an injection-to-RCE drill harness (also see M13) and a MAS-vs-non-MAS YOLO-flag parity test. **CI:** prompt-injection hardening in harness.
+- **MISSING — recommend:** an injection-to-RCE drill harness (also see M13) plus a release/non-release parity test that proves dangerous CLI flags stay un-emitted in every build. **CI:** prompt-injection hardening and focused CLIBridge/security-policy tests in harness.
 
 ### A17 — Unsafe output rendering (insecure output handling)
 - **Threat:** T-AI-05, T-ATT-08 · **Claim:** C6 · **Component:** C8/C12 · **Boundary:** B6
@@ -199,9 +199,9 @@ Each row: **precondition → steps → expected (secure) result → threat id �
 - **Threat:** T-DMN-02, T-TOOL-10, T-DMN-04 · **Claim:** C6, C7 · **Component:** C2/C1 · **Boundary:** B1/B4
 - **Precondition:** A sandboxed `shell_run`; the daemon RPC surface.
 - **Steps:** From inside `shell_run`, attempt network egress, write outside workspace, read `~/.ssh`/`~/.aws`/keychains/app state; from the app, attempt a privileged daemon RPC and assert the daemon's own gate.
-- **Expected:** `restrictedShellSandboxProfile` denies network + write-confines + deny-reads secret stores (`OpenAICompatibleChatGatewayClient.swift:662-723`). Pin gaps: `(allow default)` reads outside the curated deny list (T-TOOL-10, `:723`, deny-list not allow-list); the **daemon runs unsandboxed** as the login user (T-DMN-02) and does **not** cryptographically re-verify the phone single-use proof (T-DMN-04) — red tests documenting blast radius.
+- **Expected:** `restrictedShellSandboxProfile` is default-deny, denies network, confines writes to the workspace, denies home file data by default, reopens only narrow toolchain/cache/workspace read roots, and runs with a stripped allowlisted environment (`OpenAICompatibleChatGatewayClient.swift`). Spawned third-party CLI agents also receive an allowlisted child environment (`CLIExecutableResolver.agentProcessEnvironment`) instead of inheriting parent secrets. Pin remaining gaps: the **daemon runs unsandboxed** as the login user (T-DMN-02) and does **not** cryptographically re-verify the phone single-use proof (T-DMN-04) — red tests documenting blast radius.
 - **Existing:** `OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/*` (gateway/server); `AgentLensTests/Active/Security/MacEscrowCredentialProducerTests.swift`.
-- **MISSING — recommend:** a `shell_run` egress/secret-read deny suite; a daemon-side proof-verification test (T-DMN-04, daemon does not hold the phone verifying key). **CI:** daemon tests in harness.
+- **MISSING — recommend:** keep the `shell_run` egress/secret-read/environment-deny suite in CI and add a daemon-side proof-verification test (T-DMN-04, daemon does not hold the phone verifying key). **CI:** focused app security tests and daemon tests in harness.
 
 ### A22 — Pairing-key pinning (T-TRN-01)
 - **Threat:** **T-TRN-01 (Critical)**, T-PTR-03 · **Claim:** C9, C8 · **Component:** C6 · **Boundary:** B2-iroh
@@ -304,12 +304,12 @@ These require human judgment, physical devices, hostile-content fixtures, or out
 - **Steps:** Enumerate which service accounts hold `cloudkms.cryptoKeyDecrypter` + `secretmanager.secretAccessor`; confirm whether the relay data-plane SA can write `relay_sender_keys`/`escrow_devices`; confirm console App Check enforcement, PITR/backups.
 - **Expected:** Least-privilege IAM; relay data-plane cannot write trust roots; App Check enforced; PITR on. Pin: Admin SDK structurally bypasses rules (T-AZ-05); App Check console enforcement **UNKNOWN from repo** (T-AZ-06); the C8 break is reachable only if relay + control-plane share admin creds. **MISSING — recommend:** deployed IAM + App Check + PITR review (this is a Cure53 / live-config item — see §13.3).
 
-### M13 — YOLO injection-to-RCE drill
+### M13 — Trusted-shell injection regression drill
 - **Threat:** **T-TOOL-02 / T-AI-07 (Critical/High)** · **Claim:** C6 · **Boundary:** B6
-- **Precondition:** A user has opted a session into `.trusted` + `.shellUnrestricted` (YOLO), non-MAS build.
-- **Steps:** Plant an indirect injection in a tool result / workspace file instructing `shell_run_unrestricted "<payload>"`; let the model obey; observe whether `/bin/zsh` runs the payload unsandboxed at user privilege with no per-action approval.
-- **Expected (target):** A per-N-action re-auth or per-action approver gate stops the payload. **Current:** `runShellUnrestricted` (`OpenAICompatibleChatGatewayClient.swift:367`) executes with only a SHA-256 audit and **no per-action re-auth** (TODO `:381`) → injection-to-RCE is reachable. This drill must demonstrate the gap and be the regression guard once per-N-action re-auth lands. **MISSING — recommend:** implement per-N-action re-auth; add an automated injection-to-RCE harness (links A16).
-- **Existing:** `PromptInjectionHardeningTests.swift` (wrapping only), `panic.test.ts` (kill path). End-to-end RCE drill MISSING.
+- **Precondition:** A user has opted a session into `.trusted` + `.shellUnrestricted`, non-MAS build.
+- **Steps:** Plant an indirect injection in a tool result / workspace file instructing `shell_run_unrestricted "<payload>"`; let the model obey; observe whether `/bin/zsh` can run the payload without a fresh bounded local-auth window and audit event.
+- **Expected (target/current-code):** unrestricted shell execution requires the reauth cadence and an audit record; spawned external CLI invocations never receive vendor dangerous-autonomy flags; restricted shell and spawned CLI environments do not inherit parent secrets. This drill should remain as an end-to-end regression guard because it exercises hostile content, model obedience, local auth, shell dispatch, panic-halt, and audit review together.
+- **Existing:** `AgentSecurityPolicyTests.swift` (reauth and flag policy), `CLIBridgeTests.swift` (spawned CLI flags/environment, sandbox profile), `AgentToolBrokerShellAuditTests.swift` (restricted-shell environment), `PromptInjectionHardeningTests.swift` (wrapping), `panic.test.ts` (kill path). End-to-end hostile-content drill still MISSING.
 
 ---
 
@@ -320,7 +320,7 @@ Items that **cannot be settled from the repo** and require live infrastructure, 
 | Priority | Item | Why external | Threat / Claim |
 |---|---|---|---|
 | P0 | **iOS host-pairing-key pinning (T-TRN-01)** — verify a cloud-substituted host key on cold start | Needs adversarial cloud + device; no CI gate exists (A22/M1) | T-TRN-01 / C9, C8 |
-| P0 | **YOLO injection-to-RCE drill (M13)** — end-to-end injection→`/bin/zsh` | Needs hostile-content + opted-in trusted device | T-TOOL-02, T-AI-07 / C6 |
+| P0 | **Trusted-shell injection regression drill (M13)** — end-to-end hostile content to shell dispatch | Needs hostile-content + opted-in trusted device | T-TOOL-02, T-AI-07 / C6 |
 | P0 | **Admin-SDK / IAM & App Check enforcement (M12)** — KMS/Secret-Manager decrypter scope, relay-vs-control-plane creds, console App Check, PITR | Deployed GCP state, not in repo | T-AZ-05/06, C8 / C2, C8, C11 |
 | P1 | **Prompt-injection default-deny wrapping (A12)** — CU tool results + oracle + CLI lane | Model-in-the-loop adversarial eval | T-AI-01/02, T-TOOL-05 / C6 |
 | P1 | **Relay-compromise / metadata correlation (M3)** | Needs controllable malicious relay | T-TRN-03/04 / C1, C8 |
@@ -338,7 +338,7 @@ Deployed-config open questions feeding the brief (from `_evidence/*` "Open quest
 | Threat id | Severity | Automated | Manual | Existing test? |
 |---|---|---|---|---|
 | T-TRN-01 | Critical | A22 | M1 | partial (Android pairing) — iOS pin test MISSING |
-| T-TOOL-02 / T-AI-07 | Critical/High | A14, A16 | M13 | wrapping only; RCE drill MISSING |
+| T-TOOL-02 / T-AI-07 | Critical/High | A14, A16 | M13 | partial (reauth/flag/env tests); end-to-end hostile-content drill MISSING |
 | T-PTR-03 | High | A22 | M1 | MISSING |
 | T-TRN-02 / T-TRN-03 | High | A19 | M3 | partial (transport selection) |
 | T-DMN-01 / T-DMN-02 | High | A21 | M8 | partial (daemon tests) |
