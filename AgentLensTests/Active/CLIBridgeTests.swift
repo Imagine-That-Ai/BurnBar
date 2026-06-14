@@ -848,6 +848,65 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
     }
 
+    /// Regression guard for the D4 structured-concurrency conversion.
+    ///
+    /// `CLIExecutableResolver.resolveExecutable` dropped its `Task.detached { … }.value`
+    /// wrapper on the premise that a `nonisolated async` method runs off the
+    /// calling actor (SE-0338), so its blocking filesystem/login-shell probing
+    /// never lands on the main thread. This proves that premise empirically:
+    /// the injected providers (invoked synchronously at the top of the resolver
+    /// body) must execute off the main thread when the method is awaited from the
+    /// main actor. If anyone re-isolates the method to `@MainActor` — or restores
+    /// a wrapper that changes execution context — `sawMainThread` flips and this
+    /// fails loudly. The same `nonisolated`/`@Sendable` mechanism backs every D4
+    /// site (daemon RPC, RefreshOrchestrator GRDB closures, the process runners).
+    ///
+    /// Forward note: this off-main behavior is SE-0338. If the repo ever enables
+    /// the `NonisolatedNonsendingByDefault` upcoming feature (SE-0461) — or a
+    /// language mode where it is the default — `nonisolated async` runs on the
+    /// caller's actor instead, and these sites must be marked `@concurrent` to stay
+    /// off the main thread. This test is the canary: it will fail at that point.
+    func test_resolveExecutable_runsOffTheMainActor() async {
+        CLIExecutableResolver.clearCache()
+        defer { CLIExecutableResolver.clearCache() }
+
+        final class ThreadProbe: @unchecked Sendable {
+            private let lock = NSLock()
+            private(set) var ran = false
+            private(set) var sawMainThread = false
+            func record() {
+                lock.lock()
+                defer { lock.unlock() }
+                ran = true
+                if Thread.isMainThread { sawMainThread = true }
+            }
+        }
+        let probe = ThreadProbe()
+
+        // The resolver's providers are invoked inside the (formerly detached) body.
+        // Point them at nonexistent paths so resolution finds nothing and returns
+        // fast without spawning a real login shell.
+        let resolver = CLIExecutableResolver(
+            environmentProvider: {
+                probe.record()
+                return ["PATH": "/openburnbar-nonexistent-bin", "SHELL": "/openburnbar-nonexistent-shell"]
+            },
+            homeDirectoryProvider: {
+                probe.record()
+                return "/openburnbar-nonexistent-home"
+            }
+        )
+
+        let resolved = await resolver.resolveExecutable(named: "definitely-not-a-real-cli-\(UUID().uuidString)")
+
+        XCTAssertNil(resolved, "no executable should resolve from nonexistent search paths")
+        XCTAssertTrue(probe.ran, "the resolver body must execute the injected providers")
+        XCTAssertFalse(
+            probe.sawMainThread,
+            "blocking resolver work must run off the main thread; a failure here means a D4 Task.detached → nonisolated conversion regressed to running on the main actor"
+        )
+    }
+
     func test_cliBridge_openAICompatibleUsage_parsesUsagePayload() {
         let usage = CLIBridge.openAICompatibleUsage(from: [
             "usage": [
