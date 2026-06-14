@@ -32,6 +32,25 @@ struct OpenBurnBarDaemonExecutable {
             environment: ProcessInfo.processInfo.environment,
             logger: logger
         )
+
+        // T-DMN-03: before binding the control socket, re-verify the daemon's own
+        // on-disk image against the first-party designated requirement. Enforced
+        // exactly when the peer-codesig gate is enforced (signed production
+        // builds), so a same-uid attacker who swapped the user-writable installed
+        // binary cannot bring up a foreign image that serves the full RPC/HID
+        // surface. The install-location change (root-owned SMAppService) lives in
+        // the app/installer and is tracked Deferred.
+        let selfVerifier = DaemonSelfCodeSignatureVerifier(enforced: peerAuthenticator.isEnforced, logger: logger)
+        do {
+            try selfVerifier.verify()
+        } catch {
+            logger.error(
+                "daemon_self_verification_failed_refusing_start",
+                metadata: ["error": "\(error)"]
+            )
+            throw error
+        }
+
         let server = BurnBarDaemonServer(
             configuration: configuration,
             logger: logger,
@@ -60,25 +79,34 @@ struct OpenBurnBarDaemonExecutable {
     }
 }
 
-/// RR-3: build the control-socket peer authenticator for this process.
+/// RR-3 / T-DMN-05: build the control-socket peer authenticator for this process.
 ///
 /// Enforcement of the first-party code-signature gate is ON by default — a
 /// production daemon refuses any accepted peer that does not satisfy the
-/// canonical designated requirement. Unsigned developer builds (where no binary
-/// can carry the first-party identity) opt out with
-/// `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1`, mirroring the fail-closed-by-default
-/// escape hatch the HTTP gateway uses for unauthenticated loopback binds. The
-/// opt-out is logged loudly so a misconfiguration is never silent.
+/// canonical designated requirement.
+///
+/// T-DMN-05: the `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1` escape hatch (used
+/// by unsigned developer builds where no binary can carry the first-party
+/// identity) is compiled out of release/distribution builds behind `#if DEBUG`.
+/// An attacker who controls the daemon's launch environment can no longer strip
+/// the gate by exporting the variable: in a release build the env value is never
+/// read, so the authenticator is unconditionally `enforced: true`. In DEBUG the
+/// opt-out remains and is logged loudly so a misconfiguration is never silent.
 private func makePeerAuthenticator(
     environment: [String: String],
     logger: BurnBarDaemonLogger
 ) -> BurnBarDaemonPeerAuthenticator {
-    let disabled = environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
-        || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
-    if disabled {
+    let enforced = BurnBarDaemonPeerAuthenticator.resolveEnforcementForCurrentBuild(
+        environment: environment
+    )
+    if !enforced {
+        // Only reachable in a DEBUG build where the opt-out is compiled in; log
+        // loudly so a misconfiguration is never silent. In release builds
+        // `resolveEnforcementForCurrentBuild` always returns `true`, so a hostile
+        // launch environment cannot strip the first-party code-signature gate.
         logger.warning(
             "rpc_peer_code_signature_enforcement_disabled",
-            metadata: ["reason": "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1"]
+            metadata: ["reason": "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out)"]
         )
         return .disabled
     }
