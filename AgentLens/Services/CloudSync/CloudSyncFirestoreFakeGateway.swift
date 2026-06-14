@@ -540,4 +540,3 @@ private extension ComparisonResult {
         }
     }
 }
-

@@ -9,7 +9,7 @@ import OpenBurnBarComputerUseCore
 /// `ComputerUseSessionCoordinator` can tear down without caring how the
 /// panic was triggered (Decision 7).
 @MainActor
-public final class ComputerUsePanicHaltCoordinator: NSObject, Sendable {
+public final class ComputerUsePanicHaltCoordinator: NSObject {
     public typealias HaltHandler = @Sendable (ComputerUsePanicSource) -> Void
 
     public private(set) var isInstalled: Bool = false

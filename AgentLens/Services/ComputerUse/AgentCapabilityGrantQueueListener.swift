@@ -7,7 +7,7 @@ import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 
 @MainActor
-final class AgentCapabilityGrantQueueListener: Sendable {
+final class AgentCapabilityGrantQueueListener {
     static let shared = AgentCapabilityGrantQueueListener()
 
     private let firestoreProvider: @Sendable () -> Firestore
