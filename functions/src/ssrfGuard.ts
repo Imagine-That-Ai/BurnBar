@@ -38,7 +38,7 @@ function isBlockedIpv6(host: string): boolean {
   return false;
 }
 
-export class SsrfBlockedError extends Error {
+class SsrfBlockedError extends Error {
   constructor(host: string) {
     super(`Outbound request to '${host}' is blocked (SSRF guard).`);
     this.name = "SsrfBlockedError";

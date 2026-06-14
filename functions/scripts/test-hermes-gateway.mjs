@@ -13,7 +13,6 @@ import {
   hashHermesGatewayBearerToken,
   hashHermesGatewayDeviceSecret,
   HERMES_GATEWAY_APPROVAL_TTL_MS,
-  HERMES_GATEWAY_MAX_APPROVAL_TTL_MS,
   HERMES_GATEWAY_MIN_APPROVAL_TTL_MS,
   HERMES_GATEWAY_DEFAULT_DESTINATION_ID,
   HERMES_GATEWAY_PENDING_MODEL_TTL_MS,
@@ -321,7 +320,7 @@ assert.equal(sanitizeHermesGatewayApprovalTTL(undefined), HERMES_GATEWAY_APPROVA
 assert.equal(sanitizeHermesGatewayApprovalTTL("bad"), HERMES_GATEWAY_APPROVAL_TTL_MS);
 assert.equal(sanitizeHermesGatewayApprovalTTL(1), HERMES_GATEWAY_MIN_APPROVAL_TTL_MS);
 assert.equal(sanitizeHermesGatewayApprovalTTL(30), 30_000);
-assert.equal(sanitizeHermesGatewayApprovalTTL(60 * 60), HERMES_GATEWAY_MAX_APPROVAL_TTL_MS);
+assert.equal(sanitizeHermesGatewayApprovalTTL(60 * 60), HERMES_GATEWAY_APPROVAL_TTL_MS);
 assert.equal(gatewayApprovalExpiryISO(gateFrom, 30_000), new Date(gateFrom + 30_000).toISOString());
 assert.equal(isHermesGatewayApprovalExpired("2000-01-01T00:00:00.000Z"), true);
 assert.equal(isHermesGatewayApprovalExpired(new Date(Date.now() + 60_000).toISOString()), false);

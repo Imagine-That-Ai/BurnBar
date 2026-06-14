@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-13T12:42:46.493Z",
+  "generatedAt": "2026-06-14T03:08:10.183Z",
   "scanner": {
     "tsMode": "token-fallback",
     "excluded": {
@@ -38,16 +38,16 @@
       ]
     }
   },
-  "total": 139,
+  "total": 132,
   "byLanguage": {
     "kotlin": 27,
-    "typescript": 112
+    "typescript": 105
   },
   "byKind": {
     "kotlin_force_unwrap": 6,
     "kotlin_unsafe_cast": 21,
-    "ts_non_null_assertion": 4,
-    "ts_type_assertion": 108
+    "ts_non_null_assertion": 3,
+    "ts_type_assertion": 102
   },
   "violations": [
     {
@@ -493,7 +493,7 @@
     },
     {
       "path": "functions/src/__tests__/hermesGatewayAttachmentInit.test.ts",
-      "line": 130,
+      "line": 135,
       "column": 68,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -529,7 +529,7 @@
     },
     {
       "path": "functions/src/__tests__/knowledgeMemoryDedupHash.test.ts",
-      "line": 367,
+      "line": 387,
       "column": 62,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -843,67 +843,13 @@
       "detail": "TypeScript parser unavailable; token: as Stripe"
     },
     {
-      "path": "functions/src/appCheckAttestation.ts",
-      "line": 90,
-      "column": 46,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const existing = (user.customClaims ?? {}) as Record<string, unknown>;",
-      "detail": "TypeScript parser unavailable; token: as Record"
-    },
-    {
-      "path": "functions/src/appCheckAttestation.ts",
-      "line": 114,
-      "column": 37,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const token = request.auth?.token as Record<string, unknown> | undefined;",
-      "detail": "TypeScript parser unavailable; token: as Record"
-    },
-    {
-      "path": "functions/src/callables/cliLink.ts",
-      "line": 118,
-      "column": 31,
-      "language": "typescript",
-      "kind": "ts_non_null_assertion",
-      "snippet": "const data = snap.data()!;",
-      "detail": "TypeScript parser unavailable"
-    },
-    {
-      "path": "functions/src/callables/cliLink.ts",
-      "line": 128,
-      "column": 40,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const expiresAt = data.expiresAt as Timestamp;",
-      "detail": "TypeScript parser unavailable; token: as Timestamp"
-    },
-    {
-      "path": "functions/src/callables/cliLink.ts",
-      "line": 209,
-      "column": 45,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const expiresAt = sessionData.expiresAt as Timestamp;",
-      "detail": "TypeScript parser unavailable; token: as Timestamp"
-    },
-    {
       "path": "functions/src/callables/conversationQuery.ts",
-      "line": 48,
-      "column": 19,
+      "line": 22,
+      "column": 42,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "requestedSort as QueryConversationSortField,",
-      "detail": "TypeScript parser unavailable; token: as QueryConversationSortField"
-    },
-    {
-      "path": "functions/src/callables/conversationQuery.ts",
-      "line": 50,
-      "column": 22,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "? (requestedSort as QueryConversationSortField)",
-      "detail": "TypeScript parser unavailable; token: as QueryConversationSortField"
+      "snippet": "return (QUERY_CONVERSATION_SORT_FIELDS as readonly string[]).includes(value);",
+      "detail": "TypeScript parser unavailable; token: as readonly"
     },
     {
       "path": "functions/src/callables/dataExport.ts",
@@ -943,7 +889,7 @@
     },
     {
       "path": "functions/src/callables/hermesGateway.ts",
-      "line": 1981,
+      "line": 2051,
       "column": 10,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -961,7 +907,7 @@
     },
     {
       "path": "functions/src/callables/knowledgeMemory.ts",
-      "line": 546,
+      "line": 631,
       "column": 56,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1096,7 +1042,7 @@
     },
     {
       "path": "functions/src/callables/shared.ts",
-      "line": 1167,
+      "line": 1168,
       "column": 58,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1114,21 +1060,12 @@
     },
     {
       "path": "functions/src/callables/stripe.ts",
-      "line": 73,
-      "column": 56,
+      "line": 72,
+      "column": 19,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "if (typeof raw !== \"string\" || !allowed.includes(raw as T)) {",
-      "detail": "TypeScript parser unavailable; token: as T"
-    },
-    {
-      "path": "functions/src/callables/stripe.ts",
-      "line": 76,
-      "column": 14,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "return raw as T;",
-      "detail": "TypeScript parser unavailable; token: as T"
+      "snippet": "return (allowed as readonly string[]).includes(raw);",
+      "detail": "TypeScript parser unavailable; token: as readonly"
     },
     {
       "path": "functions/src/callables/webAppCheck.ts",

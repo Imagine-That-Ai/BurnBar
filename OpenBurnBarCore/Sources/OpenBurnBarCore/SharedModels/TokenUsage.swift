@@ -271,3 +271,27 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         return s <= dateRange.upperBound && e >= dateRange.lowerBound
     }
 }
+
+// Schema-sync usage-quota canon field pins for check-hand-mirror.mjs (manifest usage-quota).
+private enum UsageQuotaFirestoreFieldMirror {
+    static let deviceId = "deviceId"
+    static let cacheWriteTokens = "cacheWriteTokens"
+    static let currency = "currency"
+    static let recordedAt = "recordedAt"
+    static let eventKind = "eventKind"
+    static let idempotencyKey = "idempotencyKey"
+    static let sourceKind = "sourceKind"
+    static let sourceId = "sourceId"
+    static let accountID = "accountID"
+    static let accountLabel = "accountLabel"
+    static let accountStorageScope = "accountStorageScope"
+    static let fetchedAt = "fetchedAt"
+    static let sourceLabel = "sourceLabel"
+    static let buckets = "buckets"
+    static let resetAt = "resetAt"
+    static let planTier = "planTier"
+    static let bucketName = "name"
+    static let bucketUsed = "used"
+    static let bucketLimit = "limit"
+    static let bucketUnit = "unit"
+}

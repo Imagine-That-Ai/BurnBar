@@ -18,46 +18,12 @@
       },
       "swiftHandMirror": [
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/TokenUsage.swift",
-          "knownDrift": [
-            "UsageEventDoc.deviceId",
-            "UsageEventDoc.cacheWriteTokens",
-            "UsageEventDoc.currency",
-            "UsageEventDoc.recordedAt",
-            "UsageEventDoc.eventKind",
-            "UsageEventDoc.idempotencyKey",
-            "QuotaSnapshotDoc.sourceKind",
-            "QuotaSnapshotDoc.sourceId",
-            "QuotaSnapshotDoc.accountID",
-            "QuotaSnapshotDoc.accountLabel",
-            "QuotaSnapshotDoc.accountStorageScope",
-            "QuotaSnapshotDoc.fetchedAt",
-            "QuotaSnapshotDoc.sourceLabel",
-            "QuotaSnapshotDoc.buckets",
-            "QuotaSnapshotDoc.resetAt",
-            "QuotaSnapshotDoc.planTier",
-            "QuotaBucket.name",
-            "QuotaBucket.used",
-            "QuotaBucket.limit",
-            "QuotaBucket.unit",
-            "QuotaBucket.resetAt"
-          ]
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/TokenUsage.swift"
         }
       ],
       "kotlinHandMirror": [
         {
-          "path": "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt",
-          "knownDrift": [
-            "UsageEventDoc.cacheWriteTokens",
-            "UsageEventDoc.costUSD",
-            "UsageEventDoc.recordedAt",
-            "UsageEventDoc.eventKind",
-            "UsageEventDoc.idempotencyKey",
-            "QuotaSnapshotDoc.sourceLabel",
-            "QuotaSnapshotDoc.resetAt",
-            "QuotaSnapshotDoc.planTier",
-            "QuotaBucket.resetAt"
-          ]
+          "path": "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt"
         }
       ],
       "tsHandMirror": [
@@ -69,20 +35,7 @@
             "QuotaBucket"
           ],
           "knownDrift": [
-            "UsageEventDoc.cacheWriteTokens",
-            "UsageEventDoc.costUSD",
-            "UsageEventDoc.currency",
-            "UsageEventDoc.recordedAt",
-            "UsageEventDoc.eventKind",
-            "UsageEventDoc.idempotencyKey",
-            "QuotaSnapshotDoc.sourceLabel",
-            "QuotaSnapshotDoc.buckets#opt",
-            "QuotaSnapshotDoc.resetAt",
-            "QuotaSnapshotDoc.planTier",
-            "QuotaBucket.used#opt",
-            "QuotaBucket.limit#opt",
-            "QuotaBucket.unit",
-            "QuotaBucket.resetAt"
+            "UsageEventDoc.recordedAt#opt"
           ]
         }
       ],

@@ -35,6 +35,7 @@ import type {
   ProviderAccountConnectContext,
   ProviderAccountSecretRefDoc,
   ProviderConnectionDoc,
+  QuotaBucket,
   QuotaSnapshotDoc,
   HermesConnectionAuditEventDoc,
   PiAgentConnectionAuditEventDoc,
@@ -1381,7 +1382,7 @@ export function sanitizeUploadedQuotaSnapshot(
 ): QuotaSnapshotDoc {
   const now = nowISO();
   const bucketsRaw = Array.isArray(raw.buckets) ? raw.buckets : [];
-  const buckets = bucketsRaw.slice(0, 16).flatMap((item): QuotaSnapshotDoc["buckets"] => {
+  const buckets = bucketsRaw.slice(0, 16).flatMap((item): QuotaBucket[] => {
     const b = recordOrUndefined(item);
     if (!b) return [];
     const name = boundedTrimmedString(b.name, "bucket.name", 80);
@@ -1392,7 +1393,7 @@ export function sanitizeUploadedQuotaSnapshot(
     if (!Number.isFinite(used) || !Number.isFinite(limit) || !Number.isFinite(remaining)) {
       return [];
     }
-    const bucket: QuotaSnapshotDoc["buckets"][number] = {
+    const bucket: QuotaBucket = {
       name,
       used,
       limit,

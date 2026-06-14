@@ -26,7 +26,6 @@ import {
   shouldCoalesceHermesGatewayLastSeen,
   HERMES_GATEWAY_APPROVAL_TTL_MS,
   HERMES_GATEWAY_LAST_SEEN_COALESCE_MS,
-  HERMES_GATEWAY_MAX_APPROVAL_TTL_MS,
   HERMES_GATEWAY_MIN_APPROVAL_TTL_MS,
   HERMES_GATEWAY_PRESENCE_WINDOW_MS,
   HERMES_GATEWAY_PROTOCOL_VERSION,
@@ -207,7 +206,7 @@ describe("Hermes Gateway oversight (feature 3)", () => {
     expect(sanitizeHermesGatewayApprovalTTL("bad")).toBe(HERMES_GATEWAY_APPROVAL_TTL_MS);
     expect(sanitizeHermesGatewayApprovalTTL(1)).toBe(HERMES_GATEWAY_MIN_APPROVAL_TTL_MS);
     expect(sanitizeHermesGatewayApprovalTTL(30)).toBe(30_000);
-    expect(sanitizeHermesGatewayApprovalTTL(60 * 60)).toBe(HERMES_GATEWAY_MAX_APPROVAL_TTL_MS);
+    expect(sanitizeHermesGatewayApprovalTTL(60 * 60)).toBe(HERMES_GATEWAY_APPROVAL_TTL_MS);
   });
 });
 

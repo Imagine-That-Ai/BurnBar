@@ -14,7 +14,7 @@ import type { CallableRequest } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth, assertOwnership } from "./auth.js";
-import { isRecord } from "./guards.js";
+import { isRecord, recordOrUndefined } from "./guards.js";
 
 /** Matches Swift `AppCheckAttestationBinding.canonicalPrefix`. */
 export const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
@@ -87,7 +87,7 @@ export async function bindAppCheckAttestationForUid(
   };
   const auth = getAuth();
   const user = await auth.getUser(uid);
-  const existing = (user.customClaims ?? {}) as Record<string, unknown>;
+  const existing = isRecord(user.customClaims) ? user.customClaims : {};
   await auth.setCustomUserClaims(uid, {
     ...existing,
     [APP_CHECK_ATTESTATION_CLAIM_KEY]: claim,
@@ -111,7 +111,7 @@ export function assertAppAttestBoundClaims(request: CallableRequest): void {
     throw new functions.HttpsError("unauthenticated", "App Check attestation is required.");
   }
 
-  const token = request.auth?.token as Record<string, unknown> | undefined;
+  const token = recordOrUndefined(request.auth?.token);
   const claim = readAppCheckAttestationClaim(token);
   if (!claim) {
     throw new functions.HttpsError(

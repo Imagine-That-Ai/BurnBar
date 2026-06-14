@@ -849,10 +849,16 @@ export interface QuotaBucket {
   name: string;
 
   /** Used amount (same unit as limit). */
-  used: number;
+  used?: number;
 
   /** Granted limit, or -1 if unlimited/unknown. */
-  limit: number;
+  limit?: number;
+
+  /** Provider-reported unit label (schema-sync canon). */
+  unit?: string;
+
+  /** ISO 8601 refill moment (schema-sync canon; legacy clients may use resetsAt). */
+  resetAt?: string;
 
   /** Remaining computed as max(0, limit - used) when limit >= 0. */
   remaining: number;
@@ -900,6 +906,15 @@ export interface QuotaSnapshotDoc {
   /** Human-readable source label. */
   source: string;
 
+  /** Schema-sync alias for {@link source}. */
+  sourceLabel?: string;
+
+  /** ISO 8601 next reset for the snapshot (schema-sync canon). */
+  resetAt?: string;
+
+  /** Provider plan tier at fetch time (schema-sync canon). */
+  planTier?: string;
+
   /** Confidence level: "high" | "medium" | "low" | "stale". */
   confidence: "high" | "medium" | "low" | "stale";
 
@@ -910,7 +925,7 @@ export interface QuotaSnapshotDoc {
   statusMessage?: string;
 
   /** Quota buckets. */
-  buckets: QuotaBucket[];
+  buckets?: QuotaBucket[];
 
   /** Schema version. */
   schemaVersion: number;
@@ -1340,6 +1355,9 @@ export interface UsageEventDoc {
   /** Number of cache read tokens. */
   cacheReadTokens?: number;
 
+  /** Number of cache write tokens (schema-sync canon). */
+  cacheWriteTokens?: number;
+
   /** Number of reasoning/thinking tokens. */
   reasoningTokens?: number;
 
@@ -1349,8 +1367,23 @@ export interface UsageEventDoc {
   /** Estimated cost in USD (optional, canonical field). */
   costUsd?: number;
 
+  /** Schema-sync alias for {@link costUsd}. */
+  costUSD?: number;
+
+  /** ISO 4217 currency code when cost is present (schema-sync canon). */
+  currency?: string;
+
   /** Cost in USD (legacy field written by desktop UsageSyncService). */
   cost?: number;
+
+  /** ISO 8601 ingestion timestamp (schema-sync canon). */
+  recordedAt?: string;
+
+  /** Event classification (schema-sync canon). */
+  eventKind?: string;
+
+  /** Idempotency key for duplicate suppression (schema-sync canon). */
+  idempotencyKey?: string;
 
   /** Parser/source confidence used to choose the best copy of a duplicate. */
   provenanceConfidence?: string;
