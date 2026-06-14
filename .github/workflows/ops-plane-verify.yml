@@ -59,6 +59,17 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@cb1e50a9932213ecece00a606661ae9ca44f3397 # v2.2.0 (the old pin was an unresolvable SHA — the job died at runner setup on every run)
 
+      - name: Check out pinned Hermes agent source
+        id: hermes-agent-source
+        run: |
+          repo="$(node -e "const m=require('./third_party/hermes-agent/manifest.json'); console.log(m.forkRepository)")"
+          pin="$(node -e "const m=require('./third_party/hermes-agent/manifest.json'); console.log(m.pinnedCommit)")"
+          src="$RUNNER_TEMP/hermes-agent"
+          git clone --no-tags --filter=blob:none "$repo" "$src"
+          git -C "$src" fetch --depth=1 origin "$pin"
+          git -C "$src" checkout --detach "$pin"
+          echo "path=$src" >> "$GITHUB_OUTPUT"
+
       - name: Activate ops plane (optional)
         if: github.event_name == 'workflow_dispatch' && inputs.apply == true
         env:
@@ -72,6 +83,8 @@ jobs:
           OPENBURNBAR_FIREBASE_PROJECT: burnbar
           FUNCTIONS_REGION: us-central1
           VERIFY_OPS_PLANE_SUMMARY: verify-ops-plane-summary.json
+          GH_TOKEN: ${{ github.token }}
+          HERMES_AGENT_SRC: ${{ steps.hermes-agent-source.outputs.path }}
         run: bash scripts/ops/verify-production-ops-plane.sh
 
       - name: Collect Firebase security evidence
