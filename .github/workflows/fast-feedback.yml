@@ -609,6 +609,27 @@ jobs:
       - name: Unit tests (hosted-MCP)
         run: npm test --prefix services/hosted-mcp
 
+  # ── No new suppressions / baselines (permanence meta-gate, plan Phase 6) ────
+  # Fail-closed: blocks any new lint/type suppression (eslint-disable, @ts-*,
+  # # noqa, @Suppress, swiftlint:disable, #[allow]) or checked-in baseline
+  # (budgets/*.json, *baseline*.{xml,yml,yaml}) that lacks an inline `reason:`
+  # token or a documented allowlist entry in docs/LINT_RATIONALE.md. Pure git +
+  # python3 — no install needed; supersedes the former blunt suppression check.
+  no-suppressions:
+    name: No new suppressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      # Positive controls: prove the gate still catches bypass attempts (never
+      # passes vacuously) before trusting its verdict on the real tree.
+      - name: Self-test the meta-gate
+        run: bash scripts/ci/check-no-suppressions.test.sh
+
+      - name: Check no unjustified suppressions or baselines
+        run: bash scripts/ci/check-no-suppressions.sh
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate
@@ -631,6 +652,7 @@ jobs:
       - functions-security-fast
       - signal-honesty-copy
       - services-fast
+      - no-suppressions
     runs-on: ubuntu-latest
     if: always()
     steps:
