@@ -209,7 +209,7 @@ enum MobileCloudVaultRevocationRotation {
             return CloudVaultRotationPickupResult()
         }
 
-        let pending = try await listPendingCloudVaultRotationRequirements()
+        let pending = try await listPendingCloudVaultRotationRequirements(callerDeviceId: rotatingDeviceId)
         let eligible = eligibleRequirements(from: pending, rotatingDeviceId: rotatingDeviceId)
         var completed: [String] = []
         var failed: [String: String] = [:]
@@ -255,9 +255,18 @@ enum MobileCloudVaultRevocationRotation {
         return eligible
     }
 
-    static func listPendingCloudVaultRotationRequirements() async throws -> [PendingCloudVaultRotationRequirement] {
+    static func listPendingCallablePayload(callerDeviceId: String) -> [String: Any] {
+        ["callerDeviceId": callerDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)]
+    }
+
+    static func listPendingCloudVaultRotationRequirements(callerDeviceId: String) async throws -> [PendingCloudVaultRotationRequirement] {
+        let callerDeviceId = callerDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !callerDeviceId.isEmpty else {
+            throw RotationError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")
+        }
         _ = try requireSignedInUser()
-        let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements").call([:])
+        let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements")
+            .call(listPendingCallablePayload(callerDeviceId: callerDeviceId))
         guard let dict = result.data as? [String: Any],
               let rawRequirements = dict["requirements"] as? [[String: Any]] else {
             throw RotationError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")

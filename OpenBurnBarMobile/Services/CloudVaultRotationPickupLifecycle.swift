@@ -1,6 +1,12 @@
 import FirebaseAuth
 import Foundation
+import OSLog
 import UIKit
+
+private let cloudVaultRotationPickupLogger = Logger(
+    subsystem: "com.openburnbar.mobile",
+    category: "CloudVaultRotationPickup"
+)
 
 extension Notification.Name {
     /// Posted after a successful local escrow-device trust revocation so survivor
@@ -51,20 +57,25 @@ enum CloudVaultRotationPickupLifecycle {
         if !force, now - lastPickupAt < debounceInterval {
             return
         }
-        lastPickupAt = now
 
-        guard let user = Auth.auth().currentUser, user.isAnonymous == false else { return }
+        guard Auth.auth().currentUser?.isAnonymous == false else { return }
+        lastPickupAt = now
 
         let rotatingDeviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
         Task {
             do {
-                _ = try await MobileCloudVaultRevocationRotation.pickUpPendingCloudVaultRotations(
+                let result = try await MobileCloudVaultRevocationRotation.pickUpPendingCloudVaultRotations(
                     rotatingDeviceId: rotatingDeviceId
                 )
+                if !result.completedRequirementIds.isEmpty || !result.failedRequirements.isEmpty {
+                    cloudVaultRotationPickupLogger.info(
+                        "cloud_vault_rotation_pickup_complete eligible=\(result.eligibleRequirementIds.count, privacy: .public) completed=\(result.completedRequirementIds.count, privacy: .public) failed=\(result.failedRequirements.count, privacy: .public)"
+                    )
+                }
             } catch {
-                #if DEBUG
-                print("Cloud Vault rotation pickup failed: \(error.localizedDescription)")
-                #endif
+                cloudVaultRotationPickupLogger.error(
+                    "cloud_vault_rotation_pickup_failed error=\(error.localizedDescription, privacy: .public)"
+                )
             }
         }
     }

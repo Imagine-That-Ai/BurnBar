@@ -9,6 +9,71 @@ import UIKit
 
 /// WS4 iOS client for App Check attestation binding and escrow device trust callables.
 enum ComputerUseSecurityCallableClient {
+    struct EscrowDeviceTrustRevocationResult: Sendable, Equatable {
+        let revokedCloudVaultWrappers: Int
+        let cloudVaultRotationRequired: Bool
+        let cloudVaultRotationRequirementId: String?
+        let cloudVaultRotationBlockedReason: String?
+        let cloudVaultRotationJobId: String?
+        let cloudVaultRotationCompleted: Bool
+        let cloudVaultRotationFailureMessage: String?
+        let cloudVaultRotationRewrappedDocuments: Int
+        let cloudVaultRotationRewrappedStorageBlobs: Int
+
+        init(
+            revokedCloudVaultWrappers: Int,
+            cloudVaultRotationRequired: Bool,
+            cloudVaultRotationRequirementId: String?,
+            cloudVaultRotationBlockedReason: String?,
+            cloudVaultRotationJobId: String? = nil,
+            cloudVaultRotationCompleted: Bool = false,
+            cloudVaultRotationFailureMessage: String? = nil,
+            cloudVaultRotationRewrappedDocuments: Int = 0,
+            cloudVaultRotationRewrappedStorageBlobs: Int = 0
+        ) {
+            self.revokedCloudVaultWrappers = revokedCloudVaultWrappers
+            self.cloudVaultRotationRequired = cloudVaultRotationRequired
+            self.cloudVaultRotationRequirementId = cloudVaultRotationRequirementId
+            self.cloudVaultRotationBlockedReason = cloudVaultRotationBlockedReason
+            self.cloudVaultRotationJobId = cloudVaultRotationJobId
+            self.cloudVaultRotationCompleted = cloudVaultRotationCompleted
+            self.cloudVaultRotationFailureMessage = cloudVaultRotationFailureMessage
+            self.cloudVaultRotationRewrappedDocuments = cloudVaultRotationRewrappedDocuments
+            self.cloudVaultRotationRewrappedStorageBlobs = cloudVaultRotationRewrappedStorageBlobs
+        }
+
+        func withCompletedCloudVaultRotation(
+            jobId: String,
+            progress: MobileCloudVaultRotationRewrapProgress
+        ) -> Self {
+            Self(
+                revokedCloudVaultWrappers: revokedCloudVaultWrappers,
+                cloudVaultRotationRequired: cloudVaultRotationRequired,
+                cloudVaultRotationRequirementId: cloudVaultRotationRequirementId,
+                cloudVaultRotationBlockedReason: cloudVaultRotationBlockedReason,
+                cloudVaultRotationJobId: jobId,
+                cloudVaultRotationCompleted: true,
+                cloudVaultRotationFailureMessage: nil,
+                cloudVaultRotationRewrappedDocuments: progress.rewrappedDocuments,
+                cloudVaultRotationRewrappedStorageBlobs: progress.rewrappedStorageBlobs
+            )
+        }
+
+        func withCloudVaultRotationFailure(_ message: String) -> Self {
+            Self(
+                revokedCloudVaultWrappers: revokedCloudVaultWrappers,
+                cloudVaultRotationRequired: cloudVaultRotationRequired,
+                cloudVaultRotationRequirementId: cloudVaultRotationRequirementId,
+                cloudVaultRotationBlockedReason: cloudVaultRotationBlockedReason,
+                cloudVaultRotationJobId: cloudVaultRotationJobId,
+                cloudVaultRotationCompleted: false,
+                cloudVaultRotationFailureMessage: message,
+                cloudVaultRotationRewrappedDocuments: cloudVaultRotationRewrappedDocuments,
+                cloudVaultRotationRewrappedStorageBlobs: cloudVaultRotationRewrappedStorageBlobs
+            )
+        }
+    }
+
     private static let appCheckBindMaxAttempts = 3
     private static let appCheckBindRetryDelayNanoseconds: UInt64 = 1_500_000_000
 
@@ -190,16 +255,58 @@ enum ComputerUseSecurityCallableClient {
         ]
     }
 
-    static func revokeEscrowDeviceTrust(deviceId: String) async throws {
-        _ = try requireSignedInUser()
+    static func parseEscrowDeviceTrustRevocationResult(
+        _ dict: [String: Any]
+    ) throws -> EscrowDeviceTrustRevocationResult {
+        guard dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Escrow device trust revocation failed.")
+        }
+        return EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: dict["revokedCloudVaultWrappers"] as? Int ?? 0,
+            cloudVaultRotationRequired: dict["cloudVaultRotationRequired"] as? Bool ?? false,
+            cloudVaultRotationRequirementId: dict["cloudVaultRotationRequirementId"] as? String,
+            cloudVaultRotationBlockedReason: dict["cloudVaultRotationBlockedReason"] as? String
+        )
+    }
+
+    /// Revokes escrow device trust and, when required, drives the Cloud Vault rotation chain
+    /// inline (mirrors Mac/Android). Pass `rotatingDeviceId` so this device can finish rotation.
+    @discardableResult
+    static func revokeEscrowDeviceTrust(
+        deviceId: String,
+        rotatingDeviceId: String? = nil
+    ) async throws -> EscrowDeviceTrustRevocationResult {
+        let uid = try requireSignedInUser().uid
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
             "deviceId": deviceId,
             "nonce": nonce
         ])
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = result.data as? [String: Any] else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
+        }
+        let revocation = try parseEscrowDeviceTrustRevocationResult(dict)
+        guard revocation.cloudVaultRotationRequired else { return revocation }
+        guard let requirementId = revocation.cloudVaultRotationRequirementId,
+              !requirementId.isEmpty,
+              let rotatingDeviceId,
+              !rotatingDeviceId.isEmpty else {
+            return revocation.withCloudVaultRotationFailure(
+                "Cloud Vault rotation is required, but this device's trusted device identity is unavailable."
+            )
+        }
+
+        do {
+            let rotation = try await MobileCloudVaultRevocationRotation.performRevocationCloudVaultRotation(
+                uid: uid,
+                requirementId: requirementId,
+                rotatingDeviceId: rotatingDeviceId,
+                environment: .live(uid: uid, rotatingDeviceId: rotatingDeviceId)
+            )
+            return revocation.withCompletedCloudVaultRotation(jobId: rotation.jobId, progress: rotation.progress)
+        } catch {
+            return revocation.withCloudVaultRotationFailure(error.localizedDescription)
         }
     }
 
