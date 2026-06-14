@@ -85,6 +85,36 @@ final class CLIBridge: ObservableObject {
         }
     }
 
+    /// T-TOOL-03: terminate any in-flight spawned external CLI process without
+    /// disturbing the HTTP gateway stream. Called when a desktop-control grant is
+    /// revoked mid-run so an agent operating under the just-revoked capabilities
+    /// is killed immediately rather than allowed to finish the current command.
+    func terminateRunningCLIProcess() {
+        Task {
+            await streamRuntime.terminateRunningProcess()
+        }
+    }
+
+    /// T-TOOL-03: builds the mid-run grant poll for a spawned CLI lane. The
+    /// returned closure (run periodically by `CLIProcessStreamRunner`) reports
+    /// whether the grant is STILL active in the live store — catching both expiry
+    /// and explicit revocation — so the process is terminated the moment the
+    /// operator pulls the grant. Returns `nil` for ungranted (read-only) runs.
+    nonisolated static func spawnedCLIGrantPoll(
+        for grant: AgentCapabilityGrant?
+    ) -> (@Sendable () async -> Bool)? {
+        guard let grant else { return nil }
+        let grantID = grant.grantID
+        let runtimeID = grant.runtimeID
+        let threadID = grant.threadID
+        return {
+            await MainActor.run {
+                AgentCapabilityGrantStore.shared
+                    .activeGrant(runtimeID: runtimeID, threadID: threadID)?.grantID == grantID
+            }
+        }
+    }
+
     func generateTextWithClaude(
         model: String,
         systemPrompt: String,
@@ -439,6 +469,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -498,6 +529,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -529,6 +561,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -560,6 +593,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -589,6 +623,7 @@ final class CLIBridge: ObservableObject {
                     prompt: fullPrompt,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -618,6 +653,7 @@ final class CLIBridge: ObservableObject {
                     prompt: fullPrompt,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }

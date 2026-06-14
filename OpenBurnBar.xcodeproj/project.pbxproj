@@ -956,6 +956,7 @@
 		8978407911CDFAD1AD4FEAF1 /* OpenBurnBarOperatingLayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C437B40CEAB1015E9625C5CD /* OpenBurnBarOperatingLayerTests.swift */; };
 		898C8594EB8E6B50FE3127C4 /* NestHubSettingsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C0DA9F6FB9F7D015DCDBC8 /* NestHubSettingsCard.swift */; };
 		89A8EAF48D23B0468B7AEF94 /* AgentCapabilityGrantQueueListenerMattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8537A335990BE01EF9D19CBF /* AgentCapabilityGrantQueueListenerMattersTests.swift */; };
+		041822CCCA564B4AC91C92D1 /* CLIBridgeGrantRevocationKillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C82FFE2B7A30695A295D5612 /* CLIBridgeGrantRevocationKillTests.swift */; };
 		89CCDE02C183C870708B4B8F /* SystemPermissionRetryDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E481FD1E7B5D745B4597842A /* SystemPermissionRetryDispatcher.swift */; };
 		89CF47DC5ED767471B58F10E /* CloudSyncEmulatorIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4741A4C5B4AF699471C0C0 /* CloudSyncEmulatorIntegrationTests.swift */; };
 		8A13D18E23DCCB722CD36F08 /* ModelPricingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D04B9DFB295A5377F83F2A /* ModelPricingTests.swift */; };
@@ -2778,6 +2779,7 @@
 		84CCFBECFAFA744C7E64FCC1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		84E40DC3D55DF44F7FE3D462 /* QuotaWorkspaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaWorkspaceViewModel.swift; sourceTree = "<group>"; };
 		8537A335990BE01EF9D19CBF /* AgentCapabilityGrantQueueListenerMattersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCapabilityGrantQueueListenerMattersTests.swift; sourceTree = "<group>"; };
+		C82FFE2B7A30695A295D5612 /* CLIBridgeGrantRevocationKillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridgeGrantRevocationKillTests.swift; sourceTree = "<group>"; };
 		8545FA92AB6B15EC833BEAB5 /* FeatureUnlockExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureUnlockExperience.swift; sourceTree = "<group>"; };
 		855A9DC939575033F8C3D7AD /* MercuryIncomingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryIncomingSheet.swift; sourceTree = "<group>"; };
 		856C4BD20F619A1CE56576E8 /* ScreenSharePiPController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenSharePiPController.swift; sourceTree = "<group>"; };
@@ -5552,6 +5554,7 @@
 				17EAF13124BC5A0226D99097 /* CLIAgentEligibleProviderParityTests.swift */,
 				80BB082B1537369F0C0FB2B7 /* CLIAgentMissionRequestListenerMattersTests.swift */,
 				97E3FF04609105C2794825E4 /* CLIAgentSessionMirrorTests.swift */,
+				C82FFE2B7A30695A295D5612 /* CLIBridgeGrantRevocationKillTests.swift */,
 				EA8FD8A89559DC74FDEF8D42 /* CLIBridgeTests.swift */,
 				DCD415B7C32A08B7D751A95C /* CLIProfileStreamFailoverRunnerMattersTests.swift */,
 				E57DCE0CE184B89DB1252D0D /* CloudBudgetServiceMattersTests.swift */,
@@ -8371,6 +8374,7 @@
 				0462CBAE5D62A9EDF36BE7E7 /* CLIAgentMissionRequestListenerMattersTests.swift in Sources */,
 				B7F4FAFF3EA7CC5632A64648 /* CLIAgentSessionMirrorTests.swift in Sources */,
 				6E75B53F8FCC6B821A65211B /* CLIAssistantConsentSheetTests.swift in Sources */,
+				041822CCCA564B4AC91C92D1 /* CLIBridgeGrantRevocationKillTests.swift in Sources */,
 				3D479D3BEF7AE013C6FF7EA4 /* CLIBridgeTests.swift in Sources */,
 				3420C5DD6D557DE0CEA28861 /* CLIProfileStreamFailoverRunnerMattersTests.swift in Sources */,
 				C2237BA1A921546B5B051DA9 /* CacheHitRateTests.swift in Sources */,
