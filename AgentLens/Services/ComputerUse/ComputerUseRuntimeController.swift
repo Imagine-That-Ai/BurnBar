@@ -14,7 +14,7 @@ import OpenBurnBarComputerUseCore
 /// model Settings renders. Without this owner the coordinator can compile but
 /// never receives phone-control frames in the running app.
 @MainActor
-final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable {
+final class ComputerUseRuntimeController: ObservableObject, Sendable {
     static let computerUseProductId = "com.openburnbar.hostedComputerUseSync.monthly"
 
     @Published private(set) var coordinator: ComputerUseSessionCoordinator

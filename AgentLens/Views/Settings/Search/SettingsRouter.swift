@@ -46,7 +46,8 @@ enum SettingsDeepLinkRouting {
 ///    highlights briefly, and focuses the bound `@FocusState` if a `focusID`
 ///    was supplied.
 @Observable
-final class SettingsRouter: @unchecked Sendable {
+@MainActor
+final class SettingsRouter: Sendable {
 
     /// Current search query. Empty string means "no search active".
     var query: String = ""

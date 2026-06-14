@@ -8,7 +8,8 @@ import OpenBurnBarComputerUseCore
 /// single `panicHalt(source:)` callback so the calling
 /// `ComputerUseSessionCoordinator` can tear down without caring how the
 /// panic was triggered (Decision 7).
-public final class ComputerUsePanicHaltCoordinator: NSObject, @unchecked Sendable {
+@MainActor
+public final class ComputerUsePanicHaltCoordinator: NSObject, Sendable {
     public typealias HaltHandler = @Sendable (ComputerUsePanicSource) -> Void
 
     public private(set) var isInstalled: Bool = false
@@ -23,7 +24,15 @@ public final class ComputerUsePanicHaltCoordinator: NSObject, @unchecked Sendabl
         super.init()
     }
 
-    deinit { uninstall() }
+    deinit {
+        // Monitor/observer removal is thread-safe; inline it so the nonisolated
+        // deinit need not hop to the main actor to call `uninstall()`.
+        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+        for observer in workspaceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+    }
 
     /// Wire up all three kill paths. Idempotent.
     public func install() {
