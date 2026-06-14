@@ -7,7 +7,7 @@ import OpenBurnBarCore
 ///
 /// Handles cross-device replication with durable, per-account, per-collection watermark tracking.
 /// Layout: `users/{uid}/usage`, `users/{uid}/conversations`, `users/{uid}/session_logs`
-final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
+final class DownloadSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -16,7 +16,8 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
     var isSyncing: Bool { state.read().isSyncing }
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
-    private(set) var cloudTotalCost: Double?
+    private let cloudTotalCostBox = Locked<Double?>(nil)
+    var cloudTotalCost: Double? { cloudTotalCostBox.read() }
 
     init(
         context: CloudSyncContext,
@@ -75,9 +76,9 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
                     .getDocuments()
             }
 
-            cloudTotalCost = snapshot.documents.compactMap { doc -> Double? in
+            cloudTotalCostBox.write(snapshot.documents.compactMap { doc -> Double? in
                 doc.data()["cost"] as? Double
-            }.reduce(0, +)
+            }.reduce(0, +))
         } catch {
             AppLogger.sync.error("download_sync_aggregate_failed", metadata: ["error": error.localizedDescription])
         }

@@ -8,7 +8,7 @@ import OpenBurnBarComputerUseCore
 /// It validates the Ed25519 signature of incoming context targets,
 /// denormalizes targeting coordinates, performs AX tree probes at the target point,
 /// performs deny-region checks, and routes the context cleanly to the active agent thread in ChatSessionController.
-final class AgentContextTargetReceiver: @unchecked Sendable {
+final class AgentContextTargetReceiver: Sendable {
     typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     typealias DisplayBoundsProvider = @Sendable () -> [MacInputCore.DisplayBounds]
 
@@ -20,8 +20,7 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
     private let replyFrameSink: FrameSink
     private let auditLoggerProvider: () -> ComputerUseAuditLogger?
 
-    private var seenClientIntentIds: Set<String> = []
-    private let seenIntentQueue = DispatchQueue(label: "com.openburnbar.agentContextTarget.receiver.seenIntentIds")
+    private let seenClientIntentIds = Locked<Set<String>>([])
 
     init(
         sessionId: ComputerUseSessionID,
@@ -244,7 +243,7 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
     }
 
     private func markClientIntentSeen(_ clientIntentId: String) -> Bool {
-        seenIntentQueue.sync {
+        seenClientIntentIds.withLock { seenClientIntentIds in
             if seenClientIntentIds.contains(clientIntentId) {
                 return false
             }

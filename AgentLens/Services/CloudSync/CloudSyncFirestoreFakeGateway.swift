@@ -1,5 +1,6 @@
 import FirebaseFirestore
 import Foundation
+import os
 
 // MARK: - Fake Implementations
 
@@ -10,7 +11,7 @@ import Foundation
 /// - Replaces `FieldValue.serverTimestamp()` with `Date()` at write time and
 ///   applies `FieldValue.delete()` to merged writes.
 /// - Thread-safe via lock-backed in-memory state.
-final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
+final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
     private let store = FakeDocumentStore()
     private let state = CloudSyncFirestoreFakeGatewayState()
 
@@ -52,37 +53,39 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, @unchecked
     }
 }
 
-private final class CloudSyncFirestoreFakeGatewayState: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storedNextError: Error?
-    private var storedBatchCommitCount = 0
+private final class CloudSyncFirestoreFakeGatewayState: Sendable {
+    private struct State {
+        var storedNextError: Error?
+        var storedBatchCommitCount = 0
+    }
+
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
 
     var nextError: Error? {
-        get { lock.withLock { storedNextError } }
-        set { lock.withLock { storedNextError = newValue } }
+        get { state.withLockUnchecked { $0.storedNextError } }
+        set { state.withLockUnchecked { $0.storedNextError = newValue } }
     }
 
     var batchCommitCount: Int {
-        lock.withLock { storedBatchCommitCount }
+        state.withLockUnchecked { $0.storedBatchCommitCount }
     }
 
     func incrementBatchCommitCount() {
-        lock.withLock { storedBatchCommitCount += 1 }
+        state.withLockUnchecked { $0.storedBatchCommitCount += 1 }
     }
 }
 
 // MARK: - Fake Document Store
 
-private final class FakeDocumentStore: @unchecked Sendable {
-    private let lock = NSLock()
-    private var documents: [String: [String: Any]] = [:]
+private final class FakeDocumentStore: Sendable {
+    private let box = OSAllocatedUnfairLock<[String: [String: Any]]>(uncheckedState: [:])
 
     func documentData(at path: String) -> [String: Any]? {
-        lock.withLock { documents[path] }
+        box.withLockUnchecked { $0[path] }
     }
 
     func documents(under collectionPath: String) -> [String: [String: Any]] {
-        lock.withLock {
+        box.withLockUnchecked { documents in
             let prefix = collectionPath + "/"
             var result: [String: [String: Any]] = [:]
             for (path, data) in documents where path.hasPrefix(prefix) {
@@ -97,11 +100,11 @@ private final class FakeDocumentStore: @unchecked Sendable {
     }
 
     func setDocumentData(_ data: [String: Any], at path: String) {
-        lock.withLock { documents[path] = data }
+        box.withLockUnchecked { $0[path] = data }
     }
 
     func mergeDocumentData(_ data: [String: Any], at path: String) {
-        lock.withLock {
+        box.withLockUnchecked { documents in
             var existing = documents[path] ?? [:]
             for (key, value) in data {
                 if value is FakeFieldDelete {
@@ -115,10 +118,7 @@ private final class FakeDocumentStore: @unchecked Sendable {
     }
 
     func deleteDocument(at path: String) {
-        lock.withLock {
-            documents.removeValue(forKey: path)
-            return ()
-        }
+        box.withLockUnchecked { $0.removeValue(forKey: path); return () }
     }
 }
 
@@ -362,28 +362,30 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
 
 // MARK: - Fake Document Snapshot
 
-private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnapshotGateway, @unchecked Sendable {
+private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnapshotGateway, Sendable {
     let documentID: String
-    private let storedData: [String: Any]
+    // [String: Any] is not Sendable; the immutable snapshot lives in an
+    // OSAllocatedUnfairLock so the gateway is plainly Sendable.
+    private let storedData: OSAllocatedUnfairLock<[String: Any]>
 
     init(documentID: String, data: [String: Any]) {
         self.documentID = documentID
-        self.storedData = data
+        self.storedData = OSAllocatedUnfairLock(uncheckedState: data)
     }
 
     func data() -> [String: Any] {
-        storedData
+        storedData.withLockUnchecked { $0 }
     }
 }
 
 // MARK: - Fake Write Batch
 
-private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, @unchecked Sendable {
+private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, Sendable {
+    private typealias PendingWrite = (path: String, data: [String: Any], merge: Bool)
     private let store: FakeDocumentStore
     private let nextError: @Sendable () -> Error?
     private let onCommit: (@Sendable () -> Void)?
-    private let lock = NSLock()
-    private var pending: [(path: String, data: [String: Any], merge: Bool)] = []
+    private let pending = OSAllocatedUnfairLock<[PendingWrite]>(uncheckedState: [])
 
     init(
         store: FakeDocumentStore,
@@ -403,14 +405,14 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
             )
             return
         }
-        lock.withLock {
-            pending.append((path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
+        pending.withLockUnchecked {
+            $0.append((path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
         }
     }
 
     func commit() async throws {
         if let error = nextError() { throw error }
-        let writes = lock.withLock {
+        let writes = pending.withLockUnchecked { pending -> [PendingWrite] in
             let writes = pending
             pending.removeAll()
             return writes
@@ -428,7 +430,10 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
 
 // MARK: - Query Engine Helpers
 
-private enum QueryPredicate {
+// AUDIT(@unchecked Sendable): a test-only enum carrying Firestore's untyped
+// `Any` comparison values; instances are immutable and confined to the in-memory
+// fake gateway. sendable-allowlist: firestore-any-test-fake
+private enum QueryPredicate: @unchecked Sendable {
     case whereFieldIsGreaterThan(String, Any)
     case whereFieldIsEqualTo(String, Any)
 
@@ -536,10 +541,3 @@ private extension ComparisonResult {
     }
 }
 
-private extension NSLock {
-    func withLock<R>(_ work: () throws -> R) rethrows -> R {
-        lock()
-        defer { unlock() }
-        return try work()
-    }
-}

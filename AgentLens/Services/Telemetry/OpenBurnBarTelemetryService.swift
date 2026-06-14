@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 import OSLog
 
 // MARK: - Telemetry Feature
@@ -42,12 +43,11 @@ private struct TelemetryEvent: Sendable {
 /// Future: batch upload to a privacy-respecting telemetry endpoint.
 /// Thread-safe telemetry service using NSLock for event-buffer protection.
 /// May be called from any thread/actor context.
-public final class TelemetryService: @unchecked Sendable {
+public final class TelemetryService: Sendable {
     public static let shared = TelemetryService()
 
-    private var events: [TelemetryEvent] = []
+    private let events = Locked<[TelemetryEvent]>([])
     private let maxBufferSize = 100
-    private let lock = NSLock()
     private let logger = Logger(subsystem: "com.openburnbar.telemetry", category: "events")
 
     public func record(
@@ -62,20 +62,21 @@ public final class TelemetryService: @unchecked Sendable {
             durationMs: bucketedDuration,
             timestamp: Date()
         )
-        lock.lock()
-        events.append(event)
-        let shouldFlush = events.count >= maxBufferSize
-        lock.unlock()
+        let shouldFlush = events.withLock { events -> Bool in
+            events.append(event)
+            return events.count >= maxBufferSize
+        }
         if shouldFlush {
             flush()
         }
     }
 
     public func flush() {
-        lock.lock()
-        let pending = events
-        events.removeAll()
-        lock.unlock()
+        let pending = events.withLock { events -> [TelemetryEvent] in
+            let pending = events
+            events.removeAll()
+            return pending
+        }
         for event in pending {
             if let duration = event.durationMs {
                 logger.info("feature=\(event.feature.rawValue) outcome=\(event.outcome.rawValue) duration_ms=\(duration)")

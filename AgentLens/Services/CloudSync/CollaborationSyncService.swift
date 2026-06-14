@@ -11,7 +11,7 @@ import OpenBurnBarCore
 ///   -> Firestore head write/read with optimistic concurrency checks
 ///   -> local sync state + permission snapshot + audit event update
 ///   -> enqueue reproject/purge to keep local retrieval parity
-final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
+final class CollaborationSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
 
     private let state = Locked(CloudSyncDomainState())
@@ -19,10 +19,15 @@ final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
     var isSyncing: Bool { state.read().isSyncing }
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
-    private(set) var lastCollaborationNotice: SharedArtifactCollaborationNotice?
+    private let lastCollaborationNoticeBox = Locked<SharedArtifactCollaborationNotice?>(nil)
+    var lastCollaborationNotice: SharedArtifactCollaborationNotice? { lastCollaborationNoticeBox.read() }
 
     /// Maximum remote artifacts to pull per sync cycle.
-    var maxRemoteArtifacts = 300
+    private let maxRemoteArtifactsBox = Locked(300)
+    var maxRemoteArtifacts: Int {
+        get { maxRemoteArtifactsBox.read() }
+        set { maxRemoteArtifactsBox.write(newValue) }
+    }
 
     init(context: CloudSyncContext) {
         self.context = context
@@ -1006,13 +1011,13 @@ final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
         message: String,
         occurredAt: Date
     ) {
-        lastCollaborationNotice = SharedArtifactCollaborationNotice(
+        lastCollaborationNoticeBox.write(SharedArtifactCollaborationNotice(
             kind: kind,
             sourceArtifactID: sourceArtifactID,
             remoteArtifactID: remoteArtifactID,
             message: message,
             occurredAt: occurredAt
-        )
+        ))
     }
 
     private func recordSharedArtifactAuditEvent(
