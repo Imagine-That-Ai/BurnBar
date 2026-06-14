@@ -35,6 +35,11 @@ final class AccountManager {
     private(set) var isCloudSyncEnabled = true
     private(set) var isFirebaseAvailable = false
 
+    /// The signed-in account's profile photo. Surfaced to UI (e.g. the Mercury
+    /// incoming-mirror sheet) without leaking FirebaseAuth's `User` type to
+    /// callers. `nil` when anonymous or when the provider supplied no photo.
+    var avatarURL: URL? { currentUser?.photoURL }
+
     /// Stable device identifier stored in Keychain.
     let deviceId: String
 
