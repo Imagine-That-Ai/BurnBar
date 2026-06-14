@@ -36,7 +36,6 @@ import { errorMessage, optionalStringField, requireProviderAccountDoc, stripUnde
 import type { ProviderAccountConnectContext, ProviderAccountDoc } from "../types.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
-import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 
 // ---------------------------------------------------------------------------
 // Callable: connectProviderAccount
