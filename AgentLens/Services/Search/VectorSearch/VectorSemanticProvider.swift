@@ -55,7 +55,7 @@ private extension EmbeddingDistanceMetric {
 // AUDIT(@unchecked Sendable): all mutable index snapshot state is updated by
 // this provider's serialized refresh/search flow. The conformance is required
 // because `SemanticCandidateProviding` can be held by async search services.
-final class VectorSemanticCandidateProvider: SemanticCandidateProviding, @unchecked Sendable {
+actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private struct ActiveEmbeddingSelection {
         let model: EmbeddingModelRecord
         let version: EmbeddingVersionRecord
