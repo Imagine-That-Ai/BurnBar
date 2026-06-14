@@ -10,18 +10,22 @@ import org.junit.Test
 class SentryPrivacyScrubberTest {
     @Test
     fun redactsInlinePromptInExceptionMessage() {
-        val scrubbed = SentryPrivacyScrubber.scrubMessage("seal failed prompt='buy 100 shares of ACME' retrying")
-        assertTrue(scrubbed!!.contains("prompt="))
+        val scrubbed = requireNotNull(
+            SentryPrivacyScrubber.scrubMessage("seal failed prompt='buy 100 shares of ACME' retrying"),
+        )
+        assertTrue(scrubbed.contains("prompt="))
         assertTrue(scrubbed.contains(SentryPrivacyScrubber.REDACTED))
         assertFalse(scrubbed.contains("buy 100 shares"))
     }
 
     @Test
     fun redactsPasswordAndTokenAndBearer() {
-        assertFalse(SentryPrivacyScrubber.scrubMessage("password: hunter2")!!.contains("hunter2"))
-        assertFalse(SentryPrivacyScrubber.scrubMessage("api_key=sk-secret-123")!!.contains("sk-secret-123"))
-        val bearer = SentryPrivacyScrubber.scrubMessage("Authorization Bearer eyJhbGciOi.abc.def")
-        assertFalse(bearer!!.contains("eyJhbGciOi"))
+        val password = requireNotNull(SentryPrivacyScrubber.scrubMessage("password: hunter2"))
+        val apiKey = requireNotNull(SentryPrivacyScrubber.scrubMessage("api_key=sk-secret-123"))
+        val bearer = requireNotNull(SentryPrivacyScrubber.scrubMessage("Authorization Bearer eyJhbGciOi.abc.def"))
+        assertFalse(password.contains("hunter2"))
+        assertFalse(apiKey.contains("sk-secret-123"))
+        assertFalse(bearer.contains("eyJhbGciOi"))
         assertTrue(bearer.contains("Bearer ${SentryPrivacyScrubber.REDACTED}"))
     }
 
@@ -58,7 +62,10 @@ class SentryPrivacyScrubberTest {
         val scrubbed = SentryPrivacyScrubber.scrubDataMap(data)
         assertEquals(SentryPrivacyScrubber.REDACTED, scrubbed["prompt"])
         assertEquals("conn-abc", scrubbed["connectionId"])
-        assertFalse((scrubbed["note"] as String).contains("hunter2"))
+        when (val note = scrubbed["note"]) {
+            is String -> assertFalse(note.contains("hunter2"))
+            else -> error("Expected scrubbed note to remain a String")
+        }
         assertEquals(3, scrubbed["retryCount"])
     }
 }
