@@ -221,10 +221,40 @@ final class ProviderUsageAPIService {
         return allRecords
     }
 
+    #if DEBUG
+    /// Test seam: seed the active probe list directly so the validation path can
+    /// be exercised with a deterministic fake `ProviderUsageAPI` (e.g. one whose
+    /// `validate()` throws) instead of a live network probe. Bypasses
+    /// `rebuildAPIs()` so the injected probes survive until the next rebuild.
+    func setAPIsForTesting(_ apis: [any ProviderUsageAPI]) {
+        self.apis = apis
+    }
+    #endif
+
     /// Validate a specific provider's credentials.
+    ///
+    /// Fail-closed: a probe that *throws* (network fault, transient API error,
+    /// unreachable endpoint) is NOT the same as a credential the provider
+    /// confirmed invalid, but for a trust decision both must resolve to "not
+    /// validated" — we never report a credential as valid that we could not
+    /// actually verify. The throw is logged (instead of being swallowed by a
+    /// bare `try?`) so an operator can tell a transient failure apart from a
+    /// genuine `false` rejection. A confirmed `false` returns `false` without
+    /// an error log; only an exception is recorded as a validation error.
     func validate(provider: String) async -> Bool {
         guard let api = apis.first(where: { $0.providerName == provider }) else { return false }
-        return (try? await api.validate()) ?? false
+        do {
+            return try await api.validate()
+        } catch {
+            AppLogger.network.error(
+                "provider_credential_validation_failed",
+                metadata: [
+                    "provider": provider,
+                    "errorClass": "\(String(describing: type(of: error)))"
+                ]
+            )
+            return false
+        }
     }
 
     private func resolvedAPIKey(for provider: String) -> String? {

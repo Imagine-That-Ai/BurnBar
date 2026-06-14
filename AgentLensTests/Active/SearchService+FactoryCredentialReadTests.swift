@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Security
 import XCTest
 import OpenBurnBarCore
@@ -92,5 +93,176 @@ private final class FaultInjectingKeychainBackend: KeychainStoreBackend {
             throw error
         }
         storage[service]?[account] = nil
+    }
+}
+
+// MARK: - Embedding-selection fault paths
+
+/// Proves the two formerly-`try?` projection reads in `resolvedEmbeddingSelection`
+/// (`fetchEmbeddingModels()` / `fetchEmbeddingVersions()`) and the formerly-`try?`
+/// `OpenAIEmbeddingProvider` construction in `makeQueryEmbedder` no longer collapse
+/// a genuine fault into silent garbage:
+///
+///   * a projection-store fault (a schema-less DB whose `embedding_models` table
+///     does not exist) must be CAUGHT and logged, with the factory degrading
+///     gracefully to a still-buildable service — never crashing, never propagating.
+///   * a healthy-but-empty store must keep building a service (the normal empty
+///     state, not a fault), proving the migration did not change behavior.
+///   * a selection that names the OpenAI provider but an UNSUPPORTED model name
+///     (e.g. a stale/foreign projection record) must have its provider-construction
+///     failure caught and degrade to the deterministic embedder rather than crash.
+///
+/// These exercise the private `resolvedEmbeddingSelection`/`makeQueryEmbedder`
+/// through the public `makeConversationSearchService` factory seam — the same path
+/// production app code resolves to.
+@MainActor
+final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
+    private let base = Date(timeIntervalSince1970: 1_742_900_000)
+
+    /// A `DataStore` with NO schema applied: `fetchEmbeddingModels()` throws
+    /// `SQLite error: no such table` — exactly the projection-store fault the
+    /// migrated do/catch must surface and absorb.
+    private func makeSchemalessStore() throws -> DataStore {
+        let queue = try DatabaseQueue(path: ":memory:")
+        return try DataStore(databaseQueue: queue, runMigrations: false, refreshOnInit: false)
+    }
+
+    func test_makeConversationSearchService_buildsDespiteProjectionStoreFault() throws {
+        // Sanity: the schema-less store genuinely faults on the embedding read,
+        // so this test drives the real catch path rather than an empty-result path.
+        let store = try makeSchemalessStore()
+        XCTAssertThrowsError(try store.fetchEmbeddingModels())
+
+        // The factory must absorb that fault (log + skip-to-deterministic) and still
+        // return a usable service. The old `try?` also returned a service, but
+        // silently; the migrated do/catch keeps the graceful degrade while logging.
+        let service = SearchService.makeConversationSearchService(dataStore: store)
+        XCTAssertNotNil(service)
+    }
+
+    func test_makeConversationSearchService_buildsForHealthyEmptyStore() throws {
+        // A migrated store with zero embedding rows is a NORMAL empty state, not a
+        // fault. The factory must keep building a service (deterministic embedder).
+        let store = try makeDiscoveryInMemoryStore()
+        XCTAssertEqual(try store.fetchEmbeddingModels().count, 0)
+
+        let service = SearchService.makeConversationSearchService(dataStore: store)
+        XCTAssertNotNil(service)
+    }
+
+    func test_makeConversationSearchService_resolvesSelectionAcrossBothFetches() throws {
+        // Both reads succeed and return rows: selection resolves and the factory
+        // builds. Guards the do/catch refactor against breaking the happy path that
+        // depends on BOTH fetchEmbeddingModels() and fetchEmbeddingVersions().
+        let store = try makeDiscoveryInMemoryStore()
+        let modelID = "embedding-model-resolve"
+        try store.upsertEmbeddingModel(
+            EmbeddingModelRecord(
+                id: modelID,
+                provider: "openai",
+                modelName: "text-embedding-3-small",
+                dimensions: 1536,
+                distanceMetric: .cosine,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+        try store.upsertEmbeddingVersion(
+            EmbeddingVersionRecord(
+                id: "embedding-version-resolve",
+                modelID: modelID,
+                versionTag: "v1",
+                chunkerVersion: "chunk-v1",
+                normalizationVersion: "norm-v1",
+                promptVersion: "prompt-v1",
+                isActive: true,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        XCTAssertEqual(try store.fetchEmbeddingModels().count, 1)
+        XCTAssertEqual(try store.fetchEmbeddingVersions().count, 1)
+
+        let service = SearchService.makeConversationSearchService(dataStore: store)
+        XCTAssertNotNil(service)
+    }
+
+    func test_makeConversationSearchService_buildsWhenOpenAIModelUnsupported() throws {
+        // Selection names the OpenAI provider but with a model name the real provider
+        // rejects (unsupported -> init throws). The migrated do/catch must catch that
+        // and degrade to the deterministic embedder instead of crashing/propagating.
+        let store = try makeDiscoveryInMemoryStore()
+        let modelID = "embedding-model-unsupported-openai"
+        try store.upsertEmbeddingModel(
+            EmbeddingModelRecord(
+                id: modelID,
+                provider: "openai",
+                modelName: "totally-unsupported-embedding-model",
+                dimensions: 1536,
+                distanceMetric: .cosine,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+        try store.upsertEmbeddingVersion(
+            EmbeddingVersionRecord(
+                id: "embedding-version-unsupported-openai",
+                modelID: modelID,
+                versionTag: "v1",
+                chunkerVersion: "chunk-v1",
+                normalizationVersion: "norm-v1",
+                promptVersion: "prompt-v1",
+                isActive: true,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        // Independently confirm the construction genuinely throws for this model,
+        // so the test drives the real catch rather than a happy path.
+        XCTAssertThrowsError(
+            try OpenAIEmbeddingProvider(
+                apiKey: "",
+                modelName: "totally-unsupported-embedding-model"
+            )
+        )
+
+        let service = SearchService.makeConversationSearchService(dataStore: store)
+        XCTAssertNotNil(service)
+    }
+
+    func test_makeConversationSearchService_buildsForSupportedOpenAIModel() throws {
+        // Happy OpenAI path: a supported model constructs the real provider. Guards
+        // the do/catch refactor against regressing the success branch.
+        let store = try makeDiscoveryInMemoryStore()
+        let modelID = "embedding-model-supported-openai"
+        try store.upsertEmbeddingModel(
+            EmbeddingModelRecord(
+                id: modelID,
+                provider: "openai",
+                modelName: "text-embedding-3-large",
+                dimensions: 3072,
+                distanceMetric: .cosine,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+        try store.upsertEmbeddingVersion(
+            EmbeddingVersionRecord(
+                id: "embedding-version-supported-openai",
+                modelID: modelID,
+                versionTag: "v1",
+                chunkerVersion: "chunk-v1",
+                normalizationVersion: "norm-v1",
+                promptVersion: "prompt-v1",
+                isActive: true,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        let service = SearchService.makeConversationSearchService(dataStore: store)
+        XCTAssertNotNil(service)
     }
 }

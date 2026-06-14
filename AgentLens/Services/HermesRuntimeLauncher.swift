@@ -291,7 +291,35 @@ enum HermesEnvironmentFile {
 
     /// Reads off the main actor (`nonisolated` `async`, SE-0338).
     static func readAPIServerKey() async -> String? {
-        guard let content = try? String(contentsOf: envURL, encoding: .utf8) else { return nil }
+        // Delegate to the absent-vs-fault-aware sync helper. No Task.detached:
+        // the helper is a `nonisolated` static (SE-0338), so this async entry
+        // point runs it off the main actor without reintroducing detached-task debt.
+        readAPIServerKey(at: envURL)
+    }
+
+    /// Reads `API_SERVER_KEY` from the Hermes `.env` file.
+    ///
+    /// The returned key becomes the bearer token the app uses to authenticate to
+    /// the local Hermes gateway (`resolvedBearerToken(_:)`), so a silent read
+    /// failure cannot be allowed to masquerade as "no key configured": a missing
+    /// file legitimately means no key, but a file that *exists* yet cannot be read
+    /// (permissions, corruption, an I/O fault) is a real failure that must be
+    /// observable instead of silently collapsing the gateway call to an
+    /// unauthenticated request. We therefore separate the absent-file case (return
+    /// `nil` quietly) from a genuine read fault (log via `silently`, still return
+    /// `nil` so callers degrade exactly as before — but now the fault surfaces).
+    static func readAPIServerKey(at url: URL) -> String? {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            // No `.env` yet: there is genuinely no configured key. Quiet skip.
+            return nil
+        }
+        guard let content = AppLogger.network.silently(
+            "hermes_api_server_key_read_failed",
+            try String(contentsOf: url, encoding: .utf8) as String?,
+            fallback: nil
+        ) else {
+            return nil
+        }
         for rawLine in content.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard line.hasPrefix("API_SERVER_KEY=") else { continue }

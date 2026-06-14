@@ -268,7 +268,7 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
     nonisolated private static func runAdministratorScript(_ script: String) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", "do shell script \(appleScriptLiteral(script)) with administrator privileges"]
+        process.arguments = try ["-e", "do shell script \(appleScriptLiteral(script)) with administrator privileges"]
 
         let output = Pipe()
         let error = Pipe()
@@ -388,9 +388,23 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         return String(collapsed.prefix(257)) + "..."
     }
 
-    nonisolated private static func appleScriptLiteral(_ value: String) -> String {
-        let data = try? JSONEncoder().encode(value)
-        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
+    /// Quote `value` as an AppleScript string literal (JSON string syntax is a
+    /// strict subset of AppleScript's, so JSON encoding gives us correct
+    /// backslash/quote/control-char escaping for free).
+    ///
+    /// This MUST fail closed: the result is interpolated into
+    /// `do shell script <literal> with administrator privileges`. The previous
+    /// `try?` swallowed an encode failure and fell back to the empty literal
+    /// `""`, which would have run an *empty* command with administrator
+    /// privileges while every caller believed the full privileged install
+    /// script executed — a silent, dangerous degradation. Propagate instead so
+    /// the install aborts and surfaces an error to the user.
+    nonisolated static func appleScriptLiteral(_ value: String) throws -> String {
+        let data = try JSONEncoder().encode(value)
+        guard let literal = String(data: data, encoding: .utf8) else {
+            throw InstallerError.appleScriptLiteralEncodingFailed
+        }
+        return literal
     }
 
     /// Product-ready, action-oriented status for the user. Never names virtual
@@ -444,6 +458,7 @@ private struct PrivilegedInputExecutionSource {
 
 private enum InstallerError: Error, Equatable {
     case administratorScriptFailed(String)
+    case appleScriptLiteralEncodingFailed
     case bridgeBinaryMissing([String])
     case bridgeDidNotBecomeHealthy
     case bridgeRejectedByPolicy(String)

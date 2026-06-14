@@ -278,7 +278,19 @@ final class ProviderQuotaService {
 
         self.claudeBridgeStatus = bridgeManager.refreshClaudeBridgeStatus()
 
-        _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+        // Best-effort, but observable: if the support directory can't be
+        // prepared the persisted snapshot/routing-event loads below will all
+        // miss and every later persist silently no-ops. Swallowing the error
+        // here used to make that whole-cache loss invisible. Keep init
+        // resilient (the service must still construct) but record the fault.
+        do {
+            _ = try OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+        } catch {
+            AppLogger.dataStore.error(
+                "ProviderQuotaService: prepareSupportDirectory failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
         loadPersistedSnapshots()
         loadPersistedRoutingEvents()
         loadPersistedCodexRolloutScanCache()
@@ -483,7 +495,22 @@ final class ProviderQuotaService {
         dataStore: DataStore,
         request: ProviderRoutingRequest = ProviderRoutingRequest()
     ) -> [ProviderID: ProviderRoutingStateSnapshot] {
-        let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
+        // A local-store read fault must not be invisible: routing decides
+        // which credential/account serves traffic, and a silent `[]` here
+        // drops every locally-known account from the candidate set without a
+        // trace. We still degrade gracefully (the union below also draws on
+        // live snapshots, daemon configs, and the caller's preferred IDs, so
+        // routing can proceed), but the read failure is now logged.
+        let accounts: [ProviderAccountDoc]
+        do {
+            accounts = try dataStore.providerAccountStore.fetchAll()
+        } catch {
+            AppLogger.dataStore.error(
+                "ProviderQuotaService: refreshRoutingState fetchAll failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            accounts = []
+        }
         let providerIDs = Set(
             accounts.map(\.providerID)
                 + snapshotsByProvider.values.filter(\.hasDisplayableQuotaSignal).map(\.providerID)
@@ -824,7 +851,23 @@ final class ProviderQuotaService {
            Date().timeIntervalSince(cache.fetchedAt) < 15 {
             return cache.ids
         }
-        let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
+        let accounts: [ProviderAccountDoc]
+        do {
+            accounts = try dataStore.providerAccountStore.fetchAll()
+        } catch {
+            // Correctness over silence: this set gates popover visibility and
+            // which providers get a quota refresh. A swallowed read fault used
+            // to return `[]` AND pin that empty set in the 15s cache, so a
+            // single transient DB hiccup could hide every connected account
+            // for a quarter minute. Log the fault and return empty WITHOUT
+            // caching, so the next call re-probes and self-heals instead of
+            // serving a stale-empty answer.
+            AppLogger.dataStore.error(
+                "ProviderQuotaService: connectedQuotaProviderIDs fetchAll failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return []
+        }
         let ids: Set<ProviderID> = Set(accounts.compactMap { account in
             guard Self.isConnectedQuotaAccount(account) else { return nil }
             guard let provider = AgentProvider.fromProviderID(account.providerID),

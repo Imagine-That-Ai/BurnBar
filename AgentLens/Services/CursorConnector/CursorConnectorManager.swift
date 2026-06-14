@@ -361,10 +361,25 @@ final class CursorConnectorManager {
             stopSecretBroker()
             stopTunnel()
             stopProxy()
-            try? restoreCursorSettings()
-            config.statusMessage = "Connection failed"
+            // Roll the user's Cursor editor settings back to their pre-connect
+            // snapshot. If this restore fails we must NOT swallow it: Cursor would
+            // be left pointing at the now-dead tunnel/proxy endpoint — a broken
+            // (potentially stale-URL) editor config the user can't see. We cannot
+            // rethrow from this cleanup path, so surface the failure via the log
+            // and the user-facing error instead of silently continuing.
+            do {
+                try restoreCursorSettings()
+                config.statusMessage = "Connection failed"
+                lastError = error.localizedDescription
+            } catch let restoreError {
+                AppLogger.daemon.error(
+                    "cursor_connector_restore_settings_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: restoreError)))"]
+                )
+                config.statusMessage = "Connection failed (Cursor settings may need a manual reset)"
+                lastError = "\(error.localizedDescription) — and Cursor settings could not be rolled back: \(restoreError.localizedDescription)"
+            }
             saveConfig()
-            lastError = error.localizedDescription
         }
     }
 
@@ -545,8 +560,26 @@ final class CursorConnectorManager {
     }
 
     private func saveConfig() {
-        if let data = try? encoder.encode(config) {
-            defaults.set(data, forKey: CursorConnectorConfig.defaultsKey)
+        // Encoding the connector config should never fail, but if it does we must
+        // not silently drop the write — a swallowed failure leaves the persisted
+        // config stale (e.g. `isEnabled`/tunnel state out of sync with reality).
+        // Log the fault and skip the write; we keep the in-memory state intact.
+        guard let data = Self.encodedConfig(config, using: encoder) else { return }
+        defaults.set(data, forKey: CursorConnectorConfig.defaultsKey)
+    }
+
+    /// Encodes the connector config, logging (rather than swallowing) any encode
+    /// failure and returning `nil` so callers skip persisting a half-written blob.
+    /// Extracted as a `nonisolated static` seam so the failure path is unit-testable.
+    nonisolated static func encodedConfig(_ config: CursorConnectorConfig, using encoder: JSONEncoder) -> Data? {
+        do {
+            return try encoder.encode(config)
+        } catch {
+            AppLogger.daemon.error(
+                "cursor_connector_config_encode_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return nil
         }
     }
 
@@ -644,7 +677,28 @@ final class CursorConnectorManager {
         proxyProcess = nil
         sessionToken = ""
         health.routerListening = false
-        try? FileManager.default.removeItem(at: proxyConfigURL)
+        // SECURITY: the proxy config file holds the secret-broker bearer token and
+        // session token at 0o600. Failing to delete it leaves those secrets on
+        // disk after the proxy stops. We can't throw from this sync stop path, but
+        // a real removal failure must be observable — never swallowed.
+        Self.removeProxyConfigFile(at: proxyConfigURL, fileManager: .default)
+    }
+
+    /// Removes the on-disk proxy config (which carries broker/session secrets),
+    /// treating an already-absent file as success and logging any *real* removal
+    /// failure instead of swallowing it. Extracted as a `nonisolated static` seam
+    /// so the security-cleanup failure path is unit-testable.
+    nonisolated static func removeProxyConfigFile(at url: URL, fileManager: FileManager) {
+        do {
+            try fileManager.removeItem(at: url)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
+            // Already gone — nothing to clean up, not a fault.
+        } catch {
+            AppLogger.daemon.error(
+                "cursor_connector_proxy_config_delete_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     private func startSecretBroker() throws {

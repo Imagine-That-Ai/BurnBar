@@ -18,21 +18,67 @@ import OpenBurnBarCore
 final class EscrowRevocationWatcher {
     typealias RevocationHandler = @MainActor (_ deviceId: String, _ peerNodeId: String?) async -> Void
 
+    /// Resolves the paired peer node id for an escrow device by reading the
+    /// agent-grant authority mapping. Injectable so tests exercise the
+    /// fail-closed path without a live Firestore. Returns `nil` for a genuinely
+    /// peer-less authority doc; *throws* on a fetch fault so the caller can
+    /// distinguish "no peer" from "could not determine the peer".
+    typealias AuthorityPeerNodeIdProvider =
+        @Sendable (_ uid: String, _ deviceId: String) async throws -> String?
+
+    /// Outcome of peer resolution. The live-session teardown in the coordinator
+    /// only fires for a *resolved* peer, so a fetch fault must never collapse to
+    /// `noPeer` (that would silently fail open on the teardown lane). We keep the
+    /// device unactioned and retry on the next snapshot instead.
+    private enum PeerResolution {
+        case resolved(String)
+        case noPeer
+        case unresolvable
+    }
+
     private let firestoreProvider: @Sendable () -> Firestore
+    private let authorityPeerNodeIdProvider: AuthorityPeerNodeIdProvider
     private let onRevoked: RevocationHandler
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var listener: ListenerRegistration?
     private var activeUID: String?
     /// Device ids already actioned this session — avoids re-firing teardown
-    /// on every unrelated snapshot delta.
+    /// on every unrelated snapshot delta. A device is only recorded here once
+    /// its peer was resolved *definitively* (a real peer or a confirmed absence),
+    /// so a fetch fault leaves it eligible for re-resolution on the next delta.
     private var revokedDeviceIds: Set<String> = []
+
+    /// Bounded in-resolution retry to ride out a transient Firestore blip before
+    /// declaring a peer unresolvable. The revocation snapshot may not re-fire for
+    /// an already-`revoked` doc, so recovering here is what keeps the teardown
+    /// lane fail-closed against intermittent network faults.
+    private let peerFetchMaxAttempts: Int
+    private let peerFetchRetryDelay: Duration
 
     init(
         firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        authorityPeerNodeIdProvider: AuthorityPeerNodeIdProvider? = nil,
+        peerFetchMaxAttempts: Int = 3,
+        peerFetchRetryDelay: Duration = .milliseconds(250),
         onRevoked: @escaping RevocationHandler
     ) {
         self.firestoreProvider = firestoreProvider
         self.onRevoked = onRevoked
+        self.peerFetchMaxAttempts = max(1, peerFetchMaxAttempts)
+        self.peerFetchRetryDelay = peerFetchRetryDelay
+        if let authorityPeerNodeIdProvider {
+            self.authorityPeerNodeIdProvider = authorityPeerNodeIdProvider
+        } else {
+            // Default seam: read the agent-grant authority doc keyed by device id.
+            self.authorityPeerNodeIdProvider = { uid, deviceId in
+                let snapshot = try await firestoreProvider()
+                    .collection("users").document(uid)
+                    .collection("agent_grant_authorities").document(deviceId)
+                    .getDocument()
+                let peer = snapshot.data()?["peerNodeId"] as? String
+                return (peer?.isEmpty == false) ? peer : nil
+            }
+        }
     }
 
     func start() {
@@ -68,28 +114,95 @@ final class EscrowRevocationWatcher {
             }
     }
 
-    private func handle(snapshot: QuerySnapshot, uid: String) async {
+    func handle(snapshot: QuerySnapshot, uid: String) async {
         for doc in snapshot.documents {
-            let deviceId = doc.documentID
-            guard !revokedDeviceIds.contains(deviceId) else { continue }
-            revokedDeviceIds.insert(deviceId)
-            let peerNodeId = await resolvePeerNodeId(uid: uid, deviceId: deviceId, deviceData: doc.data())
-            await onRevoked(deviceId, peerNodeId)
+            await processRevokedDevice(uid: uid, deviceId: doc.documentID, deviceData: doc.data())
         }
     }
 
-    /// Best-effort peer-node resolution. The escrow device doc may carry
-    /// `peerNodeId` directly; otherwise fall back to the agent-grant authority
-    /// mapping keyed by the same device id. nil is acceptable — escrow-device
-    /// revocation still fails closed on the grant path even without a peer.
-    private func resolvePeerNodeId(uid: String, deviceId: String, deviceData: [String: Any]) async -> String? {
-        if let direct = deviceData["peerNodeId"] as? String, !direct.isEmpty { return direct }
-        let authority = try? await firestoreProvider()
-            .collection("users").document(uid)
-            .collection("agent_grant_authorities").document(deviceId)
-            .getDocument()
-        if let peer = authority?.data()?["peerNodeId"] as? String, !peer.isEmpty { return peer }
-        return nil
+    /// Action a single revoked escrow-device doc. Split out from `handle` so the
+    /// security-critical resolve→dispatch decision is exercisable in tests with
+    /// plain dictionaries (a live `QuerySnapshot` cannot be synthesized).
+    func processRevokedDevice(uid: String, deviceId: String, deviceData: [String: Any]) async {
+        guard !revokedDeviceIds.contains(deviceId) else { return }
+        let resolution = await resolvePeerNodeId(
+            uid: uid,
+            deviceId: deviceId,
+            deviceData: deviceData
+        )
+        switch resolution {
+        case .resolved(let peerNodeId):
+            revokedDeviceIds.insert(deviceId)
+            await onRevoked(deviceId, peerNodeId)
+        case .noPeer:
+            revokedDeviceIds.insert(deviceId)
+            await onRevoked(deviceId, nil)
+        case .unresolvable:
+            // SECURITY: a fetch fault must not silently degrade to a
+            // peer-less teardown skip. Drive the grant-path revocation now
+            // (the coordinator fails that lane closed regardless of peer),
+            // but leave the device UNRECORDED so the next snapshot delta —
+            // or a manual re-listen — re-attempts peer resolution and can
+            // still tear down the in-flight session. We never mark it done
+            // on an error, which is what keeps the teardown lane fail-closed.
+            AppLogger.daemon.error(
+                "escrowRevocation.peerUnresolvedRetryPending",
+                metadata: [
+                    "deviceId": deviceId,
+                    "attempts": "\(peerFetchMaxAttempts)"
+                ]
+            )
+            await onRevoked(deviceId, nil)
+        }
+    }
+
+    /// Resolve the revoked device's paired peer node id.
+    ///
+    /// The escrow device doc may carry `peerNodeId` directly; otherwise we read
+    /// the agent-grant authority mapping keyed by the same device id. A genuine
+    /// absence (`noPeer`) is safe — the grant path still fails closed without a
+    /// peer. A *fetch fault* is reported as `unresolvable` (after a bounded
+    /// retry), never as `noPeer`, so the live-session teardown lane can react
+    /// instead of silently treating the revoked peer as absent.
+    private func resolvePeerNodeId(
+        uid: String,
+        deviceId: String,
+        deviceData: [String: Any]
+    ) async -> PeerResolution {
+        if let direct = deviceData["peerNodeId"] as? String, !direct.isEmpty {
+            return .resolved(direct)
+        }
+
+        var lastError: Error?
+        for attempt in 1...peerFetchMaxAttempts {
+            do {
+                if let peer = try await authorityPeerNodeIdProvider(uid, deviceId), !peer.isEmpty {
+                    return .resolved(peer)
+                }
+                // A successful read with no peer is a definitive absence.
+                return .noPeer
+            } catch {
+                lastError = error
+                if attempt < peerFetchMaxAttempts {
+                    // Task.sleep only throws on cancellation; a cancelled backoff
+                    // harmlessly proceeds to the next attempt (or exits the bounded
+                    // loop). No security signal rides on the sleep itself.
+                    try? await Task.sleep(for: peerFetchRetryDelay) // try?-ok(backoff cancellation only)
+                }
+            }
+        }
+
+        if let lastError {
+            AppLogger.daemon.error(
+                "escrowRevocation.authorityFetchFailed",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: lastError)))",
+                    "deviceId": deviceId,
+                    "attempts": "\(peerFetchMaxAttempts)"
+                ]
+            )
+        }
+        return .unresolvable
     }
 }
 #endif

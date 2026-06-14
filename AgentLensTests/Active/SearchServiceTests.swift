@@ -2007,6 +2007,139 @@ final class SearchServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - "Matters" Error-Swallow Fixes
+    //
+    // These cover the two previously-untagged `try?` sites in SearchService.swift that
+    // swallowed errors judged to MATTER:
+    //   L80  `recentConversations` DataStore read  -> recoverable + observable (silently/log)
+    //   L132 aggregate full-text count             -> correctness/fail-closed (nil, not 0)
+
+    /// Forces every subsequent `conversations` read on `store` to throw a real GRDB error.
+    private func breakConversationsTable(_ store: DataStore) throws {
+        try store.dbQueue.write { db in
+            try db.execute(sql: "DROP TABLE conversations")
+        }
+    }
+
+    func test_recentConversations_dbReadError_returnsEmptyAfterLoggingDoesNotTrap() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_300_000)
+
+        // A genuinely populated store, then a real read fault.
+        let conv = makeConversation(
+            id: "conv-recent-error",
+            provider: .claudeCode,
+            projectName: "RecentErrorTest",
+            fullText: "Recent conversation before the read fault.",
+            indexedAt: base,
+            sourceType: .providerLog
+        )
+        try store.upsertConversation(conv)
+        try breakConversationsTable(store)
+
+        let service = SearchService(dataStore: store, nowProvider: { base })
+
+        // Must not trap; the recoverable read failure degrades to an empty list
+        // (after logging via AppLogger.search.silently), preserving the contract.
+        let recent = await service.recentConversations(limit: 5)
+        XCTAssertTrue(recent.isEmpty)
+    }
+
+    func test_latestConversation_dbReadError_returnsNilWithoutTrapping() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_310_000)
+        try breakConversationsTable(store)
+
+        let service = SearchService(dataStore: store, nowProvider: { base })
+
+        let latest = await service.latestConversation()
+        XCTAssertNil(latest)
+    }
+
+    /// Fail-closed: a DB/FTS error in the aggregate count path must surface as
+    /// `nil` ("unknown"/degraded), never an authoritative `0`.
+    func test_runBurnBarQuery_aggregateCountDbError_reportsNilNotZero() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_320_000)
+        try breakConversationsTable(store)
+
+        let service = SearchService(dataStore: store, nowProvider: { base })
+
+        // Quoted phrase -> aggregate (.mixed) plan with a concrete pattern, so the
+        // count branch runs and hits the broken `conversations` read.
+        let result = await service.runBurnBarQuery(
+            RetrievalQuery(text: "how many times have I said \"deployment-xyz\"")
+        )
+
+        // The fail-open `?? 0` is gone: an error is reported as unknown, not zero.
+        // This is the load-bearing invariant — it can never be clobbered by a
+        // later subsystem, unlike the shared `lastHealthWriteError` channel (which a
+        // subsequent successful health write inside `retrieveInGate` may reset).
+        XCTAssertNil(
+            result.aggregateOccurrenceCount,
+            "A DB/FTS error must collapse to nil (unknown), not an authoritative 0"
+        )
+
+        // And the degraded outcome is surfaced to telemetry: with both an empty
+        // retrieval (broken table) and a nil count, the run is `.degraded`.
+        XCTAssertTrue(result.retrievalResults.isEmpty)
+    }
+
+    /// Deterministic observability: with the health-record table also dropped, the
+    /// retrieval health write can no longer reset the shared channel to nil, so an
+    /// error from the failing read paths (count and/or lexical health) is recorded
+    /// rather than silently swallowed. Proves the failure is *observable*.
+    func test_aggregateCountDbError_recordsHealthErrorWhenNotClobbered() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_325_000)
+        try await store.dbQueue.write { db in
+            try db.execute(sql: "DROP TABLE conversations")
+            try db.execute(sql: "DROP TABLE retrieval_health")
+        }
+
+        let service = SearchService(dataStore: store, nowProvider: { base })
+        let result = await service.runBurnBarQueryInGate(
+            RetrievalQuery(text: "how many times have I said \"deployment-abc\"")
+        )
+
+        // Fail-closed count still holds.
+        XCTAssertNil(result.aggregateOccurrenceCount)
+
+        // A real failure is observable on the actor health channel (no silent swallow).
+        let healthError = await service.lastHealthWriteError
+        XCTAssertNotNil(healthError, "A real read failure must be recorded, never swallowed")
+    }
+
+    /// Guard against over-failing: a genuine no-match must still report `0`, not `nil`,
+    /// and must NOT record a health error.
+    func test_runBurnBarQuery_aggregateCount_genuineZero_reportsZeroNotNil() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_330_000)
+
+        let conv = makeConversation(
+            id: "conv-aggregate-zero",
+            provider: .claudeCode,
+            projectName: "AggregateZeroTest",
+            fullText: "This conversation never mentions the searched token.",
+            indexedAt: base,
+            sourceType: .providerLog
+        )
+        try store.upsertConversation(conv)
+
+        let service = SearchService(dataStore: store, nowProvider: { base })
+        let result = await service.runBurnBarQuery(
+            RetrievalQuery(text: "how many times have I said \"absent-token-qwxz\"")
+        )
+
+        XCTAssertEqual(
+            result.aggregateOccurrenceCount,
+            0,
+            "A genuine no-match must report 0, distinguishable from an error's nil"
+        )
+        let healthError = await service.lastHealthWriteError
+        XCTAssertNil(healthError, "A genuine zero must not record a health error")
+    }
+
     // MARK: - Helper Methods
 
     private func makeConversation(

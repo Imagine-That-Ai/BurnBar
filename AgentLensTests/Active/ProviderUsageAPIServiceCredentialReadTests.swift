@@ -165,4 +165,101 @@ final class ProviderUsageAPIServiceCredentialReadTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(backend.readAttempts, 1)
         XCTAssertFalse(service.configuredProviders.contains("Z.ai"))
     }
+
+    // MARK: - validate(provider:) fail-closed (line ~227)
+
+    /// A fake probe whose `validate()` outcome is fully controlled: it either
+    /// returns a fixed boolean OR throws a fixed error. Lets the tests drive the
+    /// `ProviderUsageAPIService.validate(provider:)` decision deterministically,
+    /// with no live network.
+    private struct StubUsageAPI: ProviderUsageAPI {
+        enum Outcome: Sendable {
+            case returns(Bool)
+            case throwsError
+        }
+
+        let providerName: String
+        let authMethod: ProviderAuthMethod = .apiKey
+        let outcome: Outcome
+
+        func validate() async throws -> Bool {
+            switch outcome {
+            case let .returns(value):
+                return value
+            case .throwsError:
+                throw URLError(.notConnectedToInternet)
+            }
+        }
+
+        func fetchUsage(since _: Date) async throws -> [ProviderUsageRecord] { [] }
+    }
+
+    private func makeService() -> ProviderUsageAPIService {
+        ProviderUsageAPIService(
+            keyStore: ProviderAPIKeyStore(keychain: makeStore(backend: EmptyKeychainBackend())),
+            connectorKeychain: makeStore(backend: EmptyKeychainBackend()),
+            environment: [:]
+        )
+    }
+
+    /// FAIL-CLOSED: a probe that THROWS (transient network / API fault) must
+    /// resolve to `false`. The legacy `try?` already collapsed to `false`, but it
+    /// did so SILENTLY — the migration keeps the fail-closed result while logging
+    /// the throw so a transient failure is no longer indistinguishable from a
+    /// genuine rejection. We must never report a credential as valid that we
+    /// could not actually verify.
+    func testValidateReturnsFalseWhenProbeThrows() async {
+        let service = makeService()
+        service.setAPIsForTesting([
+            StubUsageAPI(providerName: "Anthropic", outcome: .throwsError)
+        ])
+
+        let result = await service.validate(provider: "Anthropic")
+
+        XCTAssertFalse(
+            result,
+            "A throwing validation probe must fail closed: unverifiable != valid."
+        )
+    }
+
+    /// CONFIRMED-INVALID: a probe that returns `false` (provider rejected the
+    /// credential) still resolves to `false` — the non-throwing rejection path is
+    /// preserved.
+    func testValidateReturnsFalseWhenProbeRejects() async {
+        let service = makeService()
+        service.setAPIsForTesting([
+            StubUsageAPI(providerName: "OpenAI", outcome: .returns(false))
+        ])
+
+        let result = await service.validate(provider: "OpenAI")
+
+        XCTAssertFalse(result, "A provider-confirmed-invalid credential must be false.")
+    }
+
+    /// HAPPY PATH: a probe that returns `true` (provider confirmed the
+    /// credential) resolves to `true` — the success path is untouched and the
+    /// fix does not over-fail-close a genuinely valid credential.
+    func testValidateReturnsTrueWhenProbeConfirms() async {
+        let service = makeService()
+        service.setAPIsForTesting([
+            StubUsageAPI(providerName: "OpenAI", outcome: .returns(true))
+        ])
+
+        let result = await service.validate(provider: "OpenAI")
+
+        XCTAssertTrue(result, "A provider-confirmed-valid credential must be true.")
+    }
+
+    /// UNKNOWN PROVIDER: no matching probe is configured, so validation fails
+    /// closed without ever invoking a probe (guard path preserved).
+    func testValidateReturnsFalseForUnknownProvider() async {
+        let service = makeService()
+        service.setAPIsForTesting([
+            StubUsageAPI(providerName: "Anthropic", outcome: .returns(true))
+        ])
+
+        let result = await service.validate(provider: "NotARealProvider")
+
+        XCTAssertFalse(result, "An unconfigured provider must fail closed.")
+    }
 }

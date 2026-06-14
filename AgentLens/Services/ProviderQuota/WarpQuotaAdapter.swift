@@ -135,13 +135,20 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
         )
     }
 
-    private func candidateLogFiles(in directory: URL, fileManager: FileManager) -> [URL] {
+    func candidateLogFiles(in directory: URL, fileManager: FileManager) -> [URL] {
         guard fileManager.fileExists(atPath: directory.path) else { return [] }
-        let files = (try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )) ?? [] // try?-ok(empty list fallback)
+        // The directory exists but enumeration failed (sandbox/permission/IO fault).
+        // Degrade gracefully to the empty-list fallback, but surface the loss so a
+        // silently-broken local telemetry probe is observable instead of invisible.
+        let files = AppLogger.sync.silently(
+            "WarpQuotaAdapter.candidateLogFiles.contentsOfDirectory",
+            try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ),
+            fallback: []
+        )
 
         return files
             .filter { $0.lastPathComponent.hasPrefix("warp_network") && $0.pathExtension == "log" }

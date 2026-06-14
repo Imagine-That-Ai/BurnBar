@@ -223,7 +223,12 @@ enum MacCloudVaultKeyAccess {
         let keyStore = CloudVaultKeyStore()
         // Local-only load (reading never creates) so Mac read paths can open at-rest Signal
         // envelopes; nil until the device has a Signal identity (item 3 read side).
-        let signalIdentity = try? OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
+        // A genuinely-absent identity is legitimately nil and must stay silent; a real
+        // keychain/store fault (load throws) is logged so it is observable rather than
+        // masquerading as "no identity yet". Either way the read degrades gracefully to a
+        // nil identity (this never grants more access — it only disables opening at-rest
+        // Signal envelopes — so logged-and-skip is the safe behavior, not fail-open).
+        let signalIdentity = resolveLocalSignalIdentity(uid: uid, deviceId: deviceId)
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
             // cov:ignore-start -- live Firestore/keychain recovery branch; injected rotation tests cover mismatch handling
@@ -249,6 +254,32 @@ enum MacCloudVaultKeyAccess {
             )
         }
         return nil
+    }
+
+    /// Loads this device's local Signal identity keypair for read paths.
+    ///
+    /// The underlying store already distinguishes the two cases we care about:
+    /// `load` returns `nil` only when the keychain has no item yet (a legitimate
+    /// "no identity on this device") and throws (`keychainError` / `keychainDataMissing`
+    /// / key-deserialization) on a real store fault. We surface that distinction here:
+    /// genuine absence stays silent, a real load error is logged so it is observable.
+    ///
+    /// In both cases we return `nil` and let the read continue without an at-rest
+    /// identity — an erroring or absent identity can only *reduce* what we can open, so
+    /// degrading to `nil` is fail-safe, never fail-open. The `load` seam is injectable so
+    /// tests can drive the error branch without touching the real keychain.
+    static func resolveLocalSignalIdentity(
+        uid: String,
+        deviceId: String,
+        load: (String, String) throws -> OpenBurnBarSignalIdentityKeypair? = { uid, deviceId in
+            try OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
+        }
+    ) -> OpenBurnBarSignalIdentityKeypair? {
+        AppLogger.sync.silently(
+            "cloud_vault_signal_identity_load",
+            try load(uid, deviceId),
+            fallback: nil
+        )
     }
 
     private static func unwrapExistingKey(uid: String, deviceId: String, userRef: DocumentReference) async throws -> CloudVaultResolvedKey? {

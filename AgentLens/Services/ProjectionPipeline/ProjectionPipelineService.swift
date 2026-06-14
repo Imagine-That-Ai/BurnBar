@@ -24,6 +24,17 @@ actor ProjectionPipelineService {
     /// This enables tests to assert on write-amplification invariants directly.
     var lastChunkDiffResult: ChunkDiffResult?
 
+    /// Captures the last embedding-reuse outcome (confirmed-copied vs failed-copy chunk
+    /// IDs) so tests can assert the failure-recovery invariant directly.
+    var lastEmbeddingReuseOutcome: EmbeddingReuseOutcome?
+
+    /// Test seam for the embedding-reuse copy write only (the path that copies an
+    /// existing embedding onto a freshly-keyed chunk). When `nil`, the copy goes
+    /// straight to `dataStore.upsertChunkEmbedding`. Production never injects this;
+    /// it exists so failure-recovery of the reuse copy can be exercised without
+    /// touching the fresh-embedding write path in `indexChunks`.
+    nonisolated let reusedEmbeddingWriter: (@Sendable (ChunkEmbeddingRecord) throws -> Void)?
+
     @MainActor static func makeConfigured(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
@@ -51,7 +62,8 @@ actor ProjectionPipelineService {
         nowProvider: @escaping @Sendable () -> Date = { Date() },
         chunker: ProjectionChunker = ProjectionChunker(),
         chunkEmbedder: any ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider(),
-        paginationPageSize: Int = 1000
+        paginationPageSize: Int = 1000,
+        reusedEmbeddingWriter: (@Sendable (ChunkEmbeddingRecord) throws -> Void)? = nil
     ) {
         self.dataStore = dataStore
         self.leaseOwner = leaseOwner
@@ -61,6 +73,7 @@ actor ProjectionPipelineService {
         self.embeddingModelID = EmbeddingIdentity.modelID(for: chunkEmbedder.descriptor)
         self.embeddingVersionID = EmbeddingIdentity.versionID(for: chunkEmbedder.descriptor)
         self.paginationPageSize = max(1, paginationPageSize)
+        self.reusedEmbeddingWriter = reusedEmbeddingWriter
     }
 
     @MainActor private static func makeChunkEmbedder(
@@ -157,30 +170,24 @@ actor ProjectionPipelineService {
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
         // This avoids expensive embedding provider calls for content that hasn't changed.
-        var reusedEmbeddingCount = 0
-        for chunk in chunks {
-            guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
-                continue
-            }
-            try? dataStore.upsertChunkEmbedding(
-                ChunkEmbeddingRecord(
-                    chunkID: chunk.id,
-                    embeddingVersionID: embeddingVersionID,
-                    vectorBlob: existing.vectorBlob,
-                    createdAt: now,
-                    updatedAt: now
-                )
-            )
-            reusedEmbeddingCount += 1
-        }
-        if reusedEmbeddingCount > 0 {
+        let reuse = copyReusedEmbeddings(
+            chunks: chunks,
+            embeddingByHash: embeddingByHash,
+            now: now,
+            sourceKind: .conversation,
+            sourceID: conversation.id
+        )
+        self.lastEmbeddingReuseOutcome = reuse
+        if reuse.reusedCount > 0 {
             try markVectorIndexSnapshotStale(now: now)
         }
 
-        // Embed only chunks whose content has no existing embedding.
+        // Embed every chunk whose embedding was not confirmed-reused. A chunk whose
+        // reuse copy FAILED is NOT excluded here: it falls through to a fresh embedding
+        // so the chunk is never left embedding-less and unsearchable. Only a
+        // confirmed-copied chunk is skipped from re-embedding.
         let chunksNeedingEmbedding = chunks.filter { chunk in
-            guard let hash = chunk.contentHash else { return true }
-            return embeddingByHash[hash] == nil
+            reuse.reusedChunkIDs.contains(chunk.id) == false
         }
         let indexedCount = try await indexChunks(
             chunks: chunksNeedingEmbedding,
@@ -256,30 +263,24 @@ actor ProjectionPipelineService {
         self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
-        var reusedEmbeddingCount = 0
-        for chunk in chunks {
-            guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
-                continue
-            }
-            try? dataStore.upsertChunkEmbedding(
-                ChunkEmbeddingRecord(
-                    chunkID: chunk.id,
-                    embeddingVersionID: embeddingVersionID,
-                    vectorBlob: existing.vectorBlob,
-                    createdAt: now,
-                    updatedAt: now
-                )
-            )
-            reusedEmbeddingCount += 1
-        }
-        if reusedEmbeddingCount > 0 {
+        let reuse = copyReusedEmbeddings(
+            chunks: chunks,
+            embeddingByHash: embeddingByHash,
+            now: now,
+            sourceKind: artifact.sourceKind,
+            sourceID: artifact.id
+        )
+        self.lastEmbeddingReuseOutcome = reuse
+        if reuse.reusedCount > 0 {
             try markVectorIndexSnapshotStale(now: now)
         }
 
-        // Embed only chunks whose content has no existing embedding.
+        // Embed every chunk whose embedding was not confirmed-reused. A chunk whose
+        // reuse copy FAILED is NOT excluded here: it falls through to a fresh embedding
+        // so the chunk is never left embedding-less and unsearchable. Only a
+        // confirmed-copied chunk is skipped from re-embedding.
         let chunksNeedingEmbedding = chunks.filter { chunk in
-            guard let hash = chunk.contentHash else { return true }
-            return embeddingByHash[hash] == nil
+            reuse.reusedChunkIDs.contains(chunk.id) == false
         }
 
         let indexedCount = try await indexChunks(
@@ -314,6 +315,72 @@ actor ProjectionPipelineService {
         }
         let fullText = conversation.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         return String(fullText.prefix(320))
+    }
+
+    /// Outcome of copying reused embeddings onto freshly-keyed chunks.
+    struct EmbeddingReuseOutcome: Sendable {
+        /// Chunk IDs whose embedding copy was confirmed persisted. Only these may be
+        /// excluded from re-embedding; every other chunk is freshly embedded.
+        var reusedChunkIDs: Set<String>
+        /// Chunk IDs whose copy threw. They are deliberately re-embedded freshly so a
+        /// failed copy can never leave a chunk silently unsearchable.
+        var failedChunkIDs: Set<String>
+        /// Number of embeddings confirmed copied (drives the snapshot-stale write).
+        var reusedCount: Int
+    }
+
+    /// Copies existing embeddings onto the new chunk IDs for chunks whose content is
+    /// unchanged (matching `contentHash`). A copy that throws is logged and recorded
+    /// in `failedChunkIDs` rather than swallowed: the caller re-embeds those chunks
+    /// freshly so a failed copy can never leave a chunk embedding-less while also being
+    /// excluded from `chunksNeedingEmbedding` (which would corrupt index state with no
+    /// retry). Tracking is per chunk ID — not per content hash — so that when two
+    /// chunks share a hash and only one copy fails, the failed chunk is still
+    /// re-embedded. `reusedCount` counts only confirmed-persisted copies.
+    func copyReusedEmbeddings(
+        chunks: [SearchChunkRecord],
+        embeddingByHash: [String: (chunkID: String, vectorBlob: Data)],
+        now: Date,
+        sourceKind: SearchSourceKind,
+        sourceID: String
+    ) -> EmbeddingReuseOutcome {
+        var outcome = EmbeddingReuseOutcome(reusedChunkIDs: [], failedChunkIDs: [], reusedCount: 0)
+        for chunk in chunks {
+            guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
+                continue
+            }
+            let record = ChunkEmbeddingRecord(
+                chunkID: chunk.id,
+                embeddingVersionID: embeddingVersionID,
+                vectorBlob: existing.vectorBlob,
+                createdAt: now,
+                updatedAt: now
+            )
+            do {
+                if let writer = reusedEmbeddingWriter {
+                    try writer(record)
+                } else {
+                    try dataStore.upsertChunkEmbedding(record)
+                }
+                outcome.reusedChunkIDs.insert(chunk.id)
+                outcome.reusedCount += 1
+            } catch {
+                // Do NOT count reuse and do NOT exclude this chunk from re-embedding.
+                // Leaving it in chunksNeedingEmbedding forces a fresh embedding so the
+                // chunk stays searchable instead of silently dropping out of the index.
+                outcome.failedChunkIDs.insert(chunk.id)
+                AppLogger.search.error(
+                    "projection_embedding_reuse_copy_failed",
+                    metadata: [
+                        "errorClass": "\(String(describing: type(of: error)))",
+                        "sourceKind": sourceKind.rawValue,
+                        "sourceID": sourceID,
+                        "chunkID": chunk.id
+                    ]
+                )
+            }
+        }
+        return outcome
     }
 
 }

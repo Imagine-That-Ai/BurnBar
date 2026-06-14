@@ -130,7 +130,15 @@ final class PiAgentCloudRelayHostService {
                 "updatedAt": now,
                 "schemaVersion": 2
             ]
-            if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
+            // Recoverable, observable read: a missing public key still publishes
+            // a valid offline doc without the relay-key fields, but a *broken*
+            // keychain / corrupt cached fallback must surface in the log instead
+            // of being silently indistinguishable from "no key yet".
+            if let publicKey = AppLogger.network.silently(
+                "pi_agent_relay_offline_public_key_unavailable",
+                try relayKeyStore.existingPublicKeyBase64() as String?,
+                fallback: nil
+            ) {
                 data["relayPublicKey"] = publicKey
                 data["relayKeyVersion"] = PiAgentRelayCrypto.keyVersion
                 data["relayEncryption"] = PiAgentRelayCrypto.algorithm
@@ -702,9 +710,23 @@ struct PiAgentRelayKeyStore {
     func privateKey() throws -> PiAgentRelayPrivateKey {
         do {
             if let stored = try keychain.string(for: account),
-               let data = Data(base64Encoded: stored),
-               let key = try? PiAgentRelayPrivateKey(rawRepresentation: data) {
-                return key
+               let data = Data(base64Encoded: stored) {
+                // The Keychain holds bytes for this account. Parsing them as a
+                // P-256 key is the ONLY branch where a swallowed failure would
+                // silently regenerate AND overwrite the relay identity below —
+                // rotating the key the phone has PINNED in the two-key safety
+                // code and breaking sender authentication with no diagnostic.
+                // Make that corruption observable; only then fall through to a
+                // fresh key. (Genuine first-run absence skips this block and is
+                // not an anomaly worth flagging.)
+                do {
+                    return try PiAgentRelayPrivateKey(rawRepresentation: data)
+                } catch {
+                    AppLogger.network.error(
+                        "pi_agent_relay_stored_private_key_corrupt_regenerating",
+                        metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                    )
+                }
             }
             let key = PiAgentRelayCrypto.generatePrivateKey()
             do {

@@ -833,10 +833,41 @@ private func claudeOAuthCredentials(fromStoredRouteCredential rawValue: String) 
 }
 
 private func claudeOAuthCredentials(fromSwitcherProfileConfigDirectory configDirectory: String) -> ClaudeOAuthCredentials? {
-    try? ClaudeCodeOAuthCredentialImporter(
-        configDirectory: configDirectory,
-        allowDefaultKeychainFallback: false
-    ).load(allowUserInteraction: false)
+    // The importer's `load()` distinguishes *why* a profile-scoped Claude Code
+    // credential could not be used: `.missing` (no signed-in session for this
+    // switcher profile — the common, benign case), `.malformed` (a credential
+    // file/keychain item exists but its shape is unreadable), and `.expired`
+    // (a token past its usable window). A bare `try?` collapsed all three —
+    // plus any unexpected fault — into the same silent `nil`, so a corrupt or
+    // expired profile credential looked identical to "no Claude Code session"
+    // and the switcher snapshot quietly fell back to the credential-less CLI
+    // (reporting `.unavailable`) with no diagnostic. That masks a correctness
+    // signal in a security/quota product.
+    //
+    // The graceful-degradation contract is preserved exactly: any failure still
+    // yields `nil`, so the caller's `if let` skips credential injection and runs
+    // the CLI unchanged. The only difference is that the *meaningful* failures
+    // (malformed / expired / unexpected) are now observable via `AppLogger`,
+    // while the benign `.missing` path stays quiet to avoid log noise for every
+    // non-Claude profile.
+    do {
+        return try ClaudeCodeOAuthCredentialImporter(
+            configDirectory: configDirectory,
+            allowDefaultKeychainFallback: false
+        ).load(allowUserInteraction: false)
+    } catch ClaudeCodeOAuthCredentialImportError.missing {
+        AppLogger.network.debug(
+            "claude_switcher_profile_credential_absent",
+            metadata: ["errorClass": "ClaudeCodeOAuthCredentialImportError.missing"]
+        )
+        return nil
+    } catch {
+        AppLogger.network.error(
+            "claude_switcher_profile_credential_unusable",
+            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+        )
+        return nil
+    }
 }
 
 private extension String {
