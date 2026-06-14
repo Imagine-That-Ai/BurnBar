@@ -432,24 +432,24 @@ export function buildRunDetailRows(state: OpenBurnBarState): BurnBarRunDetailRow
 // VAL-CROSS-009: Readiness reason codes for pre-dispatch execution failures
 // Maps directly from daemon BurnBarExecutionReadinessCode for cross-surface parity
 
-export type BurnBarReadinessReasonCode =
+type BurnBarReadinessReasonCode =
   | 'missing_credential'
   | 'invalid_repo_branch'
   | 'runtime_unavailable'
   | 'insufficient_credential_permissions';
 
-export interface BurnBarReadinessFailure {
+interface BurnBarReadinessFailure {
   code: BurnBarReadinessReasonCode;
   detail: string;
 }
 
-export type BurnBarEnterprisePolicyReasonCode =
+type BurnBarEnterprisePolicyReasonCode =
   | 'policy_budget_hard_cap_blocked'
   | 'policy_approval_required_by_mode'
   | 'policy_real_integration_required'
   | 'policy_configuration_invalid';
 
-export interface BurnBarEnterprisePolicyBlock {
+interface BurnBarEnterprisePolicyBlock {
   reasonCode: BurnBarEnterprisePolicyReasonCode;
   detail: string;
   approvalMode?: string;
@@ -458,7 +458,7 @@ export interface BurnBarEnterprisePolicyBlock {
   blockedAt?: string;
 }
 
-export interface BurnBarScheduledReviewIntent {
+interface BurnBarScheduledReviewIntent {
   taskID: string;
   projectSlug: string;
   dueAt: string;
@@ -530,20 +530,20 @@ export interface BurnBarMissionRow {
   closureQuestionState: string;
 }
 
-export interface BurnBarMissionRoleEligibility {
+interface BurnBarMissionRoleEligibility {
   canApprove: boolean;
   canTransferOwnership: boolean;
   canAnswerClosureQuestion: boolean;
 }
 
-export interface BurnBarMissionDetailRow {
+interface BurnBarMissionDetailRow {
   id: string;
   label: string;
   value: string;
 }
 
 // Daemon canonical statuses: matches BurnBarMissionStatus in OpenBurnBarCore
-export type BurnBarMissionStatus =
+type BurnBarMissionStatus =
   | 'draft'
   | 'awaiting_approval'
   | 'approved'
@@ -553,8 +553,8 @@ export type BurnBarMissionStatus =
   | 'completed'
   | 'failed'
   | 'cancelled';
-export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
-export type BurnBarRunPhase =
+type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
+type BurnBarRunPhase =
   | 'idle'
   | 'planning'
   | 'executing_tool'
@@ -565,9 +565,9 @@ export type BurnBarRunPhase =
   | 'cancelled'
   | 'awaiting_approval';
 
-export type BurnBarMissionNextActionBucket = 'blockage' | 'interruption' | 'completion';
+type BurnBarMissionNextActionBucket = 'blockage' | 'interruption' | 'completion';
 
-export interface BurnBarMissionNextAction {
+interface BurnBarMissionNextAction {
   id: string;
   missionId: string;
   projectSlug: string;
