@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import type { ReplayEvaluation, ReplayScenario } from "./replay/types";
+import type { ReplayEvaluation, ReplayScenario } from "../replay/types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
