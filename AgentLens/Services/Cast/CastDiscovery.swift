@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import OpenBurnBarCore
 import os.log
 
 // MARK: - Cast Discovery
@@ -294,15 +295,16 @@ private struct PendingCastServiceResolution: Sendable {
     let supportsDisplay: Bool
 }
 
-private final class ContinuationResumeGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var didResume = false
+private final class ContinuationResumeGate: Sendable {
+    private let didResume = Locked(false)
 
     func resume(_ continuation: CheckedContinuation<Void, Never>) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !didResume else { return }
-        didResume = true
+        let shouldResume = didResume.withLock { didResume in
+            guard !didResume else { return false }
+            didResume = true
+            return true
+        }
+        guard shouldResume else { return }
         continuation.resume()
     }
 }
