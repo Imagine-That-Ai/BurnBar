@@ -68,12 +68,16 @@ function stripeWebhookEventExpireAt(event: Stripe.Event): Timestamp {
   return Timestamp.fromMillis(event.created * 1000 + STRIPE_WEBHOOK_EVENT_RETENTION_MS);
 }
 
+function isAllowedChoice<T extends string>(raw: string, allowed: readonly T[]): raw is T {
+  return (allowed as readonly string[]).includes(raw);
+}
+
 function optionalChoice<T extends string>(raw: unknown, allowed: readonly T[], fieldName: string): T | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
-  if (typeof raw !== "string" || !allowed.includes(raw as T)) {
+  if (typeof raw !== "string" || !isAllowedChoice(raw, allowed)) {
     throw new HttpsError("invalid-argument", `${fieldName} is not supported.`);
   }
-  return raw as T;
+  return raw;
 }
 
 function requireConfiguredPriceID(priceID: string, label: string): string {

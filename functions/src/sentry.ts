@@ -182,16 +182,4 @@ export function sentryUserIdForUID(uid: string): string {
   return `uid:${digest}`;
 }
 
-/**
- * Wraps an async function with Sentry error capture.
- * Useful for Cloud Function handlers where errors should be captured
- * even if the calling code swallows them.
- */
-export async function withSentry<T>(fn: () => Promise<T>, context?: Record<string, unknown>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    captureException(err, context);
-    throw err;
-  }
-}
+

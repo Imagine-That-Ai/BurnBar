@@ -18,6 +18,10 @@ import { stripUndefinedObject } from "../guards.js";
 export const QUERY_CONVERSATION_SORT_FIELDS = ["updatedAt", "startTime", "endTime", "costUSD", "totalTokens"] as const;
 export type QueryConversationSortField = (typeof QUERY_CONVERSATION_SORT_FIELDS)[number];
 
+function isQueryConversationSortField(value: string): value is QueryConversationSortField {
+  return (QUERY_CONVERSATION_SORT_FIELDS as readonly string[]).includes(value);
+}
+
 /** Normalizes a Firestore Timestamp or stored ISO string to an ISO string for transport. */
 export function manifestFieldToISO(value: unknown): string | undefined {
   if (value == null) return undefined;
@@ -44,11 +48,8 @@ export function resolveConversationSort(
   hasDateRange: boolean,
   requestedDirection: unknown,
 ): ConversationSortPlan {
-  let sortField: QueryConversationSortField = QUERY_CONVERSATION_SORT_FIELDS.includes(
-    requestedSort as QueryConversationSortField,
-  )
-    ? (requestedSort as QueryConversationSortField)
-    : "updatedAt";
+  let sortField: QueryConversationSortField =
+    requestedSort != null && isQueryConversationSortField(requestedSort) ? requestedSort : "updatedAt";
   if (hasDateRange) sortField = "startTime";
   const direction: "asc" | "desc" = requestedDirection === "asc" ? "asc" : "desc";
   return { sortField, direction };

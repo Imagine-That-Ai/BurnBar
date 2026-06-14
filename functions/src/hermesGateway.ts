@@ -77,7 +77,7 @@ export const HERMES_GATEWAY_PENDING_MODEL_TTL_MS = 2 * 60 * 1000;
 // "expired" so a risky action never blocks the agent forever.
 export const HERMES_GATEWAY_APPROVAL_TTL_MS = 5 * 60 * 1000;
 export const HERMES_GATEWAY_MIN_APPROVAL_TTL_MS = 5 * 1000;
-export const HERMES_GATEWAY_MAX_APPROVAL_TTL_MS = HERMES_GATEWAY_APPROVAL_TTL_MS;
+const HERMES_GATEWAY_MAX_APPROVAL_TTL_MS = HERMES_GATEWAY_APPROVAL_TTL_MS;
 export const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ export const HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS = new Set([2, 3]);
 export const HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS = new Set([1, 2, 3]);
 export const HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION = 1;
 export const HERMES_GATEWAY_RATCHET_ALGORITHM = "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM";
-export const HERMES_GATEWAY_MAX_RATCHET_CIPHERTEXT_B64 = HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64;
+const HERMES_GATEWAY_MAX_RATCHET_CIPHERTEXT_B64 = HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64;
 export const HERMES_GATEWAY_MAX_RATCHET_ID = 160;
 export const HERMES_GATEWAY_MAX_RATCHET_COUNTER = 1_000_000_000;
 export const HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION = SIGNAL_ENVELOPE_FORMAT_VERSION;
@@ -816,7 +816,7 @@ export function requireProductionGatewayRelayEnvelope(raw: unknown, fieldName: s
   return envelope;
 }
 
-export const requireV2GatewayRelayEnvelope = requireProductionGatewayRelayEnvelope;
+
 
 /**
  * Non-throwing shape check used by read-side serializers (serializeHermesGateway-
