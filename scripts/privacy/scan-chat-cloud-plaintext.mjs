@@ -23,6 +23,13 @@ function assertIncludes(relativePath, needle, note) {
   }
 }
 
+function assertIncludesAny(relativePath, needles, note) {
+  const text = readRel(relativePath);
+  if (!needles.some((needle) => text.includes(needle))) {
+    fail(`${relativePath}: missing ${note ?? needles.map((needle) => JSON.stringify(needle)).join(" or ")}`);
+  }
+}
+
 function assertNotIncludes(relativePath, needle, note) {
   const text = readRel(relativePath);
   if (text.includes(needle)) {
@@ -729,14 +736,20 @@ assertIncludes(
   "authenticating: sealedPayloadAAD(for:",
   "Swift CloudVault sealedPayload v2 must authenticate envelope metadata as AAD",
 );
-assertIncludes(
+assertIncludesAny(
   "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
-  "const val currentSealedPayloadSchemaVersion: Int = 2",
+  [
+    "const val currentSealedPayloadSchemaVersion: Int = 2",
+    "const val CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION: Int = 2",
+  ],
   "Android CloudVault must write sealedPayload schemaVersion 2",
 );
-assertIncludes(
+assertIncludesAny(
   "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
-  'const val aadContextPrefix: String = "OpenBurnBar-CloudVault-aad-v2"',
+  [
+    'const val aadContextPrefix: String = "OpenBurnBar-CloudVault-aad-v2"',
+    'const val AAD_CONTEXT_PREFIX: String = "OpenBurnBar-CloudVault-aad-v2"',
+  ],
   "Android CloudVault must use the six-part aad-v2 context",
 );
 assertIncludes(
