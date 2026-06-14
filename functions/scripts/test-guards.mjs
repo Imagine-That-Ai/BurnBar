@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 
 import {
+  coerceFirestoreDate,
   errorCode,
   isRecord,
+  isStripeCheckoutSession,
+  isStripeSubscription,
   isTimestampWithToMillis,
   parseEntitlementBindingDoc,
   parseProvider,
@@ -85,6 +88,16 @@ assert.equal(
   })?.recordedAt,
   "2024-06-10T06:13:20.500Z",
 );
+
+assert.equal(
+  coerceFirestoreDate({ seconds: 1_718_000_000, _nanoseconds: 500_000_000 })?.toISOString(),
+  "2024-06-10T06:13:20.500Z",
+);
+
+assert.equal(isStripeSubscription({ object: "subscription", id: "sub_123" }), true);
+assert.equal(isStripeSubscription({ id: "sub_123" }), false);
+assert.equal(isStripeCheckoutSession({ object: "checkout.session", id: "cs_123" }), true);
+assert.equal(isStripeCheckoutSession({ id: "cs_123" }), false);
 
 assert.equal(parseEntitlementBindingDoc({
   id: "binding",
