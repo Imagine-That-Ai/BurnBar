@@ -7,9 +7,6 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   SIGNAL_AT_REST_ENCRYPTION,
   SIGNAL_ENVELOPE_FORMAT_VERSION,
-  SIGNAL_MAX_KEY_WRAP_B64,
-  SIGNAL_MAX_MESSAGE_B64,
-  SIGNAL_MAX_RECIPIENT_WRAPS,
   SIGNAL_RELAY_KEY_VERSION,
   SIGNAL_TRANSPORT_ENCRYPTION,
   sanitizeSignalEnvelope,
@@ -151,13 +148,6 @@ export const HERMES_GATEWAY_SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_RE
 // guarantees no new client can negotiate or emit v4, with no RC fetch in the
 // path. The drill at scripts/ops/signal-rollback-drill.sh Step 3 rehearses it.
 export const HERMES_GATEWAY_SIGNAL_ENVELOPE_V4_DISABLED_ENV = "SIGNAL_ENVELOPE_V4_DISABLED";
-export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = SIGNAL_MAX_MESSAGE_B64;
-export const HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64 = SIGNAL_MAX_KEY_WRAP_B64;
-export const HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS = SIGNAL_MAX_RECIPIENT_WRAPS;
-// Historical cutoff for the now-closed schema-1 plaintext migration. New writes
-// are sealed-only; reads keep a legacy plaintext fallback so old queued docs can
-// still render while backfills/scrubbers drain them.
-export const HERMES_GATEWAY_GRACE_WINDOW_CUTOFF = "2026-06-03T00:00:00.000Z";
 
 /**
  * The plaintext grace window is closed. Keep the helper for old callers/tests,
