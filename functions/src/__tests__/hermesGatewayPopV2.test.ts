@@ -175,9 +175,25 @@ interface Captured {
   status: number;
   body: unknown;
 }
-function makeRes(): { res: unknown; captured: Captured } {
+interface TestHttpRequest {
+  method: string;
+  path: string;
+  url: string;
+  body: Record<string, never>;
+  headers: Record<string, string>;
+  query: Record<string, unknown>;
+  socket: { remoteAddress: string };
+  get(name: string): string | undefined;
+}
+interface TestHttpResponse {
+  status(code: number): TestHttpResponse;
+  json(payload: unknown): void;
+  send(payload?: unknown): void;
+  set(): void;
+}
+function makeRes(): { res: TestHttpResponse; captured: Captured } {
   const captured: Captured = { status: 0, body: undefined };
-  const res = {
+  const res: TestHttpResponse = {
     status(code: number) {
       captured.status = code;
       return res;
@@ -198,7 +214,7 @@ function makeReq(opts: {
   path: string;
   query: Record<string, unknown>;
   signedQuery?: Record<string, unknown>;
-}) {
+}): TestHttpRequest {
   const body = {};
   const headers: Record<string, string> = {
     authorization: `Bearer ${TOKEN}`,
@@ -226,11 +242,8 @@ async function call(opts: {
   signedQuery?: Record<string, unknown>;
 }): Promise<Captured> {
   const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
-  // Single typed seam: the dispatcher takes real express req/res; the fakes
-  // cover exactly the surface it touches.
-  const dispatch: (req: unknown, res: unknown) => Promise<void> = dispatchHermesGatewayRequest as never;
   const { res, captured } = makeRes();
-  await dispatch(makeReq(opts), res);
+  await dispatchHermesGatewayRequest(makeReq(opts), res);
   return captured;
 }
 
