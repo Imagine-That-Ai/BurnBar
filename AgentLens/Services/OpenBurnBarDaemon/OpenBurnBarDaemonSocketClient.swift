@@ -1176,13 +1176,34 @@ enum OpenBurnBarDaemonSocketClient {
         if let cached {
             return cached
         }
-        guard let storedToken = try? controllerRuntimeSecrets.string(for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount) else {
+        let nonEmptyToken = readDaemonSocketAuthToken(from: controllerRuntimeSecrets)
+        cacheDaemonSocketAuthToken(nonEmptyToken)
+        return nonEmptyToken
+    }
+
+    /// Resolves the daemon socket auth token from a `KeychainStore`, trimming
+    /// whitespace and collapsing an empty value to `nil`.
+    ///
+    /// The read goes through `credentialIfPresent`, not `try?`: a genuinely
+    /// absent token still yields `nil` (the daemon simply has no socket token
+    /// provisioned yet), but a real Keychain fault — a locked keychain, an ACL
+    /// denial, an unhandled `OSStatus`, or corrupt data — is logged via
+    /// `AppLogger` instead of silently collapsing into the same `nil` as
+    /// "no token configured", which would let a broken keychain masquerade as
+    /// an unauthenticated daemon and mint unsigned RPCs without a diagnostic.
+    ///
+    /// Exposed at file-internal visibility so the fault path is exercisable
+    /// with an injected `KeychainStore` backend in tests.
+    static func readDaemonSocketAuthToken(from secrets: KeychainStore) -> String? {
+        guard let storedToken = secrets.credentialIfPresent(
+            for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
+            allowUserInteraction: false,
+            event: "daemon_socket_token_read_failed"
+        ) else {
             return nil
         }
         let token = storedToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        let nonEmptyToken = token.isEmpty ? nil : token
-        cacheDaemonSocketAuthToken(nonEmptyToken)
-        return nonEmptyToken
+        return token.isEmpty ? nil : token
     }
 
     private static func mapConnectFailure() -> OpenBurnBarDaemonManagerError {

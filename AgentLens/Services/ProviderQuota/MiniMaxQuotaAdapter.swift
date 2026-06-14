@@ -3,6 +3,17 @@ import OpenBurnBarCore
 
 @MainActor
 struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
+    /// Keychain used to read the Cursor-connector API-key fallback. Injected so
+    /// tests can drive a faulting backend through this seam; the default reads
+    /// the live keychain exactly as before.
+    private let keychain: KeychainStore
+
+    // nonisolated so the adapter registry can construct it from a nonisolated
+    // context (the keychain seam carries no main-actor state).
+    nonisolated init(keychain: KeychainStore = KeychainStore()) {
+        self.keychain = keychain
+    }
+
     private enum QuotaEndpoint {
         static let tokenPlan = ProviderEndpointProfileRegistry.minimaxTokenPlan.quotaRemainsURL
             ?? "https://www.minimax.io/v1/token_plan/remains"
@@ -205,8 +216,11 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func cursorConnectorKey(for account: String) -> String? {
-        let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
-        return quotaNonEmpty(raw ?? nil)
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "minimax_quota_key_read_failed"
+        )
+        return quotaNonEmpty(raw)
     }
 }

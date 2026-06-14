@@ -1070,7 +1070,11 @@ final class ProviderQuotaService {
 
         for slot in orderedSlots {
             let account = "provider.\(providerID).slot.\(slot.slotID).apiKey"
-            if let key = try? providerRuntimeKeyStore.string(for: account, allowUserInteraction: false),
+            if let key = providerRuntimeKeyStore.credentialIfPresent(
+                for: account,
+                allowUserInteraction: false,
+                event: "daemon_plan_api_key_read_failed"
+            ),
                let normalized = quotaNonEmpty(key) {
                 return normalized
             }

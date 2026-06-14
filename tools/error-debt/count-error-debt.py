@@ -69,20 +69,44 @@ TRY_OPTIONAL_OCCURRENCE = re.compile(r"try\?(?!-ok)")
 TRY_OPTIONAL_TAG = "try?-ok("
 
 
+def strip_line_comment(line: str) -> str:
+    """Return the code portion of a Swift line, dropping a trailing `//` comment.
+
+    Tracks string state so a `//` inside a string literal (e.g. a URL like
+    ``"https://…"``) is preserved. This keeps a `try?` mentioned only in prose —
+    a doc comment or an inline explanation — from being miscounted as executable
+    debt; only `try?` in actual code counts.
+    """
+    in_string = False
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == '"':
+            in_string = not in_string
+        elif char == "/" and not in_string and index + 1 < len(line) and line[index + 1] == "/":
+            return line[:index]
+    return line
+
+
 def count_untagged_try_optional_in_text(text: str) -> tuple[int, int]:
     """Return (untagged, tagged) `try?` counts for one Swift source string.
 
-    A `try?` is *tagged* when a ``try?-ok(<reason>)`` token appears on its own
-    line or on the line immediately above it. Tagged sites are intentional
-    best-effort reads that have been reviewed and justified; only untagged
-    sites are counted as debt, which lets the ratchet drive the untagged total
-    to zero without forcing genuinely-optional reads into `do/catch`.
+    Only `try?` in **code** is counted — a `try?` appearing solely in a comment
+    is never executable and never debt. A code `try?` is *tagged* when a
+    ``try?-ok(<reason>)`` token appears on its own line or the line immediately
+    above it. Tagged sites are intentional best-effort reads that have been
+    reviewed and justified; only untagged code sites count as debt, which lets
+    the ratchet drive the untagged total to zero without forcing
+    genuinely-optional reads into `do/catch`.
     """
     untagged = 0
     tagged = 0
     lines = text.split("\n")
     for index, line in enumerate(lines):
-        hits = len(TRY_OPTIONAL_OCCURRENCE.findall(line))
+        hits = len(TRY_OPTIONAL_OCCURRENCE.findall(strip_line_comment(line)))
         if hits == 0:
             continue
         previous = lines[index - 1] if index > 0 else ""

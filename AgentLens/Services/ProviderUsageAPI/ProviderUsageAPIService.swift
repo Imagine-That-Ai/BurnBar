@@ -99,7 +99,11 @@ final class ProviderAPIKeyStore {
     }
 
     func apiKey(for provider: String, allowUserInteraction: Bool = false) -> String? {
-        try? keychain.string(for: provider, allowUserInteraction: allowUserInteraction)
+        keychain.credentialIfPresent(
+            for: provider,
+            allowUserInteraction: allowUserInteraction,
+            event: "provider_api_key_read_failed"
+        )
     }
 
     func setAPIKey(_ key: String, for provider: String) throws {
@@ -255,8 +259,12 @@ final class ProviderUsageAPIService {
     }
 
     private func connectorKey(for account: String) -> String? {
-        let raw = try? connectorKeychain.string(for: account, allowUserInteraction: false)
-        return nonEmpty(raw ?? nil)
+        let raw = connectorKeychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "connector_api_key_read_failed"
+        )
+        return nonEmpty(raw)
     }
 
     private func nonEmpty(_ value: String?) -> String? {

@@ -377,7 +377,11 @@ struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
 
     private func cursorConnectorKey(for account: String) -> String? {
         let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "deepseek_connector_key_read_failed"
+        )
         return quotaNonEmpty(raw ?? nil)
     }
 }

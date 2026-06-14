@@ -154,7 +154,11 @@ private final class CursorConnectorSecretBroker: Sendable {
             return http(status: 404, body: ["error": "unknown_route"])
         }
 
-        guard let secret = try? keychain.string(for: account, allowUserInteraction: false),
+        guard let secret = keychain.credentialIfPresent(
+                for: account,
+                allowUserInteraction: false,
+                event: "cursor_secret_broker_key_read_failed"
+              ),
               let normalized = quotaNonEmpty(secret) else {
             return http(status: 424, body: ["error": "secret_unavailable"])
         }
@@ -268,10 +272,11 @@ final class CursorConnectorManager {
     }
 
     func apiKey(for provider: ConnectorProvider, allowUserInteraction: Bool = false) -> String {
-        (try? keychain.string(
+        keychain.credentialIfPresent(
             for: keychainAccount(for: provider),
-            allowUserInteraction: allowUserInteraction
-        )) ?? ""
+            allowUserInteraction: allowUserInteraction,
+            event: "cursor_provider_api_key_read_failed"
+        ) ?? ""
     }
 
     func setAPIKey(_ apiKey: String, for provider: ConnectorProvider) {

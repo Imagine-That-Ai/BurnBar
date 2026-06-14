@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import Security
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
@@ -75,8 +76,81 @@ final class MimoQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.buckets.first?.limitValue, MimoTokenPlanTier.standard.monthlyCreditLimit)
     }
 
+    // MARK: - Connector-key credential read (fault must be observable)
+
+    /// The migrated read in `MimoQuotaAdapter.cursorConnectorKey(for:)` resolves
+    /// the connector key via `KeychainStore.credentialIfPresent` instead of the
+    /// old `try? keychain.string(for:)`. These tests drive that exact accessor
+    /// through the `KeychainStore(backend:)` seam:
+    ///   * a genuine Keychain fault (`unhandled(errSecNotAvailable)`) must return
+    ///     `nil` *without throwing or crashing* — the fault is surfaced to
+    ///     `AppLogger`, never silently collapsed into "no credential".
+    ///   * a genuinely absent credential must still return `nil`, preserving the
+    ///     graceful-degradation contract the call site relies on.
+    private let connectorService = "com.openburnbar.mimoquota-credential-tests"
+    private let connectorAccount = "provider.mimo.apiKey"
+
+    func testConnectorKeyRead_keychainFault_returnsNilWithoutThrowing() {
+        let backend = MimoFaultInjectingKeychainBackend()
+        backend.readErrors[connectorService] = KeychainStoreError.unhandled(errSecNotAvailable)
+        let keychain = KeychainStore(service: connectorService, legacyServices: [], backend: backend)
+
+        let result = keychain.credentialIfPresent(
+            for: connectorAccount,
+            allowUserInteraction: false,
+            event: "mimo_quota_connector_key_read_failed"
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func testConnectorKeyRead_credentialAbsent_returnsNil() {
+        let backend = MimoFaultInjectingKeychainBackend()
+        let keychain = KeychainStore(service: connectorService, legacyServices: [], backend: backend)
+
+        let result = keychain.credentialIfPresent(
+            for: connectorAccount,
+            allowUserInteraction: false,
+            event: "mimo_quota_connector_key_read_failed"
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func testConnectorKeyRead_credentialPresent_returnsStoredValue() throws {
+        let backend = MimoFaultInjectingKeychainBackend()
+        let keychain = KeychainStore(service: connectorService, legacyServices: [], backend: backend)
+        try keychain.set("tp-connector-secret", for: connectorAccount)
+
+        let result = keychain.credentialIfPresent(
+            for: connectorAccount,
+            allowUserInteraction: false,
+            event: "mimo_quota_connector_key_read_failed"
+        )
+
+        XCTAssertEqual(result, "tp-connector-secret")
+    }
+
+    /// Proves the migrated call site degrades gracefully end-to-end: with no
+    /// resolved/env key and a *broken* Keychain behind the connector-key read,
+    /// `fetch` returns the unavailable snapshot rather than throwing.
+    func testFetch_noKeyAndKeychainFault_returnsUnavailableWithoutThrowing() async throws {
+        let backend = MimoFaultInjectingKeychainBackend()
+        backend.readErrors[connectorService] = KeychainStoreError.unhandled(errSecNotAvailable)
+        let service = connectorService
+        let adapter = MimoQuotaAdapter(
+            keychainStoreProvider: { KeychainStore(service: service, legacyServices: [], backend: backend) }
+        )
+        let context = try makeContext(apiKey: nil)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertEqual(snapshot.provider, .mimo)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+    }
+
     private func makeContext(
-        apiKey: String,
+        apiKey: String?,
         region: ProviderEndpointRegion = .sgp,
         tier: MimoTokenPlanTier? = nil,
         billingCycle: MimoTokenPlanBillingCycle = .monthly
@@ -138,4 +212,32 @@ private final class MimoMockURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+// MARK: - Fault-injecting test backend
+
+/// In-memory `KeychainStoreBackend` whose `data(for:)` throws a configured fault,
+/// letting tests model a locked/unavailable Keychain through the production seam.
+private final class MimoFaultInjectingKeychainBackend: KeychainStoreBackend {
+    var storage: [String: [String: Data]] = [:]
+    var readErrors: [String: Error] = [:]
+    var deleteErrors: [String: Error] = [:]
+
+    func set(_ value: Data, service: String, account: String) throws {
+        storage[service, default: [:]][account] = value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        if let error = readErrors[service] {
+            throw error
+        }
+        return storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        if let error = deleteErrors[service] {
+            throw error
+        }
+        storage[service]?[account] = nil
+    }
 }
