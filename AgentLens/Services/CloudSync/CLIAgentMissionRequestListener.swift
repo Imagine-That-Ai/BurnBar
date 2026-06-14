@@ -2422,15 +2422,18 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-private final class DirectCLIStreamMirror: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stdoutBuffer = ""
-    private var stderrBuffer = ""
-    private var assistantDeltaBuffer = ""
-    private var assistantDeltaTranscript = ""
-    private var latestAssistantMessage = ""
-    private var latestResultText = ""
-    private var lastReasoningEventCount = 0
+private final class DirectCLIStreamMirror: Sendable {
+    private struct State {
+        var stdoutBuffer = ""
+        var stderrBuffer = ""
+        var assistantDeltaBuffer = ""
+        var assistantDeltaTranscript = ""
+        var latestAssistantMessage = ""
+        var latestResultText = ""
+        var lastReasoningEventCount = 0
+    }
+
+    private let state = Locked(State())
     private let assistantDeltaFlushThreshold = 480
     private let reasoningEventStep = 500
 
@@ -2438,29 +2441,29 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
         _ text: String,
         eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
     ) -> Bool {
-        consume(text, buffer: &stdoutBuffer, eventSink: eventSink)
+        consume(text, buffer: \.stdoutBuffer, eventSink: eventSink)
     }
 
     func consumeStderr(
         _ text: String,
         eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
     ) -> Bool {
-        consume(text, buffer: &stderrBuffer, eventSink: eventSink)
+        consume(text, buffer: \.stderrBuffer, eventSink: eventSink)
     }
 
     private func consume(
         _ text: String,
-        buffer: inout String,
+        buffer: WritableKeyPath<State, String>,
         eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
     ) -> Bool {
         let incomingLooksStructured = text.trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
-        lock.lock()
-        buffer += text
-        let lines = buffer.components(separatedBy: .newlines)
-        buffer = lines.last ?? ""
-        let bufferedLooksStructured = buffer.trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
-        let completeLines = lines.dropLast()
-        lock.unlock()
+        let (bufferedLooksStructured, completeLines) = state.withLock { state -> (Bool, [String]) in
+            state[keyPath: buffer] += text
+            let lines = state[keyPath: buffer].components(separatedBy: .newlines)
+            state[keyPath: buffer] = lines.last ?? ""
+            let bufferedLooksStructured = state[keyPath: buffer].trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
+            return (bufferedLooksStructured, Array(lines.dropLast()))
+        }
 
         var emitted = incomingLooksStructured || bufferedLooksStructured
         for rawLine in completeLines {
@@ -2598,18 +2601,20 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
                     .joined(separator: "\n")
                     .count ?? 0
                 if updateType == "thinking_start" {
-                    lastReasoningEventCount = 0
+                    state.withLock { $0.lastReasoningEventCount = 0 }
                     return .toolResult("Reasoning stream started.", title: "Reasoning")
                 }
                 if updateType == "thinking_end" {
-                    lastReasoningEventCount = count
+                    state.withLock { $0.lastReasoningEventCount = count }
                     return .toolResult("Reasoning stream completed (\(count) chars available from runtime).", title: "Reasoning")
                 }
-                guard count >= lastReasoningEventCount + reasoningEventStep else {
-                    return nil
+                return state.withLock { state -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? in
+                    guard count >= state.lastReasoningEventCount + reasoningEventStep else {
+                        return nil
+                    }
+                    state.lastReasoningEventCount = count
+                    return .toolResult("Reasoning stream updated (\(count) chars available from runtime).", title: "Reasoning")
                 }
-                lastReasoningEventCount = count
-                return .toolResult("Reasoning stream updated (\(count) chars available from runtime).", title: "Reasoning")
             }
         }
 
@@ -2641,19 +2646,25 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
     }
 
     private func appendAssistantDelta(_ text: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
-        assistantDeltaTranscript += text
-        assistantDeltaBuffer += text
-        let shouldFlush = assistantDeltaBuffer.count >= assistantDeltaFlushThreshold
-            || text.contains("\n")
-            || text.contains(". ")
-            || text.contains(": ")
-        guard shouldFlush else { return nil }
-        return flushAssistantDelta()
+        state.withLock { state in
+            state.assistantDeltaTranscript += text
+            state.assistantDeltaBuffer += text
+            let shouldFlush = state.assistantDeltaBuffer.count >= assistantDeltaFlushThreshold
+                || text.contains("\n")
+                || text.contains(". ")
+                || text.contains(": ")
+            guard shouldFlush else { return nil }
+            return Self.flushAssistantDelta(&state)
+        }
     }
 
     private func flushAssistantDelta() -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
-        let text = assistantDeltaBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
-        assistantDeltaBuffer = ""
+        state.withLock { Self.flushAssistantDelta(&$0) }
+    }
+
+    private static func flushAssistantDelta(_ state: inout State) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        let text = state.assistantDeltaBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        state.assistantDeltaBuffer = ""
         return text.nilIfEmpty.map { .assistant($0, title: "Assistant delta") }
     }
 
@@ -2697,21 +2708,23 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
     }
 
     private func storeAssistantMessage(_ text: String) {
-        latestAssistantMessage = text
+        state.withLock { $0.latestAssistantMessage = text }
     }
 
     private func storeResultText(_ text: String) {
-        latestResultText = text
+        state.withLock { $0.latestResultText = text }
     }
 
     func finalOutputSnapshot(fallback: String?) -> String {
         _ = flushAssistantDelta()
-        let candidates = [
-            latestResultText,
-            latestAssistantMessage,
-            assistantDeltaTranscript,
-            fallback ?? ""
-        ]
+        let candidates = state.withLock { state in
+            [
+                state.latestResultText,
+                state.latestAssistantMessage,
+                state.assistantDeltaTranscript,
+                fallback ?? ""
+            ]
+        }
         return candidates
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty }) ?? ""
