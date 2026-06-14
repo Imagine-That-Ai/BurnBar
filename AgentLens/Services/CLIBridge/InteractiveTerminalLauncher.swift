@@ -166,52 +166,63 @@ enum InteractiveTerminalLauncher {
             uniqueKeysWithValues: existingTerminalWindows.map { ($0.windowID, $0.title ?? "") }
         )
 
-        let launched = try await Task.detached(priority: .userInitiated) { () -> (pidFilePath: String, sessionDirectory: String) in
-            let fileManager = FileManager.default
-            let rootURL = fileManager.temporaryDirectory
-                .appendingPathComponent("OpenBurnBarInteractiveCLI", isDirectory: true)
-            let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
-            try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
+        let launched = try await withThrowingTaskGroup(
+            of: (pidFilePath: String, sessionDirectory: String).self
+        ) { group in
+            // Off-main session prep in a structured child task; awaited
+            // before this `@MainActor` function continues (replaces a
+            // detached task).
+            group.addTask {
+                let fileManager = FileManager.default
+                let rootURL = fileManager.temporaryDirectory
+                    .appendingPathComponent("OpenBurnBarInteractiveCLI", isDirectory: true)
+                let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
+                try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
 
-            let scriptURL = sessionURL.appendingPathComponent("run.command")
-            let pidURL = sessionURL.appendingPathComponent("terminal.pid")
-            let command = ([executable] + invocation.arguments)
-                .map(Self.shellQuoted)
-                .joined(separator: " ")
+                let scriptURL = sessionURL.appendingPathComponent("run.command")
+                let pidURL = sessionURL.appendingPathComponent("terminal.pid")
+                let command = ([executable] + invocation.arguments)
+                    .map(Self.shellQuoted)
+                    .joined(separator: " ")
 
-            var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
-            scriptEnvironment.merge(invocation.extraEnvironment) { _, new in new }
-            let exportLines = scriptEnvironment
-                .filter { Self.isValidEnvironmentKey($0.key) }
-                .sorted { $0.key < $1.key }
-                .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
-                .joined(separator: "\n")
-            let cdLine = workingDirectory.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
+                var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
+                scriptEnvironment.merge(invocation.extraEnvironment) { _, new in new }
+                let exportLines = scriptEnvironment
+                    .filter { Self.isValidEnvironmentKey($0.key) }
+                    .sorted { $0.key < $1.key }
+                    .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
+                    .joined(separator: "\n")
+                let cdLine = workingDirectory.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
 
-            // Set a unique window title (best-effort secondary signal), record
-            // the shell PID, then `exec` so the CLI owns the same PID — killing
-            // it later terminates the TUI.
-            let script = """
-            #!/bin/zsh
-            printf '\\033]0;\(titleToken)\\007'
-            echo $$ > \(Self.shellQuoted(pidURL.path))
-            \(exportLines)
-            \(cdLine)
-            exec \(command)
-            """
-            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+                // Set a unique window title (best-effort secondary signal), record
+                // the shell PID, then `exec` so the CLI owns the same PID — killing
+                // it later terminates the TUI.
+                let script = """
+                #!/bin/zsh
+                printf '\\033]0;\(titleToken)\\007'
+                echo $$ > \(Self.shellQuoted(pidURL.path))
+                \(exportLines)
+                \(cdLine)
+                exec \(command)
+                """
+                try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+                try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
 
-            let opener = Process()
-            opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            opener.arguments = ["-a", "Terminal", scriptURL.path]
-            try opener.run()
-            opener.waitUntilExit()
-            guard opener.terminationStatus == 0 else {
-                throw Failure.terminalLaunchFailed
+                let opener = Process()
+                opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                opener.arguments = ["-a", "Terminal", scriptURL.path]
+                try opener.run()
+                opener.waitUntilExit()
+                guard opener.terminationStatus == 0 else {
+                    throw Failure.terminalLaunchFailed
+                }
+                return (pidURL.path, sessionURL.path)
             }
-            return (pidURL.path, sessionURL.path)
-        }.value
+            for try await result in group {
+                return result
+            }
+            throw CancellationError()
+        }
 
         // Bring Terminal frontmost so the captured window is active and (direct
         // build) injected keystrokes land in it.
@@ -309,10 +320,19 @@ enum InteractiveTerminalLauncher {
     static func terminate(_ session: LaunchedAgentTerminalSession) {
         let pidFilePath = session.pidFilePath
         let sessionDirectoryPath = session.sessionDirectoryPath
-        Task.detached(priority: .utility) {
-            killSessionTree(pidURL: URL(fileURLWithPath: pidFilePath))
-            try? FileManager.default.removeItem(atPath: sessionDirectoryPath)
+        // Fire-and-forget cleanup. `cleanupSession` is `nonisolated`, so awaiting
+        // it runs the blocking kill/remove off the main actor (SE-0338); a plain
+        // `Task` (not detached) inherits this call's priority and task-locals.
+        Task {
+            await cleanupSession(pidFilePath: pidFilePath, sessionDirectoryPath: sessionDirectoryPath)
         }
+    }
+
+    /// Off-main teardown for `terminate`: SIGTERMs the process tree and removes
+    /// the session directory. `nonisolated`, so it runs off the main actor.
+    private nonisolated static func cleanupSession(pidFilePath: String, sessionDirectoryPath: String) async {
+        killSessionTree(pidURL: URL(fileURLWithPath: pidFilePath))
+        try? FileManager.default.removeItem(atPath: sessionDirectoryPath)
     }
 
     // MARK: - Helpers
