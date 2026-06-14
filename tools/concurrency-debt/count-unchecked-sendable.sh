@@ -40,37 +40,59 @@ done
 # build-product trees that may exist under a scanned root.
 exclude_re='(^|/)(Tests?|Mocks?|Fixtures?|Preview Content|\.build|\.build-codex|\.swiftpm|DerivedData|\.derived-data|checkouts|build)/'
 
+# Dual-bucket accounting. Each real `@unchecked Sendable` conformance is either:
+#   * RATCHET   — a fixable escape hatch (mutable state, isolation gap). Enforced
+#                 toward zero; CI fails on any increase. This is the budget "total".
+#   * ALLOWLIST — a genuinely-irreducible exception (FFI handle, raw pointer,
+#                 Firebase/Foundation SDK type not yet Sendable-annotated), marked
+#                 with a `sendable-allowlist: <reason-id>` token in its AUDIT comment
+#                 (within 8 lines) or inline. Documented in docs/security/
+#                 UNCHECKED_SENDABLE_REMEDIATION.md, NOT counted against the budget.
+# Comment-only lines (e.g. `// AUDIT(@unchecked Sendable): …`) are never counted.
 count_root() {
   local root="$1"
   local abs="${repo_root}/${root}"
-  [[ -d "${abs}" ]] || { echo 0; return 0; }
+  [[ -d "${abs}" ]] || { echo "0 0"; return 0; }
   grep -rlE "@unchecked[[:space:]]+Sendable" "${abs}" --include="*.swift" 2>/dev/null \
     | sed "s#^${repo_root}/##" \
     | { grep -vE "${exclude_re}" || true; } \
     | while IFS= read -r rel; do
         [[ -n "${rel}" ]] || continue
-        # Count real conformance annotations only. Lines that merely *mention*
-        # `@unchecked Sendable` inside a comment (e.g. `// AUDIT(@unchecked
-        # Sendable): …` justifications, which the budget actively encourages) are
-        # documentation, not debt, so excluding comment lines keeps the count
-        # equal to the number of live escape hatches.
-        awk '/@unchecked[[:space:]]+Sendable/ && $0 !~ /^[[:space:]]*(\/\/|\/\*|\*)/ { count++ } END { print count + 0 }' "${repo_root}/${rel}"
+        awk '
+          { line[NR] = $0 }
+          /@unchecked[[:space:]]+Sendable/ && $0 !~ /^[[:space:]]*(\/\/|\/\*|\*)/ {
+            allow = ($0 ~ /sendable-allowlist:/) ? 1 : 0
+            for (i = NR - 1; i >= NR - 8 && i >= 1; i--) if (line[i] ~ /sendable-allowlist:/) allow = 1
+            if (allow) a++; else r++
+          }
+          END { print (r + 0), (a + 0) }
+        ' "${repo_root}/${rel}"
       done \
-    | awk '{ sum += $1 } END { print sum + 0 }'
+    | awk '{ r += $1; a += $2 } END { print (r + 0), (a + 0) }'
 }
 
-agent_lens="$(count_root "AgentLens")"
-core="$(count_root "OpenBurnBarCore/Sources")"
-daemon="$(count_root "OpenBurnBarDaemon/Sources")"
-mobile="$(count_root "OpenBurnBarMobile")"
+read -r agent_lens agent_lens_allow <<EOF
+$(count_root "AgentLens")
+EOF
+read -r core core_allow <<EOF
+$(count_root "OpenBurnBarCore/Sources")
+EOF
+read -r daemon daemon_allow <<EOF
+$(count_root "OpenBurnBarDaemon/Sources")
+EOF
+read -r mobile mobile_allow <<EOF
+$(count_root "OpenBurnBarMobile")
+EOF
 total=$(( agent_lens + core + daemon + mobile ))
+allowlist=$(( agent_lens_allow + core_allow + daemon_allow + mobile_allow ))
 
 if [[ "${format}" == "text" ]]; then
-  echo "unchecked_sendable total=${total} agent_lens=${agent_lens} core=${core} daemon=${daemon} mobile=${mobile}"
+  echo "unchecked_sendable ratchet=${total} allowlist=${allowlist} agent_lens=${agent_lens} core=${core} daemon=${daemon} mobile=${mobile}"
 else
   cat <<EOF
 {
   "total": ${total},
+  "allowlist": ${allowlist},
   "agentLens": ${agent_lens},
   "core": ${core},
   "daemon": ${daemon},

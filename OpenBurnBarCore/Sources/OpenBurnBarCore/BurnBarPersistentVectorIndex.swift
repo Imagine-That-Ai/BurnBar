@@ -254,6 +254,7 @@ public struct BurnBarMappedPersistentVectorIndexBackend: BurnBarPersistentVector
 
 // AUDIT(@unchecked Sendable): Mutable `count` is write-only during single-threaded
 // index building; the resulting object is never shared until building completes.
+// sendable-allowlist: single-threaded-vector-builder
 private final class BurnBarMappedWritableIndex: @unchecked Sendable, BurnBarPersistentVectorIndexWritableIndex {
     private let dimensions: Int
     private let metric: BurnBarEmbeddingDistanceMetric
