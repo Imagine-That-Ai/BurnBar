@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import type { CallableRequest } from "firebase-functions/v2/https";
 
 const { enforceHighRiskComputerUseCallableWithNonce, requireTrustedDeviceActionProof } = vi.hoisted(() => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(),
@@ -16,13 +15,14 @@ vi.mock("../callables/computerUseSecurity.js", () => ({
 
 import { enforceHighRiskOwnerAction } from "../callables/highRiskOwnerAction.js";
 
-function request(data: Record<string, unknown>): CallableRequest {
+function request(data: Record<string, unknown>) {
   return {
     auth: { uid: "u1", token: {} },
-    app: { appId: "app-1" },
+    app: { appId: "app-1", token: {} },
     rawRequest: { headers: {} },
+    acceptsStreaming: false,
     data,
-  } as unknown as CallableRequest;
+  };
 }
 
 describe("enforceHighRiskOwnerAction", () => {

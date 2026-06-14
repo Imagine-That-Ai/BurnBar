@@ -6,10 +6,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-const state = vi.hoisted(() => ({
-  Timestamp: null as unknown as typeof import("firebase-admin/firestore").Timestamp,
-  storedReplies: [] as Array<{ id: string; data: Record<string, unknown> }>,
-}));
+const state = vi.hoisted(
+  (): {
+    Timestamp: typeof import("firebase-admin/firestore").Timestamp | undefined;
+    storedReplies: Array<{ id: string; data: Record<string, unknown> }>;
+  } => ({
+    Timestamp: undefined,
+    storedReplies: [],
+  }),
+);
 
 const fakeEventData = () => ({
   id: "evt-1",
@@ -22,9 +27,9 @@ const fakeEventData = () => ({
   providerLabel: "Codex",
   title: "Codex replied",
   preview: "OpenBurnBar has a new agent reply.",
-  createdAt: state.Timestamp.fromMillis(1_700_000_000_000),
+  createdAt: timestamp().fromMillis(1_700_000_000_000),
   createdAtMillis: 1_700_000_000_000,
-  updatedAt: state.Timestamp.fromMillis(1_700_000_000_000),
+  updatedAt: timestamp().fromMillis(1_700_000_000_000),
   updatedAtMillis: 1_700_000_000_000,
   status: "pending",
   fanoutAttemptCount: 0,
@@ -83,7 +88,25 @@ vi.mock("../logging.js", () => ({
 
 import { submitAgentNotificationReply } from "../callables/agentNotifications.js";
 
-type Runnable = { run: (request: unknown) => Promise<unknown> };
+function timestamp(): typeof import("firebase-admin/firestore").Timestamp {
+  if (!state.Timestamp) {
+    throw new Error("firebase-admin Timestamp mock not initialized");
+  }
+  return state.Timestamp;
+}
+
+function callableRunner(candidate: unknown): (request: unknown) => Promise<unknown> {
+  if (typeof candidate !== "object" || candidate === null || !("run" in candidate)) {
+    throw new Error("callable test target is missing run()");
+  }
+  const { run } = candidate;
+  if (typeof run !== "function") {
+    throw new Error("callable test target run property is not callable");
+  }
+  return async (request: unknown) => run.call(candidate, request);
+}
+
+const runSubmitAgentNotificationReply = callableRunner(submitAgentNotificationReply);
 
 function authedRequest(data: Record<string, unknown>) {
   return {
@@ -117,7 +140,7 @@ describe("submitAgentNotificationReply — F-RR10-027 schema version", () => {
   });
 
   it("writes sealedSchemaVersion 2 for a v2 sealed payload", async () => {
-    await (submitAgentNotificationReply as unknown as Runnable).run(
+    await runSubmitAgentNotificationReply(
       authedRequest({
         eventId: "evt-1",
         vaultKeyID: "vk-1",
@@ -136,7 +159,7 @@ describe("submitAgentNotificationReply — F-RR10-027 schema version", () => {
 
   it("rejects a v1 sealed payload", async () => {
     await expect(
-      (submitAgentNotificationReply as unknown as Runnable).run(
+      runSubmitAgentNotificationReply(
         authedRequest({
           eventId: "evt-1",
           vaultKeyID: "vk-1",
@@ -150,7 +173,7 @@ describe("submitAgentNotificationReply — F-RR10-027 schema version", () => {
 
   it("rejects a sealed payload without schemaVersion", async () => {
     await expect(
-      (submitAgentNotificationReply as unknown as Runnable).run(
+      runSubmitAgentNotificationReply(
         authedRequest({
           eventId: "evt-1",
           vaultKeyID: "vk-1",

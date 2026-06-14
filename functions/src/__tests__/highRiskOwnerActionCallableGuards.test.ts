@@ -23,17 +23,33 @@ const EXPECTED_GUARDS: Array<{
   file: string;
   actionKind: string;
 }> = [
-  { exportedName: "approveHermesGatewayDeviceGrant", file: "hermesGateway.ts", actionKind: "hermes_gateway_device_grant_approve" },
+  {
+    exportedName: "approveHermesGatewayDeviceGrant",
+    file: "hermesGateway.ts",
+    actionKind: "hermes_gateway_device_grant_approve",
+  },
   { exportedName: "connectProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_connect" },
   { exportedName: "connectProviderCredential", file: "providerAccounts.ts", actionKind: "provider_credential_connect" },
-  { exportedName: "connectHostedQuotaAccount", file: "providerAccounts.ts", actionKind: "hosted_quota_account_connect" },
+  {
+    exportedName: "connectHostedQuotaAccount",
+    file: "providerAccounts.ts",
+    actionKind: "hosted_quota_account_connect",
+  },
   { exportedName: "exportUserData", file: "dataExport.ts", actionKind: "data_export" },
   { exportedName: "deleteUserCloudData", file: "providerAccounts.ts", actionKind: "user_cloud_data_delete" },
   { exportedName: "revokeAllAccess", file: "panic.ts", actionKind: "revoke_all_access" },
-  { exportedName: "connectSelfHostedQuotaAccount", file: "providerAccounts.ts", actionKind: "self_hosted_quota_account_connect" },
+  {
+    exportedName: "connectSelfHostedQuotaAccount",
+    file: "providerAccounts.ts",
+    actionKind: "self_hosted_quota_account_connect",
+  },
   { exportedName: "updateProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_update" },
   { exportedName: "revokeRemoteMcpClient", file: "remoteMcp.ts", actionKind: "remote_mcp_grant_revoke" },
-  { exportedName: "deleteHostedQuotaCredentials", file: "providerAccounts.ts", actionKind: "hosted_quota_credential_delete" },
+  {
+    exportedName: "deleteHostedQuotaCredentials",
+    file: "providerAccounts.ts",
+    actionKind: "hosted_quota_credential_delete",
+  },
   { exportedName: "deleteProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_delete" },
   { exportedName: "completeHermesPairing", file: "hermes.ts", actionKind: "hermes_pairing_complete" },
   { exportedName: "completePiAgentPairing", file: "piAgent.ts", actionKind: "pi_agent_pairing_complete" },

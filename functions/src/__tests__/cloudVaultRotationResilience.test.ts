@@ -328,7 +328,8 @@ describe("sweepStalePendingCloudVaultRotations — stale detection + nudge", () 
     expect(outbound).toHaveLength(2);
     for (const [, doc] of outbound) {
       expect(doc.status).toBe("pending");
-      const payload = doc.payload && typeof doc.payload === "object" ? Object.fromEntries(Object.entries(doc.payload)) : {};
+      const payload =
+        doc.payload && typeof doc.payload === "object" ? Object.fromEntries(Object.entries(doc.payload)) : {};
       expect(payload.type).toBe("cloud_vault_rotation_required");
       expect(doc.fcmToken === "tok-mac" || doc.fcmToken === "tok-phone").toBe(true);
     }

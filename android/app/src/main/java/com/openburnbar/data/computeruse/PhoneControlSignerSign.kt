@@ -134,21 +134,6 @@ object PhoneControlSignerSign {
         identity = identity,
     )
 
-    fun signApprovalResponse(
-        response: HermesRealtimeRelayApprovalResponse,
-        peerNodeId: String,
-        counter: Long,
-        timestampMillis: Long,
-        identity: PhoneControlSigningIdentity,
-    ): PhoneControlAuthorityEnvelope =
-        signPayload(
-            payloadHash = PhoneControlSignerCanonical.approvalResponseHashHex(response),
-            peerNodeId = peerNodeId,
-            counter = counter,
-            timestampMillis = timestampMillis,
-            identity = identity,
-        )
-
     fun signRemoteUnlockSession(
         session: HermesRealtimeRelayRemoteUnlockSession,
         peerNodeId: String,

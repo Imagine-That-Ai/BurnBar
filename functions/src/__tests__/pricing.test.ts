@@ -19,11 +19,7 @@ import { resolve } from "node:path";
 
 import { LEGACY_KIMI_WIRE_MODEL, LEGACY_KIMI_WIRE_PRICING } from "../pricing.js";
 
-const CATALOG_PATH = resolve(
-  __dirname,
-  "../../..",
-  "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json",
-);
+const CATALOG_PATH = resolve(__dirname, "../../..", "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json");
 
 type Matcher = { all: string[]; any: string[]; none: string[] };
 type CatalogModel = {

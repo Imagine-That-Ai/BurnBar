@@ -15,14 +15,13 @@ import OpenBurnBarComputerUseCore
 
 // MARK: - Distribution / build gate
 
-/// Distribution-build gate for the most dangerous CLI flags.
+/// Distribution-build gate for spawned-CLI full-autonomy bypasses.
 ///
-/// The `--dangerously-skip-permissions` (Claude/antigravity/cursor) and
-/// `--dangerously-bypass-approvals-and-sandbox` (Codex) flags hand a spawned CLI
-/// full local autonomy. They must NEVER be emitted by default in any build: a
-/// single obeyed prompt injection then runs unbounded. We gate them behind a
-/// fresh local-auth proof so a user can still opt in deliberately, but the
-/// default is fail-closed.
+/// Shipping code must never emit vendor bypass arguments that disable permission
+/// or sandbox enforcement. Keep this policy surface injectable so older call
+/// sites and tests have one fail-closed decision point, but return `false` even
+/// with local-auth proof: privileged actions now go through OpenBurnBar's own
+/// approval-gated tool broker instead of a vendor-process escape hatch.
 public enum AgentDistributionGate {
     /// `true` when this is a shipped distribution build (App Store / notarized
     /// release). Kept as an injectable input for tests and future policy
@@ -36,18 +35,15 @@ public enum AgentDistributionGate {
         #endif
     }
 
-    /// Whether a YOLO/dangerous-autonomy CLI flag may be emitted right now.
-    ///
-    /// - Allowed ONLY when the caller has a fresh local-auth proof (Touch ID /
-    ///   device-owner auth) AND the grant genuinely carries the trusted YOLO
-    ///   mode. Absent the proof we fail closed and the CLI runs in its
-    ///   sandboxed/approval mode instead.
+    /// Whether a spawned CLI may receive a vendor full-autonomy bypass argument.
+    /// This is intentionally fail-closed in every build and trust mode.
     public static func allowsDangerousAutonomyFlag(
         isDistributionBuild: Bool = AgentDistributionGate.isDistributionBuild,
         hasFreshLocalAuthProof: Bool
     ) -> Bool {
         _ = isDistributionBuild
-        return hasFreshLocalAuthProof
+        _ = hasFreshLocalAuthProof
+        return false
     }
 }
 

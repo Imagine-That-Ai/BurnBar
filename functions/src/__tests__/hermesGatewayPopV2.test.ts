@@ -29,12 +29,20 @@ vi.mock("../callables/shared.js", async () => {
 });
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { delete: () => ({ __delete: true }) },
-  Timestamp: { now: () => ({ __ts: true, toMillis: () => Date.now() }), fromMillis: (ms: number) => ({ __ts: true, toMillis: () => ms }) },
+  Timestamp: {
+    now: () => ({ __ts: true, toMillis: () => Date.now() }),
+    fromMillis: (ms: number) => ({ __ts: true, toMillis: () => ms }),
+  },
 }));
 
 const stored = new Map<string, Record<string, unknown>>();
 function snapFor(path: string) {
-  return { id: path.split("/").pop(), exists: stored.has(path), data: () => stored.get(path), get: (f: string) => stored.get(path)?.[f] };
+  return {
+    id: path.split("/").pop(),
+    exists: stored.has(path),
+    data: () => stored.get(path),
+    get: (f: string) => stored.get(path)?.[f],
+  };
 }
 function docRef(path: string) {
   return {
@@ -65,7 +73,8 @@ const dbMock = {
   runTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
     const tx = {
       get: async (ref: { __path: string }) => snapFor(ref.__path),
-      set: (ref: { __path: string }, data: Record<string, unknown>) => void stored.set(ref.__path, { ...stored.get(ref.__path), ...data }),
+      set: (ref: { __path: string }, data: Record<string, unknown>) =>
+        void stored.set(ref.__path, { ...stored.get(ref.__path), ...data }),
       create: (ref: { __path: string }, data: Record<string, unknown>) => {
         if (stored.has(ref.__path)) throw new Error(`Document already exists: ${ref.__path}`);
         stored.set(ref.__path, { ...data });
@@ -83,7 +92,9 @@ const CLIENT_ID = "hgw_popv2_client";
 const TOKEN = "obb_hgw_test_token_popv2";
 const TOKEN_HASH = hashHermesGatewayBearerToken(TOKEN);
 const { publicKey: PUB, privateKey: PRIV } = generateKeyPairSync("ed25519");
-const PUB_B64 = Buffer.from(PUB.export({ format: "der", type: "spki" })).subarray(-32).toString("base64");
+const PUB_B64 = Buffer.from(PUB.export({ format: "der", type: "spki" }))
+  .subarray(-32)
+  .toString("base64");
 const KEY_ID = createHash("sha256").update(PUB_B64).digest("hex").slice(0, 32);
 let nonceCounter = 0;
 
@@ -92,7 +103,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function stableJSONString(value: unknown): string {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return JSON.stringify(value);
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableJSONString).join(",")}]`;
   if (!isRecord(value)) return "{}";
   return `{${Object.entries(value)
@@ -138,7 +150,15 @@ function popHeaders(opts: {
           nonce,
           timestamp,
         ]
-      : ["OpenBurnBar.HermesGatewayPoP.v1", TOKEN_HASH, opts.method.toUpperCase(), opts.path, bodyHash, nonce, timestamp];
+      : [
+          "OpenBurnBar.HermesGatewayPoP.v1",
+          TOKEN_HASH,
+          opts.method.toUpperCase(),
+          opts.path,
+          bodyHash,
+          nonce,
+          timestamp,
+        ];
   const payload = Buffer.from(lines.join("\n"), "utf8");
   const headers: Record<string, string> = {
     "x-openburnbar-pop-nonce": nonce,
@@ -327,7 +347,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     const fixedNonce = "popv2-future-nonce-00000001";
     const fakeNow = 1700000000000;
     const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(fakeNow);
-    
+
     const futureTime = new Date(fakeNow + 4 * 60 * 1000);
     const popHeadersFuture = (opts: {
       version: 2;
@@ -372,7 +392,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     };
 
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
-    const dispatch = dispatchHermesGatewayRequest as unknown as (req: unknown, res: unknown) => Promise<void>;
+    const dispatch: Function = dispatchHermesGatewayRequest;
     const { res, captured } = makeRes();
     const req = {
       method: "GET",

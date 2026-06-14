@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import pathlib
 import re
-import sys
 
 text = pathlib.Path("security/threat-model/security-claims.md").read_text(encoding="utf-8")
 paths = set()

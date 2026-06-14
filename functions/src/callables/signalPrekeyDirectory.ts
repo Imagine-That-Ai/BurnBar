@@ -149,12 +149,7 @@ function assertNoForbiddenFields(raw: Record<string, unknown>, fieldName: string
 }
 
 /** Convert a client epoch-ms expiry into a future-bounded Timestamp. */
-function parseFutureExpiry(
-  raw: unknown,
-  fieldName: string,
-  nowMs: number,
-  required: boolean,
-): Timestamp | undefined {
+function parseFutureExpiry(raw: unknown, fieldName: string, nowMs: number, required: boolean): Timestamp | undefined {
   if (raw === undefined || raw === null) {
     if (required) throw new HttpsError("invalid-argument", `${fieldName} is required.`);
     return undefined;
@@ -607,7 +602,10 @@ export const claimSignalPrekeyBundle = onCall(
           })),
         );
         if (!kyberPick) {
-          throw new HttpsError("resource-exhausted", "No unexpired Kyber prekeys are available; publish more before claiming.");
+          throw new HttpsError(
+            "resource-exhausted",
+            "No unexpired Kyber prekeys are available; publish more before claiming.",
+          );
         }
         const oneTimePick = selectPrekeyToClaim(
           oneTimeSnap.docs.map((d) => ({

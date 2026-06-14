@@ -11,6 +11,7 @@ import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProof
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofPayload
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofSigner
+import com.openburnbar.data.cloud.CloudVaultCrypto
 import kotlinx.coroutines.tasks.await
 
 data class RelaySenderKeyPublishRequest(
@@ -319,6 +320,7 @@ class ComputerUseSecurityCallableClient(
             identity = identity,
             firestore = firestore,
         )
+        val identityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(identity.publicKeyData)
         val issuedAtMillis = System.currentTimeMillis()
         val proofPayload =
             CloudVaultTrustedDeviceActionProofPayload(
@@ -330,13 +332,13 @@ class ComputerUseSecurityCallableClient(
                 nonce = nonce,
                 issuedAtMillis = issuedAtMillis,
                 deviceSignalIdentityKeyId = identity.identityKeyId,
-                deviceSignalIdentityPublicKeyFingerprint = identity.publicKeyFingerprint,
+                deviceSignalIdentityPublicKeyFingerprint = identityPublicKeyFingerprint,
             )
         val signature = CloudVaultTrustedDeviceActionProofSigner.sign(proofPayload, identity)
         val actionProof =
             CloudVaultTrustedDeviceActionProof(
                 deviceSignalIdentityKeyId = identity.identityKeyId,
-                deviceSignalIdentityPublicKeyFingerprint = identity.publicKeyFingerprint,
+                deviceSignalIdentityPublicKeyFingerprint = identityPublicKeyFingerprint,
                 issuedAtMillis = issuedAtMillis,
                 signature = signature,
             ).asMap()

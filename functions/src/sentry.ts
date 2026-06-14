@@ -120,9 +120,7 @@ function sanitizeSentryExtra(extra: NonNullable<ErrorEvent["extra"]>): ErrorEven
   return isRecord(sanitized) ? sanitized : extra;
 }
 
-function sanitizeSentryContexts(
-  contexts: NonNullable<ErrorEvent["contexts"]>,
-): ErrorEvent["contexts"] {
+function sanitizeSentryContexts(contexts: NonNullable<ErrorEvent["contexts"]>): ErrorEvent["contexts"] {
   for (const key of Object.keys(contexts)) {
     if (SENSITIVE_KEY_PATTERN.test(key) || REQUEST_BODY_KEY_PATTERN.test(key)) {
       delete contexts[key];
@@ -173,7 +171,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function redactURLSecrets(value: string): string {
   return value.replace(
     /([?&](?:token|key|secret|password|code|credential|access_token|refresh_token|id_token|api_key))=[^&#]+/gi,
-    `$1=${REDACTED}`
+    `$1=${REDACTED}`,
   );
 }
 

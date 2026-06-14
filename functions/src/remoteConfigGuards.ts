@@ -5,4 +5,3 @@ export function remoteConfigStringValue(defaultValue: unknown): string | undefin
   if (!isRecord(defaultValue)) return undefined;
   return stringValue(defaultValue.value);
 }
-

@@ -130,7 +130,10 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
   it("commit stores the row at the opaque docID with no plaintext slug/name", async () => {
     const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
 
-    const res = await invokeCallable<{ ok: boolean; docID: string }>(commitEncryptedProjectMemorySnapshot, commitRequest());
+    const res = await invokeCallable<{ ok: boolean; docID: string }>(
+      commitEncryptedProjectMemorySnapshot,
+      commitRequest(),
+    );
     expect(res.ok).toBe(true);
     expect(res.docID).toBe(DOC_ID);
 
@@ -165,12 +168,15 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
     const mod = await import("../callables/encryptedSearch.js");
     await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
 
-    const res = await invokeCallable<{ snapshot: Record<string, unknown> | null }>(mod.getEncryptedProjectMemorySnapshot, {
-      auth: { uid: "userA", token: {} },
-      app: { appId: "test-app" },
-      rawRequest: { headers: {} },
-      data: { docID: DOC_ID },
-    });
+    const res = await invokeCallable<{ snapshot: Record<string, unknown> | null }>(
+      mod.getEncryptedProjectMemorySnapshot,
+      {
+        auth: { uid: "userA", token: {} },
+        app: { appId: "test-app" },
+        rawRequest: { headers: {} },
+        data: { docID: DOC_ID },
+      },
+    );
 
     expect(res.snapshot).not.toBeNull();
     expect(res.snapshot?.docID).toBe(DOC_ID);
@@ -183,12 +189,15 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
     const mod = await import("../callables/encryptedSearch.js");
     await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
 
-    const res = await invokeCallable<{ snapshots: Array<Record<string, unknown>> }>(mod.listEncryptedProjectMemorySnapshots, {
-      auth: { uid: "userA", token: {} },
-      app: { appId: "test-app" },
-      rawRequest: { headers: {} },
-      data: { limit: 10 },
-    });
+    const res = await invokeCallable<{ snapshots: Array<Record<string, unknown>> }>(
+      mod.listEncryptedProjectMemorySnapshots,
+      {
+        auth: { uid: "userA", token: {} },
+        app: { appId: "test-app" },
+        rawRequest: { headers: {} },
+        data: { limit: 10 },
+      },
+    );
 
     expect(res.snapshots.length).toBe(1);
     const entry = res.snapshots[0];

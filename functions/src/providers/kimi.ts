@@ -306,5 +306,3 @@ function stringFromAny(raw: unknown): string | undefined {
   const value = raw.trim();
   return value.length > 0 ? value : undefined;
 }
-
-

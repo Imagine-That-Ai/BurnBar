@@ -9,29 +9,29 @@ import XCTest
 /// content tagging), T-TOOL-10 (default-deny read allow-list).
 final class AgentSecurityPolicyTests: XCTestCase {
 
-    // MARK: - T-TOOL-02(a): local-auth gate for dangerous-autonomy flags
+    // MARK: - T-TOOL-02(a): spawned CLI bypass flags are never emitted
 
-    func test_dangerousFlagGate_requiresFreshLocalAuthInEveryBuild() {
+    func test_dangerousFlagGate_neverAllowsVendorBypassFlags() {
         XCTAssertFalse(
             AgentDistributionGate.allowsDangerousAutonomyFlag(
                 isDistributionBuild: false,
                 hasFreshLocalAuthProof: false
             ),
-            "developer/debug builds must not get an unauthenticated YOLO flag bypass"
+            "developer/debug builds must not get a vendor bypass flag"
         )
         XCTAssertFalse(
             AgentDistributionGate.allowsDangerousAutonomyFlag(
                 isDistributionBuild: true,
                 hasFreshLocalAuthProof: false
             ),
-            "distribution build must fail closed without a fresh local-auth proof"
+            "distribution builds must fail closed"
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             AgentDistributionGate.allowsDangerousAutonomyFlag(
                 isDistributionBuild: true,
                 hasFreshLocalAuthProof: true
             ),
-            "fresh local-auth proof is the only condition that allows dangerous flags"
+            "fresh local-auth proof gates OpenBurnBar broker actions, not vendor process bypasses"
         )
     }
 

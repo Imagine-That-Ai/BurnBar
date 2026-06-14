@@ -6,7 +6,7 @@ import { boundedTrimmedString } from "./shared.js";
 
 const HIGH_RISK_OWNER_ACTION_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 
-export type HighRiskOwnerActionKind =
+type HighRiskOwnerActionKind =
   | "data_export"
   | "revoke_all_access"
   | "provider_account_connect"
@@ -32,7 +32,7 @@ export async function enforceHighRiskOwnerAction(
     approve?: boolean;
   },
 ): Promise<void> {
-  const data = (request.data ?? {}) as Record<string, unknown>;
+  const data = recordFromUnknown(request.data);
   const nonce = boundedTrimmedString(data.nonce, "nonce", 256, true);
   const { nonceConsumed } = await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
   if (!nonceConsumed) {
@@ -55,4 +55,15 @@ export async function enforceHighRiskOwnerAction(
     proofRaw: data.actionProof,
     allowedPlatforms: HIGH_RISK_OWNER_ACTION_PLATFORMS,
   });
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+  const record: Record<string, unknown> = {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return record;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    record[key] = entry;
+  }
+  return record;
 }

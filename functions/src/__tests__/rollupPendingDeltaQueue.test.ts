@@ -62,12 +62,7 @@ describe("buildPendingCounterDelta", () => {
     expect(buildPendingCounterDelta("doc-1", undefined, undefined, T0)).toBeUndefined();
     // An event with no resolvable date contributes nothing.
     expect(
-      buildPendingCounterDelta(
-        "doc-1",
-        undefined,
-        { provider: "codex", schemaVersion: 1, recordedAt: "" },
-        T0,
-      ),
+      buildPendingCounterDelta("doc-1", undefined, { provider: "codex", schemaVersion: 1, recordedAt: "" }, T0),
     ).toBeUndefined();
   });
 

@@ -811,8 +811,6 @@ export function requireProductionGatewayRelayEnvelope(raw: unknown, fieldName: s
   return envelope;
 }
 
-
-
 /**
  * Non-throwing shape check used by read-side serializers (serializeHermesGateway-
  * Event) to pass through a stored envelope verbatim without rejecting the whole

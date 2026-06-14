@@ -311,9 +311,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
           semanticHashes,
         })) {
           const postingRef = postingsRef.doc(edge.edgeID);
-          writes.push((batch) =>
-            batch.set(postingRef, stripUndefinedObject(edge.data), { merge: true }),
-          );
+          writes.push((batch) => batch.set(postingRef, stripUndefinedObject(edge.data), { merge: true }));
           writePaths.add(postingRef.path);
           writeCount += 1;
         }

@@ -71,7 +71,9 @@ export const registerDevicePushEndpoint = onCall(
         "voipDeviceToken",
       );
       const agentNotificationsEnabled =
-        typeof request.data.agentNotificationsEnabled === "boolean" ? request.data.agentNotificationsEnabled : undefined;
+        typeof request.data.agentNotificationsEnabled === "boolean"
+          ? request.data.agentNotificationsEnabled
+          : undefined;
 
       if (!fcmToken && !apnsToken && !voipDeviceToken && agentNotificationsEnabled === undefined) {
         throw new HttpsError("invalid-argument", "At least one push endpoint field is required.");

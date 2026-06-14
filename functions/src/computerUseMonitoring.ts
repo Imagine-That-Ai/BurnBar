@@ -20,6 +20,10 @@ import { forEachInPages } from "./rollupPagination.js";
 import type { ComputerUseSessionDailyRollupDoc } from "./types.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
+const MAX_ROLLUP_SESSIONS_PER_USER_PER_DAY = 4;
+const MAX_ROLLUP_ACTIONS_PER_USER_PER_DAY = 200;
+const MAX_ROLLUP_VISION_SPEND_USD_PER_USER_PER_DAY = 5;
+
 function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -29,6 +33,44 @@ function percentile(sortedAscending: number[], p: number): number {
   const rank = Math.min(sortedAscending.length - 1, Math.floor(p * sortedAscending.length));
   return sortedAscending[rank];
 }
+
+export function uidFromComputerUseCollectionPath(path: string, collectionId: string): string | null {
+  const parts = path.split("/");
+  if (parts.length === 4 && parts[0] === "users" && parts[2] === collectionId && parts[1] && parts[3]) {
+    return parts[1];
+  }
+  return null;
+}
+
+function shouldIncludeUserScopedRollupDoc(
+  path: string,
+  collectionId: string,
+  seenByUser: Map<string, number>,
+  perUserLimit: number,
+): string | null {
+  const userId = uidFromComputerUseCollectionPath(path, collectionId);
+  if (!userId) return null;
+  const seen = seenByUser.get(userId) ?? 0;
+  if (seen >= perUserLimit) return null;
+  seenByUser.set(userId, seen + 1);
+  return userId;
+}
+
+export function boundedVisionSpendContribution(currentUserTotal: number, rawCost: number | undefined): number {
+  if (typeof rawCost !== "number" || !Number.isFinite(rawCost) || rawCost <= 0) return 0;
+  const remaining = Math.max(0, MAX_ROLLUP_VISION_SPEND_USD_PER_USER_PER_DAY - currentUserTotal);
+  return Math.min(rawCost, remaining);
+}
+
+export const __testing__ = {
+  boundedVisionSpendContribution,
+  uidFromComputerUseCollectionPath,
+  limits: {
+    maxRollupActionsPerUserPerDay: MAX_ROLLUP_ACTIONS_PER_USER_PER_DAY,
+    maxRollupSessionsPerUserPerDay: MAX_ROLLUP_SESSIONS_PER_USER_PER_DAY,
+    maxRollupVisionSpendUSDPerUserPerDay: MAX_ROLLUP_VISION_SPEND_USD_PER_USER_PER_DAY,
+  },
+};
 
 export const rollupComputerUseDaily = onSchedule(
   {
@@ -57,7 +99,15 @@ export const rollupComputerUseDaily = onSchedule(
 
     // Stream both day-ranges in bounded pages so a high-volume day cannot OOM the rollup.
     const sessions: Array<{ endReason: string | undefined }> = [];
+    const sessionCountsByUser = new Map<string, number>();
     await forEachInPages(sessionQuery, "startedAt", (d) => {
+      const userId = shouldIncludeUserScopedRollupDoc(
+        d.ref.path,
+        "computer_use_sessions",
+        sessionCountsByUser,
+        MAX_ROLLUP_SESSIONS_PER_USER_PER_DAY,
+      );
+      if (!userId) return;
       const data = d.data();
       sessions.push({ endReason: stringField(data, "endReason") });
     });
@@ -69,13 +119,28 @@ export const rollupComputerUseDaily = onSchedule(
       toolKind: string;
       approvedBy: string | undefined;
     }> = [];
+    const actionCountsByUser = new Map<string, number>();
+    const visionSpendByUser = new Map<string, number>();
     await forEachInPages(actionQuery, "recordedAt", (d) => {
+      const userId = shouldIncludeUserScopedRollupDoc(
+        d.ref.path,
+        "computer_use_actions",
+        actionCountsByUser,
+        MAX_ROLLUP_ACTIONS_PER_USER_PER_DAY,
+      );
+      if (!userId) return;
       const data = d.data();
+      const currentVisionSpend = visionSpendByUser.get(userId) ?? 0;
+      const visionTokensCostUSD = boundedVisionSpendContribution(
+        currentVisionSpend,
+        numberField(data, "visionTokensCostUSD"),
+      );
+      visionSpendByUser.set(userId, currentVisionSpend + visionTokensCostUSD);
       actions.push({
         approvalLatencyMillis: numberField(data, "approvalLatencyMillis"),
         status: stringField(data, "status"),
         denyReason: stringField(data, "denyReason"),
-        visionTokensCostUSD: numberField(data, "visionTokensCostUSD"),
+        visionTokensCostUSD,
         toolKind: stringField(data, "toolKind") ?? "",
         approvedBy: stringField(data, "approvedBy"),
       });

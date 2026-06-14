@@ -6,7 +6,8 @@ import { endpointAuthorizationMatrix, endpointAuthorizationByName } from "../sec
 
 const REPO_ROOT = resolve(__dirname, "../../..");
 const GENERIC_NEGATIVE_BOLA_PATTERN = /endpoint-specific|required|matrix drift/i;
-const TEST_FILE_PATTERN = /(?:functions\/src\/__tests__|firestore-rules-tests)\/[A-Za-z0-9_.\/-]+\.(?:test\.)?(?:ts|js)/gu;
+const TEST_FILE_PATTERN =
+  /(?:functions\/src\/__tests__|firestore-rules-tests)\/[A-Za-z0-9_.\/-]+\.(?:test\.)?(?:ts|js)/gu;
 
 function exportedFunctionNames(): string[] {
   const indexSource = readFileSync(resolve(__dirname, "../index.ts"), "utf8");
@@ -15,7 +16,12 @@ function exportedFunctionNames(): string[] {
     for (const part of match[1].split(",")) {
       const raw = part.trim();
       if (!raw) continue;
-      names.push(raw.split(/\s+as\s+/u).pop()?.trim() ?? raw);
+      names.push(
+        raw
+          .split(/\s+as\s+/u)
+          .pop()
+          ?.trim() ?? raw,
+      );
     }
   }
   return names.sort((left, right) => left.localeCompare(right));
@@ -53,7 +59,9 @@ describe("endpoint authorization matrix", () => {
 
     expect(duplicateNames).toEqual([]);
     for (const entry of byName.values()) {
-      expect(entry.trigger, entry.exportedName).toMatch(/^(callable|http|scheduled|firestore-trigger|provider-webhook)$/u);
+      expect(entry.trigger, entry.exportedName).toMatch(
+        /^(callable|http|scheduled|firestore-trigger|provider-webhook)$/u,
+      );
       expect(entry.authMethod.trim(), entry.exportedName).not.toEqual("");
       expect(entry.appCheck, entry.exportedName).toMatch(/^(required|not-applicable|not-required)$/u);
       expect(entry.tenantSource.trim(), entry.exportedName).not.toEqual("");
@@ -76,7 +84,10 @@ describe("endpoint authorization matrix", () => {
       if (platformOnly || entry.objectIdsFromClient.length === 0) continue;
 
       const refs = referencedTestFiles(entry.negativeBolaTest);
-      expect(refs.length, `${entry.exportedName} must reference at least one executable BOLA test file`).toBeGreaterThan(0);
+      expect(
+        refs.length,
+        `${entry.exportedName} must reference at least one executable BOLA test file`,
+      ).toBeGreaterThan(0);
       for (const ref of refs) {
         expect(existsSync(resolve(REPO_ROOT, ref)), `${entry.exportedName} references missing test file ${ref}`).toBe(
           true,

@@ -3,13 +3,7 @@
  * @see resilience.ts
  */
 
-import {
-  externalApiPolicy,
-  firestorePolicy,
-  pushPolicy,
-  stripePolicy,
-  withResilience,
-} from "./resilience.js";
+import { externalApiPolicy, firestorePolicy, pushPolicy, stripePolicy, withResilience } from "./resilience.js";
 import { assertOutboundFetchTarget } from "./ssrfGuard.js";
 
 interface ResilientFetchOptions {

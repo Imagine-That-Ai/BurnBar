@@ -31,7 +31,9 @@ function signRemoteMcpAccessToken(
 ): { token: string; algorithm: "ed25519" | "hmac-sha256" } {
   const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
   if (ed25519PrivateKeyBase64PEM) {
-    const sig = signDetached(null, Buffer.from(body), privateKeyFromBase64PEM(ed25519PrivateKeyBase64PEM)).toString("base64url");
+    const sig = signDetached(null, Buffer.from(body), privateKeyFromBase64PEM(ed25519PrivateKeyBase64PEM)).toString(
+      "base64url",
+    );
     return { token: `ed25519.${body}.${sig}`, algorithm: "ed25519" };
   }
   if (!secret) {

@@ -79,9 +79,12 @@ function expectedToken(fullName: string): string {
   return createHmac("sha256", MATCH_KEY).update(fullName.trim().toLowerCase(), "utf8").digest("hex");
 }
 
-async function runTestCallable<TResponse>(run: (request: never) => Promise<TResponse>, request: unknown): Promise<TResponse> {
-    // @ts-expect-error reason: partial CallableRequest stub for knowledge repo match tests
-    return run(request);
+async function runTestCallable<TResponse>(
+  run: (request: never) => Promise<TResponse>,
+  request: unknown,
+): Promise<TResponse> {
+  // @ts-expect-error reason: partial CallableRequest stub for knowledge repo match tests
+  return run(request);
 }
 
 function expectRepoResponse(raw: unknown): RepoResponse {
@@ -108,12 +111,14 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   it("stores repoMatchToken + sealed name, never the cleartext repoFullName", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
 
-    const res = expectRepoResponse(await runTestCallable(connectKnowledgeRepo.run, {
-      auth: { uid: "userA", token: {} },
-      app: { appId: "test-app" },
-      rawRequest: { headers: {} },
-      data: { repoFullName: REPO, sealedRepoFullName: sealedName, sourceSlug: "repo-docs-secret" },
-    }));
+    const res = expectRepoResponse(
+      await runTestCallable(connectKnowledgeRepo.run, {
+        auth: { uid: "userA", token: {} },
+        app: { appId: "test-app" },
+        rawRequest: { headers: {} },
+        data: { repoFullName: REPO, sealedRepoFullName: sealedName, sourceSlug: "repo-docs-secret" },
+      }),
+    );
 
     expect(res.ok).toBe(true);
     const token = expectedToken(REPO);
@@ -150,18 +155,22 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   it("is case-insensitive: differently-cased full names map to the SAME token", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
 
-    const a = expectRepoResponse(await runTestCallable(connectKnowledgeRepo.run, {
-      auth: { uid: "userA", token: {} },
-      app: { appId: "x" },
-      rawRequest: { headers: {} },
-      data: { repoFullName: "Owner/Repo", sourceSlug: "s1" },
-    }));
-    const b = expectRepoResponse(await runTestCallable(connectKnowledgeRepo.run, {
-      auth: { uid: "userA", token: {} },
-      app: { appId: "x" },
-      rawRequest: { headers: {} },
-      data: { repoFullName: "owner/repo", sourceSlug: "s1" },
-    }));
+    const a = expectRepoResponse(
+      await runTestCallable(connectKnowledgeRepo.run, {
+        auth: { uid: "userA", token: {} },
+        app: { appId: "x" },
+        rawRequest: { headers: {} },
+        data: { repoFullName: "Owner/Repo", sourceSlug: "s1" },
+      }),
+    );
+    const b = expectRepoResponse(
+      await runTestCallable(connectKnowledgeRepo.run, {
+        auth: { uid: "userA", token: {} },
+        app: { appId: "x" },
+        rawRequest: { headers: {} },
+        data: { repoFullName: "owner/repo", sourceSlug: "s1" },
+      }),
+    );
 
     expect(a.repoId).toBe(b.repoId);
     expect(a.repoId).toBe(expectedToken("Owner/Repo"));
