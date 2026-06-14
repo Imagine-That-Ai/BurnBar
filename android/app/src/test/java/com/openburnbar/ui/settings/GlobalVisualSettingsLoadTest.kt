@@ -45,12 +45,20 @@ class GlobalVisualSettingsLoadTest {
         styleReads.set(0)
         prefs = mockk()
         every { prefs.getBoolean(any(), any()) } answers {
-            (backing[firstArg<String>()] ?: secondArg<Boolean>()) as? Boolean ?: false
+            when (val value = backing[firstArg<String>()]) {
+                null -> secondArg<Boolean>()
+                is Boolean -> value
+                else -> throw ClassCastException("Preference value is not a Boolean.")
+            }
         }
         every { prefs.getString(any(), any()) } answers {
             val key = firstArg<String>()
             if (key == "backgroundStyle") styleReads.incrementAndGet()
-            backing[key] as? String ?: secondArg<String?>()
+            when (val value = backing[key]) {
+                null -> secondArg<String?>()
+                is String -> value
+                else -> throw ClassCastException("Preference value is not a String.")
+            }
         }
         every { prefs.edit() } returns mockk(relaxed = true)
 
