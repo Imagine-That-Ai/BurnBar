@@ -590,7 +590,7 @@ final class MacFileTransferService: ObservableObject {
 /// and accepted video frames follow as `media.stream.frame` envelopes. When
 /// both peers negotiate v2, the base64 payload carries the v2 binary envelope;
 /// v1 remains the fallback for older viewers and non-video control surfaces.
-final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable {
+final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
     private static let maxInlineEncodedFrameBytes = 320 * 1024
     private static let maxEncodedFrameChunkBytes = 256 * 1024
@@ -619,7 +619,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
     /// lane (pre-F7 peers, or no negotiated media-seal session).
     private let frameSealKey: SymmetricKey?
     private let frameSealAEAD = MediaFrameAEAD()
-    private var heartbeatTask: Task<Void, Never>?
+    private let heartbeatTask = Locked<Task<Void, Never>?>(nil)
 
     init(
         stream: any IrohRelayStream,
@@ -737,8 +737,10 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
     }
 
     func close() async {
-        heartbeatTask?.cancel()
-        heartbeatTask = nil
+        heartbeatTask.withLock { task in
+            task?.cancel()
+            task = nil
+        }
     }
 
     private func sendEncodedFrame(
@@ -795,7 +797,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
 
     private func startHeartbeatLoop() {
         guard heartbeatInterval > 0 else { return }
-        heartbeatTask = Task { [sendGate, uid, connectionID, streamClass, heartbeatInterval, extraHeartbeatCapabilities] in
+        heartbeatTask.write(Task { [sendGate, uid, connectionID, streamClass, heartbeatInterval, extraHeartbeatCapabilities] in
             await Self.sendMirrorHealthHeartbeat(
                 sendGate: sendGate,
                 uid: uid,
@@ -815,7 +817,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
                     extraCapabilities: extraHeartbeatCapabilities
                 )
             }
-        }
+        })
     }
 
     private static func sendMirrorHealthHeartbeat(

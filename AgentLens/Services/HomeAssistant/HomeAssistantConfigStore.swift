@@ -16,7 +16,7 @@ protocol HomeAssistantConfigStoring: AnyObject, Sendable {
 }
 
 @MainActor
-final class HomeAssistantConfigStore: @preconcurrency HomeAssistantConfigStoring, @unchecked Sendable {
+final class HomeAssistantConfigStore: @preconcurrency HomeAssistantConfigStoring {
 
     private let settingsManager: SettingsManager
     private let key = "smartHubHomeAssistantConfigJSON"

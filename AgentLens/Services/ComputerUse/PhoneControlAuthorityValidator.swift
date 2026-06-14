@@ -24,7 +24,7 @@ import OpenBurnBarComputerUseCore
 /// Plus: the canonical-JSON re-hash of the intent matches the
 /// envelope's `intentHashBlake3` claim. This binds the signature to
 /// the exact intent bytes the receiver will execute.
-public final class PhoneControlAuthorityValidator: @unchecked Sendable {
+public final class PhoneControlAuthorityValidator: Sendable {
     public enum ValidationError: Error, Sendable, Equatable {
         case missingPeerPubKey
         case signatureFailed
@@ -74,15 +74,22 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     public let freshnessWindow: TimeInterval
     /// Maximum wall-clock lifetime for a signed authority envelope (WS2 TTL binding).
     public let authorityMaxLifetime: TimeInterval
-    private let queue = DispatchQueue(label: "com.openburnbar.phoneControl.validator")
-    private var lastSeenCounter: [String: UInt64] = [:]
-    private var consumedLocalAuthProofIds: Set<String> = []
-    /// F2: registered peers carry a key-kind-aware verifying key (legacy
-    /// Ed25519 or Secure-Enclave P-256) so one validator accepts both custody
-    /// classes during the migration.
-    private var peerPublicKeys: [String: PhoneControlVerifyingKey] = [:]
-    private var revokedPeerNodeIds: Set<String> = []
-    private var revokedEscrowDeviceIds: Set<String> = []
+
+    /// All mutable validator state, guarded by `stateBox`. Every field is
+    /// `Sendable` (`PhoneControlVerifyingKey` conforms), so the box is a genuine
+    /// `Locked<State>` and the validator drops its `@unchecked` escape hatch.
+    private struct State {
+        var lastSeenCounter: [String: UInt64] = [:]
+        var consumedLocalAuthProofIds: Set<String> = []
+        /// F2: registered peers carry a key-kind-aware verifying key (legacy
+        /// Ed25519 or Secure-Enclave P-256) so one validator accepts both custody
+        /// classes during the migration.
+        var peerPublicKeys: [String: PhoneControlVerifyingKey] = [:]
+        var revokedPeerNodeIds: Set<String> = []
+        var revokedEscrowDeviceIds: Set<String> = []
+    }
+
+    private let stateBox = Locked(State())
 
     /// F1 keystone: the Mac-Keychain pin that makes this device the authoritative
     /// root of trust for which controller key may drive it. `nil` disables pin
@@ -123,24 +130,26 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         self.pinEnforcement = pinEnforcement
         self.replayCounterStore = replayCounterStore
         self.consumedProofStore = consumedProofStore
+        var initialState = State()
         // L9: restore still-valid consumed proof IDs so "single-use" survives a
         // restart within the proof's validity window (expired IDs are pruned).
-        self.consumedLocalAuthProofIds = consumedProofStore.loadActiveProofIds()
+        initialState.consumedLocalAuthProofIds = consumedProofStore.loadActiveProofIds()
         // SECURITY (F6): fail closed when the persisted counter file exists but is
         // unreadable. `.absent` is a legitimate first run (empty baseline is safe);
         // `.unreadable` means corruption/tampering, so we must NOT trust a zeroed
         // baseline — every validate path is gated on `replayStoreHealthy` below.
         switch replayCounterStore.loadOutcome() {
         case .loaded(let restored):
-            self.lastSeenCounter = restored
+            initialState.lastSeenCounter = restored
             self.replayStoreHealthy = true
         case .absent:
-            self.lastSeenCounter = [:]
+            initialState.lastSeenCounter = [:]
             self.replayStoreHealthy = true
         case .unreadable:
-            self.lastSeenCounter = [:]
+            initialState.lastSeenCounter = [:]
             self.replayStoreHealthy = false
         }
+        self.stateBox.write(initialState)
     }
 
     /// Register the verified Ed25519 public key for a paired peer.
@@ -196,7 +205,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         verifyingKey: PhoneControlVerifyingKey,
         uid: String? = nil
     ) -> RegistrationResult {
-        if queue.sync(execute: { revokedPeerNodeIds.contains(nodeId) }) {
+        if stateBox.withLock({ $0.revokedPeerNodeIds.contains(nodeId) }) {
             return .refused(.revokedPeer(peerNodeId: nodeId))
         }
         if let controllerPinStore, let uid {
@@ -224,11 +233,11 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
                 }
             }
         }
-        return queue.sync {
-            if revokedPeerNodeIds.contains(nodeId) {
+        return stateBox.withLock { state in
+            if state.revokedPeerNodeIds.contains(nodeId) {
                 return .refused(.revokedPeer(peerNodeId: nodeId))
             }
-            peerPublicKeys[nodeId] = verifyingKey
+            state.peerPublicKeys[nodeId] = verifyingKey
             return .admitted
         }
     }
@@ -254,20 +263,20 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     }
 
     public func hasPeer(nodeId: String) -> Bool {
-        queue.sync { peerPublicKeys[nodeId] != nil }
+        stateBox.withLock { $0.peerPublicKeys[nodeId] != nil }
     }
 
     public func isPeerRevoked(nodeId: String) -> Bool {
-        queue.sync { revokedPeerNodeIds.contains(nodeId) }
+        stateBox.withLock { $0.revokedPeerNodeIds.contains(nodeId) }
     }
 
     public func isEscrowDeviceRevoked(deviceId: String) -> Bool {
-        queue.sync { revokedEscrowDeviceIds.contains(deviceId) }
+        stateBox.withLock { $0.revokedEscrowDeviceIds.contains(deviceId) }
     }
 
     public func deregisterPeer(nodeId: String) {
-        queue.sync {
-            peerPublicKeys.removeValue(forKey: nodeId)
+        stateBox.withLock {
+            $0.peerPublicKeys.removeValue(forKey: nodeId)
         }
     }
 
@@ -276,28 +285,28 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     /// controller's authority is re-established per session via a fresh
     /// `controlClassify` registration instead of riding a stale admission.
     public func deregisterAllPeers() {
-        queue.sync {
-            peerPublicKeys.removeAll()
+        stateBox.withLock {
+            $0.peerPublicKeys.removeAll()
         }
     }
 
     public func revokePeer(nodeId: String) {
-        queue.sync {
-            revokedPeerNodeIds.insert(nodeId)
-            peerPublicKeys.removeValue(forKey: nodeId)
+        stateBox.withLock {
+            $0.revokedPeerNodeIds.insert(nodeId)
+            $0.peerPublicKeys.removeValue(forKey: nodeId)
         }
     }
 
     public func revokeEscrowDevice(deviceId: String) {
-        queue.sync {
-            _ = revokedEscrowDeviceIds.insert(deviceId)
+        stateBox.withLock {
+            _ = $0.revokedEscrowDeviceIds.insert(deviceId)
         }
     }
 
     public func clearRevocations() {
-        queue.sync {
-            revokedPeerNodeIds.removeAll()
-            revokedEscrowDeviceIds.removeAll()
+        stateBox.withLock {
+            $0.revokedPeerNodeIds.removeAll()
+            $0.revokedEscrowDeviceIds.removeAll()
         }
     }
 
@@ -312,7 +321,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         guard replayStoreHealthy else {
             throw ValidationError.replayStoreUnavailable
         }
-        if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
+        if stateBox.withLock({ $0.revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
             throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
         }
         let skew = abs(now.timeIntervalSince(envelope.timestamp))
@@ -344,11 +353,14 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     private func publicKeyForActivePeer(
         _ envelope: HermesRealtimeRelayAuthorityEnvelope
     ) throws -> PhoneControlVerifyingKey {
-        if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
-            throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
-        }
-        guard let pubKey = queue.sync(execute: { peerPublicKeys[envelope.peerNodeId] }) else {
-            throw ValidationError.missingPeerPubKey
+        let pubKey = try stateBox.withLock { state -> PhoneControlVerifyingKey in
+            if state.revokedPeerNodeIds.contains(envelope.peerNodeId) {
+                throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
+            }
+            guard let pubKey = state.peerPublicKeys[envelope.peerNodeId] else {
+                throw ValidationError.missingPeerPubKey
+            }
+            return pubKey
         }
         return pubKey
     }
@@ -404,7 +416,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         try validateAuthorityEnvelope(envelope, now: now, attestation: attestationRequirement)
 
         // 2. Counter replay protection.
-        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
@@ -441,11 +453,11 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         let attestationRequirement = attestation
             ?? Self.attestationRequirement(fromLegacy: requiredAttestationHashBlake3)
         try validateAuthorityEnvelope(envelope, now: now, attestation: attestationRequirement)
-        if queue.sync(execute: { revokedEscrowDeviceIds.contains(grantRequest.sourceDeviceId) }) {
+        if stateBox.withLock({ $0.revokedEscrowDeviceIds.contains(grantRequest.sourceDeviceId) }) {
             throw ValidationError.escrowDeviceRevoked(deviceId: grantRequest.sourceDeviceId)
         }
 
-        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
@@ -537,7 +549,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         guard publicKey.isValidSignature(signature, for: payload) else {
             throw ValidationError.localAuthProofInvalid(reason: "bad_signature")
         }
-        let replay = queue.sync { !consumedLocalAuthProofIds.insert(proof.proofId).inserted }
+        let replay = stateBox.withLock { !$0.consumedLocalAuthProofIds.insert(proof.proofId).inserted }
         guard !replay else {
             throw ValidationError.localAuthProofReplay(proofId: proof.proofId)
         }
@@ -564,7 +576,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             )
         }
 
-        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
@@ -594,7 +606,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
         try validateAuthorityEnvelope(envelope, now: now)
 
-        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
@@ -624,7 +636,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
         try validateAuthorityEnvelope(envelope, now: now)
 
-        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
@@ -656,7 +668,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
         try validateAuthorityEnvelope(envelope, now: now, attestation: attestation ?? .none)
 
-        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
@@ -689,7 +701,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
         try validateAuthorityEnvelope(envelope, now: now, attestation: attestation ?? .none)
 
-        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        let lastSeen = stateBox.withLock { $0.lastSeenCounter[envelope.peerNodeId] ?? 0 }
         guard envelope.counter > lastSeen else {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
@@ -711,9 +723,9 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     }
 
     private func commitReplayCounter(peerNodeId: String, counter: UInt64) throws {
-        let snapshot = queue.sync {
-            lastSeenCounter[peerNodeId] = counter
-            return lastSeenCounter
+        let snapshot = stateBox.withLock { state -> [String: UInt64] in
+            state.lastSeenCounter[peerNodeId] = counter
+            return state.lastSeenCounter
         }
         do {
             try replayCounterStore.persist(snapshot)
