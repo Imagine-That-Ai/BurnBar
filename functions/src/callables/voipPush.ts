@@ -8,7 +8,15 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
-import { macHasActiveMediaEntitlement, parseTriggerRequest, resolveFanOut } from "../voipPush.js";
+import {
+  VOIP_OUTBOUND_TTL_MS,
+  buildFcmCallPayload,
+  buildVoipApnsPayload,
+  ephemeralCallCorrelationId,
+  macHasActiveMediaEntitlement,
+  parseTriggerRequest,
+  resolveFanOut,
+} from "../voipPush.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export const triggerVoIPCall = onCall(
@@ -36,51 +44,43 @@ export const triggerVoIPCall = onCall(
       firestore,
     });
 
-    const sharedFields = {
-      callId: data.callId,
-      connectionId: data.connectionId,
-      pairedDeviceId: data.pairedDeviceId,
-      displayName: data.displayName,
-      isVideo: data.isVideo,
-    };
+    // T-PRV-01 / T-PRV-07: the push payload that leaves our trust boundary
+    // (APNs / FCM, both readable by a cross-service push processor) carries NO
+    // cleartext caller displayName and NO stable correlators (connection_id /
+    // paired_device_id). The client resolves the real caller + connection from
+    // its own sealed session state keyed on `callId`. A fresh, per-push
+    // `correlationId` lets the device dedupe duplicate fan-outs without exposing
+    // a stable identifier that links the device across sessions.
+    const correlationId = ephemeralCallCorrelationId();
+    const now = Timestamp.now();
+    // T-PRV-02: stamp a TTL so undelivered push documents self-expire from
+    // Firestore (matched by a ttl:true index on `expireAt`).
+    const expireAt = Timestamp.fromMillis(now.toMillis() + VOIP_OUTBOUND_TTL_MS);
 
     const writes: Array<Promise<unknown>> = [];
 
     if (fanOut.apnsToken) {
-      const apnsPayload = {
-        aps: {
-          "content-available": 1,
-        },
-        ...sharedFields,
-      };
       writes.push(
         firestore.collection("voip_outbound").add({
           uid: request.auth.uid,
-          payload: apnsPayload,
+          payload: buildVoipApnsPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
           voipDeviceToken: fanOut.apnsToken,
-          createdAt: Timestamp.now(),
+          createdAt: now,
+          expireAt,
           status: "pending",
         }),
       );
     }
 
     if (fanOut.fcmToken) {
-      const fcmPayload: Record<string, string> = {
-        type: "media_incoming_call",
-        connection_id: sharedFields.connectionId,
-        caller_name: sharedFields.displayName,
-        caller_initial: (sharedFields.displayName ?? "M").slice(0, 1).toUpperCase(),
-        feature: sharedFields.isVideo ? "videoCall" : "voiceCall",
-        call_id: sharedFields.callId,
-        paired_device_id: sharedFields.pairedDeviceId,
-      };
       writes.push(
         firestore.collection("fcm_outbound").add({
           uid: request.auth.uid,
-          payload: fcmPayload,
+          payload: buildFcmCallPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
           fcmToken: fanOut.fcmToken,
           androidDeviceId: fanOut.androidDeviceId ?? null,
-          createdAt: Timestamp.now(),
+          createdAt: now,
+          expireAt,
           status: "pending",
         }),
       );

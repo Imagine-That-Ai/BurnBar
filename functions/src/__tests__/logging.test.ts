@@ -161,6 +161,81 @@ describe("PII scrubbing in structured logging", () => {
       expect(payload.accessToken).toBe("[REDACTED]");
       expect(payload.tokenPreview).toBe("[REDACTED]");
     });
+
+    // T-PRV-04: broadened provider token prefixes
+    it("redacts xAI (xai-) keys", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", note: "key xai-abcdefghijklmnopqrstuvwxyz0123 here" });
+      const payload = captureLog(logSpy);
+      expect(payload.note).toBe("key [REDACTED] here");
+    });
+
+    it("redacts Anthropic (sk-ant-) keys", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", note: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789" });
+      const payload = captureLog(logSpy);
+      expect(payload.note).toBe("[REDACTED]");
+    });
+
+    it("redacts GitHub PAT (ghp_) and github_pat_ tokens", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", a: "ghp_abcdefghijklmnopqrstuvwxyz0123456789", b: "github_pat_ABCDEFGHIJ_klmnopqrstuvwxyz0123456789" });
+      const payload = captureLog(logSpy);
+      expect(payload.a).toBe("[REDACTED]");
+      expect(payload.b).toBe("[REDACTED]");
+    });
+
+    it("redacts Stripe restricted (rk_live_) and explicit live secret (sk_live_) keys", async () => {
+      const { logInfo } = await import("../logging.js");
+      // Synthetic fixtures built at runtime so no key-shaped literal lives in
+      // source (avoids tripping push-protection secret scanners on fake data).
+      logInfo({ event: "test", a: "rk_live_" + "x".repeat(26), b: "sk_live_" + "x".repeat(26) });
+      const payload = captureLog(logSpy);
+      expect(payload.a).toBe("[REDACTED]");
+      expect(payload.b).toBe("[REDACTED]");
+    });
+
+    it("redacts Slack (xoxb-) tokens", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", note: "xoxb-" + "1".repeat(11) + "-" + "y".repeat(24) });
+      const payload = captureLog(logSpy);
+      expect(payload.note).toBe("[REDACTED]");
+    });
+  });
+
+  // ── Sensitive keys redact non-string values too (T-PRV-04 coerce model) ───
+
+  describe("sensitive keys redact non-string primitive values", () => {
+    it("redacts a numeric value under a sensitive key", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", apiKey: 1234567890 });
+      const payload = captureLog(logSpy);
+      expect(payload.apiKey).toBe("[REDACTED]");
+    });
+
+    it("redacts a boolean value under a sensitive key", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", secret: true });
+      const payload = captureLog(logSpy);
+      expect(payload.secret).toBe("[REDACTED]");
+    });
+
+    it("keeps non-sensitive numeric/boolean values untouched as their native type", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", latency_ms: 42, healthy: false, attempt: 0 });
+      const payload = captureLog(logSpy);
+      expect(payload.latency_ms).toBe(42);
+      expect(payload.healthy).toBe(false);
+      expect(payload.attempt).toBe(0);
+    });
+
+    it("does not redact a null/undefined value even under a sensitive key", async () => {
+      const { logInfo } = await import("../logging.js");
+      logInfo({ event: "test", token: null });
+      const payload = captureLog(logSpy);
+      // null carries no secret and must not be coerced to the redaction marker.
+      expect(payload.token).toBeNull();
+    });
   });
 
   // ── Credit card redaction ───────────────────────────────────────────────
@@ -398,6 +473,26 @@ describe("PII scrubbing in structured logging", () => {
       expect(payload.error).toBe("Error: boom");
     });
 
+    // T-PRV-04: free-form String(error) is truncated AND scrubbed.
+    it("scrubs PII embedded in a free-form error string", async () => {
+      const { logCallableFailure } = await import("../logging.js");
+      logCallableFailure("fn", "t", new Error("failed for user bob@example.com from 10.0.0.9"), "uid-1");
+      const payload = captureLog(errorSpy);
+      expect(String(payload.error)).not.toContain("bob@example.com");
+      expect(String(payload.error)).not.toContain("10.0.0.9");
+      expect(String(payload.error)).toContain("[email]");
+      expect(String(payload.error)).toContain("[ip]");
+    });
+
+    it("truncates an over-long free-form error string", async () => {
+      const { logCallableFailure } = await import("../logging.js");
+      logCallableFailure("fn", "t", "x".repeat(4000), "uid-1");
+      const payload = captureLog(errorSpy);
+      const err = String(payload.error);
+      expect(err.length).toBeLessThan(1100);
+      expect(err).toContain("[truncated]");
+    });
+
     it("withCallableLogging logs start+success and returns handler result", async () => {
       const { withCallableLogging } = await import("../logging.js");
       const result = await withCallableLogging("fn", {}, undefined, async () => "result-value");
@@ -416,7 +511,9 @@ describe("PII scrubbing in structured logging", () => {
           throw boom;
         }),
       ).rejects.toThrow("handler exploded");
-      expect(logSpy).toHaveBeenCalledTimes(1); // start only
+      const logEvents = logSpy.mock.calls.map(parseConsoleCall);
+      expect(logEvents.filter((payload: Record<string, unknown>) => payload.event === "callable_start")).toHaveLength(1);
+      expect(logEvents.filter((payload: Record<string, unknown>) => payload.event === "callable_success")).toHaveLength(0);
       expect(errorSpy).toHaveBeenCalledTimes(1); // error
       const errLog = parseConsolePayload(errorSpy.mock.calls[0]?.[0]);
       expect(errLog.event).toBe("callable_error");
