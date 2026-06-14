@@ -36,8 +36,8 @@ cd "$repo_root"
 # open-vuln working notes) before it ships. Complements the secret scans below —
 # this catches content that is sensitive but is not a credential.
 if command -v node >/dev/null 2>&1; then
-  echo "Running confidentiality guard over the tracked tree..."
-  node "$repo_root/scripts/security/scan-internal-content.mjs"
+  echo "Running confidentiality guard over the publishable tree..."
+  node "$repo_root/scripts/security/scan-internal-content.mjs" --publishable
   echo "Running known vulnerable dependency floor guard over lockfiles..."
   node "$repo_root/scripts/security/check-known-vulnerability-floors.mjs"
 else

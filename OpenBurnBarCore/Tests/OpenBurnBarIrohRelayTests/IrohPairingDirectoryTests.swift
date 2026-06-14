@@ -71,6 +71,34 @@ final class IrohPairingDirectoryTests: XCTestCase {
         }, expected: IrohPairingDirectoryError.recordNotFound)
     }
 
+    func testFetchAndVerifyRejectsInWindowReplay() async throws {
+        let directory = InMemoryIrohPairingDirectory()
+        let publisher = IrohPairingPublisher(directory: directory)
+        let macKeypair = IrohPairingKeypair()
+        let now = Date(timeIntervalSince1970: 1_715_000_000)
+        _ = try await publisher.publish(
+            uid: "u-4",
+            connectionId: "c-4",
+            nodeId: "node-replay",
+            publishedAt: now,
+            with: macKeypair
+        )
+        _ = try await publisher.fetchAndVerify(
+            uid: "u-4",
+            connectionId: "c-4",
+            publicKey: macKeypair.publicKeyRaw,
+            now: now.addingTimeInterval(30)
+        )
+        await XCTAssertThrowsErrorAsync({
+            _ = try await publisher.fetchAndVerify(
+                uid: "u-4",
+                connectionId: "c-4",
+                publicKey: macKeypair.publicKeyRaw,
+                now: now.addingTimeInterval(60)
+            )
+        }, expected: IrohPairingError.replayed)
+    }
+
     func testRevokeRemovesRecord() async throws {
         let directory = InMemoryIrohPairingDirectory()
         let publisher = IrohPairingPublisher(directory: directory)

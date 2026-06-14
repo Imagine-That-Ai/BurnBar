@@ -9,6 +9,7 @@ import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { errorCode, isRecord } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
+import { AGENT_NOTIFICATION_EVENT_TTL_MS } from "../agentNotifications.js";
 import type { AgentNotificationReplyCommand, AgentReplyNotificationEvent } from "../agentNotifications.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
@@ -53,7 +54,7 @@ export const submitAgentNotificationReply = onCall(
       runtime: event.runtime,
       sourceKind: event.sourceKind,
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID,
       sealedReplyPayload,
       deviceId,
@@ -121,6 +122,11 @@ function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | und
     createdAtMillis: numberValue(raw.createdAtMillis) ?? 0,
     updatedAt: raw.updatedAt,
     updatedAtMillis: numberValue(raw.updatedAtMillis) ?? 0,
+    // Lenient for legacy docs written before the TTL field existed (F-RR09-007).
+    expireAt:
+      raw.expireAt instanceof Timestamp
+        ? raw.expireAt
+        : Timestamp.fromMillis((numberValue(raw.createdAtMillis) ?? 0) + AGENT_NOTIFICATION_EVENT_TTL_MS),
     status: raw.status,
     fanoutAttemptCount: raw.fanoutAttemptCount,
     replyEnabled: raw.replyEnabled,
@@ -163,14 +169,14 @@ function parseSealedPayload(raw: unknown): AgentNotificationReplyCommand["sealed
   if (
     typeof schemaVersion !== "number" ||
     typeof keyVersion !== "number" ||
-    ![1, 2].includes(schemaVersion) ||
+    schemaVersion !== 2 ||
     algorithm !== "AES-256-GCM" ||
     keyVersion !== 1 ||
     !vaultKeyID ||
     !sealedBoxBase64 ||
     sealedBoxBase64.length > 32_000
   ) {
-    throw new HttpsError("invalid-argument", "sealedReplyPayload is invalid.");
+    throw new HttpsError("invalid-argument", "sealedReplyPayload is invalid. sealed schema version 2 is required.");
   }
   return {
     schemaVersion,

@@ -2,6 +2,10 @@
 // Run: node --test scripts/security/__tests__/scan-internal-content.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   classify,
   scan,
@@ -9,6 +13,7 @@ import {
   matchPathRule,
   shouldContentScan,
   hasSelfDeclaredMarker,
+  publishableFiles,
 } from "../scan-internal-content.mjs";
 
 const noContent = () => null;
@@ -45,9 +50,15 @@ test("blocks open-vuln working notes and remediation/audit docs", () => {
     "docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md",
     "docs/SOTA_REMEDIATION_PLAN.md",
     "docs/security/DETECTION_MATRIX.md",
+    "docs/security/HERMES_GATEWAY_SECURITY_SCAN_2026-06-14.md",
+    "docs/security/SCAN_RUN-05_LOCAL_DAEMON_GATEWAY_HID.md",
+    "docs/security/OPENBURNBAR_REPO_THREAT_MODEL_2026-06-14.md",
+    "docs/security/SECURITY_AUDIT_RELEASE_HANDOFF_2026-06-14.md",
     "OpenBurnBar SOTA Remediation Plan.md",
     "plans/2026-06-01-sota-10-10-security-remediation.md",
     "docs/plans/HOSTED_REMOTE_MCP_WAVE8_AUDIT_REPORT.md",
+    "security-audit/merged/FINAL_REPORT.md",
+    "security-audit/model-runs/run-01/02_candidate_findings.jsonl",
   ]) {
     const v = classify(p, noContent);
     assert.ok(v, `${p} should be flagged`);
@@ -169,4 +180,26 @@ test("scan() aggregates blocking vs warnings (severity field is honored)", () =>
   assert.equal(res.warnings.length, 0);
   // The warn code path still exists for future rules even though none are warn now.
   assert.ok(Array.isArray(res.warnings));
+});
+
+test("publishableFiles includes untracked files and excludes ignored internal workspaces", () => {
+  const root = mkdtempSync(join(tmpdir(), "obb-publishable-files-"));
+  execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "audit@example.invalid"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "Audit"], { cwd: root });
+
+  writeFileSync(join(root, ".gitignore"), "security-audit/\n.agent/runs/\n");
+  writeFileSync(join(root, "README.md"), "# fixture\n");
+  execFileSync("git", ["add", ".gitignore", "README.md"], { cwd: root });
+  execFileSync("git", ["commit", "-m", "fixture"], { cwd: root, stdio: "ignore" });
+
+  mkdirSync(join(root, "docs/security"), { recursive: true });
+  writeFileSync(join(root, "docs/security/HERMES_GATEWAY_SECURITY_SCAN_2026-06-14.md"), "audit\n");
+  mkdirSync(join(root, "security-audit/merged"), { recursive: true });
+  writeFileSync(join(root, "security-audit/merged/FINAL_REPORT.md"), "local\n");
+
+  const files = publishableFiles(root);
+  assert.ok(files.includes("README.md"));
+  assert.ok(files.includes("docs/security/HERMES_GATEWAY_SECURITY_SCAN_2026-06-14.md"));
+  assert.equal(files.includes("security-audit/merged/FINAL_REPORT.md"), false);
 });

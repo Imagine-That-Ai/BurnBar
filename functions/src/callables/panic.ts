@@ -28,6 +28,7 @@ import { boundedTrimmedString } from "./shared.js";
 import { revokeAllSignalSessions } from "../signalDirectoryRuntime.js";
 import { revokeAllRemoteMcpGrantsForUser } from "../remoteMcpGrant.js";
 import { providerAccountSecretRefPath } from "../quota.js";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import { destroyCredential } from "../secrets.js";
 import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -163,6 +164,10 @@ export const revokeAllAccess = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     const scope = (boundedTrimmedString(request.data?.scope, "scope", 16, false) ?? "sync") as PanicScope;
+    await enforceHighRiskOwnerAction(request, uid, {
+      actionKind: "revoke_all_access",
+      subjectId: scope,
+    });
     if (scope !== "sync" && scope !== "all") {
       throw new HttpsError("invalid-argument", "scope must be sync or all.");
     }

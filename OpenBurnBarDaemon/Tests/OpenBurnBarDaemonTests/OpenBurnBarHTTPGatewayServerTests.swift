@@ -88,20 +88,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         }
     }
 
-    func testGatewayConfigurationAcceptsLoopbackWithTokenOrExplicitOptIn() {
+    func testGatewayConfigurationAcceptsLoopbackWithTokenOrDebugExplicitOptIn() {
         // With a token, loopback is valid.
         XCTAssertNil(
             BurnBarGatewayConfiguration(isEnabled: true, host: "127.0.0.1", port: 8317, authToken: "gateway-secret").validationError
-        )
-        // With the explicit opt-in, an unauthenticated loopback bind is permitted.
-        XCTAssertNil(
-            BurnBarGatewayConfiguration(
-                isEnabled: true,
-                host: "127.0.0.1",
-                port: 8317,
-                authToken: nil,
-                allowUnauthenticatedLoopback: true
-            ).validationError
         )
         // The opt-in never relaxes a non-loopback bind: those still require a token.
         XCTAssertEqual(
@@ -118,6 +108,59 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertNil(
             BurnBarGatewayConfiguration(isEnabled: false, host: "127.0.0.1", port: 8317, authToken: nil).validationError
         )
+        #if DEBUG
+        // With the explicit opt-in, an unauthenticated loopback bind is permitted.
+        XCTAssertNil(
+            BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: 8317,
+                authToken: nil,
+                allowUnauthenticatedLoopback: true
+            ).validationError
+        )
+        #else
+        // In release builds the escape hatch is compile-gated out.
+        XCTAssertEqual(
+            BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: 8317,
+                authToken: nil,
+                allowUnauthenticatedLoopback: true
+            ).validationError,
+            "The gateway requires an auth token. Enable \"Allow unauthenticated loopback\" to bind 127.0.0.1 without one."
+        )
+        #endif
+    }
+
+    func testGatewayConfigurationFlagsNonLoopbackAsNetworkReachable() {
+        // Non-loopback addresses must always require a token, even with the
+        // debug opt-in set.
+        let networkHosts = ["192.168.0.10", "10.0.0.5", "172.16.0.1"]
+        for host in networkHosts {
+            XCTAssertEqual(
+                BurnBarGatewayConfiguration(
+                    isEnabled: true,
+                    host: host,
+                    port: 8317,
+                    authToken: nil,
+                    allowUnauthenticatedLoopback: true
+                ).validationError,
+                "A non-loopback gateway bind address requires an auth token for security."
+            )
+        }
+        // Loopback hosts should NOT be flagged as non-loopback.
+        for host in ["127.0.0.1", "localhost", "::1"] {
+            let config = BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: host,
+                port: 8317,
+                authToken: "token"
+            )
+            XCTAssertFalse(config.isLoopback == false && config.validationError != nil,
+                           "Loopback host \(host) should not be treated as non-loopback")
+        }
     }
 
     func testGatewayStartRefusesUnauthenticatedLoopbackBind() async throws {

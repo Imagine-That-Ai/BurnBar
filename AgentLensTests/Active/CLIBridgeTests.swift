@@ -206,7 +206,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(args.contains("acceptEdits"))
     }
 
-    func test_cliBridge_claudeArguments_yoloGrantUsesDangerousBypass() {
+    func test_cliBridge_claudeArguments_trustedGrantDoesNotUseDangerousBypass() {
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .claude,
             threadID: "thread-1",
@@ -218,8 +218,8 @@ final class CLIBridgeTests: XCTestCase {
 
         let args = CLIBridge.claudeArguments(prompt: "test", capabilityGrant: grant)
 
-        XCTAssertTrue(args.contains("--dangerously-skip-permissions"))
-        XCTAssertFalse(args.contains("acceptEdits"))
+        XCTAssertFalse(args.contains("--dangerously-skip-permissions"))
+        XCTAssertEqual(value(after: "--permission-mode", in: args), "acceptEdits")
     }
 
     // MARK: - Codex Arguments Tests
@@ -272,7 +272,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(args.last, "test")
     }
 
-    func test_cliBridge_codexArguments_yoloGrantBypassesSandbox() {
+    func test_cliBridge_codexArguments_trustedGrantKeepsWorkspaceSandbox() {
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .codex,
             threadID: "thread-1",
@@ -284,8 +284,8 @@ final class CLIBridgeTests: XCTestCase {
 
         let args = CLIBridge.codexArguments(prompt: "test", capabilityGrant: grant)
 
-        XCTAssertTrue(args.contains("--dangerously-bypass-approvals-and-sandbox"))
-        XCTAssertNil(value(after: "--sandbox", in: args))
+        XCTAssertFalse(args.contains("--dangerously-bypass-approvals-and-sandbox"))
+        XCTAssertEqual(value(after: "--sandbox", in: args), "workspace-write")
         XCTAssertEqual(args.last, "test")
     }
 
@@ -1618,7 +1618,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("redteam-owned.txt").path))
     }
 
-    func test_agentToolBroker_trustedGrant_bypassesApprover() async throws {
+    func test_agentToolBroker_trustedGrant_stillRequiresApprover() async throws {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
@@ -1628,7 +1628,7 @@ final class CLIBridgeTests: XCTestCase {
             runtimeID: .hermes, threadID: "thread-1", capabilities: [.shell],
             trustMode: .trusted, now: Date(), duration: 60
         )
-        // Approver would DENY if consulted; trusted (YOLO) must bypass it.
+        // Approver denies; trusted grants must not bypass the concrete action gate.
         let recorder = BrokerApprovalRecorder(decision: false)
         let broker = AgentToolBroker(
             grant: grant, workspaceURL: workspace,
@@ -1640,10 +1640,11 @@ final class CLIBridgeTests: XCTestCase {
             callID: "c", runID: "r"
         )
         let payload = try jsonPayload(from: result)
-        XCTAssertEqual(payload["ok"] as? Bool, true)
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertEqual(payload["reason"] as? String, "user declined this action")
         let count = await recorder.callCount
-        XCTAssertEqual(count, 0)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("out.txt").path))
+        XCTAssertEqual(count, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("out.txt").path))
     }
 
     // MARK: - A2: restricted shell sandbox profile

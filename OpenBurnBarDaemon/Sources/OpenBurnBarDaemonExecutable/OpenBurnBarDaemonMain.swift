@@ -64,15 +64,14 @@ struct OpenBurnBarDaemonExecutable {
 ///
 /// Enforcement of the first-party code-signature gate is ON by default — a
 /// production daemon refuses any accepted peer that does not satisfy the
-/// canonical designated requirement. Unsigned developer builds (where no binary
-/// can carry the first-party identity) opt out with
-/// `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1`, mirroring the fail-closed-by-default
-/// escape hatch the HTTP gateway uses for unauthenticated loopback binds. The
-/// opt-out is logged loudly so a misconfiguration is never silent.
+/// canonical designated requirement. Unsigned developer builds can opt out with
+/// `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1`; non-debug builds ignore that
+/// flag and stay enforced.
 private func makePeerAuthenticator(
     environment: [String: String],
     logger: BurnBarDaemonLogger
 ) -> BurnBarDaemonPeerAuthenticator {
+    #if DEBUG
     let disabled = environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
         || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
     if disabled {
@@ -82,6 +81,15 @@ private func makePeerAuthenticator(
         )
         return .disabled
     }
+    #else
+    if environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
+        || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1" {
+        logger.warning(
+            "rpc_peer_code_signature_disable_ignored",
+            metadata: ["reason": "release_build"]
+        )
+    }
+    #endif
     return BurnBarDaemonPeerAuthenticator(enforced: true, logger: logger)
 }
 
@@ -138,8 +146,12 @@ private enum BurnBarDaemonCommandLine {
             ?? "8317") ?? 8317
         var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]
             ?? environment["BURNBAR_GATEWAY_AUTH_TOKEN"]
+        #if DEBUG
         var gatewayAllowUnauthenticatedLoopback = environment["OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"] == "1"
             || environment["BURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"] == "1"
+        #else
+        let gatewayAllowUnauthenticatedLoopback = false
+        #endif
         var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
             ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
 
@@ -186,42 +198,19 @@ private enum BurnBarDaemonCommandLine {
                 }
                 gatewayAuthToken = arguments[index]
             case "--gateway-allow-unauthenticated-loopback":
+                #if DEBUG
                 gatewayAllowUnauthenticatedLoopback = true
+                #else
+                throw BurnBarDaemonCommandLineError.debugOnlyArgument(argument)
+                #endif
             case "--socket-auth-token":
                 index += 1
                 guard index < arguments.count else {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 socketAuthToken = arguments[index]
-            case "--help":
-                print(
-                    """
-                    Usage: OpenBurnBarDaemon [OPTIONS]
-
-                    Options:
-                      --socket-path PATH          Unix socket path for RPC
-                      --index-database-path PATH  SQLite database path for search
-                      --version VERSION            Daemon version string
-                      --gateway-enable             Enable the HTTP gateway
-                      --gateway-host HOST          Gateway bind host (default 127.0.0.1)
-                      --gateway-port PORT          Gateway port (default 8317)
-                      --gateway-auth-token TOKEN   Bearer token for gateway auth
-                      --gateway-allow-unauthenticated-loopback
-                                                   Opt out of gateway auth on a loopback bind (unsafe)
-                      --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
-
-                    Environment overrides:
-                      OPENBURNBAR_DAEMON_SOCKET_PATH
-                      OPENBURNBAR_DAEMON_VERSION
-                      OPENBURNBAR_INDEX_DATABASE_PATH
-                      OPENBURNBAR_GATEWAY_ENABLED=1
-                      OPENBURNBAR_GATEWAY_HOST
-                      OPENBURNBAR_GATEWAY_PORT
-                      OPENBURNBAR_GATEWAY_AUTH_TOKEN
-                      OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK=1
-                      OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN
-                    """
-                )
+            case "--help", "-h":
+                print(Self.helpText)
                 Darwin.exit(EXIT_SUCCESS)
             default:
                 throw BurnBarDaemonCommandLineError.unknownArgument(argument)
@@ -245,11 +234,52 @@ private enum BurnBarDaemonCommandLine {
             gateway: gateway
         )
     }
+
+    private static var helpText: String {
+        #if DEBUG
+        let debugOptions = """
+          --gateway-allow-unauthenticated-loopback
+                                       Opt out of gateway auth on a loopback bind (unsafe)
+        """
+        let debugEnvironment = """
+          OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK=1
+        """
+        #else
+        let debugOptions = ""
+        let debugEnvironment = ""
+        #endif
+        return """
+        Usage: OpenBurnBarDaemon [OPTIONS]
+
+        Options:
+          --socket-path PATH          Unix socket path for RPC
+          --index-database-path PATH  SQLite database path for search
+          --version VERSION            Daemon version string
+          --gateway-enable             Enable the HTTP gateway
+          --gateway-host HOST          Gateway bind host (default 127.0.0.1)
+          --gateway-port PORT          Gateway port (default 8317)
+          --gateway-auth-token TOKEN   Bearer token for gateway auth
+        \(debugOptions)
+          --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
+
+        Environment overrides:
+          OPENBURNBAR_DAEMON_SOCKET_PATH
+          OPENBURNBAR_DAEMON_VERSION
+          OPENBURNBAR_INDEX_DATABASE_PATH
+          OPENBURNBAR_GATEWAY_ENABLED=1
+          OPENBURNBAR_GATEWAY_HOST
+          OPENBURNBAR_GATEWAY_PORT
+          OPENBURNBAR_GATEWAY_AUTH_TOKEN
+        \(debugEnvironment)
+          OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN
+        """
+    }
 }
 
 private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
     case missingValue(String)
     case unknownArgument(String)
+    case debugOnlyArgument(String)
 
     var errorDescription: String? {
         switch self {
@@ -257,6 +287,8 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
             return "Missing value for command-line option \(argument)."
         case .unknownArgument(let argument):
             return "Unknown OpenBurnBarDaemon argument \(argument)."
+        case .debugOnlyArgument(let argument):
+            return "OpenBurnBarDaemon argument \(argument) is only available in debug builds."
         }
     }
 }

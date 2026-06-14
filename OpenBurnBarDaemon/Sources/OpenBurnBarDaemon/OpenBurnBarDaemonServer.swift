@@ -209,6 +209,12 @@ public actor BurnBarDaemonServer {
     public func start() async throws {
         try configuration.validate()
 
+        // Defense-in-depth: validate() guarantees socketAuthToken is non-nil, so
+        // this assert can only fire if that invariant is broken. Using assert
+        // (not precondition) because it documents a structurally-impossible
+        // state rather than a runtime error a release build should crash on.
+        assert(peerAuthenticator.isEnforced || configuration.socketAuthToken != nil)
+
         guard listenerFileDescriptor == nil else {
             logger.debug(
                 "bootstrap_start_skipped",

@@ -66,7 +66,11 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
             now: Date(),
             duration: 60
         )
-        let manualBroker = AgentToolBroker(grant: manualGrant, workspaceURL: workspace)
+        let manualBroker = AgentToolBroker(
+            grant: manualGrant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
         let denied = try jsonPayload(from: await manualBroker.invokeOpenAITool(
             name: "shell_run_unrestricted",
             arguments: #"{"command":"echo should-not-run"}"#,
@@ -82,7 +86,7 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
         )
     }
 
-    func test_unrestrictedShellDispatchesWithForensicAuditUnderYOLO() async throws {
+    func test_unrestrictedShellRequiresPerActionApprovalEvenUnderYOLO() async throws {
         let workspace = try makeWorkspace()
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .hermes,
@@ -93,6 +97,33 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
             duration: 60
         )
         let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+        let payload = try jsonPayload(from: await broker.invokeOpenAITool(
+            name: "shell_run_unrestricted",
+            arguments: #"{"command":"echo should-not-run > unrestricted.txt"}"#,
+            callID: "call-audit-no-approver",
+            runID: "run-audit"
+        ))
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertEqual(payload["status"] as? String, "denied")
+        XCTAssertEqual(payload["reason"] as? String, "privileged action requires approval but no approver is available")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("unrestricted.txt").path))
+    }
+
+    func test_unrestrictedShellDispatchesWithForensicAuditUnderYOLO() async throws {
+        let workspace = try makeWorkspace()
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-audit",
+            capabilities: [.shellUnrestricted],
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
         // The dispatch path constructs the F3 audit line (grant id, runtime,
         // command digest + length — never plaintext) before running the command.
         let payload = try jsonPayload(from: await broker.invokeOpenAITool(

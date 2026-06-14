@@ -539,6 +539,37 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
     private let environmentProvider: @Sendable () -> [String: String]
     private let statusWriter: @Sendable (String) -> Void
 
+    /// Daemon/gateway credential environment variables that must never leak
+    /// into CLI child processes.
+    static let childEnvironmentDeniedKeys: Set<String> = [
+        "OPENBURNBAR_DAEMON_SOCKET_PATH",
+        "BURNBAR_DAEMON_SOCKET_PATH",
+        "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN",
+        "BURNBAR_DAEMON_SOCKET_AUTH_TOKEN",
+        "OPENBURNBAR_GATEWAY_AUTH_TOKEN",
+        "BURNBAR_GATEWAY_AUTH_TOKEN",
+        "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK",
+        "BURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK",
+        "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG",
+        "BURNBAR_DAEMON_DISABLE_PEER_CODESIG",
+    ]
+
+    /// Prefixes for any future daemon-scoped env vars.
+    static let childEnvironmentDeniedKeyPrefixes: Set<String> = [
+        "OPENBURNBAR_DAEMON_",
+        "BURNBAR_DAEMON_",
+    ]
+
+    private func sanitizedChildEnvironment(_ environment: [String: String]) -> [String: String] {
+        environment.filter { key, _ in
+            if Self.childEnvironmentDeniedKeys.contains(key) { return false }
+            for prefix in Self.childEnvironmentDeniedKeyPrefixes {
+                if key.hasPrefix(prefix) { return false }
+            }
+            return true
+        }
+    }
+
     public init(
         profileStore: any BurnBarSwitcherProfileStoreProviding,
         credentialStore: any BurnBarSwitcherCredentialProviding = BurnBarSwitcherKeychainCredentialStore(),
@@ -671,7 +702,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         case .failure(let error):
             throw BurnBarSwitcherShellError.terminalSpawnFailed(error.localizedDescription)
         case .success(let configuration):
-            var environment = environmentProvider()
+            var environment = sanitizedChildEnvironment(environmentProvider())
             for (key, value) in configuration.env {
                 environment[key] = value
             }

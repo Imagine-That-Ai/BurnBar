@@ -85,6 +85,27 @@ jobs:
       - name: BurnBar product release preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 
+      - name: Security config gate — nonce replay defense must not be explicitly disabled
+        # F-RR04-002: requireHighRiskNonce defaults to true in production (looksProd).
+        # An operator who explicitly sets REQUIRE_HIGH_RISK_NONCE to anything other
+        # than "true" or unset in the production Actions environment accepts the
+        # consequence loudly at deploy time rather than silently at runtime.
+        # Also catches the empty-string bypass (REQUIRE_HIGH_RISK_NONCE="") that
+        # would have passed the old == "false" check but still disabled nonce defense
+        # pre-fix; belt-and-suspenders alongside the toBool empty-string fix in config.ts.
+        run: |
+          val="${REQUIRE_HIGH_RISK_NONCE:-}"
+          if [[ "$val" == "false" || ( -n "$val" && "$val" != "true" ) ]]; then
+            echo "::error::REQUIRE_HIGH_RISK_NONCE is set to '${val}' in the production environment."
+            echo "::error::Only 'true' or an unset secret is accepted. Any other value disables nonce replay defense."
+            echo "::error::Re-enable by removing the REQUIRE_HIGH_RISK_NONCE secret or setting it to 'true'."
+            echo "::error::See docs/security/BurnBar-threat-model.md TM-007 and F-RR04-002 fix-audit for context."
+            exit 1
+          fi
+          echo "Nonce replay defense: ok (REQUIRE_HIGH_RISK_NONCE=${REQUIRE_HIGH_RISK_NONCE:-<unset, defaults to true in production>})"
+        env:
+          REQUIRE_HIGH_RISK_NONCE: ${{ secrets.REQUIRE_HIGH_RISK_NONCE }}
+
       - name: Authenticate to Google Cloud (service account)
         if: steps.tag.outputs.dry_run != 'true' && env.HAS_GCP_SA_KEY == 'true'
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2

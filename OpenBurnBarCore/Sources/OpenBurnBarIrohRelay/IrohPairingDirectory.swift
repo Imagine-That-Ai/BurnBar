@@ -99,6 +99,7 @@ public struct IrohPairingPublisher: Sendable {
             throw IrohPairingDirectoryError.recordNotFound
         }
         try IrohPairingSignature.verify(record, publicKey: publicKey, now: now)
+        try await IrohPairingReplayGuardShared.session.consume(record: record, now: now)
         return record.dialTarget
     }
 }

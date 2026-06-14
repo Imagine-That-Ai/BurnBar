@@ -19,6 +19,7 @@ import {
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 
 export const issueRemoteMcpGrant = onCall(
   {
@@ -97,6 +98,10 @@ export const revokeRemoteMcpClient = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking OpenBurnBar MCP clients.");
     enforceAuthAndAppCheck(request, uid);
     const clientId = boundedTrimmedString(request.data.clientId, "clientId", 160, true);
+    await enforceHighRiskOwnerAction(request, uid, {
+      actionKind: "remote_mcp_grant_revoke",
+      subjectId: clientId,
+    });
     await revokeRemoteMcpClientDoc(db, uid, clientId);
     logInfo({ event: "callable_info", message: "remote_mcp_client_revoked", client_id: clientId });
     return { ok: true, clientId };

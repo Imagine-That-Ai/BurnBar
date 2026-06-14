@@ -1,0 +1,4019 @@
+diff --git a/AgentLens/Services/CloudSync/SessionLogSyncService.swift b/AgentLens/Services/CloudSync/SessionLogSyncService.swift
+index 1aae99af9..b271de9ce 100644
+--- a/AgentLens/Services/CloudSync/SessionLogSyncService.swift
++++ b/AgentLens/Services/CloudSync/SessionLogSyncService.swift
+@@ -1294,26 +1294,36 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
+             existingDevice = nil
+         }
+         let existingTrustState = existingDevice?["trustState"] as? String
++        let storedFingerprint = existingDevice?["publicKeyFingerprint"] as? String
++        let storedKeyVersion = existingDevice?["keyVersion"] as? Int
++        let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
++            && storedKeyVersion == keypair.keyVersion
++        let shouldPublishEscrowIdentity = existingDevice == nil || localIdentityMatchesStored
+         let sourceIsTrusted = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
++            && localIdentityMatchesStored
+         var devicePayload: [String: Any] = [
+             "deviceId": context.deviceId,
+             "deviceName": Host.current().localizedName ?? "Mac",
+             "platform": "macOS",
+-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
+-            "keyVersion": keypair.keyVersion,
+             "updatedAt": FieldValue.serverTimestamp()
+         ]
++        if shouldPublishEscrowIdentity {
++            devicePayload["publicKeyFingerprint"] = keypair.publicKeyFingerprint
++            devicePayload["keyVersion"] = keypair.keyVersion
++        }
+         if existingDevice == nil {
+             devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+         }
+         try await deviceRef.setData(devicePayload, merge: true)
+-        try await CloudSyncEscrowPublicKeyPublisher.publishIfNeeded(
+-            userRef: userRef,
+-            deviceId: context.deviceId,
+-            publicKeyData: keypair.publicKeyData,
+-            publicKeyFingerprint: keypair.publicKeyFingerprint,
+-            keyVersion: keypair.keyVersion
+-        )
++        if shouldPublishEscrowIdentity {
++            try await CloudSyncEscrowPublicKeyPublisher.publishIfNeeded(
++                userRef: userRef,
++                deviceId: context.deviceId,
++                publicKeyData: keypair.publicKeyData,
++                publicKeyFingerprint: keypair.publicKeyFingerprint,
++                keyVersion: keypair.keyVersion
++            )
++        }
+         let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: context.deviceId)
+         try await CloudSyncSignalIdentityPublicKeyPublisher.publishIfNeeded(
+             userRef: userRef,
+diff --git a/AgentLens/Services/CloudVaultKeyAccess.swift b/AgentLens/Services/CloudVaultKeyAccess.swift
+index 5b4f48cc1..78d0aa3d9 100644
+--- a/AgentLens/Services/CloudVaultKeyAccess.swift
++++ b/AgentLens/Services/CloudVaultKeyAccess.swift
+@@ -323,27 +323,37 @@ enum MacCloudVaultKeyAccess {
+         }
+         let existingDevice = existingSnapshot?.data()
+         let existingTrustState = existingDevice?["trustState"] as? String
++        let storedFingerprint = existingDevice?["publicKeyFingerprint"] as? String
++        let storedKeyVersion = existingDevice?["keyVersion"] as? Int
++        let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
++            && storedKeyVersion == keypair.keyVersion
++        let shouldPublishEscrowIdentity = existingSnapshot?.exists == false || localIdentityMatchesStored
+         let sourceIsTrusted = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
++            && localIdentityMatchesStored
+ 
+         var devicePayload: [String: Any] = [
+             "deviceId": deviceId,
+             "deviceName": Host.current().localizedName ?? "Mac",
+             "platform": "macOS",
+-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
+-            "keyVersion": keypair.keyVersion,
+             "updatedAt": FieldValue.serverTimestamp()
+         ]
++        if shouldPublishEscrowIdentity {
++            devicePayload["publicKeyFingerprint"] = keypair.publicKeyFingerprint
++            devicePayload["keyVersion"] = keypair.keyVersion
++        }
+         if existingSnapshot?.exists == false {
+             devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+         }
+         try await deviceRef.setData(devicePayload, merge: true)
+-        try await EscrowPublicKeyPublisher.publishIfNeeded(
+-            userRef: userRef,
+-            deviceId: deviceId,
+-            publicKeyData: keypair.publicKeyData,
+-            publicKeyFingerprint: keypair.publicKeyFingerprint,
+-            keyVersion: keypair.keyVersion
+-        )
++        if shouldPublishEscrowIdentity {
++            try await EscrowPublicKeyPublisher.publishIfNeeded(
++                userRef: userRef,
++                deviceId: deviceId,
++                publicKeyData: keypair.publicKeyData,
++                publicKeyFingerprint: keypair.publicKeyFingerprint,
++                keyVersion: keypair.keyVersion
++            )
++        }
+         let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+         try await SignalIdentityPublicKeyPublisher.publishIfNeeded(
+             userRef: userRef,
+diff --git a/AgentLens/Services/IrohRelay/FirestoreIrohInboundPeerAllowlist.swift b/AgentLens/Services/IrohRelay/FirestoreIrohInboundPeerAllowlist.swift
+index 4a2b220e5..80f060237 100644
+--- a/AgentLens/Services/IrohRelay/FirestoreIrohInboundPeerAllowlist.swift
++++ b/AgentLens/Services/IrohRelay/FirestoreIrohInboundPeerAllowlist.swift
+@@ -19,7 +19,20 @@ enum FirestoreIrohInboundPeerAllowlist {
+             .collection("controllers")
+             .getDocuments()
+         for doc in controllers?.documents ?? [] {
+-            if let peer = doc.data()["peerNodeId"] as? String, !peer.isEmpty {
++            if let peer = trimmedString(doc.data()["peerNodeId"]) {
++                allowed.insert(peer)
++            } else if !doc.documentID.isEmpty {
++                allowed.insert(doc.documentID)
++            }
++        }
++
++        let irohControllers = try? await db
++            .collection("users").document(uid)
++            .collection("iroh_pairing").document(connectionId)
++            .collection("iroh_controllers")
++            .getDocuments()
++        for doc in irohControllers?.documents ?? [] {
++            if let peer = trimmedString(doc.data()["irohPeerNodeId"]) {
+                 allowed.insert(peer)
+             } else if !doc.documentID.isEmpty {
+                 allowed.insert(doc.documentID)
+@@ -28,4 +41,10 @@ enum FirestoreIrohInboundPeerAllowlist {
+ 
+         return IrohInboundPeerPolicy(allowedPeerNodeIds: allowed)
+     }
++
++    private static func trimmedString(_ value: Any?) -> String? {
++        guard let string = value as? String else { return nil }
++        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
++        return trimmed.isEmpty ? nil : trimmed
++    }
+ }
+diff --git a/AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift b/AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift
+index bf5a64a1a..87ead927e 100644
+--- a/AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift
++++ b/AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift
+@@ -168,21 +168,25 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
+             )
+         }
+         #endif
++        var startupStage = "transport_start"
+         do {
+             let identity = try await newTransport.start()
+             transport = newTransport
+             publishedIdentity = identity
+ 
++            startupStage = "pairing_key_load"
+             let pairingKeypair = try pairingKeyStore.keypair()
+             // Publish the verifier key BEFORE the pairing record so iOS
+             // never sees a freshly-published `iroh_pairing/*` doc without
+             // the corresponding `iroh_pairing_keys/host` doc to verify it.
++            startupStage = "pairing_public_key_publish"
+             try await publicKeyPublisher.publish(
+                 uid: uid,
+                 deviceId: accountManager.deviceId,
+                 publicKeyBase64: pairingKeypair.publicKeyBase64
+             )
+             let publisher = IrohPairingPublisher(directory: directory)
++            startupStage = "pairing_record_publish"
+             _ = try await publisher.publish(
+                 uid: uid,
+                 connectionId: connectionID,
+@@ -229,6 +233,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
+             )
+             return true
+         } catch {
++            let errorClass = Self.publicErrorClass(error)
++            AppLogger.network.error(
++                "hermes_iroh_relay_start_failed_public stage=\(startupStage) errorClass=\(errorClass)"
++            )
+             AppLogger.network.silentFailure("hermes_iroh_relay_start_failed", error: error)
+             transport = nil
+             return false
+@@ -290,19 +298,29 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
+             do {
+                 let stream = try await transport.accept(timeout: 30)
+                 if !inboundPeerPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
+-                    await auditLogger.record(
+-                        event: .pairingRejected,
+-                        uid: uid,
+-                        connectionId: connectionID,
+-                        transport: .irohDirect,
+-                        rttMillis: nil,
+-                        detail: [
+-                            "reason": "inbound_peer_not_allowlisted",
+-                            "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
+-                        ]
+-                    )
+-                    await stream.close()
+-                    continue
++                    let refreshedPolicy = await inboundPeerPolicyLoader(uid, connectionID)
++                    inboundPeerPolicy = refreshedPolicy
++                    if !refreshedPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
++                        #if DEBUG
++                        NSLog("OpenBurnBarMercury host_inbound_peer_rejected connectionID=\(connectionID) remoteNodeId=\(stream.remotePeerNodeId ?? "unknown")")
++                        #endif
++                        await auditLogger.record(
++                            event: .pairingRejected,
++                            uid: uid,
++                            connectionId: connectionID,
++                            transport: .irohDirect,
++                            rttMillis: nil,
++                            detail: [
++                                "reason": "inbound_peer_not_allowlisted",
++                                "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
++                            ]
++                        )
++                        await stream.close()
++                        continue
++                    }
++                    #if DEBUG
++                    NSLog("OpenBurnBarMercury host_inbound_peer_allowed_after_refresh connectionID=\(connectionID) remoteNodeId=\(stream.remotePeerNodeId ?? "unknown")")
++                    #endif
+                 }
+                 consecutiveAcceptFailures = 0
+                 let handler = IrohRelayRequestHandler(
+diff --git a/OpenBurnBar.xcodeproj/project.pbxproj b/OpenBurnBar.xcodeproj/project.pbxproj
+index 04219ccf0..536af771b 100644
+--- a/OpenBurnBar.xcodeproj/project.pbxproj
++++ b/OpenBurnBar.xcodeproj/project.pbxproj
+@@ -183,7 +183,7 @@
+ 		1746641704378EE99340D4D5 /* PowerSourceMonitoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086FC1D44A7F5C4A3F4F9B75 /* PowerSourceMonitoringTests.swift */; };
+ 		17800247A551736468D2DA77 /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A728EAF6CE31DAD45A0C0AF3 /* ContextBuilder.swift */; };
+ 		17D65EDB1559A67106869749 /* TrendDataDigest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C37B34494C183F68A1E0FCF /* TrendDataDigest.swift */; };
+-		180A5EAFC6279BBC558CDA19 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 165A1237DB53EED752A99D04 /* FirebaseFirestore */; };
++		180A5EAFC6279BBC558CDA19 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 55B39CE9E5A55FEFA1D3CA26 /* FirebaseAuth */; };
+ 		181DC50DE6933F008FF43C81 /* QuotaPulseCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F45CCAEDCFFF8D5DC0535A /* QuotaPulseCard.swift */; };
+ 		183B7CB26C04E5AA7D355E29 /* BurnBarLocalOllamaLiveCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD75190817551C1EBF13C93 /* BurnBarLocalOllamaLiveCatalogTests.swift */; };
+ 		187842BD4024A2095CBA4CD3 /* DataControlCenterInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 439FDE470FFDAE6DB9FDDA16 /* DataControlCenterInspector.swift */; };
+@@ -197,6 +197,7 @@
+ 		1A73B3EF18B6F43DC10ABEC9 /* WarpAPIFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1005066C9E52A87928FD55A2 /* WarpAPIFetcher.swift */; };
+ 		1A93FD49F32A00CF8D3BAB33 /* OnboardingChatEngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFEACED63B2425D334B5FAC4 /* OnboardingChatEngineView.swift */; };
+ 		1AD646510EC311B25A0642B3 /* OpenBurnBarChatEvidenceFormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FDE4AC490E442BFB4B2A32E /* OpenBurnBarChatEvidenceFormattingTests.swift */; };
++		1B0ED66EB01252F73718EBC9 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 537F95A9C47628B16A10BA7C /* Sentry */; };
+ 		1B2FECA799AE6147AF7DDFE7 /* test_hermesThinkingView.hermesThinkingView-light.png in Resources */ = {isa = PBXBuildFile; fileRef = 5636105BD602ACC2D73A863D /* test_hermesThinkingView.hermesThinkingView-light.png */; };
+ 		1B45FF476B3A86A94FC56F25 /* OpenBurnBarIrohRelay in Frameworks */ = {isa = PBXBuildFile; productRef = 25E1FBD50568165AC2F056F4 /* OpenBurnBarIrohRelay */; };
+ 		1B534254C7B70ED98620E0ED /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF90FB3308E3260CAF4EC5D /* SessionDetailView.swift */; };
+@@ -300,7 +301,7 @@
+ 		2B2FA7D77AB6A1E87C84F52D /* MercuryAccentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCFF88E59934648D4747801E /* MercuryAccentPicker.swift */; };
+ 		2B38929E81128CD1F2E7F9B2 /* HermesConversationListViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4CE5039840C3D9AEF0F2B1F /* HermesConversationListViewTests.swift */; };
+ 		2B3DE4BFF06ACB1C1F93ED58 /* ClaudeOAuthUsageFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 902F6FDAF5FCE4ADCB1C9B86 /* ClaudeOAuthUsageFetcher.swift */; };
+-		2B49FAA16D050959AB41B4E3 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = AE0D2D0328732A81F804C187 /* FirebaseRemoteConfig */; };
++		2B49FAA16D050959AB41B4E3 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 872CB874AD3F92B7B29A72C9 /* FirebaseFunctions */; };
+ 		2BCBB8755DA1CC4268059743 /* SystemPermissionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6D3D41B74BAC98F00E97C2E /* SystemPermissionMonitor.swift */; };
+ 		2BDB03A2273D278B76EA34AA /* ConversationRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED198A1F1C713EF1635FDE0 /* ConversationRecord.swift */; };
+ 		2C01E13F4B85B04DE9B1D9AA /* OpenBurnBarErrorIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4831D0A17C244878D97E9C9D /* OpenBurnBarErrorIntegrationTests.swift */; };
+@@ -315,7 +316,7 @@
+ 		2DAA7FEB5CB01AB00C4A238B /* BurnBarWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBF14CF25700C168EEB128D /* BurnBarWidgetView.swift */; };
+ 		2DB97D4D44FF349CB135432F /* CloudUpsellBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E14E61BD25FAE61D6225C0 /* CloudUpsellBanner.swift */; };
+ 		2DC4D3B73640CFF8733C357D /* libOpenBurnBarRemoteAccessAgentCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E6AAF4EFE99D7BDC9691A028 /* libOpenBurnBarRemoteAccessAgentCore.a */; };
+-		2E44EE0D623A7E4E88D1DBF8 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 9E0076E2A0900700C9BD9ED5 /* Sentry */; };
++		2E44EE0D623A7E4E88D1DBF8 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C9EB8071A4F4A300404F2A00 /* GoogleSignIn */; };
+ 		2E4F2F56E04AB074F9A4F628 /* OpenBurnBarHTTPGatewayServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF43C8625C47E5F3324940AA /* OpenBurnBarHTTPGatewayServerTests.swift */; };
+ 		2E527AB8F74E2EB4AB101777 /* MacFileTransferService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29B98F28C35B1937A759F406 /* MacFileTransferService.swift */; };
+ 		2E5D2852F3BA2D1B45DB0AAD /* DataVaultControlSplitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEE9355A12491A321371217C /* DataVaultControlSplitView.swift */; };
+@@ -341,7 +342,7 @@
+ 		3061C312BAAE6CAF160C1DF9 /* ConnectionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B29BE3882E3190E3732904A /* ConnectionsSettingsView.swift */; };
+ 		3074CBA2D5A3AEAAC5636193 /* DashboardViewIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8760DBF6F1319C85A1656C3 /* DashboardViewIntegrationTests.swift */; };
+ 		3096F147E5E5F4EA147E1357 /* OpenBurnBarStartupRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C206ECEB0A5B79995FEFE1BD /* OpenBurnBarStartupRecovery.swift */; };
+-		30A734B603D06F4955CA5726 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 94A3FE6725AB670F5158B39D /* FirebaseAppCheck */; };
++		30A734B603D06F4955CA5726 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = AE0D2D0328732A81F804C187 /* FirebaseRemoteConfig */; };
+ 		30B8D5A04B07F3AD4A8286BD /* HermesSquareSplitLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D32F174C23693465116E4A /* HermesSquareSplitLayout.swift */; };
+ 		30D8E605B5D9E8308C381505 /* AccountSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521D3EDF375BE17E78C7EA60 /* AccountSettingsView.swift */; };
+ 		3130412FA016126996BE0304 /* ScreenShareSmartTextDoubleTapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C233E18671B202E330BCB9 /* ScreenShareSmartTextDoubleTapTests.swift */; };
+@@ -358,7 +359,7 @@
+ 		33276D56C66BB2D43DAC44C9 /* HermesSquareAgentAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4FFD7C2DB1E14B3DEBDC18 /* HermesSquareAgentAvatar.swift */; };
+ 		332E991296E73D9040C8F327 /* OpenBurnBarMissionControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04AD19F041C53BAFFC941026 /* OpenBurnBarMissionControlService.swift */; };
+ 		334670A7EB7E65294B2B0FAC /* BurnBarResumeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2254CBCF30A3249F783D2586 /* BurnBarResumeService.swift */; };
+-		3354359D6592FC85A170C2A8 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = E2BD14DC2936538AE1B5B3CF /* FirebaseAppCheck */; };
++		3354359D6592FC85A170C2A8 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 5C3B65544D81648A00486F23 /* FirebaseRemoteConfig */; };
+ 		335C45394F8D1959AC3F8E9F /* ProviderDashboardQuotaPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F0B694D88A73574141F7DF /* ProviderDashboardQuotaPanel.swift */; };
+ 		3381B8C91B993984ED57D1E3 /* InsightsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892EFADFB4430BA8D0F80316 /* InsightsWorkspaceView.swift */; };
+ 		33EFCD91D12A44A74E395192 /* SearchService+Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF040B846060192E67D306F4 /* SearchService+Health.swift */; };
+@@ -445,7 +446,7 @@
+ 		3F1758392CC9A0071ACE001C /* QuotaEmptyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECDC04C3A3E233362CD2DB3 /* QuotaEmptyState.swift */; };
+ 		3FA84CF0693DC1AA4E612605 /* SettingsSearchEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49226CAA9813D7AD7AED635B /* SettingsSearchEngine.swift */; };
+ 		3FA90D367D3EC6959A01E6EE /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD15864A9CB9F3B8A09F6D5 /* KeychainStore.swift */; };
+-		40131C96B27F2E758640175E /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 872CB874AD3F92B7B29A72C9 /* FirebaseFunctions */; };
++		40131C96B27F2E758640175E /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 165A1237DB53EED752A99D04 /* FirebaseFirestore */; };
+ 		40257D76A778DAA92B279494 /* DataStore+ProjectionAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACD8530F74B484137FA164D0 /* DataStore+ProjectionAccess.swift */; };
+ 		40B250FDC5C83440748F324D /* OpenBurnBarProviderRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E51BA7AC00B68739441E09 /* OpenBurnBarProviderRouterTests.swift */; };
+ 		40B69D02F712CACE7785684C /* WallpaperGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80344B410BF538D7D4EBED87 /* WallpaperGeneratorView.swift */; };
+@@ -458,7 +459,7 @@
+ 		41B2C17A62BE394E594BA9E2 /* ProjectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EA49F3A2C78F6AAF2F281C3 /* ProjectionStore.swift */; };
+ 		425130DFD4B761C76486C484 /* FactoryDashboardScraper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87253B25CCCE1C34C596F2C9 /* FactoryDashboardScraper.swift */; };
+ 		426E0F3834BED1BB125644F7 /* FoilCTAButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B18530C06A58D653126E798 /* FoilCTAButton.swift */; };
+-		4283C73067E5985454EBFFB7 /* OpenBurnBarComputerUseCore in Frameworks */ = {isa = PBXBuildFile; productRef = A7D192EE743FDCFBB4539514 /* OpenBurnBarComputerUseCore */; };
++		4283C73067E5985454EBFFB7 /* OpenBurnBarMedia in Frameworks */ = {isa = PBXBuildFile; productRef = 0A9A3EE3B704C23CBE63A307 /* OpenBurnBarMedia */; };
+ 		42E8FE2F4C30E19738E3E6B1 /* test_chatMessageView_hermesAssistant.chatMessage-hermes-dark.png in Resources */ = {isa = PBXBuildFile; fileRef = C3606D15831050FAB0E29ED0 /* test_chatMessageView_hermesAssistant.chatMessage-hermes-dark.png */; };
+ 		42F1FE76F2831FDE60F8E9EE /* MiniProgramHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02F36071004EB507D6E6D969 /* MiniProgramHost.swift */; };
+ 		42F39F1D35BDC32B0EE9AB6E /* test_hermesToolCard_running.hermesToolCard-running-dark.png in Resources */ = {isa = PBXBuildFile; fileRef = D85BB66C15612964CA0C49DA /* test_hermesToolCard_running.hermesToolCard-running-dark.png */; };
+@@ -543,7 +544,7 @@
+ 		5032D2AD8AF2E7E524614C68 /* ParserIntegrationTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F16A705D80D07CBCA43CF630 /* ParserIntegrationTestSupport.swift */; };
+ 		504BC9D6D9568ADD525774EF /* DeviceHardwareIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338B714C76EB35888A910EC5 /* DeviceHardwareIcon.swift */; };
+ 		505C62F3E489BDB103F872C8 /* BurnBarCrossVendorDegradePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 807CCE3F4AFC70DD2976309E /* BurnBarCrossVendorDegradePolicy.swift */; };
+-		5073E6DC915DEAF1816FC46B /* OpenBurnBarMedia in Frameworks */ = {isa = PBXBuildFile; productRef = 22E9E90692B911520A47DA75 /* OpenBurnBarMedia */; };
++		5073E6DC915DEAF1816FC46B /* OpenBurnBarIrohFFI in Frameworks */ = {isa = PBXBuildFile; productRef = 869D92C6D55387336F2A5836 /* OpenBurnBarIrohFFI */; };
+ 		50798945CDBD87011A487CD7 /* SettingsManagerSecretStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000A1148B7E3BFE9A96ADFEB /* SettingsManagerSecretStorageTests.swift */; };
+ 		507C413112A937883813A364 /* MotionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689067F0D26073F6C3FE7BCE /* MotionStore.swift */; };
+ 		509EDFA3664A191D40F8EB14 /* AWTRIXClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178DF51B7E4B1CA8A525A046 /* AWTRIXClient.swift */; };
+@@ -552,7 +553,7 @@
+ 		50DFF3FA31B7B62422D5151E /* ConnectionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE103E4277978540F8113F15 /* ConnectionsViewModel.swift */; };
+ 		50F1DE66642B53A0A3CB89B3 /* DashboardUsageViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310C7E939D5B539E71C59D83 /* DashboardUsageViewModel.swift */; };
+ 		5107902E48F32F39AD032759 /* DashboardWorkspaceNavStripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FBE8213B12D8A43A8B00024 /* DashboardWorkspaceNavStripTests.swift */; };
+-		5115E33E1CEA0C3E24CEA13E /* OpenBurnBarMedia in Frameworks */ = {isa = PBXBuildFile; productRef = 0A9A3EE3B704C23CBE63A307 /* OpenBurnBarMedia */; };
++		5115E33E1CEA0C3E24CEA13E /* OpenBurnBarIrohFFI in Frameworks */ = {isa = PBXBuildFile; productRef = E8972E414F3A862876D44AB9 /* OpenBurnBarIrohFFI */; };
+ 		516FD7DBA68700336F4131CE /* MacFirebaseTokenProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16504218B8B311B46714703 /* MacFirebaseTokenProvider.swift */; };
+ 		51A5E287BF165A550D24AF78 /* OpenBurnBarIrohRelay in Frameworks */ = {isa = PBXBuildFile; productRef = 43198A0E3A18778875A1EB13 /* OpenBurnBarIrohRelay */; };
+ 		51AAACA644D87CFDC8A2A050 /* MobileAgentInsightsProducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF12A5398D79F59A74E07A4B /* MobileAgentInsightsProducer.swift */; };
+@@ -613,7 +614,7 @@
+ 		5C64AC27853B26FD3C3C5C69 /* MercuryIncomingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855A9DC939575033F8C3D7AD /* MercuryIncomingSheet.swift */; };
+ 		5C9DA2671F21334295FD2B8F /* FirestoreHermesRelayTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEACA0C9802A4C707036286B /* FirestoreHermesRelayTransport.swift */; };
+ 		5CCF004A9162FFD2A7632BE1 /* CloudStoreSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37BA5ED164D384834314130C /* CloudStoreSettingsView.swift */; };
+-		5CF5D295B10DE5A29D016374 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 537F95A9C47628B16A10BA7C /* Sentry */; };
++		5CF5D295B10DE5A29D016374 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E239813A07DE9AF832F4EF34 /* GoogleSignIn */; };
+ 		5CF7E985046DD02B2F1E0DF8 /* ClaudeCodeParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECA3C6D8E44A1281315D20F /* ClaudeCodeParserTests.swift */; };
+ 		5D32B3A16C36E1A45FB6CC91 /* SettingsSearchEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 439DB9BD82D8480DFDC407E7 /* SettingsSearchEngine.swift */; };
+ 		5D718AEFFF7CA412E180292B /* AppCheckAttestationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96ECCDA87539B0A68339F39B /* AppCheckAttestationMonitor.swift */; };
+@@ -642,7 +643,7 @@
+ 		6111DDFF49A9560566C56E7D /* OpenBurnBarCompactOperatingHomeCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94251BF35FBE48895FAF7B1F /* OpenBurnBarCompactOperatingHomeCard.swift */; };
+ 		6125B2CA06FC640E540C42BE /* CloudVaultKeyAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B8DBE2BEB28C758CF4AD10C /* CloudVaultKeyAccess.swift */; };
+ 		6150583DF145E412EA75DCF5 /* AsciiCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 244075B8CB63E6E933F6F4C7 /* AsciiCanvasView.swift */; };
+-		61799246CE1FE7025D222143 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 9B0C88B36134B6E8247DE768 /* FirebaseStorage */; };
++		61799246CE1FE7025D222143 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 82AFDE274B57DF4F253B1DB9 /* FirebaseMessaging */; };
+ 		61A12C4837B7A9F141020DF0 /* ComputerUseRunCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1693C26C43B2B66E45FBFC61 /* ComputerUseRunCoordinator.swift */; };
+ 		61EBCFD6F05102EB8AC25C9B /* CloudSyncTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE23B999D2B88F8916759D6 /* CloudSyncTestSupport.swift */; };
+ 		6233FA14201D6330FB4BBA13 /* DatabaseEncryptionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF9AF9EE746257E9866E4890 /* DatabaseEncryptionServiceTests.swift */; };
+@@ -685,7 +686,7 @@
+ 		669DCDBB48859FA5421DF1DE /* HermesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A7A4E111F3716E859D7C4B /* HermesService.swift */; };
+ 		66D51F8B6DF0EAA65E0907F8 /* ArtifactDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 840B9D28C96954538CED61B9 /* ArtifactDiscoveryService.swift */; };
+ 		672C1A753E425ECBBD53A7D8 /* PhoneControlReceiverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4427595B21D3677B81286C7E /* PhoneControlReceiverTests.swift */; };
+-		674ABC841FB37DE32F2E4AB1 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = B6999F5A1B3A8EC91D107F2F /* FirebaseFirestore */; };
++		674ABC841FB37DE32F2E4AB1 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 46820D7813E56C18A4209211 /* FirebaseAuth */; };
+ 		6787CD474B526CDF6DA19785 /* BudgetGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3844861ADC57BB3ED04125 /* BudgetGate.swift */; };
+ 		679E4C2F80C08F07F9D0F6EA /* SwitcherOnboardingWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF12DB31F38AF9AE1232D17 /* SwitcherOnboardingWizardView.swift */; };
+ 		67DA006021C044DBD1CC8FFB /* BurnBarWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6CCCC5E56B6BB32A0A9044B /* BurnBarWidget.swift */; };
+@@ -788,7 +789,7 @@
+ 		76E7E3B9650B7236003235A5 /* MobileProviderWizardCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7B8F449D120631E7E8D34C6 /* MobileProviderWizardCopyTests.swift */; };
+ 		76F9699CBC235B09F732B266 /* AssistantTileBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85826B75C7CD9607151A88C1 /* AssistantTileBridgeView.swift */; };
+ 		7769E19E186B1E917196E91C /* SubscriptionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F13A6B198E7BF68022EBD2 /* SubscriptionCard.swift */; };
+-		77A3A09F41B29FF7E3451572 /* OpenBurnBarSignalCore in Frameworks */ = {isa = PBXBuildFile; productRef = B689B8A0A588DAB2C86A344E /* OpenBurnBarSignalCore */; };
++		77A3A09F41B29FF7E3451572 /* OpenBurnBarComputerUseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 53E146A7C2AEF7398D8F0B92 /* OpenBurnBarComputerUseCore */; };
+ 		77A4A6AFB7B411560CEE58E5 /* MacAgentInsightsProducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF13883481CEC4F05D6410E /* MacAgentInsightsProducer.swift */; };
+ 		77D1172CA1A8A3048E3B8C02 /* CheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 922DC848CE4B5FEAAA64D503 /* CheckpointTests.swift */; };
+ 		77D9DF00BE965A0EF20C4586 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CFA0F65135CD903E2556CA /* AccountStore.swift */; };
+@@ -822,7 +823,7 @@
+ 		7B9653B94BD92DFBD39D0482 /* OpenBurnBarDaemonSupervisorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39C7CAE7FB7A671740836C8 /* OpenBurnBarDaemonSupervisorTests.swift */; };
+ 		7BB04F13A559DB09AACDF841 /* SettingsItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94B6BCF9BB4A8801F0E15D8 /* SettingsItem.swift */; };
+ 		7BED57D445758FFFB27D288B /* ChatPanelContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A6EA559F8C473593FBB21C /* ChatPanelContent.swift */; };
+-		7BFAEEC81F2F711659CC45E2 /* OpenBurnBarSignalCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4596833287DC60F68722277D /* OpenBurnBarSignalCore */; };
++		7BFAEEC81F2F711659CC45E2 /* OpenBurnBarComputerUseCore in Frameworks */ = {isa = PBXBuildFile; productRef = A7D192EE743FDCFBB4539514 /* OpenBurnBarComputerUseCore */; };
+ 		7C919BE6474790E0A20C78F0 /* ConversationCloudVaultPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A724160D324947A5E0A3711E /* ConversationCloudVaultPayload.swift */; };
+ 		7C93ED2EED42B662F6E6D856 /* CastDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC34DD974A1F62D4E1C261E /* CastDeviceTests.swift */; };
+ 		7CF1117E7CFEF81C57796B79 /* ClaudeInteractiveMeterExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242971341B8FD54EEED3281B /* ClaudeInteractiveMeterExperiment.swift */; };
+@@ -1110,7 +1111,7 @@
+ 		A861D82B55A97CC7A23D3DD3 /* ConversationSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C697BBAC828AECBD9B30E978 /* ConversationSyncService.swift */; };
+ 		A875DC21AABE66C65788690B /* RefreshBackgroundWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7526D4CB0022B9E8F4051E76 /* RefreshBackgroundWork.swift */; };
+ 		A889D39C55B316C0E372CD5F /* AnimatedEntranceModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2062A2344B18DA4022D21814 /* AnimatedEntranceModifier.swift */; };
+-		A8D60A62FFF576451D01C1B5 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 7814408E08DBA6D4D15A1B1B /* FirebaseFunctions */; };
++		A8D60A62FFF576451D01C1B5 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = B6999F5A1B3A8EC91D107F2F /* FirebaseFirestore */; };
+ 		A90CD6D2C9D5EFA4A2983EC7 /* FactoryCookieExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D795926871030696EEB5EE7 /* FactoryCookieExtractor.swift */; };
+ 		A99017E53D5A450CF403A190 /* BurnBarSwitcherSQLiteProfileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05358A99D079A88A00662C6 /* BurnBarSwitcherSQLiteProfileStoreTests.swift */; };
+ 		A9AAF90010DF1ABE7DD6AAFC /* CloudWhisperStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73215DC654E63B89BC2E130C /* CloudWhisperStrip.swift */; };
+@@ -1172,7 +1173,7 @@
+ 		B147C2EE0748A23A2F10B65B /* DashboardConsentCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72CD692E251B02484E4C54EB /* DashboardConsentCoordinator.swift */; };
+ 		B1A39F2A6C63F86E47B0C427 /* OpenBurnBarDaemonServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F6BE4F1D50D8D24E7A6FC3 /* OpenBurnBarDaemonServer.swift */; };
+ 		B1D290D679B081978C1D0CD5 /* PhoneControlAuthorityIssuer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 502B3C5599E74FE3B7C136D3 /* PhoneControlAuthorityIssuer.swift */; };
+-		B1DFC65D3263101A6E0C4A9D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E239813A07DE9AF832F4EF34 /* GoogleSignIn */; };
++		B1DFC65D3263101A6E0C4A9D /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = E2BD14DC2936538AE1B5B3CF /* FirebaseAppCheck */; };
+ 		B1FBA1E1657B01E7BBDFC154 /* FlexibleQuotaBucketNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E7963318FCE99286AFB8FC3 /* FlexibleQuotaBucketNormalizer.swift */; };
+ 		B23BEAC1D039988B90AEDF7E /* chat_history.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = 6D5BE3DF40ACA889F763E0E7 /* chat_history.jsonl */; };
+ 		B24448C8BD0693DF176FFEDE /* eligible_providers.json in Resources */ = {isa = PBXBuildFile; fileRef = 6DC552EFE1DAB54ED5800522 /* eligible_providers.json */; };
+@@ -1277,7 +1278,7 @@
+ 		C040235BD6CA3B683743175A /* EntitlementsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF22E7C8640ED2B3A110383 /* EntitlementsAPI.swift */; };
+ 		C0C0BE646B5DA18CEF0F1FAF /* EasterEggOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB7B0BB3CEEE98916D1BE4A5 /* EasterEggOverlay.swift */; };
+ 		C0C288565010AACF13A2EF3B /* CrossEncoderReranker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B7C80CC3B22F5224E40157 /* CrossEncoderReranker.swift */; };
+-		C0DCEA8AEF3E8D10EEE25AF1 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 82AFDE274B57DF4F253B1DB9 /* FirebaseMessaging */; };
++		C0DCEA8AEF3E8D10EEE25AF1 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 94A3FE6725AB670F5158B39D /* FirebaseAppCheck */; };
+ 		C132C3155571BBA4CB1B2B3E /* PixelClockSettingsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C974E44252F03DEF2ACBB35 /* PixelClockSettingsCard.swift */; };
+ 		C147EC881D7662A79F2D3CEF /* InsightsCanvasGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = F593AF3D6631EBC6A51842F6 /* InsightsCanvasGrid.swift */; };
+ 		C1A6E37BBEFD3BA68C8C7C2B /* HermesAttachmentLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20AFB35D29C67C8735F40FDB /* HermesAttachmentLoader.swift */; };
+@@ -1345,7 +1346,7 @@
+ 		C92DAFF7A72DAE5AB74042BF /* DrainTargetSwitcherGroupedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9BD75A4E045C3FDB71CB54 /* DrainTargetSwitcherGroupedTests.swift */; };
+ 		C9411089ABC2CE8730D72EC3 /* HermesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7133EC3372960DFC76839F /* HermesSettingsView.swift */; };
+ 		C9546006B71B5C7C832A928C /* OpenBurnBarLiveModelDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4614FB85F7B6ECD25E9EF9E /* OpenBurnBarLiveModelDiscoveryTests.swift */; };
+-		C95C116EA1342A7C6A751FB4 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 7795E740F7AE12FC6B8F1E10 /* GRDB */; };
++		C95C116EA1342A7C6A751FB4 /* OpenBurnBarSignalCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4596833287DC60F68722277D /* OpenBurnBarSignalCore */; };
+ 		C96DBB1FDE8F79A4CD82C7D6 /* BurnBarModelVariantExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667157C8CE8118489FFC58A5 /* BurnBarModelVariantExecutorTests.swift */; };
+ 		C9B3D58E39F448C8EF227AFA /* RoutingClientWiring.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E8B62C98EB96F96B8AB593 /* RoutingClientWiring.swift */; };
+ 		C9C2FC9AB464A74DDD42BC30 /* PrivilegedInputDispatchHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BDFEA98E1613A271E679C72 /* PrivilegedInputDispatchHandler.swift */; };
+@@ -1370,7 +1371,7 @@
+ 		CCA520B901CBABE73789AA29 /* IntelligenceBriefWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A840CA42A3FE345FC9A1B3D7 /* IntelligenceBriefWiringTests.swift */; };
+ 		CCEAC5FDA83E18273C6AB88A /* CloudStoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F954E5E1CCE423E8047522A2 /* CloudStoreView.swift */; };
+ 		CD235476B37282EB7193660E /* OnboardingConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC8315913C35BC77E9F49F1 /* OnboardingConnectView.swift */; };
+-		CD44B89D23B8DBB78E96D02B /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C9EB8071A4F4A300404F2A00 /* GoogleSignIn */; };
++		CD44B89D23B8DBB78E96D02B /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 9B0C88B36134B6E8247DE768 /* FirebaseStorage */; };
+ 		CD5EF68862ACAAA180F7C86B /* ThreadInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B4BAF96A0DEEC30271B511 /* ThreadInboxStore.swift */; };
+ 		CD5FAB90BEA15686BE9932AF /* FriendlyModelName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813A8E2944D37BD31629BC6C /* FriendlyModelName.swift */; };
+ 		CD888D8CC7BF8293C907D938 /* RollingNumberText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55857509B8503B56C98C4EDE /* RollingNumberText.swift */; };
+@@ -1385,7 +1386,7 @@
+ 		CEB8809D77B74BCD8DC87160 /* InsightsComposerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A751160E66A0C6176FBFA8 /* InsightsComposerBar.swift */; };
+ 		CEB9D18047971DE2E874BBAF /* DashboardView+Chrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0EC61578E24B40796E52026 /* DashboardView+Chrome.swift */; };
+ 		CEDE439F3B9095073FAAA3B3 /* ProBadgeDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE028B001962164EB6B99D4D /* ProBadgeDot.swift */; };
+-		CEED9509102AC787D8E9755F /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 46820D7813E56C18A4209211 /* FirebaseAuth */; };
++		CEED9509102AC787D8E9755F /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 7795E740F7AE12FC6B8F1E10 /* GRDB */; };
+ 		CF021A7787DB3F96F5D23D57 /* AssistantModelPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF32767ACBECDC438098C51A /* AssistantModelPickerSheet.swift */; };
+ 		CF752198FA0D50BF94018F35 /* HostedQuotaSubscriptionStore+Ultra.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278BDBD5196B1A404B5958DB /* HostedQuotaSubscriptionStore+Ultra.swift */; };
+ 		CFD08B65E8E3EF5AE40E781C /* VectorCandidateBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 539CC31C6FB7BD100A9AFC55 /* VectorCandidateBackend.swift */; };
+@@ -1435,7 +1436,7 @@
+ 		D67B2082B75EB041CE14E876 /* AddProviderConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD78AB68201351971B1E07BB /* AddProviderConnectionView.swift */; };
+ 		D6D9607FD4CCC8AC32B4A32B /* ConversationStore+Chat.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7932FA1212D3123D32EEC93 /* ConversationStore+Chat.swift */; };
+ 		D6FAFB6141736A1472FACDD7 /* SmartHubBridgeServerSerializationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15439B57004AC35D10221C5 /* SmartHubBridgeServerSerializationTests.swift */; };
+-		D71C40C9D78ED4B23F85AC9D /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 5C3B65544D81648A00486F23 /* FirebaseRemoteConfig */; };
++		D71C40C9D78ED4B23F85AC9D /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 7814408E08DBA6D4D15A1B1B /* FirebaseFunctions */; };
+ 		D733171B6E2B5F9C87697CB6 /* CastWizardModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47C67F5217DCDB4EA62809D9 /* CastWizardModelTests.swift */; };
+ 		D73ABDF4752EEBF7C923DB2B /* MacMediaCapabilityGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48656C10F6FB8F85655840CA /* MacMediaCapabilityGateTests.swift */; };
+ 		D7537F5C514D64D5AC8923EC /* DirectDownloadArtifactVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20C6DC71D4B7A5EC15271AD3 /* DirectDownloadArtifactVerifier.swift */; };
+@@ -1496,7 +1497,7 @@
+ 		DF2C05B26770F910A1D15729 /* HeroCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48A9FB24448EFF810CFCF37 /* HeroCard.swift */; };
+ 		DF5A451C3333E329C1AC1500 /* IncomingCallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C4A13FBDCD0E2012BA91A48 /* IncomingCallSheet.swift */; };
+ 		DFF52D8518EC09C711F660F6 /* CollaborationSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61238FAB9CBE6F5CF89A9FE2 /* CollaborationSyncService.swift */; };
+-		E015B2CA3592FDB58D062FE1 /* OpenBurnBarComputerUseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 53E146A7C2AEF7398D8F0B92 /* OpenBurnBarComputerUseCore */; };
++		E015B2CA3592FDB58D062FE1 /* OpenBurnBarMedia in Frameworks */ = {isa = PBXBuildFile; productRef = 22E9E90692B911520A47DA75 /* OpenBurnBarMedia */; };
+ 		E06B982247E3147DE4A6CA68 /* test_providerPrimaryColors.adaptiveColors-providers-dark.png in Resources */ = {isa = PBXBuildFile; fileRef = 5AE9117BC18AC1DD9D08293A /* test_providerPrimaryColors.adaptiveColors-providers-dark.png */; };
+ 		E06FE65F0D13725ED812D45D /* ArtifactStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27479D668F74F8F592B43418 /* ArtifactStore.swift */; };
+ 		E078781E32607DBC048384FE /* AgentWatchState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90786B91D5265C74411B6982 /* AgentWatchState.swift */; };
+@@ -1512,7 +1513,7 @@
+ 		E19E204145E70E6152DA4ECF /* BurnBarDaemonDatabaseCipher.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6B106C12C93A0044FFBAC4 /* BurnBarDaemonDatabaseCipher.swift */; };
+ 		E1A0505385364525645F6D92 /* ProjectionChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF33D054BA0C287A376CB45 /* ProjectionChunker.swift */; };
+ 		E23889C10ADB294C4D1D1983 /* ConnectionsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D9183EF0705F65204E8BF2A /* ConnectionsViewModelTests.swift */; };
+-		E26724058CDDF2FA28A411B3 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 55B39CE9E5A55FEFA1D3CA26 /* FirebaseAuth */; };
++		E26724058CDDF2FA28A411B3 /* OpenBurnBarSignalCore in Frameworks */ = {isa = PBXBuildFile; productRef = B689B8A0A588DAB2C86A344E /* OpenBurnBarSignalCore */; };
+ 		E2B28B72F7FAF7206110ED85 /* MimoQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A96B411856850F83E9BAB32 /* MimoQuotaAdapter.swift */; };
+ 		E2D934170D3BCF8D53314CEE /* SmartHubBridgeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542F5838C1572E8D74E76339 /* SmartHubBridgeServer.swift */; };
+ 		E30A369712CA4311AEF88359 /* ModelProviderLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A384D513ACF0354DDC6A2DDC /* ModelProviderLogoView.swift */; };
+@@ -1535,6 +1536,7 @@
+ 		E615B11154069B8CC0274FFB /* ZaiMiniMaxUsageProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A3414E93C955561284A2AF /* ZaiMiniMaxUsageProbe.swift */; };
+ 		E6231BDCD5ADBA9D526C9B6A /* ScreenSharePiPController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 856C4BD20F619A1CE56576E8 /* ScreenSharePiPController.swift */; };
+ 		E62F66685D16E4140EA03F83 /* InsightsMacEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B50826936A622581C60B233 /* InsightsMacEnvironment.swift */; };
++		E63059BEA69509D6D0CBD140 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 9E0076E2A0900700C9BD9ED5 /* Sentry */; };
+ 		E681332D13158F7734E94BDD /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01AE1D42AB4591A3663BF73 /* LiquidGlass.swift */; };
+ 		E68A3BE3B0EBE49A530CAB87 /* CallHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542C9A68E09ABC5FE52CE3DD /* CallHUD.swift */; };
+ 		E69E92AE40330D4619A2374E /* ClaudeQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18A60B49CCB1E900AA455E0 /* ClaudeQuotaAdapter.swift */; };
+@@ -3584,18 +3586,19 @@
+ 			files = (
+ 				AF11565CA641D8A8178DD4A3 /* OpenBurnBarCore in Frameworks */,
+ 				1B45FF476B3A86A94FC56F25 /* OpenBurnBarIrohRelay in Frameworks */,
+-				5073E6DC915DEAF1816FC46B /* OpenBurnBarMedia in Frameworks */,
+-				E015B2CA3592FDB58D062FE1 /* OpenBurnBarComputerUseCore in Frameworks */,
+-				77A3A09F41B29FF7E3451572 /* OpenBurnBarSignalCore in Frameworks */,
+-				E26724058CDDF2FA28A411B3 /* FirebaseAuth in Frameworks */,
+-				180A5EAFC6279BBC558CDA19 /* FirebaseFirestore in Frameworks */,
+-				40131C96B27F2E758640175E /* FirebaseFunctions in Frameworks */,
+-				2B49FAA16D050959AB41B4E3 /* FirebaseRemoteConfig in Frameworks */,
+-				30A734B603D06F4955CA5726 /* FirebaseAppCheck in Frameworks */,
+-				C0DCEA8AEF3E8D10EEE25AF1 /* FirebaseMessaging in Frameworks */,
+-				61799246CE1FE7025D222143 /* FirebaseStorage in Frameworks */,
+-				CD44B89D23B8DBB78E96D02B /* GoogleSignIn in Frameworks */,
+-				2E44EE0D623A7E4E88D1DBF8 /* Sentry in Frameworks */,
++				5073E6DC915DEAF1816FC46B /* OpenBurnBarIrohFFI in Frameworks */,
++				E015B2CA3592FDB58D062FE1 /* OpenBurnBarMedia in Frameworks */,
++				77A3A09F41B29FF7E3451572 /* OpenBurnBarComputerUseCore in Frameworks */,
++				E26724058CDDF2FA28A411B3 /* OpenBurnBarSignalCore in Frameworks */,
++				180A5EAFC6279BBC558CDA19 /* FirebaseAuth in Frameworks */,
++				40131C96B27F2E758640175E /* FirebaseFirestore in Frameworks */,
++				2B49FAA16D050959AB41B4E3 /* FirebaseFunctions in Frameworks */,
++				30A734B603D06F4955CA5726 /* FirebaseRemoteConfig in Frameworks */,
++				C0DCEA8AEF3E8D10EEE25AF1 /* FirebaseAppCheck in Frameworks */,
++				61799246CE1FE7025D222143 /* FirebaseMessaging in Frameworks */,
++				CD44B89D23B8DBB78E96D02B /* FirebaseStorage in Frameworks */,
++				2E44EE0D623A7E4E88D1DBF8 /* GoogleSignIn in Frameworks */,
++				E63059BEA69509D6D0CBD140 /* Sentry in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -3633,17 +3636,18 @@
+ 			files = (
+ 				4777A43445B6E9BE2D8D8989 /* OpenBurnBarCore in Frameworks */,
+ 				51A5E287BF165A550D24AF78 /* OpenBurnBarIrohRelay in Frameworks */,
+-				5115E33E1CEA0C3E24CEA13E /* OpenBurnBarMedia in Frameworks */,
+-				4283C73067E5985454EBFFB7 /* OpenBurnBarComputerUseCore in Frameworks */,
+-				7BFAEEC81F2F711659CC45E2 /* OpenBurnBarSignalCore in Frameworks */,
+-				C95C116EA1342A7C6A751FB4 /* GRDB in Frameworks */,
+-				CEED9509102AC787D8E9755F /* FirebaseAuth in Frameworks */,
+-				674ABC841FB37DE32F2E4AB1 /* FirebaseFirestore in Frameworks */,
+-				A8D60A62FFF576451D01C1B5 /* FirebaseFunctions in Frameworks */,
+-				D71C40C9D78ED4B23F85AC9D /* FirebaseRemoteConfig in Frameworks */,
+-				3354359D6592FC85A170C2A8 /* FirebaseAppCheck in Frameworks */,
+-				B1DFC65D3263101A6E0C4A9D /* GoogleSignIn in Frameworks */,
+-				5CF5D295B10DE5A29D016374 /* Sentry in Frameworks */,
++				5115E33E1CEA0C3E24CEA13E /* OpenBurnBarIrohFFI in Frameworks */,
++				4283C73067E5985454EBFFB7 /* OpenBurnBarMedia in Frameworks */,
++				7BFAEEC81F2F711659CC45E2 /* OpenBurnBarComputerUseCore in Frameworks */,
++				C95C116EA1342A7C6A751FB4 /* OpenBurnBarSignalCore in Frameworks */,
++				CEED9509102AC787D8E9755F /* GRDB in Frameworks */,
++				674ABC841FB37DE32F2E4AB1 /* FirebaseAuth in Frameworks */,
++				A8D60A62FFF576451D01C1B5 /* FirebaseFirestore in Frameworks */,
++				D71C40C9D78ED4B23F85AC9D /* FirebaseFunctions in Frameworks */,
++				3354359D6592FC85A170C2A8 /* FirebaseRemoteConfig in Frameworks */,
++				B1DFC65D3263101A6E0C4A9D /* FirebaseAppCheck in Frameworks */,
++				5CF5D295B10DE5A29D016374 /* GoogleSignIn in Frameworks */,
++				1B0ED66EB01252F73718EBC9 /* Sentry in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -6783,6 +6787,7 @@
+ 			packageProductDependencies = (
+ 				A72002AF7C99CE3A74060081 /* OpenBurnBarCore */,
+ 				43198A0E3A18778875A1EB13 /* OpenBurnBarIrohRelay */,
++				E8972E414F3A862876D44AB9 /* OpenBurnBarIrohFFI */,
+ 				0A9A3EE3B704C23CBE63A307 /* OpenBurnBarMedia */,
+ 				A7D192EE743FDCFBB4539514 /* OpenBurnBarComputerUseCore */,
+ 				4596833287DC60F68722277D /* OpenBurnBarSignalCore */,
+@@ -6841,6 +6846,7 @@
+ 			packageProductDependencies = (
+ 				D50FA0156C54A2586E141ECE /* OpenBurnBarCore */,
+ 				25E1FBD50568165AC2F056F4 /* OpenBurnBarIrohRelay */,
++				869D92C6D55387336F2A5836 /* OpenBurnBarIrohFFI */,
+ 				22E9E90692B911520A47DA75 /* OpenBurnBarMedia */,
+ 				53E146A7C2AEF7398D8F0B92 /* OpenBurnBarComputerUseCore */,
+ 				B689B8A0A588DAB2C86A344E /* OpenBurnBarSignalCore */,
+@@ -9074,11 +9080,11 @@
+ 		};
+ 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+-			productRef = "TEMP_931B93ED-CB99-4AB8-A2E9-E6DC36B08243" /* OpenBurnBarComputerUseCore */;
++			productRef = "TEMP_4A6832D3-20CD-4086-8EF2-14F9DF857E8D" /* OpenBurnBarComputerUseCore */;
+ 		};
+ 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+-			productRef = "TEMP_A6DBAD09-55F5-4DA0-AFC5-AD15F83B652B" /* OpenBurnBarCore */;
++			productRef = "TEMP_7FCE2C94-D000-415A-B2AB-A0487E3F82F9" /* OpenBurnBarCore */;
+ 		};
+ 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+@@ -9126,7 +9132,7 @@
+ 		};
+ 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+-			productRef = "TEMP_510D3DC0-1A3A-4EC8-BE8C-BF45154D36B6" /* OpenBurnBarCore */;
++			productRef = "TEMP_C7B5EFD3-F6C5-4241-9E0F-1DAA89E0D17B" /* OpenBurnBarCore */;
+ 		};
+ 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+@@ -9140,15 +9146,15 @@
+ 		};
+ 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+-			productRef = "TEMP_52FC8F52-955B-4CE6-B59E-7202041FC1D7" /* OpenBurnBarComputerUseCore */;
++			productRef = "TEMP_267D1FB0-7BF4-4070-81E0-8129DAF2061B" /* OpenBurnBarComputerUseCore */;
+ 		};
+ 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+-			productRef = "TEMP_EE83633B-8BD6-4E3C-BF6B-F8A062968597" /* OpenBurnBarMedia */;
++			productRef = "TEMP_6698DF8A-0ECE-4F9C-9076-6D8773E8DC55" /* OpenBurnBarMedia */;
+ 		};
+ 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+-			productRef = "TEMP_C3A0855E-E94F-4405-A436-425CC181671A" /* OpenBurnBarComputerUseCore */;
++			productRef = "TEMP_40574F40-4F6D-43BD-AB9E-0AC2FC83BE66" /* OpenBurnBarComputerUseCore */;
+ 		};
+ /* End PBXTargetDependency section */
+ 
+@@ -10131,6 +10137,10 @@
+ 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+ 			productName = FirebaseMessaging;
+ 		};
++		869D92C6D55387336F2A5836 /* OpenBurnBarIrohFFI */ = {
++			isa = XCSwiftPackageProductDependency;
++			productName = OpenBurnBarIrohFFI;
++		};
+ 		872CB874AD3F92B7B29A72C9 /* FirebaseFunctions */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+@@ -10230,33 +10240,37 @@
+ 			isa = XCSwiftPackageProductDependency;
+ 			productName = OpenBurnBarCore;
+ 		};
++		E8972E414F3A862876D44AB9 /* OpenBurnBarIrohFFI */ = {
++			isa = XCSwiftPackageProductDependency;
++			productName = OpenBurnBarIrohFFI;
++		};
+ 		F0B41FBD2BE0F819E5C3C809 /* OpenBurnBarComputerUseCore */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			productName = OpenBurnBarComputerUseCore;
+ 		};
+-		"TEMP_510D3DC0-1A3A-4EC8-BE8C-BF45154D36B6" /* OpenBurnBarCore */ = {
++		"TEMP_267D1FB0-7BF4-4070-81E0-8129DAF2061B" /* OpenBurnBarComputerUseCore */ = {
+ 			isa = XCSwiftPackageProductDependency;
+-			productName = OpenBurnBarCore;
++			productName = OpenBurnBarComputerUseCore;
+ 		};
+-		"TEMP_52FC8F52-955B-4CE6-B59E-7202041FC1D7" /* OpenBurnBarComputerUseCore */ = {
++		"TEMP_40574F40-4F6D-43BD-AB9E-0AC2FC83BE66" /* OpenBurnBarComputerUseCore */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			productName = OpenBurnBarComputerUseCore;
+ 		};
+-		"TEMP_931B93ED-CB99-4AB8-A2E9-E6DC36B08243" /* OpenBurnBarComputerUseCore */ = {
++		"TEMP_4A6832D3-20CD-4086-8EF2-14F9DF857E8D" /* OpenBurnBarComputerUseCore */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			productName = OpenBurnBarComputerUseCore;
+ 		};
+-		"TEMP_A6DBAD09-55F5-4DA0-AFC5-AD15F83B652B" /* OpenBurnBarCore */ = {
++		"TEMP_6698DF8A-0ECE-4F9C-9076-6D8773E8DC55" /* OpenBurnBarMedia */ = {
+ 			isa = XCSwiftPackageProductDependency;
+-			productName = OpenBurnBarCore;
++			productName = OpenBurnBarMedia;
+ 		};
+-		"TEMP_C3A0855E-E94F-4405-A436-425CC181671A" /* OpenBurnBarComputerUseCore */ = {
++		"TEMP_7FCE2C94-D000-415A-B2AB-A0487E3F82F9" /* OpenBurnBarCore */ = {
+ 			isa = XCSwiftPackageProductDependency;
+-			productName = OpenBurnBarComputerUseCore;
++			productName = OpenBurnBarCore;
+ 		};
+-		"TEMP_EE83633B-8BD6-4E3C-BF6B-F8A062968597" /* OpenBurnBarMedia */ = {
++		"TEMP_C7B5EFD3-F6C5-4241-9E0F-1DAA89E0D17B" /* OpenBurnBarCore */ = {
+ 			isa = XCSwiftPackageProductDependency;
+-			productName = OpenBurnBarMedia;
++			productName = OpenBurnBarCore;
+ 		};
+ /* End XCSwiftPackageProductDependency section */
+ 	};
+diff --git a/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift b/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift
+index 95ddaa16a..23cb34ed5 100644
+--- a/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift
++++ b/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift
+@@ -1,6 +1,7 @@
+ // This file was autogenerated by some hot garbage in the `uniffi` crate.
+ // Trust me, you don't want to mess with it!
+ 
++// swiftlint:disable all
+ import Foundation
+ 
+ // Depending on the consumer's build setup, the low-level FFI code
+@@ -20,7 +21,7 @@ fileprivate extension RustBuffer {
+     }
+ 
+     static func empty() -> RustBuffer {
+-        RustBuffer(capacity: 0, len: 0, data: nil)
++        RustBuffer(capacity: 0, len:0, data: nil)
+     }
+ 
+     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
+@@ -71,14 +72,14 @@ fileprivate extension Data {
+ //
+ // Instead, the read() method and these helper functions input a tuple of data
+ 
+-private func createReader(data: Data) -> (data: Data, offset: Data.Index) {
++fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
+     (data: data, offset: 0)
+ }
+ 
+ // Reads an integer at the current offset, in big-endian order, and advances
+ // the offset on success. Throws if reading the integer would move the
+ // offset past the end of the buffer.
+-private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
++fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
+     let range = reader.offset..<reader.offset + MemoryLayout<T>.size
+     guard reader.data.count >= range.upperBound else {
+         throw UniffiInternalError.bufferOverflow
+@@ -89,14 +90,14 @@ private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset:
+         return value as! T
+     }
+     var value: T = 0
+-    _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range) })
++    let _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range)})
+     reader.offset = range.upperBound
+     return value.bigEndian
+ }
+ 
+ // Reads an arbitrary number of bytes, to be used to read
+ // raw bytes, this is useful when lifting strings
+-private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> [UInt8] {
++fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
+     let range = reader.offset..<(reader.offset+count)
+     guard reader.data.count >= range.upperBound else {
+         throw UniffiInternalError.bufferOverflow
+@@ -110,17 +111,17 @@ private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count:
+ }
+ 
+ // Reads a float at the current offset.
+-private func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
++fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
+     return Float(bitPattern: try readInt(&reader))
+ }
+ 
+ // Reads a float at the current offset.
+-private func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
++fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
+     return Double(bitPattern: try readInt(&reader))
+ }
+ 
+ // Indicates if the offset has reached the end of the buffer.
+-private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
++fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+     return reader.offset < reader.data.count
+ }
+ 
+@@ -128,11 +129,11 @@ private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+ // struct, but we use standalone functions instead in order to make external
+ // types work.  See the above discussion on Readers for details.
+ 
+-private func createWriter() -> [UInt8] {
++fileprivate func createWriter() -> [UInt8] {
+     return []
+ }
+ 
+-private func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
++fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
+     writer.append(contentsOf: byteArr)
+ }
+ 
+@@ -140,22 +141,22 @@ private func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Seque
+ //
+ // Warning: make sure what you are trying to write
+ // is in the correct type!
+-private func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
++fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
+     var value = value.bigEndian
+     withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
+ }
+ 
+-private func writeFloat(_ writer: inout [UInt8], _ value: Float) {
++fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
+     writeInt(&writer, value.bitPattern)
+ }
+ 
+-private func writeDouble(_ writer: inout [UInt8], _ value: Double) {
++fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
+     writeInt(&writer, value.bitPattern)
+ }
+ 
+ // Protocol for types that transfer other types across the FFI. This is
+ // analogous to the Rust trait of the same name.
+-private protocol FfiConverter {
++fileprivate protocol FfiConverter {
+     associatedtype FfiType
+     associatedtype SwiftType
+ 
+@@ -166,7 +167,7 @@ private protocol FfiConverter {
+ }
+ 
+ // Types conforming to `Primitive` pass themselves directly over the FFI.
+-private protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
++fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
+ 
+ extension FfiConverterPrimitive {
+ #if swift(>=5.8)
+@@ -186,7 +187,7 @@ extension FfiConverterPrimitive {
+ 
+ // Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
+ // Used for complex types where it's hard to write a custom lift/lower.
+-private protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
++fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+ 
+ extension FfiConverterRustBuffer {
+ #if swift(>=5.8)
+@@ -213,7 +214,7 @@ extension FfiConverterRustBuffer {
+ }
+ // An error type for FFI errors. These errors occur at the UniFFI level, not
+ // the library level.
+-private enum UniffiInternalError: LocalizedError {
++fileprivate enum UniffiInternalError: LocalizedError {
+     case bufferOverflow
+     case incompleteData
+     case unexpectedOptionalTag
+@@ -224,7 +225,7 @@ private enum UniffiInternalError: LocalizedError {
+     case unexpectedStaleHandle
+     case rustPanic(_ message: String)
+ 
+-    var errorDescription: String? {
++    public var errorDescription: String? {
+         switch self {
+         case .bufferOverflow: return "Reading the requested value would read past the end of the buffer"
+         case .incompleteData: return "The buffer still has data after lifting its containing value"
+@@ -247,16 +248,16 @@ fileprivate extension NSLock {
+     }
+ }
+ 
+-private let CALL_SUCCESS: Int8 = 0
+-private let CALL_ERROR: Int8 = 1
+-private let CALL_UNEXPECTED_ERROR: Int8 = 2
+-private let CALL_CANCELLED: Int8 = 3
++fileprivate let CALL_SUCCESS: Int8 = 0
++fileprivate let CALL_ERROR: Int8 = 1
++fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
++fileprivate let CALL_CANCELLED: Int8 = 3
+ 
+ fileprivate extension RustCallStatus {
+     init() {
+         self.init(
+             code: CALL_SUCCESS,
+-            errorBuf: RustBuffer(
++            errorBuf: RustBuffer.init(
+                 capacity: 0,
+                 len: 0,
+                 data: nil
+@@ -281,7 +282,7 @@ private func makeRustCall<T, E: Swift.Error>(
+     errorHandler: ((RustBuffer) throws -> E)?
+ ) throws -> T {
+     uniffiEnsureInitialized()
+-    var callStatus = RustCallStatus()
++    var callStatus = RustCallStatus.init()
+     let returnedVal = callback(&callStatus)
+     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
+     return returnedVal
+@@ -296,7 +297,7 @@ private func uniffiCheckCallStatus<E: Swift.Error>(
+             return
+ 
+         case CALL_ERROR:
+-            if let errorHandler {
++            if let errorHandler = errorHandler {
+                 throw try errorHandler(callStatus.errorBuf)
+             } else {
+                 callStatus.errorBuf.deallocate()
+@@ -325,7 +326,7 @@ private func uniffiCheckCallStatus<E: Swift.Error>(
+ private func uniffiTraitInterfaceCall<T>(
+     callStatus: UnsafeMutablePointer<RustCallStatus>,
+     makeCall: () throws -> T,
+-    writeReturn: (T) -> Void
++    writeReturn: (T) -> ()
+ ) {
+     do {
+         try writeReturn(makeCall())
+@@ -338,7 +339,7 @@ private func uniffiTraitInterfaceCall<T>(
+ private func uniffiTraitInterfaceCallWithError<T, E>(
+     callStatus: UnsafeMutablePointer<RustCallStatus>,
+     makeCall: () throws -> T,
+-    writeReturn: (T) -> Void,
++    writeReturn: (T) -> (),
+     lowerError: (E) -> RustBuffer
+ ) {
+     do {
+@@ -351,7 +352,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
+         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
+     }
+ }
+-private class UniffiHandleMap<T> {
++fileprivate class UniffiHandleMap<T> {
+     private var map: [UInt64: T] = [:]
+     private let lock = NSLock()
+     private var currentHandle: UInt64 = 1
+@@ -391,20 +392,22 @@ private class UniffiHandleMap<T> {
+     }
+ }
+ 
++
+ // Public interface members begin here.
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+-private struct FfiConverterUInt32: FfiConverterPrimitive {
++fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+     typealias FfiType = UInt32
+     typealias SwiftType = UInt32
+ 
+-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
++    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+         return try lift(readInt(&buf))
+     }
+ 
+-    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
++    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+         writeInt(&buf, lower(value))
+     }
+ }
+@@ -412,15 +415,15 @@ private struct FfiConverterUInt32: FfiConverterPrimitive {
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+-private struct FfiConverterUInt64: FfiConverterPrimitive {
++fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+     typealias FfiType = UInt64
+     typealias SwiftType = UInt64
+ 
+-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
++    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+         return try lift(readInt(&buf))
+     }
+ 
+-    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
++    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+         writeInt(&buf, lower(value))
+     }
+ }
+@@ -428,23 +431,23 @@ private struct FfiConverterUInt64: FfiConverterPrimitive {
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+-private struct FfiConverterBool: FfiConverter {
++fileprivate struct FfiConverterBool : FfiConverter {
+     typealias FfiType = Int8
+     typealias SwiftType = Bool
+ 
+-    static func lift(_ value: Int8) throws -> Bool {
++    public static func lift(_ value: Int8) throws -> Bool {
+         return value != 0
+     }
+ 
+-    static func lower(_ value: Bool) -> Int8 {
++    public static func lower(_ value: Bool) -> Int8 {
+         return value ? 1 : 0
+     }
+ 
+-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
++    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+         return try lift(readInt(&buf))
+     }
+ 
+-    static func write(_ value: Bool, into buf: inout [UInt8]) {
++    public static func write(_ value: Bool, into buf: inout [UInt8]) {
+         writeInt(&buf, lower(value))
+     }
+ }
+@@ -452,11 +455,11 @@ private struct FfiConverterBool: FfiConverter {
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+-private struct FfiConverterString: FfiConverter {
++fileprivate struct FfiConverterString: FfiConverter {
+     typealias SwiftType = String
+     typealias FfiType = RustBuffer
+ 
+-    static func lift(_ value: RustBuffer) throws -> String {
++    public static func lift(_ value: RustBuffer) throws -> String {
+         defer {
+             value.deallocate()
+         }
+@@ -467,7 +470,7 @@ private struct FfiConverterString: FfiConverter {
+         return String(bytes: bytes, encoding: String.Encoding.utf8)!
+     }
+ 
+-    static func lower(_ value: String) -> RustBuffer {
++    public static func lower(_ value: String) -> RustBuffer {
+         return value.utf8CString.withUnsafeBufferPointer { ptr in
+             // The swift string gives us int8_t, we want uint8_t.
+             ptr.withMemoryRebound(to: UInt8.self) { ptr in
+@@ -478,12 +481,12 @@ private struct FfiConverterString: FfiConverter {
+         }
+     }
+ 
+-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
++    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
+         let len: Int32 = try readInt(&buf)
+         return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+     }
+ 
+-    static func write(_ value: String, into buf: inout [UInt8]) {
++    public static func write(_ value: String, into buf: inout [UInt8]) {
+         let len = Int32(value.utf8.count)
+         writeInt(&buf, len)
+         writeBytes(&buf, value.utf8)
+@@ -493,29 +496,32 @@ private struct FfiConverterString: FfiConverter {
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+-private struct FfiConverterData: FfiConverterRustBuffer {
++fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+     typealias SwiftType = Data
+ 
+-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
++    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+         let len: Int32 = try readInt(&buf)
+         return Data(try readBytes(&buf, count: Int(len)))
+     }
+ 
+-    static func write(_ value: Data, into buf: inout [UInt8]) {
++    public static func write(_ value: Data, into buf: inout [UInt8]) {
+         let len = Int32(value.count)
+         writeInt(&buf, len)
+         writeBytes(&buf, value)
+     }
+ }
+ 
++
++
++
+ /**
+  * Self-contained iroh blob endpoint. One instance per device per
+  * process. Owns its own `Endpoint`, `FsStore`, `BlobsProtocol`, and
+  * `Router`. Idempotent bootstrap; subsequent calls replace the inner
+  * state.
+  */
+-public protocol IrohBlobNodeProtocol: AnyObject {
+-
++public protocol IrohBlobNodeProtocol : AnyObject {
++    
+     /**
+      * Spin up the blob endpoint with the supplied secret key + on-disk
+      * store directory. `relay_url` empty → n0's public relay set;
+@@ -523,34 +529,34 @@ public protocol IrohBlobNodeProtocol: AnyObject {
+      * Returns the iroh node identity Swift should embed in the
+      * `media.blob.advertise` ticket-host hint.
+      */
+-    func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String) throws -> IrohNodeIdentity
+-
++    func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String) throws  -> IrohNodeIdentity
++    
+     /**
+      * Dial the ticket's source node, download the blob, write it to
+      * `destination`. Returns transfer stats. Resume across reconnects
+      * is handled by iroh-blobs's downloader internally — `did_resume`
+      * flips true if any partial state was found at start.
+      */
+-    func fetchBlob(ticketText: String, destination: String) throws -> BlobTransferStats
+-
++    func fetchBlob(ticketText: String, destination: String) throws  -> BlobTransferStats
++    
+     /**
+      * Returns the cached identity if `bootstrap` has been called.
+      */
+-    func identity() throws -> IrohNodeIdentity
+-
++    func identity() throws  -> IrohNodeIdentity
++    
+     /**
+      * Hash + ingest a local file into the blob store, return a ticket
+      * the receiver can use to fetch it. Idempotent — same file content
+      * produces the same hash and the same ticket bytes.
+      */
+-    func publishBlob(localPath: String) throws -> BlobTicketBytes
+-
++    func publishBlob(localPath: String) throws  -> BlobTicketBytes
++    
+     /**
+      * Tear down the router, close the endpoint, drop the store and
+      * runtime. Idempotent.
+      */
+-    func shutdown() throws
+-
++    func shutdown() throws 
++    
+ }
+ 
+ /**
+@@ -574,7 +580,7 @@ open class IrohBlobNode:
+     // TODO: We'd like this to be `private` but for Swifty reasons,
+     // we can't implement `FfiConverter` without making this `required` and we can't
+     // make it `required` without making it `public`.
+-    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
++    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+         self.pointer = pointer
+     }
+ 
+@@ -598,7 +604,7 @@ open class IrohBlobNode:
+     }
+ public convenience init() {
+     let pointer =
+-        try! rustCall {
++        try! rustCall() {
+     uniffi_openburnbar_iroh_fn_constructor_irohblobnode_new($0
+     )
+ }
+@@ -606,13 +612,16 @@ public convenience init() {
+ }
+ 
+     deinit {
+-        guard let pointer else {
++        guard let pointer = pointer else {
+             return
+         }
+ 
+         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohblobnode(pointer, $0) }
+     }
+ 
++    
++
++    
+     /**
+      * Spin up the blob endpoint with the supplied secret key + on-disk
+      * store directory. `relay_url` empty → n0's public relay set;
+@@ -620,63 +629,64 @@ public convenience init() {
+      * Returns the iroh node identity Swift should embed in the
+      * `media.blob.advertise` ticket-host hint.
+      */
+-open func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String)throws -> IrohNodeIdentity {
++open func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String)throws  -> IrohNodeIdentity {
+     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohblobnode_bootstrap(self.uniffiClonePointer(),
+         FfiConverterTypeIrohSecretKeyMaterial.lower(secret),
+         FfiConverterString.lower(storeDir),
+-        FfiConverterString.lower(relayUrl), $0
++        FfiConverterString.lower(relayUrl),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Dial the ticket's source node, download the blob, write it to
+      * `destination`. Returns transfer stats. Resume across reconnects
+      * is handled by iroh-blobs's downloader internally — `did_resume`
+      * flips true if any partial state was found at start.
+      */
+-open func fetchBlob(ticketText: String, destination: String)throws -> BlobTransferStats {
++open func fetchBlob(ticketText: String, destination: String)throws  -> BlobTransferStats {
+     return try  FfiConverterTypeBlobTransferStats.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob(self.uniffiClonePointer(),
+         FfiConverterString.lower(ticketText),
+-        FfiConverterString.lower(destination), $0
++        FfiConverterString.lower(destination),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Returns the cached identity if `bootstrap` has been called.
+      */
+-open func identity()throws -> IrohNodeIdentity {
++open func identity()throws  -> IrohNodeIdentity {
+     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohblobnode_identity(self.uniffiClonePointer(), $0
++    uniffi_openburnbar_iroh_fn_method_irohblobnode_identity(self.uniffiClonePointer(),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Hash + ingest a local file into the blob store, return a ticket
+      * the receiver can use to fetch it. Idempotent — same file content
+      * produces the same hash and the same ticket bytes.
+      */
+-open func publishBlob(localPath: String)throws -> BlobTicketBytes {
++open func publishBlob(localPath: String)throws  -> BlobTicketBytes {
+     return try  FfiConverterTypeBlobTicketBytes.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohblobnode_publish_blob(self.uniffiClonePointer(),
+-        FfiConverterString.lower(localPath), $0
++        FfiConverterString.lower(localPath),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Tear down the router, close the endpoint, drop the store and
+      * runtime. Idempotent.
+      */
+-open func shutdown()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohblobnode_shutdown(self.uniffiClonePointer(), $0
++open func shutdown()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
++    uniffi_openburnbar_iroh_fn_method_irohblobnode_shutdown(self.uniffiClonePointer(),$0
+     )
+ }
+ }
++    
+ 
+ }
+ 
+@@ -701,7 +711,7 @@ public struct FfiConverterTypeIrohBlobNode: FfiConverter {
+         // The Rust code won't compile if a pointer won't fit in a UInt64.
+         // We have to go via `UInt` because that's the thing that's the size of a pointer.
+         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+-        if ptr == nil {
++        if (ptr == nil) {
+             throw UniffiInternalError.unexpectedNullPointer
+         }
+         return try lift(ptr!)
+@@ -714,6 +724,9 @@ public struct FfiConverterTypeIrohBlobNode: FfiConverter {
+     }
+ }
+ 
++
++
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -728,40 +741,43 @@ public func FfiConverterTypeIrohBlobNode_lower(_ value: IrohBlobNode) -> UnsafeM
+     return FfiConverterTypeIrohBlobNode.lower(value)
+ }
+ 
++
++
++
+ /**
+  * A single datagram channel — one `Connection` dedicated to small,
+  * unreliable, unordered packets. Audio only for now; future video
+  * callers should NOT reuse this object — they get their own QUIC
+  * streams per GOP per the master plan.
+  */
+-public protocol IrohDatagramChannelProtocol: AnyObject {
+-
++public protocol IrohDatagramChannelProtocol : AnyObject {
++    
+     /**
+      * Cleanly close the underlying connection. Idempotent.
+      */
+-    func closeChannel() throws
+-
++    func closeChannel() throws 
++    
+     /**
+      * Maximum datagram payload size negotiated for this connection.
+      * Returns 0 if datagrams aren't supported (peer disabled them).
+      */
+-    func maxDatagramSize() throws -> UInt32
+-
++    func maxDatagramSize() throws  -> UInt32
++    
+     /**
+      * Receive one datagram with a bounded wait. Returns `None` if the
+      * peer closed the connection before a packet arrived. `timeout_millis`
+      * is the per-call ceiling — receivers should drive a tight loop at
+      * the Opus framing cadence (20 ms) plus a small safety margin.
+      */
+-    func recv(timeoutMillis: UInt32) throws -> Data?
+-
++    func recv(timeoutMillis: UInt32) throws  -> Data?
++    
+     /**
+      * Send a single datagram. Length is the in-flight MTU (1200 bytes on
+      * most networks) — anything larger fails with `StreamFailed`. The
+      * sender is responsible for keeping each Opus packet under the MTU.
+      */
+-    func send(packet: Data) throws
+-
++    func send(packet: Data) throws 
++    
+ }
+ 
+ /**
+@@ -785,7 +801,7 @@ open class IrohDatagramChannel:
+     // TODO: We'd like this to be `private` but for Swifty reasons,
+     // we can't implement `FfiConverter` without making this `required` and we can't
+     // make it `required` without making it `public`.
+-    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
++    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+         self.pointer = pointer
+     }
+ 
+@@ -810,58 +826,62 @@ open class IrohDatagramChannel:
+     // No primary constructor declared for this class.
+ 
+     deinit {
+-        guard let pointer else {
++        guard let pointer = pointer else {
+             return
+         }
+ 
+         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohdatagramchannel(pointer, $0) }
+     }
+ 
++    
++
++    
+     /**
+      * Cleanly close the underlying connection. Idempotent.
+      */
+-open func closeChannel()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(self.uniffiClonePointer(), $0
++open func closeChannel()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
++    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(self.uniffiClonePointer(),$0
+     )
+ }
+ }
+-
++    
+     /**
+      * Maximum datagram payload size negotiated for this connection.
+      * Returns 0 if datagrams aren't supported (peer disabled them).
+      */
+-open func maxDatagramSize()throws -> UInt32 {
++open func maxDatagramSize()throws  -> UInt32 {
+     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_max_datagram_size(self.uniffiClonePointer(), $0
++    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_max_datagram_size(self.uniffiClonePointer(),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Receive one datagram with a bounded wait. Returns `None` if the
+      * peer closed the connection before a packet arrived. `timeout_millis`
+      * is the per-call ceiling — receivers should drive a tight loop at
+      * the Opus framing cadence (20 ms) plus a small safety margin.
+      */
+-open func recv(timeoutMillis: UInt32)throws -> Data? {
++open func recv(timeoutMillis: UInt32)throws  -> Data? {
+     return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_recv(self.uniffiClonePointer(),
+-        FfiConverterUInt32.lower(timeoutMillis), $0
++        FfiConverterUInt32.lower(timeoutMillis),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Send a single datagram. Length is the in-flight MTU (1200 bytes on
+      * most networks) — anything larger fails with `StreamFailed`. The
+      * sender is responsible for keeping each Opus packet under the MTU.
+      */
+-open func send(packet: Data)throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
++open func send(packet: Data)throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_send(self.uniffiClonePointer(),
+-        FfiConverterData.lower(packet), $0
++        FfiConverterData.lower(packet),$0
+     )
+ }
+ }
++    
+ 
+ }
+ 
+@@ -886,7 +906,7 @@ public struct FfiConverterTypeIrohDatagramChannel: FfiConverter {
+         // The Rust code won't compile if a pointer won't fit in a UInt64.
+         // We have to go via `UInt` because that's the thing that's the size of a pointer.
+         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+-        if ptr == nil {
++        if (ptr == nil) {
+             throw UniffiInternalError.unexpectedNullPointer
+         }
+         return try lift(ptr!)
+@@ -899,6 +919,9 @@ public struct FfiConverterTypeIrohDatagramChannel: FfiConverter {
+     }
+ }
+ 
++
++
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -913,25 +936,34 @@ public func FfiConverterTypeIrohDatagramChannel_lower(_ value: IrohDatagramChann
+     return FfiConverterTypeIrohDatagramChannel.lower(value)
+ }
+ 
++
++
++
+ /**
+  * Wraps an `iroh::Endpoint` and exposes the eight-function surface the Swift
+  * `OpenBurnBarIrohEndpoint` actor calls into.
+  */
+-public protocol IrohEndpointHandleProtocol: AnyObject {
+-
++public protocol IrohEndpointHandleProtocol : AnyObject {
++    
+     /**
+      * Block waiting for an inbound Mercury audio datagram connection.
+      * Mac uses this in a loop on a dedicated accept task; iOS / Android
+      * dial outbound and rarely accept.
+      */
+-    func acceptDatagramChannel(timeoutSeconds: UInt32) throws -> IrohDatagramChannel
+-
++    func acceptDatagramChannel(timeoutSeconds: UInt32) throws  -> IrohDatagramChannel
++    
+     /**
+-     * Block waiting for one inbound bidirectional stream. Returns once the
+-     * remote opens its first bi-stream after a successful ALPN handshake.
++     * Block waiting for one inbound bidirectional stream.
++     *
++     * The endpoint owns a background acceptor that accepts each peer
++     * connection once and then drains every bidirectional stream opened on
++     * that connection into this queue. This matters because iroh may reuse an
++     * existing QUIC connection for later Mercury streams; waiting on
++     * `endpoint.accept()` for every stream would miss those reused streams and
++     * make clients connect/disconnect in a loop.
+      */
+-    func acceptOne(timeoutSeconds: UInt32) throws -> IrohStream
+-
++    func acceptOne(timeoutSeconds: UInt32) throws  -> IrohStream
++    
+     /**
+      * Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
+      * per handle; calling twice replaces the inner endpoint. Returns the
+@@ -943,32 +975,32 @@ public protocol IrohEndpointHandleProtocol: AnyObject {
+      * Empty string means "use n0's public relay set" (the default in
+      * phases 1-5).
+      */
+-    func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String) throws -> IrohNodeIdentity
+-
++    func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String) throws  -> IrohNodeIdentity
++    
+     /**
+      * Dial a remote node by NodeId (base32 surface form) and open one
+      * bidirectional stream. The caller is responsible for stream lifetime.
+      */
+-    func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws -> IrohStream
+-
++    func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws  -> IrohStream
++    
+     /**
+      * Returns the cached identity if `bootstrap` has been called.
+      */
+-    func identity() throws -> IrohNodeIdentity
+-
++    func identity() throws  -> IrohNodeIdentity
++    
+     /**
+      * Dial a remote NodeId on the Mercury audio ALPN and return a
+      * datagram-only channel. The chat ALPN endpoint must already be
+      * bootstrapped — this method reuses the same iroh `Endpoint` so it
+      * shares discovery + relay state.
+      */
+-    func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws -> IrohDatagramChannel
+-
++    func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws  -> IrohDatagramChannel
++    
+     /**
+      * Cleanly close the endpoint. After shutdown the handle is unusable.
+      */
+-    func shutdown() throws
+-
++    func shutdown() throws 
++    
+ }
+ 
+ /**
+@@ -990,7 +1022,7 @@ open class IrohEndpointHandle:
+     // TODO: We'd like this to be `private` but for Swifty reasons,
+     // we can't implement `FfiConverter` without making this `required` and we can't
+     // make it `required` without making it `public`.
+-    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
++    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+         self.pointer = pointer
+     }
+ 
+@@ -1014,7 +1046,7 @@ open class IrohEndpointHandle:
+     }
+ public convenience init() {
+     let pointer =
+-        try! rustCall {
++        try! rustCall() {
+     uniffi_openburnbar_iroh_fn_constructor_irohendpointhandle_new($0
+     )
+ }
+@@ -1022,38 +1054,47 @@ public convenience init() {
+ }
+ 
+     deinit {
+-        guard let pointer else {
++        guard let pointer = pointer else {
+             return
+         }
+ 
+         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohendpointhandle(pointer, $0) }
+     }
+ 
++    
++
++    
+     /**
+      * Block waiting for an inbound Mercury audio datagram connection.
+      * Mac uses this in a loop on a dedicated accept task; iOS / Android
+      * dial outbound and rarely accept.
+      */
+-open func acceptDatagramChannel(timeoutSeconds: UInt32)throws -> IrohDatagramChannel {
++open func acceptDatagramChannel(timeoutSeconds: UInt32)throws  -> IrohDatagramChannel {
+     return try  FfiConverterTypeIrohDatagramChannel.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_datagram_channel(self.uniffiClonePointer(),
+-        FfiConverterUInt32.lower(timeoutSeconds), $0
++        FfiConverterUInt32.lower(timeoutSeconds),$0
+     )
+ })
+ }
+-
++    
+     /**
+-     * Block waiting for one inbound bidirectional stream. Returns once the
+-     * remote opens its first bi-stream after a successful ALPN handshake.
++     * Block waiting for one inbound bidirectional stream.
++     *
++     * The endpoint owns a background acceptor that accepts each peer
++     * connection once and then drains every bidirectional stream opened on
++     * that connection into this queue. This matters because iroh may reuse an
++     * existing QUIC connection for later Mercury streams; waiting on
++     * `endpoint.accept()` for every stream would miss those reused streams and
++     * make clients connect/disconnect in a loop.
+      */
+-open func acceptOne(timeoutSeconds: UInt32)throws -> IrohStream {
++open func acceptOne(timeoutSeconds: UInt32)throws  -> IrohStream {
+     return try  FfiConverterTypeIrohStream.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_one(self.uniffiClonePointer(),
+-        FfiConverterUInt32.lower(timeoutSeconds), $0
++        FfiConverterUInt32.lower(timeoutSeconds),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
+      * per handle; calling twice replaces the inner endpoint. Returns the
+@@ -1065,65 +1106,66 @@ open func acceptOne(timeoutSeconds: UInt32)throws -> IrohStream {
+      * Empty string means "use n0's public relay set" (the default in
+      * phases 1-5).
+      */
+-open func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String)throws -> IrohNodeIdentity {
++open func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String)throws  -> IrohNodeIdentity {
+     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_bootstrap(self.uniffiClonePointer(),
+         FfiConverterTypeIrohSecretKeyMaterial.lower(secret),
+-        FfiConverterString.lower(relayUrl), $0
++        FfiConverterString.lower(relayUrl),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Dial a remote node by NodeId (base32 surface form) and open one
+      * bidirectional stream. The caller is responsible for stream lifetime.
+      */
+-open func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws -> IrohStream {
++open func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws  -> IrohStream {
+     return try  FfiConverterTypeIrohStream.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_connect(self.uniffiClonePointer(),
+         FfiConverterString.lower(nodeId),
+         FfiConverterString.lower(relayUrl),
+         FfiConverterSequenceString.lower(directAddresses),
+-        FfiConverterUInt32.lower(timeoutSeconds), $0
++        FfiConverterUInt32.lower(timeoutSeconds),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Returns the cached identity if `bootstrap` has been called.
+      */
+-open func identity()throws -> IrohNodeIdentity {
++open func identity()throws  -> IrohNodeIdentity {
+     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_identity(self.uniffiClonePointer(), $0
++    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_identity(self.uniffiClonePointer(),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Dial a remote NodeId on the Mercury audio ALPN and return a
+      * datagram-only channel. The chat ALPN endpoint must already be
+      * bootstrapped — this method reuses the same iroh `Endpoint` so it
+      * shares discovery + relay state.
+      */
+-open func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws -> IrohDatagramChannel {
++open func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws  -> IrohDatagramChannel {
+     return try  FfiConverterTypeIrohDatagramChannel.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_open_datagram_channel(self.uniffiClonePointer(),
+         FfiConverterString.lower(nodeId),
+         FfiConverterString.lower(relayUrl),
+         FfiConverterSequenceString.lower(directAddresses),
+-        FfiConverterUInt32.lower(timeoutSeconds), $0
++        FfiConverterUInt32.lower(timeoutSeconds),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Cleanly close the endpoint. After shutdown the handle is unusable.
+      */
+-open func shutdown()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_shutdown(self.uniffiClonePointer(), $0
++open func shutdown()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
++    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_shutdown(self.uniffiClonePointer(),$0
+     )
+ }
+ }
++    
+ 
+ }
+ 
+@@ -1148,7 +1190,7 @@ public struct FfiConverterTypeIrohEndpointHandle: FfiConverter {
+         // The Rust code won't compile if a pointer won't fit in a UInt64.
+         // We have to go via `UInt` because that's the thing that's the size of a pointer.
+         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+-        if ptr == nil {
++        if (ptr == nil) {
+             throw UniffiInternalError.unexpectedNullPointer
+         }
+         return try lift(ptr!)
+@@ -1161,6 +1203,9 @@ public struct FfiConverterTypeIrohEndpointHandle: FfiConverter {
+     }
+ }
+ 
++
++
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1175,34 +1220,37 @@ public func FfiConverterTypeIrohEndpointHandle_lower(_ value: IrohEndpointHandle
+     return FfiConverterTypeIrohEndpointHandle.lower(value)
+ }
+ 
++
++
++
+ /**
+  * A single bidirectional stream, surfaced as an opaque handle to Swift so we
+  * can keep the send/recv halves alive across UniFFI boundaries.
+  */
+-public protocol IrohStreamProtocol: AnyObject {
+-
++public protocol IrohStreamProtocol : AnyObject {
++    
+     /**
+      * Close the stream cleanly. Idempotent.
+      */
+-    func closeStream() throws
+-
++    func closeStream() throws 
++    
+     /**
+      * Read one length-prefixed JSON frame off the stream. Returns `None` on
+      * clean stream close.
+      */
+-    func recvFrame() throws -> Data?
+-
++    func recvFrame() throws  -> Data?
++    
+     /**
+      * Base32 NodeId of the remote peer that opened this stream.
+      */
+-    func remoteNodeId() -> String
+-
++    func remoteNodeId()  -> String
++    
+     /**
+      * Write a length-prefixed JSON frame onto the stream. Length prefix is
+      * a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
+      */
+-    func sendFrame(frame: Data) throws
+-
++    func sendFrame(frame: Data) throws 
++    
+ }
+ 
+ /**
+@@ -1224,7 +1272,7 @@ open class IrohStream:
+     // TODO: We'd like this to be `private` but for Swifty reasons,
+     // we can't implement `FfiConverter` without making this `required` and we can't
+     // make it `required` without making it `public`.
+-    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
++    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+         self.pointer = pointer
+     }
+ 
+@@ -1249,53 +1297,57 @@ open class IrohStream:
+     // No primary constructor declared for this class.
+ 
+     deinit {
+-        guard let pointer else {
++        guard let pointer = pointer else {
+             return
+         }
+ 
+         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohstream(pointer, $0) }
+     }
+ 
++    
++
++    
+     /**
+      * Close the stream cleanly. Idempotent.
+      */
+-open func closeStream()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(self.uniffiClonePointer(), $0
++open func closeStream()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
++    uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(self.uniffiClonePointer(),$0
+     )
+ }
+ }
+-
++    
+     /**
+      * Read one length-prefixed JSON frame off the stream. Returns `None` on
+      * clean stream close.
+      */
+-open func recvFrame()throws -> Data? {
++open func recvFrame()throws  -> Data? {
+     return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+-    uniffi_openburnbar_iroh_fn_method_irohstream_recv_frame(self.uniffiClonePointer(), $0
++    uniffi_openburnbar_iroh_fn_method_irohstream_recv_frame(self.uniffiClonePointer(),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Base32 NodeId of the remote peer that opened this stream.
+      */
+ open func remoteNodeId() -> String {
+-    return try!  FfiConverterString.lift(try! rustCall {
+-    uniffi_openburnbar_iroh_fn_method_irohstream_remote_node_id(self.uniffiClonePointer(), $0
++    return try!  FfiConverterString.lift(try! rustCall() {
++    uniffi_openburnbar_iroh_fn_method_irohstream_remote_node_id(self.uniffiClonePointer(),$0
+     )
+ })
+ }
+-
++    
+     /**
+      * Write a length-prefixed JSON frame onto the stream. Length prefix is
+      * a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
+      */
+-open func sendFrame(frame: Data)throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
++open func sendFrame(frame: Data)throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_method_irohstream_send_frame(self.uniffiClonePointer(),
+-        FfiConverterData.lower(frame), $0
++        FfiConverterData.lower(frame),$0
+     )
+ }
+ }
++    
+ 
+ }
+ 
+@@ -1320,7 +1372,7 @@ public struct FfiConverterTypeIrohStream: FfiConverter {
+         // The Rust code won't compile if a pointer won't fit in a UInt64.
+         // We have to go via `UInt` because that's the thing that's the size of a pointer.
+         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+-        if ptr == nil {
++        if (ptr == nil) {
+             throw UniffiInternalError.unexpectedNullPointer
+         }
+         return try lift(ptr!)
+@@ -1333,6 +1385,9 @@ public struct FfiConverterTypeIrohStream: FfiConverter {
+     }
+ }
+ 
++
++
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1347,6 +1402,7 @@ public func FfiConverterTypeIrohStream_lower(_ value: IrohStream) -> UnsafeMutab
+     return FfiConverterTypeIrohStream.lower(value)
+ }
+ 
++
+ /**
+  * Validated wrapper around an iroh-blobs `BlobTicket` text form. Carried
+  * as a base32 string on the wire so the Swift side can pass it through
+@@ -1368,8 +1424,10 @@ public struct BlobTicketBytes {
+     }
+ }
+ 
++
++
+ extension BlobTicketBytes: Equatable, Hashable {
+-    public static func == (lhs: BlobTicketBytes, rhs: BlobTicketBytes) -> Bool {
++    public static func ==(lhs: BlobTicketBytes, rhs: BlobTicketBytes) -> Bool {
+         if lhs.text != rhs.text {
+             return false
+         }
+@@ -1381,6 +1439,7 @@ extension BlobTicketBytes: Equatable, Hashable {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1397,6 +1456,7 @@ public struct FfiConverterTypeBlobTicketBytes: FfiConverterRustBuffer {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1411,6 +1471,7 @@ public func FfiConverterTypeBlobTicketBytes_lower(_ value: BlobTicketBytes) -> R
+     return FfiConverterTypeBlobTicketBytes.lower(value)
+ }
+ 
++
+ /**
+  * Per-transfer statistics returned to Swift on a successful `fetch_blob`.
+  * Bucketing into telemetry happens client-side so payload counts never
+@@ -1432,8 +1493,10 @@ public struct BlobTransferStats {
+     }
+ }
+ 
++
++
+ extension BlobTransferStats: Equatable, Hashable {
+-    public static func == (lhs: BlobTransferStats, rhs: BlobTransferStats) -> Bool {
++    public static func ==(lhs: BlobTransferStats, rhs: BlobTransferStats) -> Bool {
+         if lhs.bytesTotal != rhs.bytesTotal {
+             return false
+         }
+@@ -1457,6 +1520,7 @@ extension BlobTransferStats: Equatable, Hashable {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1464,9 +1528,9 @@ public struct FfiConverterTypeBlobTransferStats: FfiConverterRustBuffer {
+     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BlobTransferStats {
+         return
+             try BlobTransferStats(
+-                bytesTotal: FfiConverterUInt64.read(from: &buf),
+-                blake3Hash: FfiConverterString.read(from: &buf),
+-                durationMillis: FfiConverterUInt64.read(from: &buf),
++                bytesTotal: FfiConverterUInt64.read(from: &buf), 
++                blake3Hash: FfiConverterString.read(from: &buf), 
++                durationMillis: FfiConverterUInt64.read(from: &buf), 
+                 didResume: FfiConverterBool.read(from: &buf)
+         )
+     }
+@@ -1479,6 +1543,7 @@ public struct FfiConverterTypeBlobTransferStats: FfiConverterRustBuffer {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1493,6 +1558,7 @@ public func FfiConverterTypeBlobTransferStats_lower(_ value: BlobTransferStats)
+     return FfiConverterTypeBlobTransferStats.lower(value)
+ }
+ 
++
+ /**
+  * Per-call options for inbound connection acceptance. Today only the
+  * ALPN is configurable; we hard-pin `OPENBURNBAR_ALPN` from Swift.
+@@ -1507,8 +1573,10 @@ public struct IrohAcceptOptions {
+     }
+ }
+ 
++
++
+ extension IrohAcceptOptions: Equatable, Hashable {
+-    public static func == (lhs: IrohAcceptOptions, rhs: IrohAcceptOptions) -> Bool {
++    public static func ==(lhs: IrohAcceptOptions, rhs: IrohAcceptOptions) -> Bool {
+         if lhs.alpn != rhs.alpn {
+             return false
+         }
+@@ -1520,6 +1588,7 @@ extension IrohAcceptOptions: Equatable, Hashable {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1536,6 +1605,7 @@ public struct FfiConverterTypeIrohAcceptOptions: FfiConverterRustBuffer {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1550,6 +1620,7 @@ public func FfiConverterTypeIrohAcceptOptions_lower(_ value: IrohAcceptOptions)
+     return FfiConverterTypeIrohAcceptOptions.lower(value)
+ }
+ 
++
+ /**
+  * 32 raw public-key bytes plus the base32 NodeId surface form (52 chars).
+  */
+@@ -1569,8 +1640,10 @@ public struct IrohNodeIdentity {
+     }
+ }
+ 
++
++
+ extension IrohNodeIdentity: Equatable, Hashable {
+-    public static func == (lhs: IrohNodeIdentity, rhs: IrohNodeIdentity) -> Bool {
++    public static func ==(lhs: IrohNodeIdentity, rhs: IrohNodeIdentity) -> Bool {
+         if lhs.rawPublicKey != rhs.rawPublicKey {
+             return false
+         }
+@@ -1594,6 +1667,7 @@ extension IrohNodeIdentity: Equatable, Hashable {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1601,9 +1675,9 @@ public struct FfiConverterTypeIrohNodeIdentity: FfiConverterRustBuffer {
+     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IrohNodeIdentity {
+         return
+             try IrohNodeIdentity(
+-                rawPublicKey: FfiConverterData.read(from: &buf),
+-                nodeId: FfiConverterString.read(from: &buf),
+-                relayUrl: FfiConverterString.read(from: &buf),
++                rawPublicKey: FfiConverterData.read(from: &buf), 
++                nodeId: FfiConverterString.read(from: &buf), 
++                relayUrl: FfiConverterString.read(from: &buf), 
+                 directAddresses: FfiConverterSequenceString.read(from: &buf)
+         )
+     }
+@@ -1616,6 +1690,7 @@ public struct FfiConverterTypeIrohNodeIdentity: FfiConverterRustBuffer {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1630,6 +1705,7 @@ public func FfiConverterTypeIrohNodeIdentity_lower(_ value: IrohNodeIdentity) ->
+     return FfiConverterTypeIrohNodeIdentity.lower(value)
+ }
+ 
++
+ /**
+  * 32 raw secret-key bytes generated by `IrohSecretKeyMaterial.generate()` on
+  * the Swift side (or by `generate_secret_key_material()` for cold-start).
+@@ -1644,8 +1720,10 @@ public struct IrohSecretKeyMaterial {
+     }
+ }
+ 
++
++
+ extension IrohSecretKeyMaterial: Equatable, Hashable {
+-    public static func == (lhs: IrohSecretKeyMaterial, rhs: IrohSecretKeyMaterial) -> Bool {
++    public static func ==(lhs: IrohSecretKeyMaterial, rhs: IrohSecretKeyMaterial) -> Bool {
+         if lhs.raw != rhs.raw {
+             return false
+         }
+@@ -1657,6 +1735,7 @@ extension IrohSecretKeyMaterial: Equatable, Hashable {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1673,6 +1752,7 @@ public struct FfiConverterTypeIrohSecretKeyMaterial: FfiConverterRustBuffer {
+     }
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1687,8 +1767,11 @@ public func FfiConverterTypeIrohSecretKeyMaterial_lower(_ value: IrohSecretKeyMa
+     return FfiConverterTypeIrohSecretKeyMaterial.lower(value)
+ }
+ 
++
+ public enum IrohFfiError {
+ 
++    
++    
+     case InvalidSecretKey
+     case InvalidNodeId
+     case EndpointNotInitialized
+@@ -1704,6 +1787,7 @@ public enum IrohFfiError {
+     )
+ }
+ 
++
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+@@ -1714,6 +1798,9 @@ public struct FfiConverterTypeIrohFfiError: FfiConverterRustBuffer {
+         let variant: Int32 = try readInt(&buf)
+         switch variant {
+ 
++        
++
++        
+         case 1: return .InvalidSecretKey
+         case 2: return .InvalidNodeId
+         case 3: return .EndpointNotInitialized
+@@ -1740,39 +1827,51 @@ public struct FfiConverterTypeIrohFfiError: FfiConverterRustBuffer {
+     public static func write(_ value: IrohFfiError, into buf: inout [UInt8]) {
+         switch value {
+ 
++        
++
++        
++        
+         case .InvalidSecretKey:
+             writeInt(&buf, Int32(1))
+-
++        
++        
+         case .InvalidNodeId:
+             writeInt(&buf, Int32(2))
+-
++        
++        
+         case .EndpointNotInitialized:
+             writeInt(&buf, Int32(3))
+-
++        
++        
+         case let .ConnectFailed(detail):
+             writeInt(&buf, Int32(4))
+             FfiConverterString.write(detail, into: &buf)
+-
++            
++        
+         case let .StreamFailed(detail):
+             writeInt(&buf, Int32(5))
+             FfiConverterString.write(detail, into: &buf)
+-
++            
++        
+         case let .AcceptFailed(detail):
+             writeInt(&buf, Int32(6))
+             FfiConverterString.write(detail, into: &buf)
+-
++            
++        
+         case let .ShutdownFailed(detail):
+             writeInt(&buf, Int32(7))
+             FfiConverterString.write(detail, into: &buf)
+-
++            
++        
+         case let .RuntimeFailed(detail):
+             writeInt(&buf, Int32(8))
+             FfiConverterString.write(detail, into: &buf)
+-
++            
+         }
+     }
+ }
+ 
++
+ extension IrohFfiError: Equatable, Hashable {}
+ 
+ extension IrohFfiError: Foundation.LocalizedError {
+@@ -1784,11 +1883,11 @@ extension IrohFfiError: Foundation.LocalizedError {
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+-private struct FfiConverterOptionData: FfiConverterRustBuffer {
++fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+     typealias SwiftType = Data?
+ 
+-    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+-        guard let value else {
++    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
++        guard let value = value else {
+             writeInt(&buf, Int8(0))
+             return
+         }
+@@ -1796,7 +1895,7 @@ private struct FfiConverterOptionData: FfiConverterRustBuffer {
+         FfiConverterData.write(value, into: &buf)
+     }
+ 
+-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
++    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+         switch try readInt(&buf) as Int8 {
+         case 0: return nil
+         case 1: return try FfiConverterData.read(from: &buf)
+@@ -1808,10 +1907,10 @@ private struct FfiConverterOptionData: FfiConverterRustBuffer {
+ #if swift(>=5.8)
+ @_documentation(visibility: private)
+ #endif
+-private struct FfiConverterSequenceString: FfiConverterRustBuffer {
++fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+     typealias SwiftType = [String]
+ 
+-    static func write(_ value: [String], into buf: inout [UInt8]) {
++    public static func write(_ value: [String], into buf: inout [UInt8]) {
+         let len = Int32(value.count)
+         writeInt(&buf, len)
+         for item in value {
+@@ -1819,7 +1918,7 @@ private struct FfiConverterSequenceString: FfiConverterRustBuffer {
+         }
+     }
+ 
+-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
++    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+         let len: Int32 = try readInt(&buf)
+         var seq = [String]()
+         seq.reserveCapacity(Int(len))
+@@ -1830,7 +1929,7 @@ private struct FfiConverterSequenceString: FfiConverterRustBuffer {
+     }
+ }
+ public func generateSecretKeyMaterial() -> IrohSecretKeyMaterial {
+-    return try!  FfiConverterTypeIrohSecretKeyMaterial.lift(try! rustCall {
++    return try!  FfiConverterTypeIrohSecretKeyMaterial.lift(try! rustCall() {
+     uniffi_openburnbar_iroh_fn_func_generate_secret_key_material($0
+     )
+ })
+@@ -1841,7 +1940,7 @@ public func generateSecretKeyMaterial() -> IrohSecretKeyMaterial {
+  * without hardcoding the constant.
+  */
+ public func irohBlobsAlpn() -> Data {
+-    return try!  FfiConverterData.lift(try! rustCall {
++    return try!  FfiConverterData.lift(try! rustCall() {
+     uniffi_openburnbar_iroh_fn_func_iroh_blobs_alpn($0
+     )
+ })
+@@ -1853,7 +1952,7 @@ public func irohBlobsAlpn() -> Data {
+  * surfaces at build time rather than as a runtime decode failure.
+  */
+ public func irohBlobsCrateVersion() -> String {
+-    return try!  FfiConverterString.lift(try! rustCall {
++    return try!  FfiConverterString.lift(try! rustCall() {
+     uniffi_openburnbar_iroh_fn_func_iroh_blobs_crate_version($0
+     )
+ })
+@@ -1862,19 +1961,19 @@ public func irohBlobsCrateVersion() -> String {
+  * Exported constant so platform code never has to hardcode the ALPN.
+  */
+ public func mercuryAudioAlpn() -> Data {
+-    return try!  FfiConverterData.lift(try! rustCall {
++    return try!  FfiConverterData.lift(try! rustCall() {
+     uniffi_openburnbar_iroh_fn_func_mercury_audio_alpn($0
+     )
+ })
+ }
+ public func openburnbarAlpn() -> Data {
+-    return try!  FfiConverterData.lift(try! rustCall {
++    return try!  FfiConverterData.lift(try! rustCall() {
+     uniffi_openburnbar_iroh_fn_func_openburnbar_alpn($0
+     )
+ })
+ }
+ public func openburnbarIrohProtocolVersion() -> UInt32 {
+-    return try!  FfiConverterUInt32.lift(try! rustCall {
++    return try!  FfiConverterUInt32.lift(try! rustCall() {
+     uniffi_openburnbar_iroh_fn_func_openburnbar_iroh_protocol_version($0
+     )
+ })
+@@ -1884,10 +1983,10 @@ public func openburnbarIrohProtocolVersion() -> UInt32 {
+  * Returns the canonical re-serialized string so Swift never has to
+  * second-guess whitespace or encoding nits.
+  */
+-public func parseBlobTicket(text: String)throws -> BlobTicketBytes {
++public func parseBlobTicket(text: String)throws  -> BlobTicketBytes {
+     return try  FfiConverterTypeBlobTicketBytes.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+     uniffi_openburnbar_iroh_fn_func_parse_blob_ticket(
+-        FfiConverterString.lower(text), $0
++        FfiConverterString.lower(text),$0
+     )
+ })
+ }
+@@ -1907,91 +2006,91 @@ private var initializationResult: InitializationResult = {
+     if bindings_contract_version != scaffolding_contract_version {
+         return InitializationResult.contractVersionMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material() != 62546 {
++    if (uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material() != 62546) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_func_iroh_blobs_alpn() != 24967 {
++    if (uniffi_openburnbar_iroh_checksum_func_iroh_blobs_alpn() != 24967) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version() != 22686 {
++    if (uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version() != 22686) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_func_mercury_audio_alpn() != 47377 {
++    if (uniffi_openburnbar_iroh_checksum_func_mercury_audio_alpn() != 47377) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn() != 35230 {
++    if (uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn() != 35230) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_func_openburnbar_iroh_protocol_version() != 56559 {
++    if (uniffi_openburnbar_iroh_checksum_func_openburnbar_iroh_protocol_version() != 56559) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_func_parse_blob_ticket() != 35063 {
++    if (uniffi_openburnbar_iroh_checksum_func_parse_blob_ticket() != 35063) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_bootstrap() != 49542 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_bootstrap() != 49542) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob() != 53241 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob() != 53241) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity() != 12806 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity() != 12806) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob() != 9204 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob() != 9204) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown() != 36452 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown() != 36452) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_close_channel() != 19565 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_close_channel() != 19565) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_max_datagram_size() != 21433 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_max_datagram_size() != 21433) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_recv() != 55876 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_recv() != 55876) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_send() != 45879 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_send() != 45879) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_datagram_channel() != 10477 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_datagram_channel() != 10477) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one() != 41643 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one() != 29381) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_bootstrap() != 23431 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_bootstrap() != 23431) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_connect() != 26478 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_connect() != 26478) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_identity() != 41818 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_identity() != 41818) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_open_datagram_channel() != 37751 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_open_datagram_channel() != 37751) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_shutdown() != 5484 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_shutdown() != 5484) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohstream_close_stream() != 48508 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohstream_close_stream() != 48508) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohstream_recv_frame() != 37160 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohstream_recv_frame() != 37160) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohstream_remote_node_id() != 16047 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohstream_remote_node_id() != 16047) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_method_irohstream_send_frame() != 6093 {
++    if (uniffi_openburnbar_iroh_checksum_method_irohstream_send_frame() != 6093) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_constructor_irohblobnode_new() != 36180 {
++    if (uniffi_openburnbar_iroh_checksum_constructor_irohblobnode_new() != 36180) {
+         return InitializationResult.apiChecksumMismatch
+     }
+-    if uniffi_openburnbar_iroh_checksum_constructor_irohendpointhandle_new() != 32550 {
++    if (uniffi_openburnbar_iroh_checksum_constructor_irohendpointhandle_new() != 32550) {
+         return InitializationResult.apiChecksumMismatch
+     }
+ 
+@@ -2009,4 +2108,4 @@ private func uniffiEnsureInitialized() {
+     }
+ }
+ 
+-// swiftlint:enable all
++// swiftlint:enable all
+\ No newline at end of file
+diff --git a/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_irohFFI.h b/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_irohFFI.h
+index c39f15edb..cae0fdb47 100644
+--- a/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_irohFFI.h
++++ b/OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_irohFFI.h
+@@ -264,7 +264,7 @@ void uniffi_openburnbar_iroh_fn_free_irohblobnode(void*_Nonnull ptr, RustCallSta
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHBLOBNODE_NEW
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHBLOBNODE_NEW
+ void*_Nonnull uniffi_openburnbar_iroh_fn_constructor_irohblobnode_new(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_METHOD_IROHBLOBNODE_BOOTSTRAP
+@@ -335,7 +335,7 @@ void uniffi_openburnbar_iroh_fn_free_irohendpointhandle(void*_Nonnull ptr, RustC
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
+ void*_Nonnull uniffi_openburnbar_iroh_fn_constructor_irohendpointhandle_new(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_METHOD_IROHENDPOINTHANDLE_ACCEPT_DATAGRAM_CHANNEL
+@@ -406,37 +406,37 @@ void uniffi_openburnbar_iroh_fn_method_irohstream_send_frame(void*_Nonnull ptr,
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_GENERATE_SECRET_KEY_MATERIAL
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_GENERATE_SECRET_KEY_MATERIAL
+ RustBuffer uniffi_openburnbar_iroh_fn_func_generate_secret_key_material(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_ALPN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_ALPN
+ RustBuffer uniffi_openburnbar_iroh_fn_func_iroh_blobs_alpn(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_CRATE_VERSION
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_CRATE_VERSION
+ RustBuffer uniffi_openburnbar_iroh_fn_func_iroh_blobs_crate_version(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_MERCURY_AUDIO_ALPN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_MERCURY_AUDIO_ALPN
+ RustBuffer uniffi_openburnbar_iroh_fn_func_mercury_audio_alpn(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_ALPN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_ALPN
+ RustBuffer uniffi_openburnbar_iroh_fn_func_openburnbar_alpn(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
+ uint32_t uniffi_openburnbar_iroh_fn_func_openburnbar_iroh_protocol_version(RustCallStatus *_Nonnull out_status
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_PARSE_BLOB_TICKET
+@@ -727,181 +727,181 @@ void ffi_openburnbar_iroh_rust_future_complete_void(uint64_t handle, RustCallSta
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_GENERATE_SECRET_KEY_MATERIAL
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_GENERATE_SECRET_KEY_MATERIAL
+ uint16_t uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_ALPN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_ALPN
+ uint16_t uniffi_openburnbar_iroh_checksum_func_iroh_blobs_alpn(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_CRATE_VERSION
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_CRATE_VERSION
+ uint16_t uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_MERCURY_AUDIO_ALPN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_MERCURY_AUDIO_ALPN
+ uint16_t uniffi_openburnbar_iroh_checksum_func_mercury_audio_alpn(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_ALPN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_ALPN
+ uint16_t uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
+ uint16_t uniffi_openburnbar_iroh_checksum_func_openburnbar_iroh_protocol_version(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_PARSE_BLOB_TICKET
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_PARSE_BLOB_TICKET
+ uint16_t uniffi_openburnbar_iroh_checksum_func_parse_blob_ticket(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_BOOTSTRAP
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_BOOTSTRAP
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_bootstrap(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_FETCH_BLOB
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_FETCH_BLOB
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_IDENTITY
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_IDENTITY
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_PUBLISH_BLOB
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_PUBLISH_BLOB
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_SHUTDOWN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_SHUTDOWN
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_CLOSE_CHANNEL
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_CLOSE_CHANNEL
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_close_channel(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_MAX_DATAGRAM_SIZE
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_MAX_DATAGRAM_SIZE
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_max_datagram_size(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_RECV
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_RECV
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_recv(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_SEND
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHDATAGRAMCHANNEL_SEND
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_send(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_ACCEPT_DATAGRAM_CHANNEL
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_ACCEPT_DATAGRAM_CHANNEL
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_datagram_channel(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_ACCEPT_ONE
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_ACCEPT_ONE
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_BOOTSTRAP
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_BOOTSTRAP
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_bootstrap(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_CONNECT
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_CONNECT
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_connect(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_IDENTITY
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_IDENTITY
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_identity(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_OPEN_DATAGRAM_CHANNEL
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_OPEN_DATAGRAM_CHANNEL
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_open_datagram_channel(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_SHUTDOWN
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_SHUTDOWN
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_shutdown(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_CLOSE_STREAM
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_CLOSE_STREAM
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohstream_close_stream(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_RECV_FRAME
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_RECV_FRAME
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohstream_recv_frame(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_REMOTE_NODE_ID
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_REMOTE_NODE_ID
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohstream_remote_node_id(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_SEND_FRAME
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_SEND_FRAME
+ uint16_t uniffi_openburnbar_iroh_checksum_method_irohstream_send_frame(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHBLOBNODE_NEW
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHBLOBNODE_NEW
+ uint16_t uniffi_openburnbar_iroh_checksum_constructor_irohblobnode_new(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
+ #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
+ uint16_t uniffi_openburnbar_iroh_checksum_constructor_irohendpointhandle_new(void
+-
++    
+ );
+ #endif
+ #ifndef UNIFFI_FFIDEF_FFI_OPENBURNBAR_IROH_UNIFFI_CONTRACT_VERSION
+ #define UNIFFI_FFIDEF_FFI_OPENBURNBAR_IROH_UNIFFI_CONTRACT_VERSION
+ uint32_t ffi_openburnbar_iroh_uniffi_contract_version(void
+-
++    
+ );
+ #endif
+ 
+diff --git a/OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift b/OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift
+index db1a7b9f7..d282aa3a7 100644
+--- a/OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift
++++ b/OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift
+@@ -120,6 +120,13 @@ struct OpenBurnBarMobileApp: App {
+                 .onOpenURL { url in
+                     handleDeepLink(url)
+                 }
++                #if DEBUG
++                .task {
++                    if let url = DebugLaunchURLArguments.consumeBurnBarURL() {
++                        handleDeepLink(url)
++                    }
++                }
++                #endif
+                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                     agentNotifications.updateLifecycle("active")
+                     // Sync any snippets the user added straight from the keyboard.
+@@ -157,6 +164,28 @@ struct OpenBurnBarMobileApp: App {
+             NotificationCenter.default.post(name: .init("ShowSettings"), object: nil)
+         case "agent-watch", "agent-live", "computer-use":
+             NotificationCenter.default.post(name: .init("ShowAgentWatch"), object: nil)
++        #if DEBUG
++        case "mercury":
++            let connectionID = components?.queryItems?.first(where: { $0.name == "connectionID" })?.value
++                ?? components?.queryItems?.first(where: { $0.name == "connectionId" })?.value
++            let trimmedConnectionID = connectionID?
++                .trimmingCharacters(in: .whitespacesAndNewlines)
++                .nilIfEmpty()
++            NSLog("OpenBurnBarMercury deep_link_mercury connectionID=\(trimmedConnectionID ?? "nil")")
++            var userInfo: [AnyHashable: Any] = [
++                "runtime": AssistantRuntimeID.hermes.rawValue,
++                "openMercury": true
++            ]
++            if let trimmedConnectionID {
++                userInfo["connectionID"] = trimmedConnectionID
++            }
++            NotificationCenter.default.post(
++                name: .init("ShowAssistantsTab"),
++                object: nil,
++                userInfo: userInfo
++            )
++            HermesSquarePendingThreadRoute.openMercuryWithRetries(connectionID: trimmedConnectionID)
++        #endif
+         case "chat", "hermes":
+             // Public URL handlers navigate only. Prompt-bearing deep links are
+             // never auto-submitted; in-process AppIntents may still stash prompts.
+@@ -211,3 +240,21 @@ struct OpenBurnBarMobileApp: App {
+ private extension String {
+     func nilIfEmpty() -> String? { isEmpty ? nil : self }
+ }
++
++#if DEBUG
++@MainActor
++private enum DebugLaunchURLArguments {
++    private static var didConsume = false
++
++    static func consumeBurnBarURL() -> URL? {
++        guard !didConsume else { return nil }
++        didConsume = true
++
++        return ProcessInfo.processInfo.arguments
++            .dropFirst()
++            .lazy
++            .compactMap(URL.init(string:))
++            .first { $0.scheme?.lowercased() == "burnbar" }
++    }
++}
++#endif
+diff --git a/OpenBurnBarMobile/Models/MobileTextExpansionStore.swift b/OpenBurnBarMobile/Models/MobileTextExpansionStore.swift
+index e893867a9..1ea0ec22c 100644
+--- a/OpenBurnBarMobile/Models/MobileTextExpansionStore.swift
++++ b/OpenBurnBarMobile/Models/MobileTextExpansionStore.swift
+@@ -215,7 +215,13 @@ final class MobileTextExpansionStore {
+         let existingSnapshot = try? await deviceRef.getDocument()
+         let existing = existingSnapshot?.data()
+         let existingTrust = existing?["trustState"] as? String
++        let storedFingerprint = existing?["publicKeyFingerprint"] as? String
++        let storedKeyVersion = existing?["keyVersion"] as? Int
++        let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
++            && storedKeyVersion == keypair.keyVersion
++        let shouldPublishEscrowIdentity = existingSnapshot?.exists == false || localIdentityMatchesStored
+         let sourceIsTrusted = existingTrust == EscrowDeviceTrustState.trusted.rawValue
++            && localIdentityMatchesStored
+ 
+         try await userRef.collection("devices").document(deviceId).setData([
+             "deviceId": deviceId,
+@@ -227,21 +233,25 @@ final class MobileTextExpansionStore {
+             "deviceId": deviceId,
+             "deviceName": deviceName,
+             "platform": UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS",
+-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
+-            "keyVersion": keypair.keyVersion,
+             "updatedAt": FieldValue.serverTimestamp()
+         ]
++        if shouldPublishEscrowIdentity {
++            devicePayload["publicKeyFingerprint"] = keypair.publicKeyFingerprint
++            devicePayload["keyVersion"] = keypair.keyVersion
++        }
+         if existingSnapshot?.exists == false {
+             devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+         }
+         try await deviceRef.setData(devicePayload, merge: true)
+-        try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
+-            userRef: userRef,
+-            deviceId: deviceId,
+-            publicKeyData: keypair.publicKeyData,
+-            publicKeyFingerprint: keypair.publicKeyFingerprint,
+-            keyVersion: keypair.keyVersion
+-        )
++        if shouldPublishEscrowIdentity {
++            try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
++                userRef: userRef,
++                deviceId: deviceId,
++                publicKeyData: keypair.publicKeyData,
++                publicKeyFingerprint: keypair.publicKeyFingerprint,
++                keyVersion: keypair.keyVersion
++            )
++        }
+         let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+         try await MobileSignalIdentityPublicKeyPublisher.publishIfNeeded(
+             userRef: userRef,
+diff --git a/OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift b/OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift
+index 62b6beb1a..1f990909b 100644
+--- a/OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift
++++ b/OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift
+@@ -236,6 +236,29 @@ enum ComputerUseSecurityCallableClient {
+         }
+     }
+ 
++    static func publishIrohPeerNodeId(
++        deviceId: String,
++        connectionId: String,
++        irohPeerNodeId: String,
++        publishedAtMillis: Int64,
++        protocolVersion: Int = 1
++    ) async throws {
++        _ = try requireSignedInUser()
++        try await bindAppCheckAttestation()
++        let nonce = try await issueHighRiskActionNonce()
++        let result = try await functions.httpsCallable("publishIrohPeerNodeId").call([
++            "deviceId": deviceId,
++            "connectionId": connectionId,
++            "irohPeerNodeId": irohPeerNodeId,
++            "publishedAtMillis": publishedAtMillis,
++            "protocolVersion": protocolVersion,
++            "nonce": nonce
++        ])
++        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
++            throw ClientError.invalidResponse("Iroh peer-node publication failed.")
++        }
++    }
++
+     static func publishRelaySenderKey(
+         deviceId: String,
+         peerNodeId: String,
+diff --git a/OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift b/OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift
+index cb51b70ff..1127eea73 100644
+--- a/OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift
++++ b/OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift
+@@ -316,6 +316,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
+             now: now()
+         )
+         let transport = try await transport(relayURL: verifiedTarget.relayURL)
++        _ = try await publishIrohPeerNodeId(uid: uid, connectionID: connectionID)
+         return try await transport.connect(
+             to: verifiedTarget,
+             timeout: Self.defaultMediaControlConnectTimeout
+@@ -335,6 +336,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
+             now: now()
+         )
+         let transport = try await transport(relayURL: verifiedTarget.relayURL)
++        _ = try await publishIrohPeerNodeId(uid: uid, connectionID: connectionID)
+         return try await transport.connect(
+             to: verifiedTarget,
+             timeout: connectTimeout
+@@ -428,10 +430,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
+                 try await self.transport(relayURL: verifiedTarget.relayURL)
+             }
+             stage = "dial_start"
+-            let localNodeId = identity?.nodeId ?? ""
+-            if !localNodeId.isEmpty {
+-                await persistIrohPeerNodeId(localNodeId, uid: uid)
+-            }
++            let localNodeId = try await publishIrohPeerNodeId(uid: uid, connectionID: payload.connectionID)
+             await auditLogger.record(
+                 event: .pairingVerified,
+                 uid: uid,
+@@ -982,27 +981,26 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
+         return LoopbackIrohRelayTransport(rendezvous: rendezvous)
+     }
+ 
+-    private func persistIrohPeerNodeId(_ nodeId: String, uid: String) async {
+-        guard FirebaseApp.app() != nil else { return }
++    private func publishIrohPeerNodeId(uid: String, connectionID: String) async throws -> String {
++        guard FirebaseApp.app() != nil else {
++            throw HermesServiceError.relayUnavailable("Iroh relay requires Firebase before publishing this device's peer identity.")
++        }
++        guard let nodeId = identity?.nodeId.trimmingCharacters(in: .whitespacesAndNewlines),
++              !nodeId.isEmpty else {
++            throw HermesServiceError.relayUnavailable("Iroh relay did not expose this device's peer identity.")
++        }
+         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+         let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+-        do {
+-            try await Firestore.firestore()
+-                .collection("users").document(uid)
+-                .collection("devices").document(deviceId)
+-                .setData(
+-                    [
+-                        "deviceId": deviceId,
+-                        "irohPeerNodeId": nodeId,
+-                        "updated_at_millis": nowMillis
+-                    ],
+-                    merge: true
+-                )
+-        } catch {
+-            #if DEBUG
+-            print("HermesIrohRelayTransport irohPeerNodeId persist failed: \(irohPublicErrorClass(error))")
+-            #endif
+-        }
++        try await ComputerUseSecurityCallableClient.publishIrohPeerNodeId(
++            deviceId: deviceId,
++            connectionId: connectionID,
++            irohPeerNodeId: nodeId,
++            publishedAtMillis: nowMillis
++        )
++        #if DEBUG
++        print("HermesIrohRelayTransport irohPeerNodeId published uid=\(uid) connectionID=\(connectionID) nodeId=\(nodeId)")
++        #endif
++        return nodeId
+     }
+ }
+ 
+diff --git a/OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift b/OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift
+index 43363c40f..e5018a0c4 100644
+--- a/OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift
++++ b/OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift
+@@ -63,7 +63,8 @@ final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Send
+                 .setData(payload, merge: false)
+         } catch {
+             #if DEBUG
+-            NSLog("hermes_iroh_audit_write_failed: \(String(describing: type(of: error)))")
++            let nsError = error as NSError
++            NSLog("hermes_iroh_audit_write_failed event=\(event.rawValue) code=\(nsError.code) domain=\(nsError.domain) message=\(nsError.localizedDescription)")
+             #endif
+         }
+     }
+diff --git a/OpenBurnBarMobile/Services/LiveCloudReader.swift b/OpenBurnBarMobile/Services/LiveCloudReader.swift
+index 3c8e9cc3e..5b3863b35 100644
+--- a/OpenBurnBarMobile/Services/LiveCloudReader.swift
++++ b/OpenBurnBarMobile/Services/LiveCloudReader.swift
+@@ -377,8 +377,18 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
+             // Registration may already exist; ignore failed-precondition for trusted devices.
+         }
+         if let keypair {
+-            try? await db.collection("users").document(uid)
++            let escrowRef = db.collection("users").document(uid)
+                 .collection("escrow_devices").document(deviceId)
++            let escrowSnapshot = try? await escrowRef.getDocument()
++            let existing = escrowSnapshot?.data()
++            let storedFingerprint = existing?["publicKeyFingerprint"] as? String
++            let storedKeyVersion = existing?["keyVersion"] as? Int
++            let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
++                && storedKeyVersion == keypair.keyVersion
++            let shouldPublishEscrowIdentity = escrowSnapshot?.exists == false || localIdentityMatchesStored
++            guard shouldPublishEscrowIdentity else { return }
++
++            try? await escrowRef
+                 .setData([
+                     "publicKeyFingerprint": keypair.publicKeyFingerprint,
+                     "keyVersion": keypair.keyVersion,
+diff --git a/OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift b/OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift
+index 2dbd378cf..3ceb50f4f 100644
+--- a/OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift
++++ b/OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift
+@@ -358,26 +358,36 @@ enum MobileCloudVaultKeyAccess {
+         }
+         let existing = existingSnapshot?.data()
+         let existingTrust = existing?["trustState"] as? String
++        let storedFingerprint = existing?["publicKeyFingerprint"] as? String
++        let storedKeyVersion = existing?["keyVersion"] as? Int
++        let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
++            && storedKeyVersion == keypair.keyVersion
++        let shouldPublishEscrowIdentity = existingSnapshot?.exists == false || localIdentityMatchesStored
+         let sourceIsTrusted = existingTrust == EscrowDeviceTrustState.trusted.rawValue
++            && localIdentityMatchesStored
+         var devicePayload: [String: Any] = [
+             "deviceId": deviceId,
+             "deviceName": deviceMetadata.name,
+             "platform": deviceMetadata.platform,
+-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
+-            "keyVersion": keypair.keyVersion,
+             "updatedAt": FieldValue.serverTimestamp()
+         ]
++        if shouldPublishEscrowIdentity {
++            devicePayload["publicKeyFingerprint"] = keypair.publicKeyFingerprint
++            devicePayload["keyVersion"] = keypair.keyVersion
++        }
+         if existingSnapshot?.exists == false {
+             devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+         }
+         try await deviceRef.setData(devicePayload, merge: true)
+-        try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
+-            userRef: userRef,
+-            deviceId: deviceId,
+-            publicKeyData: keypair.publicKeyData,
+-            publicKeyFingerprint: keypair.publicKeyFingerprint,
+-            keyVersion: keypair.keyVersion
+-        )
++        if shouldPublishEscrowIdentity {
++            try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
++                userRef: userRef,
++                deviceId: deviceId,
++                publicKeyData: keypair.publicKeyData,
++                publicKeyFingerprint: keypair.publicKeyFingerprint,
++                keyVersion: keypair.keyVersion
++            )
++        }
+         let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+         try await MobileSignalIdentityPublicKeyPublisher.publishIfNeeded(
+             userRef: userRef,
+diff --git a/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift b/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift
+index 4e90b63a8..265621b39 100644
+--- a/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift
++++ b/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift
+@@ -239,10 +239,14 @@ struct HermesSquareRoot: View {
+             }
+             mercuryPeerSource.start()
+             syncMercuryPeer(mercuryPeerSource.peer)
++            consumePendingMercuryLive()
+         }
+         .task(id: AssistantPendingThread.shared.hermes) {
+             consumePendingHermesThread()
+         }
++        .onReceive(NotificationCenter.default.publisher(for: HermesSquarePendingThreadRoute.mercuryNotificationName)) { notification in
++            openPendingMercuryLive(notification)
++        }
+         .onChange(of: inbox.items) { _, _ in
+             Task { await reindexSearch() }
+         }
+@@ -1235,6 +1239,26 @@ struct HermesSquareRoot: View {
+         setNavTarget(.thread(inboxID))
+     }
+ 
++    @MainActor
++    private func consumePendingMercuryLive() {
++        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.consumePendingMercuryConnectionID())
++    }
++
++    @MainActor
++    private func openPendingMercuryLive(_ notification: Notification) {
++        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.mercuryConnectionID(from: notification))
++    }
++
++    @MainActor
++    private func openMercuryLive(connectionID rawConnectionID: String?) {
++        let trimmedConnectionID = rawConnectionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
++        let connectionID = (!trimmedConnectionID.isEmpty ? trimmedConnectionID : nil)
++            ?? mercuryPeerSource.peer?.connectionID
++            ?? hermesService.suggestedRelayConnection?.id
++            ?? "paired-mac:default"
++        setNavTarget(.mercuryLive(resolvedMercuryConnectionID(for: connectionID)))
++    }
++
+     private func ensureMercuryLive(connectionID: String) async {
+         guard bootingMercuryConnectionID != connectionID else { return }
+         #if DEBUG
+@@ -1414,6 +1438,10 @@ struct HermesSquareRoot: View {
+ }
+ 
+ enum HermesSquarePendingThreadRoute {
++    static let mercuryNotificationName = Notification.Name("OpenHermesMercuryLive")
++    private static let mercuryConnectionIDKey = "connectionID"
++    @MainActor private static var pendingMercuryConnectionID: String?
++
+     static func hermesInboxID(for threadID: String?) -> String? {
+         guard let trimmed = threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !trimmed.isEmpty
+@@ -1425,6 +1453,48 @@ enum HermesSquarePendingThreadRoute {
+     static func consumeHermesInboxID() -> String? {
+         hermesInboxID(for: AssistantPendingThread.shared.consume(.hermes))
+     }
++
++    @MainActor
++    static func openMercury(connectionID: String?) {
++        let resolved = normalizedMercuryConnectionID(connectionID)
++        pendingMercuryConnectionID = resolved
++        NotificationCenter.default.post(
++            name: mercuryNotificationName,
++            object: nil,
++            userInfo: [mercuryConnectionIDKey: resolved]
++        )
++    }
++
++    @MainActor
++    static func openMercuryWithRetries(connectionID: String?) {
++        let resolved = normalizedMercuryConnectionID(connectionID)
++        pendingMercuryConnectionID = resolved
++        Task { @MainActor in
++            for delay in [UInt64(0), 400_000_000, 800_000_000, 1_300_000_000, 2_500_000_000] {
++                if delay > 0 {
++                    try? await Task.sleep(nanoseconds: delay)
++                }
++                openMercury(connectionID: resolved)
++            }
++        }
++    }
++
++    @MainActor
++    static func consumePendingMercuryConnectionID() -> String? {
++        defer { pendingMercuryConnectionID = nil }
++        return pendingMercuryConnectionID
++    }
++
++    @MainActor
++    static func mercuryConnectionID(from notification: Notification) -> String? {
++        let fromNotification = notification.userInfo?[mercuryConnectionIDKey] as? String
++        return normalizedMercuryConnectionID(fromNotification ?? pendingMercuryConnectionID)
++    }
++
++    private static func normalizedMercuryConnectionID(_ connectionID: String?) -> String {
++        let trimmed = connectionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
++        return trimmed.isEmpty ? "paired-mac:default" : trimmed
++    }
+ }
+ 
+ enum HermesSquareNavigationRetarget {
+diff --git a/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift b/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift
+index cc2a7cca4..0e31fbf3a 100644
+--- a/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift
++++ b/OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift
+@@ -1,3 +1,4 @@
++import Foundation
+ import SwiftUI
+ import OpenBurnBarCore
+ import OpenBurnBarMedia
+@@ -128,10 +129,14 @@ struct HermesSquareSplitLayout: View {
+                 }
+             }
+             mercuryPeerSource.start()
++            consumePendingMercuryLive()
+         }
+         .task(id: AssistantPendingThread.shared.hermes) {
+             consumePendingHermesThread()
+         }
++        .onReceive(NotificationCenter.default.publisher(for: HermesSquarePendingThreadRoute.mercuryNotificationName)) { notification in
++            openPendingMercuryLive(notification)
++        }
+         .onDisappear {
+             mercuryPeerSource.stop()
+         }
+@@ -146,6 +151,29 @@ struct HermesSquareSplitLayout: View {
+         }
+     }
+ 
++    @MainActor
++    private func consumePendingMercuryLive() {
++        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.consumePendingMercuryConnectionID())
++    }
++
++    @MainActor
++    private func openPendingMercuryLive(_ notification: Notification) {
++        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.mercuryConnectionID(from: notification))
++    }
++
++    @MainActor
++    private func openMercuryLive(connectionID rawConnectionID: String?) {
++        let trimmedConnectionID = rawConnectionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
++        let connectionID = (!trimmedConnectionID.isEmpty ? trimmedConnectionID : nil)
++            ?? mercuryPeerSource.peer?.connectionID
++            ?? hermesService.suggestedRelayConnection?.id
++            ?? "paired-mac:default"
++        selectedDetail = .mercuryLive(resolvedMercuryConnectionID(for: connectionID))
++        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
++            sidebarMode = .square
++        }
++    }
++
+     private func openThreadFromSidebar(_ item: ThreadInboxItem) {
+         selectedDetail = .thread(item.id)
+         if let runtime = HermesSquareThreadRouting.runtime(for: item) {
+@@ -204,6 +232,9 @@ struct HermesSquareSplitLayout: View {
+     private func ensureMercuryLive(connectionID: String) async {
+         let resolvedID = resolvedMercuryConnectionID(for: connectionID)
+         guard bootingMercuryConnectionID != resolvedID else { return }
++        #if DEBUG
++        NSLog("OpenBurnBarMercury split_ensure_mercury_live_start requestedConnectionID=\(connectionID) resolvedConnectionID=\(resolvedID)")
++        #endif
+         bootingMercuryConnectionID = resolvedID
+         mercuryBootError = nil
+         defer { bootingMercuryConnectionID = nil }
+@@ -227,14 +258,23 @@ struct HermesSquareSplitLayout: View {
+         }
+ 
+         guard let relay else {
++            #if DEBUG
++            NSLog("OpenBurnBarMercury split_ensure_mercury_live_no_relay requestedConnectionID=\(connectionID) resolvedConnectionID=\(resolvedID)")
++            #endif
+             mercuryBootError = "No online Mac relay found. Open BurnBar on the Mac, enable Remote Relay, then refresh."
+             return
+         }
+ 
+         do {
+             try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
++            #if DEBUG
++            NSLog("OpenBurnBarMercury split_ensure_mercury_live_started connectionID=\(relay.id)")
++            #endif
+             mercuryBootError = nil
+         } catch {
++            #if DEBUG
++            NSLog("OpenBurnBarMercury split_ensure_mercury_live_failed connectionID=\(relay.id) error=\(error.localizedDescription)")
++            #endif
+             mercuryBootError = error.localizedDescription
+         }
+     }
+@@ -1716,6 +1756,10 @@ struct MercuryLiveDetailView: View {
+             guard isUnlocked else { return }
+             await bootMercuryIfNeeded()
+         }
++        .onChange(of: isUnlocked) { _, unlocked in
++            guard unlocked else { return }
++            Task { await bootMercuryIfNeeded() }
++        }
+         .onChange(of: isBooting) { _, booting in
+             guard isUnlocked, !booting else { return }
+             refreshCoordinator()
+@@ -1781,7 +1825,23 @@ struct MercuryLiveDetailView: View {
+ 
+     private func bootMercuryIfNeeded(force: Bool = false) async {
+         refreshCoordinator()
+-        if coordinator == nil || force {
++        let shouldBoot: Bool
++        if force || coordinator == nil {
++            shouldBoot = true
++        } else {
++            switch coordinator?.phase {
++            case .idle, .reconnecting, .stopped, .failed:
++                shouldBoot = true
++            case .dialing, .live:
++                shouldBoot = false
++            case .none:
++                shouldBoot = true
++            }
++        }
++        #if DEBUG
++        NSLog("OpenBurnBarMercury split_boot_mercury_if_needed connectionID=\(connectionID) force=\(force) shouldBoot=\(shouldBoot) phase=\(String(describing: coordinator?.phase))")
++        #endif
++        if shouldBoot {
+             await ensureMercuryLive(connectionID)
+             refreshCoordinator()
+         }
+diff --git a/OpenBurnBarMobile/Views/RootTabView.swift b/OpenBurnBarMobile/Views/RootTabView.swift
+index 5353520f2..640bd4105 100644
+--- a/OpenBurnBarMobile/Views/RootTabView.swift
++++ b/OpenBurnBarMobile/Views/RootTabView.swift
+@@ -1,3 +1,4 @@
++import Foundation
+ import SwiftUI
+ import OpenBurnBarCore
+ #if DEBUG
+@@ -186,6 +187,15 @@ struct RootTabView: View {
+             if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
+                 selection = .hermes
+             }
++            guard notification.userInfo?["openMercury"] as? Bool == true else { return }
++            let connectionID = notification.userInfo?["connectionID"] as? String
++            #if DEBUG
++            NSLog("OpenBurnBarMercury root_show_assistants_open_mercury connectionID=\(connectionID ?? "nil")")
++            #endif
++            Task { @MainActor in
++                await Task.yield()
++                HermesSquarePendingThreadRoute.openMercuryWithRetries(connectionID: connectionID)
++            }
+         }
+         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
+             openAgentWatchRoute()
+diff --git a/crates/openburnbar-iroh/src/lib.rs b/crates/openburnbar-iroh/src/lib.rs
+index 796aae220..0010c1b95 100644
+--- a/crates/openburnbar-iroh/src/lib.rs
++++ b/crates/openburnbar-iroh/src/lib.rs
+@@ -23,7 +23,8 @@ use iroh::{
+ use iroh_services::Client as IrohServicesClient;
+ use tokio::io::AsyncWriteExt;
+ use tokio::runtime::Runtime;
+-use tokio::sync::Mutex;
++use tokio::sync::{mpsc, Mutex};
++use tokio::task::JoinHandle;
+ 
+ #[cfg(target_os = "android")]
+ mod android_context;
+@@ -229,6 +230,39 @@ impl IrohStream {
+     }
+ }
+ 
++fn spawn_incoming_stream_acceptor(
++    endpoint: Endpoint,
++    runtime_handle: tokio::runtime::Handle,
++    stream_tx: mpsc::Sender<Arc<IrohStream>>,
++) -> JoinHandle<()> {
++    let outer_runtime_handle = runtime_handle.clone();
++    runtime_handle.spawn(async move {
++        while let Some(incoming) = endpoint.accept().await {
++            let connection_stream_tx = stream_tx.clone();
++            let stream_runtime_handle = outer_runtime_handle.clone();
++            tokio::spawn(async move {
++                let conn = match incoming.await {
++                    Ok(conn) => conn,
++                    Err(_) => return,
++                };
++                let remote_node_id = conn.remote_id().to_string();
++                while let Ok((send, recv)) = conn.accept_bi().await {
++                    let stream = Arc::new(IrohStream {
++                        remote_node_id: remote_node_id.clone(),
++                        conn: Mutex::new(Some(conn.clone())),
++                        send: Mutex::new(Some(send)),
++                        recv: Mutex::new(Some(recv)),
++                        runtime_handle: stream_runtime_handle.clone(),
++                    });
++                    if connection_stream_tx.send(stream).await.is_err() {
++                        return;
++                    }
++                }
++            });
++        }
++    })
++}
++
+ /// Wraps an `iroh::Endpoint` and exposes the eight-function surface the Swift
+ /// `OpenBurnBarIrohEndpoint` actor calls into.
+ #[derive(uniffi::Object)]
+@@ -238,6 +272,8 @@ pub struct IrohEndpointHandle {
+     runtime_handle: Mutex<Option<tokio::runtime::Handle>>,
+     identity: Mutex<Option<IrohNodeIdentity>>,
+     services_client: Mutex<Option<IrohServicesClient>>,
++    incoming_stream_rx: Mutex<Option<mpsc::Receiver<Arc<IrohStream>>>>,
++    incoming_accept_task: Mutex<Option<JoinHandle<()>>>,
+ }
+ 
+ #[uniffi::export]
+@@ -250,6 +286,8 @@ impl IrohEndpointHandle {
+             runtime_handle: Mutex::new(None),
+             identity: Mutex::new(None),
+             services_client: Mutex::new(None),
++            incoming_stream_rx: Mutex::new(None),
++            incoming_accept_task: Mutex::new(None),
+         })
+     }
+ 
+@@ -342,12 +380,23 @@ impl IrohEndpointHandle {
+             runtime.block_on(async { start_iroh_services_if_configured(&endpoint).await })?;
+ 
+         let runtime_handle = runtime.handle().clone();
++        let (incoming_stream_tx, incoming_stream_rx) = mpsc::channel(128);
++        let incoming_accept_task = spawn_incoming_stream_acceptor(
++            endpoint.clone(),
++            runtime_handle.clone(),
++            incoming_stream_tx,
++        );
+         block_on(async {
++            if let Some(previous_accept_task) = self.incoming_accept_task.lock().await.take() {
++                previous_accept_task.abort();
++            }
+             *self.endpoint.lock().await = Some(endpoint);
+             *self.runtime_handle.lock().await = Some(runtime_handle);
+             *self.runtime.lock().await = Some(runtime);
+             *self.identity.lock().await = Some(identity.clone());
+             *self.services_client.lock().await = services_client;
++            *self.incoming_stream_rx.lock().await = Some(incoming_stream_rx);
++            *self.incoming_accept_task.lock().await = Some(incoming_accept_task);
+             Ok::<_, IrohFfiError>(())
+         })?;
+ 
+@@ -445,60 +494,54 @@ impl IrohEndpointHandle {
+         })
+     }
+ 
+-    /// Block waiting for one inbound bidirectional stream. Returns once the
+-    /// remote opens its first bi-stream after a successful ALPN handshake.
++    /// Block waiting for one inbound bidirectional stream.
++    ///
++    /// The endpoint owns a background acceptor that accepts each peer
++    /// connection once and then drains every bidirectional stream opened on
++    /// that connection into this queue. This matters because iroh may reuse an
++    /// existing QUIC connection for later Mercury streams; waiting on
++    /// `endpoint.accept()` for every stream would miss those reused streams and
++    /// make clients connect/disconnect in a loop.
+     pub fn accept_one(
+         self: Arc<Self>,
+         timeout_seconds: u32,
+     ) -> Result<Arc<IrohStream>, IrohFfiError> {
+-        let (endpoint, runtime_handle) = block_on(async {
+-            let endpoint = self
+-                .endpoint
+-                .lock()
+-                .await
+-                .clone()
+-                .ok_or(IrohFfiError::EndpointNotInitialized)?;
++        let runtime_handle = block_on(async {
+             let runtime_handle = self
+                 .runtime_handle
+                 .lock()
+                 .await
+                 .clone()
+                 .ok_or(IrohFfiError::EndpointNotInitialized)?;
+-            Ok::<_, IrohFfiError>((endpoint, runtime_handle))
++            if self.incoming_stream_rx.lock().await.is_none() {
++                return Err(IrohFfiError::EndpointNotInitialized);
++            }
++            Ok::<_, IrohFfiError>(runtime_handle)
+         })?;
+         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
+-        let stream_runtime_handle = runtime_handle.clone();
+         runtime_handle.block_on(async move {
+-            let (conn, send, recv, remote_node_id) = tokio::time::timeout(timeout, async move {
+-                let incoming =
+-                    endpoint
+-                        .accept()
+-                        .await
+-                        .ok_or_else(|| IrohFfiError::AcceptFailed {
+-                            detail: "iroh endpoint closed before accepting".into(),
+-                        })?;
+-                let conn = incoming.await.map_err(IrohFfiError::accept)?;
+-                let remote_node_id = conn.remote_id().to_string();
+-                let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
+-                Ok::<_, IrohFfiError>((conn, send, recv, remote_node_id))
+-            })
+-            .await
+-            .map_err(|_| IrohFfiError::AcceptFailed {
+-                detail: "iroh accept timed out".into(),
+-            })??;
+-            Ok(Arc::new(IrohStream {
+-                remote_node_id,
+-                conn: Mutex::new(Some(conn)),
+-                send: Mutex::new(Some(send)),
+-                recv: Mutex::new(Some(recv)),
+-                runtime_handle: stream_runtime_handle,
+-            }))
++            let mut receiver_guard = self.incoming_stream_rx.lock().await;
++            let receiver = receiver_guard
++                .as_mut()
++                .ok_or(IrohFfiError::EndpointNotInitialized)?;
++            tokio::time::timeout(timeout, receiver.recv())
++                .await
++                .map_err(|_| IrohFfiError::AcceptFailed {
++                    detail: "iroh accept timed out".into(),
++                })?
++                .ok_or_else(|| IrohFfiError::AcceptFailed {
++                    detail: "iroh endpoint closed before accepting".into(),
++                })
+         })
+     }
+ 
+     /// Cleanly close the endpoint. After shutdown the handle is unusable.
+     pub fn shutdown(self: Arc<Self>) -> Result<(), IrohFfiError> {
+         let endpoint_opt = block_on(async {
++            if let Some(accept_task) = self.incoming_accept_task.lock().await.take() {
++                accept_task.abort();
++            }
++            let _ = self.incoming_stream_rx.lock().await.take();
+             let endpoint = self.endpoint.lock().await.take();
+             let runtime = self.runtime.lock().await.take();
+             let _ = self.runtime_handle.lock().await.take();
+diff --git a/firestore-rules-tests/rr12-relay-and-root.test.js b/firestore-rules-tests/rr12-relay-and-root.test.js
+index e91a6f6fb..a2cf02e84 100644
+--- a/firestore-rules-tests/rr12-relay-and-root.test.js
++++ b/firestore-rules-tests/rr12-relay-and-root.test.js
+@@ -11,6 +11,8 @@
+  *     fields (`senderPublicKey`/`senderDeviceId`/`senderPeerNodeId`/
+  *     `senderCounter`) is rejected, while a sender-bound write is accepted —
+  *     sender-auth parity with the Hermes `relayRequestWrite` lane.
++ *   - A Mac `hermes_connections` relay heartbeat carrying
++ *     `hostInstallationId` is accepted; an overlong host ID is rejected.
+  *
+  * Run with:
+  *   cd firestore-rules-tests && npm test
+@@ -24,8 +26,10 @@ import { readFileSync } from "node:fs";
+ import {
+   deleteDoc,
+   doc,
++  getDoc,
+   setDoc,
+   Timestamp,
++  updateDoc,
+ } from "firebase/firestore";
+ 
+ const PROJECT_ID = "burnbar-test";
+@@ -68,6 +72,53 @@ const validPiRelayRequest = {
+   createdAt: Timestamp.fromMillis(Date.now()),
+ };
+ 
++const validHermesRelayConnection = {
++  id: "relay-host-mac-1",
++  displayName: "Alice Mac Hermes Relay",
++  mode: "relayLink",
++  status: "online",
++  capabilities: [
++    "remote_relay",
++    "cli_agent_chat",
++    "cli_agent_model_catalog",
++    "cli_agent_session_action",
++  ],
++  hostInstallationId: "691D5F27-491B-4660-9769-62FDE0D3704F",
++  relayPublicKey: "B".repeat(88),
++  relayKeyVersion: 3,
++  relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
++  realtimeRelayStatus: "offline",
++  updatedAt: new Date().toISOString(),
++  lastSeenAt: new Date().toISOString(),
++  schemaVersion: 2,
++};
++
++const validIrohPeerNodeId = "a".repeat(52);
++const validIrohController = {
++  id: validIrohPeerNodeId,
++  connectionId: "relay-host-mac-1",
++  irohPeerNodeId: validIrohPeerNodeId,
++  deviceId: "ios-phone-1",
++  publishedAtMillis: Date.now(),
++  protocolVersion: 1,
++  publishedByDeviceId: "ios-phone-1",
++  schemaVersion: 1,
++  updatedAt: Timestamp.fromMillis(Date.now()),
++};
++
++const validIrohFallbackAuditEvent = {
++  id: "iroh-audit-fallback-1",
++  connectionId: "relay-host-mac-1",
++  eventType: "iroh_fallback_to_firestore",
++  transport: "firestore",
++  observedAt: new Date().toISOString(),
++  detail: {
++    reason: "iroh_stream_failed",
++  },
++  schemaVersion: 1,
++  expireAt: futureTimestamp,
++};
++
+ // A privileged-path fixture for an existing key-wrapper doc. We never need the
+ // create validator to pass — the test only asserts the owner cannot DELETE.
+ const seededKeyWrapper = {
+@@ -186,6 +237,27 @@ async function main() {
+ 
+   // --- pi_agent_relay_requests: sender-auth parity with the Hermes lane ---
+   await withEntitlement(testEnv, aliceUid, async () => {
++    await step("hermes relay connection WITH hostInstallationId is accepted", async () => {
++      await assertSucceeds(
++        setDoc(
++          doc(aliceDB, `users/${aliceUid}/hermes_connections/${validHermesRelayConnection.id}`),
++          validHermesRelayConnection
++        )
++      );
++    });
++
++    await step("hermes relay connection with an overlong hostInstallationId is rejected", async () => {
++      await assertFails(
++        setDoc(
++          doc(aliceDB, `users/${aliceUid}/hermes_connections/${validHermesRelayConnection.id}`),
++          {
++            ...validHermesRelayConnection,
++            hostInstallationId: "H".repeat(129),
++          }
++        )
++      );
++    });
++
+     await step("pi relay request WITHOUT sender-auth fields is rejected", async () => {
+       const { senderPublicKey, senderDeviceId, senderPeerNodeId, senderCounter, ...unbound } =
+         validPiRelayRequest;
+@@ -214,6 +286,35 @@ async function main() {
+         )
+       );
+     });
++
++    await step("iroh controller NodeId direct owner write is rejected", async () => {
++      await assertFails(
++        setDoc(
++          doc(aliceDB, `users/${aliceUid}/iroh_pairing/relay-host-mac-1/iroh_controllers/${validIrohPeerNodeId}`),
++          validIrohController
++        )
++      );
++    });
++
++    await step("iroh controller NodeId server-written doc is owner-readable", async () => {
++      await testEnv.withSecurityRulesDisabled(async (ctx) => {
++        const dbAdmin = ctx.firestore();
++        await setDoc(
++          doc(dbAdmin, `users/${aliceUid}/iroh_pairing/relay-host-mac-1/iroh_controllers/${validIrohPeerNodeId}`),
++          validIrohController
++        );
++      });
++      await assertSucceeds(
++        getDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/relay-host-mac-1/iroh_controllers/${validIrohPeerNodeId}`))
++      );
++    });
++
++    await step("iroh fallback audit create is accepted but update and delete are rejected", async () => {
++      const auditPath = `users/${aliceUid}/iroh_audit_events/${validIrohFallbackAuditEvent.id}`;
++      await assertSucceeds(setDoc(doc(aliceDB, auditPath), validIrohFallbackAuditEvent));
++      await assertFails(updateDoc(doc(aliceDB, auditPath), { rttMillis: 25 }));
++      await assertFails(deleteDoc(doc(aliceDB, auditPath)));
++    });
+   });
+ 
+   await testEnv.cleanup();
+diff --git a/firestore.rules b/firestore.rules
+index 96d32eb63..2371463f6 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -757,6 +757,7 @@ service cloud.firestore {
+           "status",
+           "profileName",
+           "advertisedModel",
++          "hostInstallationId",
+           "relayPublicKey",
+           "relayKeyVersion",
+           "relayEncryption",
+@@ -783,6 +784,7 @@ service cloud.firestore {
+         && request.resource.data.id is string
+         && request.resource.data.id == connectionId
+         && request.resource.data.displayName is string
++        && (!("hostInstallationId" in request.resource.data) || (request.resource.data.hostInstallationId is string && request.resource.data.hostInstallationId.size() <= 128))
+         && request.resource.data.capabilities is list;
+     }
+ 
+@@ -2704,7 +2706,8 @@ service cloud.firestore {
+           "iroh_pairing_published",
+           "iroh_pairing_verified",
+           "iroh_pairing_rejected",
+-          "iroh_fallback_to_wss"
++          "iroh_fallback_to_wss",
++          "iroh_fallback_to_firestore"
+         ]
+         && request.resource.data.schemaVersion is int
+         && request.resource.data.schemaVersion >= 1;
+@@ -2774,6 +2777,17 @@ service cloud.firestore {
+       allow create, update, delete: if false;
+     }
+ 
++    // Mobile iroh QUIC NodeId allow-list entries. This is intentionally
++    // separate from phone-control `controllers/*`: the Mac's inbound policy
++    // checks the QUIC peer NodeId surfaced by iroh, while phone-control
++    // controller IDs are derived from app-layer signing keys. Clients publish
++    // through `publishIrohPeerNodeId`, which verifies App Check, nonce
++    // freshness, trusted native mobile escrow state, and the existing pairing.
++    match /users/{userId}/iroh_pairing/{connectionId}/iroh_controllers/{irohPeerNodeId} {
++      allow read: if ownsUserNamespace(userId);
++      allow create, update, delete: if false;
++    }
++
+     // Mobile/Android sender keys for authenticated relay request envelopes.
+     // These are trust-root cache entries, not user-editable preferences. Clients
+     // publish through `publishRelaySenderKey`, which verifies App Check,
+diff --git a/functions/package-lock.json b/functions/package-lock.json
+index 38bf4a0d8..f7729b0cf 100644
+--- a/functions/package-lock.json
++++ b/functions/package-lock.json
+@@ -10,8 +10,8 @@
+       "license": "AGPL-3.0-only",
+       "dependencies": {
+         "@apple/app-store-server-library": "^3.0.0",
+-        "@openburnbar/entitlements": "file:../packages/entitlements",
+-        "@openburnbar/signal-envelope-contracts": "file:../packages/signal-envelope-contracts",
++        "@openburnbar/entitlements": "file:vendor/entitlements",
++        "@openburnbar/signal-envelope-contracts": "file:vendor/signal-envelope-contracts",
+         "@sentry/node": "8.55.2",
+         "@simplewebauthn/server": "13.3.0",
+         "ajv-formats": "3.0.1",
+@@ -44,6 +44,7 @@
+     "../packages/entitlements": {
+       "name": "@openburnbar/entitlements",
+       "version": "0.1.0",
++      "extraneous": true,
+       "license": "AGPL-3.0-only",
+       "devDependencies": {
+         "@types/node": "^24.6.0",
+@@ -53,10 +54,15 @@
+     "../packages/signal-envelope-contracts": {
+       "name": "@openburnbar/signal-envelope-contracts",
+       "version": "0.1.0",
++      "extraneous": true,
+       "license": "AGPL-3.0-only",
+       "devDependencies": {
++        "@eslint/js": "9.39.4",
+         "@types/node": "^24.6.0",
+-        "typescript": "^5.9.3"
++        "eslint": "9.39.4",
++        "globals": "17.6.0",
++        "typescript": "^5.9.3",
++        "typescript-eslint": "8.60.1"
+       }
+     },
+     "node_modules/@apidevtools/json-schema-ref-parser": {
+@@ -2639,11 +2645,11 @@
+       }
+     },
+     "node_modules/@openburnbar/entitlements": {
+-      "resolved": "../packages/entitlements",
++      "resolved": "vendor/entitlements",
+       "link": true
+     },
+     "node_modules/@openburnbar/signal-envelope-contracts": {
+-      "resolved": "../packages/signal-envelope-contracts",
++      "resolved": "vendor/signal-envelope-contracts",
+       "link": true
+     },
+     "node_modules/@opentelemetry/api": {
+@@ -13385,6 +13391,263 @@
+         "node": ">=14.17"
+       }
+     },
++    "node_modules/typescript-eslint": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/typescript-eslint/-/typescript-eslint-8.60.1.tgz",
++      "integrity": "sha512-6m5hkkRAp8lKvhVpcprAIn5KkehQEh+47oHH2VGnExEh7dhNxXlg6GPAOIu6TxbVQxhebrJDvjl3020ooiWCMA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@typescript-eslint/eslint-plugin": "8.60.1",
++        "@typescript-eslint/parser": "8.60.1",
++        "@typescript-eslint/typescript-estree": "8.60.1",
++        "@typescript-eslint/utils": "8.60.1"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/eslint-plugin": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/eslint-plugin/-/eslint-plugin-8.60.1.tgz",
++      "integrity": "sha512-JQ4S5GB0tfjO8BuJ4fcX+HodkzJjYBV+7OJ+wLygaX7OGQ7FudyHL4NSCA6ob+w3Yn+5MkKIozOwQhXeM7opVg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@eslint-community/regexpp": "^4.12.2",
++        "@typescript-eslint/scope-manager": "8.60.1",
++        "@typescript-eslint/type-utils": "8.60.1",
++        "@typescript-eslint/utils": "8.60.1",
++        "@typescript-eslint/visitor-keys": "8.60.1",
++        "ignore": "^7.0.5",
++        "natural-compare": "^1.4.0",
++        "ts-api-utils": "^2.5.0"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "@typescript-eslint/parser": "^8.60.1",
++        "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/parser": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.60.1.tgz",
++      "integrity": "sha512-A0M6ua6H252bVjPvvtSgl2QA4+ET9S5Mtkb2GDyTxIhH/C4qDItT7RQNO5PhMC6NXGYXOR9dIalcDDgBKT7oFA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@typescript-eslint/scope-manager": "8.60.1",
++        "@typescript-eslint/types": "8.60.1",
++        "@typescript-eslint/typescript-estree": "8.60.1",
++        "@typescript-eslint/visitor-keys": "8.60.1",
++        "debug": "^4.4.3"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/project-service": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/project-service/-/project-service-8.60.1.tgz",
++      "integrity": "sha512-eXkTH2bxmXlqD1RnOPmLZ9ZM9D3VwSx04JOwBnP9RQ+yUA5a2Mu7SfW8uaV2Aon53NJzZlZYuX7tn91Izf+xaw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@typescript-eslint/tsconfig-utils": "^8.60.1",
++        "@typescript-eslint/types": "^8.60.1",
++        "debug": "^4.4.3"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/scope-manager": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/scope-manager/-/scope-manager-8.60.1.tgz",
++      "integrity": "sha512-gvI5OQoptnxQnchOirukCuQ55svJSTuD/4k5+pC267xyBtYry748R9/c3tYUzb/iE6RZfllRz2lVulLCHkTm4w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@typescript-eslint/types": "8.60.1",
++        "@typescript-eslint/visitor-keys": "8.60.1"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/tsconfig-utils": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/tsconfig-utils/-/tsconfig-utils-8.60.1.tgz",
++      "integrity": "sha512-nh8w4qAteiKuZu3pSSzG/yGKpw0OlkrKnzFmbVRenKaD4qc+7i1GrmZaLVkr8rk4uipiPGMOW4YsM6WmKZ5CvA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/type-utils": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/type-utils/-/type-utils-8.60.1.tgz",
++      "integrity": "sha512-sdwTrpjosW7ANQYJ39ZBF1ZyEMEGVB2UsikrserVM/30a/F1dTLnu9bGxEdosugyu5caigjLrR2qiD11asjI1A==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@typescript-eslint/types": "8.60.1",
++        "@typescript-eslint/typescript-estree": "8.60.1",
++        "@typescript-eslint/utils": "8.60.1",
++        "debug": "^4.4.3",
++        "ts-api-utils": "^2.5.0"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/types": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/types/-/types-8.60.1.tgz",
++      "integrity": "sha512-4h0tY8ppCkdCzcrl2YM5M3my0xsE1Tf8om3owEu5oPWmXwkKRmk0j0LGDzYBGUcAlesEbxBhazqu/K4cu3Ug7w==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/typescript-estree": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.60.1.tgz",
++      "integrity": "sha512-alpRkfG8hlVE5kdJW2GkfgDgXxold3e8e4l6EnmhRmRLbekgAPCCGDVD++sABy9FcgPFroq+uFcCSM1vR57Cew==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@typescript-eslint/project-service": "8.60.1",
++        "@typescript-eslint/tsconfig-utils": "8.60.1",
++        "@typescript-eslint/types": "8.60.1",
++        "@typescript-eslint/visitor-keys": "8.60.1",
++        "debug": "^4.4.3",
++        "minimatch": "^10.2.2",
++        "semver": "^7.7.3",
++        "tinyglobby": "^0.2.15",
++        "ts-api-utils": "^2.5.0"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/utils": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/utils/-/utils-8.60.1.tgz",
++      "integrity": "sha512-h2MPBLoNtjc3qZWfY3Tl51yPorQ2McHn8pJfcMNTcIvrrZrr90Ykffit0yjrPFWQcRcUxzH20+6OcVdW4yHtUg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@eslint-community/eslint-utils": "^4.9.1",
++        "@typescript-eslint/scope-manager": "8.60.1",
++        "@typescript-eslint/types": "8.60.1",
++        "@typescript-eslint/typescript-estree": "8.60.1"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      },
++      "peerDependencies": {
++        "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
++        "typescript": ">=4.8.4 <6.1.0"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/@typescript-eslint/visitor-keys": {
++      "version": "8.60.1",
++      "resolved": "https://registry.npmjs.org/@typescript-eslint/visitor-keys/-/visitor-keys-8.60.1.tgz",
++      "integrity": "sha512-EbGRQg4FhrmwLodl+t3JNAnXHWVr9Vp+Zl1QBZVPY4ByfkzIT8cX3K6QWODHtkIZqqJVEWvhHSx3v5PDHsaQag==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@typescript-eslint/types": "8.60.1",
++        "eslint-visitor-keys": "^5.0.0"
++      },
++      "engines": {
++        "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/typescript-eslint"
++      }
++    },
++    "node_modules/typescript-eslint/node_modules/eslint-visitor-keys": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-5.0.1.tgz",
++      "integrity": "sha512-tD40eHxA35h0PEIZNeIjkHoDR4YjjJp34biM0mDvplBe//mB+IHCqHDGV7pxF+7MklTvighcCPPZC7ynWyjdTA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      },
++      "funding": {
++        "url": "https://opencollective.com/eslint"
++      }
++    },
+     "node_modules/unbash": {
+       "version": "2.2.0",
+       "resolved": "https://registry.npmjs.org/unbash/-/unbash-2.2.0.tgz",
+@@ -14202,6 +14465,41 @@
+       "peerDependencies": {
+         "zod": "^3.25.28 || ^4"
+       }
++    },
++    "vendor/entitlements": {
++      "name": "@openburnbar/entitlements",
++      "version": "0.1.0",
++      "license": "AGPL-3.0-only",
++      "devDependencies": {
++        "@types/node": "^24.6.0",
++        "typescript": "^5.9.3"
++      }
++    },
++    "vendor/signal-envelope-contracts": {
++      "name": "@openburnbar/signal-envelope-contracts",
++      "version": "0.1.0",
++      "license": "AGPL-3.0-only",
++      "devDependencies": {
++        "@eslint/js": "9.39.4",
++        "@types/node": "^24.6.0",
++        "eslint": "9.39.4",
++        "globals": "17.6.0",
++        "typescript": "^5.9.3",
++        "typescript-eslint": "8.60.1"
++      }
++    },
++    "vendor/signal-envelope-contracts/node_modules/globals": {
++      "version": "17.6.0",
++      "resolved": "https://registry.npmjs.org/globals/-/globals-17.6.0.tgz",
++      "integrity": "sha512-sepffkT8stwnIYbsMBpoCHJuJM5l98FUF2AnE07hfvE0m/qp3R586hw4jF4uadbhvg1ooIdzuu7CsfD2jzCaNA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
+     }
+   }
+ }
+diff --git a/functions/package.json b/functions/package.json
+index 688f09620..5d083a68d 100644
+--- a/functions/package.json
++++ b/functions/package.json
+@@ -64,8 +64,8 @@
+   },
+   "dependencies": {
+     "@apple/app-store-server-library": "^3.0.0",
+-    "@openburnbar/entitlements": "file:../packages/entitlements",
+-    "@openburnbar/signal-envelope-contracts": "file:../packages/signal-envelope-contracts",
++    "@openburnbar/entitlements": "file:vendor/entitlements",
++    "@openburnbar/signal-envelope-contracts": "file:vendor/signal-envelope-contracts",
+     "@sentry/node": "8.55.2",
+     "@simplewebauthn/server": "13.3.0",
+     "ajv-formats": "3.0.1",
+diff --git a/functions/src/callables/computerUseSecurity.ts b/functions/src/callables/computerUseSecurity.ts
+index 5aff60871..66ee9c5ce 100644
+--- a/functions/src/callables/computerUseSecurity.ts
++++ b/functions/src/callables/computerUseSecurity.ts
+@@ -335,6 +335,14 @@ function requireFreshPublicationMillis(raw: unknown, name: string): number {
+   return value;
+ }
+ 
++function requireIrohNodeId(raw: unknown, name: string): string {
++  const value = boundedTrimmedString(raw, name, 128, true);
++  if (!/^(?:[A-Za-z0-9]{52}|[A-Fa-f0-9]{64})$/u.test(value)) {
++    throw new HttpsError("invalid-argument", `${name} must be a valid iroh NodeId.`);
++  }
++  return value.toLowerCase();
++}
++
+ // F2 — hardware-bind the phone-control signing key. `ed25519` is the legacy
+ // software CryptoKit key; `se-p256` is a non-exportable NIST P-256 key held in
+ // the iOS Secure Enclave / Android StrongBox Keystore. An absent wire value is
+@@ -1064,6 +1072,7 @@ export const bindAppCheckAttestation = onCall(
+   {
+     region: FUNCTIONS_REGION,
+     enforceAppCheck: getConfig().enforceAppCheck,
++    invoker: "public",
+     maxInstances: 100,
+   },
+   wrapCallableHandler("bindAppCheckAttestation", async (request: CallableRequest) => {
+@@ -1878,6 +1887,65 @@ export const publishPhoneControlAuthority = onCallProduction(
+   },
+ );
+ 
++export const publishIrohPeerNodeId = onCallProduction(
++  "publishIrohPeerNodeId",
++  {
++    region: FUNCTIONS_REGION,
++    enforceAppCheck: getConfig().enforceAppCheck,
++    maxInstances: 100,
++  },
++  async (
++    request: CallableRequest<{
++      deviceId?: unknown;
++      connectionId?: unknown;
++      irohPeerNodeId?: unknown;
++      publishedAtMillis?: unknown;
++      protocolVersion?: unknown;
++      nonce?: unknown;
++    }>,
++  ) => {
++    const uid = request.auth?.uid;
++    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh peer node.");
++    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
++
++    const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
++    await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
++    const connectionId = boundedFirestoreDocumentId(request.data.connectionId, "connectionId", 160);
++    const irohPeerNodeId = requireIrohNodeId(request.data.irohPeerNodeId, "irohPeerNodeId");
++    const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
++    const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
++
++    const pairing = await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).get();
++    if (!pairing.exists) {
++      throw new HttpsError("failed-precondition", "Iroh peer node binding must reference an existing iroh pairing.");
++    }
++
++    await db.doc(`users/${uid}/iroh_pairing/${connectionId}/iroh_controllers/${irohPeerNodeId}`).set(
++      {
++        id: irohPeerNodeId,
++        connectionId,
++        irohPeerNodeId,
++        deviceId,
++        publishedAtMillis,
++        protocolVersion,
++        publishedByDeviceId: deviceId,
++        schemaVersion: 1,
++        updatedAt: FieldValue.serverTimestamp(),
++      },
++      { merge: true },
++    );
++
++    logInfo({
++      event: "callable_info",
++      message: "iroh_peer_node_published",
++      connection_id: connectionId,
++      iroh_peer_node_id: irohPeerNodeId,
++      device_id: deviceId,
++    });
++    return { ok: true, connectionId, irohPeerNodeId };
++  },
++);
++
+ export const publishRelaySenderKey = onCallProduction(
+   "publishRelaySenderKey",
+   {
+diff --git a/functions/src/index.ts b/functions/src/index.ts
+index fdb519f33..dd2646c08 100644
+--- a/functions/src/index.ts
++++ b/functions/src/index.ts
+@@ -145,6 +145,7 @@ export {
+   publishIrohPairingRecord,
+   revokeIrohPairingRecord,
+   publishPhoneControlAuthority,
++  publishIrohPeerNodeId,
+   publishRelaySenderKey,
+   publishAgentGrantAuthority,
+   queueAgentCapabilityGrantRequest,
+diff --git a/functions/src/security/endpointAuthorizationMatrix.ts b/functions/src/security/endpointAuthorizationMatrix.ts
+index e0c1d9640..8f1647777 100644
+--- a/functions/src/security/endpointAuthorizationMatrix.ts
++++ b/functions/src/security/endpointAuthorizationMatrix.ts
+@@ -219,6 +219,7 @@ const authScopedCallables = entries(
+     "publishIrohPairingRecord",
+     "revokeIrohPairingRecord",
+     "publishPhoneControlAuthority",
++    "publishIrohPeerNodeId",
+     "publishRelaySenderKey",
+     "publishAgentGrantAuthority",
+     "queueAgentCapabilityGrantRequest",
+diff --git a/project.yml b/project.yml
+index 6ee1deff4..676a1a4dc 100644
+--- a/project.yml
++++ b/project.yml
+@@ -171,6 +171,8 @@ targets:
+         product: OpenBurnBarCore
+       - package: OpenBurnBarCore
+         product: OpenBurnBarIrohRelay
++      - package: OpenBurnBarCore
++        product: OpenBurnBarIrohFFI
+       - package: OpenBurnBarCore
+         product: OpenBurnBarMedia
+       - package: OpenBurnBarCore
+@@ -586,6 +588,8 @@ targets:
+         product: OpenBurnBarCore
+       - package: OpenBurnBarCore
+         product: OpenBurnBarIrohRelay
++      - package: OpenBurnBarCore
++        product: OpenBurnBarIrohFFI
+       - package: OpenBurnBarCore
+         product: OpenBurnBarMedia
+       - package: OpenBurnBarCore

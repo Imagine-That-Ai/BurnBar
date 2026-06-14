@@ -81,9 +81,19 @@ final class CLIBridge: ObservableObject {
 
     func cancel() {
         Task {
-            await streamRuntime.cancelAll()
+            await cancelAndWait()
         }
     }
+
+    func cancelAndWait() async {
+        await streamRuntime.cancelAll()
+    }
+
+    #if DEBUG
+    func testing_registerRunningProcess(_ process: Process) async -> UInt64 {
+        await streamRuntime.registerRunningProcess(process)
+    }
+    #endif
 
     func generateTextWithClaude(
         model: String,

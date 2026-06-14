@@ -69,8 +69,10 @@ class FakeFirestore {
   }
 
   collection(path) {
-    assert.equal(path, "provider_account_secret_refs");
-    return this.rootCollections.get(path);
+    // eraseUserCloudData queries provider_account_secret_refs plus the root
+    // push-queue collections (voip_outbound / fcm_outbound). Return an empty
+    // collection for anything unregistered so an absent queue is a no-op.
+    return this.rootCollections.get(path) ?? new FakeCollection(path);
   }
 
   doc(path) {
@@ -119,6 +121,23 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   ]);
   db.addRootCollection(secretRefs);
 
+  // F-RR09-001: root push-queue docs carry uid + cleartext caller name + live
+  // push tokens and must be erased on account deletion (they are NOT under the
+  // users/{uid} tree the recursive walk covers). Seed both alice and bob so the
+  // test proves the deletion is uid-scoped (alice removed, bob untouched).
+  db.addRootCollection(
+    collection("voip_outbound", [
+      doc("voip_outbound/voip-alice-1", { uid: "alice", status: "pending" }),
+      doc("voip_outbound/voip-bob-1", { uid: "bob", status: "pending" }),
+    ]),
+  );
+  db.addRootCollection(
+    collection("fcm_outbound", [
+      doc("fcm_outbound/fcm-alice-1", { uid: "alice", status: "pending" }),
+      doc("fcm_outbound/fcm-bob-1", { uid: "bob", status: "pending" }),
+    ]),
+  );
+
   const chunks = collection("users/alice/session_logs/log1/chunks", [
     doc("users/alice/session_logs/log1/chunks/chunk1"),
   ]);
@@ -159,6 +178,11 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.ok(db.deletedPaths.includes("workspaces/workspace-alice/teams/team-default/artifacts/a1/versions/v1"));
   assert.ok(db.deletedPaths.includes("workspaces/workspace-alice"));
   assert.ok(!db.deletedPaths.includes("provider_account_secret_refs/bob_codex"));
+  // F-RR09-001: alice's push-queue docs erased; bob's left untouched.
+  assert.ok(db.deletedPaths.includes("voip_outbound/voip-alice-1"));
+  assert.ok(db.deletedPaths.includes("fcm_outbound/fcm-alice-1"));
+  assert.ok(!db.deletedPaths.includes("voip_outbound/voip-bob-1"));
+  assert.ok(!db.deletedPaths.includes("fcm_outbound/fcm-bob-1"));
 }
 
 {

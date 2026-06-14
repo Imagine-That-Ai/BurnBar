@@ -49,9 +49,7 @@ enum CLIArgumentBuilder {
             if !allowed.isEmpty {
                 arguments.append(contentsOf: ["--allowedTools", allowed.joined(separator: ",")])
             }
-            if isYOLOGrant(capabilityGrant) {
-                arguments.append("--dangerously-skip-permissions")
-            } else if capabilityGrant.capabilities.contains(.workspaceWrite) {
+            if capabilityGrant.capabilities.contains(.workspaceWrite) {
                 arguments.append(contentsOf: ["--permission-mode", "acceptEdits"])
             }
         } else {
@@ -84,9 +82,7 @@ enum CLIArgumentBuilder {
             arguments.insert(contentsOf: ["-m", normalizedModel], at: 4)
         }
         if let capabilityGrant, capabilityGrant.isActive() {
-            if isYOLOGrant(capabilityGrant) {
-                arguments.insert("--dangerously-bypass-approvals-and-sandbox", at: arguments.count - 1)
-            } else if capabilityGrant.capabilities.contains(.workspaceWrite) ||
+            if capabilityGrant.capabilities.contains(.workspaceWrite) ||
                 capabilityGrant.capabilities.contains(.shell) {
                 arguments.insert(contentsOf: ["--sandbox", "workspace-write"], at: arguments.count - 1)
             } else if capabilityGrant.capabilities.contains(.workspaceRead) {
@@ -165,11 +161,7 @@ enum CLIArgumentBuilder {
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
-        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant) {
-            arguments.append("--dangerously-skip-permissions")
-        } else {
-            arguments.append("--sandbox")
-        }
+        arguments.append("--sandbox")
         arguments.append(contentsOf: [
             "--print",
             sanitizedPrompt(prompt)
@@ -186,11 +178,7 @@ enum CLIArgumentBuilder {
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
-        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant) {
-            arguments.append("--dangerously-skip-permissions")
-        } else {
-            arguments.append("--sandbox")
-        }
+        arguments.append("--sandbox")
         arguments.append(contentsOf: [
             "--print",
             sanitizedPrompt(prompt)
@@ -210,10 +198,6 @@ enum CLIArgumentBuilder {
             tools.append("Bash")
         }
         return Array(NSOrderedSet(array: tools)) as? [String] ?? tools
-    }
-
-    private static func isYOLOGrant(_ grant: AgentCapabilityGrant) -> Bool {
-        grant.trustMode == .trusted && Set(AgentDesktopCapability.allCases).isSubset(of: grant.capabilities)
     }
 
     private static func forgePrompt(

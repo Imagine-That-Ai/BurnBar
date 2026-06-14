@@ -1,0 +1,107 @@
+[01-crypto-relay] GAP: No cryptographic version floor on the gateway lane: server-supplied client record drives the seal/open version (HermesGatewayAPI.swift:1114-1118,890-897); once v3 is observed nothing refuses a later v2.
+[01-crypto-relay] GAP: Pi-agent relay lane lacks sender-auth, counter binding, and replay cache entirely (PiAgentCloudRelayHostService.swift:323-354, v1 only).
+[01-crypto-relay] GAP: Anti-replay state durability: high-water-mark is a deletable JSON file with no hardware/Keychain monotonic anchor (HermesRelayAuthenticatedRequest.swift:148-156).
+[01-crypto-relay] GAP: Cross-language parity with referenced Python gateway/crypto/relay_e2ee.py cannot be verified: file absent from this repo; 'byte-for-byte mirror' comments unprovable here.
+[01-crypto-relay] OVERCLAIM: Header comments 'mirror of relay_e2ee.py — keep in sync' / 'Mirrors Python byte for byte' (HermesRelayCrypto.swift:5,128-131,474,583): the Python file is not present, so parity is unverifiable; aspirational, not proven.
+[01-crypto-relay] OVERCLAIM: Prose implying the whole phone<->Mac surface is 'v3 HPKE Auth E2E with sender authentication' overstates the gateway lane (still v2-capable under server-chosen version, T-CRY-01) and the Pi-agent lane (v1 ephemeral-static, NO sender auth, T-CRY-02). Sender authentication is proven only on the v3-hard-required realtime/iroh/Firestore-request lane.
+[01-crypto-relay] OVERCLAIM: 'Forward secrecy' should be qualified to the ephemeral DH leg only; static-leg PFS and KCI are explicit non-goals (correctly documented at :10-19 but easy to over-read as full PFS).
+[02-cloudvault-signal] GAP: No per-document Signal-required marker -> stripped signalEnvelope silently downgrades to unauthenticated legacy (dual-write legacy floor blocks hard fail-closed)
+[02-cloudvault-signal] GAP: iOS keys lack kSecAttrAccessControl/Secure Enclave; Android wrap key lacks setIsStrongBoxBacked + setUserAuthenticationRequired (CloudVaultCrypto.kt:1210-1218)
+[02-cloudvault-signal] GAP: Recovery bundle: no passphrase-strength gate, no import-side PBKDF2 iteration floor, 100k iters below OWASP-2023 600k
+[02-cloudvault-signal] GAP: No at-rest key revocation/compromise blocklist at open time beyond trustedSenderPublicKeys removal and document rewrap
+[02-cloudvault-signal] GAP: No forward secrecy / ratchet for at-rest content keys or vault key
+[02-cloudvault-signal] GAP: senderSetComplete heuristic (size>1) never fully arms cross-device sender-auth for single-device users
+[02-cloudvault-signal] OVERCLAIM: AndroidSignalIdentityKeyStore.kt:16 'The PRIVATE key never leaves the device' overstates protection: true only vs network exfil; raw bytes reconstituted in app memory and on-disk wrap is software/TEE not StrongBox/user-auth
+[02-cloudvault-signal] OVERCLAIM: threat-model:167 'Secure Enclave/StrongBox where available' is NOT realized in code for vault/identity/DB keys (all plain Keychain generic-password / AndroidKeyStore wrap)
+[02-cloudvault-signal] OVERCLAIM: Any prose implying CloudVault at-rest is 'E2EE' should read as honest-but-curious-server confidentiality only: NOT forward-secret, NOT sender-authenticated in production (Signal sender-auth inert until activation)
+[03-pairing-trust-revocation] GAP: No claw-back of a vault key already resident on a revoked device (acknowledged in SECURITY.md); rotation only blocks FUTURE wraps + re-encrypts existing data.
+[03-pairing-trust-revocation] GAP: Rotation liveness depends on a survivor client foregrounding: no server/Cloud-Function actor rotates; iOS has no survivor rotate-pickup; Android pickup is gated on opening the Devices screen.
+[03-pairing-trust-revocation] GAP: iOS host pairing key is in-memory TOFU only — no Keychain pin, no safety number — asymmetric vs the Keychain-pinned Mac-side controller key.
+[03-pairing-trust-revocation] GAP: Approve-time human safety-code compare defaults OFF (EscrowDeviceSafetyCode.swift:202); relies on cryptographic binding + runtime pin instead of OOB visual confirmation at approval.
+[03-pairing-trust-revocation] GAP: detectStalePendingCloudVaultRotations alerts but never remediates; no verified escalation for permanently-stuck requirements.
+[03-pairing-trust-revocation] GAP: No observed invalidation of the revoked device's Firebase Auth session, which would otherwise shrink the cached-key/continued-read window.
+[03-pairing-trust-revocation] OVERCLAIM: Doc/comment claim that iOS pins / never-auto-rotates the Mac host pairing key overstates: FirestoreIrohPairingPublicKeyProvider.swift:9-11,45 is an in-memory cache re-fetched fresh each cold session from untrusted Firestore.
+[03-pairing-trust-revocation] OVERCLAIM: Prose 'revocation completes with key rotation AND re-encryption' should be qualified to 'when a survivor client performs the rotation'; iOS-survivor and Android-without-Devices-visit cases leave the requirement pending (T-PTR-02).
+[03-pairing-trust-revocation] OVERCLAIM: Internal package overclaim #7 ('rotation trigger unwired / no production caller', RR-5/T-ID-4) is now STALE — current Mac+Android code wires revoke->rotate->rewrap; the live overclaim is instead the host-pairing-key pinning claim (T-PTR-03).
+[04-transport-iroh] GAP: No out-of-band/TOFU pinning of the Mac host pairing public key on iOS; transport identity trust is entirely cloud-mediated (no safety-code surface, contrasting the Signal docs)
+[04-transport-iroh] GAP: No persisted pairing-key cache or explicit host-key rotation/revocation surface (FirestoreIrohPairingPublicKeyProvider in-memory only)
+[04-transport-iroh] GAP: No per-source connection rate limit or concurrent-handshake cap in the Rust crate; allowlist rejection occurs post-handshake
+[04-transport-iroh] GAP: Pairing replay protected only by a 180s client-clock freshness window; no nonce/counter or session-challenge binding
+[04-transport-iroh] GAP: Automatic silent downgrade to Firestore for control-plane/CLI streams with no in-code fallback-rate alarm
+[04-transport-iroh] GAP: Raw persistent NodeIds + relay URL + direct IPs stored plaintext in Firestore pairing/audit docs
+[04-transport-iroh] GAP: iroh_fallback_to_wss is dead/unreachable in the live cascade yet still accepted by firestore.rules:2707 and present in Swift/Kotlin audit enums (stale surface)
+[04-transport-iroh] OVERCLAIM: crates/burnbar-remote/SECURITY.md:29-47 Invariants (session-grant binding, host-signs-nonce, signer store, control replay/rate limits) describe a NON-SHIPPING prototype (SECURITY.md:3-9) not wired into production and not a dependency of openburnbar-iroh; they are NOT controls on the live iroh path and must not be credited as active mitigations
+[04-transport-iroh] OVERCLAIM: firestore.rules:2680-2682 comment claims iroh_fallback_to_wss audit is written on fallback to the WSS relay, but the WSS relay is retired and the live cascade emits iroh_fallback_to_firestore; the comment and accepted event value are stale
+[04-transport-iroh] OVERCLAIM: README/SECURITY framing of a verified pairing implies cryptographic end-to-end device trust; in code verification means the signature matched a cloud-fetched key with no user-anchored pin (T-TRN-01), i.e. transport identity trust is cloud-rooted, not out-of-band-authenticated
+[05-gateway-pop] GAP: No content-type allow-list / non-JSON reject on PoP-signed HTTP routes (T-GW-02) — signature integrity assumes JSON body
+[05-gateway-pop] GAP: Events read scoping is app-layer (T-GW-05), not a Firestore where('targetClientId') constraint; same-tenant only but not rules-enforced
+[05-gateway-pop] GAP: HTTP gateway edge has no App Check/device attestation (T-GW-01) — accepted design for non-Firebase agent/phone clients; PoP is the compensating control
+[05-gateway-pop] GAP: client.tokenHash !== tokenHash uses plain string !== not constant-time (T-GW-07) — low risk, both sides sha256 hex, index already hash-keyed
+[05-gateway-pop] GAP: Deployed values of OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED, getConfig().enforceAppCheck, and Firestore TTL policy on pop_nonces/approvals are not determinable from source (UNKNOWN)
+[05-gateway-pop] OVERCLAIM: None material. 'Server never sees plaintext / blind relay' prose is consistent with shape-only validators and the always-false plaintext gate. Nuance to flag (not an overclaim — comments at hermesGateway.ts:148-151 call it out): SUPPORTED relay/signal version sets are non-empty for READ back-compat while PRODUCTION write sets gate new writes, so a reviewer skimming only SUPPORTED_* could wrongly conclude v4/Signal envelopes are writable.
+[06-cloud-authz] GAP: Avatars storage read is global-authenticated (storage.rules:19) with no per-owner scope
+[06-cloud-authz] GAP: Shared workspace-artifact write path does not bind workspaceId to a uid (firestore.rules:1073-1080); zero rules-test coverage
+[06-cloud-authz] GAP: No structural guarantee all 100 callables call assertOwnership before Admin-SDK I/O (Admin SDK bypasses rules)
+[06-cloud-authz] GAP: Plaintext-secret denylist is exact-top-level-name only (firestore.rules:56-69); nested/renamed keys + metadata uncovered
+[06-cloud-authz] GAP: App Check SDK-datapath (console) enforcement absent from repo, not statically verifiable
+[06-cloud-authz] GAP: No explicit global match /{document=**} catch-all deny in firestore.rules (relies on implicit default-deny)
+[06-cloud-authz] OVERCLAIM: 'Ciphertext only' cloud-sync framing overstates: per-collection metadata (counts, timestamps, deviceIds, projectKeyHash trapdoor) is cleartext by design (sealing scope firestore.rules:462-500)
+[06-cloud-authz] OVERCLAIM: Any doc prose asserting App Check is 'enforced' must be read as code-side callable enforcement only; SDK/Firestore datapath enforcement is a console toggle not provable from repo (firestore.rules:20-23) = UNKNOWN
+[06-cloud-authz] OVERCLAIM: 'Shared artifacts owner-scoped' (firestore.rules:18) is true for READ but the WRITE path lacks path-uid binding; comment understates write-pollution surface
+[07-daemon-privsocket] GAP: No OS process sandbox on daemon or main app (App Sandbox=false on both Dev-ID lanes); compromise containment relies only on hardened runtime + Gatekeeper
+[07-daemon-privsocket] GAP: Daemon does not re-verify the single-use local-auth proof; op-hash binding enforced app-side only and does not survive app compromise
+[07-daemon-privsocket] GAP: Daemon binary lives in a user-writable path and launchd does not verify signature at exec; live socket peer-auth contains impersonation but not a hostile binary's own actions as the user
+[07-daemon-privsocket] GAP: Production binary ships OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 escape hatch that disables the load-bearing main-socket code-sig gate
+[07-daemon-privsocket] GAP: Code-signature identity is used as authorization with no per-RPC capability attenuation on the main control socket
+[07-daemon-privsocket] OVERCLAIM: Entitlement comment frames Gatekeeper/notarization as a 'security boundary' (OpenBurnBar.entitlements:18) but there is NO runtime sandbox; this is install-time only, not post-compromise containment
+[07-daemon-privsocket] OVERCLAIM: Claim that high-risk grants are 'bound to a single-use local-auth proof' must be qualified: enforced in app/relay (PhoneControlAuthorityValidator), not re-checked by the privileged daemon, so it does not survive app compromise
+[07-daemon-privsocket] OVERCLAIM: 'Secrets not visible to local users' overstates: env hidden from ps auxww and other uids, but a SAME-uid process can read the daemon's environment
+[08-agent-runtime-tools] GAP: No unified policy enforcement point for external CLI agents; enforcement fully delegated to third-party CLI flags
+[08-agent-runtime-tools] GAP: No mid-run revocation/kill for spawned CLI processes (revoke != terminate); no grantStillActive re-check on CLI lane
+[08-agent-runtime-tools] GAP: No per-N-action re-auth for YOLO unrestricted shell (acknowledged TODO at OpenAICompatibleChatGatewayClient.swift:381)
+[08-agent-runtime-tools] GAP: CLI --dangerously-skip-permissions flags not guarded by #if DISTRIBUTION_MAS (only .shellUnrestricted broker capability is)
+[08-agent-runtime-tools] GAP: Panic hotkey + lock-screen kill paths absent in MAS build (ComputerUsePanicHaltCoordinator entirely #if !DISTRIBUTION_MAS)
+[08-agent-runtime-tools] GAP: Indirect prompt-injection via repo files / tool output untagged for the CLI lane
+[08-agent-runtime-tools] GAP: Autonomy level per runtime is implicit in spawn flags, not a first-class auditable field
+[08-agent-runtime-tools] GAP: shell_run sandbox uses deny-list (allow default) rather than read allow-list
+[08-agent-runtime-tools] OVERCLAIM: ChatSessionController.swift:2000 model prompt asserts 'Mac input and browser actions still pass through OpenBurnBar's approval, scope, and audit pipeline' — true for the in-app broker->ComputerUse path only, NOT for external CLI agents which run outside that pipeline
+[08-agent-runtime-tools] OVERCLAIM: 'YOLO' / isYOLOGrant naming implies a contained mode, but non-MAS YOLO = arbitrary unsandboxed RCE with only a hashed audit; should be framed as full-trust delegation, not a safety control
+[08-agent-runtime-tools] OVERCLAIM: Comment 'we ALWAYS leave a forensic record' (OpenAICompatibleChatGatewayClient.swift:378) — record is command SHA-256 + length only; attribution, not prevention or reviewable content
+[08-agent-runtime-tools] OVERCLAIM: yoloUnavailable naming suggests YOLO is unavailable in MAS, but only .shellUnrestricted is blocked there; other --dangerously-skip-permissions CLI flags still emit
+[09-agentic-prompt-memory] GAP: CU tool-result wrapping is a 2-tool allowlist (browser_extract, mac_inspect_accessibility), not default-deny over all content-returning tools (file reads, shell stdout/stderr, screenshot OCR, clipboard).
+[09-agentic-prompt-memory] GAP: Oracle/'authoritative' context path bypasses wrapUntrusted entirely; needs wrapping or removal of authoritative framing.
+[09-agentic-prompt-memory] GAP: No provenance/trust tier on indexed conversation chunks; no poisoned-chunk quarantine or deletion workflow.
+[09-agentic-prompt-memory] GAP: Browser SSRF validation is one-shot on the typed goto URL; no redirect/JS-nav/click re-validation and no resolved-IP DNS-rebind enforcement (PlaywrightDriver goto forwards URL without post-nav check).
+[09-agentic-prompt-memory] GAP: No content-level secret scrubbing before prompts reach model providers; no provider zero-retention/no-train assertion in code.
+[09-agentic-prompt-memory] GAP: Insights model output (missions/recommendations) lacks semantic safety validation before client renders it as actionable.
+[09-agentic-prompt-memory] OVERCLAIM: ContextBuilder.swift:4 header claims 'All untrusted content (... CU extracts) MUST be wrapped' but CU extracts are wrapped only for 2 tools; file/shell/screenshot/clipboard tool results are forwarded raw (OpenAICompatibleChatGatewayClient.swift:1168).
+[09-agentic-prompt-memory] OVERCLAIM: ChatSessionController.swift:1612 frames oracle snippets as 'authoritative local search results' though they come from the same untrusted indexed corpus that formatPack treats as untrusted (and re-wraps).
+[11-android-masvs] GAP: Vault device key, Signal identity key, and Hermes relay key are NOT StrongBox-backed and NOT user-auth-bound (only software-key-in-TEE wrapping via AndroidLocalSecretBox); parity gap vs phone-control key
+[11-android-masvs] GAP: Base network config remains cleartext-permitted (network_security_config.xml:33); LAN-direct TLS/relay migration recommended in-file but unimplemented
+[11-android-masvs] GAP: senderSetComplete is a size>1 heuristic, not a verified 'all trusted devices published' gate; single-peer accounts and transient Firestore failures keep the unauthenticated legacy path eligible
+[11-android-masvs] GAP: No code-level binding between BiometricPrompt success and RemoteUnlockSavedCredentialStore.load (relies on caller discipline + Keystore backstop)
+[11-android-masvs] GAP: No certificate pinning for backend hosts (only system trust anchors); relies on platform CA store + App Check
+[11-android-masvs] GAP: No reviewed PII-scrubbing/beforeSend config for Sentry/Crashlytics
+[11-android-masvs] OVERCLAIM: Stale internal-package note 'Android: no at-rest sender-auth verify (parity gap)' is an OVERCLAIM vs current code — sender-auth IS verified fail-closed (CloudVaultCrypto.kt:494-555 + caller wiring). Remediated.
+[11-android-masvs] OVERCLAIM: Framing of AndroidLocalSecretBox as protecting private keys implies hardware/biometric binding; code provides only a non-StrongBox, non-user-auth Keystore AES key (CloudVaultCrypto.kt:1206-1221). 'Keystore-wrapped' != 'hardware-bound / screen-lock-gated'.
+[11-android-masvs] OVERCLAIM: 'TLS only' implied for all network traffic — only deny-listed backend hosts are TLS-forced; base config still allows cleartext (network_security_config.xml:33).
+[12-attachments] GAP: No streaming size ceiling on iroh fetch_blob and no post-fetch bytes_total==manifest.size assertion (blobs.rs:284 reads then discards) — unlike GCS finalize size-equality at hermesGateway.ts:1570
+[12-attachments] GAP: iOS receive path omits capability gate, seal-at-rest, and quarantine that exist on Mac (iOSFileTransferService.swift:135-208)
+[12-attachments] GAP: No explicit FileProtectionType.complete / isExcludedFromBackup on Mercury inbox (rg found none in Media services)
+[12-attachments] GAP: Wire-manifest metadata (filename/mime/size) neither sealed at this layer nor MAC-bound to the blob (HermesRealtimeRelayTypes.swift:1712-1738)
+[12-attachments] GAP: Mercury mime is extension-inferred and sender-trusted; no content sniffing (inferMime:179-194)
+[12-attachments] GAP: Mac seal-at-rest is fail-open on missing session key (MacFileTransferService.swift:420-422)
+[12-attachments] GAP: Gateway download signed URL sets no responseDisposition=attachment (hermesGateway.ts:1653-1658)
+[12-attachments] OVERCLAIM: Trust copy 'media manifest ... file name is sealed on-device (sealedFilename) and never readable by the server' (website/src/data/trust.generated.ts) is precise only for the Firestore at-rest manifest; the transport manifest HermesRealtimeRelayAttachmentManifest carries cleartext filename and is embedded in the advertise frame, so 'never readable by server' holds only if the relay frame is E2EE-sealed at another layer.
+[12-attachments] OVERCLAIM: RR-18 comments (MacFileTransferService.swift:414-419) assert received files are 'not plaintext in the sandbox Caches inbox' more absolutely than code guarantees: true only when a session key exists (Mac) and not at all on iOS.
+[14-supply-chain] GAP: cargo deny check (license/bans/sources) never actually executes in CI; provenance lane deny step is a silent no-op (cargo-deny + osv-scanner not installed there)
+[14-supply-chain] GAP: No OSV/grype coverage for Cargo.lock, SwiftPM Package.resolved, or Android Gradle dependency locks
+[14-supply-chain] GAP: No in-repo evidence of branch protection / required reviews / required status checks / signed-commit enforcement; CODEOWNERS is single-owner
+[14-supply-chain] GAP: No Dependabot/Renovate config found (.github/dependabot.yml absent) to auto-pin/bump mutable action tags
+[14-supply-chain] GAP: Two workflows (computer-use-loopback-test.yml, droid-wiki-refresh.yml) lack explicit top-level permissions block
+[14-supply-chain] GAP: GPG checksum signing optional and excluded from strict-secret gate
+[14-supply-chain] GAP: Provenance SBOM attests source tree rather than the as-shipped published artifact bytes
+[14-supply-chain] GAP: Rust not covered by CodeQL (mitigated by rust-sast cargo-audit/clippy); Swift CodeQL is push-only, not PR-gated
+[14-supply-chain] OVERCLAIM: supply-chain-provenance.yml name/banner 'Ecosystem deny checks' implies cargo-deny + OSV gating, but only npm audit actually runs on that runner (cargo-deny/osv-scanner skipped when absent)
+[14-supply-chain] OVERCLAIM: rust-sast.yml:6-9 states 'cargo-deny already gates' advisories, but only cargo-AUDIT is demonstrably wired/installed in CI; cargo deny check is not
+[14-supply-chain] OVERCLAIM: Pervasive SHA-pinning + version comments imply an 'all actions pinned' invariant that is violated by @stable/@v2/@v4/@v0.x exceptions

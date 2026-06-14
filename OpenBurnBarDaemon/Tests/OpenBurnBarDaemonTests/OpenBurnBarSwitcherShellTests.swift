@@ -261,6 +261,62 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertEqual(store.fetchActiveProfileID(), primary.id)
     }
 
+    func testShellExecutorStripsDaemonCredentialsFromChildEnvironment() async throws {
+        let executableURL = try makeExecutable(named: "codex-env-strip")
+        CLILaunchAdapter.executableResolver = { _ in executableURL }
+
+        let profile = cliProfile(id: "env-test", label: "Test", sortKey: 1, cliType: .codex)
+        let store = TestSwitcherProfileStore(profiles: [profile], activeProfileID: profile.id)
+        let runner = TestTerminalRunner(results: [
+            .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: "")
+        ])
+
+        let executor = BurnBarCLIShellExecutor(
+            profileStore: store,
+            credentialStore: TestCredentialStore(values: ["\(profile.id):codex": "sk-test"]),
+            terminalRunner: runner,
+            environmentProvider: {
+                [
+                    "TERM": "xterm-256color",
+                    "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "daemon-secret",
+                    "OPENBURNBAR_GATEWAY_AUTH_TOKEN": "gateway-secret",
+                    "OPENBURNBAR_DAEMON_SOCKET_PATH": "/tmp/daemon.sock",
+                    "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG": "1",
+                    "BURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "daemon-secret-2",
+                    "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK": "1",
+                    "OPENAI_API_KEY": "should-be-overridden"
+                ]
+            },
+            statusWriter: { _ in }
+        )
+
+        _ = try await executor.execute(
+            BurnBarCLIShellLaunchRequest(
+                cliType: .codex,
+                forwardedArguments: ["chat"],
+                requestedProfileID: nil
+            )
+        )
+
+        let invocations = await runner.invocationsSnapshot()
+        XCTAssertEqual(invocations.count, 1)
+        let env = invocations[0].environment
+
+        // Daemon credential env vars must be stripped.
+        XCTAssertNil(env["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"])
+        XCTAssertNil(env["OPENBURNBAR_GATEWAY_AUTH_TOKEN"])
+        XCTAssertNil(env["OPENBURNBAR_DAEMON_SOCKET_PATH"])
+        XCTAssertNil(env["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"])
+        XCTAssertNil(env["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"])
+        XCTAssertNil(env["OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"])
+
+        // Non-daemon env vars pass through.
+        XCTAssertEqual(env["TERM"], "xterm-256color")
+
+        // Profile credential override still works.
+        XCTAssertEqual(env["OPENAI_API_KEY"], "sk-test")
+    }
+
     private func cliProfile(
         id: String,
         label: String,

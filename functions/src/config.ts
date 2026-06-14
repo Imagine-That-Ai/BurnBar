@@ -56,8 +56,15 @@ function buildConfig(): EnvConfig {
   const toBool = (v: unknown, def: boolean): boolean => {
     if (v === undefined || v === null) return def;
     if (typeof v === "boolean") return v;
-    return String(v).toLowerCase() === "true";
+    // Treat empty or whitespace-only string as absent (→ use the secure default).
+    // An explicit "true" or "false" is the only accepted opt-in/opt-out signal.
+    // This prevents an operator from accidentally disabling a fail-closed security
+    // control by setting the secret/env-var to "" instead of removing it entirely.
+    const s = String(v).trim().toLowerCase();
+    if (s === "") return def;
+    return s === "true";
   };
+
 
   const toNum = (v: unknown, def: number): number => {
     if (v === undefined || v === null) return def;

@@ -44,4 +44,24 @@ node --test scripts/lib/ops-alerts-gate.test.mjs
 echo "==> release attestation verifier"
 bash -n scripts/ci/verify-release-attestations.sh
 
+# F-RR02-002: verify that firestore.indexes.json declares TTL policies for
+# collections that depend on automatic cleanup. The live deployment state must
+# be verified separately with:
+#   gcloud firestore fields ttls list --project=<prod-project>
+# This check ensures the declarations are not accidentally removed from source.
+echo "==> firestore TTL policy declarations"
+INDEXES_FILE="firestore.indexes.json"
+ttl_ok=true
+for group in pop_nonces _rate_limits hermes_gateway_device_sessions public_rate_limits; do
+  if ! grep -A5 "\"collectionGroup\".*\"${group}\"" "$INDEXES_FILE" | grep -q '"ttl".*true'; then
+    echo "FAIL: missing TTL declaration for collection group '${group}' in ${INDEXES_FILE}"
+    ttl_ok=false
+  fi
+done
+if [ "$ttl_ok" = false ]; then
+  echo "FAIL: Firestore TTL declarations missing — see F-RR02-002"
+  exit 1
+fi
+echo "  TTL declarations verified for pop_nonces, _rate_limits, hermes_gateway_device_sessions, public_rate_limits"
+
 echo "PASS: ops readiness"

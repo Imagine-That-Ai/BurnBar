@@ -118,9 +118,10 @@ function popHeaders(opts: {
   query: Record<string, unknown>;
   signedQuery?: Record<string, unknown>;
   body: Record<string, unknown>;
+  fixedNonce?: string;
 }): Record<string, string> {
   const timestamp = new Date().toISOString();
-  const nonce = `popv2-nonce-${String(++nonceCounter).padStart(8, "0")}`;
+  const nonce = opts.fixedNonce ?? `popv2-nonce-${String(++nonceCounter).padStart(8, "0")}`;
   const bodyHash = createHash("sha256").update(stableJSONString(opts.body)).digest("hex");
   const lines =
     opts.version === 2
@@ -195,11 +196,20 @@ function makeReq(opts: {
   path: string;
   query: Record<string, unknown>;
   signedQuery?: Record<string, unknown>;
+  fixedNonce?: string;
 }) {
   const body = {};
   const headers: Record<string, string> = {
     authorization: `Bearer ${TOKEN}`,
-    ...popHeaders({ version: opts.version, method: "GET", path: opts.path, query: opts.query, signedQuery: opts.signedQuery, body }),
+    ...popHeaders({
+      version: opts.version,
+      method: "GET",
+      path: opts.path,
+      query: opts.query,
+      signedQuery: opts.signedQuery,
+      body,
+      fixedNonce: opts.fixedNonce,
+    }),
   };
   const qs = Object.entries(opts.query)
     .map(([k, v]) => `${k}=${String(v)}`)
@@ -221,6 +231,7 @@ async function call(opts: {
   path: string;
   query: Record<string, unknown>;
   signedQuery?: Record<string, unknown>;
+  fixedNonce?: string;
 }): Promise<Captured> {
   const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
   // Single typed seam: the dispatcher takes real express req/res; the fakes
@@ -283,5 +294,89 @@ describe("L2 — gateway PoP v2 query binding", () => {
     const res = await call({ version: 2, path: "/events", query: {} });
     expect(res.status).not.toBe(401);
     expect(res.status).toBe(200);
+  });
+
+  it("rejects replaying the same PoP nonce", async () => {
+    seedGrant(2);
+    const fixedNonce = "popv2-replay-nonce-00000001";
+    const first = await call({ version: 2, path: "/events", query: { cursor: "abc" }, fixedNonce });
+    expect(first.status).toBe(200);
+    const replay = await call({ version: 2, path: "/events", query: { cursor: "abc" }, fixedNonce });
+    expect(replay.status).toBe(401);
+    expect(errOf(replay.body)).toBe("pop_nonce_replay");
+  });
+
+  it("sets nonce TTL relative to future timestamp in verifyGatewayRequestPoP (F-RR03-002)", async () => {
+    seedGrant(2);
+    const fixedNonce = "popv2-future-nonce-00000001";
+    const fakeNow = 1700000000000;
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(fakeNow);
+    
+    const futureTime = new Date(fakeNow + 4 * 60 * 1000);
+    const popHeadersFuture = (opts: {
+      version: 2;
+      method: string;
+      path: string;
+      query: Record<string, unknown>;
+      body: Record<string, unknown>;
+      fixedNonce: string;
+    }) => {
+      const timestamp = futureTime.toISOString();
+      const bodyHash = createHash("sha256").update(stableJSONString(opts.body)).digest("hex");
+      const lines = [
+        "OpenBurnBar.HermesGatewayPoP.v2",
+        TOKEN_HASH,
+        opts.method.toUpperCase(),
+        opts.path,
+        canonicalQuery(opts.query),
+        bodyHash,
+        opts.fixedNonce,
+        timestamp,
+      ];
+      const payload = Buffer.from(lines.join("\n"), "utf8");
+      return {
+        "x-openburnbar-pop-nonce": opts.fixedNonce,
+        "x-openburnbar-pop-timestamp": timestamp,
+        "x-openburnbar-pop-body-sha256": bodyHash,
+        "x-openburnbar-pop-signature-ed25519": sign(null, payload, PRIV).toString("base64"),
+        "x-openburnbar-pop-version": "2",
+      };
+    };
+
+    const headers = {
+      authorization: `Bearer ${TOKEN}`,
+      ...popHeadersFuture({
+        version: 2,
+        method: "GET",
+        path: "/events",
+        query: { cursor: "abc" },
+        body: {},
+        fixedNonce,
+      }),
+    };
+
+    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const dispatch = dispatchHermesGatewayRequest as never;
+    const { res, captured } = makeRes();
+    const req = {
+      method: "GET",
+      path: "/events",
+      url: "/events?cursor=abc",
+      body: {},
+      headers,
+      query: { cursor: "abc" },
+      socket: { remoteAddress: "127.0.0.1" },
+      get: (name: string) => headers[name.toLowerCase()],
+    };
+
+    await dispatch(req, res);
+    expect(captured.status).toBe(200);
+
+    const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`);
+    expect(nonceDoc).toBeDefined();
+    const expectedExpire = futureTime.getTime() + 5 * 60 * 1000;
+    expect(nonceDoc?.expireAt?.toMillis()).toBe(expectedExpire);
+
+    dateNowSpy.mockRestore();
   });
 });

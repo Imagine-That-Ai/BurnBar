@@ -816,8 +816,8 @@ export async function requireTrustedDeviceActionProof(args: {
     throw new HttpsError("permission-denied", "This mutation requires a trusted device for the requested trust root.");
   }
   if (
-    device.get("approvedBySignalIdentityKeyId") !== proof.deviceSignalIdentityKeyId ||
-    device.get("approvedBySignalIdentityPublicKeyFingerprint") !== proof.deviceSignalIdentityPublicKeyFingerprint
+    device.get("targetSignalIdentityKeyId") !== proof.deviceSignalIdentityKeyId ||
+    device.get("targetSignalIdentityPublicKeyFingerprint") !== proof.deviceSignalIdentityPublicKeyFingerprint
   ) {
     throw new HttpsError("permission-denied", "actionProof is not bound to the trusted device identity.");
   }
@@ -928,11 +928,15 @@ function queuedAgentGrantRequiresMacApproval(capabilities: string[], trustMode: 
 function queuedAgentGrantDeliveryRequiresMacApproval(
   capabilities: string[],
   trustMode: string,
-  deliveryMode: string,
+  // F-RR04-004: deliveryMode must NOT affect the Mac approval gate. Risky capabilities
+  // require Mac approval regardless of whether delivery is live, queued, or live_then_queued.
+  // The _deliveryMode parameter is retained for signature compatibility but is intentionally
+  // ignored — removing the original `if (deliveryMode === "live") return false` bypass.
+  _deliveryMode: string,
 ): boolean {
-  if (deliveryMode === "live") return false;
   return queuedAgentGrantRequiresMacApproval(capabilities, trustMode);
 }
+
 
 function parseAgentGrantLocalAuthProof(raw: unknown): AgentGrantLocalAuthProof | undefined {
   if (raw == null) return undefined;
@@ -2336,7 +2340,10 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
   },
 );
 
-const NATIVE_ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
+// F-RR04-006: NATIVE_ESCROW_PLATFORMS (all platforms) was removed — it was used only in the
+// respondMissionApproval transaction-level check but was never enforced exclusively;
+// the pre-transaction requireTrustedDeviceActionProof already restricts to PHONE_CONTROL_ESCROW_PLATFORMS.
+// The transaction-level check now uses PHONE_CONTROL_ESCROW_PLATFORMS for consistency.
 
 /**
  * Bind a CLI-agent mission approval to the responding device.
@@ -2403,7 +2410,7 @@ export const respondMissionApproval = onCall(
         if (
           !device.exists ||
           device.get("trustState") !== "trusted" ||
-          !NATIVE_ESCROW_PLATFORMS.has(device.get("platform"))
+          !PHONE_CONTROL_ESCROW_PLATFORMS.has(device.get("platform"))
         ) {
           throw new HttpsError(
             "permission-denied",
@@ -2463,6 +2470,7 @@ export const __testing__ = {
   verifyCloudVaultDeviceTrustChainSignature,
   verifyTrustedDeviceActionSignature,
   parseTrustedDeviceActionProof,
+  requireTrustedDeviceActionProof,
   montgomeryUToCompressedEdwards,
   CLOUD_VAULT_DEVICE_TRUST_CHAIN_DOMAIN,
   TRUSTED_DEVICE_ACTION_PROOF_DOMAIN,

@@ -90,6 +90,7 @@ class IrohPairingPublisher(private val directory: IrohPairingDirectory) {
             directory.fetch(uid, connectionId)
                 ?: throw IrohPairingDirectoryException.recordNotFound()
         IrohPairingSignature.verify(record, publicKey = publicKey, nowMillis = nowMillis)
+        IrohPairingReplayGuardShared.session.consume(record, nowMillis)
         return record.dialTarget()
     }
 }

@@ -42,6 +42,7 @@ import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import { isGatewaySignalEnvelope, sanitizeSignalEnvelopeForExport } from "../signalEnvelopeExport.js";
 import { nowISO, requireBoundedStringArray, sha256Hex } from "./shared.js";
 import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export type EncryptionTier = "server_readable" | "zero_access" | "end_to_end";
@@ -624,6 +625,10 @@ export const exportUserData = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before exporting your data.");
     enforceAuthAndAppCheck(request, uid);
+    await enforceHighRiskOwnerAction(request, uid, {
+      actionKind: "data_export",
+      subjectId: "all",
+    });
 
     const requestedDomains =
       request.data?.domains == null ? [] : requireBoundedStringArray(request.data.domains, "domains", 24, 64);

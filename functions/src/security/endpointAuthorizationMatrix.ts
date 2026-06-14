@@ -14,6 +14,8 @@ type EndpointAuthorizationEntry = {
   objectIdsFromClient: string[];
   ownershipCheck: string;
   negativeBolaTest: string;
+  highRiskComputerUse: boolean;
+  actionKind?: string;
   publicJustification?: string;
   notes?: string;
 };
@@ -26,6 +28,7 @@ function entries(names: string[], defaults: MatrixDefaults): EndpointAuthorizati
   return names.map((exportedName) => ({
     exportedName,
     objectIdsFromClient: defaults.objectIdsFromClient ?? [],
+    highRiskComputerUse: false,
     ...defaults,
   }));
 }
@@ -255,6 +258,22 @@ const outboundServiceJobs = entries(["sendVoIPOutbound", "sendFcmOutbound"], {
   negativeBolaTest: "push-resilience.test.ts and agent notification reply tests",
 });
 
+const HIGH_RISK_ENDPOINTS: Record<string, string> = {
+  approveHermesGatewayDeviceGrant: "hermes_gateway_device_grant_approve",
+  connectProviderAccount: "provider_account_connect",
+  connectProviderCredential: "provider_credential_connect",
+  connectHostedQuotaAccount: "hosted_quota_account_connect",
+  connectSelfHostedQuotaAccount: "self_hosted_quota_account_connect",
+  exportUserData: "data_export",
+  deleteUserCloudData: "user_cloud_data_delete",
+  revokeAllAccess: "revoke_all_access",
+  updateProviderAccount: "provider_account_update",
+  revokeRemoteMcpClient: "remote_mcp_grant_revoke",
+  deleteHostedQuotaCredentials: "hosted_quota_credential_delete",
+  completeHermesPairing: "hermes_pairing_complete",
+  completePiAgentPairing: "pi_agent_pairing_complete",
+};
+
 export const endpointAuthorizationMatrix: EndpointAuthorizationEntry[] = [
   ...publicHealth,
   ...scheduledJobs,
@@ -264,7 +283,13 @@ export const endpointAuthorizationMatrix: EndpointAuthorizationEntry[] = [
   ...gatewayHttp,
   ...authScopedCallables,
   ...outboundServiceJobs,
-].sort((left, right) => left.exportedName.localeCompare(right.exportedName));
+].map((entry) => {
+  const actionKind = HIGH_RISK_ENDPOINTS[entry.exportedName];
+  if (actionKind) {
+    return { ...entry, highRiskComputerUse: true, actionKind };
+  }
+  return entry;
+}).sort((left, right) => left.exportedName.localeCompare(right.exportedName));
 
 export function endpointAuthorizationByName(): Map<string, (typeof endpointAuthorizationMatrix)[number]> {
   return new Map(endpointAuthorizationMatrix.map((entry) => [entry.exportedName, entry]));

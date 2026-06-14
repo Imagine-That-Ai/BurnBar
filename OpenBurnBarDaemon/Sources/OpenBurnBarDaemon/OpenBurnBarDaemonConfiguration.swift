@@ -108,6 +108,17 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
     /// same-host process could spend the user's provider credits via the
     /// gateway, so the gateway refuses to start unless this is explicitly set.
     public var allowUnauthenticatedLoopback: Bool
+
+    /// The effective value of `allowUnauthenticatedLoopback` after applying the
+    /// release-build compile gate. In non-DEBUG builds the escape hatch is
+    /// physically absent and this always returns `false`.
+    public var effectiveAllowUnauthenticatedLoopback: Bool {
+        #if DEBUG
+        return allowUnauthenticatedLoopback
+        #else
+        return false
+        #endif
+    }
     /// Rate limiting configuration for the HTTP gateway.
     /// Default: 30 req/s sustained, 50 burst.
     public var rateLimit: BurnBarRateLimitConfiguration?
@@ -158,7 +169,7 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
             }
             // Fail-closed on loopback too: any same-host process can reach the
             // gateway and spend the user's provider credits without a token.
-            if !allowUnauthenticatedLoopback {
+            if !effectiveAllowUnauthenticatedLoopback {
                 return "The gateway requires an auth token. Enable \"Allow unauthenticated loopback\" to bind 127.0.0.1 without one."
             }
         }

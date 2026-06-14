@@ -21,18 +21,18 @@ final class AgentToolBroker: @unchecked Sendable {
     private let grantStillActive: (@Sendable () async -> Bool)?
 
     /// Human-in-the-loop gate invoked before a **privileged** broker tool
-    /// (shell / workspace write / desktop export) runs in a non-trusted grant.
+    /// (shell / workspace write / desktop export) runs.
     /// Returns `true` to allow. When `nil`, privileged tools FAIL CLOSED — there
     /// is no silent privileged execution under an active grant (finding A1).
     typealias PrivilegedActionApprover = @Sendable (_ toolName: String, _ summary: String) async -> Bool
     private let privilegedActionApprover: PrivilegedActionApprover?
 
     /// Broker tools that perform privileged side effects (shell exec, writes,
-    /// exfiltration-capable export). Each requires explicit per-action approval
-    /// in every grant mode except `.trusted` (YOLO), which already required a
-    /// local-auth proof + Mac approval at grant time and opted into autonomy.
+    /// exfiltration-capable export). Each requires explicit per-action approval.
+    /// Trust mode scopes which tools may be offered; it never replaces the
+    /// concrete action gate.
     static let approvalGatedTools: Set<String> = [
-        "shell_run", "workspace_write_file", "desktop_export_file"
+        "shell_run", "shell_run_unrestricted", "workspace_write_file", "desktop_export_file"
     ]
 
     /// F3: forensic audit log for unsandboxed unrestricted-shell execution.
@@ -149,10 +149,10 @@ final class AgentToolBroker: @unchecked Sendable {
 
         do {
             let object = try Self.jsonObject(fromArguments: arguments)
-            // A1: privileged broker tools require explicit per-action approval
-            // unless this is a trusted (YOLO) grant. Fail closed when no
-            // approver is wired — never execute a privileged tool silently.
-            if Self.approvalGatedTools.contains(name), grant.trustMode != .trusted {
+            // A1: privileged broker tools require explicit per-action approval.
+            // Fail closed when no approver is wired — never execute a privileged
+            // tool silently under an ambient or trusted grant.
+            if Self.approvalGatedTools.contains(name) {
                 let summary = Self.approvalSummary(tool: name, arguments: object)
                 guard let approver = privilegedActionApprover else {
                     return denied(name: name, reason: "privileged action requires approval but no approver is available")
@@ -371,14 +371,9 @@ final class AgentToolBroker: @unchecked Sendable {
         let command = try requiredString("command", in: arguments)
         let requestedTimeout = (arguments["timeoutSeconds"] as? Int) ?? 30
         let timeout = max(1, min(requestedTimeout, 120))
-        // F3: unrestricted shell under YOLO runs unsandboxed at full user privilege
-        // and skips the per-action approver by design. It is the single highest
-        // agent-execution risk surface (a prompt injection the model obeys can run
-        // arbitrary commands). We cannot block it without defeating YOLO's purpose,
-        // but we ALWAYS leave a forensic record: a command hash (never the plaintext,
-        // which may contain secrets), grant id, and runtime. This gives post-incident
-        // attribution and is the audit-trail half of the F3 control; a per-N-action
-        // re-auth UX is the tracked follow-up.
+        // F3: unrestricted shell runs unsandboxed at full user privilege after
+        // the per-action approval gate above. Always leave a forensic record: a
+        // command hash (never plaintext), grant id, and runtime.
         let auditLine = "shell_run_unrestricted dispatched"
             + " grant=\(self.grant.grantID)"
             + " runtime=\(self.grant.runtimeID.rawValue)"

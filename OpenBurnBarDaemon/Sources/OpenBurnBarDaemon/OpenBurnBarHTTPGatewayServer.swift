@@ -111,6 +111,12 @@ public actor BurnBarHTTPGatewayServer {
                     "port": "\(boundPort)",
                     "auth_required": "\(self.configuration.authToken != nil)"
                 ])
+                if !self.configuration.isLoopback {
+                    self.logger.warning("gateway_non_loopback_bind", metadata: [
+                        "host": host,
+                        "port": "\(boundPort)"
+                    ])
+                }
             case .failed(let error):
                 let reason = Self.listenerFailureReason(error, host: host, port: boundPort)
                 BurnBarDaemonMetricsCounters.recordGatewayListenerFailure(reason)

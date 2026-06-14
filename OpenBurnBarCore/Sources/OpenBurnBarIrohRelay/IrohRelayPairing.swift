@@ -61,6 +61,7 @@ public enum IrohPairingError: Error, Equatable, Sendable {
     case invalidPublicKey
     case invalidSignature
     case expired
+    case replayed
     case unsupportedProtocolVersion(Int)
     case malformed
 }

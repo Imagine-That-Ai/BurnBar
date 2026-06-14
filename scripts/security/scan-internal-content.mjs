@@ -10,6 +10,7 @@
 // Usage:
 //   node scripts/security/scan-internal-content.mjs            # full tracked tree (CI / release)
 //   node scripts/security/scan-internal-content.mjs --staged   # staged files only (pre-commit)
+//   node scripts/security/scan-internal-content.mjs --publishable # tracked + untracked, excluding gitignored
 //   node scripts/security/scan-internal-content.mjs --strict   # treat warnings as failures
 //   node scripts/security/scan-internal-content.mjs --json      # machine-readable report
 //
@@ -135,6 +136,16 @@ function stagedFiles(root) {
     .filter(Boolean);
 }
 
+function publishableFiles(root) {
+  return execFileSync(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    { cwd: root, encoding: "utf8" },
+  )
+    .split("\0")
+    .filter(Boolean);
+}
+
 function makeReader(root) {
   return (path) => {
     const abs = join(root, path);
@@ -195,7 +206,16 @@ function printHuman(result, { mode, fileCount }) {
 
 function main(argv) {
   const args = new Set(argv.slice(2));
-  const mode = args.has("--staged") ? "staged" : "tree";
+  const requestedModes = ["--staged", "--publishable"].filter((arg) => args.has(arg));
+  if (requestedModes.length > 1) {
+    console.error("scan-internal-content: choose only one of --staged or --publishable.");
+    return 2;
+  }
+  const mode = args.has("--staged")
+    ? "staged"
+    : args.has("--publishable")
+      ? "publishable"
+      : "tree";
   const strict = args.has("--strict");
   const asJson = args.has("--json");
 
@@ -207,7 +227,12 @@ function main(argv) {
     return 2;
   }
 
-  const files = mode === "staged" ? stagedFiles(root) : trackedFiles(root);
+  const files =
+    mode === "staged"
+      ? stagedFiles(root)
+      : mode === "publishable"
+        ? publishableFiles(root)
+        : trackedFiles(root);
   const read = makeReader(root);
   const result = scan(files, read);
 
@@ -236,4 +261,4 @@ if (isMain) {
   process.exit(main(process.argv));
 }
 
-export { repoRoot, trackedFiles, stagedFiles, makeReader, main, dirname };
+export { repoRoot, trackedFiles, stagedFiles, publishableFiles, makeReader, main, dirname };

@@ -653,6 +653,39 @@ service cloud.firestore {
         && payload.vaultKeyID == vaultKeyID;
     }
 
+    function validPathBoundCloudSealedPayload(userId, collection, docId, value) {
+      return value is map
+        && value.keys().hasOnly([
+          "schemaVersion",
+          "algorithm",
+          "keyVersion",
+          "vaultKeyID",
+          "sealedBoxBase64",
+          "aad"
+        ])
+        && value.schemaVersion == 2
+        && value.algorithm == "AES-256-GCM"
+        && value.keyVersion is int
+        && value.keyVersion >= 1
+        && value.keyVersion <= 100
+        && validVaultKeyID(value.vaultKeyID)
+        && value.aad == cloudVaultAADContext(userId, collection, docId, "sealedPayload")
+        && value.sealedBoxBase64 is string
+        && value.sealedBoxBase64.size() > 0
+        && value.sealedBoxBase64.size() <= 900000
+        && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validPathBoundSealedPayloadForUser(userId, collection, docId, vaultKeyID, payload) {
+      return matchesCurrentVaultKey(userId, vaultKeyID)
+        && validPathBoundCloudSealedPayload(userId, collection, docId, payload)
+        && payload.vaultKeyID == vaultKeyID;
+    }
+
+    function hasValidEscrowPublicKey(userId, deviceId, keyVersion) {
+      return exists(/databases/$(database)/documents/users/$(userId)/escrow_public_keys/$(deviceId + "_" + string(keyVersion)));
+    }
+
     function validTextSnippetDoc(userId, snippetId) {
       return ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
@@ -683,6 +716,7 @@ service cloud.firestore {
         && validPathBoundCloudSealedText(request.resource.data.sealedTrigger, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedTrigger"))
         && validPathBoundCloudSealedText(request.resource.data.sealedBody, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedBody"))
         && validPathBoundCloudSealedText(request.resource.data.sealedScope, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedScope"))
+        && hasValidEscrowPublicKey(userId, request.resource.data.sourceDeviceID, request.resource.data.sealedTitle.keyVersion)
         && request.resource.data.mode in ["static", "llm_rewrite"]
         && request.resource.data.isEnabled is bool
         && request.resource.data.revision is int
@@ -1162,10 +1196,10 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && !("projectName" in request.resource.data)
-        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName));
+        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "usage", usageId, "sealedProjectName")));
       allow update: if ownerWritableNonSecret(userId)
         && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
-        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName));
+        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "usage", usageId, "sealedProjectName")));
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1180,13 +1214,13 @@ service cloud.firestore {
       allow create: if ownerWritableNonSecret(userId)
         && !("projectName" in request.resource.data)
         && !("label" in request.resource.data)
-        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName))
-        && (!("sealedLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedLabel));
+        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedProjectName")))
+        && (!("sealedLabel" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedLabel, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedLabel")));
       allow update: if ownerWritableNonSecret(userId)
         && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
         && (!("label" in request.resource.data) || ("label" in resource.data))
-        && (!("sealedProjectName" in request.resource.data) || validCloudSealedText(request.resource.data.sealedProjectName))
-        && (!("sealedLabel" in request.resource.data) || validCloudSealedText(request.resource.data.sealedLabel));
+        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedProjectName")))
+        && (!("sealedLabel" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedLabel, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedLabel")));
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1273,7 +1307,7 @@ service cloud.firestore {
         && (!("version" in request.resource.data) || request.resource.data.version is int)
         && request.resource.data.contentSealed == true
         && request.resource.data.sealedSchemaVersion == 2
-        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && validPathBoundSealedPayloadForUser(userId, "conversations", conversationId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
         && forbidsDirectSignalEnvelope();
       }
       allow read: if ownsUserNamespace(userId);
@@ -1322,7 +1356,7 @@ service cloud.firestore {
         && request.resource.data.messageCount <= 5000
         && request.resource.data.contentSealed == true
         && request.resource.data.sealedSchemaVersion == 2
-        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && validPathBoundSealedPayloadForUser(userId, "mobile_assistant_chats", threadId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
         && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
         && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
         && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)

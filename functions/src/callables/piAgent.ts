@@ -22,6 +22,7 @@ import {
   checkPiAgentRateLimit,
 } from "./shared.js";
 import { randomBytes } from "node:crypto";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import {
   isPiAgentConnectionDoc,
   piAgentPairingCodeDigest,
@@ -138,6 +139,10 @@ export const completePiAgentPairing = onCall(
       await checkPiAgentRateLimit(uid, "complete_pairing", 1);
 
       const pairingId = requiredIdentifier(request.data.pairingId, "pairingId");
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "pi_agent_pairing_complete",
+        subjectId: pairingId,
+      });
       const code = boundedTrimmedString(request.data.code, "code", 32, true);
       if (!code) {
         throw new HttpsError("invalid-argument", "code is required.");

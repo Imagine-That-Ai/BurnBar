@@ -15,6 +15,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import { requireTrustedDeviceActionProof } from "./computerUseSecurity.js";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import {
   bearerTokenFromAuthorizationHeader,
   canonicalHermesGatewayUserCode,
@@ -765,7 +766,7 @@ async function verifyGatewayRequestPoP(
       nonce,
       tokenHash: options.tokenHash,
       observedAt: nowISO(),
-      expireAt: Timestamp.fromMillis(Date.now() + GATEWAY_POP_CLOCK_SKEW_MS),
+      expireAt: Timestamp.fromMillis(Math.max(Date.now(), timestampMillis) + GATEWAY_POP_CLOCK_SKEW_MS),
       schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
     });
   });
@@ -1879,6 +1880,10 @@ export const approveHermesGatewayDeviceGrant = onCall(
       await assertActiveHermesGatewayEntitlement(uid);
       const userCode = canonicalHermesGatewayUserCode(request.data.userCode);
       if (!userCode) throw new HttpsError("invalid-argument", "userCode must be an 8-character Hermes Gateway code.");
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "hermes_gateway_device_grant_approve",
+        subjectId: userCode,
+      });
       const requestData = recordOrUndefined(request.data) ?? {};
 
       // The approving PHONE publishes its own relay public key so the agent can
