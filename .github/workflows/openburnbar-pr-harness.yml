@@ -53,6 +53,12 @@ jobs:
       - name: Check service SwiftUI import budget
         run: ./scripts/debt/check-service-swiftui-import-budget.sh
 
+      - name: Test debt counters
+        run: |
+          set -euo pipefail
+          python3 tools/error-debt/test_count_error_debt.py
+          python3 tools/concurrency-debt/test_count_task_detached.py
+
       - name: Refresh tech debt metrics snapshot
         run: |
           set -euo pipefail
