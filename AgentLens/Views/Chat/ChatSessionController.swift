@@ -87,18 +87,13 @@ final class ChatSessionController {
     var pendingTextExpansionPreview: ChatTextExpansionPreviewState?
     var textExpansionStatusMessage: String?
     var isStreaming = false
-    /// Monotonic counter bumped every time a streaming text chunk lands in
-    /// the active assistant placeholder. UI surfaces (Project Memory
-    /// detail sheets, etc.) observe this with `.onChange(of:)` to mirror
-    /// the latest content without polling. Cheap, decoupled, and survives
-    /// view rebuilds.
+    /// Monotonic stream update tick for UI surfaces mirroring active assistant text.
     var streamingTick: Int = 0
     var streamError: String?
     var chatBackend: ChatBackendID = .codex
     var desktopControlGrant: AgentCapabilityGrant?
     var desktopControlError: String?
-    /// Per-backend `model` selection for the active chat. Empty means the
-    /// active CLI profile or gateway-advertised default decides.
+    /// Per-backend model override; empty means backend default.
     var chatModelCodex: String = "" {
         didSet { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) }
     }
@@ -167,18 +162,13 @@ final class ChatSessionController {
     private(set) var activeThreadID: String = DataStore.legacyChatThreadID
     var selectedContext: ConversationRecord?
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
-    /// Set after each send from hybrid retrieval; UI may hint when no excerpts matched.
     var lastRetrievalHadNoEvidence = false
-    /// Jump targets surfaced after the latest answer.
     var conversationJumpTargets: [ConversationJumpTarget] = []
-    /// Cumulative offset from the default bottom-trailing anchor (drag to reposition).
     var panelFloatOffset: CGSize = .zero
     var panelWidth: CGFloat = 400
     var panelHeight: CGFloat = 440
-    /// When true, the chat panel collapses to a small dockable pill.
     var isMinimized = false
-    /// Display mode for chat messages: rich agent bubbles (`.agent`) or raw
-    /// monospaced CLI output (`.cli`). Persists across launches.
+    /// Display mode for chat messages; persists across launches.
     var chatViewMode: ChatViewMode = {
         if let raw = UserDefaults.standard.string(forKey: "chatPanel.viewMode"),
            let mode = ChatViewMode(rawValue: raw) {
@@ -189,11 +179,9 @@ final class ChatSessionController {
         didSet { UserDefaults.standard.set(chatViewMode.rawValue, forKey: "chatPanel.viewMode") }
     }
 
-    /// User-attached files staged for the next outgoing message. Cleared on
-    /// send (and reset when the chat is cleared or the thread switches).
+    /// User-attached files staged for the next outgoing message.
     var pendingAttachments: [HermesAttachment] = []
-    /// Most recent attachment-related error surfaced to the composer (size
-    /// cap, decode failure). Cleared on the next successful add.
+    /// Most recent attachment-related error surfaced to the composer.
     var attachmentError: String?
 
     private struct LocalIndexOracleResult {
@@ -216,7 +204,6 @@ final class ChatSessionController {
     private static let udChatModelForge = "chatPanel.model.forge"
     private static let udChatModelAntigravity = "chatPanel.model.antigravity"
     private static let udChatModelCursorAgent = "chatPanel.model.cursoragent"
-    /// Legacy keys (migrated once into per-backend keys).
     private static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
     private static let udThreadIDHermes = "chatPanelThreadIDHermes"
     private static let udChatMode = "chatPanelMode"
@@ -228,7 +215,6 @@ final class ChatSessionController {
     private(set) var activeStreamMessageId: String?
     let dataStore: DataStore
     private var searchService: any ChatSessionSearchProviding
-    /// Typed reference for methods that require SearchService (runBurnBarQuery, InsightBriefSnapshot).
     private var typedSearchService: SearchService? { searchService as? SearchService }
     private let searchServiceFactory: () -> any ChatSessionSearchProviding
     private let retrievalHealthService: RetrievalHealthService
@@ -294,7 +280,6 @@ final class ChatSessionController {
         if h >= 200 && h <= 900 { panelHeight = CGFloat(h) }
         let ox = UserDefaults.standard.double(forKey: Self.udOffsetX)
         let oy = UserDefaults.standard.double(forKey: Self.udOffsetY)
-        // Validate offset is within reasonable bounds (-500 to 500 pixels)
         if abs(ox) <= 500 && abs(oy) <= 500 && (ox != 0 || oy != 0) {
             panelFloatOffset = CGSize(width: CGFloat(ox), height: CGFloat(oy))
         }
@@ -302,7 +287,6 @@ final class ChatSessionController {
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
 
-    /// The model currently loaded in Hermes (e.g. "NousResearch/Hermes-3-Llama-3.1-8B").
     var hermesModelName: String? { cliBridge.hermesModelName }
     var hermesAdvertisedModels: [HermesAdvertisedModel] { cliBridge.hermesAdvertisedModels }
     var hermesGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.hermesGatewayModels }
@@ -414,10 +398,7 @@ final class ChatSessionController {
         #endif
     }
 
-    /// A1: surfaces a Mac-local approval before a privileged broker tool
-    /// (shell / workspace write / desktop export) runs in a non-trusted grant.
-    /// `nil` when no UI surface is available, which makes the broker fail closed
-    /// (deny) rather than execute silently.
+    /// Mac-local approval surface for privileged broker tools; nil fails closed.
     private var privilegedActionApprover: AgentToolBroker.PrivilegedActionApprover? {
         #if canImport(AppKit)
         return { _, summary in
@@ -456,7 +437,6 @@ final class ChatSessionController {
         }
     }
 
-    /// Resolved `model` argument for the next chat request for this backend.
     func effectiveChatModel(for backend: ChatBackendID) -> String {
         switch backend {
         case .codex:
@@ -601,7 +581,6 @@ final class ChatSessionController {
         return nil
     }
 
-    /// Short label for the model picker (reflects `effectiveChatModel` for the current backend).
     func chatModelMenuTitle() -> String {
         Self.abbreviateChatModelName(effectiveChatModel(for: chatBackend))
     }
@@ -648,7 +627,6 @@ final class ChatSessionController {
         piAgentAvailable = cliBridge.piAgentAvailable
     }
 
-    /// Pi agent model name currently advertised by the configured Pi gateway.
     var piAgentModelName: String? { cliBridge.piAgentModelName }
 
     private var piAgentBearerToken: String? {
@@ -1683,8 +1661,7 @@ final class ChatSessionController {
             : []
 
         let requestModel = effectiveChatModel(for: chatBackend)
-        // Load bytes for any attachments referenced by history. We load lazily
-        // so re-opened threads don't pay the cost when nothing was attached.
+        // Load historical attachment bytes lazily.
         let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
             history: multiTurnHistory,
             workspaceURL: chatWorkspaceURL
@@ -1699,11 +1676,7 @@ final class ChatSessionController {
                 let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
                     switch self.chatBackend {
                     case .hermes:
-                        // Compose Hermes' system prompt via the shared
-                        // builder so the atom directive stays in lockstep
-                        // with iOS. The dashboard/RAG context block lives
-                        // in `augmentedSystem` and is fed in as the
-                        // builder's `dashboardContext`.
+                        // Keep Hermes system-prompt construction shared with iOS.
                         let hermesPrompt = HermesSystemPromptBuilder(
                             dashboardContext: augmentedSystem,
                             includesAtomDirective: true
@@ -1734,10 +1707,7 @@ final class ChatSessionController {
                             toolBroker: activeToolBroker
                         )
                     case .piAgent:
-                        // Inject the selected Pi instance ID into the system
-                        // prompt so the responder can be attributed to the
-                        // active Pi agent without leaking it into the user's
-                        // visible message body.
+                        // Attribute the responder to the active Pi agent without user-visible leakage.
                         let piPrompt = Self.piSystemPrompt(
                             base: augmentedSystem,
                             instanceID: self.settingsManager.piAgentSelectedInstanceID
@@ -1833,14 +1803,7 @@ final class ChatSessionController {
                     let snapshot = pieces
                     await Task { @MainActor in
                         if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                            // Per-token mutation: assigning `content` and
-                            // `transcriptPieces` in place avoids allocating a
-                            // fresh `ChatMessageRecord` per chunk. The
-                            // `streamingTick` bump remains the single
-                            // observation broadcast for views that mirror
-                            // the in-flight content without reading
-                            // `messages` directly (e.g.
-                            // `ProjectMemoryInsightController`).
+                            // Mutate per-token in place; `streamingTick` is the single UI broadcast.
                             self.messages[idx].content = joined
                             self.messages[idx].transcriptPieces = snapshot
                             self.streamingTick &+= 1
@@ -1866,11 +1829,7 @@ final class ChatSessionController {
                             AppLogger.chat.silentFailure("saveChatMessage (streaming final)", error: error)
                         }
                         self.refreshHistory()
-                        // Mirror the full transcript (text + tool pills) to
-                        // Firestore so the iOS Assistants tab can render
-                        // this Codex/Claude/OpenClaw session inline. No-op
-                        // for hermes / piAgent — those have their own
-                        // existing mirror path.
+                        // Mirror Codex/Claude/OpenClaw transcript to Firestore for iOS Assistants.
                         let mirrorMessages = self.messages
                         let mirrorThreadID = self.activeThreadID
                         let mirrorBackend = self.chatBackend
@@ -2517,8 +2476,7 @@ final class ChatSessionController {
 
     // MARK: - Attachments
 
-    /// Imports a file URL (NSOpenPanel pick, drag-and-drop) into the
-    /// active chat workspace and stages it on the next outgoing message.
+    /// Imports a file URL into the active chat workspace.
     func addAttachment(from url: URL) {
         ensureChatWorkspaceDirectoryExists()
         do {
@@ -2531,8 +2489,7 @@ final class ChatSessionController {
         }
     }
 
-    /// Imports an in-memory image (clipboard paste, dragged NSImage) into
-    /// the workspace.
+    /// Imports an in-memory image into the workspace.
     func addAttachment(image: NSImage, suggestedName: String? = nil) {
         ensureChatWorkspaceDirectoryExists()
         do {
@@ -2558,9 +2515,7 @@ final class ChatSessionController {
         pendingAttachments.reduce(0) { $0 + $1.estimatedTokenCost }
     }
 
-    /// Loads bytes for attachments in `history` that the encoder will need.
-    /// We pull bytes for all user messages (small overhead, keeps multi-turn
-    /// vision threads honest if the user re-sends with image context).
+    /// Loads historical attachment bytes needed by the encoder.
     static func collectAttachmentBytes(
         history: [ChatMessageRecord],
         workspaceURL: URL

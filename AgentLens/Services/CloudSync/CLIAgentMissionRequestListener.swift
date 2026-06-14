@@ -127,18 +127,8 @@ protocol CLIAgentMissionDeviceTrustChecking: AnyObject {
 
 // MARK: - Persona Scope Resolution (fail-closed)
 //
-// Hermes Square §6.5 — the phone attaches a `personaScopeJSON` envelope that
-// the Mac applies to the spawned CLI subprocess (tool allow-list, file globs,
-// shell prefixes, permit-shell / permit-file-edits gates). When the envelope
-// is PRESENT but malformed, `CLIAgentMissionPersonaScopeApplier.overrides`
-// deliberately throws — because falling back to `.empty` would dispatch the
-// mission with NO persona scoping at all (full shell + unrestricted file
-// edits), silently widening the sandbox the operator asked to narrow.
-//
-// This resolver makes that decision explicit and testable: a missing scope
-// resolves to `.empty` (the legitimate "no scope" path), but a malformed
-// present scope is REFUSED so the listener fails the mission with a clear
-// error instead of fail-open dispatching with default permissions.
+// Missing scope is the legitimate no-scope path; malformed present scope is
+// refused so the mission cannot silently run with broader CLI permissions.
 enum CLIAgentMissionPersonaScopeResolution: Equatable {
     case resolved(CLIAgentMissionPersonaScopeApplier.RuntimeOverrides)
     case refused(String)
