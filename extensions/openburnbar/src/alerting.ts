@@ -16,18 +16,18 @@ import { logger } from './logger';
 
 // ── Alert severity ────────────────────────────────────────────────────────────
 
-export const AlertSeverity = {
+const AlertSeverity = {
   P0: 'P0', // Critical — extension is broken, user action required immediately
   P1: 'P1', // High — significant degradation, user should act soon
   P2: 'P2', // Medium — non-critical issue, informational notification
   P3: 'P3' // Low — background observation, no notification
 } as const;
 
-export type AlertSeverityLevel = (typeof AlertSeverity)[keyof typeof AlertSeverity];
+type AlertSeverityLevel = (typeof AlertSeverity)[keyof typeof AlertSeverity];
 
 // ── Alert payload ─────────────────────────────────────────────────────────────
 
-export interface ExtensionAlert {
+interface ExtensionAlert {
   /** Short machine-readable event identifier (snake_case). */
   event: string;
   /** Human-readable description shown in notifications and output channel. */
@@ -58,7 +58,7 @@ function outputChannel(): vscode.OutputChannel {
  * P2     → VS Code information notification + output channel
  * P3     → output channel only (no intrusive popup)
  */
-export async function alert(a: ExtensionAlert): Promise<void> {
+async function alert(a: ExtensionAlert): Promise<void> {
   const ts = new Date().toISOString();
   const logLine = `[${ts}] [${a.severity}] ${a.event}: ${a.message}`;
 
@@ -110,58 +110,5 @@ export function alertDaemonUnreachable(socketPath: string): void {
       command: 'openburnbar.repairDaemon'
     },
     context: { socketPath }
-  });
-}
-
-/** Fires when workspace trust is denied, blocking run creation. */
-export function alertWorkspaceTrustDenied(workspacePath: string): void {
-  void alert({
-    event: 'workspace_trust_denied',
-    message: 'Workspace trust required to create runs. Enable workspace trust to continue.',
-    severity: AlertSeverity.P2,
-    action: {
-      label: 'Trust Workspace',
-      command: 'workbench.action.manageTrustedDomain'
-    },
-    context: { workspacePath }
-  });
-}
-
-/** Fires when a run exits with a non-zero code unexpectedly. */
-export function alertRunFailed(runId: string, exitCode: number): void {
-  void alert({
-    event: 'run_failed',
-    message: `Run ${runId.slice(0, 8)} failed with exit code ${exitCode}.`,
-    severity: AlertSeverity.P2,
-    action: {
-      label: 'View Logs',
-      command: 'openburnbar.showRunLogs',
-      args: [runId]
-    },
-    context: { runId, exitCode }
-  });
-}
-
-/** Fires when token usage sync to the cloud fails after 3 retries. */
-export function alertSyncFailed(error: string): void {
-  void alert({
-    event: 'sync_failed',
-    message: 'Usage sync to cloud failed. Usage data is queued locally.',
-    severity: AlertSeverity.P3, // Silent — local data is safe
-    context: { error }
-  });
-}
-
-/** Fires when an authentication error prevents API access. */
-export function alertAuthError(provider: string): void {
-  void alert({
-    event: 'auth_error',
-    message: `Authentication failed for ${provider}. Check your credentials.`,
-    severity: AlertSeverity.P1,
-    action: {
-      label: 'Open Settings',
-      command: 'openburnbar.openSettings'
-    },
-    context: { provider }
   });
 }
