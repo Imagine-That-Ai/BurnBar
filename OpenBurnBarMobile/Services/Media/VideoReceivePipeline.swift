@@ -35,6 +35,17 @@ final class VideoReceivePipeline {
     typealias DecodedHandler = @MainActor (CMSampleBuffer) async -> Void
     typealias LongTermReferenceTokenHandler = @MainActor (MercuryLTRToken) async -> Void
 
+    /// Default decoder dimensions used **only** for the raw-payload fallback
+    /// (when a keyframe arrives without an `OBVCFG1`
+    /// `VideoDecoderConfigurationPayload` carrying real parameter sets). The
+    /// parameter-set path derives true dimensions from the SPS, so these are
+    /// never used when the sender bootstraps the decoder correctly. 1080p is a
+    /// safe Mac-display default that `AVSampleBufferDisplayLayer`'s
+    /// `.resizeAspect` corrects on the first decoded frame; callers that know
+    /// the real source size (e.g. from the mirror handshake's display
+    /// descriptor) should override it via `init` or `updateFallbackDimensions`.
+    static let defaultFallbackDimensions = CMVideoDimensions(width: 1920, height: 1080)
+
     private let codec: Codec
     private let onDecoded: DecodedHandler
     private let onLongTermReferenceTokenDecoded: LongTermReferenceTokenHandler?
@@ -42,16 +53,39 @@ final class VideoReceivePipeline {
     private var formatDescription: CMFormatDescription?
     private var activeCodec: Codec
     private var currentGopID: UInt32 = .max
+    // remediation(1080p-hardcode): the raw-payload fallback previously baked
+    // literal 1920x1080 into the format description. It is now an overridable,
+    // documented default so callers can supply the real source dimensions when
+    // the handshake carries them, rather than silently assuming 1080p.
+    private var fallbackDimensions: CMVideoDimensions
 
     init(
         codec: Codec = .hevc,
+        fallbackDimensions: CMVideoDimensions = VideoReceivePipeline.defaultFallbackDimensions,
         onDecoded: @escaping DecodedHandler,
         onLongTermReferenceTokenDecoded: LongTermReferenceTokenHandler? = nil
     ) {
         self.codec = codec
         self.activeCodec = codec
+        self.fallbackDimensions = Self.sanitized(fallbackDimensions)
         self.onDecoded = onDecoded
         self.onLongTermReferenceTokenDecoded = onLongTermReferenceTokenDecoded
+    }
+
+    /// Updates the dimensions used by the raw-payload fallback. Has no effect on
+    /// the parameter-set decode path. Useful once the real source size is known
+    /// (for example after the mirror handshake reports the selected display).
+    func updateFallbackDimensions(width: Int, height: Int) {
+        fallbackDimensions = Self.sanitized(
+            CMVideoDimensions(width: Int32(clamping: width), height: Int32(clamping: height))
+        )
+    }
+
+    private static func sanitized(_ dimensions: CMVideoDimensions) -> CMVideoDimensions {
+        guard dimensions.width > 0, dimensions.height > 0 else {
+            return defaultFallbackDimensions
+        }
+        return dimensions
     }
 
     func ingest(frame: MediaFrame) async throws {
@@ -177,14 +211,26 @@ final class VideoReceivePipeline {
             ? CMVideoCodecType(kCMVideoCodecType_HEVC)
             : CMVideoCodecType(kCMVideoCodecType_H264)
 
+        // remediation(1080p-decoder): parse the real luma dimensions out of the
+        // raw bitstream's SPS NAL when one is present. This runs only on the
+        // raw-payload fallback (no `OBVCFG1` parameter sets) and only once per
+        // format (re)build — not per frame. On any parse failure we keep the
+        // documented, overridable fallback default (was previously the only
+        // behavior here), so this is strictly fail-soft and never crashes.
+        let parsedDimensions = VideoSPSDimensionParser.dimensions(
+            from: payload,
+            codec: activeCodec == .hevc ? .hevc : .h264
+        )
+        let dimensions = parsedDimensions ?? fallbackDimensions
+
         var description: CMFormatDescription?
         let status = payload.withUnsafeBytes { rawBuffer -> OSStatus in
             guard rawBuffer.baseAddress != nil else { return -1 }
             return CMVideoFormatDescriptionCreate(
                 allocator: kCFAllocatorDefault,
                 codecType: codecType,
-                width: 1920,
-                height: 1080,
+                width: dimensions.width,
+                height: dimensions.height,
                 extensions: nil,
                 formatDescriptionOut: &description
             )

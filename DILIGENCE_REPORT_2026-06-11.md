@@ -4,7 +4,7 @@
 **Baseline:** `DILIGENCE_REPORT_2026-06-10.md` (64/100, "launchable with major caveats", gates LB-1…LB-5 + P0-6/P0-7)
 **Method:** 7 specialist review agents (6 domains + dedicated launch-gate auditor) + 16 independent adversarial verifiers (23 agents, ~2.1M tokens, 878 tool invocations), including live checks against GitHub (PR reviews, CI run logs, branch protection), GCP (uptime configs, alert policies, deployed function versions), DNS, and production endpoints.
 **Verification ledger:** 9 new findings verified → 8 confirmed, 1 partially confirmed (downgraded serious→medium), 0 refuted. 7 gate-status claims verified → 1 confirmed closed, 6 adjusted toward **more** risk than the auditor claimed (LB-1, LB-2, LB-4, LB-5 pushed back up to launch-blocker).
-**Status:** Internal working document — do **not** commit.
+**Status:** Committed diligence record as of 2026-06-14; supersedes the prior "do-not-commit" working-draft banner.
 
 ---
 
@@ -34,7 +34,7 @@ One-sentence verdict: **the artifacts improved a full grade in 24 hours; the int
 
 | Category | 06-10 | 06-11 | Movement rationale |
 |---|---|---|---|
-| Architecture | 7 | **7** | Structural debt untouched (289-file Core, 67 files >1,500 lines, unbuilt Rust engine). Real method wins: quotaRefreshSweep extraction, conformance-vector cross-language tests. Offset by the dirty tree trading launchd for a hand-rolled /tmp socket server — a second bespoke server in the privileged path. |
+| Architecture | 7 | **7** | Structural debt untouched (~398-source-file Core per `OpenBurnBarCore/Sources` excl. tests, 67 files >1,500 lines, unbuilt Rust engine). Real method wins: quotaRefreshSweep extraction, conformance-vector cross-language tests. Offset by the dirty tree trading launchd for a hand-rolled /tmp socket server — a second bespoke server in the privileged path. |
 | Code Quality | 6 | **6** | Functions-side remediation properly typed and tested; per-line coverage extractor genuinely fixed. But every enforcement finding is still live (SwiftLint never runs, detekt never runs, VAL_3 ×249, seven `\|\| true` lanes), try? baseline ticked 804→805, and the coverage gate got *less* honest. |
 | Reliability / Ops | 6 | **6.5** | Detection went from ~0 to real (live uptime checks, proven fail-loud smoke, protoc fixed, auto-filed issues). Capped by: notification channel is NXDOMAIN (alerts undeliverable), deploy plane wedged with no hotfix lane, prod-health gate born structurally red with issue-dedupe that masks future real outages, laptop deploys/staging/WIF/TTL all unchanged. |
 | Security | 7 | **7** | Committed surface improved (SHA pin, Stripe ledger, credential gate, Android parity code fail-closed, B1 escrow verify). Offset by the confirmed /tmp squat credential-capture lane in would-ship code, a provenance chain split across two commits, and process controls unchanged (0 reviews on all 7 post-report PRs). |

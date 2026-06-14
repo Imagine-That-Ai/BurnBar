@@ -12,13 +12,14 @@
 // lets us pin iroh, drift on our schedule, and keep the binding green for
 // macOS arm64 + iOS arm64 + iOS Simulator arm64/x86_64.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use iroh::{
-    endpoint::presets, Endpoint, EndpointAddr, EndpointId, RelayMap, RelayMode, RelayUrl,
-    SecretKey, TransportAddr,
+    endpoint::presets, endpoint::IncomingAddr, Endpoint, EndpointAddr, EndpointId, RelayMap,
+    RelayMode, RelayUrl, SecretKey, TransportAddr,
 };
 use iroh_services::Client as IrohServicesClient;
 use tokio::io::AsyncWriteExt;
@@ -47,6 +48,21 @@ pub const OPENBURNBAR_ALPN: &[u8] = b"openburnbar/1";
 pub const OPENBURNBAR_MAX_FRAME_BYTES: usize = 512 * 1024;
 const OPENBURNBAR_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(1);
 const OPENBURNBAR_MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+// remediation(handshake-before-allowlist DoS amplifier): minimum gap between
+// two inbound connection attempts from the *same* source before we will spend
+// any per-connection work (handshake + `accept_bi`) on it. A non-allowlisted
+// peer that learns the host NodeId can otherwise replay full QUIC handshakes;
+// this cooldown lets us drop the repeat attempt cheaply via `Incoming::ignore`
+// *before* the handshake completes. Legitimate peers reconnect on the order of
+// seconds (pairing refresh is 60s), so a sub-second window never throttles
+// real traffic — it only blunts a tight reconnect flood. This is purely an
+// anti-abuse rate limit and does NOT replace the Swift-side allowlist, which
+// still runs on every stream that survives the cooldown.
+const OPENBURNBAR_ACCEPT_SOURCE_COOLDOWN: Duration = Duration::from_millis(250);
+// Bound on the cooldown table so a spoofed-source flood (many distinct remote
+// addrs) cannot grow memory without limit. When the table is full we evict the
+// oldest entry before inserting; this keeps the limiter O(1)-ish and bounded.
+const OPENBURNBAR_ACCEPT_SOURCE_TABLE_CAP: usize = 4096;
 const IROH_SERVICES_API_SECRET_ENV: &str = "IROH_SERVICES_API_SECRET";
 const OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME_ENV: &str = "OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME";
 const OPENBURNBAR_IROH_SERVICES_REQUIRED_ENV: &str = "OPENBURNBAR_IROH_SERVICES_REQUIRED";
@@ -229,6 +245,64 @@ impl IrohStream {
     }
 }
 
+/// remediation(handshake-before-allowlist DoS amplifier): a tiny, bounded
+/// per-source cooldown table consulted on the `Incoming` *before* we complete
+/// the QUIC handshake or call `accept_bi`. The key is derived from the cheapest
+/// pre-handshake discriminator iroh exposes (`Incoming::remote_addr()`): the
+/// remote socket address for a direct connection, or the relay URL + remote
+/// EndpointId for a relayed one. This is an anti-abuse rate limit only — every
+/// stream that survives the cooldown is still subject to the Swift-side
+/// inbound allowlist, so the limiter can never widen who is allowed in.
+#[derive(Default)]
+struct AcceptSourceRateLimiter {
+    last_seen: HashMap<String, Instant>,
+}
+
+impl AcceptSourceRateLimiter {
+    /// Records an attempt from `key` and reports whether it should be throttled
+    /// (i.e. arrived within the cooldown window of the previous attempt from the
+    /// same source). The first attempt from a source is never throttled.
+    fn should_throttle(&mut self, key: String, now: Instant) -> bool {
+        if let Some(previous) = self.last_seen.get(&key).copied() {
+            if now.duration_since(previous) < OPENBURNBAR_ACCEPT_SOURCE_COOLDOWN {
+                // Refresh the timestamp so a sustained flood keeps getting
+                // dropped instead of slipping through once the original window
+                // lapses while the burst continues.
+                self.last_seen.insert(key, now);
+                return true;
+            }
+        }
+        // Keep the table bounded: evict the oldest entry before inserting a new
+        // source once we hit the cap so a spoofed-source flood cannot grow
+        // memory without limit.
+        if !self.last_seen.contains_key(&key) && self.last_seen.len() >= OPENBURNBAR_ACCEPT_SOURCE_TABLE_CAP {
+            if let Some(oldest_key) = self
+                .last_seen
+                .iter()
+                .min_by_key(|(_, seen)| **seen)
+                .map(|(k, _)| k.clone())
+            {
+                self.last_seen.remove(&oldest_key);
+            }
+        }
+        self.last_seen.insert(key, now);
+        false
+    }
+}
+
+/// Derives the cheap pre-handshake rate-limit key from an `IncomingAddr`.
+/// Relayed connections already carry the remote EndpointId, so we key on the
+/// peer identity; direct connections key on the source socket address.
+fn accept_source_key(addr: &IncomingAddr) -> String {
+    match addr {
+        IncomingAddr::Ip(socket_addr) => format!("ip:{socket_addr}"),
+        IncomingAddr::Relay { url, endpoint_id } => format!("relay:{url}|{endpoint_id}"),
+        // `IncomingAddr` is `#[non_exhaustive]`; fall back to the Debug form so
+        // a future variant still produces a stable, distinct key.
+        other => format!("other:{other:?}"),
+    }
+}
+
 /// Wraps an `iroh::Endpoint` and exposes the eight-function surface the Swift
 /// `OpenBurnBarIrohEndpoint` actor calls into.
 #[derive(uniffi::Object)]
@@ -238,6 +312,11 @@ pub struct IrohEndpointHandle {
     runtime_handle: Mutex<Option<tokio::runtime::Handle>>,
     identity: Mutex<Option<IrohNodeIdentity>>,
     services_client: Mutex<Option<IrohServicesClient>>,
+    // remediation(handshake-before-allowlist DoS amplifier): per-source accept
+    // cooldown, shared across `accept_one` calls so a flood is throttled even
+    // as the Swift accept loop re-enters. Plain `std::sync::Mutex` because the
+    // critical section is a couple of map ops with no `.await` inside.
+    accept_rate_limiter: std::sync::Mutex<AcceptSourceRateLimiter>,
 }
 
 #[uniffi::export]
@@ -250,6 +329,7 @@ impl IrohEndpointHandle {
             runtime_handle: Mutex::new(None),
             identity: Mutex::new(None),
             services_client: Mutex::new(None),
+            accept_rate_limiter: std::sync::Mutex::new(AcceptSourceRateLimiter::default()),
         })
     }
 
@@ -468,19 +548,48 @@ impl IrohEndpointHandle {
         })?;
         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
         let stream_runtime_handle = runtime_handle.clone();
+        // remediation(handshake-before-allowlist DoS amplifier): hand the
+        // limiter to the accept future so repeat attempts from the same source
+        // are dropped cheaply *before* the handshake / `accept_bi`.
+        let limiter_self = self.clone();
         runtime_handle.block_on(async move {
             let (conn, send, recv, remote_node_id) = tokio::time::timeout(timeout, async move {
-                let incoming =
-                    endpoint
-                        .accept()
-                        .await
-                        .ok_or_else(|| IrohFfiError::AcceptFailed {
-                            detail: "iroh endpoint closed before accepting".into(),
-                        })?;
-                let conn = incoming.await.map_err(IrohFfiError::accept)?;
-                let remote_node_id = conn.remote_id().to_string();
-                let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
-                Ok::<_, IrohFfiError>((conn, send, recv, remote_node_id))
+                loop {
+                    let incoming =
+                        endpoint
+                            .accept()
+                            .await
+                            .ok_or_else(|| IrohFfiError::AcceptFailed {
+                                detail: "iroh endpoint closed before accepting".into(),
+                            })?;
+                    // remediation(handshake-before-allowlist DoS amplifier):
+                    // `Incoming::remote_addr()` is available before any
+                    // handshake crypto runs. Throttle repeat sources here and
+                    // `ignore()` them (no response packet, cheapest drop), then
+                    // keep waiting for the next inbound within the same timeout
+                    // budget so the Swift accept loop never sees this as an
+                    // accept failure (which would trip its rebuild backoff).
+                    // Every connection that survives this gate still faces the
+                    // Swift inbound allowlist — this does not weaken auth.
+                    let source_key = accept_source_key(&incoming.remote_addr());
+                    let throttled = {
+                        match limiter_self.accept_rate_limiter.lock() {
+                            Ok(mut limiter) => limiter.should_throttle(source_key, Instant::now()),
+                            // A poisoned lock means a prior panic inside the
+                            // critical section; fail closed by dropping the
+                            // attempt rather than skipping the rate limit.
+                            Err(_) => true,
+                        }
+                    };
+                    if throttled {
+                        incoming.ignore();
+                        continue;
+                    }
+                    let conn = incoming.await.map_err(IrohFfiError::accept)?;
+                    let remote_node_id = conn.remote_id().to_string();
+                    let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
+                    break Ok::<_, IrohFfiError>((conn, send, recv, remote_node_id));
+                }
             })
             .await
             .map_err(|_| IrohFfiError::AcceptFailed {
@@ -669,5 +778,68 @@ mod tests {
             }
             other => panic!("expected StreamFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn accept_rate_limiter_allows_first_attempt_then_throttles_burst() {
+        let mut limiter = AcceptSourceRateLimiter::default();
+        let start = Instant::now();
+        // First contact from a source is always allowed.
+        assert!(!limiter.should_throttle("ip:1.2.3.4:5".into(), start));
+        // A second attempt inside the cooldown window is dropped.
+        assert!(limiter.should_throttle(
+            "ip:1.2.3.4:5".into(),
+            start + Duration::from_millis(10)
+        ));
+    }
+
+    #[test]
+    fn accept_rate_limiter_releases_after_cooldown() {
+        let mut limiter = AcceptSourceRateLimiter::default();
+        let start = Instant::now();
+        assert!(!limiter.should_throttle("ip:1.2.3.4:5".into(), start));
+        // Once the cooldown has elapsed, the same source is allowed again so a
+        // legitimate peer is never permanently blocked.
+        assert!(!limiter.should_throttle(
+            "ip:1.2.3.4:5".into(),
+            start + OPENBURNBAR_ACCEPT_SOURCE_COOLDOWN + Duration::from_millis(1)
+        ));
+    }
+
+    #[test]
+    fn accept_rate_limiter_isolates_distinct_sources() {
+        let mut limiter = AcceptSourceRateLimiter::default();
+        let now = Instant::now();
+        assert!(!limiter.should_throttle("ip:1.2.3.4:5".into(), now));
+        // A different source is independent — one flooder does not lock out a
+        // distinct peer.
+        assert!(!limiter.should_throttle("ip:9.9.9.9:9".into(), now));
+    }
+
+    #[test]
+    fn accept_rate_limiter_bounds_table_size() {
+        let mut limiter = AcceptSourceRateLimiter::default();
+        let start = Instant::now();
+        // Push well past the cap with distinct, ever-advancing sources; the
+        // table must never exceed the cap (oldest entries are evicted).
+        for index in 0..(OPENBURNBAR_ACCEPT_SOURCE_TABLE_CAP + 500) {
+            let key = format!("ip:10.0.{}.{}:1", index / 256, index % 256);
+            limiter.should_throttle(key, start + Duration::from_millis(index as u64));
+        }
+        assert!(limiter.last_seen.len() <= OPENBURNBAR_ACCEPT_SOURCE_TABLE_CAP);
+    }
+
+    #[test]
+    fn accept_source_key_distinguishes_ip_addresses() {
+        let parse = |raw: &str| -> SocketAddr {
+            match raw.parse() {
+                Ok(addr) => addr,
+                Err(err) => panic!("test socket addr {raw} must parse: {err}"),
+            }
+        };
+        let a = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.4:5")));
+        let b = accept_source_key(&IncomingAddr::Ip(parse("1.2.3.4:6")));
+        assert_ne!(a, b);
+        assert!(a.starts_with("ip:"));
     }
 }
