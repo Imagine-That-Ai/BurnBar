@@ -4,7 +4,7 @@ import type {
   BurnBarWorkspaceUri
 } from '../../src/workspace/api';
 
-export function createMockWorkspaceUri(
+function createMockWorkspaceUri(
   fsPath: string,
   scheme = 'file'
 ): BurnBarWorkspaceUri {

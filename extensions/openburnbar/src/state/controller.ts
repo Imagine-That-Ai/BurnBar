@@ -45,7 +45,7 @@ export interface OpenBurnBarControllerOptions {
   supportedProtocolVersions?: number[];
 }
 
-export interface BurnBarStartRunOptions {
+interface BurnBarStartRunOptions {
   prompt: string;
   modelID: string;
   metadata?: Record<string, BurnBarJSONValue>;

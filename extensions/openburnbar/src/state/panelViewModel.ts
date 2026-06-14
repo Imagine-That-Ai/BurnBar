@@ -108,7 +108,7 @@ export interface OpenBurnBarPanelViewModel {
   statusLineText?: string;
 }
 
-export interface BuildPanelViewModelHostContext {
+interface BuildPanelViewModelHostContext {
   showOpenBurnBarApp?: boolean;
   sidebarStatusLineMode?: 'smart' | 'workspace' | 'models' | 'activeRun' | 'socket' | 'off';
 }
