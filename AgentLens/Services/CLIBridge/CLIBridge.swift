@@ -189,7 +189,10 @@ final class CLIBridge: ObservableObject {
                     continuation.finish()
                     return
                 }
-                let backend = await MainActor.run { self.detectedBackend }
+                // This `Task` inherits `CLIBridge`'s `@MainActor` isolation, so
+                // `detectedBackend` is read directly here; the heavy streaming
+                // below hops off the main actor via the nonisolated runner.
+                let backend = self.detectedBackend
                 guard let backend else {
                     continuation.finish(throwing: CLIBridgeError.noCLI)
                     return
