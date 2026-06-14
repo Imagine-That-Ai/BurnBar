@@ -12,26 +12,23 @@ struct ClaimedRelayRequest: @unchecked Sendable {
     let data: [String: Any]
 }
 
-final class RelayEphemeralKeyCache: @unchecked Sendable {
+final class RelayEphemeralKeyCache: Sendable {
     static let shared = RelayEphemeralKeyCache()
 
-    private let lock = NSLock()
-    private var keys: [String: Data] = [:]
+    private let keys = Locked<[String: Data]>([:])
 
     func data(for key: String, generate: () -> Data) -> Data {
-        lock.lock()
-        defer { lock.unlock() }
-        if let existing = keys[key] {
-            return existing
+        keys.withLock { keys in
+            if let existing = keys[key] {
+                return existing
+            }
+            let fresh = generate()
+            keys[key] = fresh
+            return fresh
         }
-        let fresh = generate()
-        keys[key] = fresh
-        return fresh
     }
 
     func existingData(for key: String) -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        return keys[key]
+        keys.withLock { $0[key] }
     }
 }

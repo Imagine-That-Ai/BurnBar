@@ -1,4 +1,5 @@
 import Foundation
+import os
 import GRDB
 import OpenBurnBarCore
 
@@ -66,43 +67,46 @@ struct DaemonCredentialSlotAccountProjection {
     }
 }
 
-private final class ProviderQuotaAutomaticRefreshLifecycle: @unchecked Sendable {
-    private let lock = NSLock()
-    private var refreshTask: Task<Void, Never>?
-    private var apiKeyObserver: NSObjectProtocol?
+private final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
+    private struct State {
+        var refreshTask: Task<Void, Never>?
+        var apiKeyObserver: NSObjectProtocol?
+    }
+
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
 
     func replaceRefreshTask(_ task: Task<Void, Never>) {
-        let previous = lock.withLock { () -> Task<Void, Never>? in
-            let previous = refreshTask
-            refreshTask = task
+        let previous = state.withLockUnchecked { state -> Task<Void, Never>? in
+            let previous = state.refreshTask
+            state.refreshTask = task
             return previous
         }
         previous?.cancel()
     }
 
     func cancelRefreshTask() {
-        let task = lock.withLock { () -> Task<Void, Never>? in
-            let task = refreshTask
-            refreshTask = nil
+        let task = state.withLockUnchecked { state -> Task<Void, Never>? in
+            let task = state.refreshTask
+            state.refreshTask = nil
             return task
         }
         task?.cancel()
     }
 
     var hasAPIKeyObserver: Bool {
-        lock.withLock { apiKeyObserver != nil }
+        state.withLockUnchecked { $0.apiKeyObserver != nil }
     }
 
     func setAPIKeyObserver(_ observer: NSObjectProtocol) {
-        lock.withLock {
-            apiKeyObserver = observer
+        state.withLockUnchecked {
+            $0.apiKeyObserver = observer
         }
     }
 
     func removeAPIKeyObserver() {
-        let observer = lock.withLock { () -> NSObjectProtocol? in
-            let observer = apiKeyObserver
-            apiKeyObserver = nil
+        let observer = state.withLockUnchecked { state -> NSObjectProtocol? in
+            let observer = state.apiKeyObserver
+            state.apiKeyObserver = nil
             return observer
         }
         if let observer {
