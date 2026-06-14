@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarCore
-import SwiftUI
+import Observation
 
 /// Observable façade over `BudgetRulesStore`. The macOS Settings UI binds to this;
 /// `BudgetGate` reads through it (Phase 4); Hermes / MCP write through it (Phase 7).

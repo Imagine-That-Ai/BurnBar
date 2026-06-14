@@ -1,5 +1,5 @@
 @preconcurrency import Foundation
-import SwiftUI
+import Combine
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore

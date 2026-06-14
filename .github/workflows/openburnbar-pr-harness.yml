@@ -50,6 +50,9 @@ jobs:
       - name: Check Rust panic debt budget (unwrap/expect)
         run: ./scripts/debt/check-rust-panic-budget.sh
 
+      - name: Check service SwiftUI import budget
+        run: ./scripts/debt/check-service-swiftui-import-budget.sh
+
       - name: Refresh tech debt metrics snapshot
         run: |
           set -euo pipefail

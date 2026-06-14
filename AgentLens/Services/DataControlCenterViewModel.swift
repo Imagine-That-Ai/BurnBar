@@ -1,6 +1,6 @@
 import Foundation
 import OSLog
-import SwiftUI
+import Observation
 @preconcurrency import FirebaseAuth
 import FirebaseFunctions
 import OpenBurnBarCore
