@@ -669,10 +669,47 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let defaultStateURL = context.homeDirectoryURL
             .appendingPathComponent(".claude.json", isDirectory: false)
 
-        guard let profileState = try? context.snapshotStore.readJSONObject(from: profileStateURL),
-              let defaultState = try? context.snapshotStore.readJSONObject(from: defaultStateURL) else {
+        return scopedClaudeProfileMatchesDefaultLogin(
+            snapshotStore: context.snapshotStore,
+            profileStateURL: profileStateURL,
+            defaultStateURL: defaultStateURL
+        )
+    }
+
+    /// Decide whether the scoped switcher profile's `.claude.json` identity
+    /// matches the default local login's. This gates `canUseLocalClaudeSessionForAccount`,
+    /// which permits the scoped account card to reuse the *global* statusline
+    /// session. A wrong `true` would surface another Claude account's quota on
+    /// this card — cross-account leakage — so the decision FAILS CLOSED: any
+    /// inability to read or parse either identity file returns `false` (no reuse).
+    ///
+    /// `readJSONObject` returns `nil` for an absent file (the common, benign
+    /// "this profile or home has no `.claude.json`" case) and *throws* only for a
+    /// real read/parse fault (corrupt JSON, permission denial). The benign-nil
+    /// case stays quiet; a real fault is logged so the lost signal is observable,
+    /// but it still denies reuse. The previous `try?` collapsed both into a
+    /// silent `false`, hiding genuine faults.
+    static func scopedClaudeProfileMatchesDefaultLogin(
+        snapshotStore: ProviderQuotaSnapshotStore,
+        profileStateURL: URL,
+        defaultStateURL: URL
+    ) -> Bool {
+        let profileState: [String: Any]?
+        let defaultState: [String: Any]?
+        do {
+            profileState = try snapshotStore.readJSONObject(from: profileStateURL)
+            defaultState = try snapshotStore.readJSONObject(from: defaultStateURL)
+        } catch {
+            // Fail closed: a real read/parse fault must never grant statusline
+            // reuse across accounts. Log so the lost identity signal is visible.
+            AppLogger.dataStore.error(
+                "claude_scoped_profile_identity_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
             return false
         }
+
+        guard let profileState, let defaultState else { return false }
 
         let profileIdentity = claudeAccountIdentity(from: profileState)
         let defaultIdentity = claudeAccountIdentity(from: defaultState)

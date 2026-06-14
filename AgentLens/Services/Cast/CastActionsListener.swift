@@ -1,6 +1,58 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 
+// MARK: - Cast Action Ack Writer
+
+/// Abstracts the Firestore writeback the Mac uses to tell the mobile
+/// cast wizard how a request resolved. Pulling the write behind a
+/// protocol keyed on the document *path* (rather than a live
+/// `DocumentReference`) lets the fail-closed/observable behaviour of
+/// `CastActionsListener` be exercised hermetically in tests, mirroring
+/// the `CloudSyncFirestoreGateway` seam used elsewhere.
+///
+/// `@MainActor`-isolated so the `[String: Any]` payload never crosses an
+/// actor boundary (the listener is already `@MainActor`); this keeps the
+/// seam clean under `SWIFT_STRICT_CONCURRENCY: complete` without resorting
+/// to `@preconcurrency` suppression.
+@MainActor
+protocol CastActionAckWriter {
+    /// Merge-writes `payload` to the Firestore document at `path`.
+    /// Throws on transport/permission failure so the caller can decide
+    /// whether the loss is recoverable (log + skip) or correctness-bearing
+    /// (fail closed: do not advance the wizard).
+    func write(_ payload: [String: Any], toPath path: String, merge: Bool) async throws
+}
+
+/// Production writer that resolves the path against the live Firestore
+/// instance and performs the merge write.
+@MainActor
+struct FirestoreCastActionAckWriter: CastActionAckWriter {
+    func write(_ payload: [String: Any], toPath path: String, merge: Bool) async throws {
+        try await Firestore.firestore().document(path).setData(payload, merge: merge)
+    }
+}
+
+/// The pieces of a `cast_actions` document the writeback logic needs:
+/// the document id (for re-discovery dedupe + telemetry) and its full
+/// Firestore path (for the ack write). Decoupling the writeback handlers
+/// from `QueryDocumentSnapshot` keeps the fail-closed paths unit-testable
+/// without a live Firestore.
+struct CastActionRef: Sendable {
+    let documentID: String
+    let path: String
+
+    init(documentID: String, path: String) {
+        self.documentID = documentID
+        self.path = path
+    }
+
+    @MainActor
+    init(snapshot: QueryDocumentSnapshot) {
+        self.documentID = snapshot.documentID
+        self.path = snapshot.reference.path
+    }
+}
+
 // MARK: - Cast Actions Listener
 //
 // Mac-side Firestore listener. Watches `users/{uid}/cast_actions` for
@@ -13,6 +65,13 @@ import Foundation
 //   - "save_selection" — persist a deviceId as the primary device
 //   - "cast"           — trigger Cast Now with the saved selection
 //   - "stop"           — STOP the current cast session
+//
+// Writeback contract: every terminal write (completed / failed) is the
+// *only* progress signal the mobile wizard polls. A silently-dropped
+// writeback strands the action at `status=pending` and hangs the wizard
+// forever, so each writeback is observable (logged on failure) and the
+// `test` flow fails closed — it refuses to mark the action `completed`
+// when the discovery result it advertises never reached Firestore.
 
 @MainActor
 final class CastActionsListener {
@@ -20,6 +79,7 @@ final class CastActionsListener {
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
     private let repairCoordinator: SmartDisplayRepairCoordinator?
+    private let ackWriter: CastActionAckWriter
     private var listener: ListenerRegistration?
     private var listenerUID: String?
     private var attachTask: Task<Void, Never>?
@@ -28,11 +88,13 @@ final class CastActionsListener {
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
-        repairCoordinator: SmartDisplayRepairCoordinator? = nil
+        repairCoordinator: SmartDisplayRepairCoordinator? = nil,
+        ackWriter: CastActionAckWriter = FirestoreCastActionAckWriter()
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.repairCoordinator = repairCoordinator
+        self.ackWriter = ackWriter
     }
 
     func start() {
@@ -91,30 +153,67 @@ final class CastActionsListener {
     }
 
     private func handle(document: QueryDocumentSnapshot, uid: String) async {
+        let ref = CastActionRef(snapshot: document)
         let data = document.data()
         guard let type = data["type"] as? String else {
-            await fail(document: document, message: "missing type")
+            await fail(ref, message: "missing type")
             return
         }
         switch type {
         case "test":
-            await handleTest(document: document, uid: uid)
+            await handleTest(ref, uid: uid)
         case "save_selection":
-            await handleSaveSelection(document: document, data: data)
+            await handleSaveSelection(ref, data: data)
         case "cast":
-            await handleCast(document: document, data: data)
+            await handleCast(ref, data: data)
         case "stop":
-            await handleStop(document: document)
+            await handleStop(ref)
         default:
-            await fail(document: document, message: "unknown type: \(type)")
+            await fail(ref, message: "unknown type: \(type)")
         }
     }
 
-    private func handleTest(document: QueryDocumentSnapshot, uid: String) async {
+    /// Writes a terminal/intermediate ack back to a `cast_actions` doc.
+    /// Returns `true` on success. A failure is logged (never silently
+    /// swallowed) and surfaced to the caller so correctness-bearing flows
+    /// can fail closed instead of advancing the wizard on a lost write.
+    @discardableResult
+    private func writeAck(
+        to ref: CastActionRef,
+        _ payload: [String: Any],
+        event: String
+    ) async -> Bool {
+        do {
+            try await ackWriter.write(payload, toPath: ref.path, merge: true)
+            return true
+        } catch {
+            AppLogger.sync.error(event, metadata: [
+                "actionId": ref.documentID,
+                "errorClass": "\(String(describing: type(of: error)))"
+            ])
+            return false
+        }
+    }
+
+    private func handleTest(_ ref: CastActionRef, uid: String) async {
         let devices = await collectDevicesOnce(duration: 12)
         if let selected = devices.first(where: { matchesSelectedDevice($0) }) {
             persistCastDevice(selected)
         }
+        await publishDiscoveryAndComplete(ref, uid: uid, devices: devices)
+    }
+
+    /// Publishes the discovered device list to
+    /// `cast_discovery_results/latest`, then marks the action `completed`.
+    ///
+    /// Fail-closed contract: the discovery result drives the wizard's
+    /// device picker, so if that write is lost the wizard would render an
+    /// empty/stale list. We therefore must NOT advance the action to
+    /// `completed` on a lost result — instead we report the action as
+    /// `failed` so the wizard surfaces the error rather than silently
+    /// showing nothing. Extracted (device list passed in) so the gating
+    /// is exercised hermetically without an mDNS scan.
+    func publishDiscoveryAndComplete(_ ref: CastActionRef, uid: String, devices: [CastDevice]) async {
         let payload = devices.map { d in
             [
                 "serviceName": d.serviceName,
@@ -128,24 +227,37 @@ final class CastActionsListener {
             ] as [String: Any]
         }
 
-        let db = Firestore.firestore()
-        let resultsRef = db.collection("users").document(uid).collection("cast_discovery_results").document("latest")
-        try? await resultsRef.setData([
-            "actionId": document.documentID,
-            "devices": payload,
-            "publishedAt": ISO8601DateFormatter().string(from: Date())
-        ], merge: true)
+        let resultsPath = "users/\(uid)/cast_discovery_results/latest"
+        do {
+            try await ackWriter.write([
+                "actionId": ref.documentID,
+                "devices": payload,
+                "publishedAt": ISO8601DateFormatter().string(from: Date())
+            ], toPath: resultsPath, merge: true)
+        } catch {
+            AppLogger.sync.error("cast discovery results write failed", metadata: [
+                "actionId": ref.documentID,
+                "errorClass": "\(String(describing: type(of: error)))"
+            ])
+            await fail(ref, message: "discovery results could not be published")
+            return
+        }
 
-        try? await document.reference.setData([
+        await writeAck(to: ref, [
             "status": "completed",
             "completedAt": ISO8601DateFormatter().string(from: Date())
-        ], merge: true)
+        ], event: "cast test completion write failed")
     }
 
-    private func handleSaveSelection(document: QueryDocumentSnapshot, data: [String: Any]) async {
+    /// Persists the selection locally (lines below) then acks the wizard.
+    /// Local state is already durable before the ack, so a lost ack is
+    /// observable (logged) rather than fail-closed — but it must never be
+    /// silent, else the wizard hangs even though the save succeeded.
+    /// Internal so the ack-on-failure path is testable.
+    func handleSaveSelection(_ ref: CastActionRef, data: [String: Any]) async {
         guard let serviceName = data["deviceId"] as? String,
               let friendlyName = data["friendlyName"] as? String else {
-            await fail(document: document, message: "missing deviceId/friendlyName")
+            await fail(ref, message: "missing deviceId/friendlyName")
             return
         }
         settingsManager.castSelectedDeviceServiceName = serviceName
@@ -166,42 +278,42 @@ final class CastActionsListener {
             settingsManager.castSelectedDeviceSupportsDisplay = supportsDisplay
         }
         settingsManager.smartHubQuotaDisplayEnabled = true
-        try? await document.reference.setData([
+        await writeAck(to: ref, [
             "status": "completed",
             "completedAt": ISO8601DateFormatter().string(from: Date())
-        ], merge: true)
+        ], event: "cast save_selection ack failed")
     }
 
-    private func handleCast(document: QueryDocumentSnapshot, data: [String: Any]) async {
+    private func handleCast(_ ref: CastActionRef, data: [String: Any]) async {
         if let repairCoordinator {
             let status = await repairCoordinator.repairNestHub()
             if status.isHealthy {
-                try? await document.reference.setData([
+                await writeAck(to: ref, [
                     "status": "completed",
                     "message": status.message,
                     "proof": status.proof ?? "",
                     "completedAt": ISO8601DateFormatter().string(from: Date())
-                ], merge: true)
+                ], event: "cast repair completion write failed")
             } else {
-                try? await document.reference.setData([
+                await writeAck(to: ref, [
                     "status": "failed",
                     "errorMessage": status.message,
                     "proof": status.proof ?? "",
                     "completedAt": ISO8601DateFormatter().string(from: Date())
-                ], merge: true)
+                ], event: "cast repair failure write failed")
             }
             return
         }
 
         guard let url = Self.castableDashboardURL(from: settingsManager.smartHubQuotaDashboardURL) else {
-            await fail(document: document, message: "no dashboard URL configured")
+            await fail(ref, message: "no dashboard URL configured")
             return
         }
         // Re-discover the device by serviceName so we have a current IP.
         let serviceName = (data["deviceId"] as? String)
             ?? settingsManager.castSelectedDeviceServiceName
         guard let device = await locateDevice(serviceName: serviceName) else {
-            await fail(document: document, message: "device not on network; mDNS scan and cached endpoint both failed")
+            await fail(ref, message: "device not on network; mDNS scan and cached endpoint both failed")
             return
         }
         persistCastDevice(device)
@@ -212,25 +324,25 @@ final class CastActionsListener {
         let result = await strategy.castWithRecovery(url: url)
         switch result {
         case .success(let sessionId):
-            try? await document.reference.setData([
+            await writeAck(to: ref, [
                 "status": "completed",
                 "sessionId": sessionId,
                 "completedAt": ISO8601DateFormatter().string(from: Date())
-            ], merge: true)
+            ], event: "cast session writeback failed")
         case .recoveredViaHomeAssistant(let message):
-            try? await document.reference.setData([
+            await writeAck(to: ref, [
                 "status": "completed",
                 "recovery": "home_assistant",
                 "message": message,
                 "completedAt": ISO8601DateFormatter().string(from: Date())
-            ], merge: true)
+            ], event: "cast home-assistant recovery writeback failed")
         case .failure(let reason, let attempts):
-            try? await document.reference.setData([
+            await writeAck(to: ref, [
                 "status": "failed",
                 "errorMessage": reason,
                 "attempts": attempts,
                 "completedAt": ISO8601DateFormatter().string(from: Date())
-            ], merge: true)
+            ], event: "cast failure writeback failed")
         }
     }
 
@@ -241,27 +353,33 @@ final class CastActionsListener {
         return URL(string: raw)
     }
 
-    private func handleStop(document: QueryDocumentSnapshot) async {
+    private func handleStop(_ ref: CastActionRef) async {
         let serviceName = settingsManager.castSelectedDeviceServiceName
         guard let device = await locateDevice(serviceName: serviceName) else {
-            await fail(document: document, message: "device not on network; mDNS scan and cached endpoint both failed")
+            await fail(ref, message: "device not on network; mDNS scan and cached endpoint both failed")
             return
         }
         persistCastDevice(device)
         let client = CastChannelClient(device: device)
         await client.stop()
-        try? await document.reference.setData([
+        await writeAck(to: ref, [
             "status": "completed",
             "completedAt": ISO8601DateFormatter().string(from: Date())
-        ], merge: true)
+        ], event: "cast stop ack failed")
     }
 
-    private func fail(document: QueryDocumentSnapshot, message: String) async {
-        try? await document.reference.setData([
+    /// Central failure writeback used by every error path (missing type,
+    /// unknown type, device not on network, no dashboard URL, lost
+    /// discovery result). This is the *only* signal the wizard polls to
+    /// surface an error, so a lost write here hangs the wizard on a
+    /// `pending` action forever — `writeAck` therefore logs the loss
+    /// rather than swallowing it. Internal so the contract is testable.
+    func fail(_ ref: CastActionRef, message: String) async {
+        await writeAck(to: ref, [
             "status": "failed",
             "errorMessage": message,
             "completedAt": ISO8601DateFormatter().string(from: Date())
-        ], merge: true)
+        ], event: "cast fail() writeback failed")
     }
 
     /// mDNS scan, returning whatever devices were resolved.

@@ -299,9 +299,25 @@ extension SearchService {
             let readableSharedSourceIDs: Set<String>?
             if shouldEnforceSharedArtifactAccess(filters: query.filters, sourceKinds: sourceKinds) {
                 if let sharedArtifactAccessContext {
-                    readableSharedSourceIDs = try? dataStore.fetchReadableSharedArtifactSourceIDs(
-                        accessContext: sharedArtifactAccessContext
-                    )
+                    do {
+                        // Security: this set is the ALLOW-list consulted by `matchesFilters` for
+                        // `.sharedArtifact` documents. If the access-control lookup fails we MUST
+                        // fail closed — an empty set denies every shared artifact — rather than
+                        // letting `try?` swallow the error (a `nil` set would also deny here, but
+                        // silently, with no health signal). We additionally mark the index stale so
+                        // the failure is observable and the result is reported as degraded.
+                        readableSharedSourceIDs = try dataStore.fetchReadableSharedArtifactSourceIDs(
+                            accessContext: sharedArtifactAccessContext
+                        )
+                    } catch {
+                        readableSharedSourceIDs = Set<String>()
+                        indexStale = true
+                        indexStaleError = indexStaleError ?? error.localizedDescription
+                        AppLogger.search.error(
+                            "shared_artifact_access_lookup_failed",
+                            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                        )
+                    }
                 } else {
                     readableSharedSourceIDs = Set<String>()
                 }

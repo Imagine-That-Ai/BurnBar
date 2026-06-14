@@ -106,6 +106,122 @@ final class HermesInventoryImportServiceTests: XCTestCase {
         XCTAssertTrue(message.lowercased().contains("disk is full"))
     }
 
+    func testPreflightFailsClosedWhenCapacityProbeThrows() {
+        // A failed volume-capacity read (volume ejected, directory vanished,
+        // transient I/O error) must NOT be treated as "enough free space".
+        // Before the fix, a `try?` swallowed the error, `availableBytes` was nil,
+        // the disk-space gate was skipped, and the import proceeded fail-open.
+        // Now the probe failure surfaces as a fail-closed preflight error.
+        struct ProbeFailure: Error {}
+        let preflight = HermesInventoryImportPreflight.make(
+            availableCapacityProbe: { _ in throw ProbeFailure() }
+        )
+
+        var thrown: Error?
+        XCTAssertThrowsError(try preflight.check(0)) { thrown = $0 }
+
+        guard case .capacityUnverifiable = thrown as? HermesInventoryImportPreflightError else {
+            XCTFail("Expected capacityUnverifiable, got \(String(describing: thrown))")
+            return
+        }
+    }
+
+    func testPreflightTreatsSuccessfulNilCapacityReadAsEnough() throws {
+        // A *successful* read that simply has no capacity value (key unavailable
+        // on this volume kind) is not a failure — it must preserve the prior
+        // lenient behavior and not block the import.
+        let preflight = HermesInventoryImportPreflight.make(
+            availableCapacityProbe: { _ in nil }
+        )
+        XCTAssertNoThrow(try preflight.check(0))
+    }
+
+    func testPreflightStillBlocksOnInsufficientReadableCapacity() {
+        // The fail-closed change must not regress the original insufficient-space
+        // gate: a successful read that reports less than the needed bytes still
+        // throws insufficientDiskSpace (not capacityUnverifiable).
+        let preflight = HermesInventoryImportPreflight.make(
+            availableCapacityProbe: { _ in 1 }
+        )
+
+        var thrown: Error?
+        XCTAssertThrowsError(try preflight.check(0)) { thrown = $0 }
+
+        guard case .insufficientDiskSpace = thrown as? HermesInventoryImportPreflightError else {
+            XCTFail("Expected insufficientDiskSpace, got \(String(describing: thrown))")
+            return
+        }
+    }
+
+    func testCapacityUnverifiableMessageIsActionableAndLeaksNoRawSQLite() {
+        let error = HermesInventoryImportPreflightError.capacityUnverifiable(
+            path: "/tmp/openburnbar-test"
+        )
+        let message = HermesInventoryImportService.describe(error)
+        XCTAssertTrue(
+            message.contains("free space") || message.contains("reachable"),
+            "Message should be actionable; got: \(message)"
+        )
+        XCTAssertFalse(message.contains("SQLite"), "Should not leak raw GRDB text; got: \(message)")
+    }
+
+    func testImportInventoryFailsClosedWithoutPartialWriteWhenCapacityUnverifiable() async throws {
+        // End-to-end: when capacity is unverifiable the import must fail closed
+        // and write NOTHING — no usage rows, no conversations — so we never leave
+        // a half-applied chunked transaction behind.
+        let queue = try DatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+
+        let usages: [TokenUsage] = (0..<10).map { index in
+            TokenUsage(
+                provider: .hermes,
+                sessionId: "session-\(index)",
+                projectName: "Hermes",
+                model: "hermes",
+                inputTokens: 10,
+                outputTokens: 20,
+                costUSD: 0.001,
+                startTime: Date(timeIntervalSince1970: TimeInterval(1_000 + index)),
+                endTime: Date(timeIntervalSince1970: TimeInterval(1_000 + index + 1)),
+                provenanceMethod: .providerLog,
+                provenanceConfidence: .exact
+            )
+        }
+
+        let failClosedPreflight = HermesInventoryImportPreflight { _ in
+            throw HermesInventoryImportPreflightError.capacityUnverifiable(
+                path: "/tmp/openburnbar-test"
+            )
+        }
+
+        let service = HermesInventoryImportService(
+            dataStore: dataStore,
+            settingsManager: SettingsManager(),
+            parseInventory: {
+                ParseResult(usages: usages, conversations: [])
+            },
+            preflight: failClosedPreflight
+        )
+
+        await service.scan()
+        await service.importInventory()
+
+        guard case let .failed(message) = service.phase else {
+            XCTFail("Expected .failed phase, got \(service.phase)")
+            return
+        }
+        XCTAssertTrue(
+            message.contains("free space") || message.contains("reachable"),
+            "Message should be actionable; got: \(message)"
+        )
+
+        let storedUsages = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage") ?? 0
+        }
+        XCTAssertEqual(storedUsages, 0, "Fail-closed import must not write any usage rows")
+        XCTAssertEqual(try dataStore.countConversations(), 0, "Fail-closed import must not index any conversations")
+    }
+
     func testImportInventoryIsIdempotentForExistingHermesConversations() async throws {
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)

@@ -31,9 +31,45 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         daemonDirectory.appendingPathComponent("openburnbar-daemon.heartbeat.json", isDirectory: false)
     }
 
+    /// Resolves the daemon's Application Support root, running the hardening
+    /// migration first.
+    ///
+    /// `OpenBurnBarMigration.prepareSupportDirectory` does more than hand back a
+    /// URL: it migrates legacy support directories into the canonical location,
+    /// creates the directory with owner-only (`0o700`) permissions, and
+    /// re-enforces those permissions on an existing directory. The daemon's
+    /// support tree holds the control socket, provider config (which can carry
+    /// routed credentials), the usage ledger, and the installed daemon binary —
+    /// so a failure to apply that hardening is a security-relevant degradation,
+    /// not a no-op.
+    ///
+    /// We cannot fail closed by refusing to produce a path (the runtime-paths
+    /// value is non-optional and every caller's `.live()` default depends on it),
+    /// so we degrade to the canonical, *unhardened* support URL — but we surface
+    /// the failure instead of swallowing it, turning a silent permission loss
+    /// into an observable `daemon`-category event. Replaces a bare `try?` that
+    /// hid migration/permission faults entirely.
+    static func resolveSupportDirectory(
+        prepare: () throws -> URL,
+        fallback: () -> URL,
+        logger: AppLogger = .daemon
+    ) -> URL {
+        do {
+            return try prepare()
+        } catch {
+            logger.error(
+                "openburnbar.daemon.runtimePaths.prepareSupportDirectory.failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return fallback()
+        }
+    }
+
     static func live(fileManager: FileManager = .default) -> OpenBurnBarDaemonRuntimePaths {
-        let supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager))
-            ?? OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory
+        let supportDirectory = resolveSupportDirectory(
+            prepare: { try OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) },
+            fallback: { OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory }
+        )
         let daemonDirectory = supportDirectory.appendingPathComponent("daemon", isDirectory: true)
         let homeDirectory = fileManager.homeDirectoryForCurrentUser
 

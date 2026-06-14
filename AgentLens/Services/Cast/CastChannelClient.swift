@@ -420,8 +420,15 @@ final class CastChannelClient {
     }
 
     private func sendVirtual(namespace: String, payload: [String: Any], destination: String) {
-        guard let json = try? JSONSerialization.data(withJSONObject: payload, options: []),
-              let utf8 = String(data: json, encoding: .utf8) else { return }
+        // A serialization failure here silently drops a Cast control-channel
+        // message. That is not inconsequential: `request(...)` registers a
+        // pending continuation BEFORE calling `sendVirtual`, so a dropped
+        // message means the caller blocks until the timeout watchdog fires
+        // (4–8 s) and resolves `.timeout` — with no diagnostic explaining
+        // that we never actually put a frame on the wire. On a security
+        // product's control channel, a write whose loss is invisible is a
+        // liability, so we log the cause and still skip the send.
+        guard let utf8 = Self.serializedPayload(payload, namespace: namespace) else { return }
         let msg = CastMessage(
             sourceId: CastMessage.defaultSource,
             destinationId: destination,
@@ -429,6 +436,34 @@ final class CastChannelClient {
             payloadUTF8: utf8
         )
         connection.send(msg)
+    }
+
+    /// Encode a Cast payload to the UTF-8 JSON string the wire format needs.
+    /// Returns `nil` (so the caller skips the send) when the payload cannot
+    /// be represented as JSON or the resulting bytes are not valid UTF-8,
+    /// logging the failure so a dropped control message is observable rather
+    /// than presenting only as a downstream timeout.
+    static func serializedPayload(_ payload: [String: Any], namespace: String) -> String? {
+        do {
+            let json = try JSONSerialization.data(withJSONObject: payload, options: [])
+            guard let utf8 = String(data: json, encoding: .utf8) else {
+                AppLogger.network.error(
+                    "cast_send_payload_not_utf8",
+                    metadata: ["namespace": namespace]
+                )
+                return nil
+            }
+            return utf8
+        } catch {
+            AppLogger.network.error(
+                "cast_send_payload_serialization_failed",
+                metadata: [
+                    "namespace": namespace,
+                    "errorClass": "\(String(describing: type(of: error)))"
+                ]
+            )
+            return nil
+        }
     }
 
     static func dashCastLoadPayload(

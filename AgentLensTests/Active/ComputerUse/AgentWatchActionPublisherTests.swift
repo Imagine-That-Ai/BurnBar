@@ -78,6 +78,47 @@ final class AgentWatchActionPublisherTests: XCTestCase {
         XCTAssertEqual(sent, entry)
     }
 
+    /// Locks the "no silent audit-event drop" invariant: every journal event kind
+    /// must produce exactly one published action-log frame with a monotonically
+    /// advancing entry index. If a future enum case is added (or `entry(from:)`
+    /// regresses to an optional return with a nil path), this fails closed rather
+    /// than letting a security-audit event vanish off the Agent Watch stream.
+    func testEveryJournalEventKindPublishesExactlyOneEntryWithoutSilentDrop() async throws {
+        let capture = AgentWatchFrameCapture()
+        let publisher = AgentWatchActionPublisher(
+            sessionId: "session-coverage",
+            uid: "uid-coverage",
+            connectionId: "conn-coverage",
+            sink: { frame in await capture.record(frame) }
+        )
+
+        let allKinds = BurnBarRunJournalEventKind.allCases
+        for (offset, kind) in allKinds.enumerated() {
+            try await publisher.publish(event(
+                kind: kind,
+                payload: nil,
+                emittedAt: Date(timeIntervalSince1970: TimeInterval(offset + 1))
+            ))
+        }
+
+        let entries = await capture.frames.compactMap(\.control?.actionLogEntry)
+        XCTAssertEqual(
+            entries.count,
+            allKinds.count,
+            "Each journal event kind must publish exactly one action-log entry (no silent drop)."
+        )
+        XCTAssertEqual(
+            entries.map(\.entryIndex),
+            Array(0..<allKinds.count),
+            "Entry indices must advance monotonically with no gaps from skipped events."
+        )
+        XCTAssertEqual(
+            entries.map(\.actionKind),
+            allKinds.map(\.rawValue),
+            "Published action kinds must preserve the originating journal event kind for every case."
+        )
+    }
+
     private func event(
         kind: BurnBarRunJournalEventKind,
         payload: BurnBarJSONValue?,

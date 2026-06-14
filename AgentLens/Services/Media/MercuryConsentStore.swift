@@ -35,9 +35,14 @@ final class MercuryConsentStore: ObservableObject {
     @Published private(set) var grants: [MirrorAutoAcceptGrant]
 
     private let defaults: UserDefaults
+    private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        encodeGrants: @escaping ([MirrorAutoAcceptGrant]) throws -> Data = { try JSONEncoder().encode($0) }
+    ) {
         self.defaults = defaults
+        self.encodeGrants = encodeGrants
         self.rememberAcceptedMirrorPeers = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
         self.grants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
         if defaults.object(forKey: Self.legacyAlwaysAllowKey) != nil {
@@ -128,8 +133,34 @@ final class MercuryConsentStore: ObservableObject {
     }
 
     private func persist() {
-        let data = try? JSONEncoder().encode(grants)
+        // Fail closed: a failed encode must NOT erase the existing persisted consent
+        // ledger. Writing `nil` here would silently wipe every active mirror
+        // auto-accept grant — losing the user's consent record on disk. `encodeGrants`
+        // already logs the underlying fault; if it returns nil we leave the prior key
+        // intact rather than overwriting it with nil.
+        guard let data = Self.encodeGrants(grants, encode: encodeGrants) else { return }
         defaults.set(data, forKey: Self.grantsKey)
+    }
+
+    /// Encode the grant ledger for persistence, returning `nil` (and logging) on a
+    /// genuine encode fault so the caller can fail closed instead of overwriting the
+    /// stored ledger with `nil`. Injectable encode seam for deterministic tests.
+    static func encodeGrants(
+        _ grants: [MirrorAutoAcceptGrant],
+        encode: ([MirrorAutoAcceptGrant]) throws -> Data = { try JSONEncoder().encode($0) }
+    ) -> Data? {
+        do {
+            return try encode(grants)
+        } catch {
+            AppLogger.dataStore.error(
+                "mercuryConsentEncodeGrantsFailed",
+                metadata: [
+                    "grantCount": "\(grants.count)",
+                    "errorClass": "\(String(describing: type(of: error)))"
+                ]
+            )
+            return nil
+        }
     }
 
     private static func decodeGrants(_ data: Data?) -> [MirrorAutoAcceptGrant] {

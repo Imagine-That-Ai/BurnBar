@@ -1648,42 +1648,135 @@ extension CloudSyncService {
         guard let dict = result.data as? [String: Any],
               let hits = dict["hits"] as? [[String: Any]] else { return [] }
 
-        return hits.compactMap { hit in
-            guard let rawProvider = hit["provider"] as? String,
-                  let provider = AgentProvider(rawValue: rawProvider),
-                  let documentID = hit["documentID"] as? String else { return nil }
-            let title = Self.decodeSealedText(hit["sealedTitle"])
-                .flatMap { try? CloudVaultCrypto.openText($0, keyData: vaultKey) }
-                ?? "Encrypted session"
-            let snippet = Self.decodeSealedText(hit["sealedSnippet"])
-                .flatMap { try? CloudVaultCrypto.openText($0, keyData: vaultKey) }
-                ?? ""
-            return ConversationRecord(
-                id: hit["sourceID"] as? String ?? documentID,
-                provider: provider,
-                sessionId: documentID,
-                projectName: "",
-                startTime: nil,
-                endTime: nil,
-                messageCount: 0,
-                userWordCount: 0,
-                assistantWordCount: 0,
-                keyFiles: [],
-                keyCommands: [],
-                keyTools: [],
-                inferredTaskTitle: title,
-                lastAssistantMessage: snippet,
-                fullText: snippet,
-                indexedAt: Date(),
-                fileModifiedAt: nil,
-                summary: snippet,
-                summaryTitle: title,
-                sourceType: .providerLog,
-                sourceDeviceId: nil,
-                sourceDeviceName: nil,
-                isRemote: true
+        return hits.compactMap { Self.decodeEncryptedSearchHit($0, vaultKey: vaultKey, uid: uid) }
+    }
+
+    /// Outcome of decrypting one server-relayed encrypted-search field (title/snippet).
+    enum EncryptedSearchFieldDecode: Equatable {
+        /// No sealed field was present on the hit (legitimately absent → safe placeholder).
+        case absent
+        /// The sealed field authenticated and decrypted to this plaintext.
+        case decrypted(String)
+        /// A sealed field was present but failed AES-GCM authentication/decryption.
+        /// In an E2EE search index this means the server returned a forged, tampered,
+        /// or mis-keyed entry — the hit must be rejected, never shown with a placeholder.
+        case tampered
+    }
+
+    /// Decrypts one sealed search field with its bound AAD context, failing CLOSED.
+    ///
+    /// The seal side (and the Cloud Function relay) bind every sealed search field to a
+    /// `CloudVaultAADContext`, so opening WITHOUT the matching AAD always fails. A failure
+    /// here is a trust/verification signal (forgery / tamper / wrong key), not a recoverable
+    /// read — so the caller rejects the whole hit rather than surfacing a placeholder entry.
+    static func decryptEncryptedSearchField(
+        _ raw: Any?,
+        vaultKey: Data,
+        uid: String,
+        collection: String,
+        docID: String,
+        field: String
+    ) -> EncryptedSearchFieldDecode {
+        guard let envelope = decodeSealedText(raw) else { return .absent }
+        do {
+            let aadContext = try CloudVaultAADContext(
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                field: field
             )
+            return .decrypted(try CloudVaultCrypto.openText(envelope, keyData: vaultKey, aadContext: aadContext))
+        } catch {
+            AppLogger.search.error(
+                "encryptedSearchHit.fieldAuthFailed",
+                metadata: [
+                    "field": field,
+                    "collection": collection,
+                    "errorClass": "\(String(describing: type(of: error)))"
+                ]
+            )
+            return .tampered
         }
+    }
+
+    /// Builds a `ConversationRecord` from one encrypted-search hit, returning `nil`
+    /// (skipping the hit) whenever the hit is malformed or any present sealed field
+    /// fails authentication. Never returns a record carrying an unauthenticated
+    /// title/snippet, so a cloud-side forgery cannot masquerade as a real result.
+    static func decodeEncryptedSearchHit(
+        _ hit: [String: Any],
+        vaultKey: Data,
+        uid: String
+    ) -> ConversationRecord? {
+        guard let rawProvider = hit["provider"] as? String,
+              let provider = AgentProvider(rawValue: rawProvider),
+              let documentID = hit["documentID"] as? String else { return nil }
+
+        let titleDecode = decryptEncryptedSearchField(
+            hit["sealedTitle"],
+            vaultKey: vaultKey,
+            uid: uid,
+            collection: "cloud_search_documents",
+            docID: documentID,
+            field: "sealedTitle"
+        )
+        let chunkID = hit["chunkID"] as? String ?? documentID
+        let snippetDecode = decryptEncryptedSearchField(
+            hit["sealedSnippet"],
+            vaultKey: vaultKey,
+            uid: uid,
+            collection: "cloud_search_chunks",
+            docID: chunkID,
+            field: "sealedSnippet"
+        )
+
+        // Fail closed: a present-but-unauthenticated field means the hit is forged/tampered.
+        if titleDecode == .tampered || snippetDecode == .tampered {
+            AppLogger.search.error(
+                "encryptedSearchHit.rejectedUnauthenticated",
+                metadata: ["documentID": documentID]
+            )
+            return nil
+        }
+
+        let title: String
+        switch titleDecode {
+        case .decrypted(let plaintext): title = plaintext
+        case .absent: title = "Encrypted session"
+        case .tampered: return nil
+        }
+        let snippet: String
+        switch snippetDecode {
+        case .decrypted(let plaintext): snippet = plaintext
+        case .absent: snippet = ""
+        case .tampered: return nil
+        }
+
+        return ConversationRecord(
+            id: hit["sourceID"] as? String ?? documentID,
+            provider: provider,
+            sessionId: documentID,
+            projectName: "",
+            startTime: nil,
+            endTime: nil,
+            messageCount: 0,
+            userWordCount: 0,
+            assistantWordCount: 0,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: title,
+            lastAssistantMessage: snippet,
+            fullText: snippet,
+            indexedAt: Date(),
+            fileModifiedAt: nil,
+            summary: snippet,
+            summaryTitle: title,
+            sourceType: .providerLog,
+            sourceDeviceId: nil,
+            sourceDeviceName: nil,
+            isRemote: true
+        )
     }
 
     /// Fetches and decrypts a session-log body from encrypted Cloud Storage.

@@ -187,15 +187,27 @@ extension SearchService {
             }
 
             if selection.model.provider.caseInsensitiveCompare("openai") == .orderedSame {
-                if let provider = try? OpenAIEmbeddingProvider(
-                    apiKey: providerAPIKeyStore.apiKey(for: "openai") ?? "",
-                    modelName: selection.model.modelName,
-                    versionTag: selection.version.versionTag,
-                    chunkerVersion: selection.version.chunkerVersion,
-                    normalizationVersion: selection.version.normalizationVersion,
-                    promptVersion: selection.version.promptVersion
-                ) {
-                    return provider
+                do {
+                    return try OpenAIEmbeddingProvider(
+                        apiKey: providerAPIKeyStore.apiKey(for: "openai") ?? "",
+                        modelName: selection.model.modelName,
+                        versionTag: selection.version.versionTag,
+                        chunkerVersion: selection.version.chunkerVersion,
+                        normalizationVersion: selection.version.normalizationVersion,
+                        promptVersion: selection.version.promptVersion
+                    )
+                } catch {
+                    // The selection names the OpenAI provider, yet the real provider
+                    // could not be constructed (e.g. an unsupported model name from a
+                    // stale/foreign projection record). Falling through to the
+                    // deterministic embedder keeps search alive, but query vectors then
+                    // live in a DIFFERENT space than the OpenAI-indexed chunk vectors —
+                    // a silent relevance failure. Surface it so the degradation is
+                    // observable rather than swallowed by the old `try?`.
+                    AppLogger.search.error(
+                        "search_query_embedder_openai_construction_failed",
+                        metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                    )
                 }
             }
 
@@ -217,12 +229,37 @@ extension SearchService {
             dataStore: DataStore,
             preferredEmbeddingVersionID: String?
         ) -> (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)? {
-            guard
-                let models = try? dataStore.fetchEmbeddingModels(),
-                models.isEmpty == false,
-                let versions = try? dataStore.fetchEmbeddingVersions(),
-                versions.isEmpty == false
-            else {
+            // A projection-store fault (locked/corrupt DB, schema fault) is NOT the same
+            // as "no embedding models indexed yet": the former should be observable, the
+            // latter is a normal empty state. The old `try?` collapsed both into a silent
+            // nil, which downgrades search to the deterministic embedder with no version
+            // pinning and no trace. Convert reads to do/catch+log so a real DB fault is
+            // surfaced while preserving the graceful skip-to-deterministic behavior.
+            let models: [EmbeddingModelRecord]
+            do {
+                models = try dataStore.fetchEmbeddingModels()
+            } catch {
+                AppLogger.dataStore.error(
+                    "search_embedding_models_fetch_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+                return nil
+            }
+            guard models.isEmpty == false else {
+                return nil
+            }
+
+            let versions: [EmbeddingVersionRecord]
+            do {
+                versions = try dataStore.fetchEmbeddingVersions()
+            } catch {
+                AppLogger.dataStore.error(
+                    "search_embedding_versions_fetch_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+                return nil
+            }
+            guard versions.isEmpty == false else {
                 return nil
             }
 

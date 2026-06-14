@@ -88,12 +88,88 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var publishedIdentity: IrohEndpointIdentity?
     private var inboundPeerPolicy = IrohInboundPeerPolicy(allowedPeerNodeIds: [])
     private let pairingPublishInterval: TimeInterval
+    /// How many times teardown re-attempts a failed pairing-record revoke before
+    /// it gives up and logs an error. A swallowed revoke leaves the host's
+    /// `iroh_pairing/*` doc live in Firestore advertising a NodeId that is no
+    /// longer accepting streams, so we retry instead of single-shotting it.
+    private let revokeRetryAttempts: Int
+    /// Backoff between revoke re-attempts, in nanoseconds. Injected so tests can
+    /// drive the retry loop deterministically without real wall-clock waits.
+    private let revokeRetrySleep: @Sendable (UInt64) async -> Void
 
-    private static func publicErrorClass(_ error: Error) -> String {
+    // nonisolated: a pure error-classification helper (no actor state) used from
+    // both isolated and nonisolated async retry/accept paths.
+    private nonisolated static func publicErrorClass(_ error: Error) -> String {
         let nsError = error as NSError
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-").inverted
         let domain = nsError.domain.components(separatedBy: allowed).joined(separator: "_")
         return "\(domain)#\(nsError.code)"
+    }
+
+    /// Revoke the host's `iroh_pairing/*` record, retrying with backoff so a
+    /// transient Firestore fault can't silently leave a torn-down host still
+    /// advertised. Returns once the record is removed (or the directory rejects
+    /// the call as unsupported), or after the final attempt fails — in which
+    /// case it logs an error so the divergence between directory state and host
+    /// liveness is at least observable. `nonisolated static` so the detached
+    /// teardown `Task` in `stop()` and the `@MainActor` `handleAcceptLoopTerminated`
+    /// can both route through the one code path; everything it captures is
+    /// `Sendable`.
+    @discardableResult
+    nonisolated static func revokePairingRecord(
+        directory: any IrohPairingDirectory,
+        uid: String,
+        connectionID: String,
+        attempts: Int,
+        sleep: @Sendable (UInt64) async -> Void
+    ) async -> Bool {
+        let totalAttempts = max(1, attempts)
+        var lastError: Error?
+        for attempt in 1...totalAttempts {
+            do {
+                try await directory.revoke(uid: uid, connectionId: connectionID)
+                if attempt > 1 {
+                    AppLogger.network.info(
+                        "hermes_iroh_relay_revoke_recovered attempt=\(attempt)"
+                    )
+                }
+                return true
+            } catch IrohPairingDirectoryError.unsupportedOnReader {
+                // A read-only directory (e.g. the mobile reader) can never hold a
+                // host-published record to revoke. Treat as a benign no-op so we
+                // don't burn retries or escalate to an error on a host that was
+                // never the writer.
+                return true
+            } catch {
+                lastError = error
+                if attempt < totalAttempts {
+                    AppLogger.network.silentFailure(
+                        "hermes_iroh_relay_revoke_retry",
+                        error: error,
+                        context: ["attempt": "\(attempt)", "errorClass": publicErrorClass(error)]
+                    )
+                    // Exponential backoff: 250ms, 500ms, 1s, ... capped at 5s.
+                    // Clamp the shift first so a large `attempts` can never trap
+                    // on UInt64 overflow before the cap is applied.
+                    let shift = UInt64(min(attempt - 1, 32))
+                    let backoffNanos = min(UInt64(5_000_000_000), UInt64(250_000_000) << shift)
+                    await sleep(backoffNanos)
+                }
+            }
+        }
+        if let lastError {
+            // Fail-loud: the record may still be live in Firestore. Surface it as
+            // an error (not a silent failure) so the stale-advertisement is
+            // visible in telemetry instead of being swallowed by a bare `try?`.
+            AppLogger.network.error(
+                "hermes_iroh_relay_revoke_failed",
+                metadata: [
+                    "attempts": "\(totalAttempts)",
+                    "errorClass": publicErrorClass(lastError)
+                ]
+            )
+        }
+        return false
     }
 
     init(
@@ -109,6 +185,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         },
         urlSession: URLSession = .shared,
         pairingPublishInterval: TimeInterval = 60,
+        revokeRetryAttempts: Int = 3,
+        revokeRetrySleep: @escaping @Sendable (UInt64) async -> Void = { nanos in
+            try? await Task.sleep(nanoseconds: nanos) // try?-ok(cancellation only; backoff between revoke retries)
+        },
         transportFactory: @escaping @MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport = { _ in
             HermesIrohRelayHostClient.defaultTransport()
         }
@@ -123,6 +203,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         self.inboundPeerPolicyLoader = inboundPeerPolicyLoader
         self.urlSession = urlSession
         self.pairingPublishInterval = pairingPublishInterval
+        self.revokeRetryAttempts = max(1, revokeRetryAttempts)
+        self.revokeRetrySleep = revokeRetrySleep
         self.transportFactory = transportFactory
     }
 
@@ -260,6 +342,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         let revokedNodeId = publishedIdentity?.nodeId
         publishedIdentity = nil
 
+        let revokeAttempts = revokeRetryAttempts
+        let revokeSleep = revokeRetrySleep
         Task { [directory, auditLogger, serveTaskTeardownRegistry] in
             // RR-18 — drain the per-peer teardown index through the same
             // cancel-all path `stop()` already runs over `serveTasks`.
@@ -268,7 +352,17 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 await transportToStop.shutdown()
             }
             if let uid, let connectionID {
-                try? await directory.revoke(uid: uid, connectionId: connectionID)
+                // Fail-closed teardown: a swallowed revoke would leave the host's
+                // `iroh_pairing/*` doc live in Firestore, advertising a NodeId
+                // that no longer accepts streams. Retry with backoff, log on
+                // give-up.
+                await HermesIrohRelayHostClient.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeAttempts,
+                    sleep: revokeSleep
+                )
                 await auditLogger.record(
                     event: .streamClosed,
                     uid: uid,
@@ -517,7 +611,19 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         if let transportToStop {
             await transportToStop.shutdown()
         }
-        try? await directory.revoke(uid: uid, connectionId: connectionID)
+        // Fail-closed teardown after an accept-loop failure: revoke with retry so
+        // a transient directory fault cannot leave the host advertising a NodeId
+        // whose accept loop has already torn down. If `shouldRestart` is true the
+        // recovery `start()` below re-publishes a fresh record; if it is false
+        // (cancelled / not recoverable) this is the only revoke, and swallowing
+        // it would strand a live pairing doc for a host that is gone.
+        await Self.revokePairingRecord(
+            directory: directory,
+            uid: uid,
+            connectionID: connectionID,
+            attempts: revokeRetryAttempts,
+            sleep: revokeRetrySleep
+        )
         await auditLogger.record(
             event: .streamFailed,
             uid: uid,

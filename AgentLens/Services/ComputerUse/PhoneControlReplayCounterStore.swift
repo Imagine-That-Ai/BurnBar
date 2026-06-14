@@ -106,7 +106,34 @@ public final class PhoneControlReplayCounterStore: Sendable {
         )
         let data = try encoder.encode(snapshot)
         try data.write(to: fileURL, options: [.atomic])
-        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        // SECURITY (F6): restricting the counter file to owner-only 0o600 is a
+        // hardening *requirement*, not a best-effort nicety. The file holds the
+        // per-peer high-water authority counters that close the restart replay
+        // window; leaving it group/world-readable lets another local principal
+        // read or roll back those marks. If hardening fails we must NOT leave a
+        // mis-permissioned file on disk advertising the latest counters — delete
+        // it and surface the failure so `persist` (and the validator above it)
+        // fails CLOSED rather than trusting an insecurely written baseline.
+        do {
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: fileURL.path
+            )
+        } catch {
+            AppLogger.daemon.error(
+                "phoneControlReplayCounterStore.hardenPermissionsFailed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            do {
+                try fileManager.removeItem(at: fileURL)
+            } catch {
+                AppLogger.daemon.error(
+                    "phoneControlReplayCounterStore.removeMisPermissionedFileFailed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
+            throw error
+        }
     }
 
     public static func defaultFileURL() -> URL {

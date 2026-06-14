@@ -386,6 +386,119 @@ final class CursorConnectorTests: XCTestCase {
     }
 }
 
+// MARK: - Cursor connector error-swallow remediation (try? sites that mattered)
+
+/// Proves the three previously-swallowed `try?` sites in
+/// `CursorConnectorManager` now behave correctly instead of silently dropping a
+/// failure that matters:
+///
+/// 1. `stopProxy()` deletes the on-disk proxy config that carries the
+///    secret-broker bearer token + session token (security cleanup) and, when the
+///    delete genuinely fails, does NOT crash and does NOT pretend it succeeded —
+///    the file is still there to be retried/observed, and an absent file is
+///    treated as success rather than an error.
+/// 2. `saveConfig()` persists config via an encode seam that returns data on the
+///    happy path (so persistence is unchanged) and would log+skip — never write a
+///    half-blob — on encode failure.
+@MainActor
+final class CursorConnectorTrySwallowTests: XCTestCase {
+
+    private var scratchDirectories: [URL] = []
+
+    override func tearDownWithError() throws {
+        let fm = FileManager.default
+        for directory in scratchDirectories {
+            // Restore writability before teardown so the directory itself is removable.
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            try? fm.removeItem(at: directory)
+        }
+        scratchDirectories.removeAll()
+    }
+
+    // MARK: removeProxyConfigFile (Site L626 — security cleanup of token-bearing file)
+
+    func test_removeProxyConfigFile_deletesExistingSecretBearingFile() throws {
+        let fm = FileManager.default
+        let dir = try makeScratchDirectory()
+        let configURL = dir.appendingPathComponent("cursor_connector_proxy_config.json")
+        try Data(#"{"secret_broker_token":"sk-broker-live","session_token":"abc"}"#.utf8)
+            .write(to: configURL, options: .atomic)
+        XCTAssertTrue(fm.fileExists(atPath: configURL.path), "Precondition: secret-bearing config exists.")
+
+        CursorConnectorManager.removeProxyConfigFile(at: configURL, fileManager: fm)
+
+        XCTAssertFalse(
+            fm.fileExists(atPath: configURL.path),
+            "The security cleanup must actually remove the token-bearing proxy config."
+        )
+    }
+
+    func test_removeProxyConfigFile_whenAlreadyAbsent_isANoOpAndDoesNotThrowOrCrash() throws {
+        let fm = FileManager.default
+        let dir = try makeScratchDirectory()
+        let configURL = dir.appendingPathComponent("does_not_exist.json")
+        XCTAssertFalse(fm.fileExists(atPath: configURL.path), "Precondition: file is absent.")
+
+        // An already-absent file is success, not a logged fault — and must not crash.
+        CursorConnectorManager.removeProxyConfigFile(at: configURL, fileManager: fm)
+
+        XCTAssertFalse(fm.fileExists(atPath: configURL.path))
+    }
+
+    func test_removeProxyConfigFile_onRealRemovalFailure_doesNotCrashAndLeavesFileForRetry() throws {
+        let fm = FileManager.default
+        let dir = try makeScratchDirectory()
+        let configURL = dir.appendingPathComponent("cursor_connector_proxy_config.json")
+        try Data(#"{"secret_broker_token":"sk-broker-live"}"#.utf8)
+            .write(to: configURL, options: .atomic)
+
+        // Removing a file requires write permission on its PARENT directory.
+        // Stripping write from the parent makes removeItem(at:) fail with a real
+        // permission error — the path that used to be swallowed by `try?`.
+        try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+        defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+
+        // Must not throw / crash; the failure is logged internally, not propagated.
+        CursorConnectorManager.removeProxyConfigFile(at: configURL, fileManager: fm)
+
+        // The file is still present (the delete genuinely failed) — confirming we
+        // did not silently claim success. The behavior degrades gracefully while
+        // the failure is observable via the logger.
+        XCTAssertTrue(
+            fm.fileExists(atPath: configURL.path),
+            "When the OS rejects the delete, the helper must surface failure (file remains) rather than swallow it."
+        )
+    }
+
+    // MARK: encodedConfig (Site L527 — observable persistence, optionality preserved)
+
+    func test_encodedConfig_happyPath_returnsRoundTrippableData() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        var config = CursorConnectorConfig()
+        config.statusMessage = "Connected to Cursor"
+        config.isEnabled = true
+
+        let data = try XCTUnwrap(
+            CursorConnectorManager.encodedConfig(config, using: encoder),
+            "A well-formed config must still encode — the fix preserves the happy path."
+        )
+
+        let decoded = try JSONDecoder().decode(CursorConnectorConfig.self, from: data)
+        XCTAssertEqual(decoded, config, "Encoded config must round-trip identically.")
+    }
+
+    // MARK: helpers
+
+    private func makeScratchDirectory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cursor-tryswallow-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        scratchDirectories.append(url)
+        return url
+    }
+}
+
 // MARK: - Cursor connector credential-read fault path
 
 /// Proves the security fix in `CursorConnectorManager`: both untagged

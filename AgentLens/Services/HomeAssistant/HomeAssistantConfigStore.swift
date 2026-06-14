@@ -15,14 +15,39 @@ protocol HomeAssistantConfigStoring: AnyObject, Sendable {
     func clearLegacyWebhookURL()
 }
 
+/// Minimal encoding seam for `HomeAssistantConfig`, injectable so tests can
+/// drive the encode-failure path deterministically without depending on
+/// `JSONEncoder` subclassing semantics.
+protocol HomeAssistantConfigEncoding: Sendable {
+    func encode(_ config: HomeAssistantConfig) throws -> Data
+}
+
+/// Production encoder: ISO8601 dates, matching `HomeAssistantConfigStore.loadConfig`.
+struct HomeAssistantConfigJSONEncoder: HomeAssistantConfigEncoding {
+    func encode(_ config: HomeAssistantConfig) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(config)
+    }
+}
+
 @MainActor
 final class HomeAssistantConfigStore: @preconcurrency HomeAssistantConfigStoring {
 
     private let settingsManager: SettingsManager
     private let key = "smartHubHomeAssistantConfigJSON"
 
-    init(settingsManager: SettingsManager) {
+    /// Encoder used by `saveConfig`. Injectable so tests can drive the
+    /// encode-failure path deterministically; production uses the ISO8601 JSON
+    /// encoder that mirrors `loadConfig`'s decoder.
+    private let encoder: HomeAssistantConfigEncoding
+
+    init(
+        settingsManager: SettingsManager,
+        encoder: HomeAssistantConfigEncoding = HomeAssistantConfigJSONEncoder()
+    ) {
         self.settingsManager = settingsManager
+        self.encoder = encoder
     }
 
     func loadConfig() -> HomeAssistantConfig? {
@@ -34,9 +59,25 @@ final class HomeAssistantConfigStore: @preconcurrency HomeAssistantConfigStoring
     }
 
     func saveConfig(_ config: HomeAssistantConfig) {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(config), let json = String(data: data, encoding: .utf8) else {
+        let data: Data
+        do {
+            data = try encoder.encode(config)
+        } catch {
+            // A dropped save must be observable: the persisted config feeds
+            // later recovery behavior (webhook URL mirrored to settings, last
+            // verified state). Swallowing this silently would lose the user's
+            // configuration with no signal. Skip the write but log the fault.
+            AppLogger.dataStore.error(
+                "ha_config_save_encode_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return
+        }
+        guard let json = String(data: data, encoding: .utf8) else {
+            // JSON output is always UTF-8, so this is effectively unreachable,
+            // but a non-nil failure here would still silently drop the save —
+            // log it instead of returning blindly.
+            AppLogger.dataStore.error("ha_config_save_utf8_decode_failed")
             return
         }
         settingsManager.persistence.set(json, forKey: key)

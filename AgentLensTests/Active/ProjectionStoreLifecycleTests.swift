@@ -39,6 +39,130 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
         )
     }
 
+    private func makeOrchestrator(for store: DataStore) -> RefreshOrchestrator {
+        RefreshOrchestrator(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            quotaService: ProviderQuotaService(
+                appPaths: OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                homeDirectoryURL: FileManager.default.temporaryDirectory,
+                refreshProviders: []
+            )
+        )
+    }
+
+    /// Enqueues `count` distinct queued conversation projection jobs that all share the
+    /// same `(sourceID, jobType)`, so `compactConversationProjectionBacklog` keeps exactly
+    /// one survivor and drops the rest.
+    private func seedRedundantQueuedBacklog(
+        in store: DataStore,
+        count: Int,
+        sourceID: String = "shared-conv",
+        at instant: Date = Date(timeIntervalSince1970: 1_742_400_000)
+    ) throws {
+        for index in 0..<count {
+            try store.enqueueProjectionJob(
+                ProjectionJobRecord(
+                    id: "backlog-\(index)",
+                    jobType: .reproject,
+                    sourceKind: .conversation,
+                    sourceID: sourceID,
+                    sourceVersionID: "v-\(index)",
+                    status: .queued,
+                    priority: 5,
+                    attempts: 0,
+                    maxAttempts: 5,
+                    scheduledAt: instant,
+                    availableAt: instant,
+                    createdAt: instant,
+                    updatedAt: instant
+                )
+            )
+        }
+    }
+
+    // MARK: - L182: backlog compaction is observable, not swallowed
+
+    /// Happy path: a runaway redundant backlog above the compaction threshold is drained
+    /// during the post-persistence phase, and the returned `pendingProjectionJobs` reflects
+    /// the post-compaction depth.
+    func test_runPostPersistencePhase_compactsRunawayBacklog() async throws {
+        let store = try makeInMemoryDataStore()
+        let seeded = ProjectionWorkerPolicy.backlogCompactionThreshold + 5
+        try seedRedundantBacklogAndAssert(store: store, seeded: seeded)
+
+        let result = await makeOrchestrator(for: store).runPostPersistencePhase(
+            refreshStartedAt: Date(),
+            allUsages: [],
+            indexedConversationChanges: 0,
+            parsePhaseDuration: 0,
+            persistencePhaseDuration: 0
+        )
+
+        // Only the single newest entry per (sourceID, jobType) survives.
+        XCTAssertEqual(try store.countProjectionJobs(), 1)
+        XCTAssertEqual(
+            result.pendingProjectionJobs,
+            1,
+            "Reported pending depth must reflect the post-compaction count."
+        )
+    }
+
+    /// Fail path (the L182 fix): a compaction write that throws must NOT crash the refresh
+    /// nor be silently swallowed into a fabricated "drained" state. The backlog is left
+    /// intact, the reported depth stays at the pre-compaction count, and the failure is
+    /// surfaced via the logger (observable) rather than discarded.
+    func test_runPostPersistencePhase_survivesCompactionWriteFailure() async throws {
+        let store = try makeInMemoryDataStore()
+        let seeded = ProjectionWorkerPolicy.backlogCompactionThreshold + 5
+        try seedRedundantBacklogAndAssert(store: store, seeded: seeded)
+
+        // Force the compaction DELETE to throw while reads/COUNT keep working, so the
+        // count gate at L180 still trips and we exercise the compaction branch itself.
+        try installDeleteTrap(on: store)
+
+        let result = await makeOrchestrator(for: store).runPostPersistencePhase(
+            refreshStartedAt: Date(),
+            allUsages: [],
+            indexedConversationChanges: 0,
+            parsePhaseDuration: 0,
+            persistencePhaseDuration: 0
+        )
+
+        // Graceful degradation: no crash, nothing deleted, and the runaway backlog is
+        // still reported at full depth instead of a fabricated "compacted" value.
+        XCTAssertEqual(
+            try store.countProjectionJobs(),
+            seeded,
+            "A failed compaction write must not remove any rows."
+        )
+        XCTAssertEqual(
+            result.pendingProjectionJobs,
+            seeded,
+            "Reported pending depth must remain the pre-compaction count on failure."
+        )
+    }
+
+    private func seedRedundantBacklogAndAssert(store: DataStore, seeded: Int) throws {
+        try seedRedundantQueuedBacklog(in: store, count: seeded)
+        XCTAssertEqual(try store.countProjectionJobs(), seeded)
+        XCTAssertGreaterThanOrEqual(seeded, ProjectionWorkerPolicy.backlogCompactionThreshold)
+    }
+
+    /// Installs a BEFORE DELETE trigger that aborts any delete on `projection_jobs`,
+    /// leaving SELECT/COUNT fully functional.
+    private func installDeleteTrap(on store: DataStore) throws {
+        try store.dbQueue.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER projection_jobs_delete_trap
+                BEFORE DELETE ON projection_jobs
+                BEGIN
+                    SELECT RAISE(ABORT, 'projection_jobs delete trapped for test');
+                END
+                """)
+        }
+    }
+
     // MARK: - Finding 148: projection_jobs reaping
 
     func test_reapTerminalProjectionJobs_removesAgedTerminalRows() throws {

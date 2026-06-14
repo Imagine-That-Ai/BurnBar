@@ -85,6 +85,81 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
         }
     }
 
+    // MARK: - Permission hardening fails closed (F6)
+
+    /// A `FileManager` that writes/reads normally but refuses to harden the
+    /// 0o600 permission on the replay-counter file, modelling a sandbox/ACL
+    /// denial or a hostile actor that pre-creates the path with locked owner.
+    private final class HardenDenyingFileManager: FileManager {
+        struct HardenDenied: Error {}
+        private(set) var setAttributesAttempts = 0
+
+        override func setAttributes(
+            _ attributes: [FileAttributeKey: Any],
+            ofItemAtPath path: String
+        ) throws {
+            if attributes[.posixPermissions] != nil {
+                setAttributesAttempts += 1
+                throw HardenDenied()
+            }
+            try super.setAttributes(attributes, ofItemAtPath: path)
+        }
+    }
+
+    func test_persist_failsClosedWhenOwnerOnlyHardeningIsRejected() throws {
+        let url = temporaryFileURL("replay-harden-denied")
+        let fileManager = HardenDenyingFileManager()
+        let store = PhoneControlReplayCounterStore(fileURL: url, fileManager: fileManager)
+
+        XCTAssertThrowsError(
+            try store.persist(["peer-a": 5]),
+            "A counter file that cannot be restricted to owner-only 0o600 must not "
+                + "be accepted silently — persist must surface the hardening failure"
+        ) { error in
+            XCTAssertTrue(
+                error is HardenDenyingFileManager.HardenDenied,
+                "The underlying hardening error must propagate, got \(error)"
+            )
+        }
+        XCTAssertEqual(fileManager.setAttributesAttempts, 1, "Hardening must be attempted once")
+    }
+
+    func test_persist_removesMisPermissionedFileWhenHardeningFails() throws {
+        let url = temporaryFileURL("replay-harden-cleanup")
+        let store = PhoneControlReplayCounterStore(
+            fileURL: url,
+            fileManager: HardenDenyingFileManager()
+        )
+
+        XCTAssertThrowsError(try store.persist(["peer-a": 5]))
+
+        // A failed hardening must not leave a counter file on disk advertising the
+        // latest high-water marks with insecure permissions: it is deleted so the
+        // next load reads .absent (a safe first-run baseline) rather than trusting
+        // an insecurely written one.
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: url.path),
+            "A mis-permissioned counter file must be removed when hardening fails"
+        )
+        guard case .absent = PhoneControlReplayCounterStore(fileURL: url).loadOutcome() else {
+            XCTFail("After cleanup the store must read .absent, never a stale insecure baseline")
+            return
+        }
+    }
+
+    func test_persist_hardensFileToOwnerOnlyOnSuccess() throws {
+        let url = temporaryFileURL("replay-harden-success")
+        try PhoneControlReplayCounterStore(fileURL: url).persist(["peer-a": 11])
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue
+        XCTAssertEqual(
+            permissions,
+            0o600,
+            "A successfully persisted counter file must be owner-only 0o600"
+        )
+    }
+
     // MARK: - Validator fails closed on an unreadable replay baseline (F6)
 
     private func signedTapIntent(

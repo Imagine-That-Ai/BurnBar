@@ -82,6 +82,65 @@ final class CastChannelClientTests: XCTestCase {
         XCTAssertEqual(client.disconnectCount, 1)
         XCTAssertEqual(client.stopCount, 0)
     }
+
+    // MARK: - serializedPayload (control-channel send observability)
+
+    /// A well-formed Cast control payload round-trips to the exact UTF-8 JSON
+    /// the wire format expects. This is the happy path that `sendVirtual`
+    /// relies on for every CONNECT / LAUNCH / LOAD / PING / GET_STATUS frame.
+    func testSerializedPayload_encodesWellFormedPayload() throws {
+        let utf8 = try XCTUnwrap(
+            CastChannelClient.serializedPayload(
+                ["type": "CONNECT", "userAgent": "OpenBurnBar/1.0"],
+                namespace: CastChannelClient.nsConnection
+            )
+        )
+
+        let data = try XCTUnwrap(utf8.data(using: .utf8))
+        let decoded = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(decoded["type"] as? String, "CONNECT")
+        XCTAssertEqual(decoded["userAgent"] as? String, "OpenBurnBar/1.0")
+    }
+
+    /// Regression for the silently-swallowed `try?` at the JSON-serialization
+    /// site: a payload carrying a value JSON cannot represent (`Double.infinity`,
+    /// rejected by `JSONSerialization`) must fail the encode and return `nil`
+    /// so `sendVirtual` skips the send. Returning the original (drop) behavior
+    /// is intentional; the fix is that the failure is now logged rather than
+    /// surfacing only as a downstream request timeout. We assert the contract
+    /// callers depend on: no frame string is produced for an unencodable payload.
+    func testSerializedPayload_returnsNilForUnserializablePayload() {
+        let unserializable: [String: Any] = [
+            "type": "LOAD",
+            "reload_time": Double.infinity
+        ]
+
+        XCTAssertNil(
+            CastChannelClient.serializedPayload(
+                unserializable,
+                namespace: CastChannelClient.nsDashCast
+            ),
+            "An unserializable payload must not yield a wire frame"
+        )
+    }
+
+    /// NaN is likewise not representable in JSON; the helper must reject it
+    /// rather than emit a malformed / silently-dropped frame.
+    func testSerializedPayload_returnsNilForNaNValue() {
+        let unserializable: [String: Any] = [
+            "type": "LOAD",
+            "reload_time": Double.nan
+        ]
+
+        XCTAssertNil(
+            CastChannelClient.serializedPayload(
+                unserializable,
+                namespace: CastChannelClient.nsDashCast
+            )
+        )
+    }
 }
 
 @MainActor

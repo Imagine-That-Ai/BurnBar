@@ -1255,11 +1255,67 @@ final class SettingsManager {
         let normalized = values
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        guard let data = try? JSONEncoder().encode(normalized),
-              let json = String(data: data, encoding: .utf8) else {
-            return "[]"
+        do {
+            let data = try JSONEncoder().encode(normalized)
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw SettingsJSONEncodingError.nonUTF8Output
+            }
+            return json
+        } catch {
+            // Do NOT collapse to "[]" here: that would silently overwrite the
+            // user's saved list with an empty array and permanently drop their
+            // data on the next flush. Encoding a normalized [String] should be
+            // infeasible to fail, so surface it loudly, then preserve the data
+            // via a lossless manual serialization rather than discarding it.
+            AppLogger.dataStore.error(
+                "settings.encodeJSONStringArray.failed",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: error)))",
+                    "count": "\(normalized.count)"
+                ]
+            )
+            assertionFailure("encodeJSONStringArray failed for a normalized [String]: \(error)")
+            return manuallySerializeJSONStringArray(normalized)
         }
-        return json
+    }
+
+    /// Deterministic, infallible JSON-array serialization for `[String]`.
+    ///
+    /// Used as a data-preserving fallback when `JSONEncoder` somehow fails so we
+    /// never silently drop the caller's values. Produces output byte-compatible
+    /// with `JSONEncoder` for the subset of characters that require escaping per
+    /// RFC 8259, so the round-trip through `decodeJSONStringArray` is preserved.
+    static func manuallySerializeJSONStringArray(_ values: [String]) -> String {
+        let escapedElements = values.map { value -> String in
+            var escaped = "\""
+            for scalar in value.unicodeScalars {
+                switch scalar {
+                case "\"": escaped += "\\\""
+                case "\\": escaped += "\\\\"
+                // Foundation's JSONEncoder escapes forward slashes (`\/`); match
+                // it so the fallback output is byte-identical to the happy path.
+                case "/": escaped += "\\/"
+                case "\u{08}": escaped += "\\b"
+                case "\u{0C}": escaped += "\\f"
+                case "\n": escaped += "\\n"
+                case "\r": escaped += "\\r"
+                case "\t": escaped += "\\t"
+                default:
+                    if scalar.value < 0x20 {
+                        escaped += String(format: "\\u%04x", scalar.value)
+                    } else {
+                        escaped.unicodeScalars.append(scalar)
+                    }
+                }
+            }
+            escaped += "\""
+            return escaped
+        }
+        return "[" + escapedElements.joined(separator: ",") + "]"
+    }
+
+    enum SettingsJSONEncodingError: Error {
+        case nonUTF8Output
     }
 
     // MARK: - Explicit Save
