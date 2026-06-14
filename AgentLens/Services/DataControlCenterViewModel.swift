@@ -220,7 +220,14 @@ final class DataControlCenterViewModel {
         do {
             var payload: [String: Any] = [:]
             if let domains, domains.isEmpty == false { payload["domains"] = domains }
-            let result = try await functions().httpsCallable("exportUserData").call(payload)
+            let deviceId = ComputerUseSecurityCallableClient.loadOrCreateLocalDeviceId()
+            let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+                "exportUserData",
+                deviceId: deviceId,
+                actionKind: "data_export",
+                subjectId: "all",
+                payload: payload
+            )
             guard let dict = result.data as? [String: Any] else {
                 throw DataControlError.malformedResponse
             }
@@ -411,7 +418,14 @@ final class DataControlCenterViewModel {
         actionError = nil
         defer { isMutating = false }
         do {
-            let result = try await functions().httpsCallable("revokeAllAccess").call(["scope": scope.rawValue])
+            let deviceId = ComputerUseSecurityCallableClient.loadOrCreateLocalDeviceId()
+            let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+                "revokeAllAccess",
+                deviceId: deviceId,
+                actionKind: "revoke_all_access",
+                subjectId: scope.rawValue,
+                payload: ["scope": scope.rawValue]
+            )
             guard let dict = result.data as? [String: Any] else {
                 throw DataControlError.malformedResponse
             }

@@ -16,9 +16,13 @@ import {
   Timestamp,
   serverTimestamp,
 } from "firebase/firestore";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const PROJECT_ID = "burnbar-test";
-const RULES_PATH = "../firestore.rules";
+const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
+const RULES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
+const FIRESTORE_HOST = process.env.FIRESTORE_TEST_HOST || "127.0.0.1";
+const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080", 10);
 const aliceUid = "alice-uid";
 const bobUid = "bob-uid";
 const futureTimestamp = Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -35,13 +39,21 @@ function entitlementGranted(productID = "com.openburnbar.pro.monthly") {
   };
 }
 
-function sealedText() {
-  return {
-    algorithm: "AES-GCM",
+function cloudVaultAADContext(uid, collection, docID, field) {
+  return `OpenBurnBar-CloudVault-aad-v2|${uid}|${collection}|${docID}|${field}|2|${field}`;
+}
+
+function sealedText(aad) {
+  const value = {
+    schemaVersion: 2,
+    algorithm: "AES-256-GCM",
     keyVersion: 1,
     nonce: "A".repeat(16),
     ciphertext: "B".repeat(64),
+    tag: "C".repeat(24),
   };
+  if (aad !== undefined) value.aad = aad;
+  return value;
 }
 
 function validManifest(uid = aliceUid) {
@@ -55,12 +67,11 @@ function validManifest(uid = aliceUid) {
       provider: "Factory",
       sessionId: "8adc9f4f-cfce-4856-9537-6feaa5e8ae8e",
       sourceType: "provider_log",
-      projectName: "~/Documents/Windsurf/ImagineThatAiApp/Imagine/That.Ai/App/2.0",
       inferredTaskTitle: "Encrypted session",
       bodyStorage: "firebase_storage_encrypted",
       storagePath: `users/${uid}/session_logs/${documentID}/bodies/${bodyHash}.json.aesgcm`,
-      sealedTitle: sealedText(),
-      sealedBodyPreview: sealedText(),
+      sealedTitle: sealedText(cloudVaultAADContext(uid, "session_logs", documentID, "sealedTitle")),
+      sealedBodyPreview: sealedText(cloudVaultAADContext(uid, "session_logs", documentID, "sealedBodyPreview")),
       encryption: {
         algorithm: "AES-GCM",
         keyVersion: 1,
@@ -89,7 +100,6 @@ function validManifest(uid = aliceUid) {
       cacheReadTokens: 0,
       totalTokens: 22,
       costUSD: 0.01,
-      workingDirectory: "~/Documents/Windsurf/ImagineThatAiApp/Imagine/That.Ai/App/2.0",
       durationSeconds: 120,
       toolTags: ["run"],
       startTime: Timestamp.fromMillis(Date.now() - 120_000),
@@ -132,7 +142,6 @@ function validChunk(uid = aliceUid, index = 0) {
       deviceId: manifest.data.deviceId,
       provider: manifest.data.provider,
       model: manifest.data.model,
-      projectName: manifest.data.projectName,
       sealedSnippet: sealedText(),
       tokenHashes: ["a".repeat(32)],
       semanticHashes: ["b".repeat(32)],
@@ -159,6 +168,24 @@ function legacyPlaintextChunk(uid = aliceUid) {
     },
   };
 }
+
+const OFF_ALLOWLIST_PLAINTEXT_FIELDS = {
+  body: "plaintext body",
+  userPrompt: "summarize the repository",
+  summary: "plaintext session summary",
+  command: "cat ~/.ssh/id_rsa",
+  keystrokes: "cmd+space terminal",
+  clipboard: "copied sensitive text",
+  transcript: "full plaintext transcript",
+  messages: [{ role: "user", text: "plaintext" }],
+  lastAssistantMessage: "plaintext assistant output",
+  keyCommands: ["npm test"],
+  keyFiles: ["src/secrets.ts"],
+  url: "https://example.test/private",
+  selector: "#password",
+  projectName: "~/Documents/Windsurf/SecretProject",
+  workingDirectory: "~/Documents/Windsurf/SecretProject",
+};
 
 let testEnv;
 let failures = 0;
@@ -190,8 +217,8 @@ async function main() {
     projectId: PROJECT_ID,
     firestore: {
       rules: readFileSync(RULES_PATH, "utf8"),
-      host: "127.0.0.1",
-      port: 8080,
+      host: FIRESTORE_HOST,
+      port: FIRESTORE_PORT,
     },
   });
 
@@ -218,14 +245,14 @@ async function main() {
     await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data, { merge: true }));
   });
 
-  await step("legacy plaintext chunk must be overwritten, not merged", async () => {
+  await step("session-log chunks are server-owned and reject legacy plaintext merges", async () => {
     const legacy = legacyPlaintextChunk();
     const clean = validChunk();
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), legacy.path), legacy.data);
     });
     await assertFails(setDoc(doc(aliceDB, clean.path), clean.data, { merge: true }));
-    await assertSucceeds(setDoc(doc(aliceDB, clean.path), clean.data));
+    await assertFails(setDoc(doc(aliceDB, clean.path), clean.data));
   });
 
   await step("session-log manifest cannot be written into another user namespace", async () => {
@@ -233,11 +260,13 @@ async function main() {
     await assertFails(setDoc(doc(aliceDB, bobManifest.path), bobManifest.data, { merge: true }));
   });
 
-  await step("session-log manifest rejects plaintext body fields", async () => {
-    await assertFails(
-      setDoc(doc(aliceDB, aliceManifest.path), { ...aliceManifest.data, body: "plaintext" }, { merge: true })
-    );
-  });
+  for (const [field, value] of Object.entries(OFF_ALLOWLIST_PLAINTEXT_FIELDS)) {
+    await step(`session-log manifest rejects off-allowlist plaintext field '${field}'`, async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, aliceManifest.path), { ...aliceManifest.data, [field]: value }, { merge: true })
+      );
+    });
+  }
 
   await testEnv.cleanup();
   if (failures > 0) {

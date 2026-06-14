@@ -70,6 +70,18 @@ async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
   await firestore.doc(`users/${uid}/computer_use_quota_usage/${dayKey}`).set(counters, { merge: true });
 }
 
+export function uidFromComputerUseSessionPath(path: string): string | null {
+  const parts = path.split("/");
+  if (parts.length === 4 && parts[0] === "users" && parts[2] === "computer_use_sessions" && parts[1] && parts[3]) {
+    return parts[1];
+  }
+  return null;
+}
+
+export const __testing__ = {
+  uidFromComputerUseSessionPath,
+};
+
 export const recomputeComputerUseQuotaUsage = onSchedule(
   {
     schedule: "every 60 minutes",
@@ -87,12 +99,12 @@ export const recomputeComputerUseQuotaUsage = onSchedule(
     const sessions = await firestore
       .collectionGroup("computer_use_sessions")
       .where("startedAt", ">=", Timestamp.fromDate(startOfDay))
-      .select("userId")
+      .select()
       .get();
 
     const seen = new Set<string>();
     for (const doc of sessions.docs) {
-      const userId = stringField(doc.data(), "userId");
+      const userId = uidFromComputerUseSessionPath(doc.ref.path);
       if (!userId || seen.has(userId)) continue;
       seen.add(userId);
       await recomputeForUser(userId, todayKey);

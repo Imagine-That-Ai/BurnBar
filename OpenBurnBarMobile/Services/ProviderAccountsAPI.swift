@@ -87,12 +87,19 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
     }
 
     func connectProviderCredential(provider: String, credential: String, kind: CredentialKind) async throws -> ProviderConnectionDoc {
-        let callable = try functionsClient().httpsCallable("connectProviderCredential")
-        let result = try await callable.call([
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let payload: [String: Any] = [
             "provider": provider,
             "credential": credential,
             "credentialKind": kind.rawValue
-        ])
+        ]
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "connectProviderCredential",
+            deviceId: deviceId,
+            actionKind: "provider_credential_connect",
+            subjectId: "\(provider)_default",
+            payload: payload
+        )
         // Representative migration (WP2-TYPED-IOS): the response decode now flows
         // through the shared helper, which surfaces `DecodingError` context via
         // `FunctionsError.responseDecodingFailed` instead of the previous `try?`
@@ -110,7 +117,6 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         deviceDisplayName: String? = nil,
         metadata: ProviderAccountConnectMetadata? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectProviderAccount")
         var payload: [String: Any] = [
             "provider": providerID.rawValue,
             "credential": credential,
@@ -145,7 +151,18 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
                 payload["authMethodID"] = authMethodID
             }
         }
-        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+            provider: providerID.rawValue,
+            accountID: accountID
+        )
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "connectProviderAccount",
+            deviceId: deviceId,
+            actionKind: "provider_account_connect",
+            subjectId: subjectId,
+            payload: payload
+        )
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
@@ -163,7 +180,6 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectHostedQuotaAccount")
         var payload: [String: Any] = [
             "provider": providerID.rawValue,
             "credential": credential
@@ -180,7 +196,18 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let deviceDisplayName, deviceDisplayName.isEmpty == false {
             payload["deviceDisplayName"] = deviceDisplayName
         }
-        let result = try await callable.call(payload)
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+            provider: providerID.rawValue,
+            accountID: accountID
+        )
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "connectHostedQuotaAccount",
+            deviceId: deviceId,
+            actionKind: "hosted_quota_account_connect",
+            subjectId: subjectId,
+            payload: payload
+        )
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
@@ -197,7 +224,6 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectSelfHostedQuotaAccount")
         var payload: [String: Any] = ["provider": providerID.rawValue]
         if let label, label.isEmpty == false {
             payload["label"] = label
@@ -211,7 +237,18 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let deviceDisplayName, deviceDisplayName.isEmpty == false {
             payload["deviceDisplayName"] = deviceDisplayName
         }
-        let result = try await callable.call(payload)
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+            provider: providerID.rawValue,
+            accountID: accountID
+        )
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "connectSelfHostedQuotaAccount",
+            deviceId: deviceId,
+            actionKind: "self_hosted_quota_account_connect",
+            subjectId: subjectId,
+            payload: payload
+        )
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
@@ -254,7 +291,6 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectHostedQuotaAccount")
         var payload: [String: Any] = [
             "provider": providerID.rawValue,
             "credential": credential,
@@ -264,7 +300,18 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let accountID, accountID.isEmpty == false { payload["accountID"] = accountID }
         if let sourceDeviceID, sourceDeviceID.isEmpty == false { payload["sourceDeviceID"] = sourceDeviceID }
         if let deviceDisplayName, deviceDisplayName.isEmpty == false { payload["deviceDisplayName"] = deviceDisplayName }
-        let result = try await callable.call(payload)
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+            provider: providerID.rawValue,
+            accountID: accountID
+        )
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "connectHostedQuotaAccount",
+            deviceId: deviceId,
+            actionKind: "hosted_quota_account_connect",
+            subjectId: subjectId,
+            payload: payload
+        )
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
@@ -275,17 +322,31 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
     }
 
     func deleteHostedQuotaCredentials(accountID: String = "codex_default") async throws {
-        let callable = try functionsClient().httpsCallable("deleteHostedQuotaCredentials")
-        _ = try await callable.call(["accountID": accountID])
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: accountID)
+        _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "deleteHostedQuotaCredentials",
+            deviceId: deviceId,
+            actionKind: "hosted_quota_credential_delete",
+            subjectId: subjectId,
+            payload: ["accountID": accountID]
+        )
     }
 
     func updateProviderAccount(accountID: String, label: String? = nil, isDefault: Bool? = nil, disabled: Bool? = nil) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("updateProviderAccount")
         var payload: [String: Any] = ["accountID": accountID]
         if let label { payload["label"] = label }
         if let isDefault { payload["isDefault"] = isDefault }
         if let disabled { payload["disabled"] = disabled }
-        let result = try await callable.call(payload)
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "account", accountID: accountID)
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "updateProviderAccount",
+            deviceId: deviceId,
+            actionKind: "provider_account_update",
+            subjectId: subjectId,
+            payload: payload
+        )
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
@@ -296,8 +357,15 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
     }
 
     func deleteProviderAccount(accountID: String) async throws {
-        let callable = try functionsClient().httpsCallable("deleteProviderAccount")
-        _ = try await callable.call(["accountID": accountID])
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "account", accountID: accountID)
+        _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "deleteProviderAccount",
+            deviceId: deviceId,
+            actionKind: "provider_account_delete",
+            subjectId: subjectId,
+            payload: ["accountID": accountID]
+        )
     }
 
     /// `force` is the explicit repair path: the server rebuilds the usage

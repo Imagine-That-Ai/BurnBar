@@ -2154,8 +2154,14 @@ private final class MacRemoteMCPClientStore: ObservableObject {
         revokingClientID = client.id
         error = nil
         do {
-            let callable = Functions.functions(region: "us-central1").httpsCallable("revokeRemoteMcpClient")
-            _ = try await callable.call(["clientId": client.id])
+            let deviceId = ComputerUseSecurityCallableClient.loadOrCreateLocalDeviceId()
+            _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+                "revokeRemoteMcpClient",
+                deviceId: deviceId,
+                actionKind: "remote_mcp_grant_revoke",
+                subjectId: client.id,
+                payload: ["clientId": client.id]
+            )
         } catch {
             self.error = error.localizedDescription
         }

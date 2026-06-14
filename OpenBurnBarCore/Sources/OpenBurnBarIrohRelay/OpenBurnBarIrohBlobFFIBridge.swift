@@ -65,6 +65,28 @@ public final class OpenBurnBarIrohBlobFFIBackend: IrohBlobBackend, @unchecked Se
         }
     }
 
+    public func fetchBlob(
+        ticketText: String,
+        destination: String,
+        expectedSizeBytes: UInt64
+    ) async throws -> BlobTransferStats {
+        try IrohBlobTransferLimits.validateExpectedFetchSize(expectedSizeBytes)
+
+        return try await withFFI { [node] in
+            let stats = try node.fetchBlobWithExpectedSize(
+                ticketText: ticketText,
+                destination: destination,
+                expectedSizeBytes: expectedSizeBytes
+            )
+            return BlobTransferStats(
+                bytesTotal: stats.bytesTotal,
+                blake3Hash: stats.blake3Hash,
+                durationMillis: stats.durationMillis,
+                didResume: stats.didResume
+            )
+        }
+    }
+
     public func identity() async throws -> IrohEndpointIdentity {
         try await withFFI { [node] in
             let identity = try node.identity()

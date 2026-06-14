@@ -119,14 +119,14 @@ async function seedHostedComputerUseEntitlement(
 
 const TEST_VAULT_KEY_ID = `v1_${"a".repeat(32)}`;
 
-function sealedPayload(vaultKeyID = TEST_VAULT_KEY_ID, sealedBoxBase64 = "c2VhbGVk") {
+function sealedPayload(vaultKeyID = TEST_VAULT_KEY_ID, sealedBoxBase64 = "c2VhbGVk", aad = "OpenBurnBar-CloudVaultSealedPayload-v2") {
   return {
     schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
     vaultKeyID,
     sealedBoxBase64,
-    aad: "OpenBurnBar-CloudVaultSealedPayload-v2",
+    aad,
   };
 }
 
@@ -999,7 +999,7 @@ test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async ()
     setDoc(doc(cloudDb, "users/cloud-only-media/media_attachment_manifests/manifest-1"), {
       id: "manifest-1",
       blobHash: "b".repeat(64),
-      sealedFilename: sealedText(),
+      sealedFilename: sealedTextAt("cloud-only-media", "media_attachment_manifests", "manifest-1", "sealedFilename"),
       mime: "image/png",
       size: 1234,
       peerDeviceIdHash: "peer-hash",
@@ -1014,7 +1014,7 @@ test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async ()
     setDoc(doc(proDb, "users/cloud-pro-media/media_attachment_manifests/manifest-1"), {
       id: "manifest-1",
       blobHash: "b".repeat(64),
-      sealedFilename: sealedText(),
+      sealedFilename: sealedTextAt("cloud-pro-media", "media_attachment_manifests", "manifest-1", "sealedFilename"),
       mime: "image/png",
       size: 1234,
       peerDeviceIdHash: "peer-hash",
@@ -1147,6 +1147,17 @@ test("chat metadata stays free, but chat content backup requires entitlement", a
 });
 
 test("owners can sync encrypted text expansion snippets without plaintext fields", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/alice/escrow_public_keys/mac-1_1"), {
+      deviceId: "mac-1",
+      keyVersion: 1,
+      publicKeyData: "A".repeat(88),
+      algorithm: "ECIES-P256-AESGCM",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
+
   const db = authedDb("alice");
   const snippetPath = "users/alice/text_snippets/snippet-1";
   const snippetSealed = (snippetID, field) => sealedTextAt("alice", "text_snippets", snippetID, field);
@@ -1930,7 +1941,7 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("carol", "conversations", "device_conv", "sealedPayload")),
   };
 
   await assertFails(
@@ -3374,7 +3385,7 @@ test("T2 mobile_assistant_chats denies plaintext content and unlisted keys", asy
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("ma-owner", "mobile_assistant_chats", "thread-1", "sealedPayload")),
   };
 
   await assertSucceeds(setDoc(doc(db, threadPath), sealedThread));
@@ -3421,7 +3432,7 @@ test("L37 signalEnvelope is rejected on mobile_assistant_chats direct writes", a
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("sig-owner", "mobile_assistant_chats", "thread-1", "sealedPayload")),
   };
 
   const goodEnvelope = signalAtRestEnvelope({
@@ -3742,7 +3753,7 @@ test("T5 conversations deny plaintext smuggled on the merge-update path", async 
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("conv-owner", "conversations", "conv-1", "sealedPayload")),
   };
 
   await assertSucceeds(setDoc(doc(db, convPath), sealedConversation));
@@ -3816,7 +3827,7 @@ test("L37b signalEnvelope is rejected on chat_threads + conversations direct wri
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("sigb-owner", "conversations", "conv-sig-1", "sealedPayload")),
   };
   const goodConvEnv = signalAtRestEnvelope({
     uid: "sigb-owner",
@@ -3960,7 +3971,7 @@ test("T9 media_attachment_manifests require sealedFilename and reject plaintext"
     setDoc(doc(db, "users/mam-owner/media_attachment_manifests/sealed-1"), {
       ...base,
       id: "sealed-1",
-      sealedFilename: sealedText(),
+      sealedFilename: sealedTextAt("mam-owner", "media_attachment_manifests", "sealed-1", "sealedFilename"),
     })
   );
   // FLAG-DAY: a plaintext `filename` is no longer in the allowlist → rejected.
@@ -3985,7 +3996,7 @@ test("T9 media_attachment_manifests require sealedFilename and reject plaintext"
     setDoc(doc(db, "users/mam-owner/media_attachment_manifests/both-1"), {
       ...base,
       id: "both-1",
-      sealedFilename: sealedText(),
+      sealedFilename: sealedTextAt("mam-owner", "media_attachment_manifests", "both-1", "sealedFilename"),
       filename: "screen.png",
     })
   );
@@ -3994,7 +4005,7 @@ test("T9 media_attachment_manifests require sealedFilename and reject plaintext"
     setDoc(doc(db, "users/mam-owner/media_attachment_manifests/extra-1"), {
       ...base,
       id: "extra-1",
-      sealedFilename: sealedText(),
+      sealedFilename: sealedTextAt("mam-owner", "media_attachment_manifests", "extra-1", "sealedFilename"),
       smuggled: "x",
     })
   );
@@ -4116,7 +4127,7 @@ test("T12 usage and budgetRules fail closed on plaintext project text", async ()
   await assertSucceeds(
     setDoc(doc(db, "users/usage-owner/usage/sealed"), {
       id: "sealed",
-      sealedProjectName: sealedText(),
+      sealedProjectName: sealedTextAt("usage-owner", "usage", "sealed", "sealedProjectName"),
       projectKeyHash: "e".repeat(64),
       totalCostUSD: 1.5,
     })
@@ -4125,7 +4136,7 @@ test("T12 usage and budgetRules fail closed on plaintext project text", async ()
   await assertFails(
     setDoc(doc(db, "users/usage-owner/usage/both"), {
       id: "both",
-      sealedProjectName: sealedText(),
+      sealedProjectName: sealedTextAt("usage-owner", "usage", "both", "sealedProjectName"),
       projectName: "BurnBar",
     })
   );
@@ -4153,8 +4164,8 @@ test("T12 usage and budgetRules fail closed on plaintext project text", async ()
   await assertSucceeds(
     setDoc(doc(db, "users/usage-owner/budgetRules/sealed"), {
       id: "sealed",
-      sealedProjectName: sealedText(),
-      sealedLabel: sealedText(),
+      sealedProjectName: sealedTextAt("usage-owner", "budgetRules", "sealed", "sealedProjectName"),
+      sealedLabel: sealedTextAt("usage-owner", "budgetRules", "sealed", "sealedLabel"),
       projectKeyHash: "f".repeat(64),
       limitUSD: 100,
     })
@@ -4182,14 +4193,14 @@ test("T12 usage and budgetRules fail closed on plaintext project text", async ()
   await assertFails(
     setDoc(doc(db, "users/usage-owner/budgetRules/leak-name"), {
       id: "leak-name",
-      sealedProjectName: sealedText(),
+      sealedProjectName: sealedTextAt("usage-owner", "budgetRules", "leak-name", "sealedProjectName"),
       projectName: "BurnBar",
     })
   );
   await assertFails(
     setDoc(doc(db, "users/usage-owner/budgetRules/leak-label"), {
       id: "leak-label",
-      sealedLabel: sealedText(),
+      sealedLabel: sealedTextAt("usage-owner", "budgetRules", "leak-label", "sealedLabel"),
       label: "Monthly cap",
     })
   );
@@ -4242,37 +4253,37 @@ test("T13 cli_sessions snapshots require sealed action/files/path and reject pla
   await assertSucceeds(
     setDoc(doc(db, snapshotPath), {
       ...base,
-      sealedActionLabel: sealedText(),
-      sealedTouchedFiles: sealedText(),
-      sealedMacSnapshotPath: sealedText(),
+      sealedActionLabel: sealedTextAt(ownerUid, "snapshots", "snap-1", "sealedActionLabel"),
+      sealedTouchedFiles: sealedTextAt(ownerUid, "snapshots", "snap-1", "sealedTouchedFiles"),
+      sealedMacSnapshotPath: sealedTextAt(ownerUid, "snapshots", "snap-1", "sealedMacSnapshotPath"),
     })
   );
   // Required action label cannot be omitted on a new snapshot.
   await assertFails(
     setDoc(doc(db, snapshotPath), {
       ...base,
-      sealedTouchedFiles: sealedText(),
+      sealedTouchedFiles: sealedTextAt(ownerUid, "snapshots", "snap-1", "sealedTouchedFiles"),
     })
   );
   // Plaintext action label / touched files / mac path are rejected by hasOnly.
   await assertFails(
     setDoc(doc(db, snapshotPath), {
       ...base,
-      sealedActionLabel: sealedText(),
+      sealedActionLabel: sealedTextAt(ownerUid, "snapshots", "snap-1", "sealedActionLabel"),
       actionLabel: "Edit src/foo.swift",
     })
   );
   await assertFails(
     setDoc(doc(db, snapshotPath), {
       ...base,
-      sealedTouchedFiles: sealedText(),
+      sealedTouchedFiles: sealedTextAt(ownerUid, "snapshots", "snap-1", "sealedTouchedFiles"),
       touchedFiles: ["/Users/me/file.swift"],
     })
   );
   await assertFails(
     setDoc(doc(db, snapshotPath), {
       ...base,
-      sealedMacSnapshotPath: sealedText(),
+      sealedMacSnapshotPath: sealedTextAt(ownerUid, "snapshots", "snap-1", "sealedMacSnapshotPath"),
       macSnapshotPath: "/Users/me/.snapshots/x",
     })
   );
@@ -4385,6 +4396,8 @@ test("T15 rollback_requests require sealed scope/error and reject plaintext", as
   const ownerUid = "rr-owner";
   const db = authedDb(ownerUid);
 
+  const rrSealed = (docId, field) => sealedTextAt(ownerUid, "rollback_requests", docId, field);
+
   // Legacy plaintext-only request is no longer accepted for new client writes.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/legacy`), {
@@ -4399,8 +4412,8 @@ test("T15 rollback_requests require sealed scope/error and reject plaintext", as
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/sealed`), {
       id: "sealed",
       sessionID: "sess-1",
-      sealedScope: sealedText(),
-      sealedErrorMessage: sealedText(),
+      sealedScope: rrSealed("sealed", "sealedScope"),
+      sealedErrorMessage: rrSealed("sealed", "sealedErrorMessage"),
       status: "failed",
     })
   );
@@ -4409,7 +4422,7 @@ test("T15 rollback_requests require sealed scope/error and reject plaintext", as
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/leak-scope`), {
       id: "leak-scope",
       sessionID: "sess-1",
-      sealedScope: sealedText(),
+      sealedScope: rrSealed("leak-scope", "sealedScope"),
       scopeJSON: '{"kind":"fullSession"}',
       status: "pending",
     })
@@ -4419,8 +4432,8 @@ test("T15 rollback_requests require sealed scope/error and reject plaintext", as
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/leak-error`), {
       id: "leak-error",
       sessionID: "sess-1",
-      sealedScope: sealedText(),
-      sealedErrorMessage: sealedText(),
+      sealedScope: rrSealed("leak-error", "sealedScope"),
+      sealedErrorMessage: rrSealed("leak-error", "sealedErrorMessage"),
       errorMessage: "boom",
       status: "failed",
     })
@@ -4433,7 +4446,7 @@ test("T15 rollback_requests require sealed scope/error and reject plaintext", as
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/active`), {
       id: "active",
       sessionID: "sess-1",
-      sealedScope: sealedText(),
+      sealedScope: rrSealed("active", "sealedScope"),
       status: "in_flight",
     })
   );
@@ -4441,7 +4454,7 @@ test("T15 rollback_requests require sealed scope/error and reject plaintext", as
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/cancelled`), {
       id: "cancelled",
       sessionID: "sess-1",
-      sealedScope: sealedText(),
+      sealedScope: rrSealed("cancelled", "sealedScope"),
       status: "cancelled",
     })
   );
@@ -4451,7 +4464,7 @@ test("T15 rollback_requests require sealed scope/error and reject plaintext", as
     setDoc(doc(db, `users/${ownerUid}/rollback_requests/legacy-status`), {
       id: "legacy-status",
       sessionID: "sess-1",
-      sealedScope: sealedText(),
+      sealedScope: rrSealed("legacy-status", "sealedScope"),
       status: "inFlight",
     })
   );
@@ -4464,6 +4477,8 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
   const ownerUid = "ai-owner";
   const db = authedDb(ownerUid);
 
+  const aiSealed = (docId, field) => sealedTextAt(ownerUid, "agent_identities", docId, field);
+
   // Sealed identity (no plaintext free-text) accepted.
   await assertSucceeds(
     setDoc(doc(db, `users/${ownerUid}/agent_identities/x`), {
@@ -4473,9 +4488,9 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
       paletteHex: "#112233",
       tier: "service",
       availability: "online",
-      sealedDisplayName: sealedText(),
-      sealedTagline: sealedText(),
-      sealedPersonas: sealedText(),
+      sealedDisplayName: aiSealed("x", "sealedDisplayName"),
+      sealedTagline: aiSealed("x", "sealedTagline"),
+      sealedPersonas: aiSealed("x", "sealedPersonas"),
     })
   );
   // Plaintext displayName / tagline / personas are rejected outright.
@@ -4483,7 +4498,7 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
     setDoc(doc(db, `users/${ownerUid}/agent_identities/leak-name`), {
       id: "leak-name",
       runtimeID: "claude",
-      sealedDisplayName: sealedText(),
+      sealedDisplayName: aiSealed("leak-name", "sealedDisplayName"),
       displayName: "My Claude",
     })
   );
@@ -4491,7 +4506,7 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
     setDoc(doc(db, `users/${ownerUid}/agent_identities/leak-tagline`), {
       id: "leak-tagline",
       runtimeID: "claude",
-      sealedTagline: sealedText(),
+      sealedTagline: aiSealed("leak-tagline", "sealedTagline"),
       tagline: "Reads private repos",
     })
   );
@@ -4499,7 +4514,7 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
     setDoc(doc(db, `users/${ownerUid}/agent_identities/leak-personas`), {
       id: "leak-personas",
       runtimeID: "claude",
-      sealedPersonas: sealedText(),
+      sealedPersonas: aiSealed("leak-personas", "sealedPersonas"),
       personas: [{ id: "p1", name: "Default" }],
     })
   );
@@ -4508,7 +4523,7 @@ test("T16 agent_identities hasOnly rejects arbitrary key and plaintext, accepts 
     setDoc(doc(db, `users/${ownerUid}/agent_identities/smuggle`), {
       id: "smuggle",
       runtimeID: "claude",
-      sealedDisplayName: sealedText(),
+      sealedDisplayName: aiSealed("smuggle", "sealedDisplayName"),
       notes: "hi",
     })
   );
@@ -4529,13 +4544,15 @@ test("T17 subscription_topics require sealed graph/display text and reject plain
   const ownerUid = "st-owner";
   const db = authedDb(ownerUid);
 
+  const stSealed = (docId, field) => sealedTextAt(ownerUid, "subscription_topics", docId, field);
+
   // Sealed-only topic accepted.
   await assertSucceeds(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/sealed`), {
-      sealedAgentURI: sealedText(),
-      sealedTopicID: sealedText(),
-      sealedDisplayName: sealedText(),
-      sealedDescription: sealedText(),
+      sealedAgentURI: stSealed("sealed", "sealedAgentURI"),
+      sealedTopicID: stSealed("sealed", "sealedTopicID"),
+      sealedDisplayName: stSealed("sealed", "sealedDisplayName"),
+      sealedDescription: stSealed("sealed", "sealedDescription"),
       cadence: "daily",
     })
   );
@@ -4560,20 +4577,20 @@ test("T17 subscription_topics require sealed graph/display text and reject plain
   // A topic carrying BOTH sealed + plaintext displayName is denied.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-name`), {
-      sealedAgentURI: sealedText(),
-      sealedTopicID: sealedText(),
-      sealedDisplayName: sealedText(),
-      sealedDescription: sealedText(),
+      sealedAgentURI: stSealed("leak-name", "sealedAgentURI"),
+      sealedTopicID: stSealed("leak-name", "sealedTopicID"),
+      sealedDisplayName: stSealed("leak-name", "sealedDisplayName"),
+      sealedDescription: stSealed("leak-name", "sealedDescription"),
       displayName: "Research Scout updates",
     })
   );
   // A topic carrying BOTH sealed + plaintext description is denied.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-desc`), {
-      sealedAgentURI: sealedText(),
-      sealedTopicID: sealedText(),
-      sealedDisplayName: sealedText(),
-      sealedDescription: sealedText(),
+      sealedAgentURI: stSealed("leak-desc", "sealedAgentURI"),
+      sealedTopicID: stSealed("leak-desc", "sealedTopicID"),
+      sealedDisplayName: stSealed("leak-desc", "sealedDisplayName"),
+      sealedDescription: stSealed("leak-desc", "sealedDescription"),
       description: "Daily research digest.",
     })
   );
@@ -4581,28 +4598,28 @@ test("T17 subscription_topics require sealed graph/display text and reject plain
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-agent`), {
       agentURI: "agent://burnbar/research-scout",
-      sealedAgentURI: sealedText(),
-      sealedTopicID: sealedText(),
-      sealedDisplayName: sealedText(),
-      sealedDescription: sealedText(),
+      sealedAgentURI: stSealed("leak-agent", "sealedAgentURI"),
+      sealedTopicID: stSealed("leak-agent", "sealedTopicID"),
+      sealedDisplayName: stSealed("leak-agent", "sealedDisplayName"),
+      sealedDescription: stSealed("leak-agent", "sealedDescription"),
     })
   );
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/leak-topic`), {
       topicID: "agent-updates",
-      sealedAgentURI: sealedText(),
-      sealedTopicID: sealedText(),
-      sealedDisplayName: sealedText(),
-      sealedDescription: sealedText(),
+      sealedAgentURI: stSealed("leak-topic", "sealedAgentURI"),
+      sealedTopicID: stSealed("leak-topic", "sealedTopicID"),
+      sealedDisplayName: stSealed("leak-topic", "sealedDisplayName"),
+      sealedDescription: stSealed("leak-topic", "sealedDescription"),
     })
   );
   // An arbitrary unlisted key is rejected by hasOnly.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/subscription_topics/smuggle`), {
-      sealedAgentURI: sealedText(),
-      sealedTopicID: sealedText(),
-      sealedDisplayName: sealedText(),
-      sealedDescription: sealedText(),
+      sealedAgentURI: stSealed("smuggle", "sealedAgentURI"),
+      sealedTopicID: stSealed("smuggle", "sealedTopicID"),
+      sealedDisplayName: stSealed("smuggle", "sealedDisplayName"),
+      sealedDescription: stSealed("smuggle", "sealedDescription"),
       foo: "bar",
     })
   );
@@ -4628,7 +4645,7 @@ test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity +
     repoId,
     repoMatchToken: "a".repeat(64),
     sourceManifestId: "b".repeat(64),
-    sealedRepoFullName: sealedText(),
+    sealedRepoFullName: sealedTextAt(ownerUid, "knowledge_repos", repoId, "sealedRepoFullName"),
     installId: "inst-123",
     connectedAt: serverTimestamp(),
     schemaVersion: 1,

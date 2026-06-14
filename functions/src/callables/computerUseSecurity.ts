@@ -34,6 +34,18 @@ const PHONE_CONTROL_ESCROW_PLATFORMS = new Set(["iOS", "iPadOS", "Android"]);
 const LOCAL_AUTH_PROOF_FRESHNESS_SECONDS = 5 * 60;
 const LOCAL_AUTH_PROOF_CLOCK_SKEW_SECONDS = 30;
 
+function normalizedControllerDeviceAllowlist(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const ids: string[] = [];
+  for (const value of raw) {
+    if (typeof value !== "string") continue;
+    const id = value.trim();
+    if (!id || id.length > 160 || ids.includes(id)) continue;
+    ids.push(id);
+  }
+  return ids;
+}
+
 type AgentGrantLocalAuthProof = {
   proofId: string;
   deviceId: string;
@@ -1578,6 +1590,17 @@ export const revokeEscrowDeviceTrust = onCall(
       const revokedControllerPeerNodeIds: string[] = [];
       const pairings = await db.collection(`users/${uid}/iroh_pairing`).get();
       for (const pairing of pairings.docs) {
+        const allowlist = normalizedControllerDeviceAllowlist(pairing.get("authorizedControllerDeviceIds"));
+        if (allowlist.includes(deviceId)) {
+          batch.set(
+            pairing.ref,
+            {
+              authorizedControllerDeviceIds: allowlist.filter((controllerDeviceId) => controllerDeviceId !== deviceId),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
         const controllers = await pairing.ref.collection("controllers").where("deviceId", "==", deviceId).get();
         for (const controller of controllers.docs) {
           batch.delete(controller.ref);
@@ -1759,6 +1782,7 @@ export const publishIrohPairingRecord = onCallProduction(
     await db.runTransaction(async (transaction) => {
       const existing = await transaction.get(ref);
       const createdAt = existing.exists && existing.get("createdAt") != null ? existing.get("createdAt") : FieldValue.serverTimestamp();
+      const existingControllerAllowlist = normalizedControllerDeviceAllowlist(existing.get("authorizedControllerDeviceIds"));
       const payload: Record<string, unknown> = {
         id: connectionId,
         nodeId,
@@ -1772,6 +1796,11 @@ export const publishIrohPairingRecord = onCallProduction(
         schemaVersion: 2,
       };
       if (relayURL) payload.relayURL = relayURL;
+      if (!existing.exists || existing.get("authorizedControllerDeviceIds") == null) {
+        payload.authorizedControllerDeviceIds = [];
+      } else {
+        payload.authorizedControllerDeviceIds = existingControllerAllowlist;
+      }
       transaction.set(
         ref,
         payload,
@@ -1851,28 +1880,48 @@ export const publishPhoneControlAuthority = onCallProduction(
     const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
     const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
 
-    const pairing = await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).get();
-    if (!pairing.exists) {
-      throw new HttpsError("failed-precondition", "Phone-control authority must reference an existing iroh pairing.");
-    }
+    const pairingRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
+    const controllerRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${peerNodeId}`);
+    await db.runTransaction(async (transaction) => {
+      const pairing = await transaction.get(pairingRef);
+      if (!pairing.exists) {
+        throw new HttpsError("failed-precondition", "Phone-control authority must reference an existing iroh pairing.");
+      }
+      const allowlist = normalizedControllerDeviceAllowlist(pairing.get("authorizedControllerDeviceIds"));
+      let nextAllowlist = allowlist;
+      if (allowlist.length === 0) {
+        nextAllowlist = [deviceId];
+      } else if (allowlist.length !== 1 || allowlist[0] !== deviceId) {
+        throw new HttpsError("permission-denied", "Phone-control authority is not authorized for this iroh pairing.");
+      }
 
-    await db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${peerNodeId}`).set(
-      {
-        id: peerNodeId,
-        connectionId,
-        peerNodeId,
-        deviceId,
-        publicKeyBase64,
-        // F2: persist the key custody class. Absent on legacy records ⇒ ed25519.
-        signingKeyKind: keyKind,
-        publishedAtMillis,
-        protocolVersion,
-        publishedByDeviceId: deviceId,
-        schemaVersion: keyKind === "se-p256" ? 3 : 2,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+      transaction.set(
+        pairingRef,
+        {
+          authorizedControllerDeviceIds: nextAllowlist,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      transaction.set(
+        controllerRef,
+        {
+          id: peerNodeId,
+          connectionId,
+          peerNodeId,
+          deviceId,
+          publicKeyBase64,
+          // F2: persist the key custody class. Absent on legacy records ⇒ ed25519.
+          signingKeyKind: keyKind,
+          publishedAtMillis,
+          protocolVersion,
+          publishedByDeviceId: deviceId,
+          schemaVersion: keyKind === "se-p256" ? 3 : 2,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
 
     logInfo({
       event: "callable_info",

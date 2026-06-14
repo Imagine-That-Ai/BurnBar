@@ -34,6 +34,7 @@ const EXPECTED_GUARDS: Array<{
   { exportedName: "updateProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_update" },
   { exportedName: "revokeRemoteMcpClient", file: "remoteMcp.ts", actionKind: "remote_mcp_grant_revoke" },
   { exportedName: "deleteHostedQuotaCredentials", file: "providerAccounts.ts", actionKind: "hosted_quota_credential_delete" },
+  { exportedName: "deleteProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_delete" },
   { exportedName: "completeHermesPairing", file: "hermes.ts", actionKind: "hermes_pairing_complete" },
   { exportedName: "completePiAgentPairing", file: "piAgent.ts", actionKind: "pi_agent_pairing_complete" },
 ];
@@ -52,4 +53,13 @@ describe("highRiskOwnerAction callable guards — source wiring", () => {
       expect(source).toContain(`"${guard.actionKind}"`);
     });
   }
+
+  it("providerAccounts.ts invokes enforceHighRiskOwnerAction at most once per actionKind", () => {
+    const source = readCallableSource("providerAccounts.ts");
+    const actionKinds = EXPECTED_GUARDS.filter((g) => g.file === "providerAccounts.ts").map((g) => g.actionKind);
+    for (const actionKind of actionKinds) {
+      const matches = source.match(new RegExp(`actionKind:\\s*"${actionKind}"`, "g"));
+      expect(matches?.length ?? 0, actionKind).toBe(1);
+    }
+  });
 });

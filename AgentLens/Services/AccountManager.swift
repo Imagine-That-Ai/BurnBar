@@ -549,8 +549,15 @@ final class AccountManager {
     }
 
     private func deleteCloudDataForCurrentUser() async throws {
-        let callable = Functions.functions(region: "us-central1").httpsCallable("deleteUserCloudData")
-        _ = try await callable.call([String: Any]())
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw AccountError.firebaseNotConfigured
+        }
+        _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "deleteUserCloudData",
+            deviceId: deviceId,
+            actionKind: "user_cloud_data_delete",
+            subjectId: uid
+        )
     }
 
     // MARK: - Sign Out

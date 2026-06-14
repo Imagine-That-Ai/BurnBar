@@ -141,9 +141,13 @@ public actor MediaFileTransferService {
         let inboxFile = inboxURL(for: manifest)
 
         do {
+            guard manifest.size >= 0 else {
+                throw IrohBlobBackendError.fetchFailed("attachment manifest size is negative")
+            }
             let stats = try await backend.fetchBlob(
                 ticketText: ticketText,
-                destination: inboxFile.path
+                destination: inboxFile.path,
+                expectedSizeBytes: UInt64(manifest.size)
             )
             return (inboxFile, stats)
         } catch let blobError as IrohBlobBackendError {

@@ -22,6 +22,13 @@ class ComputerUseSecurityCallableClientTest {
     }
 
     @Test
+    fun providerAccountSubjectId_matchesServerAccountIDForDefault() {
+        val client = ComputerUseSecurityCallableClient(mockk<FirebaseFunctions>(relaxed = true))
+        assertEquals("codex_default", client.providerAccountSubjectId("codex", null))
+        assertEquals("anthropic-work", client.providerAccountSubjectId("anthropic", "Work Account"))
+    }
+
+    @Test
     fun requireOk_rejectsMissingOkFlag() {
         val client = ComputerUseSecurityCallableClient(mockk<FirebaseFunctions>(relaxed = true))
         val method =

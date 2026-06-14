@@ -9,7 +9,6 @@ import { assertAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import {
-  VOIP_OUTBOUND_TTL_MS,
   buildFcmCallPayload,
   buildVoipApnsPayload,
   ephemeralCallCorrelationId,
@@ -67,12 +66,11 @@ export const triggerVoIPCall = onCall(
     // a stable identifier that links the device across sessions.
     const correlationId = ephemeralCallCorrelationId();
     const now = Timestamp.now();
-    // T-PRV-02: stamp a TTL so undelivered push documents self-expire from
-    // Firestore (matched by a ttl:true index on `expireAt`).
-    const expireAt = Timestamp.fromMillis(now.toMillis() + VOIP_OUTBOUND_TTL_MS);
+    // T-PRV-02 / F-RR09-001: stamp a TTL so undelivered push documents self-expire from
+    // Firestore (matched by a ttl:true index on `expireAt`). Use 7-day retention.
+    const queueTimestamps = pushQueueTimestamps(now.toMillis());
 
     const writes: Array<Promise<unknown>> = [];
-    const queueTimestamps = pushQueueTimestamps();
 
     if (fanOut.apnsToken) {
       writes.push(
@@ -80,8 +78,8 @@ export const triggerVoIPCall = onCall(
           uid: request.auth.uid,
           payload: buildVoipApnsPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
           voipDeviceToken: fanOut.apnsToken,
-          createdAt: now,
-          expireAt,
+          createdAt: queueTimestamps.createdAt,
+          expireAt: queueTimestamps.expireAt,
           status: "pending",
         }),
       );
@@ -94,8 +92,8 @@ export const triggerVoIPCall = onCall(
           payload: buildFcmCallPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
           fcmToken: fanOut.fcmToken,
           androidDeviceId: fanOut.androidDeviceId ?? null,
-          createdAt: now,
-          expireAt,
+          createdAt: queueTimestamps.createdAt,
+          expireAt: queueTimestamps.expireAt,
           status: "pending",
         }),
       );

@@ -1,6 +1,7 @@
 package com.openburnbar.data.firebase
 
 import com.google.firebase.functions.FirebaseFunctions
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.openburnbar.data.hermes.PiConnectionMode
 import com.openburnbar.data.hermes.PiConnectionStatus
 import kotlinx.coroutines.tasks.await
@@ -8,6 +9,8 @@ import kotlinx.coroutines.tasks.await
 internal class FunctionsPiAgentRepository(
     private val functions: FirebaseFunctions,
     private val callMap: suspend (String, Map<String, Any>) -> Map<String, Any>,
+    private val securityClient: ComputerUseSecurityCallableClient,
+    private val localDeviceId: () -> String,
 ) {
     suspend fun createPiAgentPairing(deviceId: String? = null, platform: String? = null, displayName: String? = null): Map<String, Any> {
         val payload = mutableMapOf<String, Any>()
@@ -58,7 +61,13 @@ internal class FunctionsPiAgentRepository(
         realtimeRelayURL?.takeIf { it.isNotBlank() }?.let { payload["realtimeRelayURL"] = it }
         realtimeRelayStatus?.takeIf { it.isNotBlank() }?.let { payload["realtimeRelayStatus"] = it }
         deviceId?.takeIf { it.isNotBlank() }?.let { payload["deviceId"] = it }
-        return callMap("completePiAgentPairing", payload)
+        return securityClient.callHighRiskOwnerAction(
+            callableName = "completePiAgentPairing",
+            deviceId = localDeviceId(),
+            actionKind = "pi_agent_pairing_complete",
+            subjectId = pairingId,
+            payload = payload,
+        ).asStringAnyMap() ?: emptyMap()
     }
 
     suspend fun listPiAgentConnections(includeRevoked: Boolean = false): List<Map<String, Any>> {

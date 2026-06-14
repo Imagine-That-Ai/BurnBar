@@ -39,6 +39,9 @@ const { appendAuditEventRequired } = vi.hoisted(() => ({
     throw new Error("audit append failed");
   }),
 }));
+vi.mock("../callables/highRiskOwnerAction.js", () => ({
+  enforceHighRiskOwnerAction: vi.fn(async () => undefined),
+}));
 vi.mock("../callables/auditLog.js", () => ({
   appendAuditEventRequired,
   appendAuditEvent: vi.fn(async () => undefined),

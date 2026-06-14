@@ -27,6 +27,14 @@ public protocol IrohBlobBackend: AnyObject, Sendable {
     /// `destination`. Resume across reconnects is handled internally.
     func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats
 
+    /// Dial the ticket's source node, download the blob, and fail closed when
+    /// the received bytes exceed the manifest-advertised size.
+    func fetchBlob(
+        ticketText: String,
+        destination: String,
+        expectedSizeBytes: UInt64
+    ) async throws -> BlobTransferStats
+
     /// Returns the cached identity. Throws if `bootstrap` has not been
     /// called.
     func identity() async throws -> IrohEndpointIdentity
@@ -67,4 +75,50 @@ public enum IrohBlobBackendError: Error, Equatable, Sendable {
     case fetchFailed(String)
     case storeUnavailable(String)
     case runtimeFailed(String)
+}
+
+public enum IrohBlobTransferLimits {
+    public static let maxExpectedFetchBytes: UInt64 = 512 * 1024 * 1024
+}
+
+public extension IrohBlobBackend {
+    func fetchBlob(
+        ticketText: String,
+        destination: String,
+        expectedSizeBytes: UInt64
+    ) async throws -> BlobTransferStats {
+        try IrohBlobTransferLimits.validateExpectedFetchSize(expectedSizeBytes)
+
+        let stats = try await fetchBlob(ticketText: ticketText, destination: destination)
+        let actualBytes = max(stats.bytesTotal, Self.fileSize(atPath: destination))
+        guard actualBytes <= expectedSizeBytes else {
+            try? FileManager.default.removeItem(atPath: destination)
+            throw IrohBlobBackendError.fetchFailed(
+                "blob exceeded expected size: \(actualBytes) bytes > \(expectedSizeBytes) bytes"
+            )
+        }
+        return stats
+    }
+}
+
+public extension IrohBlobTransferLimits {
+    static func validateExpectedFetchSize(_ expectedSizeBytes: UInt64) throws {
+        guard expectedSizeBytes <= maxExpectedFetchBytes else {
+            throw IrohBlobBackendError.fetchFailed(
+                "expected blob size \(expectedSizeBytes) bytes exceeds maximum \(maxExpectedFetchBytes) bytes"
+            )
+        }
+    }
+}
+
+private extension IrohBlobBackend {
+    static func fileSize(atPath path: String) -> UInt64 {
+        guard
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+            let size = attributes[.size] as? NSNumber
+        else {
+            return 0
+        }
+        return size.uint64Value
+    }
 }

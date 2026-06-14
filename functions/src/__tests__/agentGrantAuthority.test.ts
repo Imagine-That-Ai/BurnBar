@@ -78,7 +78,7 @@ describe("agent grant authority validation", () => {
   it("rejects queued high-risk grants so only live Mac approval can unlock them", () => {
     expect(queuedAgentGrantDeliveryRequiresMacApproval(["workspace_read"], "manual", "queued")).toBe(false);
     expect(queuedAgentGrantDeliveryRequiresMacApproval(["workspace_read"], "manual", "live_then_queued")).toBe(false);
-    expect(queuedAgentGrantDeliveryRequiresMacApproval(["shell"], "manual", "live")).toBe(false);
+    expect(queuedAgentGrantDeliveryRequiresMacApproval(["shell"], "manual", "live")).toBe(true);
     expect(queuedAgentGrantDeliveryRequiresMacApproval(["shell"], "manual", "queued")).toBe(true);
     expect(queuedAgentGrantDeliveryRequiresMacApproval(["shell"], "manual", "live_then_queued")).toBe(true);
     expect(queuedAgentGrantDeliveryRequiresMacApproval(["workspace_read"], "trusted", "queued")).toBe(true);

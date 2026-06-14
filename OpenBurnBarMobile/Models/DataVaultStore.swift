@@ -177,7 +177,14 @@ final class FunctionsDataVaultService: DataVaultServicing {
     }
 
     func revokeAllAccess(scope: String) async throws -> RevokeAllResult {
-        let result = try await functions.httpsCallable("revokeAllAccess").call(["scope": scope])
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "revokeAllAccess",
+            deviceId: deviceId,
+            actionKind: "revoke_all_access",
+            subjectId: scope,
+            payload: ["scope": scope]
+        )
         guard let dict = result.data as? [String: Any],
               let revoked = dict["revoked"] else { throw DataVaultError.malformedResponse }
         return try Self.decode(RevokeAllResult.self, from: revoked)

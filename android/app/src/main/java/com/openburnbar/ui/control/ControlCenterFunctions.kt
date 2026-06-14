@@ -3,6 +3,8 @@ package com.openburnbar.ui.control
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -20,7 +22,9 @@ import kotlinx.coroutines.tasks.await
  */
 internal class ControlCenterFunctions(
     private val functions: FirebaseFunctions = Firebase.functions,
+    private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(functions),
 ) {
+    private fun localDeviceId(): String = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
     // ── Usage snapshot (already implemented server-side: dataDomainUsage.ts) ──
     suspend fun getDataDomainUsage(): Map<String, Any> = callMap("getDataDomainUsage", emptyMap())
 
@@ -28,7 +32,13 @@ internal class ControlCenterFunctions(
     suspend fun exportUserData(domains: List<String>? = null): Map<String, Any> {
         val payload = mutableMapOf<String, Any>()
         if (!domains.isNullOrEmpty()) payload["domains"] = domains
-        return callMap("exportUserData", payload)
+        return securityClient.callHighRiskOwnerAction(
+            callableName = "exportUserData",
+            deviceId = localDeviceId(),
+            actionKind = "data_export",
+            subjectId = "all",
+            payload = payload,
+        ).asStringAnyMap() ?: emptyMap()
     }
 
     // ── Scoped per-domain delete ──
@@ -43,7 +53,14 @@ internal class ControlCenterFunctions(
     suspend fun listRecovery(): Map<String, Any> = callMap("listRecovery", emptyMap())
 
     // ── Panic — revoke everything ──
-    suspend fun revokeAllAccess(scope: String): Map<String, Any> = callMap("revokeAllAccess", mapOf("scope" to scope))
+    suspend fun revokeAllAccess(scope: String): Map<String, Any> =
+        securityClient.callHighRiskOwnerAction(
+            callableName = "revokeAllAccess",
+            deviceId = localDeviceId(),
+            actionKind = "revoke_all_access",
+            subjectId = scope,
+            payload = mapOf("scope" to scope),
+        ).asStringAnyMap() ?: emptyMap()
 
     // ── Tamper-evident audit log ──
     suspend fun getAuditLog(cursor: String? = null, limit: Int? = null): Map<String, Any> {
