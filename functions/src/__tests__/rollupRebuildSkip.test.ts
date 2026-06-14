@@ -140,8 +140,9 @@ class FakeFirestore {
 
   asFirestore(): Firestore {
     // `refreshUserRollups` takes the nominal admin `Firestore` class, which a
-    // structural in-memory fake can never satisfy; widen through `unknown`.
-    return this as unknown as Firestore;
+    // structural in-memory fake can never satisfy.
+    // @ts-expect-error reason: in-memory fake is structurally sufficient for rollup tests
+    return this;
   }
 }
 

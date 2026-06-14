@@ -162,10 +162,11 @@ export const revokeAllAccess = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking access.");
     enforceAuthAndAppCheck(request, uid);
 
-    const scope = (boundedTrimmedString(request.data?.scope, "scope", 16, false) ?? "sync") as PanicScope;
-    if (scope !== "sync" && scope !== "all") {
+    const scopeRaw = boundedTrimmedString(request.data?.scope, "scope", 16, false) ?? "sync";
+    if (scopeRaw !== "sync" && scopeRaw !== "all") {
       throw new HttpsError("invalid-argument", "scope must be sync or all.");
     }
+    const scope: PanicScope = scopeRaw;
 
     // Each surface is best-effort + independent: a failure on one must not block
     // the others (this is a panic button — revoke as much as possible). But a

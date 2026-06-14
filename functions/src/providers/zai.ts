@@ -160,33 +160,6 @@ async function tryEachHost(path: string, token: string): Promise<ZaiFetchResult>
   );
 }
 
-export interface ZaiBalancePayload {
-  balance?: number;
-  total?: number;
-  used?: number;
-  currency?: string;
-  data?: { balance?: number; total?: number; used?: number; currency?: string };
-}
-
-interface ZaiQuotaRow {
-  window?: string;
-  windowName?: string;
-  limit?: number;
-  used?: number;
-  remaining?: number;
-}
-
-export interface ZaiMonitorQuotaPayload {
-  data?: {
-    /** Coding Plan keys return an array of windowed quotas. */
-    quotaList?: ZaiQuotaRow[];
-    [k: string]: unknown;
-  };
-  /** Some deployments hoist `quotaList` to the top level. */
-  quotaList?: ZaiQuotaRow[];
-  [k: string]: unknown;
-}
-
 export const zaiAdapter: ProviderAdapter = {
   provider: PROVIDER,
 

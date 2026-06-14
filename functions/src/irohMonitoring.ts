@@ -20,7 +20,7 @@ const IROH_ROLLUP_COLLECTION = "ops/iroh_transport_daily_rollups/days";
 type IrohAuditEventType = IrohTransportAuditEventDoc["eventType"];
 type IrohTransport = NonNullable<IrohTransportAuditEventDoc["transport"]>;
 
-export interface IrohAuditRollupInput {
+interface IrohAuditRollupInput {
   uid: string;
   connectionId: string;
   eventType: IrohAuditEventType;
@@ -192,7 +192,7 @@ function eventFromSnapshot(doc: QueryDocumentSnapshot): IrohAuditRollupInput | n
   };
 }
 
-export async function buildAndPersistIrohDailyRollup(
+async function buildAndPersistIrohDailyRollup(
   db: Firestore,
   day: Date = previousUtcDay(new Date()),
   generatedAt: Date = new Date(),

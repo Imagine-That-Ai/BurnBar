@@ -17,6 +17,12 @@ baseline_key="$2"
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 baseline_file="$repo_root/budgets/knip-baseline.json"
 
+# functions script harnesses import compiled `lib/*.js`; knip must see those
+# edges on CI checkouts (no warm lib/). Build first so ratchet matches local dev.
+if [[ "$package_dir" == "functions" && -f "$repo_root/functions/package.json" ]]; then
+  npm run build --prefix "$repo_root/functions" >/dev/null
+fi
+
 output="$(cd "$repo_root/$package_dir" && npx knip --reporter compact 2>&1 || true)"
 printf '%s\n' "$output"
 

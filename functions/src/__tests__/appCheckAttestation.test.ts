@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import type { CallableRequest } from "firebase-functions/v2/https";
 
 // In-memory Firestore double shared by the hoisted `db` mock and the
 // `firebase-admin/firestore` Timestamp mock. Keyed by full doc path, holding the
@@ -83,20 +84,29 @@ import {
 // plus a fresh, matching bound claim. The auth assertions are mocked to no-ops;
 // the attestation check inside the module under test is real, so the claim must
 // be valid for the staged-rollout branches to be exercised.
-const fakeRequest = {
-  app: { appId: "1:123:ios:abc" },
-  auth: {
-    uid: "userA",
-    token: {
-      [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: "1:123:ios:abc", boundAtMillis: Date.now() },
+function fakeRequest(): CallableRequest {
+  const request = {
+    app: { appId: "1:123:ios:abc" },
+    auth: {
+      uid: "userA",
+      token: {
+        [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: "1:123:ios:abc", boundAtMillis: Date.now() },
+      },
     },
-  },
-} as never;
+    data: {},
+    rawRequest: { headers: {} },
+    acceptsStreaming: false,
+  };
+  // @ts-expect-error reason: partial CallableRequest stub for attestation tests
+  return request;
+}
 
 describe("appCheckAttestation", () => {
   it("reads app id from callable App Check metadata", () => {
-    expect(readAppIdFromCallableRequest({ app: { appId: "1:123:ios:abc" } } as never)).toBe("1:123:ios:abc");
-    expect(readAppIdFromCallableRequest({} as never)).toBeUndefined();
+    // @ts-expect-error reason: partial CallableRequest stub
+    expect(readAppIdFromCallableRequest({ app: { appId: "1:123:ios:abc" } })).toBe("1:123:ios:abc");
+    // @ts-expect-error reason: partial CallableRequest stub
+    expect(readAppIdFromCallableRequest({})).toBeUndefined();
   });
 
   it("reads and validates attestation claims from auth tokens", () => {
@@ -108,7 +118,7 @@ describe("appCheckAttestation", () => {
       },
     });
     expect(claim?.appId).toBe("1:123:ios:abc");
-    expect(isAppCheckAttestationClaimFresh(claim!)).toBe(true);
+    expect(claim && isAppCheckAttestationClaimFresh(claim)).toBe(true);
     expect(
       isAppCheckAttestationClaimFresh({
         v: 1,
@@ -171,7 +181,7 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     store.clear();
     configMock.enforceAppCheck = true;
     configMock.requireHighRiskNonce = false;
-    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).resolves.toEqual({
+    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest(), "userA", undefined)).resolves.toEqual({
       nonceConsumed: false,
     });
   });
@@ -181,7 +191,7 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     configMock.enforceAppCheck = false;
     configMock.requireHighRiskNonce = false;
     try {
-      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).resolves.toEqual({
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest(), "userA", undefined)).resolves.toEqual({
         nonceConsumed: false,
       });
     } finally {
@@ -194,7 +204,7 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     configMock.enforceAppCheck = true;
     configMock.requireHighRiskNonce = true;
     try {
-      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).rejects.toThrow(
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest(), "userA", undefined)).rejects.toThrow(
         /issueHighRiskActionNonce/,
       );
     } finally {
@@ -206,7 +216,7 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     store.clear();
     configMock.enforceAppCheck = true;
     configMock.requireHighRiskNonce = false;
-    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", "x".repeat(64))).rejects.toThrow(
+    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest(), "userA", "x".repeat(64))).rejects.toThrow(
       /expired or was already used/,
     );
   });
@@ -217,11 +227,11 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     configMock.requireHighRiskNonce = true;
     try {
       const { nonce } = await issueHighRiskNonceForUid("userA", Date.now());
-      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce)).resolves.toEqual({
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest(), "userA", nonce)).resolves.toEqual({
         nonceConsumed: true,
       });
       // Replay of the same nonce now fails (single-use).
-      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce)).rejects.toThrow(
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest(), "userA", nonce)).rejects.toThrow(
         /expired or was already used/,
       );
     } finally {

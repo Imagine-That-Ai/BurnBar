@@ -61,12 +61,12 @@ const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
 const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
 const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
 
-export interface AppStoreEntitlementTarget {
+interface AppStoreEntitlementTarget {
   sourceEntitlementID: string;
   mirrorEntitlementID: string;
 }
 
-export interface ReconcileInput {
+interface ReconcileInput {
   /** The signed transaction JWS the caller provided. Required. */
   signedTransactionJWS: string;
   /** Optional renewal info JWS, when present (e.g. from S2S notifications). */
@@ -88,7 +88,7 @@ export interface ReconcileInput {
   productID?: string;
 }
 
-export interface ReconcileResult {
+interface ReconcileResult {
   uid: string;
   entitlement: HostedQuotaEntitlementDoc;
   /** True iff the doc was actually rewritten (vs. monotonicity skip). */
@@ -100,7 +100,7 @@ export interface ReconcileResult {
  * the reconciler resolves the real `AppleJWSVerifier` + ASC client via
  * `getAppleJWSVerifier(cfg)` / `fetchLiveSubscriptionStatus(cfg, …)`.
  */
-export interface ReconcileOverrides {
+interface ReconcileOverrides {
   verifier?: AppleJWSVerifier;
   fetchLive?: typeof fetchLiveSubscriptionStatus;
 }
@@ -333,6 +333,7 @@ export async function beginBinding(
   const doc: EntitlementBindingDoc = {
     id: token,
     uid,
+    appAccountToken: token,
     productID,
     createdAt: new Date().toISOString(),
     clientPlatform,

@@ -38,15 +38,15 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
-import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
+import { isRecord, isTimestampWithToDate, recordOrUndefined } from "../guards.js";
 import { isGatewaySignalEnvelope, sanitizeSignalEnvelopeForExport } from "../signalEnvelopeExport.js";
 import { nowISO, requireBoundedStringArray, sha256Hex } from "./shared.js";
 import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-export type EncryptionTier = "server_readable" | "zero_access" | "end_to_end";
+type EncryptionTier = "server_readable" | "zero_access" | "end_to_end";
 
-export interface DomainPaths {
+interface DomainPaths {
   encryptionTier: EncryptionTier;
   /** Top-level Firestore collection names under users/{uid}/ for this domain. */
   firestoreCollections: string[];
@@ -325,8 +325,8 @@ function storagePathEmbedsBodyHash(value: unknown): boolean {
 
 /** A sealed envelope is opaque regardless of its key name, so it is detected structurally. */
 export function isSealedEnvelope(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const v = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const v = value;
   return (
     isCloudVaultTextEnvelope(v) ||
     isCloudVaultBlobEnvelope(v) ||
@@ -377,12 +377,7 @@ function isExportablePrimitive(value: unknown): boolean {
   if (value === null) return true;
   const t = typeof value;
   if (t === "number" || t === "boolean") return true;
-  if (
-    value &&
-    t === "object" &&
-    "toDate" in (value as object) &&
-    typeof (value as { toDate: unknown }).toDate === "function"
-  ) {
+  if (isTimestampWithToDate(value)) {
     return true;
   }
   return false;
@@ -561,22 +556,17 @@ function sanitizeAllowedObject(
 }
 
 function serializeValue(value: unknown): unknown {
-  if (
-    value &&
-    typeof value === "object" &&
-    "toDate" in value &&
-    typeof (value as { toDate: unknown }).toDate === "function"
-  ) {
+  if (isTimestampWithToDate(value)) {
     try {
-      return (value as { toDate: () => Date }).toDate().toISOString();
+      return value.toDate().toISOString();
     } catch {
       return String(value);
     }
   }
   if (Array.isArray(value)) return value.map(serializeValue);
-  if (value && typeof value === "object") {
+  if (isRecord(value)) {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = serializeValue(v);
+    for (const [k, v] of Object.entries(value)) out[k] = serializeValue(v);
     return out;
   }
   return value;
@@ -642,17 +632,16 @@ export const exportUserData = onCall(
         collectInlineJson(uid, paths),
         collectSealedRefs(uid, paths, sealedBudget),
       ]);
-      domains.push(
-        stripUndefinedObject({
-          id,
-          encryptionTier: paths.encryptionTier,
-          inlineJson: Object.keys(inlineJson).length > 0 ? inlineJson : undefined,
-          // Honest disclosure of plaintext keys withheld by the seal-aware
-          // allowlist (end_to_end/zero_access only).
-          redactedFields: redactedFields.length > 0 ? redactedFields : undefined,
-          sealedRefs: sealedRefs.length > 0 ? sealedRefs : undefined,
-        }) as DomainExport,
-      );
+      const domainExport: DomainExport = {
+        id,
+        encryptionTier: paths.encryptionTier,
+        inlineJson: Object.keys(inlineJson).length > 0 ? inlineJson : undefined,
+        // Honest disclosure of plaintext keys withheld by the seal-aware
+        // allowlist (end_to_end/zero_access only).
+        redactedFields: redactedFields.length > 0 ? redactedFields : undefined,
+        sealedRefs: sealedRefs.length > 0 ? sealedRefs : undefined,
+      };
+      domains.push(domainExport);
     }
 
     // Fail-CLOSED: an export is an irreversible disclosure, so it must leave an

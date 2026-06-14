@@ -506,7 +506,7 @@ internal fun decodeIrohPairingPublicKey(data: Map<String, Any?>): ByteArray {
             else -> null
         }
     if (validationError != null) throw HermesRelayException(validationError)
-    return decoded!!
+    return requireNotNull(decoded)
 }
 
 private fun Map<String, Any?>.longValue(key: String): Long? = when (val value = this[key]) {

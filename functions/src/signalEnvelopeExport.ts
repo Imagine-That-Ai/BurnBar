@@ -5,11 +5,9 @@
  * strict shape and strip any nested plaintext-adjacent junk before data export.
  */
 
-import {
-  isCloudVaultSignalEnvelope,
-  isSignalEnvelope,
-  sanitizeSignalEnvelopeForExport as sanitizeSharedSignalEnvelopeForExport,
-} from "@openburnbar/signal-envelope-contracts";
+import * as signalEnvelopeContracts from "@openburnbar/signal-envelope-contracts";
+
+const { isCloudVaultSignalEnvelope, isSignalEnvelope } = signalEnvelopeContracts;
 
 /**
  * Recognize ANY strict Signal envelope (gateway transport OR CloudVault at-rest)
@@ -41,5 +39,5 @@ export function sanitizeSignalEnvelopeForExport(
   out: unknown;
   dropped: string[];
 } {
-  return sanitizeSharedSignalEnvelopeForExport(path, envelope);
+  return signalEnvelopeContracts.sanitizeSignalEnvelopeForExport(path, envelope);
 }

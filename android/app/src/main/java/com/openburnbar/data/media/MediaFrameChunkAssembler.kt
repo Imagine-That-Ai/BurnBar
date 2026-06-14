@@ -53,7 +53,8 @@ internal class MediaFrameChunkAssembler(
         if (assembly.chunks.any { it == null }) return null
         val output = ByteArrayOutputStream(assembly.totalBytes)
         for (part in assembly.chunks) {
-            output.write(part!!)
+            val chunk = part ?: return null
+            output.write(chunk)
         }
         val assembled = output.toByteArray()
         assemblies.remove(chunkId)

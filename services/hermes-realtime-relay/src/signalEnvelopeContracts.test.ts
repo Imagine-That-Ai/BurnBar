@@ -41,8 +41,11 @@ test("Hermes realtime relay shares the Signal transport envelope contract", () =
   assert.equal(isSignalEnvelope(envelope, "transport"), true);
   const { out, dropped } = sanitizeSignalEnvelopeForExport("signalEnvelope", envelope);
   assert.deepEqual(dropped, ["signalEnvelope.plaintext", "signalEnvelope.keyDeliveryDebug"]);
-  assert.equal((out as Record<string, unknown>).mode, "transport");
-  assert.equal((out as Record<string, unknown>).relayKeyVersion, SIGNAL_RELAY_KEY_VERSION);
+  const mode = out && typeof out === "object" ? Object.getOwnPropertyDescriptor(out, "mode")?.value : undefined;
+  const relayKeyVersion =
+    out && typeof out === "object" ? Object.getOwnPropertyDescriptor(out, "relayKeyVersion")?.value : undefined;
+  assert.equal(mode, "transport");
+  assert.equal(relayKeyVersion, SIGNAL_RELAY_KEY_VERSION);
 });
 
 test("Hermes realtime relay rejects malformed Signal transport downgrade shapes", () => {

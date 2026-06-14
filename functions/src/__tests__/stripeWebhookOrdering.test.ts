@@ -229,15 +229,18 @@ describe("Stripe checkout watermark stamping", () => {
       current_period_end: periodEndSeconds,
       items: { data: [] },
     }));
-    const stripe = { subscriptions: { retrieve } } as unknown as Stripe;
+    // @ts-expect-error reason: Stripe stub for checkout watermark test
+    const stripe: Stripe = { subscriptions: { retrieve } };
     const session = {
       id: "cs_test_1",
       metadata: { firebaseUID: UID },
       subscription: SUBSCRIPTION_ID,
       payment_status: "paid",
-    } as unknown as Stripe.Checkout.Session;
+    };
+    // @ts-expect-error reason: Stripe checkout session stub
+    const typedSession: Stripe.Checkout.Session = session;
 
-    await applyStripeCheckoutSession(stripe, session, {
+    await applyStripeCheckoutSession(stripe, typedSession, {
       eventID: "evt_checkout_1",
       eventCreatedMillis,
     });
@@ -266,7 +269,10 @@ describe("stripe_webhook_events ledger TTL", () => {
   const RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
   function fakeEvent(id: string, createdSeconds: number): Stripe.Event {
-    return { id, type: "customer.subscription.updated", created: createdSeconds } as unknown as Stripe.Event;
+    const event = { id, type: "customer.subscription.updated", created: createdSeconds };
+    // @ts-expect-error reason: Stripe event stub
+    const typed: Stripe.Event = event;
+    return typed;
   }
 
   function ledgerExpireAtMillis(eventID: string): number | undefined {

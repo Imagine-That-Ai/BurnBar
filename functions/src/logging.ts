@@ -56,7 +56,7 @@ function scrubString(value: string): string {
   return result;
 }
 
-export type LogFieldValue =
+type LogFieldValue =
   | string
   | number
   | boolean
@@ -98,7 +98,7 @@ function scrubFields(obj: { [key: string]: LogFieldValue }): { [key: string]: Lo
   return scrubbed;
 }
 
-export interface LogFields {
+interface LogFields {
   event: string;
   trace_id?: string;
   session_id?: string;
@@ -193,17 +193,6 @@ export async function withCallableLogging<T>(
     logCallableFailure(name, traceId, error, uid);
     throw error;
   }
-}
-
-/**
- * Wraps a callable handler with start/success/error structured logs.
- * Prefer migrating exports from raw `onCall` to `onCallWithLogging` for SLO probes.
- */
-export function onCallWithLogging<R>(
-  name: string,
-  handler: (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R>,
-): (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R> {
-  return async (request) => withCallableLogging(name, request, request.auth?.uid, async () => handler(request));
 }
 
 /**
