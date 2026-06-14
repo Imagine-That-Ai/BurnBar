@@ -1,0 +1,511 @@
+diff --git a/AgentLens/Services/ArtifactAuthoringService.swift b/AgentLens/Services/ArtifactAuthoringService.swift
+index f4907364e1..ddc398f203 100644
+--- a/AgentLens/Services/ArtifactAuthoringService.swift
++++ b/AgentLens/Services/ArtifactAuthoringService.swift
+@@ -128,7 +128,7 @@ final class ArtifactAuthoringService {
+     private let settingsProvider: any ArtifactDiscoverySettingsProviding
+     private let textGenerator: any ArtifactAuthoringTextGenerating
+     private let fileManager: FileManager
+-    private let nowProvider: () -> Date
++    private let nowProvider: @Sendable () -> Date
+ 
+     init(
+         dataStore: DataStore,
+@@ -136,7 +136,7 @@ final class ArtifactAuthoringService {
+         settingsProvider: any ArtifactDiscoverySettingsProviding,
+         textGenerator: any ArtifactAuthoringTextGenerating = CLIArtifactAuthoringTextGenerator(),
+         fileManager: FileManager = .default,
+-        nowProvider: @escaping () -> Date = Date.init
++        nowProvider: @escaping @Sendable () -> Date = Date.init
+     ) {
+         self.dataStore = dataStore
+         self.retrievalService = retrievalService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
+diff --git a/AgentLens/Services/ArtifactDiscoveryService.swift b/AgentLens/Services/ArtifactDiscoveryService.swift
+index b9e5fbeff7..8238598857 100644
+--- a/AgentLens/Services/ArtifactDiscoveryService.swift
++++ b/AgentLens/Services/ArtifactDiscoveryService.swift
+@@ -125,13 +125,13 @@ actor ArtifactDiscoveryService {
+     private let dataStoreActor: DataStoreActor
+     private let settingsProvider: any ArtifactDiscoverySettingsProviding
+     private let fileManager: FileManager
+-    private let nowProvider: () -> Date
++    private let nowProvider: @Sendable () -> Date
+ 
+     init(
+         dataStoreActor: DataStoreActor,
+         settingsProvider: any ArtifactDiscoverySettingsProviding,
+         fileManager: FileManager = .default,
+-        nowProvider: @escaping () -> Date = Date.init
++        nowProvider: @escaping @Sendable () -> Date = Date.init
+     ) {
+         self.dataStoreActor = dataStoreActor
+         self.settingsProvider = settingsProvider
+diff --git a/AgentLens/Services/Cast/CastDiscovery.swift b/AgentLens/Services/Cast/CastDiscovery.swift
+index 7e04316821..15bf4dabfb 100644
+--- a/AgentLens/Services/Cast/CastDiscovery.swift
++++ b/AgentLens/Services/Cast/CastDiscovery.swift
+@@ -308,7 +308,11 @@ private final class ContinuationResumeGate: Sendable {
+     }
+ }
+ 
+-private final class SendableNetServiceBox: Sendable {
++// AUDIT(@unchecked Sendable): ferries a non-Sendable Foundation `NetService` from
++// the NetServiceBrowser delegate callback to the @MainActor discovery; the box owns
++// the handle for a single hand-off and never shares it concurrently.
++// sendable-allowlist: foundation-sdk-shim
++private final class SendableNetServiceBox: @unchecked Sendable {
+     let service: NetService
+ 
+     init(_ service: NetService) {
+diff --git a/AgentLens/Services/Chat/MobileAssistantChatReader.swift b/AgentLens/Services/Chat/MobileAssistantChatReader.swift
+index f5aed1d097..f13cc5b946 100644
+--- a/AgentLens/Services/Chat/MobileAssistantChatReader.swift
++++ b/AgentLens/Services/Chat/MobileAssistantChatReader.swift
+@@ -157,9 +157,9 @@ final class MobileAssistantChatReader {
+ 
+ @MainActor
+ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource {
+-    private let firestoreProvider: () -> Firestore
++    private let firestoreProvider: @Sendable () -> Firestore
+ 
+-    init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
++    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
+         self.firestoreProvider = firestoreProvider
+     }
+ 
+diff --git a/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift b/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift
+index 843c2d60a0..a351229d25 100644
+--- a/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift
++++ b/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift
+@@ -2761,8 +2761,8 @@ final class AgentHarnessImportJobListener {
+     private let dataStore: DataStore
+     private let cloudSyncService: CloudSyncService?
+     private let deviceTrustChecker: CLIAgentMissionDeviceTrustChecking
+-    private let firestoreProvider: () -> Firestore
+-    private let parserFactory: (AgentProvider) -> (any LogParser)?
++    private let firestoreProvider: @Sendable () -> Firestore
++    private let parserFactory: @Sendable (AgentProvider) -> (any LogParser)?
+     private let logger = Logger(subsystem: "com.openburnbar.app", category: "AgentHarnessImportJobListener")
+ 
+     private var listener: ListenerRegistration?
+@@ -2776,8 +2776,8 @@ final class AgentHarnessImportJobListener {
+         dataStore: DataStore,
+         cloudSyncService: CloudSyncService?,
+         deviceTrustChecker: CLIAgentMissionDeviceTrustChecking = LiveCLIAgentMissionDeviceTrustChecker(),
+-        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
+-        parserFactory: @escaping (AgentProvider) -> (any LogParser)? = { ParserRegistry.defaultParsers()[$0] }
++        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
++        parserFactory: @escaping @Sendable (AgentProvider) -> (any LogParser)? = { ParserRegistry.defaultParsers()[$0] }
+     ) {
+         self.accountManager = accountManager
+         self.settingsManager = settingsManager
+diff --git a/AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift b/AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift
+index d1010e4de7..a051141ed0 100644
+--- a/AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift
++++ b/AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift
+@@ -35,14 +35,14 @@ final class CLIAgentSessionMirror: Sendable {
+     /// it to `false` in Settings → Privacy.
+     static let preferenceKey = "chat.cliAgentMirror.enabled"
+ 
+-    private let firestoreProvider: () -> Firestore
++    private let firestoreProvider: @Sendable () -> Firestore
+     private let accountManager: AccountManager
+     private let defaults: UserDefaults
+     private let logger: Logger
+ 
+     init(
+         accountManager: AccountManager,
+-        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
++        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+         defaults: UserDefaults = .standard,
+         logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.openburnbar.app", category: "CLIAgentSessionMirror")
+     ) {
+diff --git a/AgentLens/Services/CloudSync/CloudSyncCoordinator.swift b/AgentLens/Services/CloudSync/CloudSyncCoordinator.swift
+index 703f84c100..e1b08bef1a 100644
+--- a/AgentLens/Services/CloudSync/CloudSyncCoordinator.swift
++++ b/AgentLens/Services/CloudSync/CloudSyncCoordinator.swift
+@@ -125,7 +125,7 @@ final class CloudSyncCoordinator {
+ 
+     /// Drains all pending session logs and chat threads while emitting live progress snapshots.
+     @MainActor
+-    func performManualBackup(onProgress: @escaping (CloudBackupProgressSnapshot) -> Void) async {
++    func performManualBackup(onProgress: @escaping @Sendable (CloudBackupProgressSnapshot) -> Void) async {
+         let pendingLogs = (try? context.dataStore.countUnsyncedSessionLogs()) ?? 0 // try?-ok(optional progress estimate)
+         let pendingThreads = (try? context.dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0 // try?-ok(optional progress estimate)
+ 
+diff --git a/AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift b/AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift
+index 8fff6c4bc1..7c10c56b2c 100644
+--- a/AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift
++++ b/AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift
+@@ -53,7 +53,9 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
+ // MARK: - Live Implementations
+ 
+ /// Thin wrapper around real Firebase Firestore SDK.
+-final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, Sendable {
++// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase `Firestore` handle
++// (override for tests); the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
++final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
+     private let firestoreOverride: Firestore?
+ 
+     init(firestore: Firestore? = nil) {
+diff --git a/AgentLens/Services/CloudSync/ConversationCloudVaultPayload.swift b/AgentLens/Services/CloudSync/ConversationCloudVaultPayload.swift
+index 9df0754aa6..8dab2619f0 100644
+--- a/AgentLens/Services/CloudSync/ConversationCloudVaultPayload.swift
++++ b/AgentLens/Services/CloudSync/ConversationCloudVaultPayload.swift
+@@ -10,7 +10,9 @@ protocol ConversationCloudVaultKeyProviding: Sendable {
+     func keyForReading(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey?
+ }
+ 
+-struct MacConversationCloudVaultKeyProvider: ConversationCloudVaultKeyProviding {
++// AUDIT(@unchecked Sendable): stores a non-Sendable Firebase `Firestore` override;
++// the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
++struct MacConversationCloudVaultKeyProvider: ConversationCloudVaultKeyProviding, @unchecked Sendable {
+     private let firestoreOverride: Firestore?
+ 
+     init(firestore: Firestore? = nil) {
+@@ -215,7 +217,8 @@ enum ConversationCloudSealer {
+         return String(text.prefix(500))
+     }
+ 
+-    static let plaintextFieldDeletes: [String: Any] = [
++    // Immutable Firestore field-delete sentinel map ([String: Any] can't be Sendable).
++    nonisolated(unsafe) static let plaintextFieldDeletes: [String: Any] = [
+         "projectName": FieldValue.delete(),
+         "keyFiles": FieldValue.delete(),
+         "keyCommands": FieldValue.delete(),
+diff --git a/AgentLens/Services/CloudSync/ConversationTombstoneGCService.swift b/AgentLens/Services/CloudSync/ConversationTombstoneGCService.swift
+index 36256e9418..525c5c0243 100644
+--- a/AgentLens/Services/CloudSync/ConversationTombstoneGCService.swift
++++ b/AgentLens/Services/CloudSync/ConversationTombstoneGCService.swift
+@@ -34,7 +34,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
+     private let context: CloudSyncContext
+     private let encryptedCloudClient: SessionLogEncryptedCloudClient
+     private let retentionWindow: TimeInterval
+-    private let now: () -> Date
++    private let now: @Sendable () -> Date
+ 
+     private let state = Locked(CloudSyncDomainState())
+ 
+@@ -46,7 +46,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
+         context: CloudSyncContext,
+         encryptedCloudClient: SessionLogEncryptedCloudClient? = nil,
+         retentionWindow: TimeInterval = ConversationTombstoneGCService.retentionWindow,
+-        now: @escaping () -> Date = Date.init
++        now: @escaping @Sendable () -> Date = Date.init
+     ) {
+         self.context = context
+         self.encryptedCloudClient = encryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient()
+diff --git a/AgentLens/Services/CloudSync/SessionLogSyncService.swift b/AgentLens/Services/CloudSync/SessionLogSyncService.swift
+index 05c2f4d2ef..007e8b4664 100644
+--- a/AgentLens/Services/CloudSync/SessionLogSyncService.swift
++++ b/AgentLens/Services/CloudSync/SessionLogSyncService.swift
+@@ -1060,7 +1060,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
+ 
+ }
+ 
+-protocol SessionLogVaultKeyProviding {
++protocol SessionLogVaultKeyProviding: Sendable {
+     func loadKey(uid: String) throws -> Data?
+     func getOrCreateKey(uid: String) throws -> Data
+ }
+@@ -1074,7 +1074,7 @@ protocol SessionLogArchivedSessionMirroring {
+ extension CLIAgentSessionMirror: SessionLogArchivedSessionMirroring {}
+ 
+ @MainActor
+-protocol SessionLogVaultKeyPublishing {
++protocol SessionLogVaultKeyPublishing: Sendable {
+     func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws
+ }
+ 
+@@ -1450,7 +1450,7 @@ struct EncryptedSessionBlobUploadTicket {
+     let uploadURL: URL
+ }
+ 
+-protocol SessionLogEncryptedCloudClient {
++protocol SessionLogEncryptedCloudClient: Sendable {
+     func beginEncryptedSessionBlobUpload(
+         documentID: String,
+         bodyHash: String,
+diff --git a/AgentLens/Services/ComputerUse/ComputerUseBudgetStatusStore.swift b/AgentLens/Services/ComputerUse/ComputerUseBudgetStatusStore.swift
+index 89a8ed88fd..ac48507f1f 100644
+--- a/AgentLens/Services/ComputerUse/ComputerUseBudgetStatusStore.swift
++++ b/AgentLens/Services/ComputerUse/ComputerUseBudgetStatusStore.swift
+@@ -18,11 +18,11 @@ final class ComputerUseBudgetStatusStore {
+     var onEnvelopeChanged: ((ComputerUseBudgetEnvelope) -> Void)?
+ 
+     private let documentPath: String
+-    private let isSignedInProvider: () -> Bool
++    private let isSignedInProvider: @Sendable () -> Bool
+ 
+     init(
+         documentPath: String = "ops/computer_use_budget_status/state/current",
+-        isSignedInProvider: @escaping () -> Bool = {
++        isSignedInProvider: @escaping @Sendable () -> Bool = {
+             Auth.auth().currentUser != nil
+         }
+     ) {
+diff --git a/AgentLens/Services/IrohRelay/IrohTransportAuditLogger.swift b/AgentLens/Services/IrohRelay/IrohTransportAuditLogger.swift
+index acfd2ae3f1..eb3e34f039 100644
+--- a/AgentLens/Services/IrohRelay/IrohTransportAuditLogger.swift
++++ b/AgentLens/Services/IrohRelay/IrohTransportAuditLogger.swift
+@@ -8,11 +8,13 @@ final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
+     static let shared = FirestoreIrohAuditLogger()
+ 
+     private let firestoreProvider: @Sendable () -> Firestore
+-    private let isoFormatter: ISO8601DateFormatter = {
++    // Fresh per access: ISO8601DateFormatter is not Sendable/thread-safe; audit
++    // logging is low-frequency so a shared static would be a needless data race.
++    private var isoFormatter: ISO8601DateFormatter {
+         let f = ISO8601DateFormatter()
+         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+         return f
+-    }()
++    }
+     private let auditTTLSeconds: TimeInterval
+ 
+     init(
+diff --git a/AgentLens/Services/Media/CameraCapturePipeline.swift b/AgentLens/Services/Media/CameraCapturePipeline.swift
+index ef837785ea..c2f1c17817 100644
+--- a/AgentLens/Services/Media/CameraCapturePipeline.swift
++++ b/AgentLens/Services/Media/CameraCapturePipeline.swift
+@@ -99,7 +99,10 @@ extension CameraCapturePipeline: AVCaptureVideoDataOutputSampleBufferDelegate {
+     }
+ }
+ 
+-private struct SendableCameraSampleBuffer: Sendable {
++// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
++// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
++// shared concurrently. sendable-allowlist: apple-media-buffer
++private struct SendableCameraSampleBuffer: @unchecked Sendable {
+     let sampleBuffer: CMSampleBuffer
+ 
+     init(_ sampleBuffer: CMSampleBuffer) {
+diff --git a/AgentLens/Services/Media/MacMediaSealKeyOpener.swift b/AgentLens/Services/Media/MacMediaSealKeyOpener.swift
+index 74c1358530..a1a6e1320b 100644
+--- a/AgentLens/Services/Media/MacMediaSealKeyOpener.swift
++++ b/AgentLens/Services/Media/MacMediaSealKeyOpener.swift
+@@ -17,8 +17,10 @@ enum MacMediaSealKeyOpener {
+     /// private key from the keychain-backed store and the pinned sender key
+     /// from the same Firestore trust resolver the chat opener uses (mirrors
+     /// the F10 `ComputerUseSessionCoordinator.controlSeal*Provider` seams).
+-    static var recipientPrivateKeyProvider: (@Sendable () throws -> HermesRelayPrivateKey)?
+-    static var pinnedSenderKeyProvider: (@Sendable (_ uid: String, _ connectionId: String, _ envelope: HermesRealtimeRelayControlSealKeyEnvelope) async throws -> String)?
++    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup (production leaves nil).
++    nonisolated(unsafe) static var recipientPrivateKeyProvider: (@Sendable () throws -> HermesRelayPrivateKey)?
++    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup (production leaves nil).
++    nonisolated(unsafe) static var pinnedSenderKeyProvider: (@Sendable (_ uid: String, _ connectionId: String, _ envelope: HermesRealtimeRelayControlSealKeyEnvelope) async throws -> String)?
+ 
+     static func frameSealKey(
+         for request: HermesRealtimeRelayMirrorRequest,
+diff --git a/AgentLens/Services/Media/MicrophoneCapturePipeline.swift b/AgentLens/Services/Media/MicrophoneCapturePipeline.swift
+index 1838486935..56b4cf950e 100644
+--- a/AgentLens/Services/Media/MicrophoneCapturePipeline.swift
++++ b/AgentLens/Services/Media/MicrophoneCapturePipeline.swift
+@@ -89,7 +89,10 @@ final class MicrophoneCapturePipeline {
+     }
+ }
+ 
+-private struct SendableAudioPCMBuffer: Sendable {
++// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
++// `AVAudioPCMBuffer` (an Apple framework type) across one isolation hand-off; never
++// shared concurrently. sendable-allowlist: apple-media-buffer
++private struct SendableAudioPCMBuffer: @unchecked Sendable {
+     let buffer: AVAudioPCMBuffer
+ 
+     init(_ buffer: AVAudioPCMBuffer) {
+diff --git a/AgentLens/Services/Media/ScreenCapturePipeline.swift b/AgentLens/Services/Media/ScreenCapturePipeline.swift
+index f66fea8986..f2cbaf1309 100644
+--- a/AgentLens/Services/Media/ScreenCapturePipeline.swift
++++ b/AgentLens/Services/Media/ScreenCapturePipeline.swift
+@@ -295,7 +295,10 @@ final class ScreenCapturePipeline: NSObject {
+ }
+ 
+ #if canImport(ScreenCaptureKit)
+-private struct CapturedSampleBuffer: Sendable {
++// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
++// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
++// shared concurrently. sendable-allowlist: apple-media-buffer
++private struct CapturedSampleBuffer: @unchecked Sendable {
+     // ScreenCaptureKit delivers each sample buffer to this delegate callback
+     // for one-way handoff into the main-actor encoder. Keep the unchecked
+     // boundary local instead of declaring CMSampleBuffer globally Sendable.
+diff --git a/AgentLens/Services/Media/VideoEncoder.swift b/AgentLens/Services/Media/VideoEncoder.swift
+index 138b624d03..681fb55f7d 100644
+--- a/AgentLens/Services/Media/VideoEncoder.swift
++++ b/AgentLens/Services/Media/VideoEncoder.swift
+@@ -4,7 +4,10 @@ import CoreMedia
+ import VideoToolbox
+ import OpenBurnBarMedia
+ 
+-private final class SendableVideoSampleBuffer: Sendable {
++// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
++// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
++// shared concurrently. sendable-allowlist: apple-media-buffer
++private final class SendableVideoSampleBuffer: @unchecked Sendable {
+     let sampleBuffer: CMSampleBuffer
+ 
+     init(_ sampleBuffer: CMSampleBuffer) {
+diff --git a/AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ProviderConfig.swift b/AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ProviderConfig.swift
+index 1e7ed7f911..1cf2522668 100644
+--- a/AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ProviderConfig.swift
++++ b/AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ProviderConfig.swift
+@@ -126,8 +126,9 @@ extension OpenBurnBarDaemonManager {
+             var settings = snapshot.providers[index]
+             settings.setModelsAdvertisement(modelIDs: modelIDs, isEnabled: isEnabled)
+             snapshot.providers[index] = settings
++            let updatedSnapshot = snapshot
+             _ = try await daemonRPC {
+-                try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
++                try OpenBurnBarDaemonSocketClient.updateConfig(updatedSnapshot, at: socketURL)
+             }
+         }
+     }
+diff --git a/AgentLens/Services/Protocols/AccountManaging.swift b/AgentLens/Services/Protocols/AccountManaging.swift
+index ecb2f3676b..e91d42ecf9 100644
+--- a/AgentLens/Services/Protocols/AccountManaging.swift
++++ b/AgentLens/Services/Protocols/AccountManaging.swift
+@@ -5,7 +5,7 @@ import Foundation
+ 
+ /// Protocol abstracting the account management surface needed by CloudSync.
+ @MainActor
+-protocol AccountManaging: AnyObject {
++protocol AccountManaging: AnyObject, Sendable {
+     var isFirebaseAvailable: Bool { get }
+     var isSignedIn: Bool { get }
+     var isCloudSyncEnabled: Bool { get }
+diff --git a/AgentLens/Services/Search/RetrievalHealthService.swift b/AgentLens/Services/Search/RetrievalHealthService.swift
+index 0cbe8d7900..e4bacbe5fa 100644
+--- a/AgentLens/Services/Search/RetrievalHealthService.swift
++++ b/AgentLens/Services/Search/RetrievalHealthService.swift
+@@ -15,11 +15,11 @@ final class RetrievalHealthService {
+     }
+ 
+     private let dataStore: DataStore
+-    private let nowProvider: () -> Date
++    private let nowProvider: @Sendable () -> Date
+ 
+     private(set) var lastSnapshotError: String?
+ 
+-    init(dataStore: DataStore, nowProvider: @escaping () -> Date = Date.init) {
++    init(dataStore: DataStore, nowProvider: @escaping @Sendable () -> Date = Date.init) {
+         self.dataStore = dataStore
+         self.nowProvider = nowProvider
+     }
+diff --git a/AgentLens/Services/SmartHub/LocalNetworkDiscovery.swift b/AgentLens/Services/SmartHub/LocalNetworkDiscovery.swift
+index 115a0b39d3..e2207204c1 100644
+--- a/AgentLens/Services/SmartHub/LocalNetworkDiscovery.swift
++++ b/AgentLens/Services/SmartHub/LocalNetworkDiscovery.swift
+@@ -251,7 +251,10 @@ enum LocalNetworkDiscovery {
+ // official discovery path documented by the AWTRIX project — it survives DHCP
+ // lease changes, IP renumbering, and per-device address shuffles that would
+ // otherwise leave us pointing at a stale host.
+-private final class SendableAwtrixNetServiceBox: Sendable {
++// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
++// `NetService` (an Apple framework type) across one isolation hand-off; never
++// shared concurrently. sendable-allowlist: foundation-sdk-shim
++private final class SendableAwtrixNetServiceBox: @unchecked Sendable {
+     let service: NetService
+ 
+     init(_ service: NetService) {
+diff --git a/AgentLens/Views/Settings/TextExpansionSettingsView.swift b/AgentLens/Views/Settings/TextExpansionSettingsView.swift
+index 78df1e48a4..362fbb88a7 100644
+--- a/AgentLens/Views/Settings/TextExpansionSettingsView.swift
++++ b/AgentLens/Views/Settings/TextExpansionSettingsView.swift
+@@ -1024,7 +1024,7 @@ struct SnippetCardView: View, Equatable {
+ 
+     @State private var isHovered = false
+ 
+-    static func == (lhs: SnippetCardView, rhs: SnippetCardView) -> Bool {
++    nonisolated static func == (lhs: SnippetCardView, rhs: SnippetCardView) -> Bool {
+         lhs.snippet == rhs.snippet && lhs.isSelected == rhs.isSelected
+     }
+ 
+diff --git a/OpenBurnBarMobile/Services/Media/CameraCaptureService.swift b/OpenBurnBarMobile/Services/Media/CameraCaptureService.swift
+index 344ed58076..37b1e52e3c 100644
+--- a/OpenBurnBarMobile/Services/Media/CameraCaptureService.swift
++++ b/OpenBurnBarMobile/Services/Media/CameraCaptureService.swift
+@@ -101,7 +101,10 @@ extension CameraCaptureService: AVCaptureVideoDataOutputSampleBufferDelegate {
+     }
+ }
+ 
+-private struct SendableSampleBuffer: Sendable {
++// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
++// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
++// shared concurrently. sendable-allowlist: apple-media-buffer
++private struct SendableSampleBuffer: @unchecked Sendable {
+     let value: CMSampleBuffer
+ 
+     init(_ value: CMSampleBuffer) {
+diff --git a/OpenBurnBarMobile/Services/Media/iPadMultiCamCaptureService.swift b/OpenBurnBarMobile/Services/Media/iPadMultiCamCaptureService.swift
+index 13d4e8ffac..a3f2ccc764 100644
+--- a/OpenBurnBarMobile/Services/Media/iPadMultiCamCaptureService.swift
++++ b/OpenBurnBarMobile/Services/Media/iPadMultiCamCaptureService.swift
+@@ -139,7 +139,10 @@ private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampl
+     }
+ }
+ 
+-private struct SendableMultiCamSampleBuffer: Sendable {
++// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
++// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
++// shared concurrently. sendable-allowlist: apple-media-buffer
++private struct SendableMultiCamSampleBuffer: @unchecked Sendable {
+     let value: CMSampleBuffer
+ 
+     init(_ value: CMSampleBuffer) {
+diff --git a/project.yml b/project.yml
+index 6ee1deff42..5c6e3b4b8e 100644
+--- a/project.yml
++++ b/project.yml
+@@ -10,7 +10,7 @@ options:
+ 
+ settings:
+   base:
+-    SWIFT_VERSION: "5.10"
++    SWIFT_VERSION: "6.0"
+     SWIFT_STRICT_CONCURRENCY: complete
+     ENABLE_PREVIEWS: YES
+     MARKETING_VERSION: "1.0.2"
+@@ -383,6 +383,7 @@ targets:
+           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt
+     settings:
+       base:
++        SWIFT_VERSION: "5.10"
+         PRODUCT_NAME: OpenBurnBarTests
+         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.tests
+         BUNDLE_LOADER: "$(BUILT_PRODUCTS_DIR)/OpenBurnBar.app/Contents/MacOS/OpenBurnBar"
+@@ -411,6 +412,7 @@ targets:
+       - path: OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests
+     settings:
+       base:
++        SWIFT_VERSION: "5.10"
+         PRODUCT_NAME: OpenBurnBarDaemonTests
+         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.daemon.tests
+     dependencies:
+@@ -629,6 +631,7 @@ targets:
+           - "**/.DS_Store"
+     settings:
+       base:
++        SWIFT_VERSION: "5.10"
+         PRODUCT_NAME: OpenBurnBarMobileTests
+         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.tests
+         DEVELOPMENT_TEAM: 4Y367DF25B
+@@ -650,6 +653,7 @@ targets:
+           - "**/.DS_Store"
+     settings:
+       base:
++        SWIFT_VERSION: "5.10"
+         PRODUCT_NAME: OpenBurnBarMobileUITests
+         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.uitests
+         DEVELOPMENT_TEAM: 4Y367DF25B
+diff --git a/scripts/debt/check-unchecked-sendable-budget.sh b/scripts/debt/check-unchecked-sendable-budget.sh
+index 9c5989582c..dbf2a23d17 100755
+--- a/scripts/debt/check-unchecked-sendable-budget.sh
++++ b/scripts/debt/check-unchecked-sendable-budget.sh
+@@ -26,6 +26,7 @@ allowed_reason_ids=(
+   "firestore-any-payload"
+   "firestore-any-test-fake"
+   "foundation-sdk-shim"
++  "apple-media-buffer"
+ )
+ 
+ live_report="$(mktemp "${TMPDIR:-/tmp}/unchecked-sendable-live.XXXXXX")"
