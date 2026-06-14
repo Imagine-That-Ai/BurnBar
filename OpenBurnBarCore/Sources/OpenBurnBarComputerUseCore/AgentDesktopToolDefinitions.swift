@@ -23,7 +23,7 @@ public enum AgentDesktopToolDefinitions {
         }
     }
 
-    public static let all: [Tool] = [
+    nonisolated(unsafe) public static let all: [Tool] = [
         browserGoto,
         browserClick,
         browserFill,
@@ -73,14 +73,14 @@ public enum AgentDesktopToolDefinitions {
         BurnBarToolKind(rawValue: name)
     }
 
-    private static let emptyObjectSchema: [String: Any] = [
+    nonisolated(unsafe) private static let emptyObjectSchema: [String: Any] = [
         "type": "object",
         "additionalProperties": false,
         "required": [],
         "properties": [:]
     ]
 
-    private static let browserTargetProperties: [String: Any] = [
+    nonisolated(unsafe) private static let browserTargetProperties: [String: Any] = [
         "selector": ["type": "string", "description": "CSS selector when available."],
         "text": ["type": "string", "description": "Text to type."],
         "url": ["type": "string", "description": "URL to navigate to."],
@@ -100,7 +100,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     }
 
-    private static let macInputProperties: [String: Any] = [
+    nonisolated(unsafe) private static let macInputProperties: [String: Any] = [
         "displayX": ["type": "integer", "description": "Main-display x coordinate."],
         "displayY": ["type": "integer", "description": "Main-display y coordinate."],
         "dragEndX": ["type": "integer", "description": "Drag destination x coordinate."],
@@ -126,112 +126,112 @@ public enum AgentDesktopToolDefinitions {
         ]
     }
 
-    public static let browserGoto = Tool(
+    nonisolated(unsafe) public static let browserGoto = Tool(
         name: BurnBarToolKind.browserGoto.rawValue,
         description: "Navigate the managed desktop browser to a URL.",
         requiredCapabilities: [.desktopBrowser],
         parameters: browserSchema(required: ["url"])
     )
 
-    public static let browserClick = Tool(
+    nonisolated(unsafe) public static let browserClick = Tool(
         name: BurnBarToolKind.browserClick.rawValue,
         description: "Click a selector or fallback page coordinate in the managed desktop browser.",
         requiredCapabilities: [.desktopBrowser],
         parameters: browserSchema(required: [])
     )
 
-    public static let browserFill = Tool(
+    nonisolated(unsafe) public static let browserFill = Tool(
         name: BurnBarToolKind.browserFill.rawValue,
         description: "Type text into a field in the managed desktop browser.",
         requiredCapabilities: [.desktopBrowser],
         parameters: browserSchema(required: ["selector", "text"])
     )
 
-    public static let browserKey = Tool(
+    nonisolated(unsafe) public static let browserKey = Tool(
         name: BurnBarToolKind.browserKey.rawValue,
         description: "Press a key in the managed desktop browser.",
         requiredCapabilities: [.desktopBrowser],
         parameters: browserSchema(required: ["key"])
     )
 
-    public static let browserSelect = Tool(
+    nonisolated(unsafe) public static let browserSelect = Tool(
         name: BurnBarToolKind.browserSelect.rawValue,
         description: "Select a value in a browser dropdown.",
         requiredCapabilities: [.desktopBrowser],
         parameters: browserSchema(required: ["selector", "value"])
     )
 
-    public static let browserScreenshot = Tool(
+    nonisolated(unsafe) public static let browserScreenshot = Tool(
         name: BurnBarToolKind.browserScreenshot.rawValue,
         description: "Capture the current managed desktop browser page.",
         requiredCapabilities: [.desktopBrowser, .desktopScreenshot],
         parameters: emptyObjectSchema
     )
 
-    public static let browserExtract = Tool(
+    nonisolated(unsafe) public static let browserExtract = Tool(
         name: BurnBarToolKind.browserExtract.rawValue,
         description: "Extract text/content from the current browser page.",
         requiredCapabilities: [.desktopBrowser],
         parameters: browserSchema(required: [])
     )
 
-    public static let macInputClick = Tool(
+    nonisolated(unsafe) public static let macInputClick = Tool(
         name: BurnBarToolKind.macInputClick.rawValue,
         description: "Click a coordinate on this Mac after OpenBurnBar approval/scope checks.",
         requiredCapabilities: [.desktopSystemInput],
         parameters: macInputSchema(required: ["displayX", "displayY"])
     )
 
-    public static let macInputType = Tool(
+    nonisolated(unsafe) public static let macInputType = Tool(
         name: BurnBarToolKind.macInputType.rawValue,
         description: "Type text into the frontmost Mac app after approval/scope checks.",
         requiredCapabilities: [.desktopSystemInput],
         parameters: macInputSchema(required: ["text"])
     )
 
-    public static let macInputKey = Tool(
+    nonisolated(unsafe) public static let macInputKey = Tool(
         name: BurnBarToolKind.macInputKey.rawValue,
         description: "Press one key in the frontmost Mac app after approval/scope checks.",
         requiredCapabilities: [.desktopSystemInput],
         parameters: macInputSchema(required: ["key"])
     )
 
-    public static let macInputShortcut = Tool(
+    nonisolated(unsafe) public static let macInputShortcut = Tool(
         name: BurnBarToolKind.macInputShortcut.rawValue,
         description: "Send a keyboard shortcut in the frontmost Mac app after approval/scope checks.",
         requiredCapabilities: [.desktopSystemInput],
         parameters: macInputSchema(required: ["key", "modifiers"])
     )
 
-    public static let macInputDragDrop = Tool(
+    nonisolated(unsafe) public static let macInputDragDrop = Tool(
         name: BurnBarToolKind.macInputDragDrop.rawValue,
         description: "Drag from one coordinate to another after approval/scope checks.",
         requiredCapabilities: [.desktopSystemInput],
         parameters: macInputSchema(required: ["displayX", "displayY", "dragEndX", "dragEndY"])
     )
 
-    public static let macInputScroll = Tool(
+    nonisolated(unsafe) public static let macInputScroll = Tool(
         name: BurnBarToolKind.macInputScroll.rawValue,
         description: "Scroll at a coordinate or in the frontmost app after approval/scope checks.",
         requiredCapabilities: [.desktopSystemInput],
         parameters: macInputSchema(required: [])
     )
 
-    public static let macInputPointerMove = Tool(
+    nonisolated(unsafe) public static let macInputPointerMove = Tool(
         name: BurnBarToolKind.macInputPointerMove.rawValue,
         description: "Move the pointer on this Mac after approval/scope checks.",
         requiredCapabilities: [.desktopSystemInput],
         parameters: macInputSchema(required: ["displayX", "displayY"])
     )
 
-    public static let macInspectAccessibility = Tool(
+    nonisolated(unsafe) public static let macInspectAccessibility = Tool(
         name: BurnBarToolKind.macInspectAccessibility.rawValue,
         description: "Read the frontmost accessibility tree, or the element at a coordinate.",
         requiredCapabilities: [.accessibilityInspect],
         parameters: macInputSchema(required: [])
     )
 
-    public static let workspaceReadFile = Tool(
+    nonisolated(unsafe) public static let workspaceReadFile = Tool(
         name: "workspace_read_file",
         description: "Read a UTF-8 text file inside the OpenBurnBar chat workspace.",
         requiredCapabilities: [.workspaceRead],
@@ -245,7 +245,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     )
 
-    public static let workspaceListFiles = Tool(
+    nonisolated(unsafe) public static let workspaceListFiles = Tool(
         name: "workspace_list_files",
         description: "List files under a workspace-relative directory.",
         requiredCapabilities: [.workspaceRead],
@@ -260,7 +260,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     )
 
-    public static let workspaceWriteFile = Tool(
+    nonisolated(unsafe) public static let workspaceWriteFile = Tool(
         name: "workspace_write_file",
         description: "Write a UTF-8 text file inside the OpenBurnBar chat workspace.",
         requiredCapabilities: [.workspaceWrite],
@@ -276,7 +276,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     )
 
-    public static let desktopExportFile = Tool(
+    nonisolated(unsafe) public static let desktopExportFile = Tool(
         name: "desktop_export_file",
         description: "Copy a file from the OpenBurnBar chat workspace into the user's Desktop/OpenBurnBar Agent Drops folder.",
         requiredCapabilities: [.workspaceRead, .desktopFileExport],
@@ -291,7 +291,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     )
 
-    public static let shellRun = Tool(
+    nonisolated(unsafe) public static let shellRun = Tool(
         name: "shell_run",
         description: "Run a shell command in the OpenBurnBar chat workspace with bounded output. Writes outside the workspace are denied by the local sandbox.",
         requiredCapabilities: [.shell],
@@ -306,7 +306,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     )
 
-    public static let shellRunUnrestricted = Tool(
+    nonisolated(unsafe) public static let shellRunUnrestricted = Tool(
         name: "shell_run_unrestricted",
         description: "YOLO only: run a shell command without the workspace write sandbox. Output and timeout are still bounded.",
         requiredCapabilities: [.shellUnrestricted],

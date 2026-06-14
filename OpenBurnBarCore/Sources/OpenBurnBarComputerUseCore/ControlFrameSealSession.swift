@@ -179,9 +179,13 @@ public enum ControlFrameSealSession {
         return decoder
     }
 
-    private static let dateFormatter: ISO8601DateFormatter = {
+    // A fresh formatter per access: `ISO8601DateFormatter` is not Sendable and not
+    // documented thread-safe, so a shared static would be a data race under Swift 6.
+    // Control-frame seal/open is low-frequency (not a hot loop), so the per-call
+    // allocation is negligible and the state is provably unshared.
+    private static var dateFormatter: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 }

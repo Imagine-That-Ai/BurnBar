@@ -279,7 +279,7 @@ public actor OBBSignalSessionCipherTransport {
     private let store: OBBSignalProtocolStore
     private let localAddress: ProtocolAddress
 
-    public init(store: OBBSignalProtocolStore, localAddress: ProtocolAddress) {
+    public init(store: sending OBBSignalProtocolStore, localAddress: ProtocolAddress) {
         self.store = store
         self.localAddress = localAddress
     }

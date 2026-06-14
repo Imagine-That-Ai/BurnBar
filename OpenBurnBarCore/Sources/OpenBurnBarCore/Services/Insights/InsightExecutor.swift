@@ -872,7 +872,10 @@ public struct InsightExecutor: Sendable {
     static let anomalyMinimumPerWeekday: Int = 2
     static let anomalyFloorMAD: Double = 0.0001
 
-    private static let dayOnlyFormatter: ISO8601DateFormatter = {
+    // nonisolated(unsafe): configured once in this initializer with a custom
+    // `.withFullDate` option (not covered by ThreadSafeISO8601DateFormatter)
+    // and only ever read via `.string(from:)`, so it is effectively immutable.
+    private nonisolated(unsafe) static let dayOnlyFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withFullDate]
         return f

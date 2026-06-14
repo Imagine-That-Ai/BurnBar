@@ -132,22 +132,12 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
     /// options); Cloud Functions and some other writers include fractional
     /// seconds. Try both before giving up.
     private static func parseResetsAtString(_ s: String) -> Date? {
-        if let d = Self.iso8601WithFraction.date(from: s) { return d }
-        if let d = Self.iso8601Basic.date(from: s) { return d }
-        return nil
+        // `ThreadSafeISO8601DateFormatter.parse` tries the fractional form
+        // (`[.withInternetDateTime, .withFractionalSeconds]`) first, then the
+        // fraction-less form (`[.withInternetDateTime]`) — the exact two-step
+        // acceptance this parser performed with its own pair of formatters.
+        ThreadSafeISO8601DateFormatter.parse(s)
     }
-
-    private static let iso8601WithFraction: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    private static let iso8601Basic: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
 }
 
 // MARK: - Reset Time Display
