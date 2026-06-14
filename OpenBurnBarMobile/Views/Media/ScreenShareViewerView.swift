@@ -175,7 +175,9 @@ struct ScreenShareViewerView: View {
         self.controlStatus = controlStatus
         self.controlInputEnabled = resolvedControlInputEnabled
         self._interactionMode = State(
-            initialValue: Self.defaultInteractionMode(controlInputEnabled: resolvedControlInputEnabled)
+            initialValue: ScreenShareInteractionModePolicy.defaultMode(
+                controlInputEnabled: resolvedControlInputEnabled
+            )
         )
         self.controlRoundTripMillis = controlRoundTripMillis
         self.displays = displays
@@ -225,10 +227,6 @@ struct ScreenShareViewerView: View {
 
     private var standardControlInputEnabled: Bool {
         controlInputEnabled
-    }
-
-    private static func defaultInteractionMode(controlInputEnabled: Bool) -> ScreenShareInteractionMode {
-        controlInputEnabled ? .control : .view
     }
 
     var body: some View {
@@ -546,7 +544,9 @@ struct ScreenShareViewerView: View {
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
-                interactionMode = Self.defaultInteractionMode(controlInputEnabled: standardControlInputEnabled)
+                interactionMode = ScreenShareInteractionModePolicy.defaultMode(
+                    controlInputEnabled: standardControlInputEnabled
+                )
                 isTyping = false
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
@@ -1785,6 +1785,14 @@ enum ScreenShareInteractionMode: Equatable {
     case control
     case trackpad
     case coPilot
+}
+
+enum ScreenShareInteractionModePolicy {
+    /// Controller viewers should enter control mode immediately so direct taps
+    /// become signed Mac input intents. Watchers stay in view mode for pan/zoom.
+    static func defaultMode(controlInputEnabled: Bool) -> ScreenShareInteractionMode {
+        controlInputEnabled ? .control : .view
+    }
 }
 
 /// Orientation of the floating mirror-control tray: a vertical (upward) stack

@@ -315,14 +315,14 @@ impl IrohBlobNode {
                             detail: format!("blob download: {err}"),
                         });
                     }
-                    iroh_blobs::api::downloader::DownloadProgressItem::Progress(downloaded) => {
-                        if blob_byte_ceiling_exceeded(downloaded, OPENBURNBAR_MAX_BLOB_BYTES) {
-                            return Err(IrohFfiError::StreamFailed {
-                                detail: format!(
-                                    "blob download aborted: {downloaded} bytes exceeds ceiling of {OPENBURNBAR_MAX_BLOB_BYTES} bytes"
-                                ),
-                            });
-                        }
+                    iroh_blobs::api::downloader::DownloadProgressItem::Progress(downloaded)
+                        if blob_byte_ceiling_exceeded(downloaded, OPENBURNBAR_MAX_BLOB_BYTES) =>
+                    {
+                        return Err(IrohFfiError::StreamFailed {
+                            detail: format!(
+                                "blob download aborted: {downloaded} bytes exceeds ceiling of {OPENBURNBAR_MAX_BLOB_BYTES} bytes"
+                            ),
+                        });
                     }
                     _ => {}
                 }

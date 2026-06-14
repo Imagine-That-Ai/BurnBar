@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The macOS Mercury incoming screen-mirror / call sheet now renders the requesting account's profile photo in the avatar circle, falling back to the name monogram while it loads or when no photo is available (e.g. Sign in with Apple), instead of always showing only the name initial.
+- The macOS Mercury incoming screen-mirror / call sheet now shows the requesting account's profile photo in the avatar circle (cross-fading in over a pulsing ring), falling back to the name monogram — or a generic person glyph when no name is available (e.g. Sign in with Apple) — instead of always showing only the name initial.
 
 ### Security - Cure53 remediation sweep (2026-06-12)
 
