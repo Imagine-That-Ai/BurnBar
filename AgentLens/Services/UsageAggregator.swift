@@ -166,13 +166,21 @@ final class UsageAggregator {
         // ── Heavy work runs entirely off the main thread ─────────────
         // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
         // from this `@MainActor` method runs it off the main actor (SE-0338).
-        let result = await RefreshBackgroundWork.runFullRefresh(
-            parsers: parsers,
-            dataStore: dataStore,
-            orchestrator: orchestrator,
-            existingUsages: existingUsages,
-            settings: settings
-        )
+        let result: FullRefreshResult
+        do {
+            result = try await RefreshBackgroundWork.runFullRefresh(
+                parsers: parsers,
+                dataStore: dataStore,
+                orchestrator: orchestrator,
+                existingUsages: existingUsages,
+                settings: settings
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            // runFullRefresh only throws CancellationError; any other error is unexpected.
+            return
+        }
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth = result.parserHealth
