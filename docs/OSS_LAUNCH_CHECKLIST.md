@@ -34,10 +34,11 @@ Re-check every item immediately before changing repository visibility.
   dispatch as `.github/workflows/openburnbar-pr-harness.yml`.
 - `nightly-e2e.yml` remains the nightly launch-confidence lane and opens or
   closes a deduplicated failure issue through `.github/actions/ops-failure-issue`.
-- `cursor-nightly-ci-repair.yml` is the cloud repair loop: after nightly
-  confidence lanes run, GitHub Actions starts a Cursor Cloud Agent through
-  Cursor's API. Cursor can patch code-owned failures and open a repair PR when
-  `CURSOR_API_KEY` is configured in GitHub Actions secrets.
+- `cursor-nightly-ci-repair.yml` is the cloud repair loop: it runs nightly after
+  the monitored confidence lanes and, when those lanes are red, starts a Cursor
+  Cloud Agent repair through Cursor's API. If the marked Cursor repair PR later
+  fails CI, completed PR CI wakes the same workflow so Cursor continues that PR
+  until its checks are pending or green.
 - After this change lands on `main`, branch protection should remove
   `openburnbar-pr` from the required PR checks and require the fast merge
   checks verified by `bash scripts/ops/verify-github-governance.sh`.
