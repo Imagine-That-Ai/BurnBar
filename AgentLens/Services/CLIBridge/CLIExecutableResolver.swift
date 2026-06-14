@@ -193,8 +193,25 @@ struct CLIExecutableResolver: Sendable {
             .first(where: { $0.hasPrefix("/") })
     }
 
-    static func enrichedProcessEnvironment(executablePath: String? = nil) -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
+    /// M-040: build the child-process environment for agent CLI / shell spawns
+    /// from an ALLOWLISTED baseline instead of the full ambient process
+    /// environment.
+    ///
+    /// Previously this method copied `ProcessInfo.processInfo.environment`
+    /// wholesale and only rewrote `PATH`, which leaked every ambient/daemon
+    /// secret the app or its daemon happened to hold (OpenBurnBar gateway/socket
+    /// tokens, Firebase custom tokens, AWS creds, etc.) into the trusted-agent
+    /// CLI and the (un)restricted YOLO shell. We now start from the
+    /// `AgentChildProcessEnvironment` allowlist — which preserves what CLI
+    /// agents legitimately need (HOME/USER/SHELL/TERM/TMPDIR/LANG/LC_*, the
+    /// per-CLI config-dir vars, AND the provider/API-key env the user intends
+    /// the agent to use) while STRIPPING app/daemon-internal secrets and
+    /// arbitrary ambient vars — and then apply the enriched-PATH logic on top.
+    static func enrichedProcessEnvironment(
+        executablePath: String? = nil,
+        baseEnv: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var env = AgentChildProcessEnvironment.allowlistedBaseline(baseEnv: baseEnv)
         let homeDirectory = NSHomeDirectory()
         var extra = [
             "/opt/homebrew/bin",
@@ -214,7 +231,9 @@ struct CLIExecutableResolver: Sendable {
 
         extra.append(contentsOf: userManagedExecutableSearchDirectories(homeDirectory: homeDirectory))
 
-        let existing = env["PATH"] ?? ""
+        // PATH is taken from the allowlisted baseline (which preserves the
+        // ambient PATH), not from re-reading the full ambient env.
+        let existing = env["PATH"] ?? baseEnv["PATH"] ?? ""
         let merged = extra + existing.split(separator: ":").map(String.init)
         env["PATH"] = deduplicatedDirectories(merged, homeDirectory: homeDirectory).joined(separator: ":")
         return env
@@ -323,5 +342,96 @@ extension CLIBridge {
 
     nonisolated static func parseExecutablePath(fromCommandOutput output: String) -> String? {
         CLIExecutableResolver.parseExecutablePath(fromCommandOutput: output)
+    }
+}
+
+// MARK: - Agent child-process environment allowlist (M-040)
+
+/// Single, shared source of truth for the environment that AgentLens passes to
+/// child processes it spawns to execute agents: the per-CLI agents (Claude,
+/// Codex, Droid, Forge, Antigravity, Cursor) AND the broker's `shell_run`
+/// (sandbox-exec restricted) and `shell_run_unrestricted` (YOLO `/bin/zsh -f
+/// -lc`) shells.
+///
+/// Security model (M-040): we NEVER hand the full ambient
+/// `ProcessInfo.processInfo.environment` to these children. Doing so leaked any
+/// app/daemon-held secret (OpenBurnBar gateway/socket auth tokens, Firebase
+/// custom tokens, AWS creds, arbitrary ambient vars) into the trusted-agent CLI
+/// and the unrestricted shell. Instead we start from an allowlisted baseline.
+///
+/// The allowlist is built as: the proven Switcher launch baseline
+/// (`CLILaunchAdapter.allowlistedEnvKeys`, e.g. HOME/PATH/USER/SHELL/TERM/
+/// TMPDIR/LANG/LC_ALL and the per-CLI config-dir vars) PLUS the provider/
+/// API-key env an agent legitimately reads from ambient to authenticate
+/// (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.). The Switcher baseline deliberately
+/// omits API keys because the Switcher injects them per-profile via
+/// `envKeysToPass`; the AgentLens agent-execution path, by contrast, relies on
+/// the agent reading them from ambient — so we re-add exactly that set here, in
+/// one place, rather than weakening the Switcher allowlist (which has its own
+/// fail-closed tests asserting API keys stay out of it).
+///
+/// `LC_*` (LC_CTYPE, LC_MESSAGES, …) and `LANG` matter for correct CLI text/
+/// locale handling, so any `LC_`-prefixed ambient var is allowlisted by prefix.
+enum AgentChildProcessEnvironment {
+    /// Provider/API-key + provider-base-URL env that agents read from ambient to
+    /// authenticate and route. These are the keys the *user intends the agent to
+    /// use* — NOT app/daemon-internal secrets. App/daemon-internal tokens
+    /// (`OPENBURNBAR_*`, Firebase custom tokens, etc.) are intentionally absent
+    /// and therefore stripped.
+    static let providerEnvKeys: Set<String> = [
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "CLAUDE_API_KEY",
+        "CODEX_API_KEY",
+        "OPENCODE_API_KEY",
+        "OPENCODE_GO_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XAI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_API_BASE_URL",
+        "KIMI_API_KEY",
+        "KIMI_AUTH_TOKEN",
+        "MOONSHOT_API_KEY",
+        "MINIMAX_API_KEY",
+        "MIMO_API_KEY",
+        "OLLAMA_API_KEY",
+        "ZAI_API_KEY",
+        "Z_AI_API_KEY",
+        "ZAI_BASE_URL",
+        "ZHIPUAI_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "MISTRAL_API_KEY",
+        "GROQ_API_KEY",
+        "PERPLEXITY_API_KEY",
+        "TOGETHER_API_KEY",
+        "FIREWORKS_API_KEY"
+    ]
+
+    /// Whether `key` is allowlisted for an agent child process: either it is in
+    /// the proven Switcher launch baseline, in the agent provider/API-key set, or
+    /// it is a locale (`LC_*`) variable.
+    static func isAllowlisted(_ key: String) -> Bool {
+        CLILaunchAdapter.isEnvKeyAllowlisted(key)
+            || providerEnvKeys.contains(key)
+            || key.hasPrefix("LC_")
+    }
+
+    /// Builds the allowlisted baseline environment for an agent child process,
+    /// drawing values from `baseEnv` (defaults to the current process env).
+    /// Only allowlisted keys survive; everything else — including arbitrary
+    /// ambient vars and app/daemon-internal secrets — is dropped.
+    static func allowlistedBaseline(
+        baseEnv: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var result: [String: String] = [:]
+        for (key, value) in baseEnv where isAllowlisted(key) {
+            result[key] = value
+        }
+        return result
     }
 }
