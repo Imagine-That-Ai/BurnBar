@@ -468,6 +468,11 @@ struct HermesRichBubble: View {
             }
         } catch {
             // Engine unavailable — keep fallback text rendered.
+            AppLogger.chat.silentFailure(
+                "HermesRichBubble.measure",
+                error: error,
+                context: ["width": "\(Int(width))", "textLength": "\(text.count)"]
+            )
         }
     }
 
@@ -588,6 +593,15 @@ struct StreamingBubble<Content: View>: View {
             }
         } catch {
             // Engine unavailable — let SwiftUI auto-size content().
+            AppLogger.chat.silentFailure(
+                "StreamingBubble.measure",
+                error: error,
+                context: [
+                    "width": "\(Int(width))",
+                    "textLength": "\(text.count)",
+                    "isStreaming": "\(isStreaming)"
+                ]
+            )
         }
     }
 }

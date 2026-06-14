@@ -147,6 +147,11 @@ final class InsightsMacVerdictModel {
                 }
             } catch {
                 // Trace is optional — swallow errors.
+                AppLogger.metrics.silentFailure(
+                    "InsightsMacVerdictModel.buildTraceForVerdict",
+                    error: error,
+                    context: ["window": verdict.window.rawValue]
+                )
             }
         }
     }

@@ -103,6 +103,8 @@ public struct BurnBarProxyStreamingUnsupported: Error, Sendable {
 /// Shared streaming primitives: a long-lived `URLSession` tuned for SSE and
 /// a helper that opens a line-framed byte stream from a `URLRequest`.
 public enum BurnBarProxyStreaming {
+    private static let logger = BurnBarDaemonLogger(category: "provider-stream")
+
     /// Streaming responses can stay open far longer than a normal request,
     /// so this session relaxes the per-request and resource timeouts that
     /// `URLSession.shared` enforces. Without this, long Opus generations
@@ -138,6 +140,14 @@ public enum BurnBarProxyStreaming {
                 }
             } catch {
                 // Best-effort drain; fall through with whatever we captured.
+                logger.silentFailure(
+                    "BurnBarProxyStreaming.drainUpstreamErrorBody",
+                    error: error,
+                    context: [
+                        "statusCode": "\(httpResponse.statusCode)",
+                        "capturedBytes": "\(errorData.count)"
+                    ]
+                )
             }
             throw BurnBarProviderExecutorError.upstreamError(
                 httpResponse.statusCode,

@@ -90,7 +90,11 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
                     buckets: buckets
                 )
             } catch {
-                // Fall through to local telemetry parsing on API failure.
+                AppLogger.sync.silentFailure(
+                    "WarpQuotaAdapter.fetchCredits",
+                    error: error,
+                    context: ["fallback": "localTelemetry"]
+                )
             }
         }
 
