@@ -4,7 +4,10 @@ import CoreMedia
 import VideoToolbox
 import OpenBurnBarMedia
 
-private final class SendableVideoSampleBuffer: Sendable {
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
+// shared concurrently. sendable-allowlist: apple-media-buffer
+private final class SendableVideoSampleBuffer: @unchecked Sendable {
     let sampleBuffer: CMSampleBuffer
 
     init(_ sampleBuffer: CMSampleBuffer) {

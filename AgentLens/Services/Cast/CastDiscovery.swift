@@ -308,7 +308,11 @@ private final class ContinuationResumeGate: Sendable {
     }
 }
 
-private final class SendableNetServiceBox: Sendable {
+// AUDIT(@unchecked Sendable): ferries a non-Sendable Foundation `NetService` from
+// the NetServiceBrowser delegate callback to the @MainActor discovery; the box owns
+// the handle for a single hand-off and never shares it concurrently.
+// sendable-allowlist: foundation-sdk-shim
+private final class SendableNetServiceBox: @unchecked Sendable {
     let service: NetService
 
     init(_ service: NetService) {

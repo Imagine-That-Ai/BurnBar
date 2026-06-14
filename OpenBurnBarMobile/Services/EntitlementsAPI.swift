@@ -145,11 +145,11 @@ final class EntitlementsAPI: HostedQuotaEntitlementServicing {
         )
     }
 
-    private static let iso8601: ISO8601DateFormatter = {
+    private static var iso8601: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 }
 
 // MARK: - Apple-verified hosted quota entitlement DTO

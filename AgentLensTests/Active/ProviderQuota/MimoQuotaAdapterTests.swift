@@ -178,16 +178,15 @@ final class MimoQuotaAdapterTests: XCTestCase {
                 fileManager: fileManager,
                 snapshotStore: snapshotStore
             ),
-            miniMaxModeProvider: { .tokenPlan },
-            factoryPlanProvider: { .unknown },
-            xaiPlanProvider: { .unknown },
-            mimoTokenPlanRegionProvider: { region },
-            mimoTokenPlanTierProvider: { tier },
-            mimoTokenPlanBillingCycleProvider: { billingCycle },
+            miniMaxMode: .tokenPlan,
+            factoryPlan: .unknown,
+            xaiPlan: .unknown,
+            mimoTokenPlanRegion: region,
+            mimoTokenPlanTier: tier,
+            mimoTokenPlanBillingCycle: billingCycle,
             claudeBridgeStatus: ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil),
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
-            refreshClaudeBridgeStatus: { ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil) },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
             resolvedAPIKeys: ["mimo": apiKey]
         )

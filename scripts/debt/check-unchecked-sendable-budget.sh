@@ -26,6 +26,7 @@ allowed_reason_ids=(
   "firestore-any-payload"
   "firestore-any-test-fake"
   "foundation-sdk-shim"
+  "apple-media-buffer"
 )
 
 live_report="$(mktemp "${TMPDIR:-/tmp}/unchecked-sendable-live.XXXXXX")"

@@ -71,11 +71,11 @@ enum HermesWireValueParsing {
         return Self.iso8601WithFractionalSeconds.date(from: value) ?? Self.iso8601.date(from: value)
     }
 
-    private static let iso8601WithFractionalSeconds: ISO8601DateFormatter = {
+    private static var iso8601WithFractionalSeconds: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
     private static let iso8601 = ISO8601DateFormatter()
 

@@ -269,16 +269,15 @@ final class XAIQuotaAdapterTests: XCTestCase {
                 fileManager: fileManager,
                 snapshotStore: snapshotStore
             ),
-            miniMaxModeProvider: { .tokenPlan },
-            factoryPlanProvider: { .unknown },
-            xaiPlanProvider: { plan },
-            mimoTokenPlanRegionProvider: { .sgp },
-            mimoTokenPlanTierProvider: { nil },
-            mimoTokenPlanBillingCycleProvider: { .monthly },
+            miniMaxMode: .tokenPlan,
+            factoryPlan: .unknown,
+            xaiPlan: plan,
+            mimoTokenPlanRegion: .sgp,
+            mimoTokenPlanTier: nil,
+            mimoTokenPlanBillingCycle: .monthly,
             claudeBridgeStatus: ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil),
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
-            refreshClaudeBridgeStatus: { ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil) },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
             resolvedAPIKeys: resolvedKeys
         )

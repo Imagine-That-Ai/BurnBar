@@ -13,12 +13,14 @@ import OSLog
 enum MacMediaSealKeyOpener {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
 
+    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup (production leaves nil).
     /// F7 test seams — production leaves these nil and resolves the Mac relay
     /// private key from the keychain-backed store and the pinned sender key
     /// from the same Firestore trust resolver the chat opener uses (mirrors
     /// the F10 `ComputerUseSessionCoordinator.controlSeal*Provider` seams).
-    static var recipientPrivateKeyProvider: (@Sendable () throws -> HermesRelayPrivateKey)?
-    static var pinnedSenderKeyProvider: (@Sendable (_ uid: String, _ connectionId: String, _ envelope: HermesRealtimeRelayControlSealKeyEnvelope) async throws -> String)?
+    nonisolated(unsafe) static var recipientPrivateKeyProvider: (@Sendable () throws -> HermesRelayPrivateKey)?
+    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup (production leaves nil).
+    nonisolated(unsafe) static var pinnedSenderKeyProvider: (@Sendable (_ uid: String, _ connectionId: String, _ envelope: HermesRealtimeRelayControlSealKeyEnvelope) async throws -> String)?
 
     static func frameSealKey(
         for request: HermesRealtimeRelayMirrorRequest,

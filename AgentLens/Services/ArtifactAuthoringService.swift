@@ -128,7 +128,7 @@ final class ArtifactAuthoringService {
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let textGenerator: any ArtifactAuthoringTextGenerating
     private let fileManager: FileManager
-    private let nowProvider: () -> Date
+    private let nowProvider: @Sendable () -> Date
 
     init(
         dataStore: DataStore,
@@ -136,7 +136,7 @@ final class ArtifactAuthoringService {
         settingsProvider: any ArtifactDiscoverySettingsProviding,
         textGenerator: any ArtifactAuthoringTextGenerating = CLIArtifactAuthoringTextGenerator(),
         fileManager: FileManager = .default,
-        nowProvider: @escaping () -> Date = Date.init
+        nowProvider: @escaping @Sendable () -> Date = Date.init
     ) {
         self.dataStore = dataStore
         self.retrievalService = retrievalService ?? SearchService.makeConversationSearchService(dataStore: dataStore)

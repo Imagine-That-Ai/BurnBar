@@ -18,6 +18,11 @@ final class AuthRepository {
 
     var currentUser: User? { auth?.currentUser }
 
+    /// Sendable accessor for the signed-in user's uid. Lets callers off the main
+    /// actor read the id without the non-`Sendable` `User` handle escaping the
+    /// actor (`User?` cannot cross isolation; `String?` can).
+    var currentUserUID: String? { auth?.currentUser?.uid }
+
     var isSignedIn: Bool { auth?.currentUser != nil }
 
     func signInAnonymously() async throws -> User {

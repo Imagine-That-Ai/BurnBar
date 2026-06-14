@@ -5,7 +5,7 @@ import Foundation
 
 /// Protocol abstracting the account management surface needed by CloudSync.
 @MainActor
-protocol AccountManaging: AnyObject {
+protocol AccountManaging: AnyObject, Sendable {
     var isFirebaseAvailable: Bool { get }
     var isSignedIn: Bool { get }
     var isCloudSyncEnabled: Bool { get }

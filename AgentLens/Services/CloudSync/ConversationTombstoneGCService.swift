@@ -34,7 +34,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let encryptedCloudClient: SessionLogEncryptedCloudClient
     private let retentionWindow: TimeInterval
-    private let now: () -> Date
+    private let now: @Sendable () -> Date
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -46,7 +46,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
         context: CloudSyncContext,
         encryptedCloudClient: SessionLogEncryptedCloudClient? = nil,
         retentionWindow: TimeInterval = ConversationTombstoneGCService.retentionWindow,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.context = context
         self.encryptedCloudClient = encryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient()

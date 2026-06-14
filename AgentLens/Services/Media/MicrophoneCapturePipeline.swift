@@ -89,7 +89,10 @@ final class MicrophoneCapturePipeline {
     }
 }
 
-private struct SendableAudioPCMBuffer: Sendable {
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `AVAudioPCMBuffer` (an Apple framework type) across one isolation hand-off; never
+// shared concurrently. sendable-allowlist: apple-media-buffer
+private struct SendableAudioPCMBuffer: @unchecked Sendable {
     let buffer: AVAudioPCMBuffer
 
     init(_ buffer: AVAudioPCMBuffer) {

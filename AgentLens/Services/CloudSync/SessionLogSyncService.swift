@@ -1060,7 +1060,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
 
 }
 
-protocol SessionLogVaultKeyProviding {
+protocol SessionLogVaultKeyProviding: Sendable {
     func loadKey(uid: String) throws -> Data?
     func getOrCreateKey(uid: String) throws -> Data
 }
@@ -1074,7 +1074,7 @@ protocol SessionLogArchivedSessionMirroring {
 extension CLIAgentSessionMirror: SessionLogArchivedSessionMirroring {}
 
 @MainActor
-protocol SessionLogVaultKeyPublishing {
+protocol SessionLogVaultKeyPublishing: Sendable {
     func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws
 }
 
@@ -1401,11 +1401,11 @@ private extension SessionLogSyncService {
         return try encoder.encode(value)
     }
 
-    static let iso8601: ISO8601DateFormatter = {
+    static var iso8601: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
     static func isPermissionDeniedFunctionsError(_ error: Error) -> Bool {
         let nsError = error as NSError
@@ -1450,7 +1450,7 @@ struct EncryptedSessionBlobUploadTicket {
     let uploadURL: URL
 }
 
-protocol SessionLogEncryptedCloudClient {
+protocol SessionLogEncryptedCloudClient: Sendable {
     func beginEncryptedSessionBlobUpload(
         documentID: String,
         bodyHash: String,
@@ -1669,7 +1669,10 @@ extension CloudSyncService {
     /// `CloudVaultAADContext`, so opening WITHOUT the matching AAD always fails. A failure
     /// here is a trust/verification signal (forgery / tamper / wrong key), not a recoverable
     /// read — so the caller rejects the whole hit rather than surfacing a placeholder entry.
-    static func decryptEncryptedSearchField(
+    // `nonisolated`: a pure AAD-bound decrypt with no `@MainActor` state, so it is
+    // callable off the main actor (the enclosing `CloudSyncService` is `@MainActor`,
+    // which would otherwise isolate this `static` helper).
+    nonisolated static func decryptEncryptedSearchField(
         _ raw: Any?,
         vaultKey: Data,
         uid: String,
@@ -1719,7 +1722,10 @@ extension CloudSyncService {
     /// (skipping the hit) whenever the hit is malformed or any present sealed field
     /// fails authentication. Never returns a record carrying an unauthenticated
     /// title/snippet, so a cloud-side forgery cannot masquerade as a real result.
-    static func decodeEncryptedSearchHit(
+    // `nonisolated`: pure decode (delegates to `decryptEncryptedSearchField`), no
+    // `@MainActor` state — callable off the main actor despite the `@MainActor`
+    // `CloudSyncService` extension scope.
+    nonisolated static func decodeEncryptedSearchHit(
         _ hit: [String: Any],
         vaultKey: Data,
         uid: String
@@ -1837,7 +1843,7 @@ extension CloudSyncService {
     /// Whether the (untrusted, server-supplied) sealed field carries an actual
     /// value. A missing key or explicit null is a legitimate absence; any other
     /// present value that fails to decode is treated as tamper by the caller.
-    private static func sealedFieldIsPresent(_ raw: Any?) -> Bool {
+    private nonisolated static func sealedFieldIsPresent(_ raw: Any?) -> Bool {
         guard let raw else { return false }
         return !(raw is NSNull)
     }
@@ -1846,7 +1852,9 @@ extension CloudSyncService {
     // The present-vs-absent (and therefore tamper-vs-absent) security decision is
     // made by `decryptEncryptedSearchField` via `sealedFieldIsPresent`, so these
     // `try?` reads are genuinely best-effort here.
-    private static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
+    // `nonisolated`: pure JSON parse, no `@MainActor` state — keeps the
+    // `decryptEncryptedSearchField` chain callable off the main actor.
+    private nonisolated static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
         guard let dict = raw as? [String: Any],
               let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(parse; caller fails closed)
             return nil

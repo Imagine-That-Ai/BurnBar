@@ -70,16 +70,16 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// `nil`, silently zeroing every JSONL token count. Reusing two configured
     /// formatters fixes the correctness bug and removes the allocation.
     private enum JSONLTimestamp {
-        static let fractional: ISO8601DateFormatter = {
+        static var fractional: ISO8601DateFormatter {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             return formatter
-        }()
-        static let plain: ISO8601DateFormatter = {
+        }
+        static var plain: ISO8601DateFormatter {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
             return formatter
-        }()
+        }
         static func date(from text: String) -> Date? {
             fractional.date(from: text) ?? plain.date(from: text)
         }
@@ -155,7 +155,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let canUseLocalClaudeSessionForAccount = switcherProfileScope
             && Self.scopedClaudeProfileMatchesDefaultLogin(context: context)
         let workingCredentials = context.claudeCredentialsReader.load()
-        let bridgeStatus = context.refreshClaudeBridgeStatus()
+        let bridgeStatus = context.bridgeManager.refreshClaudeBridgeStatus()
 
         // Auto-install the statusline bridge on the first refresh that
         // sees Claude Code present but no bridge configured. Silent —
@@ -173,7 +173,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         // Re-read bridge status after potential auto-install so the
         // status line below reflects reality.
         let postInstallStatus = bridgeStatus.state == .notInstalled
-            ? context.refreshClaudeBridgeStatus()
+            ? context.bridgeManager.refreshClaudeBridgeStatus()
             : bridgeStatus
 
         // Explicit Claude credentials belong to a specific configured

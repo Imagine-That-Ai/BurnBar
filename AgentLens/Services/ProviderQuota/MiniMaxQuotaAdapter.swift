@@ -20,7 +20,7 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
         static let codingPlan = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
     }
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        guard context.miniMaxModeProvider() == .tokenPlan else {
+        guard context.miniMaxMode == .tokenPlan else {
             return unavailableSnapshot(
                 for: .minimax,
                 source: .unavailable,

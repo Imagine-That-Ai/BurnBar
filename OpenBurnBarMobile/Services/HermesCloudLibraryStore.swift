@@ -103,12 +103,7 @@ final class HermesCloudLibraryStore {
 }
 
 struct MobileICloudHermesLibraryReader: Sendable {
-    private let fileManager: FileManager
     private let containerIdentifier = "iCloud.com.openburnbar.app"
-
-    init(fileManager: FileManager = .default) {
-        self.fileManager = fileManager
-    }
 
     func fetchSessions() async -> [HermesLibrarySession] {
         guard let root = mirrorRootDirectoryURL() else { return [] }
@@ -118,7 +113,9 @@ struct MobileICloudHermesLibraryReader: Sendable {
     }
 
     private func mirrorRootDirectoryURL() -> URL? {
-        guard let base = fileManager.url(forUbiquityContainerIdentifier: containerIdentifier) else {
+        // `FileManager.default` is the shared, thread-safe instance; using it
+        // directly keeps this reader genuinely `Sendable` (no stored handle).
+        guard let base = FileManager.default.url(forUbiquityContainerIdentifier: containerIdentifier) else {
             return nil
         }
         return base
