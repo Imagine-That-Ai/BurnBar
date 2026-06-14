@@ -107,5 +107,11 @@ require_pattern "iOS mobile list callable callerDeviceId" \
 require_pattern "iOS mobile rotation pickup tests" \
   'MobileCloudVaultRotationPickupTests' \
   OpenBurnBarMobileTests/MobileCloudVaultRotationPickupTests.swift
+require_pattern "Mac list callable callerDeviceId" \
+  'listPendingCallablePayload' \
+  AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift
+require_pattern "Android list callable callerDeviceId" \
+  'callerDeviceId' \
+  android/app/src/main/java/com/openburnbar/data/computeruse/ComputerUseSecurityCallableClient.kt
 
 echo "PASS: Phase 1 security gates structurally wired"
