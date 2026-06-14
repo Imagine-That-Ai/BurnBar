@@ -8,7 +8,7 @@ import OpenBurnBarCore
 /// All operations route through the canonical `OpenBurnBarDatabase` queue so concurrency
 /// matches every other table in the project. The store keeps no in-memory state — that's
 /// `BudgetSettings`'s job.
-final class BudgetRulesStore: @unchecked Sendable {
+final class BudgetRulesStore: Sendable {
     private let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {

@@ -11,6 +11,11 @@ import Foundation
 #if canImport(OpenBurnBarIrohFFI)
 @preconcurrency import OpenBurnBarIrohFFI
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable UniFFI `IrohBlobNode` (an opaque
+// Rust object) whose every call is serialized onto a dedicated `DispatchQueue`. The
+// blocking FFI calls rule out an actor (it would stall the cooperative pool), so
+// queue confinement plus this audited conformance is the correct model; the node is
+// never touched off `queue`.
 public final class OpenBurnBarIrohBlobFFIBackend: IrohBlobBackend, @unchecked Sendable {
     private let node: IrohBlobNode
     private let queue: DispatchQueue

@@ -307,7 +307,7 @@ private final class ContinuationResumeGate: @unchecked Sendable {
     }
 }
 
-private final class SendableNetServiceBox: @unchecked Sendable {
+private final class SendableNetServiceBox: Sendable {
     let service: NetService
 
     init(_ service: NetService) {

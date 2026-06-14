@@ -10,7 +10,7 @@ import OpenBurnBarIrohRelay
 /// host an iroh endpoint in Phase 4 (mobile is the dialer). Silently
 /// no-oping these would have masked a coding error if a future mobile
 /// caller wired itself into the shared publisher.
-final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Sendable {
+final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
     static let shared = FirestoreIrohPairingDirectory()
 
     private let firestoreProvider: @Sendable () -> Firestore

@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import os
 
 /// In-process iroh transport for tests + the spine demo. Pairs Mac-side and
 /// iOS-side endpoints through a shared rendezvous. Frames are encoded with
@@ -11,19 +12,26 @@ import OpenBurnBarCore
 /// no Sim/Mac sandbox differences). The xcframework-backed transport runs
 /// against real iroh in CI's `iroh-xcframework.yml` workflow and in the
 /// device test plan.
-public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
-    private let lock = NSLock()
-    private var registeredHosts: [String: LoopbackIrohRelayTransport] = [:]
-    private var pendingByPeer: [String: [PendingConnect]] = [:]
+public final class LoopbackIrohRelayRendezvous: Sendable {
+    /// `PendingConnect` carries a non-Sendable `CheckedContinuation`, so the
+    /// rendezvous tables live inside an `OSAllocatedUnfairLock` (itself Sendable)
+    /// that mediates every access. The lock is the sole stored property, so the
+    /// rendezvous is plainly `Sendable`.
+    private struct State {
+        var registeredHosts: [String: LoopbackIrohRelayTransport] = [:]
+        var pendingByPeer: [String: [PendingConnect]] = [:]
+    }
+
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
 
     public init() {}
 
     /// Used by `LoopbackIrohRelayTransport.start()` to publish itself.
     func register(transport: LoopbackIrohRelayTransport, nodeId: String) {
-        lock.lock()
-        registeredHosts[nodeId] = transport
-        let waiters = pendingByPeer.removeValue(forKey: nodeId) ?? []
-        lock.unlock()
+        let waiters: [PendingConnect] = state.withLockUnchecked { state in
+            state.registeredHosts[nodeId] = transport
+            return state.pendingByPeer.removeValue(forKey: nodeId) ?? []
+        }
         for waiter in waiters {
             transport._fulfillDial(
                 fromPeer: waiter.fromPeer,
@@ -34,8 +42,7 @@ public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
     }
 
     func deregister(nodeId: String) {
-        lock.lock(); defer { lock.unlock() }
-        registeredHosts.removeValue(forKey: nodeId)
+        state.withLockUnchecked { _ = $0.registeredHosts.removeValue(forKey: nodeId) }
     }
 
     /// Used by `connect(to:)`. Resolves immediately if the peer is already
@@ -49,15 +56,18 @@ public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<any IrohRelayStream, Error>) in
-                lock.lock()
-                if let host = registeredHosts[peer] {
-                    lock.unlock()
-                    host._fulfillDial(fromPeer: fromPeer, connectId: connectId, continuation: continuation)
-                } else {
-                    pendingByPeer[peer, default: []].append(
+                let host: LoopbackIrohRelayTransport? = state.withLockUnchecked { state in
+                    if let host = state.registeredHosts[peer] {
+                        return host
+                    }
+                    state.pendingByPeer[peer, default: []].append(
                         PendingConnect(fromPeer: fromPeer, id: connectId, continuation: continuation)
                     )
-                    lock.unlock()
+                    return nil
+                }
+                if let host {
+                    host._fulfillDial(fromPeer: fromPeer, connectId: connectId, continuation: continuation)
+                } else {
                     Task {
                         try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                         self.cancelPending(connectId: connectId, peer: peer, with: .timedOut)
@@ -70,13 +80,18 @@ public final class LoopbackIrohRelayRendezvous: @unchecked Sendable {
     }
 
     private func cancelPending(connectId: UUID, peer: String, with error: IrohRelayTransportError) {
-        lock.lock()
-        guard var queue = pendingByPeer[peer] else { lock.unlock(); return }
-        guard let idx = queue.firstIndex(where: { $0.id == connectId }) else { lock.unlock(); return }
-        let entry = queue.remove(at: idx)
-        if queue.isEmpty { pendingByPeer.removeValue(forKey: peer) } else { pendingByPeer[peer] = queue }
-        lock.unlock()
-        entry.continuation.resume(throwing: error)
+        let entry: PendingConnect? = state.withLockUnchecked { state in
+            guard var queue = state.pendingByPeer[peer] else { return nil }
+            guard let idx = queue.firstIndex(where: { $0.id == connectId }) else { return nil }
+            let entry = queue.remove(at: idx)
+            if queue.isEmpty {
+                state.pendingByPeer.removeValue(forKey: peer)
+            } else {
+                state.pendingByPeer[peer] = queue
+            }
+            return entry
+        }
+        entry?.continuation.resume(throwing: error)
     }
 
     private struct PendingConnect {
@@ -135,7 +150,7 @@ struct LoopbackStreamPair: Sendable {
 /// `IrohRelayFrameCodec` the xcframework-backed transport uses. Each stream
 /// is single-reader / single-writer by contract — the recv side accumulates
 /// into a private buffer protected by an actor.
-public final class LoopbackIrohRelayStream: IrohRelayStream, @unchecked Sendable {
+public final class LoopbackIrohRelayStream: IrohRelayStream, Sendable {
     public let remotePeerNodeId: String?
     private let readQueue: LoopbackQueue
     private let writeQueue: LoopbackQueue
@@ -210,7 +225,7 @@ actor LoopbackStreamReceiveBuffer {
 
 /// Public loopback transport. `start()` registers in the rendezvous;
 /// `connect(to:)` dials; `accept()` returns the next inbound stream.
-public final class LoopbackIrohRelayTransport: IrohRelayTransport, @unchecked Sendable {
+public final class LoopbackIrohRelayTransport: IrohRelayTransport, Sendable {
     private let rendezvous: LoopbackIrohRelayRendezvous
     private let identity: IrohEndpointIdentity
     private let codec: IrohRelayFrameCodec

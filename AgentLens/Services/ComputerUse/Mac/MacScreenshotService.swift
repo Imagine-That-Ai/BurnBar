@@ -9,7 +9,7 @@ import OpenBurnBarComputerUseCore
 /// evidence. The audit chain stores content hashes; the PNG files live
 /// beside the session log so a human can later compare the artifact with
 /// the recorded hash.
-public final class MacScreenshotService: @unchecked Sendable {
+public final class MacScreenshotService: Sendable {
     public struct Capture: Sendable, Equatable {
         public let pngURL: URL
         public let pngData: Data

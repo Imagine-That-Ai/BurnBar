@@ -22,7 +22,7 @@ cat > "${baseline_path}" <<EOF
   "mobile": ${mobile},
   "scope": "AgentLens + OpenBurnBarCore/Sources + OpenBurnBarDaemon/Sources + OpenBurnBarMobile production Swift (tests/mocks/fixtures/build products excluded)",
   "generatedAt": "${generated_at}",
-  "note": "@unchecked Sendable annotations in OpenBurnBar production code. CI fails on increase; ratchet down and regenerate when removed."
+  "note": "Real @unchecked Sendable conformance annotations in OpenBurnBar production code (comment/AUDIT mentions are not counted). CI fails on increase; ratchet down and regenerate when removed. Prefer real Sendable/actor isolation or a Locked/OSAllocatedUnfairLock box; keep @unchecked only with an AUDIT(...) justification (FFI handles, raw pointers, non-Sendable Foundation types)."
 }
 EOF
 

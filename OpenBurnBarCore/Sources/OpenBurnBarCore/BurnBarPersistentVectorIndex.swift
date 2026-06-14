@@ -321,12 +321,13 @@ private final class BurnBarMappedWritableIndex: @unchecked Sendable, BurnBarPers
     }
 }
 
-// AUDIT(@unchecked Sendable): `mappedData` is set once via load() before the object
-// is shared for concurrent reads; no further mutation occurs after initialization.
-private final class BurnBarMappedReadableIndex: @unchecked Sendable, BurnBarPersistentVectorIndexReadableIndex {
+/// `mappedData` is loaded once via `load()`/`view()` and then read concurrently
+/// through the `Sendable` snapshot, so it lives in a `Locked` box that mediates
+/// every access — making the index genuinely `Sendable`.
+private final class BurnBarMappedReadableIndex: Sendable, BurnBarPersistentVectorIndexReadableIndex {
     private let dimensions: Int
     private let metric: BurnBarEmbeddingDistanceMetric
-    private var mappedData: Data?
+    private let mappedData = Locked<Data?>(nil)
 
     init(dimensions: Int, distanceMetric: BurnBarEmbeddingDistanceMetric) {
         self.dimensions = dimensions
@@ -334,15 +335,15 @@ private final class BurnBarMappedReadableIndex: @unchecked Sendable, BurnBarPers
     }
 
     func load(from url: URL) throws {
-        mappedData = try Data(contentsOf: url)
+        mappedData.write(try Data(contentsOf: url))
     }
 
     func view(from url: URL) throws {
-        mappedData = try Data(contentsOf: url, options: [.mappedIfSafe])
+        mappedData.write(try Data(contentsOf: url, options: [.mappedIfSafe]))
     }
 
     func search(vector: [Float], limit: Int) throws -> ([UInt64], [Float]) {
-        guard let mappedData else { return ([], []) }
+        guard let mappedData = mappedData.read() else { return ([], []) }
         let query = preparedVector(vector, metric: metric)
         let header = try BurnBarMappedIndexFormat.parseHeader(from: mappedData)
         guard Int(header.dimensions) == dimensions else {

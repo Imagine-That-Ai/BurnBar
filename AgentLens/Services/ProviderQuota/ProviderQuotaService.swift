@@ -120,7 +120,7 @@ private final class ProviderQuotaAutomaticRefreshLifecycle: @unchecked Sendable 
 // running inside the quota refresh actor. The readers are immutable closures
 // installed during ProviderQuotaService initialization; their backing settings
 // storage is UserDefaults-based and thread-safe for reads.
-final class ProviderQuotaPlanReaders: @unchecked Sendable {
+final class ProviderQuotaPlanReaders: Sendable {
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
     let xaiPlanProvider: () -> XAIQuotaPlanTier

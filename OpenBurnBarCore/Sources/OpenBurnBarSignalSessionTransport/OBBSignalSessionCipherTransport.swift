@@ -268,6 +268,13 @@ public struct OBBSignalSessionReceivedMessage: Equatable, Sendable {
     }
 }
 
+// AUDIT(@unchecked Sendable): holds libsignal's `OBBSignalProtocolStore` and
+// `ProtocolAddress`, both non-Sendable native-handle wrappers. The transport is
+// used per-connection (one Double Ratchet session); the libsignal store mediates
+// its own state. Converting this to an `actor` to make ratchet serialization
+// compiler-enforced is the recommended follow-up, but is deferred to a dedicated
+// PR with concurrency tests because it changes the isolation semantics of E2EE
+// session code. Tracked in docs/security/UNCHECKED_SENDABLE_REMEDIATION.md.
 public final class OBBSignalSessionCipherTransport: @unchecked Sendable {
     public typealias ClaimSignalPreKeyBundle = @Sendable () async throws -> OBBSignalClaimedPreKeyBundle
 

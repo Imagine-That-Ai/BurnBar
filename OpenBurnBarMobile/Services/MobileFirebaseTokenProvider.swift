@@ -13,7 +13,7 @@ import FirebaseCore
 /// callable allowed); App Check is enforced by the Cloud Function
 /// guard so the hosted OpenRouter quota can't be burned without
 /// proof the request came from a real BurnBar build.
-final class MobileFirebaseTokenProvider: @unchecked Sendable {
+final class MobileFirebaseTokenProvider: Sendable {
     /// Returns the singleton when Firebase Core has been configured;
     /// `nil` on clean checkouts where `FirebaseApp.configure()` was
     /// skipped (e.g. unit tests without `GoogleService-Info.plist`).

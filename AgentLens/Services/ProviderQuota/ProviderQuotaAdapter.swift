@@ -10,7 +10,7 @@ protocol ProviderQuotaAdapter: Sendable {
 // the main actor before quota work is dispatched. Reference-typed members are
 // either read-only service handles or have their own synchronization/actor
 // boundary. Closures are used only as configuration readers.
-struct ProviderQuotaAdapterContext: @unchecked Sendable {
+struct ProviderQuotaAdapterContext: Sendable {
     let appPaths: OpenBurnBarAppPaths
     let fileManager: FileManager
     let session: URLSession

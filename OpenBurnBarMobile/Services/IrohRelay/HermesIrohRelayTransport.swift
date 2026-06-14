@@ -6,6 +6,7 @@ import FirebaseRemoteConfig
 import Network
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
+import os
 
 private func irohPublicErrorClass(_ error: Error) -> String {
     let nsError = error as NSError
@@ -32,19 +33,20 @@ typealias IrohMediaFrameDispatcher = @Sendable (
 ) async -> Void
 
 private enum IrohNetworkAuditSnapshot {
-    private final class ContinuationGate: @unchecked Sendable {
-        private let lock = NSLock()
-        private var didResume = false
+    private final class ContinuationGate: Sendable {
+        private let didResume = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
 
         func finish(
             with path: NWPath,
             monitor: NWPathMonitor,
             continuation: CheckedContinuation<[String: String], Never>
         ) {
-            lock.lock()
-            defer { lock.unlock() }
-            guard !didResume else { return }
-            didResume = true
+            let shouldResume = didResume.withLockUnchecked { resumed -> Bool in
+                guard !resumed else { return false }
+                resumed = true
+                return true
+            }
+            guard shouldResume else { return }
             let detail = auditDetail(for: path)
             monitor.cancel()
             continuation.resume(returning: detail)
@@ -1045,21 +1047,25 @@ private enum HermesIrohHostedRelayConfig {
             || normalized(UserDefaults.standard.string(forKey: userDefaultsKey)) != nil
     }
 
-    private final class ContinuationGate: @unchecked Sendable {
-        private let lock = NSLock()
-        private var didResume = false
-        private let continuation: CheckedContinuation<Void, Never>
+    private final class ContinuationGate: Sendable {
+        private struct State {
+            var didResume = false
+            let continuation: CheckedContinuation<Void, Never>
+        }
+
+        private let state: OSAllocatedUnfairLock<State>
 
         init(_ continuation: CheckedContinuation<Void, Never>) {
-            self.continuation = continuation
+            state = OSAllocatedUnfairLock(uncheckedState: State(continuation: continuation))
         }
 
         func resume() {
-            lock.lock()
-            defer { lock.unlock() }
-            guard !didResume else { return }
-            didResume = true
-            continuation.resume()
+            let continuation = state.withLockUnchecked { state -> CheckedContinuation<Void, Never>? in
+                guard !state.didResume else { return nil }
+                state.didResume = true
+                return state.continuation
+            }
+            continuation?.resume()
         }
     }
 }
@@ -1089,39 +1095,40 @@ private func withIrohOperationTimeout<T: Sendable>(
     }
 }
 
-private final class IrohTimeoutGate<T: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var didResume = false
-    private let continuation: CheckedContinuation<T, Error>
-    var onResume: (@Sendable () -> Void)?
+private final class IrohTimeoutGate<T: Sendable>: Sendable {
+    private struct State {
+        var didResume = false
+        let continuation: CheckedContinuation<T, Error>
+        var onResume: (@Sendable () -> Void)?
+    }
+
+    private let state: OSAllocatedUnfairLock<State>
+
+    var onResume: (@Sendable () -> Void)? {
+        get { state.withLockUnchecked { $0.onResume } }
+        set { state.withLockUnchecked { $0.onResume = newValue } }
+    }
 
     init(_ continuation: CheckedContinuation<T, Error>) {
-        self.continuation = continuation
+        state = OSAllocatedUnfairLock(uncheckedState: State(continuation: continuation))
     }
 
     func resume(returning value: T) {
-        finish {
-            continuation.resume(returning: value)
-        }
+        finish { $0.resume(returning: value) }
     }
 
     func resume(throwing error: Error) {
-        finish {
-            continuation.resume(throwing: error)
-        }
+        finish { $0.resume(throwing: error) }
     }
 
-    private func finish(_ resumeContinuation: () -> Void) {
-        let callback: (@Sendable () -> Void)?
-        lock.lock()
-        if didResume {
-            lock.unlock()
-            return
+    private func finish(_ resumeContinuation: (CheckedContinuation<T, Error>) -> Void) {
+        let resolved = state.withLockUnchecked { state -> (CheckedContinuation<T, Error>, (@Sendable () -> Void)?)? in
+            guard !state.didResume else { return nil }
+            state.didResume = true
+            return (state.continuation, state.onResume)
         }
-        didResume = true
-        callback = onResume
-        lock.unlock()
-        resumeContinuation()
+        guard let (continuation, callback) = resolved else { return }
+        resumeContinuation(continuation)
         callback?()
     }
 }

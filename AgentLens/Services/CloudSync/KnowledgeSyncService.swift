@@ -8,20 +8,18 @@ import OpenBurnBarSignalCore
 /// Serializes Pensieve knowledge syncs across the process so a folder-watch
 /// burst and a manual "Sync now" can't run two commits at once. Mirrors
 /// `SessionLogSyncProcessGate` in SessionLogSyncService.swift.
-private final class KnowledgeSyncProcessGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var running = false
+private final class KnowledgeSyncProcessGate: Sendable {
+    private let running = Locked(false)
 
     func tryEnter() -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        guard !running else { return false }
-        running = true
-        return true
+        running.withLock { running in
+            guard !running else { return false }
+            running = true
+            return true
+        }
     }
 
-    func leave() {
-        lock.lock(); running = false; lock.unlock()
-    }
+    func leave() { running.write(false) }
 }
 
 public enum KnowledgeSyncError: LocalizedError {

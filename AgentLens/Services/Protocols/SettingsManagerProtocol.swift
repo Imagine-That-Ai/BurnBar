@@ -376,4 +376,7 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
 
 // MARK: - SettingsManager Extension
 
-extension SettingsManager: SettingsManagerProtocol, @unchecked Sendable {}
+// `SettingsManager` is `@MainActor @Observable`, so it is already `Sendable` by
+// main-actor isolation — no `@unchecked` escape hatch is needed for the protocol
+// conformance.
+extension SettingsManager: SettingsManagerProtocol {}
