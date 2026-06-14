@@ -21,6 +21,12 @@ const DEVICE_COLLECTION = "devices";
 const ACTIVE_TTL_MS = 90_000;
 const GENERIC_PREVIEW = "OpenBurnBar has a new agent reply.";
 /**
+ * F-RR09-007: cap retention for server-created agent reply notification events.
+ * Delivery/retry completes quickly; this TTL is only the upper bound for
+ * metadata accumulation in Firestore.
+ */
+export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/**
  * A `pending` event older than this is considered stuck (the create-trigger
  * fan-out aborted or partially failed). The sweeper retries it. 2 minutes is
  * long enough that the inline fan-out from the document trigger has settled but
@@ -35,8 +41,6 @@ const STUCK_EVENT_GRACE_MS = 2 * 60_000;
 const MAX_AGENT_FANOUT_ATTEMPTS = 8;
 /** Max stuck events handled per scheduled tick. */
 const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
-
-export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
 
@@ -101,7 +105,7 @@ export interface AgentNotificationReplyCommand {
   runtime: string;
   sourceKind: AgentNotificationSourceKind;
   contentSealed: true;
-  sealedSchemaVersion: 1 | 2;
+  sealedSchemaVersion: 2;
   vaultKeyID: string;
   sealedReplyPayload: CloudVaultSealedPayload;
   deviceId?: string;

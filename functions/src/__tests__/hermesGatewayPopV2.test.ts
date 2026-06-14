@@ -372,7 +372,10 @@ describe("L2 — gateway PoP v2 query binding", () => {
     };
 
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
-    const dispatch = dispatchHermesGatewayRequest as unknown as (req: unknown, res: unknown) => Promise<void>;
+    const dispatch = dispatchHermesGatewayRequest as unknown as (
+      req: TestHttpRequest,
+      res: TestHttpResponse,
+    ) => Promise<void>;
     const { res, captured } = makeRes();
     const req = {
       method: "GET",
@@ -388,7 +391,9 @@ describe("L2 — gateway PoP v2 query binding", () => {
     await dispatch(req, res);
     expect(captured.status).toBe(200);
 
-    const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`);
+    const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`) as
+      | { expireAt?: { toMillis(): number } }
+      | undefined;
     expect(nonceDoc).toBeDefined();
     const expectedExpire = futureTime.getTime() + 5 * 60 * 1000;
     expect((nonceDoc?.expireAt as { toMillis(): number })?.toMillis()).toBe(expectedExpire);

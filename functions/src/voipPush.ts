@@ -133,7 +133,7 @@ export function parseTriggerRequest(raw: unknown): TriggerRequest | undefined {
   const callId = stringField(raw, "callId");
   const connectionId = stringField(raw, "connectionId");
   const pairedDeviceId = stringField(raw, "pairedDeviceId");
-  const displayName = stringField(raw, "displayName");
+  const displayName = typeof raw.displayName === "string" ? sanitizePushDisplayName(raw.displayName) : undefined;
   if (!callId || !connectionId || !pairedDeviceId || !displayName) return undefined;
 
   if (!isValidRoutingId(callId) || !isValidRoutingId(connectionId) || !isValidRoutingId(pairedDeviceId)) {
