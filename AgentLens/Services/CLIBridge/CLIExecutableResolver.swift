@@ -22,7 +22,7 @@ struct CLIExecutableResolver: Sendable {
     }
 
     func resolveExecutable(named name: String) async -> String? {
-        await Task.detached {
+        await Task {
             let env = environmentProvider()
             let homeDirectory = homeDirectoryProvider()
             let fileManager = FileManager.default

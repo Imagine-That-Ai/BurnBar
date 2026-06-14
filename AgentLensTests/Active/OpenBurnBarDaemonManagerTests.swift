@@ -6,6 +6,54 @@ import OpenBurnBarCore
 
 final class OpenBurnBarDaemonManagerTests: XCTestCase {
     @MainActor
+    func test_daemonRPC_propagatesCancellation() async throws {
+        let harness = try makeRuntimePathsHarness(name: "rpc-cancellation")
+        defer { harness.cleanup() }
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: OpenBurnBarDaemonDependencies(
+                fileManager: .default,
+                runProcess: { _, _ in "" },
+                resolveDaemonBinary: { nil },
+                requestHealth: { _ in fatalError("unexpected health RPC") },
+                requestConfig: { _ in fatalError("unexpected config RPC") },
+                updateConfig: { _, _ in fatalError("unexpected config update") },
+                requestRecentUsage: { _, _ in fatalError("unexpected usage RPC") },
+                requestControllerProjects: { _ in fatalError("unexpected projects RPC") },
+                upsertControllerProject: { _, _ in fatalError("unexpected project upsert") },
+                recordControllerReviewRun: { _, _ in fatalError("unexpected review run") }
+            )
+        )
+
+        let task = Task {
+            try await manager.daemonRPC {
+                // Synchronous cancellation check: daemonRPC wraps blocking RPC work,
+                // so the closure cannot await. Spin briefly until cancellation arrives.
+                let deadline = Date().addingTimeInterval(5)
+                while !Task.isCancelled && Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.005)
+                }
+                if Task.isCancelled {
+                    throw CancellationError()
+                }
+                return ()
+            }
+        }
+
+        // Give the child task a chance to start, then cancel it.
+        try await Task.sleep(nanoseconds: 20_000_000)
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected daemonRPC to propagate cancellation")
+        } catch is CancellationError {
+            // Expected: the structured-concurrency Task inherits cancellation.
+        }
+    }
+
+    @MainActor
     func test_managerFallsBackToLocalMirrorWhenDaemonUnavailable() async throws {
         let harness = try makeRuntimePathsHarness(name: "fallback")
         defer { harness.cleanup() }

@@ -56,7 +56,7 @@ final class AppleRemoteDesktopRFBClient: Sendable {
     }
 
     func typeCredential(_ credentials: Credentials) async throws {
-        try await Task.detached(priority: .userInitiated) { [host, port, timeoutSeconds] in
+        try await Task(priority: .userInitiated) { [host, port, timeoutSeconds] in
             var stream = try RFBStream(host: host, port: port, timeoutSeconds: timeoutSeconds)
             defer { stream.close() }
 

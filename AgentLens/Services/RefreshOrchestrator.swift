@@ -103,6 +103,32 @@ actor RefreshOrchestrator {
         }
     }
 
+    // MARK: - Billing Reconciliation Store Helpers
+
+    /// Off-actor insertion + reload so the billing reconciliation step does not
+    /// serialize through the `RefreshOrchestrator` actor while still running at
+    /// `.utility` priority with structured-concurrency cancellation.
+    private nonisolated static func insertAndReload(
+        newRecords: [TokenUsage],
+        usageStore: UsageStore
+    ) async throws -> [TokenUsage] {
+        try await Task(priority: .utility) {
+            try usageStore.insert(newRecords)
+            return try usageStore.fetchAllUsage()
+        }.value
+    }
+
+    /// Off-actor deletion + reload for the billing reconciliation step.
+    private nonisolated static func deleteAndReload(
+        sessionIDPrefix: String,
+        usageStore: UsageStore
+    ) async throws -> [TokenUsage] {
+        try await Task(priority: .utility) {
+            try usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
+            return try usageStore.fetchAllUsage()
+        }.value
+    }
+
     func runPostPersistencePhase(
         refreshStartedAt: Date,
         allUsages: [TokenUsage],
@@ -121,18 +147,16 @@ actor RefreshOrchestrator {
             usageAPIService: usageAPIService,
             allParsedUsages: allUsages,
             persistAndReload: { [dataStore] newRecords in
-                let innerStore = dataStore.actor.usageStore
-                return try await Task.detached(priority: .utility) {
-                    try innerStore.insert(newRecords)
-                    return try innerStore.fetchAllUsage()
-                }.value
+                try await Self.insertAndReload(
+                    newRecords: newRecords,
+                    usageStore: dataStore.actor.usageStore
+                )
             },
             deleteAndReload: { [dataStore] sessionIDPrefix in
-                let innerStore = dataStore.actor.usageStore
-                return try await Task.detached(priority: .utility) {
-                    try innerStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
-                    return try innerStore.fetchAllUsage()
-                }.value
+                try await Self.deleteAndReload(
+                    sessionIDPrefix: sessionIDPrefix,
+                    usageStore: dataStore.actor.usageStore
+                )
             }
         )
 

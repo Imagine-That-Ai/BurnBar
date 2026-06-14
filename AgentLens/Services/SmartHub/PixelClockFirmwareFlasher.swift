@@ -313,7 +313,7 @@ struct PixelClockFirmwareFlasher {
     }
 
     private static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
@@ -418,7 +418,7 @@ struct PixelClockNetworkProvisioner {
     }
 
     static func visibleSetupSSIDs() async -> [String] {
-        await Task.detached(priority: .userInitiated) {
+        await Task(priority: .userInitiated) {
             guard let interface = primaryWiFiInterface() else { return [] }
             let networks = (try? interface.scanForNetworks(withName: nil)) ?? []
             return setupSSIDs(fromNetworkNames: networks.compactMap { $0.ssid })
@@ -458,7 +458,7 @@ struct PixelClockNetworkProvisioner {
     }
 
     private static func join(ssid: String, password: String?) async throws {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             guard let interface = primaryWiFiInterface() else {
                 throw ProvisionError.connectFailed("Wi-Fi is not available on this Mac.")
             }
@@ -501,7 +501,7 @@ struct PixelClockNetworkProvisioner {
     }
 
     private static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             try runSync(executable, arguments, timeout: timeout)
         }.value
     }

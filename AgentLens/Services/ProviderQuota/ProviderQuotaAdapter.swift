@@ -431,7 +431,7 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private static func runOpenCodeStats(days: Int, environment: [String: String]) async throws -> String {
-        try await Task.detached(priority: .utility) {
+        try await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = ["opencode", "stats", "--days", String(days), "--models", "10"]
@@ -513,7 +513,7 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
         environment: [String: String],
         fileManager: FileManager
     ) async -> Double? {
-        await Task.detached(priority: .utility) {
+        await Task(priority: .utility) {
             let dbURL: URL
             if let override = environment["OPENCODE_DB_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
                 dbURL = URL(fileURLWithPath: override)

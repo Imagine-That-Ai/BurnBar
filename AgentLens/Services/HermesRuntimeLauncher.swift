@@ -259,7 +259,7 @@ enum HermesEnvironmentFile {
     }
 
     static func ensureAPIServerEnabled() async throws {
-        try await Task.detached(priority: .utility) {
+        try await Task(priority: .utility) {
             let fileManager = FileManager.default
             let directoryURL = envURL.deletingLastPathComponent()
             try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
@@ -290,7 +290,7 @@ enum HermesEnvironmentFile {
     }
 
     static func readAPIServerKey() async -> String? {
-        await Task.detached(priority: .utility) {
+        await Task(priority: .utility) {
             guard let content = try? String(contentsOf: envURL, encoding: .utf8) else { return nil }
             for rawLine in content.components(separatedBy: .newlines) {
                 let line = rawLine.trimmingCharacters(in: .whitespaces)
@@ -307,7 +307,7 @@ enum HermesEnvironmentFile {
 
 enum HermesRuntimeProcessRunner {
     static func run(executable: String, arguments: [String]) async throws -> String {
-        try await Task.detached(priority: .utility) {
+        try await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
@@ -336,7 +336,7 @@ enum HermesRuntimeProcessRunner {
     }
 
     static func launchDetached(executable: String, arguments: [String]) async throws {
-        try await Task.detached(priority: .utility) {
+        try await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments

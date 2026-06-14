@@ -1742,6 +1742,73 @@ final class CLIBridgeTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
     }
+
+    // MARK: - Structured-concurrency cancellation verification
+
+    func test_agentToolBroker_shellRunTimesOutAndTerminatesProcess() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-timeout-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-1",
+            capabilities: [.shell],
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
+
+        let start = Date()
+        let result = await broker.invokeOpenAITool(
+            name: "shell_run",
+            arguments: #"{"command":"sleep 5","timeoutSeconds":1}"#,
+            callID: "call-1",
+            runID: "run-1"
+        )
+        let elapsed = Date().timeIntervalSince(start)
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertEqual(payload["timedOut"] as? Bool, true)
+        XCTAssertLessThan(elapsed, 3.0, "Timed-out shell should not block for the full sleep duration")
+    }
+
+    func test_interactiveTerminalLauncher_terminate_cleansSessionDirectory() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-terminate-test-\(UUID().uuidString)", isDirectory: true)
+        let sessionDir = root.appendingPathComponent("session", isDirectory: true)
+        let pidFile = sessionDir.appendingPathComponent("terminal.pid")
+        try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        try "999999".write(to: pidFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let session = LaunchedAgentTerminalSession(
+            sessionID: "test-session",
+            runtimeId: "codex",
+            windowID: nil,
+            pidFilePath: pidFile.path,
+            sessionDirectoryPath: sessionDir.path,
+            titleToken: "OBBCLI-TEST"
+        )
+
+        InteractiveTerminalLauncher.terminate(session)
+
+        let deadline = Date().addingTimeInterval(5)
+        while FileManager.default.fileExists(atPath: sessionDir.path) && Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: sessionDir.path),
+            "terminate() fire-and-forget cleanup should remove the session directory"
+        )
+    }
 }
 
 private func realpathString(_ url: URL) -> String {

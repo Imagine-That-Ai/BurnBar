@@ -14,7 +14,7 @@ struct CodexQuotaAdapter: ProviderQuotaAdapter {
 
         let freshnessCutoff = Date().addingTimeInterval(-CodexQuotaScanPolicy.freshnessWindow)
         let existingCache = context.codexRolloutScanCache
-        let scanResult = try await Task.detached(priority: .utility) {
+        let scanResult = try await Task(priority: .utility) {
             try CodexRolloutScanner.scanCodexRateLimitEvents(
                 in: candidateDirectories,
                 freshnessCutoff: freshnessCutoff,
@@ -341,7 +341,7 @@ private enum CodexOAuthQuotaFetcher {
     }
 
     private static func nudgeCodexAuthRefresh(environment: [String: String], configURL: URL) async {
-        await Task.detached(priority: .utility) {
+        await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = ["codex", "login", "status"]
@@ -361,6 +361,10 @@ private enum CodexOAuthQuotaFetcher {
 
             let deadline = Date().addingTimeInterval(8)
             while process.isRunning && Date() < deadline {
+                if Task.isCancelled {
+                    process.terminate()
+                    break
+                }
                 try? await Task.sleep(for: .milliseconds(100))
             }
             if process.isRunning {

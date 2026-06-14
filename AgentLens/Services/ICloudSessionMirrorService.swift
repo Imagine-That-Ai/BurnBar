@@ -406,7 +406,11 @@ final class ICloudSessionMirrorService {
     /// Uses minimal JSONL parsing — no full token extraction. fullText is always empty.
     func fetchConversations() async -> [ConversationRecord] {
         guard let mirrorRoot = mirrorRootDirectoryURL() else { return [] }
-        return await Task.detached(priority: .utility) {
+        return await Self.extractConversationsOffMain(from: mirrorRoot)
+    }
+
+    private nonisolated static func extractConversationsOffMain(from mirrorRoot: URL) async -> [ConversationRecord] {
+        await Task(priority: .utility) {
             Self.extractConversations(from: mirrorRoot)
         }.value
     }

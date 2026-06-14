@@ -60,7 +60,7 @@ final class CameraCapturePipeline: NSObject {
         if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
         session.commitConfiguration()
 
-        await Task.detached { [session] in session.startRunning() }.value
+        await Task { [session] in session.startRunning() }.value
     }
 
     func stop() {

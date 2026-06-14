@@ -1524,7 +1524,7 @@ final class CLIAgentMissionRequestListener {
         let sessionID: String
     }
 
-    fileprivate struct DirectCLIStreamEvent: Sendable {
+    struct DirectCLIStreamEvent: Sendable {
         let phase: String
         let kind: String
         let title: String
@@ -1654,7 +1654,7 @@ final class CLIAgentMissionRequestListener {
         let gitPath = "/usr/bin/git"
         guard FileManager.default.fileExists(atPath: gitPath) else { return [] }
 
-        return await Task.detached(priority: .utility) {
+        return await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: gitPath)
             process.arguments = ["-C", directoryURL.path, "status", "--porcelain=v1"]
@@ -1835,7 +1835,7 @@ final class CLIAgentMissionRequestListener {
         cancellationTracker: MissionCancellationTracker,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             let fileManager = FileManager.default
             let rootURL = fileManager.temporaryDirectory
                 .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
@@ -1942,7 +1942,7 @@ final class CLIAgentMissionRequestListener {
                     return finalOutput
                 }
 
-                try await Task.sleep(nanoseconds: 250_000_000)
+                try? await Task.sleep(nanoseconds: 250_000_000)
             }
 
             Self.killVisibleTerminalSession(pidURL: pidURL)
@@ -1983,7 +1983,7 @@ final class CLIAgentMissionRequestListener {
                 message: "Launching \(backend.displayName) CLI process.",
                 backend: backend
             )
-            let output = try await runProcess(
+            let output = try await Self.runProcess(
                 executable: executable,
                 arguments: arguments,
                 timeoutSeconds: 180,
@@ -2022,7 +2022,7 @@ final class CLIAgentMissionRequestListener {
         }
     }
 
-    private func runProcess(
+    nonisolated fileprivate static func runProcess(
         executable: String,
         arguments: [String],
         timeoutSeconds: TimeInterval,
@@ -2031,7 +2031,7 @@ final class CLIAgentMissionRequestListener {
         cancellationTracker: MissionCancellationTracker,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
@@ -2111,7 +2111,7 @@ final class CLIAgentMissionRequestListener {
                         userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
                     )
                 }
-                try await Task.sleep(nanoseconds: 100_000_000)
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
             if process.isRunning {
                 let pid = process.processIdentifier

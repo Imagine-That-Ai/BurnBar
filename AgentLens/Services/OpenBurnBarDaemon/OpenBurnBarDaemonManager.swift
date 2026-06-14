@@ -289,27 +289,41 @@ final class OpenBurnBarDaemonManager {
     }
 
     /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.
-    func daemonRPC<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
-        try await Task.detached(priority: .utility) {
-            try work()
-        }.value
+    nonisolated func daemonRPC<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        async let result: T = work()
+        return try await result
     }
 
     /// Process launch and `waitUntilExit` are blocking Foundation calls. Keep them off the main actor.
     func daemonProcess(_ executable: String, _ arguments: [String]) async throws -> String {
-        let runProcess = dependencies.runProcess
-        return try await Task.detached(priority: .utility) {
-            try runProcess(executable, arguments)
-        }.value
+        let dependencies = self.dependencies
+        return try await Self.daemonProcessOffMain(executable, arguments, dependencies: dependencies)
     }
 
     /// Daemon binary refresh checks can hash multi-megabyte build products. Keep that off the main actor.
     func daemonNeedsRefreshCheck() async -> Bool {
-        let paths = paths
-        let dependencies = dependencies
-        return await Task.detached(priority: .utility) {
-            Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
-        }.value
+        let paths = self.paths
+        let dependencies = self.dependencies
+        return await Self.daemonNeedsRefreshCheckOffMain(paths: paths, dependencies: dependencies)
+    }
+
+    // MARK: - Off-Main Helpers
+
+    private nonisolated static func daemonProcessOffMain(
+        _ executable: String,
+        _ arguments: [String],
+        dependencies: OpenBurnBarDaemonDependencies
+    ) async throws -> String {
+        async let result: String = dependencies.runProcess(executable, arguments)
+        return try await result
+    }
+
+    private nonisolated static func daemonNeedsRefreshCheckOffMain(
+        paths: OpenBurnBarDaemonRuntimePaths,
+        dependencies: OpenBurnBarDaemonDependencies
+    ) async -> Bool {
+        async let result: Bool = Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
+        return await result
     }
 
     var socketPathDisplay: String {

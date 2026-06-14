@@ -1717,6 +1717,9 @@
 		9A0F7E3712C60AE16EE47C19 /* MobileCloudVaultRevocationRotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6552556C93F47381C0490883 /* MobileCloudVaultRevocationRotation.swift */; };
 				1316AFD7067F02E3F129D6EB /* CloudVaultRotationPickupLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B939FA1FBF9BED99B324E6 /* CloudVaultRotationPickupLifecycle.swift */; };
 				3976F0C0DC9E34F6901958D2 /* MobileCloudVaultRotationPickupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB56B6E01EB50E008ECA40D5 /* MobileCloudVaultRotationPickupTests.swift */; };
+				476EADD32867F160587486F3 /* RemoteUnlockVirtualHIDBridgeInstallerConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51DE7680D7E40897F758D2A /* RemoteUnlockVirtualHIDBridgeInstallerConcurrencyTests.swift */; };
+				59EAA552557BB22C32BFD932 /* RemoteAccessAgentClientCancellationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5949B04CC8C8690D7E35D003 /* RemoteAccessAgentClientCancellationTests.swift */; };
+		9FFE62D59A4AF03A97141081 /* CLIRuntimeModelCatalogDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 517CE6D7C9BB3998C38E2C05 /* CLIRuntimeModelCatalogDiscoveryTests.swift */; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -3515,6 +3518,9 @@
 		6552556C93F47381C0490883 /* MobileCloudVaultRevocationRotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCloudVaultRevocationRotation.swift; sourceTree = "<group>"; };
 				45B939FA1FBF9BED99B324E6 /* CloudVaultRotationPickupLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudVaultRotationPickupLifecycle.swift; sourceTree = "<group>"; };
 				CB56B6E01EB50E008ECA40D5 /* MobileCloudVaultRotationPickupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCloudVaultRotationPickupTests.swift; sourceTree = "<group>"; };
+				B51DE7680D7E40897F758D2A /* RemoteUnlockVirtualHIDBridgeInstallerConcurrencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteUnlockVirtualHIDBridgeInstallerConcurrencyTests.swift; sourceTree = "<group>"; };
+				5949B04CC8C8690D7E35D003 /* RemoteAccessAgentClientCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAccessAgentClientCancellationTests.swift; sourceTree = "<group>"; };
+		517CE6D7C9BB3998C38E2C05 /* CLIRuntimeModelCatalogDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIRuntimeModelCatalogDiscoveryTests.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -5533,6 +5539,7 @@
 				E2A01BCBF27918660142EC62 /* UsageSyncRoundTripTests.swift */,
 				53A2CB82CDFDE16ABB466842 /* VibeProxyMigrationServiceTests.swift */,
 				73B02DCE145FBBDB6E03950C /* WorkflowInsightRollupServiceTests.swift */,
+				517CE6D7C9BB3998C38E2C05 /* CLIRuntimeModelCatalogDiscoveryTests.swift */,
 			);
 			name = Active;
 			path = AgentLensTests/Active;
@@ -5711,12 +5718,16 @@
 			children = (
 				0760648F51D03BC61C3602DD /* AgentFocusFollowControllerTests.swift */,
 				E1EE1B5496AA0690663695C7 /* AgentWatchActionPublisherTests.swift */,
+				5949B04CC8C8690D7E35D003 /* RemoteAccessAgentClientCancellationTests.swift */,
+
 				BFF64FBFA6E5BC06961FAE57 /* MacActionDispatcherKillSwitchTests.swift */,
 				D3B8AD04C72613BE9E4E5090 /* PhoneControlAuthorityValidatorAttestationTests.swift */,
 				42402F64BB58E1E47451C58B /* PhoneControlPersistenceFailClosedTests.swift */,
 				4427595B21D3677B81286C7E /* PhoneControlReceiverTests.swift */,
 				D7CBD4B883D83E4371DDEFA3 /* PhoneControlSigningKeyKindRecordParsingTests.swift */,
 				2085CBEE8FA3DADF104FB3BC /* RemoteUnlockExecutionLaunchAgentTests.swift */,
+				B51DE7680D7E40897F758D2A /* RemoteUnlockVirtualHIDBridgeInstallerConcurrencyTests.swift */,
+
 				04871BE2409862D1E9401A60 /* SmartZoomContextProviderTests.swift */,
 				63CFFEC082B70D98E9517853 /* SystemPermissionMonitorRefreshTests.swift */,
 			);
@@ -8384,7 +8395,10 @@
 				7E5FC960A29BE69BC5A60107 /* WindowManagerChatPopOutTests.swift in Sources */,
 				F8D4C1B60D03AA9112548BE8 /* WorkflowInsightRollupServiceTests.swift in Sources */,
 				8216F88657712626917F15AC /* XAIQuotaAdapterTests.swift in Sources */,
-			);
+							476EADD32867F160587486F3 /* RemoteUnlockVirtualHIDBridgeInstallerConcurrencyTests.swift in Sources */,
+				59EAA552557BB22C32BFD932 /* RemoteAccessAgentClientCancellationTests.swift in Sources */,
+				9FFE62D59A4AF03A97141081 /* CLIRuntimeModelCatalogDiscoveryTests.swift in Sources */,
+);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		EF7D3D6CF9326CBCD20C7DF5 /* Sources */ = {

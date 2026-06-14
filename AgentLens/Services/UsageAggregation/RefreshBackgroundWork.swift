@@ -33,22 +33,24 @@ struct SingleProviderResult: Sendable {
 /// Stateless namespace for off-main-thread refresh work.
 ///
 /// `UsageAggregator` snapshots any `@MainActor` state it needs (settings,
-/// API configs) *before* calling into these functions from a `Task.detached`.
-/// The functions run entirely off the main actor and return value types that
-/// the aggregator applies back on `@MainActor` in one step.
+/// API configs) *before* calling into these functions using structured
+/// concurrency (`Task(priority:)` from nonisolated helpers). The functions run
+/// entirely off the main actor and return value types that the aggregator
+/// applies back on `@MainActor` in one step.
 enum RefreshBackgroundWork {
 
     // MARK: - Full Refresh
 
     /// Runs the full parse → persist → post-persistence pipeline off the
-    /// main thread.  Call from `Task.detached` and `await` the result.
+    /// main thread.  Call from a nonisolated `Task(priority:)` helper and
+    /// `await` the result.
     static func runFullRefresh(
         parsers: [AgentProvider: any LogParser],
         dataStore: DataStore,
         orchestrator: RefreshOrchestrator,
         existingUsages: [TokenUsage],
         settings: RefreshSettingsSnapshot
-    ) async -> FullRefreshResult {
+    ) async throws -> FullRefreshResult {
         var result = FullRefreshResult(
             postPersistence: PostPersistenceResult()
         )
@@ -63,7 +65,7 @@ enum RefreshBackgroundWork {
 
         // discover → parse → reconcile → persist
         let discovery = pipeline.discover()
-        let parsed = await pipeline.parse(from: discovery)
+        let parsed = try await pipeline.parse(from: discovery)
         let reconciled = await pipeline.reconcile(parsed: parsed)
         let persisted = pipeline.persist(parsed: parsed)
 

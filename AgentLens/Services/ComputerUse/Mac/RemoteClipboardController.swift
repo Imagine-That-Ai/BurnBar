@@ -760,7 +760,7 @@ final class RemoteUnlockCredentialController {
     }
 }
 
-private struct RemoteAccessAgentClient: Sendable {
+internal struct RemoteAccessAgentClient: Sendable {
     private static let defaultSocketPath = "/var/run/openburnbar-remote-access-agent.sock"
     private static let maximumResponseBytes = 16 * 1024
     // Must exceed the helper's worker-exit backstop so the app never gives up while the helper is
@@ -776,7 +776,7 @@ private struct RemoteAccessAgentClient: Sendable {
     }
 
     func typeCredential(_ password: String) async throws {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             try send(
                 RemoteAccessAgentRequest(operation: "typeCredential", password: password)
             )
@@ -784,7 +784,7 @@ private struct RemoteAccessAgentClient: Sendable {
     }
 
     func wakeDisplay() async throws {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             try send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
         }.value
     }

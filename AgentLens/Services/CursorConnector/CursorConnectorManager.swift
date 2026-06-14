@@ -440,16 +440,23 @@ final class CursorConnectorManager {
     }
 
     func refreshSystemHealth() async {
-        let snapshot = await Task.detached(priority: .utility) {
+        let snapshot = await Self.systemHealthSnapshotOffMain()
+        health.cloudflaredInstalled = snapshot.cloudflaredInstalled
+        health.homebrewInstalled = snapshot.homebrewInstalled
+        health.routerListening = false
+        health.publicBaseURLReachable = false
+    }
+
+    private nonisolated static func systemHealthSnapshotOffMain() async -> (
+        cloudflaredInstalled: Bool,
+        homebrewInstalled: Bool
+    ) {
+        await Task(priority: .utility) { @Sendable in
             (
                 cloudflaredInstalled: Self.findExecutable(named: "cloudflared") != nil,
                 homebrewInstalled: Self.findHomebrew() != nil
             )
         }.value
-        health.cloudflaredInstalled = snapshot.cloudflaredInstalled
-        health.homebrewInstalled = snapshot.homebrewInstalled
-        health.routerListening = false
-        health.publicBaseURLReachable = false
     }
 
     private func keychainAccount(for provider: ConnectorProvider) -> String {

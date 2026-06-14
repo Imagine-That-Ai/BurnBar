@@ -2058,7 +2058,7 @@ private struct MercuryRemoteAccessAgentClient: Sendable {
     private static let requestIOTimeoutSeconds: time_t = 3
 
     func wakeDisplay() async throws {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             try Self.send(MercuryRemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
         }.value
     }

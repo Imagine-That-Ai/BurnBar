@@ -21,7 +21,7 @@ enum ManagedRuntimeProcessRunner {
 
     /// Run `executable` synchronously, return its merged stdout/stderr.
     static func run(executable: String, arguments: [String]) async throws -> String {
-        try await Task.detached(priority: .utility) {
+        try await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
@@ -53,7 +53,7 @@ enum ManagedRuntimeProcessRunner {
     /// detached. Used for long-lived companion apps (Hermes Dashboard, Pi
     /// app, etc.) that own their own lifecycle.
     static func launchDetached(executable: String, arguments: [String]) async throws {
-        try await Task.detached(priority: .utility) {
+        try await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments

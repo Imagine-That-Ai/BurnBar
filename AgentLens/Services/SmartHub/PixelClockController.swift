@@ -100,7 +100,7 @@ private enum PixelClockExternalAgentActivityScanner {
     }
 
     fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus] {
-        let lines = await Task.detached(priority: .utility) {
+        let lines = await Task(priority: .utility) { @Sendable in
             processLines()
         }.value
         return PixelClockAgentProcessDetector.statuses(fromProcessLines: lines)
@@ -163,7 +163,7 @@ private actor PixelClockExternalAgentActivityScanCache {
 
 enum PixelClockAgentProcessDetector {
     static func runningStatuses() async -> [String: PixelClockAgentStatus] {
-        await Task.detached(priority: .utility) {
+        await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/ps")
             process.arguments = ["-axo", "comm,args"]

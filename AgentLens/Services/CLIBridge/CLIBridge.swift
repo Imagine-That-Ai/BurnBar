@@ -137,13 +137,13 @@ final class CLIBridge: ObservableObject {
         return trimmed
     }
 
-    private func streamClaude(
+    nonisolated private func streamClaude(
         executable: String,
         prompt: String,
         model: String
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -159,13 +159,13 @@ final class CLIBridge: ObservableObject {
         }
     }
 
-    private func streamCodex(
+    nonisolated private func streamCodex(
         executable: String,
         prompt: String,
         model: String
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -182,9 +182,9 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams assistant text and tool-use events from the CLI (Claude `stream-json`, Codex JSONL text only).
-    func chat(systemPrompt: String, userMessage: String) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+    nonisolated func chat(systemPrompt: String, userMessage: String) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -223,7 +223,7 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams assistant text and tool-use events from Hermes gateway API (OpenAI-compatible SSE).
-    func chatHermes(
+    nonisolated func chatHermes(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
         systemPrompt: String,
         history: [ChatMessageRecord],
@@ -238,7 +238,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -267,7 +267,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -276,7 +276,7 @@ final class CLIBridge: ObservableObject {
     }
 
     /// OpenClaw gateway — OpenAI-compatible SSE (`/v1/chat/completions`).
-    func chatOpenClaw(
+    nonisolated func chatOpenClaw(
         baseURL: URL,
         systemPrompt: String,
         history: [ChatMessageRecord],
@@ -291,7 +291,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -320,7 +320,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -330,7 +330,7 @@ final class CLIBridge: ObservableObject {
     /// Pi agent gateway — OpenAI-compatible SSE (`/v1/chat/completions`).
     /// Reuses `OpenAICompatibleChatGatewayClient` exactly like Hermes/OpenClaw
     /// so streaming, attachments, and usage parsing all stay in lockstep.
-    func chatPiAgent(
+    nonisolated func chatPiAgent(
         baseURL: URL,
         systemPrompt: String,
         history: [ChatMessageRecord],
@@ -345,7 +345,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -377,7 +377,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -385,7 +385,7 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams using Codex CLI only (ignores Claude if both are installed).
-    func chatCodexStream(
+    nonisolated func chatCodexStream(
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
@@ -395,7 +395,7 @@ final class CLIBridge: ObservableObject {
         fallbackPlanner: (any CLIFallbackPlanning)? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -471,7 +471,7 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams using Claude Code CLI only.
-    func chatClaudeStream(
+    nonisolated func chatClaudeStream(
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
@@ -479,7 +479,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -502,7 +502,7 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams using Factory Droid CLI only.
-    func chatDroidStream(
+    nonisolated func chatDroidStream(
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
@@ -510,7 +510,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -533,7 +533,7 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams using Forge CLI only.
-    func chatForgeStream(
+    nonisolated func chatForgeStream(
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
@@ -541,7 +541,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -564,14 +564,14 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams using Google Antigravity CLI only.
-    func chatAntigravityStream(
+    nonisolated func chatAntigravityStream(
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -593,14 +593,14 @@ final class CLIBridge: ObservableObject {
     }
 
     /// Streams using Cursor Agent CLI only.
-    func chatCursorAgentStream(
+    nonisolated func chatCursorAgentStream(
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return

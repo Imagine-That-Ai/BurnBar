@@ -166,52 +166,13 @@ enum InteractiveTerminalLauncher {
             uniqueKeysWithValues: existingTerminalWindows.map { ($0.windowID, $0.title ?? "") }
         )
 
-        let launched = try await Task.detached(priority: .userInitiated) { () -> (pidFilePath: String, sessionDirectory: String) in
-            let fileManager = FileManager.default
-            let rootURL = fileManager.temporaryDirectory
-                .appendingPathComponent("OpenBurnBarInteractiveCLI", isDirectory: true)
-            let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
-            try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
-
-            let scriptURL = sessionURL.appendingPathComponent("run.command")
-            let pidURL = sessionURL.appendingPathComponent("terminal.pid")
-            let command = ([executable] + invocation.arguments)
-                .map(Self.shellQuoted)
-                .joined(separator: " ")
-
-            var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
-            scriptEnvironment.merge(invocation.extraEnvironment) { _, new in new }
-            let exportLines = scriptEnvironment
-                .filter { Self.isValidEnvironmentKey($0.key) }
-                .sorted { $0.key < $1.key }
-                .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
-                .joined(separator: "\n")
-            let cdLine = workingDirectory.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
-
-            // Set a unique window title (best-effort secondary signal), record
-            // the shell PID, then `exec` so the CLI owns the same PID — killing
-            // it later terminates the TUI.
-            let script = """
-            #!/bin/zsh
-            printf '\\033]0;\(titleToken)\\007'
-            echo $$ > \(Self.shellQuoted(pidURL.path))
-            \(exportLines)
-            \(cdLine)
-            exec \(command)
-            """
-            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
-
-            let opener = Process()
-            opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            opener.arguments = ["-a", "Terminal", scriptURL.path]
-            try opener.run()
-            opener.waitUntilExit()
-            guard opener.terminationStatus == 0 else {
-                throw Failure.terminalLaunchFailed
-            }
-            return (pidURL.path, sessionURL.path)
-        }.value
+        let launched = try await Self.prepareInteractiveSessionFiles(
+            sessionID: sessionID,
+            titleToken: titleToken,
+            executable: executable,
+            invocation: invocation,
+            workingDirectory: workingDirectory
+        )
 
         // Bring Terminal frontmost so the captured window is active and (direct
         // build) injected keystrokes land in it.
@@ -238,6 +199,61 @@ enum InteractiveTerminalLauncher {
             sessionDirectoryPath: launched.sessionDirectory,
             titleToken: titleToken
         )
+    }
+
+    /// Blocking file-system and process setup for an interactive session.
+    /// Runs off the main actor so the UI never stalls while Terminal.app launches.
+    nonisolated private static func prepareInteractiveSessionFiles(
+        sessionID: String,
+        titleToken: String,
+        executable: String,
+        invocation: Invocation,
+        workingDirectory: URL?
+    ) async throws -> (pidFilePath: String, sessionDirectory: String) {
+        let fileManager = FileManager.default
+        let rootURL = fileManager.temporaryDirectory
+            .appendingPathComponent("OpenBurnBarInteractiveCLI", isDirectory: true)
+        let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
+        try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
+
+        let scriptURL = sessionURL.appendingPathComponent("run.command")
+        let pidURL = sessionURL.appendingPathComponent("terminal.pid")
+        let command = ([executable] + invocation.arguments)
+            .map(Self.shellQuoted)
+            .joined(separator: " ")
+
+        var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
+        scriptEnvironment.merge(invocation.extraEnvironment) { _, new in new }
+        let exportLines = scriptEnvironment
+            .filter { Self.isValidEnvironmentKey($0.key) }
+            .sorted { $0.key < $1.key }
+            .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
+            .joined(separator: "\n")
+        let cdLine = workingDirectory.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
+
+        // Set a unique window title (best-effort secondary signal), record
+        // the shell PID, then `exec` so the CLI owns the same PID — killing
+        // it later terminates the TUI.
+        let script = """
+        #!/bin/zsh
+        printf '\\033]0;\(titleToken)\\007'
+        echo $$ > \(Self.shellQuoted(pidURL.path))
+        \(exportLines)
+        \(cdLine)
+        exec \(command)
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+
+        let opener = Process()
+        opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        opener.arguments = ["-a", "Terminal", scriptURL.path]
+        try opener.run()
+        opener.waitUntilExit()
+        guard opener.terminationStatus == 0 else {
+            throw Failure.terminalLaunchFailed
+        }
+        return (pidURL.path, sessionURL.path)
     }
 
     /// Poll for the Terminal window that appeared after launch. Prefers a
@@ -306,10 +322,10 @@ enum InteractiveTerminalLauncher {
 
     /// Terminate the launched CLI process tree and clean up the session dir.
     /// The blocking kill runs off the main actor so teardown never stalls the UI.
-    static func terminate(_ session: LaunchedAgentTerminalSession) {
+    nonisolated static func terminate(_ session: LaunchedAgentTerminalSession) {
         let pidFilePath = session.pidFilePath
         let sessionDirectoryPath = session.sessionDirectoryPath
-        Task.detached(priority: .utility) {
+        Task(priority: .utility) {
             killSessionTree(pidURL: URL(fileURLWithPath: pidFilePath))
             try? FileManager.default.removeItem(atPath: sessionDirectoryPath)
         }

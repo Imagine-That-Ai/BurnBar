@@ -13,7 +13,7 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
     private static let xpcClient = PrivilegedInputXPCClient()
 
     func dispatch(_ action: MacInputAction, capabilityToken: CapabilityToken? = nil) async throws -> BurnBarJSONValue {
-        try await Task.detached(priority: .userInitiated) {
+        try await Task(priority: .userInitiated) {
             let request = PrivilegedInputDispatchRequest(
                 operation: "input",
                 kind: action.kind.rawValue,

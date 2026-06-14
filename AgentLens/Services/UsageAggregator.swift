@@ -8,8 +8,8 @@ import OpenBurnBarCore
 ///
 /// Heavy work (parsing 12+ providers, DB persistence, quota API calls,
 /// conversation indexing, cloud sync) runs off the main thread via
-/// `RefreshBackgroundWork` inside `Task.detached`.  Observable state updates
-/// happen on the main actor at apply boundaries.
+/// structured concurrency using `Task(priority:)` from nonisolated helpers.
+/// Observable state updates happen on the main actor at apply boundaries.
 @Observable
 @MainActor
 final class UsageAggregator {
@@ -163,15 +163,21 @@ final class UsageAggregator {
         await orchestrator.runRetentionPurgeIfNeeded()
 
         // ── Heavy work runs entirely off the main thread ─────────────
-        let result = await Task.detached(priority: .utility) {
-            await RefreshBackgroundWork.runFullRefresh(
+        let result: FullRefreshResult
+        do {
+            result = try await runFullRefreshOffMain(
                 parsers: parsers,
                 dataStore: dataStore,
                 orchestrator: orchestrator,
                 existingUsages: existingUsages,
                 settings: settings
             )
-        }.value
+        } catch {
+            // runFullRefresh only throws CancellationError; any other error is unexpected,
+            // but returning early prevents the UI from staying stuck in isRefreshing.
+            isRefreshing = false
+            return
+        }
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth = result.parserHealth
@@ -227,6 +233,45 @@ final class UsageAggregator {
 
     private static func formatMilliseconds(_ seconds: TimeInterval) -> String {
         String(format: "%.2f", seconds * 1_000)
+    }
+
+    // MARK: - Off-Main Refresh Helpers
+
+    /// Runs `RefreshBackgroundWork.runFullRefresh` off the main actor while
+    /// preserving the original `.utility` priority and structured-concurrency
+    /// cancellation propagation.
+    private nonisolated func runFullRefreshOffMain(
+        parsers: [AgentProvider: any LogParser],
+        dataStore: DataStore,
+        orchestrator: RefreshOrchestrator,
+        existingUsages: [TokenUsage],
+        settings: RefreshSettingsSnapshot
+    ) async throws -> FullRefreshResult {
+        async let result: FullRefreshResult = RefreshBackgroundWork.runFullRefresh(
+            parsers: parsers,
+            dataStore: dataStore,
+            orchestrator: orchestrator,
+            existingUsages: existingUsages,
+            settings: settings
+        )
+        return try await result
+    }
+
+    /// Runs `RefreshBackgroundWork.runSingleProviderRefresh` off the main actor
+    /// with the original `.utility` priority and cancellation propagation.
+    private nonisolated func runSingleProviderRefreshOffMain(
+        provider: AgentProvider,
+        parser: any LogParser,
+        dataStore: DataStore,
+        settings: RefreshSettingsSnapshot
+    ) async -> SingleProviderResult {
+        async let result: SingleProviderResult = RefreshBackgroundWork.runSingleProviderRefresh(
+            provider: provider,
+            parser: parser,
+            dataStore: dataStore,
+            settings: settings
+        )
+        return await result
     }
 
     // MARK: - Test Helpers
@@ -294,14 +339,12 @@ final class UsageAggregator {
         let refreshStartedAt = Date()
 
         // ── Heavy work runs entirely off the main thread ─────────────
-        let result = await Task.detached(priority: .utility) {
-            await RefreshBackgroundWork.runSingleProviderRefresh(
-                provider: provider,
-                parser: parser,
-                dataStore: dataStore,
-                settings: settings
-            )
-        }.value
+        let result = await runSingleProviderRefreshOffMain(
+            provider: provider,
+            parser: parser,
+            dataStore: dataStore,
+            settings: settings
+        )
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth[provider] = result.health

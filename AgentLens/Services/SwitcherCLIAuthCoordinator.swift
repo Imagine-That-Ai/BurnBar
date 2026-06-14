@@ -479,7 +479,7 @@ final class SwitcherCLIAuthCoordinator {
         cliType: SwitcherCLIProfileType,
         executablePath: String
     ) async -> CLIExecutableHealth {
-        await Task.detached(priority: .utility) {
+        await Task(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executablePath)
             process.arguments = ["--version"]
@@ -497,7 +497,11 @@ final class SwitcherCLIAuthCoordinator {
 
             let deadline = Date().addingTimeInterval(3)
             while process.isRunning && Date() < deadline {
-                Darwin.usleep(50_000)
+                if Task.isCancelled {
+                    process.terminate()
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
             }
             if process.isRunning {
                 process.terminate()

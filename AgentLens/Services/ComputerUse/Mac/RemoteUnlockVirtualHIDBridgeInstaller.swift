@@ -31,9 +31,7 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
 
         do {
             let fileManager = self.fileManager
-            try await Task.detached(priority: .userInitiated) {
-                try Self.installOrRepairSynchronously(fileManager: fileManager)
-            }.value
+            try await Self.installOrRepairOffMain(fileManager: fileManager)
             Self.recordPolicyRejection(nil)
             await SystemPermissionMonitor.shared.refreshNow(emitting: true)
         } catch {
@@ -46,6 +44,16 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
             }
             await SystemPermissionMonitor.shared.refreshNow(emitting: true)
         }
+    }
+
+    /// Runs the synchronous installer off the MainActor while preserving the
+    /// original `.userInitiated` priority. Moving the blocking I/O to a
+    /// nonisolated helper lets `Task(priority:)` inherit a generic executor
+    /// instead of the main actor.
+    private nonisolated static func installOrRepairOffMain(fileManager: FileManager) async throws {
+        try await Task(priority: .userInitiated) {
+            try Self.installOrRepairSynchronously(fileManager: fileManager)
+        }.value
     }
 
     nonisolated private static func installOrRepairSynchronously(fileManager: FileManager) throws {

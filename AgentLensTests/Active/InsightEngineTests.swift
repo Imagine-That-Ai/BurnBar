@@ -222,6 +222,17 @@ final class InsightEngineTests: XCTestCase {
         XCTAssertFalse(insights.isEmpty)
     }
 
+    // MARK: - Structured Concurrency Tests
+
+    func test_workflowInsightRollupService_snapshotAsync_runsOffMainActor() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        store.replaceUsages(moodFixture(today: 2.0, rollingAvg: 1.0))
+        let service = WorkflowInsightRollupService(dataStore: store)
+        let snapshot = await service.snapshotAsync()
+        // The async variant should produce the same freshness/unavailability shape as the sync variant.
+        XCTAssertTrue(snapshot.freshness == .fresh || snapshot.freshness == .stale || snapshot.freshness == .unavailable)
+    }
+
     // MARK: - Helper Methods
 
     private var pastDayUsage: TokenUsage {

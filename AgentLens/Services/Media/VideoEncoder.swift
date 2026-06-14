@@ -168,7 +168,7 @@ final class VideoEncoder: VideoEncoding {
         ) { [weak self] (status: OSStatus, _: VTEncodeInfoFlags, sampleBuffer: CMSampleBuffer?) in
             guard let self, status == noErr, let sampleBuffer else { return }
             let snapshot = SendableVideoSampleBuffer(sampleBuffer)
-            Task.detached { [weak self, snapshot] in
+            Task { [weak self, snapshot] in
                 await self?.handleEncodedSampleBuffer(snapshot.sampleBuffer)
             }
         }

@@ -134,7 +134,14 @@ final class WorkflowInsightRollupService {
     /// on a background task so the main thread never blocks on SQLite.
     func snapshotAsync(refreshIfStale: Bool = true) async -> WorkflowInsightRollupSnapshot {
         let inputs = captureInputs()
-        return await Task.detached { [self] in
+        return await buildSnapshotAsync(inputs: inputs, refreshIfStale: refreshIfStale)
+    }
+
+    private nonisolated func buildSnapshotAsync(
+        inputs: MainActorInputs,
+        refreshIfStale: Bool
+    ) async -> WorkflowInsightRollupSnapshot {
+        await Task(priority: .utility) {
             buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
         }.value
     }

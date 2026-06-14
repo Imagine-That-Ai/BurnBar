@@ -212,7 +212,7 @@ struct CLIProcessStreamRunner: Sendable {
         let stderrReader = AsyncPipeLineReader(pipe: stderrPipe)
         let stdoutReader = AsyncPipeLineReader(pipe: stdoutPipe)
 
-        let stderrTask = Task.detached(priority: .utility) {
+        let stderrTask = Task(priority: .utility) {
             do {
                 for try await line in stderrReader.lines() {
                     supervisor.ingest(line, source: .stderr)

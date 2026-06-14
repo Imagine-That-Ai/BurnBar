@@ -198,12 +198,12 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         return executable
     }
 
-    private func run(
+    func run(
         executable: String,
         arguments: [String],
         timeoutSeconds: TimeInterval
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
+        async let result: String = { () async throws -> String in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
@@ -219,7 +219,11 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             try process.run()
             let deadline = Date().addingTimeInterval(timeoutSeconds)
             while process.isRunning && Date() < deadline {
-                try await Task.sleep(nanoseconds: 50_000_000)
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                if Task.isCancelled {
+                    process.terminate()
+                    throw CancellationError()
+                }
             }
             if process.isRunning {
                 process.terminate()
@@ -236,7 +240,8 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
                 )
             }
             return output
-        }.value
+        }()
+        return try await result
     }
 }
 

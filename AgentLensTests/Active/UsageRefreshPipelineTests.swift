@@ -58,7 +58,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
             )
         )
 
-        let parsed = await pipeline.parse(from: pipeline.discover())
+        let parsed = try await pipeline.parse(from: pipeline.discover())
         XCTAssertEqual(parsed.errors[.factory], "simulated parser failure")
         XCTAssertEqual(parsed.parserHealth[.factory]?.statusLabel, "failed")
     }
@@ -84,7 +84,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
             )
         )
 
-        let parsed = await pipeline.parse(from: pipeline.discover())
+        let parsed = try await pipeline.parse(from: pipeline.discover())
         let typed = OpenBurnBarError.parse("simulated", message: "simulated parser failure")
         XCTAssertEqual(parsed.errors[.factory], typed.message)
     }
