@@ -17,7 +17,7 @@ struct SettingsSecretPersistence {
     let keychain: KeychainStore
 
     func load(account: String, legacyDefaultsKey: String) -> String {
-        if let stored = try? keychain.string(for: account) {
+        if let stored = keychain.credentialIfPresent(for: account, event: "settings_secret_read_failed") {
             if defaults.object(forKey: legacyDefaultsKey) != nil {
                 defaults.removeObject(forKey: legacyDefaultsKey)
             }

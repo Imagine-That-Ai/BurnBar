@@ -82,7 +82,7 @@ struct AWTRIXClient: Sendable {
         // `.unsupported` (those mean the host answered with a bad shape, not
         // that it was slow).
         guard first.status == .unreachable else { return first }
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        try? await Task.sleep(nanoseconds: 200_000_000) // try?-ok(sleep cancellation only)
         return await probe(config: config, timeout: 3)
     }
 
@@ -225,7 +225,7 @@ struct AWTRIXClient: Sendable {
                 return ProbeResult(status: .error, message: ClientError.invalidResponse.localizedDescription)
             }
             if (200..<300).contains(http.statusCode),
-               let json = try? JSONSerialization.jsonObject(with: data) {
+               let json = try? JSONSerialization.jsonObject(with: data) { // try?-ok(malformed device JSON expected)
                 if Self.looksLikeAwtrixStats(json) {
                     return ProbeResult(status: .awtrixReady, message: "AWTRIX HTTP API is ready at \(config.host).")
                 }
@@ -345,7 +345,7 @@ struct AWTRIXClient: Sendable {
         for _ in 0..<maxSteps {
             if await currentAppName(config: config) == name { return }
             try await sendJSON(url: nextURL, method: "POST", body: stepBody)
-            try? await Task.sleep(nanoseconds: 80_000_000)
+            try? await Task.sleep(nanoseconds: 80_000_000) // try?-ok(sleep cancellation only)
         }
     }
 
@@ -573,7 +573,7 @@ struct AWTRIXClient: Sendable {
 
     private func firstInputValue(named name: String, in html: String) -> String? {
         let pattern = #"name=['"]\#(NSRegularExpression.escapedPattern(for: name))['"][^>]*value=['"]([^'"]*)['"]"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { // try?-ok(regex guard-return-nil)
             return nil
         }
         let range = NSRange(html.startIndex..<html.endIndex, in: html)

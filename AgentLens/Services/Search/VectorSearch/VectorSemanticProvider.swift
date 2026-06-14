@@ -525,7 +525,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         try dataStore.upsertVectorIndexSnapshot(buildingRecord)
 
         let fileManager = FileManager.default
-        try? fileManager.removeItem(at: tempFiles.directoryURL)
+        try? fileManager.removeItem(at: tempFiles.directoryURL) // try?-ok(clear stale temp dir)
         try fileManager.createDirectory(at: tempFiles.directoryURL, withIntermediateDirectories: true, attributes: nil)
 
         do {
@@ -578,7 +578,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 withIntermediateDirectories: true,
                 attributes: nil
             )
-            try? fileManager.removeItem(at: finalFiles.directoryURL)
+            try? fileManager.removeItem(at: finalFiles.directoryURL) // try?-ok(clear stale before move)
             try fileManager.moveItem(at: tempFiles.directoryURL, to: finalFiles.directoryURL)
 
             let readyRecord = VectorIndexSnapshotRecord(
@@ -601,12 +601,12 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             try dataStore.upsertVectorIndexSnapshot(readyRecord)
 
             if let previousPath = existingRecord?.storageRelativePath, previousPath != finalRelativePath {
-                try? fileManager.removeItem(at: storageRootURL.appendingPathComponent(previousPath, isDirectory: true))
+                try? fileManager.removeItem(at: storageRootURL.appendingPathComponent(previousPath, isDirectory: true)) // try?-ok(reclaim old snapshot dir)
             }
 
             return readyRecord
         } catch {
-            try? fileManager.removeItem(at: tempFiles.directoryURL)
+            try? fileManager.removeItem(at: tempFiles.directoryURL) // try?-ok(cleanup failed temp dir)
             let failedRecord = VectorIndexSnapshotRecord(
                 embeddingVersionID: selection.version.id,
                 backendID: snapshotBackend.backendID,

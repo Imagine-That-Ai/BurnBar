@@ -208,7 +208,7 @@ extension ProjectionPipelineService {
 
                 indexedCount += batch.count
                 if batchEnd < chunks.count {
-                    try? await Task.sleep(nanoseconds: ProjectionPipelineRuntimeTuning.interEmbeddingBatchPauseNanoseconds)
+                    try? await Task.sleep(nanoseconds: ProjectionPipelineRuntimeTuning.interEmbeddingBatchPauseNanoseconds) // try?-ok(inter-batch pause, cancellation only)
                 }
             }
 

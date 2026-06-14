@@ -43,7 +43,7 @@ final class WindsurfParser: LogParser, Sendable {
         // 1. Parse .pb files from cascade directory
         let cascadeDir = (Self.cascadeDirectory as NSString).expandingTildeInPath
         if fm.fileExists(atPath: cascadeDir) {
-            let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? []
+            let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? [] // try?-ok(dir read, empty fallback)
             let pbFiles = allFiles
                 .filter { $0.hasSuffix(".pb") }
                 .map { (cascadeDir as NSString).appendingPathComponent($0) }
@@ -52,7 +52,7 @@ final class WindsurfParser: LogParser, Sendable {
                 let sessionId = (pbFile as NSString).deletingPathExtension
                     .components(separatedBy: "/").last ?? UUID().uuidString
 
-                let attrs = try? fm.attributesOfItem(atPath: pbFile)
+                let attrs = try? fm.attributesOfItem(atPath: pbFile) // try?-ok(file attrs, nil fallback)
                 let created = (attrs?[.creationDate] as? Date) ?? Date()
                 let modified = (attrs?[.modificationDate] as? Date) ?? created
                 let fileSize = (attrs?[.size] as? Int) ?? 0
@@ -186,7 +186,7 @@ final class WindsurfParser: LogParser, Sendable {
 
         let valueString = String(cString: valuePtr)
         guard let jsonData = valueString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { // try?-ok(parse 3rd-party JSON)
             return false
         }
 

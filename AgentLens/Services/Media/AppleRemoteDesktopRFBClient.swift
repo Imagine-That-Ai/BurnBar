@@ -81,7 +81,7 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         try stream.write(Data("RFB 003.889\n".utf8))
         let securityCount = try stream.readExact(byteCount: 1)[0]
         guard securityCount > 0 else {
-            let reason = try? readReason(stream: &stream)
+            let reason = try? readReason(stream: &stream) // try?-ok(diagnostic reason, has fallback)
             throw Failure.protocolMismatch(reason ?? "empty_security_type_list")
         }
 
@@ -134,7 +134,7 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         let resultData = try stream.readExact(byteCount: 4)
         let result = resultData.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
         guard result == 0 else {
-            throw Failure.authenticationRejected(try? readReason(stream: &stream))
+            throw Failure.authenticationRejected(try? readReason(stream: &stream)) // try?-ok(diagnostic reason on reject)
         }
     }
 

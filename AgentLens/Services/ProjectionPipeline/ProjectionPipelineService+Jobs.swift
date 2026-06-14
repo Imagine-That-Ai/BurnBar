@@ -115,7 +115,7 @@ extension ProjectionPipelineService {
         try ensureBackfillSeededIfNeeded()
         let pendingQueueDepth = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
         if pendingQueueDepth <= ProjectionPipelineRuntimeTuning.gapRepairQueueDepthThreshold {
-            try? enqueueGapRepairIfNeeded()
+            try? enqueueGapRepairIfNeeded() // try?-ok(self-heal retried next sweep)
         }
 
         var report = ProjectionSweepReport()

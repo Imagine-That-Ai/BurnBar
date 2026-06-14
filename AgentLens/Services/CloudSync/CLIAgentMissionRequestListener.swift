@@ -125,6 +125,37 @@ protocol CLIAgentMissionDeviceTrustChecking: AnyObject {
     func prepareAndValidateTrustedExecutor(uid: String, deviceID: String) async -> CLIAgentMissionDeviceTrustResult
 }
 
+// MARK: - Persona Scope Resolution (fail-closed)
+//
+// Hermes Square §6.5 — the phone attaches a `personaScopeJSON` envelope that
+// the Mac applies to the spawned CLI subprocess (tool allow-list, file globs,
+// shell prefixes, permit-shell / permit-file-edits gates). When the envelope
+// is PRESENT but malformed, `CLIAgentMissionPersonaScopeApplier.overrides`
+// deliberately throws — because falling back to `.empty` would dispatch the
+// mission with NO persona scoping at all (full shell + unrestricted file
+// edits), silently widening the sandbox the operator asked to narrow.
+//
+// This resolver makes that decision explicit and testable: a missing scope
+// resolves to `.empty` (the legitimate "no scope" path), but a malformed
+// present scope is REFUSED so the listener fails the mission with a clear
+// error instead of fail-open dispatching with default permissions.
+enum CLIAgentMissionPersonaScopeResolution: Equatable {
+    case resolved(CLIAgentMissionPersonaScopeApplier.RuntimeOverrides)
+    case refused(String)
+
+    static func resolve(from data: [String: Any]) -> CLIAgentMissionPersonaScopeResolution {
+        do {
+            return .resolved(try CLIAgentMissionPersonaScopeApplier.overrides(from: data))
+        } catch {
+            return .refused(
+                "The persona scope attached to this mission could not be read, "
+                    + "so it was rejected instead of running with broader permissions. "
+                    + "Re-send the mission from your device."
+            )
+        }
+    }
+}
+
 struct CLIAgentMissionBackend: Equatable, Sendable {
     let rawValue: String
     let displayName: String
@@ -620,7 +651,23 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
         guard trustState == EscrowDeviceTrustState.trusted.rawValue else {
             if !preparedDeviceIDs.contains(deviceID) {
                 Task { @MainActor in
-                    try? await self.registerPendingMac(deviceRef: snapshot.reference, deviceID: deviceID, mergeOnly: true)
+                    // Best-effort metadata refresh (deviceName/appVersion/updatedAt)
+                    // for an already-untrusted device. The trust verdict is fixed
+                    // (untrusted) above regardless of this write — so failing here
+                    // does not flip a security decision — but losing the write
+                    // silently would hide Firestore faults from operators, so log.
+                    do {
+                        try await self.registerPendingMac(
+                            deviceRef: snapshot.reference,
+                            deviceID: deviceID,
+                            mergeOnly: true
+                        )
+                    } catch {
+                        AppLogger.sync.error(
+                            "mission_pending_mac_refresh_failed",
+                            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                        )
+                    }
                 }
             }
             return .untrusted("This Mac is not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
@@ -1572,10 +1619,27 @@ final class CLIAgentMissionRequestListener {
     ) async -> DirectCLIMissionResult? {
         let workingDirectoryURL = workingDirectoryURL(from: data)
         // Hermes Square §6.5 — merge any persona-scope env namespace the
-        // phone attached. Decoded once; nil-safe so missions without a
-        // scope keep using the plan's env verbatim.
-        let personaOverrides = (try? CLIAgentMissionPersonaScopeApplier.overrides(from: data))
-            ?? .empty
+        // phone attached. A missing scope resolves to `.empty` (missions
+        // without a scope keep using the plan's env verbatim); a PRESENT but
+        // malformed scope is FAIL-CLOSED — refuse the mission rather than
+        // dispatch the spawned CLI with no persona sandbox (full shell +
+        // unrestricted file edits). See CLIAgentMissionPersonaScopeResolution.
+        let personaOverrides: CLIAgentMissionPersonaScopeApplier.RuntimeOverrides
+        switch CLIAgentMissionPersonaScopeResolution.resolve(from: data) {
+        case .resolved(let overrides):
+            personaOverrides = overrides
+        case .refused(let message):
+            AppLogger.sync.error(
+                "mission_persona_scope_rejected",
+                metadata: ["requestID": requestID]
+            )
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: message,
+                sessionID: "persona-scope-rejected-\(backend.rawValue)-\(UUID().uuidString)"
+            )
+        }
         if CLIAgentMissionRuntimePlanner.presentationMode(from: data) == .macVisibleCLI {
             guard let plan = CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
                 title: title,

@@ -296,10 +296,23 @@ final class HermesRelayHostService {
                 "updatedAt": now,
                 "schemaVersion": 2
             ]
-            if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
-                data["relayPublicKey"] = publicKey
-                data["relayKeyVersion"] = HermesRelayCrypto.keyVersion
-                data["relayEncryption"] = HermesRelayCrypto.algorithm
+            // The relay public key is crypto key material that lets a peer
+            // encrypt to this host. A bare `try?` silently swallowed a keychain
+            // fault and published the offline connection WITHOUT the key fields,
+            // making a broken keychain indistinguishable from "no key yet". This
+            // is the offline doc (status already offline), so log the fault and
+            // still publish the offline record — but never silently.
+            do {
+                if let publicKey = try relayKeyStore.existingPublicKeyBase64() {
+                    Self.applyRelayKeyFields(
+                        to: &data,
+                        publicKey: publicKey,
+                        keyVersion: HermesRelayCrypto.keyVersion,
+                        encryption: HermesRelayCrypto.algorithm
+                    )
+                }
+            } catch {
+                AppLogger.network.silentFailure("hermes_relay_offline_public_key_read_failed", error: error)
             }
             if !snap.exists {
                 data["createdAt"] = now
@@ -430,10 +443,27 @@ final class HermesRelayHostService {
             "updatedAt": now,
             "schemaVersion": 2
         ]
-        if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
-            data["relayPublicKey"] = publicKey
-            data["relayKeyVersion"] = HermesRelayCrypto.gatewayRelayKeyVersionV3
-            data["relayEncryption"] = HermesRelayCrypto.relayEncryptionV3
+        // Fail CLOSED on a key-read fault: this replacement record advertises
+        // the V3 gateway relay key that the encryption upgrade depends on. A
+        // bare `try?` silently swallowed a keychain fault and published a
+        // KEYLESS replacement, which can steer peers onto a legacy/unencrypted
+        // path. If we cannot read the public key, do not publish a keyless
+        // replacement at all — surface the fault and skip the publish.
+        do {
+            if let publicKey = try relayKeyStore.existingPublicKeyBase64() {
+                Self.applyRelayKeyFields(
+                    to: &data,
+                    publicKey: publicKey,
+                    keyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+                    encryption: HermesRelayCrypto.relayEncryptionV3
+                )
+            }
+        } catch {
+            AppLogger.network.error(
+                "hermes_relay_legacy_public_key_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return
         }
         do {
             let snap = try await ref.getDocument()
@@ -1042,19 +1072,46 @@ final class HermesRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            _ = try? await writeRelayChunk( // try?-ok(best-effort error chunk)
-                reference: reference,
-                context: context,
-                sequence: 0,
-                kind: .error,
-                error: String(message.prefix(2_000))
-            )
-            statusUpdate["chunkCount"] = 1
+            // Only declare chunkCount=1 if the error chunk actually persisted: the
+            // client's ChunkReassemblyValidator treats a missing chunk in
+            // 0..<chunkCount as a dropped/withheld-chunk (relay tamper) signal, so a
+            // host-side write failure must not be recorded as that integrity
+            // violation. (The error text is still delivered via the status doc.)
+            do {
+                try await writeRelayChunk(
+                    reference: reference,
+                    context: context,
+                    sequence: 0,
+                    kind: .error,
+                    error: String(message.prefix(2_000))
+                )
+                statusUpdate["chunkCount"] = 1
+            } catch {
+                AppLogger.network.error(
+                    "hermes_relay_error_chunk_write_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
         } else {
-            let snapshot = try? await reference.getDocument()
-            let isEncrypted = (snapshot?.data()?["schemaVersion"] as? Int ?? 1) >= 2
-            if !isEncrypted {
-                statusUpdate["error"] = String(message.prefix(2_000))
+            // The schemaVersion drives a CONFIDENTIALITY decision: a raw,
+            // plaintext error string is only safe to persist into the cloud
+            // Firestore doc when the request is legacy/unencrypted
+            // (schemaVersion < 2). A failed fetch previously defaulted to
+            // schemaVersion 1 → isEncrypted == false → the plaintext error was
+            // written even for an actually-encrypted request, leaking it into
+            // the cloud. Fail closed: if we cannot establish the encryption
+            // state, do NOT write the plaintext error.
+            do {
+                let snapshot = try await reference.getDocument()
+                let isEncrypted = (snapshot.data()?["schemaVersion"] as? Int ?? 1) >= 2
+                if !isEncrypted {
+                    statusUpdate["error"] = String(message.prefix(2_000))
+                }
+            } catch {
+                AppLogger.network.error(
+                    "hermes_relay_fail_encryption_probe_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
             }
         }
         try await reference.setData(statusUpdate, merge: true)
@@ -1130,6 +1187,24 @@ final class HermesRelayHostService {
     }()
 
     private static let iso8601NoFraction = ISO8601DateFormatter()
+
+    /// Stamps the relay key-advertisement fields onto a connection record.
+    /// Extracted so the publish paths share one keyed-vs-keyless decision and
+    /// the mapping is unit-testable without a live Firestore. The caller owns
+    /// the fail-open vs fail-closed policy for a key-read fault; this helper
+    /// only ever writes a COMPLETE key triple (public key + version +
+    /// algorithm) so a record can never advertise a partial / keyless crypto
+    /// surface.
+    nonisolated static func applyRelayKeyFields(
+        to data: inout [String: Any],
+        publicKey: String,
+        keyVersion: Int,
+        encryption: String
+    ) {
+        data["relayPublicKey"] = publicKey
+        data["relayKeyVersion"] = keyVersion
+        data["relayEncryption"] = encryption
+    }
 
     nonisolated static let maxRelayChunkDataBytes = 72_000
 
@@ -1263,9 +1338,24 @@ struct HermesRelayKeyStore {
     func privateKey() throws -> HermesRelayPrivateKey {
         do {
             if let stored = try keychain.string(for: account),
-               let data = Data(base64Encoded: stored),
-               let key = try? HermesRelayPrivateKey(rawRepresentation: data) {
-                return key
+               let data = Data(base64Encoded: stored) {
+                // A stored key IS present. Parsing it is the identity-continuity
+                // path: every peer holding our advertised public key can only
+                // reach this host while we keep returning the SAME private key.
+                // A bare `try?` here silently swallowed a parse failure and fell
+                // through to generate+persist a brand-new key, rotating the host
+                // identity on a corrupt/transient read with no diagnostic. Log
+                // the anomaly loudly so a real corruption is observable; only
+                // then fall through to regeneration (the keychain genuinely
+                // holds bytes we cannot parse, so there is nothing to recover).
+                do {
+                    return try HermesRelayPrivateKey(rawRepresentation: data)
+                } catch {
+                    AppLogger.network.error(
+                        "hermes_relay_stored_private_key_unparseable_regenerating",
+                        metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                    )
+                }
             }
             let key = HermesRelayCrypto.generatePrivateKey()
             do {

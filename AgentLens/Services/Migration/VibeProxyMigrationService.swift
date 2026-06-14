@@ -184,8 +184,8 @@ struct VibeProxyMigrationService: Sendable {
         let fileName = url.lastPathComponent
         let fallbackLabel = url.deletingPathExtension().lastPathComponent
 
-        guard let data = try? Data(contentsOf: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let data = try? Data(contentsOf: url), // try?-ok(malformed file falls back)
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(parse falls back needsReconnect)
             return VibeProxyCredentialRecord(
                 id: fileName,
                 sourceFileName: fileName,
@@ -294,7 +294,7 @@ struct VibeProxyMigrationService: Sendable {
 
     private func fileLooksVibeProxyOwned(_ url: URL) -> Bool {
         guard fileManager.fileExists(atPath: url.path),
-              let text = try? String(contentsOf: url, encoding: .utf8) else {
+              let text = try? String(contentsOf: url, encoding: .utf8) else { // try?-ok(detection read skips on fail)
             return false
         }
         let lowercased = text.lowercased()

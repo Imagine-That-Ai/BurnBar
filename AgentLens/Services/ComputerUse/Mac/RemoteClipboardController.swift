@@ -23,6 +23,17 @@ public protocol RemoteClipboardContextInspecting: Sendable {
     func focusedDenyReason() -> ComputerUseAccessibilityDenyReason?
 }
 
+/// Read/create the HPKE recipient key material used to certify and decrypt Remote Unlock
+/// credentials. A failure here is security-relevant: it must never silently certify with
+/// half-formed (missing/empty) key material, and its loss must be observable. This seam lets
+/// the controller fail closed + log a key-material fault, and lets tests inject a faulting store.
+protocol RemoteUnlockCredentialKeyProviding: Sendable {
+    func copyPrivateKey() throws -> Curve25519.KeyAgreement.PrivateKey
+    func copyOrCreateKeyMaterial() throws -> RemoteUnlockCredentialKeyMaterial
+}
+
+extension RemoteUnlockCredentialKeyStore: RemoteUnlockCredentialKeyProviding {}
+
 public final class GeneralRemoteClipboardPasteboard: RemoteClipboardPasteboard, Sendable {
     private struct State {
         var pasteboard: NSPasteboard
@@ -524,12 +535,12 @@ final class RemoteUnlockCredentialController {
     }
 
     private let inputController: MacInputController
-    private let keyStore: RemoteUnlockCredentialKeyStore
+    private let keyStore: any RemoteUnlockCredentialKeyProviding
     private let policy: RemoteUnlockPolicy
 
     init(
         inputController: MacInputController = MacInputController(),
-        keyStore: RemoteUnlockCredentialKeyStore = .shared,
+        keyStore: any RemoteUnlockCredentialKeyProviding = RemoteUnlockCredentialKeyStore.shared,
         policy: RemoteUnlockPolicy = .default
     ) {
         self.inputController = inputController
@@ -702,9 +713,9 @@ final class RemoteUnlockCredentialController {
         // Re-wake the physical display so it redraws the (now hopefully unlocked) desktop instead of
         // lingering on a stale, asleep lock screen. The credential path can unlock the session while
         // the panel stays dark, which looks like "nothing happened" and forces a manual Touch ID.
-        try? await RemoteAccessAgentClient().wakeDisplay()
+        try? await RemoteAccessAgentClient().wakeDisplay() // try?-ok(best-effort display rewake)
 
-        try? await Task.sleep(nanoseconds: 700_000_000)
+        try? await Task.sleep(nanoseconds: 700_000_000) // try?-ok(sleep cancellation only)
         let state = context.readiness.currentState(
             sessionId: credential.sessionId,
             controlOwnerViewerId: context.authorizedPeerNodeId
@@ -714,7 +725,7 @@ final class RemoteUnlockCredentialController {
             "remote_unlock_credential_input_finished requestID=\(credential.requestId, privacy: .public) status=\(unlocked ? "unlocked" : "accepted", privacy: .public) lockState=\(state.lockState.rawValue, privacy: .public)"
         )
         Self.debugTrace("remote_unlock_credential_input_finished requestID=\(credential.requestId) status=\(unlocked ? "unlocked" : "accepted") lockState=\(state.lockState.rawValue)")
-        if unlocked, let keyMaterial = try? keyStore.copyOrCreateKeyMaterial() {
+        if unlocked, let keyMaterial = certificationKeyMaterial(requestId: credential.requestId) {
             context.readiness.recordCertification(
                 fileVaultSSHSupported: state.capabilities.fileVaultSSHSupported,
                 credentialRecipientKeyId: keyMaterial.keyId,
@@ -730,6 +741,30 @@ final class RemoteUnlockCredentialController {
 
     private func validationDetail(for error: PhoneControlAuthorityValidator.ValidationError) -> String {
         error.auditDetailToken
+    }
+
+    /// Read (or create) the HPKE recipient key material that certification is recorded against.
+    /// A keychain/key-material fault is security-relevant: we must never record a half-formed
+    /// certification with missing/empty recipient key fields (that would advertise an
+    /// undecryptable recipient and silently break later credential opens). On fault we fail
+    /// closed — skip certification — and surface the loss instead of swallowing it.
+    func certificationKeyMaterial(requestId: String) -> RemoteUnlockCredentialKeyMaterial? {
+        do {
+            return try keyStore.copyOrCreateKeyMaterial()
+        } catch {
+            let errorClass = String(describing: type(of: error))
+            AppLogger.daemon.error(
+                "remote_unlock_key_material_failed",
+                metadata: [
+                    "requestId": requestId,
+                    "errorClass": errorClass
+                ]
+            )
+            Self.debugTrace(
+                "remote_unlock_key_material_failed requestID=\(requestId) errorClass=\(errorClass)"
+            )
+            return nil
+        }
     }
 
     private func remoteUnlockInputDetail(for error: Error) -> String {

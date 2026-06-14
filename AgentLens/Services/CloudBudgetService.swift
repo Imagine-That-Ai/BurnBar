@@ -120,10 +120,26 @@ final class CloudBudgetService {
         }
         let localByID = Dictionary(uniqueKeysWithValues: localRules.map { ($0.id, $0) })
 
-        // Best-effort read key; absent on devices not yet escrowed. Legacy plaintext
-        // rules still decode without it, and sealed peers are simply skipped until the
-        // vault key arrives.
-        let vaultKey = try? await vaultKeyProvider.keyForReading(uid: uid, deviceId: accountManager.deviceId)?.keyData
+        // Read key; absent (nil) on devices not yet escrowed — that is the expected
+        // steady state, so we proceed silently with a nil key (legacy plaintext rules
+        // still decode, sealed peers are skipped until the key arrives). A *thrown*
+        // failure, however, is a real keychain/Firestore/crypto fault that would
+        // otherwise be indistinguishable from "not escrowed" and silently freeze every
+        // sealed rule out of sync — log it so the degraded read is observable, then
+        // continue with the same nil-key skip behavior (recoverable next cycle).
+        let vaultKey: Data?
+        do {
+            vaultKey = try await vaultKeyProvider.keyForReading(
+                uid: uid,
+                deviceId: accountManager.deviceId
+            )?.keyData
+        } catch {
+            AppLogger.sync.error(
+                "budget_rules_vault_key_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            vaultKey = nil
+        }
 
         do {
             let snapshot = try await db.collection("users").document(uid)
@@ -157,6 +173,19 @@ final class CloudBudgetService {
     // MARK: - Encoding / Decoding
 
     private func encodeRule(_ rule: BudgetRule, vaultKey: Data) throws -> [String: Any] {
+        // Encode the fallback credential set the same way the local store does
+        // (BudgetRulesStore.upsert): an empty set is intentionally absent, but a real
+        // encode failure must NOT silently drop the set — a budget rule that syncs to
+        // other seats WITHOUT its fallback credentials would route spend to the wrong
+        // credential. Let the throw propagate so the upload fails closed and retries
+        // next cycle rather than shipping a fallback-stripped rule.
+        let fallbackCredentialIDsJSON: String?
+        if rule.fallbackCredentialIDs.isEmpty {
+            fallbackCredentialIDsJSON = nil
+        } else {
+            let encoded = try JSONEncoder().encode(rule.fallbackCredentialIDs)
+            fallbackCredentialIDsJSON = String(data: encoded, encoding: .utf8)
+        }
         var data: [String: Any] = [
             "id": rule.id,
             "scope": rule.scope.rawValue,
@@ -166,7 +195,7 @@ final class CloudBudgetService {
             "amountUSD": rule.amountUSD,
             "period": rule.period.rawValue,
             "behavior": rule.behavior.rawValue,
-            "fallbackCredentialIDsJSON": (try? JSONEncoder().encode(rule.fallbackCredentialIDs)).flatMap { String(data: $0, encoding: .utf8) } as Any,
+            "fallbackCredentialIDsJSON": fallbackCredentialIDsJSON as Any,
             "pausedUntil": rule.pausedUntil as Any,
             "createdAt": rule.createdAt,
             "updatedAt": rule.updatedAt,

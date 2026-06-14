@@ -42,11 +42,11 @@ final class WarpParser: LogParser, Sendable {
         var seenConversationIDs = Set<String>()
 
         for file in logFiles {
-            guard let data = try? Data(contentsOf: file),
+            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable log)
                   let content = String(data: data, encoding: .utf8) else {
                 continue
             }
-            let fileModifiedAt = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+            let fileModifiedAt = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional file metadata)
             for object in Self.extractBodyJSONObjects(from: content) {
                 let records = parseBodyObject(object, sourceFile: file, fileModifiedAt: fileModifiedAt)
                 for usage in records.usages {
@@ -71,7 +71,7 @@ final class WarpParser: LogParser, Sendable {
             return [logDirectory]
         }
 
-        let files = (try? fileManager.contentsOfDirectory(
+        let files = (try? fileManager.contentsOfDirectory( // try?-ok(empty on read fail)
             at: logDirectory,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
@@ -83,8 +83,8 @@ final class WarpParser: LogParser, Sendable {
                 return name.hasPrefix("warp_network") && name.hasSuffix(".log")
             }
             .sorted {
-                let lhs = ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-                let rhs = ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+                let lhs = ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) // try?-ok(sort fallback date)
+                let rhs = ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) // try?-ok(sort fallback date)
                 return lhs < rhs
             }
     }
@@ -342,7 +342,7 @@ final class WarpParser: LogParser, Sendable {
 
             let jsonText = String(content[index...end])
             if let data = jsonText.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) {
+               let json = try? JSONSerialization.jsonObject(with: data) { // try?-ok(skip malformed JSON)
                 if let dictionary = json as? [String: Any] {
                     objects.append(dictionary)
                 } else if let array = json as? [[String: Any]] {
@@ -510,7 +510,7 @@ private struct WarpParseContext {
         )
     }
 
-    private static let agentEventPattern = try? NSRegularExpression(
+    private static let agentEventPattern = try? NSRegularExpression( // try?-ok(literal regex pattern)
         pattern: #"(^|[._:\-\s])([Aa][Gg][Ee][Nn][Tt])($|[._:\-\s]|[A-Z])"#
     )
 

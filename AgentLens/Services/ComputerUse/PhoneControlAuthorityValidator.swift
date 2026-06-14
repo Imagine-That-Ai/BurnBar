@@ -569,6 +569,17 @@ public final class PhoneControlAuthorityValidator: Sendable {
 
         try validateAuthorityEnvelope(envelope, now: now)
 
+        // Fail closed when the host could not compute the expected request hash.
+        // An empty expected hash would otherwise let a response that also reports
+        // an empty hash satisfy the binding check below, defeating the
+        // request-to-approval binding for a privileged remote action.
+        guard !expectedRequestHashBlake3.isEmpty else {
+            throw ValidationError.intentHashMismatch(
+                expected: expectedRequestHashBlake3,
+                observed: response.requestHashBlake3 ?? ""
+            )
+        }
+
         guard response.requestHashBlake3 == expectedRequestHashBlake3 else {
             throw ValidationError.intentHashMismatch(
                 expected: expectedRequestHashBlake3,

@@ -76,7 +76,7 @@ final class QuotaSettings {
     var hiddenBuckets: Set<String> = [] {
         didSet {
             let array = Array(hiddenBuckets)
-            if let data = try? JSONEncoder().encode(array),
+            if let data = try? JSONEncoder().encode(array), // try?-ok(skip preference save)
                let raw = String(data: data, encoding: .utf8) {
                 persistence.set(raw, forKey: "hiddenBucketsJSON")
             }
@@ -85,7 +85,7 @@ final class QuotaSettings {
 
     var bucketOrders: [String: [String]] = [:] {
         didSet {
-            if let data = try? JSONEncoder().encode(bucketOrders),
+            if let data = try? JSONEncoder().encode(bucketOrders), // try?-ok(skip preference save)
                let raw = String(data: data, encoding: .utf8) {
                 persistence.set(raw, forKey: "bucketOrdersJSON")
             }
@@ -216,7 +216,7 @@ final class QuotaSettings {
 
     var pixelClockConfig: PixelClockConfig = .disabled {
         didSet {
-            if let data = try? JSONEncoder().encode(pixelClockConfig),
+            if let data = try? JSONEncoder().encode(pixelClockConfig), // try?-ok(skip preference save)
                let raw = String(data: data, encoding: .utf8) {
                 persistence.set(raw, forKey: "pixelClockConfig")
             }
@@ -225,7 +225,7 @@ final class QuotaSettings {
 
     var smartHubDisplayConfig: SmartHubDisplayConfig = .default {
         didSet {
-            if let data = try? JSONEncoder().encode(smartHubDisplayConfig),
+            if let data = try? JSONEncoder().encode(smartHubDisplayConfig), // try?-ok(skip preference save)
                let raw = String(data: data, encoding: .utf8) {
                 persistence.set(raw, forKey: "smartHubDisplayConfig")
             }
@@ -234,7 +234,7 @@ final class QuotaSettings {
 
     var smartDisplayOrder: SmartDisplayOrder = .default {
         didSet {
-            if let data = try? JSONEncoder().encode(smartDisplayOrder),
+            if let data = try? JSONEncoder().encode(smartDisplayOrder), // try?-ok(skip preference save)
                let raw = String(data: data, encoding: .utf8) {
                 persistence.set(raw, forKey: "smartDisplayOrder")
             }
@@ -334,14 +334,14 @@ final class QuotaSettings {
         )
         if let raw = persistence.optionalString(forKey: "hiddenBucketsJSON"),
            let data = raw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+           let decoded = try? JSONDecoder().decode([String].self, from: data) { // try?-ok(default on malformed)
             self.hiddenBuckets = Set(decoded)
         } else {
             self.hiddenBuckets = []
         }
         if let raw = persistence.optionalString(forKey: "bucketOrdersJSON"),
            let data = raw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) {
+           let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) { // try?-ok(default on malformed)
             self.bucketOrders = decoded
         } else {
             self.bucketOrders = [:]
@@ -377,21 +377,21 @@ final class QuotaSettings {
         )
         if let raw = persistence.optionalString(forKey: "pixelClockConfig"),
            let data = raw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(PixelClockConfig.self, from: data) {
+           let decoded = try? JSONDecoder().decode(PixelClockConfig.self, from: data) { // try?-ok(default on malformed)
             self.pixelClockConfig = decoded
         } else {
             self.pixelClockConfig = .disabled
         }
         if let raw = persistence.optionalString(forKey: "smartHubDisplayConfig"),
            let data = raw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(SmartHubDisplayConfig.self, from: data) {
+           let decoded = try? JSONDecoder().decode(SmartHubDisplayConfig.self, from: data) { // try?-ok(default on malformed)
             self.smartHubDisplayConfig = decoded
         } else {
             self.smartHubDisplayConfig = .default
         }
         if let raw = persistence.optionalString(forKey: "smartDisplayOrder"),
            let data = raw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(SmartDisplayOrder.self, from: data) {
+           let decoded = try? JSONDecoder().decode(SmartDisplayOrder.self, from: data) { // try?-ok(default on malformed)
             self.smartDisplayOrder = decoded
         } else {
             self.smartDisplayOrder = .default

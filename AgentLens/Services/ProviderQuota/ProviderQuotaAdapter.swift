@@ -377,7 +377,11 @@ struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
 
     private func cursorConnectorKey(for account: String) -> String? {
         let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "deepseek_connector_key_read_failed"
+        )
         return quotaNonEmpty(raw ?? nil)
     }
 }
@@ -398,9 +402,9 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
             environment: context.environment,
             fileManager: context.fileManager
         )
-        async let oneDayOutput = try? Self.runOpenCodeStats(days: 1, environment: context.environment)
-        async let sevenDayOutput = try? Self.runOpenCodeStats(days: 7, environment: context.environment)
-        async let thirtyDayOutput = try? Self.runOpenCodeStats(days: 30, environment: context.environment)
+        async let oneDayOutput = try? Self.runOpenCodeStats(days: 1, environment: context.environment) // try?-ok(CLI usage, empty fallback)
+        async let sevenDayOutput = try? Self.runOpenCodeStats(days: 7, environment: context.environment) // try?-ok(CLI usage, empty fallback)
+        async let thirtyDayOutput = try? Self.runOpenCodeStats(days: 30, environment: context.environment) // try?-ok(CLI usage, empty fallback)
         let buckets = await Self.buckets(
             fiveHourCost: fiveHourCost,
             oneDay: oneDayOutput ?? "",
@@ -560,7 +564,7 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private static func firstMatch(pattern: String, in output: String) -> Double? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil } // try?-ok(literal regex pattern)
         let range = NSRange(output.startIndex..<output.endIndex, in: output)
         guard let match = regex.firstMatch(in: output, range: range),
               match.numberOfRanges > 1,

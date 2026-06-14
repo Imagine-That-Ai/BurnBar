@@ -54,7 +54,7 @@ enum OpenBurnBarChatWorkspaceConfigurator {
 
     /// Writes `openburnbar-mcp.config.json` with `BURNBAR_DB_PATH` and a short README for manual MCP setup.
     static func ensureMCPHints(in workspaceURL: URL, databaseURL: URL) {
-        try? FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true) // try?-ok(best-effort hint dir)
 
         let dbPath = databaseURL.path
         let mcpPayload: [String: Any] = [
@@ -69,9 +69,9 @@ enum OpenBurnBarChatWorkspaceConfigurator {
                 ]
             ]
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: mcpPayload, options: [.prettyPrinted, .sortedKeys]) {
+        if let data = try? JSONSerialization.data(withJSONObject: mcpPayload, options: [.prettyPrinted, .sortedKeys]) { // try?-ok(optional config encode)
             let url = workspaceURL.appendingPathComponent("openburnbar-mcp.config.json", isDirectory: false)
-            try? data.write(to: url, options: [.atomic])
+            try? data.write(to: url, options: [.atomic]) // try?-ok(best-effort config write)
         }
 
         let readme = """
@@ -83,6 +83,6 @@ enum OpenBurnBarChatWorkspaceConfigurator {
         - See `openburnbar-mcp.config.json` for environment variables to pass to the OpenBurnBar MCP server (`tools/openburnbar-mcp/server.py` in the OpenBurnBar repo).
         """
         let readmeURL = workspaceURL.appendingPathComponent("README-BURNBAR-CHAT.md", isDirectory: false)
-        try? readme.data(using: .utf8)?.write(to: readmeURL, options: [.atomic])
+        try? readme.data(using: .utf8)?.write(to: readmeURL, options: [.atomic]) // try?-ok(best-effort readme write)
     }
 }

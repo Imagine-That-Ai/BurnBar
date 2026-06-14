@@ -112,8 +112,22 @@ struct DirectDownloadArtifactVerifier: Sendable {
         guard !keyBase64.isEmpty else {
             throw DirectDownloadVerificationError.missingPublicKey
         }
-        guard let keyData = Data(base64Encoded: keyBase64), keyData.count == 32,
-              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData) else {
+        guard let keyData = Data(base64Encoded: keyBase64), keyData.count == 32 else {
+            throw DirectDownloadVerificationError.malformedPublicKey
+        }
+        // The pinned SUPublicEDKey is the trust anchor for the signature check
+        // below. If CryptoKit rejects these 32 bytes we must still fail closed
+        // (reject the update), but the underlying error is worth surfacing so a
+        // corrupted-bundle key is diagnosable rather than collapsed to nil and
+        // silently discarded.
+        let publicKey: Curve25519.Signing.PublicKey
+        do {
+            publicKey = try Curve25519.Signing.PublicKey(rawRepresentation: keyData)
+        } catch {
+            AppLogger.shared.error(
+                "directDownload.publicKeyConstructionFailed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
             throw DirectDownloadVerificationError.malformedPublicKey
         }
 

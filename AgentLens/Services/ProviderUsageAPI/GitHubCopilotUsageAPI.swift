@@ -83,7 +83,7 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
         let (orgData, orgResponse) = try await session.data(for: orgRequest)
         guard let httpResponse = orgResponse as? HTTPURLResponse,
               httpResponse.statusCode == 200,
-              let orgs = try? JSONSerialization.jsonObject(with: orgData) as? [[String: Any]] else {
+              let orgs = try? JSONSerialization.jsonObject(with: orgData) as? [[String: Any]] else { // try?-ok(optional JSON decode)
             return []
         }
 
@@ -108,7 +108,7 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
 
-            if let (data, response) = try? await session.data(for: request),
+            if let (data, response) = try? await session.data(for: request), // try?-ok(skip org fetch)
                let httpResp = response as? HTTPURLResponse,
                httpResp.statusCode == 200 {
                 allRecords.append(contentsOf: parseMetricsResponse(data))
@@ -119,7 +119,7 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
     }
 
     private func parseMetricsResponse(_ data: Data) -> [ProviderUsageRecord] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        guard let json = try? JSONSerialization.jsonObject(with: data) else { return [] } // try?-ok(optional JSON decode)
 
         var records: [ProviderUsageRecord] = []
         let formatter = DateFormatter()

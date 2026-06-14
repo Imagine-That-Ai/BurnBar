@@ -13,6 +13,7 @@ enum FirestoreIrohInboundPeerAllowlist {
         let db = Firestore.firestore()
         var allowed = Set<String>()
 
+        // try?-ok(fail-closed empty allowlist)
         let controllers = try? await db
             .collection("users").document(uid)
             .collection("iroh_pairing").document(connectionId)

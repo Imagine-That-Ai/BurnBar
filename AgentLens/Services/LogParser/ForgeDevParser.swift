@@ -69,9 +69,9 @@ final class ForgeDevParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? [] // try?-ok(dir listing fallback)
         let jsonlFiles = contents.filter { $0.pathExtension == "jsonl" }
-        let projectDirs = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        let projectDirs = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(isDirectory defaults false)
 
         for jsonlFile in jsonlFiles {
             let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
@@ -86,7 +86,7 @@ final class ForgeDevParser: LogParser, Sendable {
 
         for projectDir in projectDirs {
             let projectName = projectDir.lastPathComponent
-            let files = (try? fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)) ?? []
+            let files = (try? fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)) ?? [] // try?-ok(dir listing fallback)
             for file in files where file.pathExtension == "jsonl" {
                 let sessionId = file.deletingPathExtension().lastPathComponent
                 if let pair = parseJsonlSession(file: file, sessionId: sessionId, projectName: projectName),
@@ -121,7 +121,7 @@ final class ForgeDevParser: LogParser, Sendable {
         try fm.createDirectory(at: snapshotRoot, withIntermediateDirectories: true)
         let snapshotDir = snapshotRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fm.createDirectory(at: snapshotDir, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: snapshotDir) }
+        defer { try? fm.removeItem(at: snapshotDir) } // try?-ok(temp snapshot cleanup)
 
         let sourceURL = URL(fileURLWithPath: dbPath)
         let snapshotURL = snapshotDir.appendingPathComponent(sourceURL.lastPathComponent)
@@ -342,8 +342,8 @@ final class ForgeDevParser: LogParser, Sendable {
         sessionId: String,
         projectName: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(guard-return-nil open)
+        defer { try? handle.close() } // try?-ok(file handle teardown)
 
         let mtime = modificationDate(of: file)
         var summary = ForgeSummary()
@@ -352,7 +352,7 @@ final class ForgeDevParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed log line skip)
                 continue
             }
 
@@ -501,9 +501,9 @@ final class ForgeDevParser: LogParser, Sendable {
         candidates.append((("~/.forge" as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))
         candidates.append((homeURL.path as NSString).appendingPathComponent(".forge.db"))
 
-        if let children = try? fm.contentsOfDirectory(at: homeURL, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+        if let children = try? fm.contentsOfDirectory(at: homeURL, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) { // try?-ok(dir listing optional)
             for child in children {
-                let isDirectory = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                let isDirectory = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(isDirectory defaults false)
                 guard isDirectory else { continue }
                 candidates.append(child.appendingPathComponent(".forge.db").path)
             }
@@ -518,7 +518,7 @@ final class ForgeDevParser: LogParser, Sendable {
 
     private func jsonObject(from raw: String?) -> [String: Any]? {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any] // try?-ok(optional JSON decode)
     }
 
     private func rawValue(_ row: Row, column: String) -> Any? {
@@ -573,7 +573,7 @@ final class ForgeDevParser: LogParser, Sendable {
     }
 
     private func modificationDate(of file: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+        (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional mtime read)
     }
 }
 

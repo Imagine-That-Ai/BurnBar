@@ -832,6 +832,78 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.summary.unresolvedFollowups, 1)
     }
 
+    // MARK: - Support-directory hardening (replaces a fail-open `try?`)
+
+    func test_resolveSupportDirectory_returnsPreparedURLOnSuccessWithoutFallback() {
+        let preparedURL = URL(fileURLWithPath: "/tmp/openburnbar-prepared-\(UUID().uuidString)", isDirectory: true)
+        var fallbackInvoked = false
+
+        let resolved = OpenBurnBarDaemonRuntimePaths.resolveSupportDirectory(
+            prepare: { preparedURL },
+            fallback: {
+                fallbackInvoked = true
+                return URL(fileURLWithPath: "/tmp/should-not-be-used", isDirectory: true)
+            }
+        )
+
+        XCTAssertEqual(resolved, preparedURL)
+        XCTAssertFalse(
+            fallbackInvoked,
+            "When the hardening migration succeeds, the unhardened fallback path must never be consulted."
+        )
+    }
+
+    func test_resolveSupportDirectory_degradesToFallbackAndObservesFailureWhenMigrationThrows() {
+        let fallbackURL = URL(fileURLWithPath: "/tmp/openburnbar-fallback-\(UUID().uuidString)", isDirectory: true)
+        var prepareInvoked = false
+        var fallbackInvoked = false
+
+        struct PermissionHardeningFailure: Error {}
+
+        let resolved = OpenBurnBarDaemonRuntimePaths.resolveSupportDirectory(
+            prepare: {
+                prepareInvoked = true
+                throw PermissionHardeningFailure()
+            },
+            fallback: {
+                fallbackInvoked = true
+                return fallbackURL
+            }
+        )
+
+        XCTAssertTrue(prepareInvoked, "The hardening migration must be attempted before any fallback.")
+        XCTAssertTrue(
+            fallbackInvoked,
+            "A migration/permission failure must take the catch path (which logs) and resolve the fallback, not silently swallow the error."
+        )
+        XCTAssertEqual(
+            resolved,
+            fallbackURL,
+            "Optionality and the degraded-path URL must be preserved: a thrown migration still yields the canonical support directory."
+        )
+    }
+
+    func test_liveRuntimePaths_resolveAroundTheCanonicalSupportDirectory() {
+        // `.live()` must keep producing a coherent, daemon-rooted path tree even
+        // when nothing is injected — the hardening seam must not change the shape
+        // of the runtime paths it returns.
+        let paths = OpenBurnBarDaemonRuntimePaths.live()
+
+        XCTAssertEqual(
+            paths.daemonDirectory.deletingLastPathComponent().standardizedFileURL,
+            paths.supportDirectory.standardizedFileURL
+        )
+        XCTAssertEqual(paths.daemonDirectory.lastPathComponent, "daemon")
+        XCTAssertEqual(
+            paths.socketURL.deletingLastPathComponent().standardizedFileURL,
+            paths.supportDirectory.standardizedFileURL
+        )
+        XCTAssertEqual(
+            paths.installedBinaryURL.deletingLastPathComponent().standardizedFileURL,
+            paths.daemonDirectory.standardizedFileURL
+        )
+    }
+
     @MainActor
     func test_healthSnapshot_flagsProtocolMismatch() {
         let response = BurnBarHealthResponse(

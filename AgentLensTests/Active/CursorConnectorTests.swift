@@ -386,6 +386,214 @@ final class CursorConnectorTests: XCTestCase {
     }
 }
 
+// MARK: - Cursor connector error-swallow remediation (try? sites that mattered)
+
+/// Proves the three previously-swallowed `try?` sites in
+/// `CursorConnectorManager` now behave correctly instead of silently dropping a
+/// failure that matters:
+///
+/// 1. `stopProxy()` deletes the on-disk proxy config that carries the
+///    secret-broker bearer token + session token (security cleanup) and, when the
+///    delete genuinely fails, does NOT crash and does NOT pretend it succeeded —
+///    the file is still there to be retried/observed, and an absent file is
+///    treated as success rather than an error.
+/// 2. `saveConfig()` persists config via an encode seam that returns data on the
+///    happy path (so persistence is unchanged) and would log+skip — never write a
+///    half-blob — on encode failure.
+@MainActor
+final class CursorConnectorTrySwallowTests: XCTestCase {
+
+    private var scratchDirectories: [URL] = []
+
+    override func tearDownWithError() throws {
+        let fm = FileManager.default
+        for directory in scratchDirectories {
+            // Restore writability before teardown so the directory itself is removable.
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            try? fm.removeItem(at: directory)
+        }
+        scratchDirectories.removeAll()
+    }
+
+    // MARK: removeProxyConfigFile (Site L626 — security cleanup of token-bearing file)
+
+    func test_removeProxyConfigFile_deletesExistingSecretBearingFile() throws {
+        let fm = FileManager.default
+        let dir = try makeScratchDirectory()
+        let configURL = dir.appendingPathComponent("cursor_connector_proxy_config.json")
+        try Data(#"{"secret_broker_token":"sk-broker-live","session_token":"abc"}"#.utf8)
+            .write(to: configURL, options: .atomic)
+        XCTAssertTrue(fm.fileExists(atPath: configURL.path), "Precondition: secret-bearing config exists.")
+
+        CursorConnectorManager.removeProxyConfigFile(at: configURL, fileManager: fm)
+
+        XCTAssertFalse(
+            fm.fileExists(atPath: configURL.path),
+            "The security cleanup must actually remove the token-bearing proxy config."
+        )
+    }
+
+    func test_removeProxyConfigFile_whenAlreadyAbsent_isANoOpAndDoesNotThrowOrCrash() throws {
+        let fm = FileManager.default
+        let dir = try makeScratchDirectory()
+        let configURL = dir.appendingPathComponent("does_not_exist.json")
+        XCTAssertFalse(fm.fileExists(atPath: configURL.path), "Precondition: file is absent.")
+
+        // An already-absent file is success, not a logged fault — and must not crash.
+        CursorConnectorManager.removeProxyConfigFile(at: configURL, fileManager: fm)
+
+        XCTAssertFalse(fm.fileExists(atPath: configURL.path))
+    }
+
+    func test_removeProxyConfigFile_onRealRemovalFailure_doesNotCrashAndLeavesFileForRetry() throws {
+        let fm = FileManager.default
+        let dir = try makeScratchDirectory()
+        let configURL = dir.appendingPathComponent("cursor_connector_proxy_config.json")
+        try Data(#"{"secret_broker_token":"sk-broker-live"}"#.utf8)
+            .write(to: configURL, options: .atomic)
+
+        // Removing a file requires write permission on its PARENT directory.
+        // Stripping write from the parent makes removeItem(at:) fail with a real
+        // permission error — the path that used to be swallowed by `try?`.
+        try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+        defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+
+        // Must not throw / crash; the failure is logged internally, not propagated.
+        CursorConnectorManager.removeProxyConfigFile(at: configURL, fileManager: fm)
+
+        // The file is still present (the delete genuinely failed) — confirming we
+        // did not silently claim success. The behavior degrades gracefully while
+        // the failure is observable via the logger.
+        XCTAssertTrue(
+            fm.fileExists(atPath: configURL.path),
+            "When the OS rejects the delete, the helper must surface failure (file remains) rather than swallow it."
+        )
+    }
+
+    // MARK: encodedConfig (Site L527 — observable persistence, optionality preserved)
+
+    func test_encodedConfig_happyPath_returnsRoundTrippableData() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        var config = CursorConnectorConfig()
+        config.statusMessage = "Connected to Cursor"
+        config.isEnabled = true
+
+        let data = try XCTUnwrap(
+            CursorConnectorManager.encodedConfig(config, using: encoder),
+            "A well-formed config must still encode — the fix preserves the happy path."
+        )
+
+        let decoded = try JSONDecoder().decode(CursorConnectorConfig.self, from: data)
+        XCTAssertEqual(decoded, config, "Encoded config must round-trip identically.")
+    }
+
+    // MARK: helpers
+
+    private func makeScratchDirectory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cursor-tryswallow-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        scratchDirectories.append(url)
+        return url
+    }
+}
+
+// MARK: - Cursor connector credential-read fault path
+
+/// Proves the security fix in `CursorConnectorManager`: both untagged
+/// `try? keychain.string(for:…)` credential reads — the provider API-key read in
+/// `apiKey(for:)` and the secret-broker read in `CursorConnectorSecretBroker` —
+/// now flow through `KeychainStore.credentialIfPresent(for:event:)`. That
+/// accessor distinguishes a genuinely absent credential (returns `nil`) from a
+/// real Keychain fault (locked keychain / ACL denial / unhandled `OSStatus` /
+/// corrupt data), which it logs via `AppLogger` and *then* returns `nil` from —
+/// instead of `try?` collapsing a broken keychain into the same silent `nil` as
+/// "no credential configured".
+///
+/// The fault is driven through the same `KeychainStore(backend:)` initializer
+/// seam these production sites rely on, using a fake `KeychainStoreBackend` whose
+/// `data(for:)` throws `KeychainStoreError.unhandled(errSecNotAvailable)`.
+@MainActor
+final class CursorConnectorCredentialReadTests: XCTestCase {
+    private let service = "tests.cursor-connector.credential-read"
+
+    func test_credentialIfPresent_onKeychainFault_returnsNilWithoutThrowing() {
+        // A broken/locked keychain throws on read. The accessor must observe the
+        // fault (log it) and degrade to nil — it must not crash and must not
+        // propagate the error to the connector control flow.
+        let backend = FaultInjectingCursorKeychainBackend()
+        backend.readError = KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+
+        XCTAssertNil(
+            store.credentialIfPresent(
+                for: "provider.zai.apiKey",
+                event: "cursor_provider_api_key_read_failed"
+            )
+        )
+        XCTAssertTrue(
+            backend.readWasAttempted,
+            "The fault path must actually reach the backend read."
+        )
+    }
+
+    func test_credentialIfPresent_whenAbsent_returnsNil() {
+        // No fault, no stored value: a genuinely absent credential still yields
+        // nil, identical to the historical `try?` behavior callers depend on.
+        let backend = FaultInjectingCursorKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+
+        XCTAssertNil(
+            store.credentialIfPresent(
+                for: "provider.minimax.apiKey",
+                event: "cursor_secret_broker_key_read_failed"
+            )
+        )
+    }
+
+    func test_credentialIfPresent_whenPresent_returnsStoredValue() throws {
+        // Sanity: a present credential is still returned unchanged, so the fix
+        // does not alter the happy path.
+        let backend = FaultInjectingCursorKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        try store.set("sk-cursor-live", for: "provider.zai.apiKey")
+
+        XCTAssertEqual(
+            store.credentialIfPresent(
+                for: "provider.zai.apiKey",
+                event: "cursor_provider_api_key_read_failed"
+            ),
+            "sk-cursor-live"
+        )
+    }
+}
+
+/// A `KeychainStoreBackend` that can store/return values like a real keychain,
+/// or be flipped into a hard-fault mode where `data(for:)` throws — modeling a
+/// locked keychain / ACL denial that `try?` used to swallow silently.
+private final class FaultInjectingCursorKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
+    var readError: Error?
+    private(set) var readWasAttempted = false
+    private var storage: [String: [String: Data]] = [:]
+
+    func set(_ value: Data, service: String, account: String) throws {
+        storage[service, default: [:]][account] = value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        readWasAttempted = true
+        if let readError {
+            throw readError
+        }
+        return storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        storage[service]?[account] = nil
+    }
+}
+
 private final class RecordingSecurityKeychainOperations: SecurityKeychainOperations, @unchecked Sendable {
     struct Event: Equatable {
         enum Operation: Equatable {

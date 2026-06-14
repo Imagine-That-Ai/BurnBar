@@ -24,13 +24,13 @@ final class ClineFormatParser: LogParser, Sendable {
             guard fm.fileExists(atPath: expanded) else { continue }
 
             let tasksURL = URL(fileURLWithPath: expanded)
-            guard let taskDirs = try? fm.contentsOfDirectory(
+            guard let taskDirs = try? fm.contentsOfDirectory( // try?-ok(skip unreadable dir)
                 at: tasksURL,
                 includingPropertiesForKeys: [.isDirectoryKey]
             ) else { continue }
 
             let dirs = taskDirs.filter {
-                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(filter non-dirs)
             }
 
             for taskDir in dirs {
@@ -62,8 +62,8 @@ final class ClineFormatParser: LogParser, Sendable {
         taskId: String,
         historyFile: URL
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let data = try? Data(contentsOf: historyFile),
-              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+        guard let data = try? Data(contentsOf: historyFile), // try?-ok(skip unreadable log)
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed log skip)
             return nil
         }
 
@@ -231,6 +231,7 @@ final class ClineFormatParser: LogParser, Sendable {
     }
 
     private func modificationDate(of url: URL) -> Date? {
+        // try?-ok(optional mtime metadata)
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }
 }

@@ -28,7 +28,7 @@ protocol AgentFocusFollowClock: Sendable {
 struct SystemAgentFocusFollowClock: AgentFocusFollowClock {
     func sleep(for seconds: TimeInterval) async {
         let nanoseconds = UInt64(max(0, seconds) * 1_000_000_000)
-        try? await Task.sleep(nanoseconds: nanoseconds)
+        try? await Task.sleep(nanoseconds: nanoseconds) // try?-ok(cancellation only)
     }
 }
 
@@ -198,7 +198,7 @@ final class AgentFocusFollowController {
             currentWindowID = target.windowID
             await focusContextSink(context)
         } catch {
-            try? await targetSwitcher(nil, nil)
+            try? await targetSwitcher(nil, nil) // try?-ok(best-effort focus reset)
             currentWindowID = nil
             await focusContextSink(context)
         }

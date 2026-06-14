@@ -104,7 +104,7 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
         let logFiles = candidateLogFiles(in: directory, fileManager: context.fileManager)
 
         for file in logFiles.reversed() {
-            guard let data = try? Data(contentsOf: file),
+            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable telemetry log)
                   let content = String(data: data, encoding: .utf8) else {
                 continue
             }
@@ -135,19 +135,26 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
         )
     }
 
-    private func candidateLogFiles(in directory: URL, fileManager: FileManager) -> [URL] {
+    func candidateLogFiles(in directory: URL, fileManager: FileManager) -> [URL] {
         guard fileManager.fileExists(atPath: directory.path) else { return [] }
-        let files = (try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
+        // The directory exists but enumeration failed (sandbox/permission/IO fault).
+        // Degrade gracefully to the empty-list fallback, but surface the loss so a
+        // silently-broken local telemetry probe is observable instead of invisible.
+        let files = AppLogger.sync.silently(
+            "WarpQuotaAdapter.candidateLogFiles.contentsOfDirectory",
+            try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ),
+            fallback: []
+        )
 
         return files
             .filter { $0.lastPathComponent.hasPrefix("warp_network") && $0.pathExtension == "log" }
             .sorted {
-                let lhs = ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-                let rhs = ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+                let lhs = ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) // try?-ok(distantPast sort fallback)
+                let rhs = ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) // try?-ok(distantPast sort fallback)
                 return lhs < rhs
             }
     }

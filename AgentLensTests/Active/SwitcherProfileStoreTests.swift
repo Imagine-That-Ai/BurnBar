@@ -131,6 +131,57 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(fetched.browserMetadata?.serviceIdentities, [])
     }
 
+    /// FAIL CLOSED on a present-but-corrupt metadata blob: the row is skipped
+    /// (fetch returns nil) rather than loaded with default metadata. Loading
+    /// defaults would flip a user-disabled profile to enabled (a launch-eligibility
+    /// fail-open) and let the discovery re-save path overwrite the stored JSON with
+    /// defaults. Regression guard for the mis-tag found in the try?-burn-down review.
+    func test_fetchProfile_corruptBrowserMetadata_failsClosed_skipsRow() throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO switcher_profiles (
+                    id, targetKind, browserType, browserMetadataJSON,
+                    cliType, cliMetadataJSON, sortKey, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "corrupt-browser",
+                    "browser",
+                    "chrome",
+                    #"{ this is not valid json"#,
+                    nil, nil, 1, Date(), Date()
+                ]
+            )
+        }
+        // Present-but-undecodable metadata → the whole row fails closed (skipped),
+        // never surfaced with default metadata.
+        XCTAssertNil(try store.fetchProfile(id: "corrupt-browser"))
+        XCTAssertFalse(
+            try store.fetchAllProfiles().contains { $0.id == "corrupt-browser" },
+            "a corrupt-metadata row must not appear in listings as a defaulted profile"
+        )
+    }
+
+    /// A genuinely-absent metadata blob (NULL column) is NOT corruption: the
+    /// profile still loads (with nil metadata), distinguishing absence from a
+    /// present-but-malformed value.
+    func test_fetchProfile_absentMetadata_loadsRow() throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO switcher_profiles (
+                    id, targetKind, browserType, browserMetadataJSON,
+                    cliType, cliMetadataJSON, sortKey, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: ["no-meta-browser", "browser", "chrome", nil, nil, nil, 1, Date(), Date()]
+            )
+        }
+        let fetched = try XCTUnwrap(store.fetchProfile(id: "no-meta-browser"))
+        XCTAssertNil(fetched.browserMetadata)
+    }
+
     func test_fetchProfile_decodesLegacyCLIMetadataWithoutArrayFields() throws {
         try dbQueue.write { db in
             try db.execute(

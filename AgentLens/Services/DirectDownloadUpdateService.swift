@@ -61,7 +61,7 @@ final class DirectDownloadUpdateChecker {
         UserDefaults.standard.removeObject(forKey: Self.legacyPromptedBuildKey)
 
         launchCheckTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            try? await Task.sleep(nanoseconds: 12_000_000_000) // try?-ok(launch-delay cancellation)
             await self?.runCheck(userInitiated: false)
         }
 
@@ -222,11 +222,11 @@ final class DirectDownloadUpdateChecker {
             let (downloadedURL, response) = try await URLSession.shared.download(from: release.downloadUrl)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200..<300).contains(httpResponse.statusCode) else {
-                try? fileManager.removeItem(at: downloadedURL)
+                try? fileManager.removeItem(at: downloadedURL) // try?-ok(temp cleanup best-effort)
                 return .failure(URLError(.badServerResponse))
             }
             try fileManager.createDirectory(at: destinationDir, withIntermediateDirectories: true)
-            try? fileManager.removeItem(at: destination)
+            try? fileManager.removeItem(at: destination) // try?-ok(pre-move stale cleanup)
             try fileManager.moveItem(at: downloadedURL, to: destination)
             try verifier.verify(
                 fileAt: destination,
@@ -236,7 +236,7 @@ final class DirectDownloadUpdateChecker {
             )
             return .success(destination)
         } catch {
-            try? fileManager.removeItem(at: destination)
+            try? fileManager.removeItem(at: destination) // try?-ok(temp cleanup best-effort)
             return .failure(error)
         }
     }

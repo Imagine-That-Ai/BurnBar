@@ -25,6 +25,7 @@ extension OpenBurnBarDaemonManager {
     }
 
     func exportControllerActivitySnapshotIfStale() {
+        // try?-ok(stale-check falls through to regenerate)
         if let attributes = try? dependencies.fileManager.attributesOfItem(atPath: paths.controllerActivitySnapshotURL.path),
            let modifiedAt = attributes[.modificationDate] as? Date,
            Date().timeIntervalSince(modifiedAt) < Self.controllerActivitySnapshotFreshness {

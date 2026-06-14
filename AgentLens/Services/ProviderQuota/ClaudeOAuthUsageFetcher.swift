@@ -410,8 +410,33 @@ struct ClaudeOAuthUsageFetcher {
     }
 
     private func readCache() -> CacheEntry? {
-        guard let data = try? Data(contentsOf: cacheURL), // try?-ok(best-effort cache read)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional cache parse)
+        // A missing cache file is the normal cold-start case and must stay
+        // silent so we don't spam telemetry on every fresh launch. A read
+        // fault on a file that DOES exist (permissions, I/O error) is an
+        // anomaly that silently disables the 429-protection cache — the
+        // single most important optimization in this fetcher — so it must
+        // be observable. We still degrade gracefully (return nil → fall
+        // through to the live call / JSONL reader); this is a recoverable
+        // probe, not a security decision, so logging-then-nil is correct.
+        guard fileManager.value.fileExists(atPath: cacheURL.path) else { return nil }
+        let data: Data
+        do {
+            data = try Data(contentsOf: cacheURL)
+        } catch {
+            AppLogger.network.error(
+                "claude_oauth_usage.cache_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return nil
+        }
+        // A present-but-corrupt cache is also worth surfacing: it means the
+        // cache will never satisfy a read and we'll keep paying the live
+        // call (and its 429 risk) until the file is overwritten.
+        guard let json = AppLogger.parser.silently(
+            "claude_oauth_usage.cache_parse_failed",
+            try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            fallback: nil
+        ) else {
             return nil
         }
         let formatter = ISO8601DateFormatter()

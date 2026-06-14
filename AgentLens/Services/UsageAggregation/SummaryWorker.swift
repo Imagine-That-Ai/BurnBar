@@ -23,6 +23,24 @@ struct SummarySettingsSnapshot: Sendable {
     let retryCount: Int
 }
 
+// MARK: - Daily Spend Read Seam
+
+/// Narrow seam for reading today's accumulated cloud summary spend.
+///
+/// The read drives the cloud daily cost cap (`SummaryCostEstimator.exceedsCloudDailyCap`),
+/// so a *failed* read must fail closed — never default to `0` and silently let a paid
+/// cloud LLM call bypass the cap. This protocol lets tests inject a fault-injecting fake
+/// through `SummaryWorker.init` without standing up a real database.
+///
+/// `DataStoreActor` already vends a `nonisolated func summarySpendToday(now:) throws -> Double`,
+/// so it conforms with no behavior change for production.
+protocol SummaryDailySpendReading: Sendable {
+    /// Returns USD spent on cloud summaries today, or throws on a real read fault.
+    func summarySpendToday(now: Date) throws -> Double
+}
+
+extension DataStoreActor: SummaryDailySpendReading {}
+
 // MARK: - Summary Worker
 
 /// Actor that performs LLM summary calls and persists results off the main thread.
@@ -34,17 +52,23 @@ actor SummaryWorker {
     let llmClient: SummaryLLMClient
     let keyResolver: SummaryAPIKeyResolver
 
+    /// Source of today's cloud summary spend used for the daily cost cap.
+    /// Defaults to `dataStoreActor`; tests inject a fault-injecting fake here.
+    private let spendReader: any SummaryDailySpendReading
+
     private var localSummaryEndpointCooldownUntil: Date?
     private var mlxSummaryEndpointCooldownUntil: Date?
 
     init(
         dataStoreActor: DataStoreActor,
         llmClient: SummaryLLMClient,
-        keyResolver: SummaryAPIKeyResolver
+        keyResolver: SummaryAPIKeyResolver,
+        spendReader: (any SummaryDailySpendReading)? = nil
     ) {
         self.dataStoreActor = dataStoreActor
         self.llmClient = llmClient
         self.keyResolver = keyResolver
+        self.spendReader = spendReader ?? dataStoreActor
     }
 
     // MARK: - Summarize & Store
@@ -332,7 +356,23 @@ actor SummaryWorker {
         )
 
         if provider != .local, provider != .mlx {
-            let spentToday = (try? dataStoreActor.summarySpendToday()) ?? 0
+            // The spend read gates the cloud daily cost cap. A *failed* read must
+            // fail closed: skip this paid cloud call rather than defaulting to 0,
+            // which would silently let an unknown amount of spend bypass the cap.
+            let spentToday: Double
+            do {
+                spentToday = try spendReader.summarySpendToday(now: Date())
+            } catch {
+                AppLogger.dataStore.silentFailure(
+                    "summary_spend_read_failed_fail_closed",
+                    error: error,
+                    context: [
+                        "provider": provider.rawValue,
+                        "model": model
+                    ]
+                )
+                return nil
+            }
             if SummaryCostEstimator.exceedsCloudDailyCap(
                 adding: estimatedCost,
                 dailyCapUSD: settings.dailyCapUSD,

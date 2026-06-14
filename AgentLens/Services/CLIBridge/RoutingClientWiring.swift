@@ -427,8 +427,8 @@ struct RoutingClientWiring {
         switch target {
         case .claudeCode:
             guard fileManager.fileExists(atPath: url.path),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
-            if let root = try? readJSONObject(at: url),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
+            if let root = try? readJSONObject(at: url), // try?-ok(malformed config falls back)
                let env = root["env"] as? [String: Any] {
                 if env["OPENBURNBAR_WIRED"] != nil { return true }
                 if let baseURL = env["ANTHROPIC_BASE_URL"] as? String,
@@ -439,8 +439,8 @@ struct RoutingClientWiring {
             return text.contains(Self.sentinelStart)
         case .opencode:
             guard fileManager.fileExists(atPath: url.path),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
-            if let root = try? readJSONObject(at: url),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
+            if let root = try? readJSONObject(at: url), // try?-ok(malformed config falls back)
                let providers = root["provider"] as? [String: Any],
                let provider = providers["openburnbar"] as? [String: Any] {
                 if let options = provider["options"] as? [String: Any],
@@ -456,10 +456,10 @@ struct RoutingClientWiring {
         case .droid:
             return droidConfigURLs().contains { url in
                 guard fileManager.fileExists(atPath: url.path),
-                      let text = try? String(contentsOf: url, encoding: .utf8) else {
+                      let text = try? String(contentsOf: url, encoding: .utf8) else { // try?-ok(unreadable means not wired)
                     return false
                 }
-                if let root = try? readJSONObject(at: url) {
+                if let root = try? readJSONObject(at: url) { // try?-ok(malformed config falls back)
                     let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
                     let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
                     if (settingsModels + configModels).contains(where: { isOpenBurnBarDroidModel($0) }) {
@@ -473,19 +473,19 @@ struct RoutingClientWiring {
             }
         case .codex:
             guard fileManager.fileExists(atPath: url.path),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
             return text.contains(Self.sentinelStart)
                 || (text.contains("[model_providers.openburnbar]") && text.contains("base_url") && text.contains(":8317"))
                 || text.range(of: #"base_url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/?.*""#, options: .regularExpression) != nil
         case .forge:
             guard fileManager.fileExists(atPath: url.path),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
             return text.contains(Self.sentinelStart)
                 || (text.contains(#"id = "openburnbar""#) && text.contains(":8317"))
                 || text.range(of: #"url\s*=\s*"https?://(127\.0\.0\.1|localhost):8317(/v1)?/chat/completions""#, options: .regularExpression) != nil
         case .grok:
             guard fileManager.fileExists(atPath: url.path),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
             return text.contains(Self.sentinelStart)
                 || (text.contains("[model.openburnbar]") && text.contains("base_url"))
         case .antigravity:
@@ -964,9 +964,9 @@ struct RoutingClientWiring {
         }
         let next = stripSentinelBlock(in: existing)
         if next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            try? fileManager.removeItem(at: url)
+            try? fileManager.removeItem(at: url) // try?-ok(empty-file cleanup, cosmetic)
         } else {
-            _ = try? backupIfExists(url: url)
+            _ = try? backupIfExists(url: url) // try?-ok(best-effort sidecar backup)
             try writeText(next, to: url)
         }
     }
@@ -1007,9 +1007,9 @@ struct RoutingClientWiring {
         }
         let next = stripSentinelBlock(in: existing)
         if next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            try? fileManager.removeItem(at: url)
+            try? fileManager.removeItem(at: url) // try?-ok(empty-file cleanup, cosmetic)
         } else {
-            _ = try? backupIfExists(url: url)
+            _ = try? backupIfExists(url: url) // try?-ok(best-effort sidecar backup)
             try writeText(next, to: url)
         }
     }
@@ -1159,9 +1159,9 @@ struct RoutingClientWiring {
         }
         let next = stripSentinelBlock(in: existing)
         if next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            try? fileManager.removeItem(at: url)
+            try? fileManager.removeItem(at: url) // try?-ok(empty-file cleanup, cosmetic)
         } else {
-            _ = try? backupIfExists(url: url)
+            _ = try? backupIfExists(url: url) // try?-ok(best-effort sidecar backup)
             try writeText(next, to: url)
         }
     }
@@ -1232,7 +1232,7 @@ struct RoutingClientWiring {
             guard removedSettings || removedConfig || removedDefaults else { continue }
             removedAny = true
             if root.isEmpty {
-                try? fileManager.removeItem(at: url)
+                try? fileManager.removeItem(at: url) // try?-ok(empty-file cleanup, cosmetic)
             } else {
                 try writeJSONObject(root, to: url)
             }
@@ -1517,7 +1517,7 @@ struct RoutingClientWiring {
     ) -> [String] {
         var installed: [String] = []
         for url in droidConfigURLs() where fileManager.fileExists(atPath: url.path) {
-            guard let root = try? readJSONObject(at: url) else { continue }
+            guard let root = try? readJSONObject(at: url) else { continue } // try?-ok(skip unparseable config)
             let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
             let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
             for entry in settingsModels + configModels where isOpenBurnBarDroidModel(entry, gateway: gateway) {
@@ -1583,7 +1583,7 @@ struct RoutingClientWiring {
         if stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             object = [:]
         } else {
-            guard let parsed = try? JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any] else {
+            guard let parsed = try? JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any] else { // try?-ok(guard rethrows explicit error)
                 throw RoutingClientWiringError.configReadFailed(
                     path: url.path,
                     detail: "could not parse JSON"
@@ -1659,7 +1659,7 @@ struct RoutingClientWiring {
 
     private func readText(at url: URL) -> String? {
         guard fileManager.fileExists(atPath: url.path) else { return nil }
-        return try? String(contentsOf: url, encoding: .utf8)
+        return try? String(contentsOf: url, encoding: .utf8) // try?-ok(nil read handled by callers)
     }
 
     private func writeText(_ text: String, to url: URL) throws {
@@ -1828,7 +1828,7 @@ struct RoutingClientWiring {
 
     private func lowercasedJSONText(_ value: Any) -> String {
         guard JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), // try?-ok(empty string fallback)
               let text = String(data: data, encoding: .utf8) else {
             return ""
         }

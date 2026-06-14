@@ -55,7 +55,7 @@ final class AsyncPipeLineReader: Sendable {
             source.setCancelHandler { [state, pipe] in
                 // Flush remaining buffer as final line if non-empty.
                 state.flushRemaining(into: continuation)
-                try? pipe.fileHandleForReading.close()
+                try? pipe.fileHandleForReading.close() // try?-ok(handle teardown)
                 continuation.finish()
             }
 

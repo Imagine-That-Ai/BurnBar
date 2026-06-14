@@ -82,6 +82,26 @@ def main() -> int:
         (1, 1),
     )
 
+    # A `try?` mentioned only in a comment is prose, not debt.
+    expect("comment-only", count("// Replaces try? expr patterns"), (0, 0))
+    expect("doc-comment-only", count("/// uses try? under the hood"), (0, 0))
+
+    # A code `try?` with a trailing non-tag comment still counts once.
+    expect("code-plus-comment", count("let x = try? foo() // best effort"), (1, 0))
+
+    # `//` inside a string literal is not a comment, so it is not stripped — and
+    # a `try?` living only in the trailing comment is still ignored.
+    expect("slashes-in-string", count('let u = "https://x" // try? here'), (0, 0))
+
+    # The `try?` substring inside an identifier doing optional chaining is NOT a
+    # Swift `try?` and must not be counted (the original regex over-counted these).
+    expect("entry-optional-chain", count("auditEntryIndex: entry?.entryIndex,"), (0, 0))
+    expect("cacheentry-type", count("let conversation: CodexConversationCacheEntry?"), (0, 0))
+    expect("registry-optional-chain", count("foo.mediaControlStreamRegistry?.bar()"), (0, 0))
+    expect("retry-in-string", count('label.text = "Refresh failed — retry?"'), (0, 0))
+    # …but a real `try?` after an identifier-adjacent boundary still counts.
+    expect("real-try-after-paren", count("let x = (try? foo()) ?? d"), (1, 0))
+
     print("\nAll try? counter tests passed.")
     return 0
 

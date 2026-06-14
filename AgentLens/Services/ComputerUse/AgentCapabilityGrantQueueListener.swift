@@ -10,14 +10,33 @@ import OpenBurnBarCore
 final class AgentCapabilityGrantQueueListener {
     static let shared = AgentCapabilityGrantQueueListener()
 
+    /// Writes the receipt payload for `requestPath` to the backing store.
+    /// Injected so the receipt-write path (including the denied-receipt write
+    /// in `process`'s catch block) is exercisable without a live Firestore
+    /// `DocumentReference`. `requestPath` is used only for log correlation.
+    typealias ReceiptPayloadWriter = @Sendable (
+        _ requestPath: String,
+        _ payload: [String: Any]
+    ) async throws -> Void
+
     private let firestoreProvider: @Sendable () -> Firestore
+    private let receiptWriter: ReceiptPayloadWriter
     private let validator = PhoneControlAuthorityValidator()
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var listener: ListenerRegistration?
     private var activeUID: String?
 
-    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
+    init(
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        receiptWriter: ReceiptPayloadWriter? = nil
+    ) {
         self.firestoreProvider = firestoreProvider
+        // Default writer: persists the receipt payload to the Firestore
+        // document at `requestPath` (merging so the original request fields
+        // survive) via the same provider the listener reads through.
+        self.receiptWriter = receiptWriter ?? { requestPath, payload in
+            try await firestoreProvider().document(requestPath).setData(payload, merge: true)
+        }
     }
 
     func start() {
@@ -60,13 +79,45 @@ final class AgentCapabilityGrantQueueListener {
     }
 
     private func process(document: QueryDocumentSnapshot, uid: String) async {
+        let requestPath = document.reference.path
         do {
             let wireRequest = try decodeWireRequest(from: document.data())
             let receipt = try await verifiedReceipt(for: wireRequest, uid: uid)
-            try await write(receipt: receipt, to: document.reference)
+            try await write(receipt: receipt, to: requestPath)
         } catch {
-            let receipt = fallbackReceipt(from: document.data(), message: error.localizedDescription)
-            try? await write(receipt: receipt, to: document.reference)
+            await writeDenialReceipt(
+                forData: document.data(),
+                message: error.localizedDescription,
+                to: requestPath
+            )
+        }
+    }
+
+    /// Writes the authoritative DENIED receipt for a request that failed
+    /// verification. The receipt is the security decision returned to the
+    /// requesting device, and a failed write leaves the request `.queued`
+    /// (so it can be re-processed) — that loss MUST be observable rather than
+    /// swallowed. We do not propagate: a throw here would only crash the
+    /// detached `process` Task, never reaching a requester, so the durable
+    /// failure is the error log. This never falls open: the receipt is already
+    /// a denial; a missing write withholds approval, it never grants it.
+    func writeDenialReceipt(
+        forData data: [String: Any],
+        message: String,
+        to requestPath: String
+    ) async {
+        let receipt = fallbackReceipt(from: data, message: message)
+        do {
+            try await write(receipt: receipt, to: requestPath)
+        } catch {
+            AppLogger.daemon.error(
+                "agentGrant.denialReceiptWriteFailed",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: error)))",
+                    "denialReason": receipt.denialReason?.rawValue ?? "unknown",
+                    "status": receipt.status.rawValue
+                ]
+            )
         }
     }
 
@@ -143,13 +194,14 @@ final class AgentCapabilityGrantQueueListener {
 
     private func write(
         receipt: AgentCapabilityGrantReceipt,
-        to reference: DocumentReference
+        to requestPath: String
     ) async throws {
-        try await reference.setData([
+        let payload: [String: Any] = [
             "status": receipt.status.rawValue,
             "receipt": try jsonObject(from: receipt.wire()),
             "updatedAt": Timestamp(date: Date())
-        ], merge: true)
+        ]
+        try await receiptWriter(requestPath, payload)
     }
 
     private func fallbackReceipt(

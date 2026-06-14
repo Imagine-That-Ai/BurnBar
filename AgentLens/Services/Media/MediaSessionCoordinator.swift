@@ -176,7 +176,7 @@ final class MediaSessionCoordinator: ObservableObject {
             activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration(displayId: displayId)
             let pipeline = screenCaptureFactory(activeScreenCaptureConfiguration) { [weak self] sample in
                 guard let self else { return }
-                try? await self.videoEncoder?.encode(sampleBuffer: sample)
+                try? await self.videoEncoder?.encode(sampleBuffer: sample) // try?-ok(drop live frame)
             }
             try await pipeline.start()
             self.screenCapture = pipeline
@@ -204,7 +204,7 @@ final class MediaSessionCoordinator: ObservableObject {
         nextConfiguration.windowID = windowID
         let pipeline = screenCaptureFactory(nextConfiguration) { [weak self] sample in
             guard let self else { return }
-            try? await self.videoEncoder?.encode(sampleBuffer: sample)
+            try? await self.videoEncoder?.encode(sampleBuffer: sample) // try?-ok(drop live frame)
         }
         try await pipeline.start()
         let previousCapture = screenCapture
@@ -228,7 +228,7 @@ final class MediaSessionCoordinator: ObservableObject {
         shadowBweDecision = shadowDecision
         if next != bitrateBitsPerSecond {
             bitrateBitsPerSecond = next
-            try? videoEncoder?.setTargetBitsPerSecond(next)
+            try? videoEncoder?.setTargetBitsPerSecond(next) // try?-ok(best-effort BWE tune)
         }
         roundTripMillis = sample.roundTripMillis
         refreshStreamingStats(sample: sample, shadowDecision: shadowDecision)
@@ -355,6 +355,7 @@ final class MediaSessionCoordinator: ObservableObject {
         codec: MercuryVideoCodec?,
         longTermReferenceToken: MercuryLTRToken?
     ) -> MediaFrameV2 {
+        // try?-ok(optional descriptive metadata)
         let metadata = (try? MediaFrameV2Metadata(
             codec: codec,
             longTermReferenceToken: longTermReferenceToken

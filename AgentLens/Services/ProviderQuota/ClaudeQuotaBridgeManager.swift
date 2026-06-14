@@ -113,8 +113,8 @@ struct ClaudeQuotaBridgeManager {
         }
         try snapshotStore.writeJSONObject(settings, to: settingsURL)
 
-        try? fileManager.removeItem(at: metadataURL)
-        try? fileManager.removeItem(at: appPaths.claudeStatuslineBridgeScriptURL)
+        try? fileManager.removeItem(at: metadataURL) // try?-ok(best-effort sidecar cleanup)
+        try? fileManager.removeItem(at: appPaths.claudeStatuslineBridgeScriptURL) // try?-ok(best-effort script cleanup)
     }
 
     func refreshClaudeBridgeStatus() -> ClaudeQuotaBridgeStatus {
@@ -124,7 +124,7 @@ struct ClaudeQuotaBridgeManager {
             .appendingPathComponent(".claude", isDirectory: true)
             .appendingPathComponent("settings.json")
 
-        guard let settings = ((try? snapshotStore.readJSONObject(from: settingsURL)) ?? nil) else {
+        guard let settings = ((try? snapshotStore.readJSONObject(from: settingsURL)) ?? nil) else { // try?-ok(missing settings = not installed)
             return ClaudeQuotaBridgeStatus(
                 state: .notInstalled,
                 wrapperPath: wrapperPath,
