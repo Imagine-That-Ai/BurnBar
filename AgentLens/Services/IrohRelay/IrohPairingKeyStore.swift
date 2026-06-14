@@ -61,7 +61,14 @@ final class IrohPairingKeyStore: @unchecked Sendable {
     }
 
     var publicKeyBase64: String? {
-        try? keypair().publicKeyBase64
+        // The pairing public key is published for verifier pinning; a
+        // load/generate failure should be observable, not silently collapse
+        // the host into a keyless "unpaired" state.
+        AppLogger.network.silently(
+            "iroh_pairing_public_key_unavailable",
+            try keypair().publicKeyBase64 as String?,
+            fallback: nil
+        )
     }
 
     // MARK: - Keychain plumbing

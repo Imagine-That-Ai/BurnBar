@@ -105,7 +105,7 @@ struct ClaudeOAuthCredentials: Sendable, Equatable {
         var root: [String: Any] = ["claudeAiOauth": oauth]
         if let organizationUuid { root["organizationUuid"] = organizationUuid }
 
-        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys]),
+        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys]), // try?-ok(optional encode fallback)
               let payload = String(data: data, encoding: .utf8) else {
             return accessToken
         }
@@ -132,7 +132,7 @@ enum ClaudeCredentialsReader {
     /// any schema deviation — better unavailable than a half-formed
     /// credential that 401s on every request.
     static func decode(_ data: Data) -> ClaudeOAuthCredentials? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode guard)
             return nil
         }
         let oauth = json["claudeAiOauth"] as? [String: Any] ?? json

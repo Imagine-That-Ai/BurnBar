@@ -542,7 +542,7 @@ final class HermesRelayHostService {
                 )
             }
         } catch {
-            try? await failRelayRequest(
+            try? await failRelayRequest( // try?-ok(best-effort failure status)
                 reference: reference,
                 requestID: reference.documentID,
                 message: error.localizedDescription,
@@ -1042,7 +1042,7 @@ final class HermesRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            _ = try? await writeRelayChunk(
+            _ = try? await writeRelayChunk( // try?-ok(best-effort error chunk)
                 reference: reference,
                 context: context,
                 sequence: 0,
@@ -1191,11 +1191,11 @@ final class HermesRelayHostService {
         }
         primary["data"] = merged
         primary["object"] = primary["object"] ?? "list"
-        return try? JSONSerialization.data(withJSONObject: primary, options: [.sortedKeys])
+        return try? JSONSerialization.data(withJSONObject: primary, options: [.sortedKeys]) // try?-ok(optional json encode)
     }
 
     private nonisolated static func jsonObject(from data: Data) -> [String: Any]? {
-        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] // try?-ok(optional json decode)
     }
 }
 

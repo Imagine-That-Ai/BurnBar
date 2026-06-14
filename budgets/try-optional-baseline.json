@@ -1,6 +1,6 @@
 {
-  "total": 808,
+  "total": 727,
   "scope": "AgentLens/Services",
-  "generatedAt": "2026-06-12T23:52:38Z",
-  "note": "try? occurrences in AgentLens/Services. CI fails on increase."
+  "generatedAt": "2026-06-14T05:42:54Z",
+  "note": "Untagged try? occurrences in AgentLens/Services. Sites carrying a `// try?-ok(<reason>)` justification (same line or the line directly above) are excluded by tools/error-debt/count-error-debt.py. CI fails on increase; ratchet downward each tranche. Identified security-matters sites still pending fail-closed fixes are catalogued in docs/security/try-optional-matters-findings-2026-06-14.md."
 }

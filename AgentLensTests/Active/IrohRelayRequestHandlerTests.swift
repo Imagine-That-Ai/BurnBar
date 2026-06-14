@@ -5,6 +5,22 @@ import OpenBurnBarMedia
 @testable import OpenBurnBar
 
 final class IrohRelayRequestHandlerTests: XCTestCase {
+    func test_irohPairingKeyStore_publicKeyBase64_materializesKeyAndIsStable() {
+        // Use a unique, test-scoped Keychain service so we never read or clobber
+        // the real host pairing key. publicKeyBase64 must surface a real key —
+        // the conversion off `try?` keeps the observable nil-on-failure contract
+        // while logging genuine load/generate failures.
+        let store = IrohPairingKeyStore(
+            service: "ai.openburnbar.iroh-pairing.test.\(UUID().uuidString)",
+            account: "primary"
+        )
+        let key = store.publicKeyBase64
+        XCTAssertNotNil(key)
+        XCTAssertFalse(key?.isEmpty ?? true)
+        // A second read loads the persisted key rather than regenerating.
+        XCTAssertEqual(store.publicKeyBase64, key)
+    }
+
     func test_usesBurnBarGatewayForOpenAICompatibleRelaySurface() {
         XCTAssertTrue(IrohRelayRequestHandler.usesBurnBarGateway(.models))
         XCTAssertTrue(IrohRelayRequestHandler.usesBurnBarGateway(.chatCompletions))
