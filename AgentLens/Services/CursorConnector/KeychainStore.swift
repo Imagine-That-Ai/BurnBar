@@ -246,3 +246,43 @@ struct KeychainStore: Sendable {
         }
     }
 }
+
+extension KeychainStore {
+    /// Reads a stored credential, returning `nil` when the item is genuinely
+    /// absent and surfacing real Keychain faults to the log.
+    ///
+    /// `string(for:)` already maps the benign cases — item-not-found,
+    /// interaction-not-allowed, user-cancelled, auth-failed — to `nil`. The only
+    /// thing it *throws* for is a genuinely unexpected backend fault: a locked
+    /// keychain, an ACL denial, an unhandled `OSStatus`, or corrupt data. Those
+    /// were historically swallowed by `try?` at every call site, which made a
+    /// broken/locked Keychain indistinguishable from "no credential configured"
+    /// and silently degraded auth/quota flows with no diagnostic.
+    ///
+    /// This accessor preserves the nil-on-absent contract callers rely on while
+    /// making a real credential-availability fault observable. Use it instead of
+    /// `try? keychain.string(for:)` wherever a missing credential should degrade
+    /// gracefully but a *broken* keychain should not be silently misread as
+    /// "not configured".
+    ///
+    /// - Parameters:
+    ///   - account: the credential account to read.
+    ///   - allowUserInteraction: whether to permit an interactive unlock prompt.
+    ///   - event: a telemetry event name logged if an unexpected fault occurs.
+    /// - Returns: the credential if present, or `nil` if absent or unreadable.
+    func credentialIfPresent(
+        for account: String,
+        allowUserInteraction: Bool = false,
+        event: String = "keychain_credential_read_failed"
+    ) -> String? {
+        do {
+            return try string(for: account, allowUserInteraction: allowUserInteraction)
+        } catch {
+            AppLogger.shared.error(
+                event,
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return nil
+        }
+    }
+}
