@@ -245,4 +245,47 @@ final class SessionLogSyncServiceMattersTests: XCTestCase {
         )
         XCTAssertEqual(tampered, .tampered)
     }
+
+    /// FAIL CLOSED on a forged/malformed-but-PRESENT sealed field. The server is
+    /// untrusted: a sealed field that is present yet cannot be parsed into a
+    /// `CloudVaultSealedText` (missing required `tag`/`nonce`, or a non-dict value)
+    /// must reject the hit (`.tampered`), never collapse to the safe-placeholder
+    /// `.absent` path that a genuinely-missing field uses. Regression guard for the
+    /// auth-gate bypass found in the try?-burn-down review.
+    func test_decryptField_presentButMalformed_failsClosedAsTampered() throws {
+        let key = try makeVaultKey()
+        let args = (collection: "cloud_search_documents", docID: documentID, field: "sealedTitle")
+
+        // Present dict missing every required sealed-envelope field.
+        let malformedDict = CloudSyncService.decryptEncryptedSearchField(
+            ["unexpected": "shape"],
+            vaultKey: key, uid: uid,
+            collection: args.collection, docID: args.docID, field: args.field
+        )
+        XCTAssertEqual(malformedDict, .tampered, "a present-but-undecodable dict must be rejected, not treated as absent")
+
+        // Present dict that has some envelope keys but omits the auth tag.
+        let missingTag = CloudSyncService.decryptEncryptedSearchField(
+            ["algorithm": "AES-GCM", "keyVersion": 1, "nonce": "AAAA", "ciphertext": "AAAA"],
+            vaultKey: key, uid: uid,
+            collection: args.collection, docID: args.docID, field: args.field
+        )
+        XCTAssertEqual(missingTag, .tampered, "a present envelope missing the auth tag must be rejected")
+
+        // Present non-dict value (e.g. a bare string) is not a valid sealed field.
+        let nonDict = CloudSyncService.decryptEncryptedSearchField(
+            "forged",
+            vaultKey: key, uid: uid,
+            collection: args.collection, docID: args.docID, field: args.field
+        )
+        XCTAssertEqual(nonDict, .tampered, "a present non-dict value must be rejected")
+
+        // An explicit null is a legitimate absence, not tamper.
+        let explicitNull = CloudSyncService.decryptEncryptedSearchField(
+            NSNull(),
+            vaultKey: key, uid: uid,
+            collection: args.collection, docID: args.docID, field: args.field
+        )
+        XCTAssertEqual(explicitNull, .absent, "an explicit null field is a legitimate absence")
+    }
 }

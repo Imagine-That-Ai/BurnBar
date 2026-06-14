@@ -593,14 +593,26 @@ final class PiAgentCloudRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            _ = try? await writeRelayChunk( // try?-ok(best-effort error chunk)
-                reference: reference,
-                context: context,
-                sequence: 0,
-                kind: .error,
-                error: String(message.prefix(2_000))
-            )
-            statusUpdate["chunkCount"] = 1
+            // Only declare chunkCount=1 if the error chunk actually persisted.
+            // The client's ChunkReassemblyValidator treats a missing chunk in
+            // 0..<chunkCount as a dropped/withheld-chunk (relay tamper) signal, so
+            // a benign host-side write failure must NOT be recorded as that
+            // integrity violation — leave chunkCount unset and surface the failure.
+            do {
+                try await writeRelayChunk(
+                    reference: reference,
+                    context: context,
+                    sequence: 0,
+                    kind: .error,
+                    error: String(message.prefix(2_000))
+                )
+                statusUpdate["chunkCount"] = 1
+            } catch {
+                AppLogger.network.error(
+                    "piagent_relay_error_chunk_write_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
         }
         try await reference.setData(statusUpdate, merge: true)
     }
