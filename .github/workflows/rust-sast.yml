@@ -125,15 +125,12 @@ jobs:
         with:
           workspaces: ${{ matrix.path }}
 
-      # Security posture: deny ONLY the correctness lints that are genuine
-      # FFI/memory footguns for a crate compiled into the shipping app
-      # (transmute-to-ref, invalid reference casting, unchecked-utf8). We do NOT
-      # use a blanket `-D warnings` here: the existing crates (notably
-      # openburnbar-iroh's generated/FFI surface) carry accepted pedantic
-      # cast_possible_truncation / cast_sign_loss warnings, and full-strictness is
-      # already enforced for burnbar-remote by rust-remote-engine.yml. Surfacing
-      # those wider lints at -W keeps them visible in the log as advisories without
-      # falsely failing this security gate on pre-existing, owner-accepted patterns.
+      # Security posture: deny correctness lints that are genuine FFI/memory
+      # footguns (transmute-to-ref, invalid reference casting, unchecked-utf8)
+      # plus panic-prone unwrap/expect in library code. We do NOT use a blanket
+      # `-D warnings` here: openburnbar-iroh's generated/FFI surface carries
+      # accepted pedantic cast_possible_truncation / cast_sign_loss warnings.
+      # Full strictness for burnbar-remote is enforced by rust-remote-engine.yml.
       - name: cargo clippy (security lints)
         working-directory: ${{ matrix.path }}
         run: |
@@ -141,7 +138,7 @@ jobs:
             -D clippy::transmute_ptr_to_ref \
             -D invalid_reference_casting \
             -D invalid_from_utf8_unchecked \
-            -W clippy::unwrap_used \
-            -W clippy::expect_used \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
             -W clippy::cast_possible_truncation \
             -W clippy::cast_sign_loss
