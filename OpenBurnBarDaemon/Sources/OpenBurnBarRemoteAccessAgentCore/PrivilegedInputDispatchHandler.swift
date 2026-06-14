@@ -1,17 +1,39 @@
 import Foundation
 import OpenBurnBarComputerUseCore
 
+/// Session context for the active Remote Unlock presenter, used to bind
+/// capability tokens to a specific device/attestation/scope at the gate.
+public struct RemoteUnlockSessionContext: Sendable, Equatable {
+    public var escrowDeviceId: String?
+    public var attestationHashBlake3: String?
+    public var scopeHash: String?
+
+    public init(
+        escrowDeviceId: String? = nil,
+        attestationHashBlake3: String? = nil,
+        scopeHash: String? = nil
+    ) {
+        self.escrowDeviceId = escrowDeviceId
+        self.attestationHashBlake3 = attestationHashBlake3
+        self.scopeHash = scopeHash
+    }
+
+    public static let none = RemoteUnlockSessionContext()
+}
+
 /// Executes `PrivilegedInputDispatchRequest` on the HID leaf with policy, kill-switch, and audit hooks.
 public final class PrivilegedInputDispatchHandler: Sendable {
     public let auditSocketLabel: String
     private let keyboard: VirtualHIDKeyboardEngine
     private let capabilityVerifier: CapabilityTokenLeafVerifier
+    private let sessionContextProvider: @Sendable () -> RemoteUnlockSessionContext
     private let maximumCredentialUTF8Bytes = 1_024
 
     public init(
         auditSocketLabel: String,
         keyboard: VirtualHIDKeyboardEngine,
-        capabilityVerifier: CapabilityTokenLeafVerifier? = nil
+        capabilityVerifier: CapabilityTokenLeafVerifier? = nil,
+        sessionContextProvider: @escaping @Sendable () -> RemoteUnlockSessionContext = { .none }
     ) {
         self.auditSocketLabel = auditSocketLabel
         self.keyboard = keyboard
@@ -20,6 +42,7 @@ public final class PrivilegedInputDispatchHandler: Sendable {
         ) {
             try? CapabilityTokenIssuerTrustMaterial.load()?.issuerTrust()
         }
+        self.sessionContextProvider = sessionContextProvider
     }
 
     public func handle(envelope: PrivilegedInputDispatchEnvelope) throws -> PrivilegedInputDispatchResponse {
@@ -33,11 +56,11 @@ public final class PrivilegedInputDispatchHandler: Sendable {
             return PrivilegedInputDispatchResponse(ok: true)
         case "typeCredential":
             let password = try validatedPassword(envelope.request.password)
-            try validateCredentialType(capabilityToken: envelope.capabilityToken)
+            try validateCredentialType(envelope: envelope)
             try keyboard.typeCredential(password)
             return PrivilegedInputDispatchResponse(ok: true)
         case "input":
-            try validateBridgeInput(envelope.request, capabilityToken: envelope.capabilityToken)
+            try validateBridgeInput(envelope: envelope)
             try keyboard.dispatch(envelope.request)
             PrivilegedSocketAudit.record(
                 PrivilegedSocketAuditRecord(
@@ -53,15 +76,22 @@ public final class PrivilegedInputDispatchHandler: Sendable {
         }
     }
 
-    private func validateBridgeInput(_ request: PrivilegedInputDispatchRequest, capabilityToken: CapabilityToken?) throws {
+    private func validateBridgeInput(envelope: PrivilegedInputDispatchEnvelope) throws {
+        let request = envelope.request
         let gateRequest = VirtualHIDBridgeCapabilityGate.Request(
             kind: request.kind,
             text: request.text,
             key: request.key,
             modifiers: request.modifiers,
-            capabilityToken: capabilityToken
+            capabilityToken: envelope.capabilityToken
         )
-        switch VirtualHIDBridgeCapabilityGate.validate(gateRequest, verifier: capabilityVerifier) {
+        let context = sessionContext(for: envelope)
+        let presenterBinding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
+            escrowDeviceId: context.escrowDeviceId,
+            attestationHashBlake3: context.attestationHashBlake3,
+            scopeHash: context.scopeHash
+        )
+        switch VirtualHIDBridgeCapabilityGate.validate(gateRequest, verifier: capabilityVerifier, presenterBinding: presenterBinding) {
         case .success:
             return
         case .failure(let reason):
@@ -78,9 +108,15 @@ public final class PrivilegedInputDispatchHandler: Sendable {
         }
     }
 
-    private func validateCredentialType(capabilityToken: CapabilityToken?) throws {
-        let gateRequest = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: capabilityToken)
-        switch VirtualHIDBridgeCapabilityGate.validateCredentialType(gateRequest, verifier: capabilityVerifier) {
+    private func validateCredentialType(envelope: PrivilegedInputDispatchEnvelope) throws {
+        let gateRequest = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: envelope.capabilityToken)
+        let context = sessionContext(for: envelope)
+        let presenterBinding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
+            escrowDeviceId: context.escrowDeviceId,
+            attestationHashBlake3: context.attestationHashBlake3,
+            scopeHash: context.scopeHash
+        )
+        switch VirtualHIDBridgeCapabilityGate.validateCredentialType(gateRequest, verifier: capabilityVerifier, presenterBinding: presenterBinding) {
         case .success:
             return
         case .failure(let reason):
@@ -95,6 +131,21 @@ public final class PrivilegedInputDispatchHandler: Sendable {
             )
             throw VirtualHIDKeyboardEngine.EngineError.inputPolicyRejected
         }
+    }
+
+    private func sessionContext(for envelope: PrivilegedInputDispatchEnvelope) -> RemoteUnlockSessionContext {
+        let fallback = sessionContextProvider()
+        return RemoteUnlockSessionContext(
+            escrowDeviceId: normalizedBinding(envelope.presentingEscrowDeviceId) ?? fallback.escrowDeviceId,
+            attestationHashBlake3: normalizedBinding(envelope.requiredAttestationHashBlake3) ?? fallback.attestationHashBlake3,
+            scopeHash: fallback.scopeHash
+        )
+    }
+
+    private func normalizedBinding(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func validatedPassword(_ value: String?) throws -> String {

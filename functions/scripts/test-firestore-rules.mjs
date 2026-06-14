@@ -187,18 +187,18 @@ async function seedCloudVaultState(uid, vaultKeyID = TEST_VAULT_KEY_ID) {
   });
 }
 
-function sealedChatThreadPatch(overrides = {}) {
+function sealedChatThreadPatch(ownerUid, threadId, overrides = {}) {
   return {
     contentIncluded: true,
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD(ownerUid, "chat_threads", threadId, "sealedPayload")),
     ...overrides,
   };
 }
 
-function sealedMissionBase(id, overrides = {}) {
+function sealedMissionBase(ownerUid, id, overrides = {}) {
   return {
     id,
     missionKind: "debt",
@@ -215,12 +215,12 @@ function sealedMissionBase(id, overrides = {}) {
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD(ownerUid, "cli_agent_mission_requests", id, "sealedPayload")),
     ...overrides,
   };
 }
 
-function sealedMissionEvent(overrides = {}) {
+function sealedMissionEvent(ownerUid, requestId, overrides = {}) {
   return {
     sequence: 1,
     timestamp: "2026-05-13T00:00:00.000Z",
@@ -231,15 +231,15 @@ function sealedMissionEvent(overrides = {}) {
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD(ownerUid, "cli_agent_mission_requests", requestId, "sealedPayload")),
     ...overrides,
   };
 }
 
-function sealedMissionStatePatch(overrides = {}) {
+function sealedMissionStatePatch(ownerUid, id, overrides = {}) {
   return {
     contentSealed: true,
-    sealedStatePayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVkLXN0YXRl"),
+    sealedStatePayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVkLXN0YXRl", cloudVaultAAD(ownerUid, "cli_agent_mission_requests", id, "sealedPayload")),
     sealedStateSchemaVersion: 1,
     sealedStateVaultKeyID: TEST_VAULT_KEY_ID,
     ...overrides,
@@ -1126,7 +1126,7 @@ test("chat metadata stays free, but chat content backup requires entitlement", a
   await assertSucceeds(
     setDoc(
       doc(freeDb, threadPath),
-      sealedChatThreadPatch({
+      sealedChatThreadPatch("alice", "device_thread", {
         updatedAt: serverTimestamp(),
       }),
       { merge: true }
@@ -1137,7 +1137,7 @@ test("chat metadata stays free, but chat content backup requires entitlement", a
     setDoc(
       doc(freeDb, threadPath),
       {
-        ...sealedChatThreadPatch(),
+        ...sealedChatThreadPatch("alice", "device_thread"),
         title: "private plan",
         updatedAt: serverTimestamp(),
       },
@@ -1265,14 +1265,14 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await seedCloudVaultState("ivy");
 
   await assertSucceeds(
-    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1"))
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase("ivy", "mission-1"))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000001`), sealedMissionEvent())
+    setDoc(doc(phoneDb, `${requestPath}/events/000001`), sealedMissionEvent("ivy", "mission-1"))
   );
   const androidRequestPath = "users/ivy/cli_agent_mission_requests/mission-android";
   await assertSucceeds(
-    setDoc(doc(phoneDb, androidRequestPath), sealedMissionBase("mission-android", {
+    setDoc(doc(phoneDb, androidRequestPath), sealedMissionBase("ivy", "mission-android", {
       missionKind: "custom",
       requestedRuntime: "opencode",
       depth: "light",
@@ -1281,25 +1281,25 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     }))
   );
   await assertFails(
-    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-shell"), sealedMissionBase("mission-readonly-shell", {
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-shell"), sealedMissionBase("ivy", "mission-readonly-shell", {
       approvalMode: "read_only",
       commandsAllowed: true,
     }))
   );
   await assertFails(
-    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-edit"), sealedMissionBase("mission-readonly-edit", {
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-edit"), sealedMissionBase("ivy", "mission-readonly-edit", {
       approvalMode: "read_only",
       fileEditsAllowed: true,
     }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), sealedMissionEvent({
+    setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), sealedMissionEvent("ivy", "mission-android", {
       source: "android",
     }))
   );
   const chatRequestPath = "users/ivy/cli_agent_mission_requests/chat-ios";
   await assertSucceeds(
-    setDoc(doc(phoneDb, chatRequestPath), sealedMissionBase("chat-ios", {
+    setDoc(doc(phoneDb, chatRequestPath), sealedMissionBase("ivy", "chat-ios", {
       missionKind: "chat",
       requestedRuntime: "codex",
       requestedModelID: "gpt-5.5",
@@ -1309,7 +1309,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), sealedMissionEvent({
+    setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), sealedMissionEvent("ivy", "chat-ios", {
       source: "ios-chat",
     }))
   );
@@ -1532,19 +1532,19 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   );
   const lifecyclePath = "users/ivy/cli_agent_mission_requests/mission-lifecycle";
   await assertSucceeds(
-    setDoc(doc(phoneDb, lifecyclePath), sealedMissionBase("mission-lifecycle", {
+    setDoc(doc(phoneDb, lifecyclePath), sealedMissionBase("ivy", "mission-lifecycle", {
       missionKind: "custom",
       requestedRuntime: "codex",
       approvalMode: "read_only",
     }))
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), sealedMissionEvent())
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), sealedMissionEvent("ivy", "mission-lifecycle"))
   );
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-lifecycle", {
         status: "accepted",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
@@ -1557,7 +1557,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), sealedMissionEvent({
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), sealedMissionEvent("ivy", "mission-lifecycle", {
       sequence: 2,
       timestamp: "2026-05-13T00:00:01.000Z",
       phase: "accepted",
@@ -1568,7 +1568,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-lifecycle", {
         status: "starting",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
@@ -1579,7 +1579,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), sealedMissionEvent({
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), sealedMissionEvent("ivy", "mission-lifecycle", {
       sequence: 3,
       timestamp: "2026-05-13T00:00:02.000Z",
       phase: "starting",
@@ -1590,7 +1590,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, lifecyclePath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-lifecycle", {
         status: "running",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
@@ -1601,7 +1601,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), sealedMissionEvent({
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), sealedMissionEvent("ivy", "mission-lifecycle", {
       sequence: 4,
       timestamp: "2026-05-13T00:00:03.000Z",
       phase: "running",
@@ -1745,7 +1745,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-1", {
         status: "waiting_for_approval",
         claimedBy: "mac-1",
         approvalRequestId: "approval-1",
@@ -1759,7 +1759,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000002`), sealedMissionEvent({
+    setDoc(doc(phoneDb, `${requestPath}/events/000002`), sealedMissionEvent("ivy", "mission-1", {
       sequence: 2,
       timestamp: "2026-05-13T00:00:03.000Z",
       kind: "tool_call",
@@ -1789,7 +1789,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertFails(
     setDoc(
       doc(phoneDb, requestPath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-1", {
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
         updatedAt: serverTimestamp(),
@@ -1800,7 +1800,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertFails(
     setDoc(
       doc(phoneDb, requestPath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-1", {
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
         approvedByDeviceId: "mac-1",
@@ -1815,7 +1815,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(
       doc(context.firestore(), requestPath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-1", {
         approvalStatus: "approved",
         approvalRespondedAt: "2026-05-13T00:00:04.000Z",
         approvedByDeviceId: "mac-1",
@@ -1841,7 +1841,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch("ivy", "mission-1", {
         status: "completed",
         claimedBy: "mac-1",
         selectedRuntime: "codex",
@@ -1854,7 +1854,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     )
   );
   await assertSucceeds(
-    setDoc(doc(phoneDb, `${requestPath}/events/000003`), sealedMissionEvent({
+    setDoc(doc(phoneDb, `${requestPath}/events/000003`), sealedMissionEvent("ivy", "mission-1", {
       sequence: 3,
       timestamp: "2026-05-13T00:00:05.000Z",
       kind: "final_answer",
@@ -1899,7 +1899,7 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
       contentSealed: true,
       sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
-      sealedPayload: sealedPayload(),
+      sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("jules", "cli_sessions", "thread-1", "sealedPayload")),
       messageCount: 1,
       lastMessageRole: "assistant",
       lastAssistantMessageID: "m1",
@@ -1918,7 +1918,7 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
       contentSealed: true,
       sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
-      sealedPayload: sealedPayload(),
+      sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("jules", "cli_sessions", "thread-2", "sealedPayload")),
     })
   );
 });
@@ -3559,19 +3559,19 @@ test("L37 signalEnvelope is rejected on cli_agent_mission_requests direct writes
   });
 
   // Legacy sealed CloudVault mission writes still work without the Signal envelope.
-  await assertSucceeds(setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1")));
+  await assertSucceeds(setDoc(doc(phoneDb, requestPath), sealedMissionBase("ivy-sig", "mission-1")));
 
   // Even a well-formed envelope bound to this mission doc is rejected on the
   // direct client path; it must be sanitized and persisted by an Admin/callable.
   await assertFails(
-    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1", { signalEnvelope: goodEnvelope }))
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase("ivy-sig", "mission-1", { signalEnvelope: goodEnvelope }))
   );
 
   // Cross-collection binding (envelope says it belongs to mobile_assistant_chats) fails.
   await assertFails(
     setDoc(
       doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-2"),
-      sealedMissionBase("mission-2", {
+      sealedMissionBase("ivy-sig", "mission-2", {
         signalEnvelope: signalAtRestEnvelope({
           uid: "ivy-sig",
           collection: "mobile_assistant_chats",
@@ -3583,12 +3583,12 @@ test("L37 signalEnvelope is rejected on cli_agent_mission_requests direct writes
 
   // Same-collection wrong docId (relocation within the collection) fails.
   await assertSucceeds(
-    setDoc(doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"), sealedMissionBase("mission-3"))
+    setDoc(doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"), sealedMissionBase("ivy-sig", "mission-3"))
   );
   await assertFails(
     setDoc(
       doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"),
-      sealedMissionBase("mission-3", {
+      sealedMissionBase("ivy-sig", "mission-3", {
         signalEnvelope: signalAtRestEnvelope({
           uid: "ivy-sig",
           collection: "cli_agent_mission_requests",
@@ -3602,7 +3602,7 @@ test("L37 signalEnvelope is rejected on cli_agent_mission_requests direct writes
   await assertFails(
     setDoc(
       doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-4"),
-      sealedMissionBase("mission-4", {
+      sealedMissionBase("ivy-sig", "mission-4", {
         signalEnvelope: signalAtRestEnvelope({
           uid: "someone-else",
           collection: "cli_agent_mission_requests",
@@ -3628,7 +3628,7 @@ test("L37 signalEnvelope is rejected on a not-wired collection (cli_sessions has
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("nw-owner", "cli_sessions", "sess-1", "sealedPayload")),
   };
   await assertSucceeds(setDoc(doc(db, "users/nw-owner/cli_sessions/sess-1"), base));
   await assertFails(
@@ -3780,7 +3780,7 @@ test("L37b signalEnvelope is rejected on chat_threads + conversations direct wri
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
-    sealedPayload: sealedPayload(),
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("sigb-owner", "chat_threads", "ct-1", "sealedPayload")),
     createdAt: "2026-06-05T00:00:00.000Z",
     updatedAt: "2026-06-05T00:00:00.000Z",
   };
@@ -3873,7 +3873,7 @@ test("T6 cli_sessions deny plaintext smuggled on the merge-update path", async (
       contentSealed: true,
       sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
-      sealedPayload: sealedPayload(),
+      sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("cli-owner", "cli_sessions", "thread-1", "sealedPayload")),
       messageCount: 1,
     })
   );
@@ -4020,14 +4020,14 @@ test("T10 cli_agent_mission_requests accept sealed mobile cancel, deny plaintext
   await seedCloudVaultState(ownerUid);
 
   await assertSucceeds(
-    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1"))
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase(ownerUid, "mission-1"))
   );
 
   // Cancel with only sealed state fields is allowed.
   await assertSucceeds(
     setDoc(
       doc(phoneDb, requestPath),
-      sealedMissionStatePatch({
+      sealedMissionStatePatch(ownerUid, "mission-1", {
         status: "cancelled",
         updatedAt: serverTimestamp(),
       }),

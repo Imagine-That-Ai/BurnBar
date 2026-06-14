@@ -65,14 +65,20 @@ public struct PrivilegedInputDispatchEnvelope: Codable, Sendable, Equatable {
     public var request: PrivilegedInputDispatchRequest
     public var peerAuditToken: Data?
     public var capabilityToken: CapabilityToken?
+    public var presentingEscrowDeviceId: String?
+    public var requiredAttestationHashBlake3: String?
 
     public init(
         request: PrivilegedInputDispatchRequest,
         peerAuditToken: Data? = nil,
-        capabilityToken: CapabilityToken? = nil
+        capabilityToken: CapabilityToken? = nil,
+        presentingEscrowDeviceId: String? = nil,
+        requiredAttestationHashBlake3: String? = nil
     ) {
         self.request = request
         self.peerAuditToken = peerAuditToken
         self.capabilityToken = capabilityToken
+        self.presentingEscrowDeviceId = presentingEscrowDeviceId
+        self.requiredAttestationHashBlake3 = requiredAttestationHashBlake3
     }
 }

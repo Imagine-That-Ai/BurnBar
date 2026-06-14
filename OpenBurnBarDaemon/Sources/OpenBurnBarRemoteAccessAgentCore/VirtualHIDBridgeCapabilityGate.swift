@@ -22,7 +22,29 @@ public enum VirtualHIDBridgeCapabilityGate {
         case capabilityTokenIssuerRevoked = "capability_token_issuer_revoked"
         case capabilityTokenDomainMismatch = "capability_token_domain_mismatch"
         case capabilityTokenEscrowMismatch = "capability_token_escrow_mismatch"
+        case capabilityTokenScopeMismatch = "capability_token_scope_mismatch"
         case capabilityTokenBudgetExhausted = "capability_token_budget_exhausted"
+    }
+
+    /// The presenter's Remote Unlock session context that a capability token
+    /// must be bound to. Supplied by `PrivilegedInputDispatchHandler` from the
+    /// active session.
+    public struct PresenterBinding: Sendable, Equatable {
+        public var escrowDeviceId: String?
+        public var attestationHashBlake3: String?
+        public var scopeHash: String?
+
+        public init(
+            escrowDeviceId: String? = nil,
+            attestationHashBlake3: String? = nil,
+            scopeHash: String? = nil
+        ) {
+            self.escrowDeviceId = escrowDeviceId
+            self.attestationHashBlake3 = attestationHashBlake3
+            self.scopeHash = scopeHash
+        }
+
+        public static let none = PresenterBinding()
     }
 
     public struct Request: Sendable, Equatable {
@@ -58,6 +80,7 @@ public enum VirtualHIDBridgeCapabilityGate {
     public static func validate(
         _ request: Request,
         verifier: CapabilityTokenLeafVerifier,
+        presenterBinding: PresenterBinding = .none,
         now: Date = Date()
     ) -> Result<Void, RejectionReason> {
         let policyRequest = VirtualHIDBridgeInputPolicy.Request(
@@ -73,11 +96,21 @@ public enum VirtualHIDBridgeCapabilityGate {
             break
         }
 
+        // Verify scope binding before signature checks to fail fast on
+        // cross-session replay.
+        if let token = request.capabilityToken,
+           let requiredScopeHash = presenterBinding.scopeHash,
+           token.scopeHash != requiredScopeHash {
+            return .failure(.capabilityTokenScopeMismatch)
+        }
+
         let actionKind = request.kind?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
         let tokenRequest = CapabilityTokenLeafVerifier.Request(
             token: request.capabilityToken,
             expectedDomain: .remoteUnlock,
-            actionKind: actionKind
+            actionKind: actionKind,
+            requiredAttestationHashBlake3: presenterBinding.attestationHashBlake3,
+            boundEscrowDeviceId: presenterBinding.escrowDeviceId
         )
         switch verifier.verify(request: tokenRequest, now: now) {
         case .success:
@@ -90,12 +123,23 @@ public enum VirtualHIDBridgeCapabilityGate {
     public static func validateCredentialType(
         _ request: CredentialRequest,
         verifier: CapabilityTokenLeafVerifier,
+        presenterBinding: PresenterBinding = .none,
         now: Date = Date()
     ) -> Result<Void, RejectionReason> {
+        // Verify scope binding before signature checks to fail fast on
+        // cross-session replay.
+        if let token = request.capabilityToken,
+           let requiredScopeHash = presenterBinding.scopeHash,
+           token.scopeHash != requiredScopeHash {
+            return .failure(.capabilityTokenScopeMismatch)
+        }
+
         let tokenRequest = CapabilityTokenLeafVerifier.Request(
             token: request.capabilityToken,
             expectedDomain: .remoteUnlock,
-            actionKind: "type_credential"
+            actionKind: "type_credential",
+            requiredAttestationHashBlake3: presenterBinding.attestationHashBlake3,
+            boundEscrowDeviceId: presenterBinding.escrowDeviceId
         )
         switch verifier.verify(request: tokenRequest, now: now) {
         case .success:

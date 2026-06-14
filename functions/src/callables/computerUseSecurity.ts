@@ -2392,11 +2392,6 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
   },
 );
 
-// F-RR04-006: NATIVE_ESCROW_PLATFORMS (all platforms) was removed — it was used only in the
-// respondMissionApproval transaction-level check but was never enforced exclusively;
-// the pre-transaction requireTrustedDeviceActionProof already restricts to PHONE_CONTROL_ESCROW_PLATFORMS.
-// The transaction-level check now uses PHONE_CONTROL_ESCROW_PLATFORMS for consistency.
-
 /**
  * Bind a CLI-agent mission approval to the responding device.
  *

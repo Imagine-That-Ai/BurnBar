@@ -12,6 +12,7 @@ import {
 import { readFileSync } from "node:fs";
 import {
   doc,
+  deleteField,
   setDoc,
   Timestamp,
   serverTimestamp,
@@ -120,13 +121,43 @@ function legacyEncryptedManifest(uid = aliceUid) {
   delete data.cacheReadTokens;
   delete data.totalTokens;
   delete data.costUSD;
-  delete data.workingDirectory;
   delete data.durationSeconds;
   delete data.toolTags;
+  data.projectName = "Legacy plaintext project";
+  data.workingDirectory = "/Users/alice/LegacyPlaintextProject";
   data.chunkSize = 900000;
   data.chunkCount = 1;
   data.model = "unknown";
   return { path: manifest.path, data };
+}
+
+function validFacetRefresh() {
+  return {
+    body: deleteField(),
+    payloadCiphertext: deleteField(),
+    ciphertext: deleteField(),
+    data: deleteField(),
+    text: deleteField(),
+    title: deleteField(),
+    snippet: deleteField(),
+    terms: deleteField(),
+    projectName: deleteField(),
+    workingDirectory: deleteField(),
+    facetSchemaVersion: 2,
+    model: "Droid",
+    messageCount: 1,
+    userWordCount: 4,
+    assistantWordCount: 6,
+    inputTokens: 10,
+    outputTokens: 12,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    totalTokens: 22,
+    costUSD: 0.01,
+    durationSeconds: 120,
+    toolTags: ["run"],
+    updatedAt: serverTimestamp(),
+  };
 }
 
 function validChunk(uid = aliceUid, index = 0) {
@@ -228,13 +259,13 @@ async function main() {
   const aliceManifest = validManifest();
 
   await step("session-log manifest is rejected without entitlement", async () => {
-    await assertFails(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data, { merge: true }));
+    await assertFails(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data));
   });
 
   await seedEntitlement(aliceUid);
 
   await step("session-log manifest is accepted with BurnBar Pro entitlement", async () => {
-    await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data, { merge: true }));
+    await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data));
   });
 
   await step("existing encrypted manifest can be refreshed with searchable facets", async () => {
@@ -242,7 +273,7 @@ async function main() {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), legacy.path), legacy.data);
     });
-    await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data, { merge: true }));
+    await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), validFacetRefresh(), { merge: true }));
   });
 
   await step("session-log chunks are server-owned and reject legacy plaintext merges", async () => {

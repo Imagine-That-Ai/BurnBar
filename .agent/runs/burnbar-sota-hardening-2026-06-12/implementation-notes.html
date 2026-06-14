@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BurnBar SOTA Hardening — Implementation Notes</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 2rem; max-width: 62rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.1rem; margin: 1.6rem 0 .5rem; border-bottom: 1px solid #8884; padding-bottom: .2rem; }
+  code { background: #8881; padding: .1em .3em; border-radius: 3px; }
+  .pill { display:inline-block; padding:.1em .5em; border-radius: 999px; font-size:.8rem; font-weight:600; }
+  .done { background:#1a7f3722; color:#1a7f37; }
+  .doing { background:#9a6b0022; color:#9a6b00; }
+  .blocked { background:#b3261e22; color:#b3261e; }
+  table { border-collapse: collapse; width: 100%; margin:.5rem 0; }
+  th, td { border: 1px solid #8884; padding: .4rem .6rem; text-align: left; vertical-align: top; font-size:.9rem; }
+  th { background:#8881; }
+  .resume { background:#0a84ff11; border:1px solid #0a84ff55; border-radius:8px; padding:1rem 1.2rem; }
+  #timeline li { margin:.3rem 0; }
+  small { color:#8888; }
+</style>
+</head>
+<body>
+<h1>BurnBar — Bring Cure53 remediation to SOTA 10/10</h1>
+<small>Goal id <code>burnbar-sota-hardening-2026-06-12</code> · canonical live state</small>
+
+<h2>Resume Here</h2>
+<div class="resume">
+<p><strong>Status:</strong> <span class="pill done">all session-reachable fixes implemented &amp; build-verified; remaining items are architectural/feature-scale, gated</span></p>
+<ul>
+  <li><strong>Verified THIS session with real builds</strong> (toolchain present: <code>swift</code>, <code>xcodebuild</code>, <code>gradle</code>, JDK 21):
+    <ul>
+      <li><strong>RR-8 cross-platform AAD data-loss — FIXED+VERIFIED.</strong> Android <code>mobile_assistant_chats</code> writer+reader and <code>cli_agent_mission_requests</code> state/request/event readers now thread the same path-bound <code>CloudVaultAADContext</code> as iOS/macOS. Swift KAT 5/5 (<code>swift test</code>), Android <code>CloudVaultAadParityTest</code> 6/6 + <code>CloudVaultCryptoTest</code> 12/12 (<code>./gradlew :app:testDebugUnitTest</code>), app compiles.</li>
+      <li><strong>RR-1 brick + dishonesty — FIXED+VERIFIED.</strong> Codec-absent (proven: SPM <code>CSQLite</code> systemLibrary links stock <code>sqlite3</code>) now falls back to <em>disclosed</em> plaintext (flag + error log), never bricks, never silent. macOS app test <code>** TEST SUCCEEDED **</code> (DatabaseEncryptionServiceTests 16/0).</li>
+      <li><strong>RR-7 false "operator-seat parity" copy — FIXED.</strong> SettingsManifest now states approvals are Mac-confirmed; Android compiles.</li>
+      <li>Earlier turn (verified): RR-15b SSRF/DNS-rebinding (+latent IPv6 over-block bug), RR-13 hosted-MCP prod fail-closed posture (50/50), RR-4 ops fail-closed, RR-15c wrapper breakout, signal-parity gate wired.</li>
+    </ul>
+  </li>
+  <li><strong>Remaining (gated in <code>docs/security/SECURITY_CLAIMS_REGISTER.md</code> — architectural/feature, NOT quick fixes):</strong>
+    <ul>
+      <li><strong>RR-1 real encryption</strong> — vendor a true SQLCipher codec (SPM target/XCFramework with <code>SQLITE_HAS_CODEC</code>) + key the daemon's opens + migrate existing plaintext DBs. The app is honest&amp;non-bricking now, but still plaintext at rest.</li>
+      <li><strong>RR-7 Android over-the-wire approvals</strong> — functionality gap (Mac verification intact). Needs an Android control-ingest receiver + sender wiring + <code>respondedAt</code> canonical alignment locked by a Swift↔Kotlin KAT + physical-device E2E.</li>
+      <li><strong>RR-3 daemon re-exec integrity</strong> — root-owned install (<code>SMAppService</code>) or app-side daemon peer-SecCode verification. Self-attestation rejected as theater (a replaced binary omits the check).</li>
+    </ul>
+  </li>
+  <li><strong>Next exact action:</strong> push; CI runs the new KATs across platforms. Then tackle RR-1 real-encryption (vendor SQLCipher) as its own goal — it touches the canonical datastore, so it needs migration tests + full-app + daemon builds before flipping any "encrypted" claim.</li>
+  <li><strong>Why some items are documented not blind-coded:</strong> vendoring SQLCipher (RR-1) rewrites the canonical store's backend (data-loss risk) and the Android approval receiver (RR-7) needs device E2E; per the escape hatch, those are scoped as their own goals rather than shipped unverified — which is exactly how the RR-8 data-loss was originally introduced.</li>
+</ul>
+</div>
+
+<h2>Decisions (spec silent / engineering judgment)</h2>
+<ul>
+  <li><strong>RR-3 self-attestation = theater, rejected.</strong> A same-user attacker who replaces the daemon binary ships code that simply doesn't run any self-check. The honest fix is a non-user-writable install or app-side peer-code-signature verification — specified, not faked.</li>
+  <li><strong>RR-1 codec absence is a BUILD condition, not per-user.</strong> So the codec-absent path runs disclosed plaintext transparently (no per-launch recovery prompt), while the codec-present + legacy-plaintext path keeps the migration refusal.</li>
+  <li><strong>RR-8 fixed via reader-side context for missions</strong> (writers stay global — Swift reads them via its backward-compat branch), eliminating the data-loss with minimal surface; assistant-chat got writer+reader. Locked by a cross-language golden-string KAT so the AES-GCM AAD bytes can never silently diverge again.</li>
+</ul>
+
+<h2>Progress Timeline</h2>
+<ul id="timeline"></ul>
+
+<script>
+const progressEvents = [
+  { ts: "2026-06-13T01:05:00Z", status: "doing", phase: "scope", actor: "agent",
+    summary: "Re-audited HEAD: '4cca56295 every finding fixed' was UI work; RR-1/7/8/3 still open. Confirmed full build toolchain present (swift/xcodebuild/gradle/JDK21)." },
+  { ts: "2026-06-13T02:10:00Z", status: "done", phase: "rr8-aad-parity", actor: "agent",
+    summary: "Android AAD parity wired (assistant-chat writer+reader, mission readers) + cross-language KAT. VERIFIED: Swift 5/5, Android 6/6 + 12/12, both compile.", evidence: ["OpenBurnBarCore/Tests/.../CloudVaultAADParityTests.swift", "android/.../CloudVaultAadParityTest.kt"] },
+  { ts: "2026-06-13T02:25:00Z", status: "done", phase: "rr1-no-brick", actor: "agent",
+    summary: "Codec-absence probe + disclosed-plaintext fallback (no brick, no silent). VERIFIED: macOS app test SUCCEEDED, DatabaseEncryptionServiceTests 16/0." },
+  { ts: "2026-06-13T02:35:00Z", status: "done", phase: "rr7-copy", actor: "agent",
+    summary: "Removed false Android operator-seat parity copy; Android recompiles clean." },
+  { ts: "2026-06-13T02:40:00Z", status: "blocked", phase: "rr1-real-enc / rr7-feature / rr3-install", actor: "agent",
+    summary: "Remaining are architectural/feature-scale (vendor SQLCipher; Android control-ingest receiver + device E2E; root-owned daemon install). Specced + gated in the claims register; not blind-shipped." }
+];
+const fmt = s => ({done:"done",doing:"doing",blocked:"blocked"}[s] || s);
+document.getElementById("timeline").innerHTML = progressEvents.map(e =>
+  `<li><span class="pill ${e.status}">${fmt(e.status)}</span> <small>${e.ts} &middot; ${e.phase}</small><br>${e.summary}` +
+  (e.evidence ? `<br><small>evidence: ${e.evidence.join(", ")}</small>` : "") + `</li>`
+).join("");
+</script>
+</body>
+</html>

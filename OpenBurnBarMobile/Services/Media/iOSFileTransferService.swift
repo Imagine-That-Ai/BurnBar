@@ -158,6 +158,7 @@ final class iOSFileTransferService: ObservableObject {
                 ticketText: ticket,
                 manifest: manifest
             )
+            try? MobileMediaInboxFileProtection.apply(to: destination)
             lastReceivedAttachment = ReceivedAttachment(
                 id: manifest.manifestId,
                 manifest: manifest,
