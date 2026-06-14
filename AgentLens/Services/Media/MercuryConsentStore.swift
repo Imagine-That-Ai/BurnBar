@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import SwiftUI
 
 /// Mac-side Mercury mirror consent ledger.
 ///

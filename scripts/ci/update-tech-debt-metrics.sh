@@ -111,7 +111,7 @@ top_four_total=$((cloud_sync_lines + search_lines + usage_agg_lines + projection
 
 task_detached_services="$(count_rg 'Task\.detached' "${repo_root}/AgentLens/Services")"
 
-swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore")"
+swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services")"
 
 try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 
@@ -216,7 +216,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
 | \`functions/src/index.ts\` LOC | ${index_ts_lines} | modularize | — |
-| \`import SwiftUI\` in Services/ + DataStore/ | ${swiftui_services} | ≤ 3 | 0 |
+| \`import SwiftUI\` in Services/ | ${swiftui_services} | 0 | 0 |
 | Phase 1 security register open items (\`docs/governance/PHASE1_SECURITY_REGISTER.md\`) | ${phase1_security_open} | ≤ 3 | 0 |
 | Rust \`unwrap()\`/\`expect()\` in \`crates/{burnbar-remote,openburnbar-iroh}\` | ${rust_panic_debt} | 0 | 0 |
 

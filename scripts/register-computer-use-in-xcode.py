@@ -28,7 +28,7 @@ IOS_TESTS_PHASE = "2D8814837B36BCC7F8EE4D64"
 MAC_FILES = [
     "AgentLens/Services/ComputerUse/AgentWatchActionPublisher.swift",
     "AgentLens/Services/ComputerUse/AgentWatchHUDSession.swift",
-    "AgentLens/Services/ComputerUse/ComputerUseDaemonApprovalPresenter.swift",
+    "AgentLens/Views/ComputerUse/ComputerUseDaemonApprovalPresenter.swift",
     "AgentLens/Services/ComputerUse/ComputerUseRemoteConfigNotifications.swift",
     "AgentLens/Services/ComputerUse/ComputerUseRuntimeController.swift",
     "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift",
