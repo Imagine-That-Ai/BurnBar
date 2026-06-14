@@ -28,7 +28,6 @@ struct ProviderQuotaAdapterContext: Sendable {
     let mimoTokenPlanRegion: ProviderEndpointRegion
     let mimoTokenPlanTier: MimoTokenPlanTier?
     let mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle
-    let claudeBridgeStatus: ClaudeQuotaBridgeStatus
     let codexRolloutScanCache: CodexRolloutScanCache
     let updateCodexRolloutScanCache: @Sendable (CodexRolloutScanCache, Bool) -> Void
     /// Optional explicit Claude OAuth credentials. Production uses
@@ -57,7 +56,6 @@ extension ProviderQuotaAdapterContext {
             mimoTokenPlanRegion: mimoTokenPlanRegion,
             mimoTokenPlanTier: mimoTokenPlanTier,
             mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
-            claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
             claudeCredentialsReader: claudeCredentialsReader,
@@ -81,7 +79,6 @@ extension ProviderQuotaAdapterContext {
             mimoTokenPlanRegion: mimoTokenPlanRegion,
             mimoTokenPlanTier: mimoTokenPlanTier,
             mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
-            claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
             claudeCredentialsReader: reader,
@@ -105,7 +102,6 @@ extension ProviderQuotaAdapterContext {
             mimoTokenPlanRegion: mimoTokenPlanRegion,
             mimoTokenPlanTier: mimoTokenPlanTier,
             mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
-            claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
             claudeCredentialsReader: claudeCredentialsReader,

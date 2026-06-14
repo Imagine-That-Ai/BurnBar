@@ -161,7 +161,6 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
             mimoTokenPlanRegion: .sgp,
             mimoTokenPlanTier: nil,
             mimoTokenPlanBillingCycle: .monthly,
-            claudeBridgeStatus: ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil),
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
