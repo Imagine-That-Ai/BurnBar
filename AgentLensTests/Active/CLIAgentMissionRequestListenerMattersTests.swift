@@ -59,7 +59,16 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         guard case .resolved(let overrides) = resolution else {
             XCTFail("A valid scope must resolve: \(resolution)"); return
         }
-        XCTAssertEqual(overrides.envelope, envelope)
+        // Compare the security-relevant fields, not full envelope equality:
+        // `appliedAt` is a timestamp stamped at resolution time, so a whole-struct
+        // compare is non-deterministic.
+        let resolvedEnvelope = try XCTUnwrap(overrides.envelope)
+        XCTAssertEqual(resolvedEnvelope.personaID, envelope.personaID)
+        XCTAssertEqual(resolvedEnvelope.permittedTools, envelope.permittedTools)
+        XCTAssertEqual(resolvedEnvelope.permittedFileGlobs, envelope.permittedFileGlobs)
+        XCTAssertEqual(resolvedEnvelope.permittedShellPrefixes, envelope.permittedShellPrefixes)
+        XCTAssertEqual(resolvedEnvelope.permitShell, envelope.permitShell)
+        XCTAssertEqual(resolvedEnvelope.permitFileEdits, envelope.permitFileEdits)
         // The restrictive flags must reach the subprocess env namespace.
         XCTAssertEqual(overrides.extraEnvironment["BURNBAR_PERSONA_PERMIT_SHELL"], "0")
         XCTAssertEqual(overrides.extraEnvironment["BURNBAR_PERSONA_PERMIT_FILE_EDITS"], "0")

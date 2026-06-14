@@ -323,10 +323,15 @@ extension DirectDownloadArtifactVerifierTests {
                     edSignatureBase64: fixture.signatureBase64
                 )
             ) { error in
+                // A 0-byte key is an absent (empty) pinned key -> .missingPublicKey;
+                // any present-but-wrong-length key -> .malformedPublicKey. Both fail
+                // closed before any signature math.
+                let expected: DirectDownloadVerificationError =
+                    length == 0 ? .missingPublicKey : .malformedPublicKey
                 XCTAssertEqual(
                     error as? DirectDownloadVerificationError,
-                    .malformedPublicKey,
-                    "A \(length)-byte key must fail closed as .malformedPublicKey"
+                    expected,
+                    "A \(length)-byte key must fail closed as \(expected)"
                 )
             }
         }
