@@ -73,13 +73,10 @@ final class AsyncPipeLineReader: Sendable {
 
 private final class ReaderState: Sendable {
     /// Mutable buffer state held in a `Sendable` lock box. This is the genuine
-    /// `Sendable` conformance (no `@unchecked`): the buffer and its scan offset
-    /// are only ever touched under `Locked`, which the compiler can verify.
+    /// `Sendable` conformance (no `@unchecked`): the buffer is only ever touched
+    /// under `Locked`, which the compiler can verify.
     private struct BufferState: Sendable {
         var buffer = Data()
-        /// Tracks the search start offset so we don't re-scan bytes we've
-        /// already confirmed don't contain a newline.
-        var searchOffset = 0
     }
 
     private let state = Locked(BufferState())
@@ -92,18 +89,21 @@ private final class ReaderState: Sendable {
         let lines = state.withLock { state -> [String] in
             state.buffer.append(data)
             var extracted: [String] = []
-            while true {
-                let searchRange = state.searchOffset..<state.buffer.count
-                guard let offset = state.buffer.range(of: Data([0x0A]), options: [], in: searchRange)?.lowerBound else {
-                    state.searchOffset = state.buffer.count
-                    break
-                }
-                let lineData = state.buffer.subdata(in: 0..<offset)
-                state.buffer.removeFirst(offset + 1)
-                state.searchOffset = 0
-                if let line = String(data: lineData, encoding: .utf8) {
+            // Walk newline-delimited lines in the buffer's OWN index space.
+            // `Data` indices are not guaranteed to be zero-based after slicing,
+            // so we must use `startIndex`/`index(after:)` rather than absolute
+            // offsets, and re-base the unconsumed remainder once at the end.
+            var lineStart = state.buffer.startIndex
+            while let newlineIndex = state.buffer[lineStart...].firstIndex(of: 0x0A) {
+                if let line = String(data: state.buffer[lineStart..<newlineIndex], encoding: .utf8) {
                     extracted.append(line.trimmingCharacters(in: .newlines))
                 }
+                lineStart = state.buffer.index(after: newlineIndex)
+            }
+            if lineStart > state.buffer.startIndex {
+                // Drop the consumed prefix once; `Data(_:)` re-bases to a fresh
+                // zero-indexed buffer so the next append stays well-formed.
+                state.buffer = Data(state.buffer[lineStart...])
             }
             return extracted
         }
@@ -119,7 +119,6 @@ private final class ReaderState: Sendable {
         let remaining = state.withLock { state -> Data in
             let remaining = state.buffer
             state.buffer.removeAll()
-            state.searchOffset = 0
             return remaining
         }
 

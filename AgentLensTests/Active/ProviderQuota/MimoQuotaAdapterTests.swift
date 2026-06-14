@@ -184,7 +184,6 @@ final class MimoQuotaAdapterTests: XCTestCase {
             mimoTokenPlanRegion: region,
             mimoTokenPlanTier: tier,
             mimoTokenPlanBillingCycle: billingCycle,
-            claudeBridgeStatus: ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil),
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
