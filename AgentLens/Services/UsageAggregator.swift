@@ -113,7 +113,7 @@ final class UsageAggregator {
         Task {
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+                let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
                 if pendingProjectionJobs > 0 {
                     self.requestProjectionSweep()
                 }
@@ -339,7 +339,7 @@ final class UsageAggregator {
             typedPersistenceError = typed
         }
 
-        let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+        let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
         launchArtifactDiscoverySweep()
         if result.indexedConversationChanges > 0 {
             summaryEngine.launchAutoSummarySweep(indexedAfter: refreshStartedAt)
@@ -546,10 +546,10 @@ private extension UsageAggregator {
                     break
                 }
                 projectionSweepRequested = true
-                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.backlogDelayNanoseconds)
+                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.backlogDelayNanoseconds) // try?-ok(cancellation only)
             } else if projectionSweepRequested {
                 continuousBacklogPasses = 0
-                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.coalesceDelayNanoseconds)
+                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.coalesceDelayNanoseconds) // try?-ok(cancellation only)
             } else {
                 continuousBacklogPasses = 0
             }

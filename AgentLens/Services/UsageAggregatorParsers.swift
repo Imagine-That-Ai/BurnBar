@@ -26,10 +26,10 @@ final class CopilotParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        let sessionDirs = (try? fm.contentsOfDirectory(
+        let sessionDirs = (try? fm.contentsOfDirectory( // try?-ok(dir scan, empty fallback)
             at: URL(fileURLWithPath: sessionStatePath),
             includingPropertiesForKeys: [.isDirectoryKey]
-        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? [] // try?-ok(isDir filter)
 
         for sessionDir in sessionDirs {
             let sessionId = sessionDir.lastPathComponent
@@ -56,8 +56,8 @@ final class CopilotParser: LogParser, Sendable {
     }
 
     private func parseMetadata(_ file: URL) -> CopilotMetadataSummary? {
-        guard let data = try? Data(contentsOf: file),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let data = try? Data(contentsOf: file), // try?-ok(optional metadata read)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(metadata decode)
             return nil
         }
 
@@ -84,10 +84,10 @@ final class CopilotParser: LogParser, Sendable {
         metadataSummary: CopilotMetadataSummary?,
         processLogData: (input: Int, output: Int)?
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: eventsFile) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: eventsFile) else { return nil } // try?-ok(log open, skip if absent)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: eventsFile.path)[.modificationDate]) as? Date
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: eventsFile.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
 
         var exactInputTokens = 0
         var exactOutputTokens = 0
@@ -107,7 +107,7 @@ final class CopilotParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                 continue
             }
 
@@ -262,7 +262,7 @@ final class CopilotParser: LogParser, Sendable {
 
         var result: [String: (input: Int, output: Int)] = [:]
 
-        guard let logFiles = try? fm.contentsOfDirectory(atPath: logsPath)
+        guard let logFiles = try? fm.contentsOfDirectory(atPath: logsPath) // try?-ok(log dir scan, empty fallback)
             .filter({ $0.hasPrefix("process-") && $0.hasSuffix(".log") }) else {
             return [:]
         }
@@ -363,8 +363,8 @@ final class AiderParser: LogParser, Sendable {
     }
 
     private func parseAnalyticsLog(file: URL) -> ([TokenUsage], [ConversationRecord]) {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return ([], []) }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return ([], []) } // try?-ok(log open, skip if absent)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         // Group message_send events into sessions bounded by cli_session/exit events
         var sessions: [AiderSession] = []
@@ -372,7 +372,7 @@ final class AiderParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                 continue
             }
 
@@ -828,7 +828,7 @@ final class CodexParser: LogParser, Sendable {
               let handle = FileHandle(forReadingAtPath: path) else {
             return nil
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         var inputTokens = 0
         var outputTokens = 0
@@ -838,7 +838,7 @@ final class CodexParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                 continue
             }
 
@@ -894,7 +894,7 @@ final class CodexParser: LogParser, Sendable {
               let handle = FileHandle(forReadingAtPath: path) else {
             return nil
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         var turns: [(role: String, text: String)] = []
         var keyFiles = Set<String>()
@@ -903,7 +903,7 @@ final class CodexParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                 continue
             }
             if let extracted = Self.extractCodexMessage(from: json) {
@@ -1003,7 +1003,7 @@ final class CodexParser: LogParser, Sendable {
     }
 
     private func modificationDate(of url: URL) -> Date? {
-        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
     }
 
 }
@@ -1060,13 +1060,13 @@ final class OpenClawParser: LogParser, Sendable {
         while let url = enumerator.nextObject() as? URL {
             let ext = url.pathExtension.lowercased()
             guard ext == "jsonl" || ext == "json" || ext == "log" else { continue }
-            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey]) // try?-ok(isRegularFile probe)
             guard values?.isRegularFile == true else { continue }
             files.append(url)
         }
         return files.sorted { lhs, rhs in
-            let lm = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let rm = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let lm = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast // try?-ok(sort mtime fallback)
+            let rm = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast // try?-ok(sort mtime fallback)
             return lm > rm
         }
     }
@@ -1074,11 +1074,11 @@ final class OpenClawParser: LogParser, Sendable {
     private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: ConversationRecord)? {
         let data: Data
         if file.pathExtension.lowercased() == "jsonl" || file.pathExtension.lowercased() == "log" {
-            guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-            defer { try? handle.close() }
+            guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
+            defer { try? handle.close() } // try?-ok(handle teardown)
             data = handle.readDataToEndOfFile()
         } else {
-            guard let fileData = try? Data(contentsOf: file) else { return nil }
+            guard let fileData = try? Data(contentsOf: file) else { return nil } // try?-ok(session read, skip if absent)
             data = fileData
         }
 
@@ -1114,7 +1114,7 @@ final class OpenClawParser: LogParser, Sendable {
         guard !turns.isEmpty else { return nil }
 
         let sessionId = file.deletingPathExtension().lastPathComponent
-        let modifiedAt = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+        let modifiedAt = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date() // try?-ok(mtime, now fallback)
         let effectiveStart = startTime ?? turns.compactMap(\.timestamp).min() ?? modifiedAt
         let effectiveEnd = endTime ?? turns.compactMap(\.timestamp).max() ?? modifiedAt
         let userText = turns.filter { $0.role == "user" }.map(\.text)
@@ -1178,13 +1178,13 @@ final class OpenClawParser: LogParser, Sendable {
             .compactMap { line -> [String: Any]? in
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty, let lineData = trimmed.data(using: .utf8) else { return nil }
-                return try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+                return try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] // try?-ok(per-line decode, skip)
             } ?? []
         if !jsonLineObjects.isEmpty {
             return jsonLineObjects
         }
 
-        guard let root = try? JSONSerialization.jsonObject(with: data) else {
+        guard let root = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(whole-file decode, empty fallback)
             return []
         }
         return flattenSessionObjects(root)
@@ -1319,7 +1319,7 @@ final class ModelFilterParser: LogParser, Sendable {
         var cacheMutated = false
 
         let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(isDir filter)
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
@@ -1343,7 +1343,7 @@ final class ModelFilterParser: LogParser, Sendable {
                    cached.signature == signature {
                     appendCached(cached, usages: &usages, conversations: &conversations)
                 } else {
-                    let parsed = try? parseSession(file: jsonlFile, projectName: projectName)
+                    let parsed = try? parseSession(file: jsonlFile, projectName: projectName) // try?-ok(per-session parse, skip)
                     appendParsed(parsed, usages: &usages, conversations: &conversations)
 
                     if let signature = compositeSignature(
@@ -1388,12 +1388,12 @@ final class ModelFilterParser: LogParser, Sendable {
     }
 
     private func parseSession(file: URL, projectName: String) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { // try?-ok(log open, skip if absent)
             return nil
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+        let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
         let conv = ClaudeConversationAccumulator()
 
         let baseName = file.deletingPathExtension().lastPathComponent
@@ -1409,8 +1409,8 @@ final class ModelFilterParser: LogParser, Sendable {
         var usedFallbackEstimate = false
         var settingsModel: String?
 
-        if let data = try? Data(contentsOf: settingsURL),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let data = try? Data(contentsOf: settingsURL), // try?-ok(optional sidecar read)
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
             if let m = json["model"] as? String {
                 settingsModel = TokenExtractionUtility.normalizeModelName(m)
             }
@@ -1427,8 +1427,8 @@ final class ModelFilterParser: LogParser, Sendable {
         }
 
         if !usedSettingsTotals,
-           let data = try? Data(contentsOf: metadataURL),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let data = try? Data(contentsOf: metadataURL), // try?-ok(optional sidecar read)
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
             if settingsModel == nil, let m = json["model"] as? String {
                 settingsModel = TokenExtractionUtility.normalizeModelName(m)
             }
@@ -1454,7 +1454,7 @@ final class ModelFilterParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                 continue
             }
 
@@ -1911,7 +1911,7 @@ final class OpenCodeParser: LogParser, Sendable {
         for column in ["data", "json", "value", "content", "payload"] {
             if let text: String = row[column],
                let data = text.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(column decode, try next)
                 return json
             }
         }
@@ -2035,7 +2035,7 @@ final class PiAgentParser: LogParser, Sendable {
         }
 
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
-        let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?
+        let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))? // try?-ok(dir scan, empty fallback)
             .filter { $0.pathExtension == "jsonl" } ?? []
 
         var usages: [TokenUsage] = []
@@ -2053,10 +2053,10 @@ final class PiAgentParser: LogParser, Sendable {
     }
 
     private func parseSession(file: URL, sessionId: String) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
 
         var inputTokens = 0
         var outputTokens = 0
@@ -2077,7 +2077,7 @@ final class PiAgentParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                 continue
             }
 

@@ -30,8 +30,8 @@ final class AntigravityParser: LogParser, Sendable {
         // Fetch settings for active model (fallback when per-session model unavailable)
         let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
         let fallbackModelName: String = {
-            guard let data = try? Data(contentsOf: settingsURL),
-                  let settings = try? JSONDecoder().decode(SettingsFile.self, from: data),
+            guard let data = try? Data(contentsOf: settingsURL), // try?-ok(settings read, model fallback)
+                  let settings = try? JSONDecoder().decode(SettingsFile.self, from: data), // try?-ok(optional decode, model fallback)
                   let model = settings.model, !model.isEmpty else {
                 return "Claude Opus 4.6 (Thinking)"
             }
@@ -42,8 +42,8 @@ final class AntigravityParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let brainURL = URL(fileURLWithPath: brainPath)
-        let conversationDirs = (try? fm.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        let conversationDirs = (try? fm.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter { // try?-ok(dir listing, empty fallback)
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(resource read, skip on fail)
         } ?? []
 
         for conversationDir in conversationDirs {
@@ -79,10 +79,10 @@ final class AntigravityParser: LogParser, Sendable {
         sessionId: String,
         fallbackModel: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: transcriptFile) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: transcriptFile) else { return nil } // try?-ok(open read, guard-return-nil)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: transcriptFile.path)[.modificationDate]) as? Date
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: transcriptFile.path)[.modificationDate]) as? Date // try?-ok(mtime read, Date() fallback)
 
         var acc = AntigravitySessionAccumulator()
 
@@ -111,7 +111,7 @@ final class AntigravityParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip malformed)
                 continue
             }
 

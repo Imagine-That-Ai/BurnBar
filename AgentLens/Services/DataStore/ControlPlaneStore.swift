@@ -196,7 +196,7 @@ final class ControlPlaneStore: Sendable {
                 sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'source_artifacts'"
             ) ?? 0
             let sharedArtifacts = sourceArtifactsTableExists > 0
-                ? ((try? Int.fetchOne(db, sql: "SELECT COUNT(*) FROM source_artifacts")) ?? 0)
+                ? ((try? Int.fetchOne(db, sql: "SELECT COUNT(*) FROM source_artifacts")) ?? 0) // try?-ok(count defaults to zero)
                 : 0
             let cachedMirror = (try String.fetchOne(
                 db,
@@ -302,7 +302,7 @@ final class ControlPlaneStore: Sendable {
                 guard let json: String = row["snapshotJSON"], let data = json.data(using: .utf8) else {
                     continue
                 }
-                if let snapshot = try? decoder.decode(ProjectMemorySnapshot.self, from: data) {
+                if let snapshot = try? decoder.decode(ProjectMemorySnapshot.self, from: data) { // try?-ok(skip malformed snapshot row)
                     snapshots.append(snapshot)
                 }
             }

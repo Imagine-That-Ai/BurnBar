@@ -158,7 +158,7 @@ enum MacCloudVaultSignalPayloads {
         localIdentity: OpenBurnBarSignalIdentityKeypair
     ) async -> [String: Data] {
         var map: [String: Data] = [localIdentity.identityKeyId: localIdentity.atRestRecipient().publicKeyData]
-        if let recipients = try? await atRestRecipients(uid: uid, firestore: firestore, localIdentity: localIdentity) {
+        if let recipients = try? await atRestRecipients(uid: uid, firestore: firestore, localIdentity: localIdentity) { // try?-ok(fail-safe read fallback)
             for recipient in recipients { map[recipient.recipientIdentityKeyId] = recipient.publicKeyData }
         }
         return map

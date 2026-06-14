@@ -168,7 +168,7 @@ final class SettingsPersistenceCoordinator {
         }
         guard pendingFlushTask == nil else { return }
         pendingFlushTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: self?.flushDelayNanoseconds ?? 100_000_000)
+            try? await Task.sleep(nanoseconds: self?.flushDelayNanoseconds ?? 100_000_000) // try?-ok(debounce cancellation only)
             self?.flush()
         }
     }

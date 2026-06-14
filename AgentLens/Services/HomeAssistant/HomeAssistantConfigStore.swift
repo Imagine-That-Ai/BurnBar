@@ -30,7 +30,7 @@ final class HomeAssistantConfigStore: @preconcurrency HomeAssistantConfigStoring
         guard !raw.isEmpty, let data = raw.data(using: .utf8) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(HomeAssistantConfig.self, from: data)
+        return try? decoder.decode(HomeAssistantConfig.self, from: data) // try?-ok(optional decode, nil-handled)
     }
 
     func saveConfig(_ config: HomeAssistantConfig) {

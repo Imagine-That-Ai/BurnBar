@@ -231,7 +231,7 @@ actor ArtifactDiscoveryService {
                     continue
                 }
 
-                let resourceValues = try? candidateURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
+                let resourceValues = try? candidateURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]) // try?-ok(metadata read, guard skips)
                 guard resourceValues?.isRegularFile == true else { continue }
 
                 let relativePath = relativePath(from: canonicalCandidatePath, rootPath: rootPath)

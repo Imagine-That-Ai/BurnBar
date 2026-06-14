@@ -76,6 +76,7 @@ public final class AgentWatchHUDSession {
 
     public func stop() async {
         await mediaCoordinator.stop(reason: .completedUserCancel)
+        // try?-ok(fire-and-forget stop notice)
         try? await actionSink(HermesRealtimeRelayFrame(
             type: .controlActionLogEntry,
             uid: uid,

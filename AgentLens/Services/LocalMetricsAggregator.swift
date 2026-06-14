@@ -56,7 +56,7 @@ actor LocalMetricsAggregator {
     func startPeriodicCompute(interval: TimeInterval = 60) -> Task<Void, Never> {
         Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000)) // try?-ok(cancellation only)
                 await self.compute()
             }
         }
@@ -74,7 +74,7 @@ actor LocalMetricsAggregator {
         let searchLatencies = searchRecords.compactMap { record -> Double? in
             guard let json = record.detailsJSON,
                   let data = json.data(using: .utf8),
-                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else {
+                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else { // try?-ok(malformed log skipped)
                 return nil
             }
             return details.totalQueryLatencyMs
@@ -84,7 +84,7 @@ actor LocalMetricsAggregator {
             guard record.subsystem == .lexical,
                   let json = record.detailsJSON,
                   let data = json.data(using: .utf8),
-                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else {
+                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else { // try?-ok(malformed log skipped)
                 return nil
             }
             return details.lexicalQueryLatencyMs
@@ -94,7 +94,7 @@ actor LocalMetricsAggregator {
             guard record.subsystem == .semantic,
                   let json = record.detailsJSON,
                   let data = json.data(using: .utf8),
-                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else {
+                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else { // try?-ok(malformed log skipped)
                 return nil
             }
             return details.semanticQueryLatencyMs
@@ -103,7 +103,7 @@ actor LocalMetricsAggregator {
         let rerankRecords = searchRecords.filter { record in
             guard let json = record.detailsJSON,
                   let data = json.data(using: .utf8),
-                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else {
+                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else { // try?-ok(malformed log skipped)
                 return false
             }
             return details.crossEncoderLatencyMs != nil
@@ -113,7 +113,7 @@ actor LocalMetricsAggregator {
         let semanticFallbackRecords = searchRecords.filter { record in
             guard let json = record.detailsJSON,
                   let data = json.data(using: .utf8),
-                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else {
+                  let details = try? JSONDecoder().decode(LexicalRetrievalHealthDetails.self, from: data) else { // try?-ok(malformed log skipped)
                 return false
             }
             return details.semanticFallbackUsed
@@ -181,7 +181,7 @@ enum LocalMetricsJSONLWriter {
             let line = try JSONSerialization.data(withJSONObject: payload) + Data([0x0A])
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 let handle = try FileHandle(forWritingTo: fileURL)
-                defer { try? handle.close() }
+                defer { try? handle.close() } // try?-ok(handle teardown)
                 try handle.seekToEnd()
                 try handle.write(contentsOf: line)
             } else {
@@ -198,7 +198,7 @@ enum LocalMetricsJSONLWriter {
     }
 
     private static func rotateIfNeeded(at fileURL: URL) {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path), // try?-ok(skip rotation check)
               let size = attributes[.size] as? NSNumber,
               size.intValue >= maxBytes else {
             return
@@ -209,16 +209,16 @@ enum LocalMetricsJSONLWriter {
             let destination = fileURL.appendingPathExtension("\(index + 1)")
             if FileManager.default.fileExists(atPath: source.path) {
                 if index == maxRotatedFiles {
-                    try? FileManager.default.removeItem(at: source)
+                    try? FileManager.default.removeItem(at: source) // try?-ok(log rotation cleanup)
                 } else {
-                    try? FileManager.default.removeItem(at: destination)
-                    try? FileManager.default.moveItem(at: source, to: destination)
+                    try? FileManager.default.removeItem(at: destination) // try?-ok(log rotation cleanup)
+                    try? FileManager.default.moveItem(at: source, to: destination) // try?-ok(log rotation cleanup)
                 }
             }
         }
 
         let firstArchive = fileURL.appendingPathExtension("1")
-        try? FileManager.default.removeItem(at: firstArchive)
-        try? FileManager.default.moveItem(at: fileURL, to: firstArchive)
+        try? FileManager.default.removeItem(at: firstArchive) // try?-ok(log rotation cleanup)
+        try? FileManager.default.moveItem(at: fileURL, to: firstArchive) // try?-ok(log rotation cleanup)
     }
 }

@@ -24,7 +24,7 @@ final class SmartDisplayConfigPublisher {
         heartbeat = Task { @MainActor in
             while !Task.isCancelled {
                 await publishCurrent()
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                try? await Task.sleep(nanoseconds: 10_000_000_000) // try?-ok(sleep cancellation only)
             }
         }
     }

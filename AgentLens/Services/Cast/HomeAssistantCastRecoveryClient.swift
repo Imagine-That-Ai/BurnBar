@@ -56,6 +56,6 @@ struct HomeAssistantCastRecoveryClient: Sendable {
             "reason": reason,
             "requestedAt": ISO8601DateFormatter().string(from: Date())
         ]
-        return try? JSONSerialization.data(withJSONObject: body, options: [])
+        return try? JSONSerialization.data(withJSONObject: body, options: []) // try?-ok(optional webhook payload encode)
     }
 }

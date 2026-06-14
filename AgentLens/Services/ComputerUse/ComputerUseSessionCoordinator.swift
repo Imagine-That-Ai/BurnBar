@@ -169,7 +169,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         var record = fields
         record["timestamp"] = ISO8601DateFormatter().string(from: Date())
         record["timestampMillis"] = String(Int(Date().timeIntervalSince1970 * 1000))
-        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), // try?-ok(debug proof encode, guarded)
               let line = String(data: data, encoding: .utf8)
         else { return }
         print("OpenBurnBar ComputerUseE2E \(line)")
@@ -181,10 +181,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         if !FileManager.default.fileExists(atPath: url.path) {
             FileManager.default.createFile(atPath: url.path, contents: nil)
         }
-        if let handle = try? FileHandle(forWritingTo: url) {
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: lineData)
-            try? handle.close()
+        if let handle = try? FileHandle(forWritingTo: url) { // try?-ok(debug proof sidecar open)
+            _ = try? handle.seekToEnd() // try?-ok(debug proof sidecar seek)
+            try? handle.write(contentsOf: lineData) // try?-ok(debug proof sidecar write)
+            try? handle.close() // try?-ok(handle teardown)
         }
         #endif
     }
@@ -490,7 +490,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
         SystemPermissionMonitor.shared.attach(
             frameSink: { [weak self] frame in
-                try? await self?.latestReplySender?(frame)
+                try? await self?.latestReplySender?(frame) // try?-ok(fire-and-forget status frame)
                 await SystemPermissionRetryDispatcher.shared.observe(statusFrame: frame)
             },
             uidProvider: { [weak self] in
@@ -2299,7 +2299,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             control: payload
         )
         Task {
-            try? await latestReplySender(frame)
+            try? await latestReplySender(frame) // try?-ok(fire-and-forget control frame)
         }
     }
 
@@ -2335,7 +2335,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             )
         )
         Task {
-            try? await latestReplySender(frame)
+            try? await latestReplySender(frame) // try?-ok(fire-and-forget focus frame)
         }
     }
 

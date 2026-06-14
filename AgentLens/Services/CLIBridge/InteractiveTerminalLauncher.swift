@@ -275,7 +275,7 @@ enum InteractiveTerminalLauncher {
             ) {
                 return resolved
             }
-            try? await Task.sleep(nanoseconds: intervalNanoseconds)
+            try? await Task.sleep(nanoseconds: intervalNanoseconds) // try?-ok(poll-loop cancellation)
         }
         return resolvedTerminalWindowID(
             from: lastTerminalWindows,
@@ -332,7 +332,7 @@ enum InteractiveTerminalLauncher {
     /// the session directory. `nonisolated`, so it runs off the main actor.
     private nonisolated static func cleanupSession(pidFilePath: String, sessionDirectoryPath: String) async {
         killSessionTree(pidURL: URL(fileURLWithPath: pidFilePath))
-        try? FileManager.default.removeItem(atPath: sessionDirectoryPath)
+        try? FileManager.default.removeItem(atPath: sessionDirectoryPath) // try?-ok(best-effort temp cleanup)
     }
 
     // MARK: - Helpers
@@ -340,6 +340,7 @@ enum InteractiveTerminalLauncher {
     /// Recursively SIGTERM the launched shell/CLI and its children. Mirrors
     /// `CLIAgentMissionRequestListener.killVisibleTerminalSession`.
     private nonisolated static func killSessionTree(pidURL: URL) {
+        // try?-ok(missing PID marker skips kill)
         guard let rawPID = try? String(contentsOf: pidURL, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines),
               let pid = Int32(rawPID),
@@ -358,7 +359,7 @@ enum InteractiveTerminalLauncher {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", killScript]
-        try? process.run()
+        try? process.run() // try?-ok(fire-and-forget kill)
         process.waitUntilExit()
     }
 

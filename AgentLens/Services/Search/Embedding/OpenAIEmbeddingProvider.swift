@@ -134,7 +134,7 @@ final class OpenAIEmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProv
         }
 
         guard (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONDecoder().decode(EmbeddingResponse.APIError.self, from: data))?.error?.message
+            let message = (try? JSONDecoder().decode(EmbeddingResponse.APIError.self, from: data))?.error?.message // try?-ok(optional error-body decode)
             throw OpenAIEmbeddingProviderError.unexpectedResponse(statusCode: http.statusCode, message: message)
         }
 

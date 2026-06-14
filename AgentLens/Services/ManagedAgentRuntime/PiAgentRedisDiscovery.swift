@@ -90,7 +90,7 @@ struct PiAgentRedisHTTPDiscovery: PiAgentRedisDiscovery {
     }
 
     private func decodeInstances(from data: Data) -> [ManagedAgentInstance] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] } // try?-ok(malformed JSON skipped)
 
         // Support both `[{...}]` and `{ "instances": [...] }` shapes.
         let raw: [[String: Any]]

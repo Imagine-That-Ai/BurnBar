@@ -660,7 +660,7 @@ private enum RemoteAccessAgentHealthProbe {
             if data.last == 0x0A { break }
         }
         guard !data.isEmpty,
-              let response = try? JSONDecoder().decode(RemoteAccessAgentHealthResponse.self, from: data) else {
+              let response = try? JSONDecoder().decode(RemoteAccessAgentHealthResponse.self, from: data) else { // try?-ok(malformed health = unhealthy)
             return false
         }
         return response.ok && response.version == "1"

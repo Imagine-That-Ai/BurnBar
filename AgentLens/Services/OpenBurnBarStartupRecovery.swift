@@ -112,10 +112,10 @@ enum OpenBurnBarStartupRecovery {
             }
         } catch {
             for copiedURL in archivedFiles where fileManager.fileExists(atPath: copiedURL.path) {
-                try? fileManager.removeItem(at: copiedURL)
+                try? fileManager.removeItem(at: copiedURL) // try?-ok(best-effort failure cleanup)
             }
-            if (try? fileManager.contentsOfDirectory(atPath: archiveDirectory.path).isEmpty) == true {
-                try? fileManager.removeItem(at: archiveDirectory)
+            if (try? fileManager.contentsOfDirectory(atPath: archiveDirectory.path).isEmpty) == true { // try?-ok(skip cleanup on list fail)
+                try? fileManager.removeItem(at: archiveDirectory) // try?-ok(best-effort failure cleanup)
             }
             throw error
         }
@@ -401,7 +401,7 @@ final class OpenBurnBarRuntimeContext {
         startupScanTask?.cancel()
         startupScanTask = Task(priority: .utility) {
             for _ in 0..<30 where !self.accountManager.isSignedIn {
-                try? await Task.sleep(for: .seconds(1))
+                try? await Task.sleep(for: .seconds(1)) // try?-ok(cancellation only)
                 guard !Task.isCancelled else { return }
             }
             await sync.uploadPending()
@@ -423,7 +423,7 @@ final class OpenBurnBarRuntimeContext {
                 let minimumRefreshInterval = OpenBurnBarStartupRecovery.minimumAutomaticUsageRefreshInterval
                 let seconds = max(self.settingsManager.refreshInterval, minimumRefreshInterval)
                 let nanos = UInt64(seconds * 1_000_000_000)
-                try? await Task.sleep(nanoseconds: nanos)
+                try? await Task.sleep(nanoseconds: nanos) // try?-ok(cancellation only)
                 if Task.isCancelled { break }
                 await usageAggregator.refreshAll()
                 await self.daemonManager.refreshHealth()

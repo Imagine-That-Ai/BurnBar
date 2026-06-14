@@ -163,7 +163,7 @@ private final class CursorConnectorSecretBroker: Sendable {
     }
 
     private func http(status: Int, body: [String: String]) -> Data {
-        let payload = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data("{}".utf8)
+        let payload = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data("{}".utf8) // try?-ok(fallback empty body)
         let reason: String
         switch status {
         case 200: reason = "OK"
@@ -231,14 +231,14 @@ final class CursorConnectorManager {
     init(settingsManager: SettingsManager = .shared) {
         self.settingsManager = settingsManager
         OpenBurnBarMigration.migrateUserDefaults()
-        self.supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory()) ?? OpenBurnBarAppPaths.live().supportDirectory
+        self.supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory()) ?? OpenBurnBarAppPaths.live().supportDirectory // try?-ok(fallback live path)
         self.proxyScriptURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.py")
         self.proxyConfigURL = supportDirectory.appendingPathComponent("cursor_connector_proxy_config.json")
         self.proxyLogURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.log")
         self.usageLogURL = supportDirectory.appendingPathComponent("cursor_connector_usage.jsonl")
 
         if let data = UserDefaults.standard.data(forKey: CursorConnectorConfig.defaultsKey),
-           let loaded = try? JSONDecoder().decode(CursorConnectorConfig.self, from: data) {
+           let loaded = try? JSONDecoder().decode(CursorConnectorConfig.self, from: data) { // try?-ok(else fresh config)
             self.config = Self.normalizedConfig(loaded)
         } else {
             self.config = CursorConnectorConfig()
@@ -289,8 +289,8 @@ final class CursorConnectorManager {
     func importFromFactorySettings() {
         let factoryURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".factory/settings.json")
-        guard let data = try? Data(contentsOf: factoryURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let data = try? Data(contentsOf: factoryURL), // try?-ok(missing file guard-return)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed guard-return)
               let customModels = json["customModels"] as? [[String: Any]] else {
             lastError = "Factory settings were not found."
             return
@@ -817,7 +817,7 @@ final class CursorConnectorManager {
                     } catch {
                         self.lastError = "Could not read usage log: \(error.localizedDescription)"
                     }
-                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    try? await Task.sleep(nanoseconds: 1_200_000_000) // try?-ok(cancellation only)
                 }
             }
         }
@@ -831,7 +831,7 @@ final class CursorConnectorManager {
                     } catch {
                         self.lastError = "Could not read proxy log: \(error.localizedDescription)"
                     }
-                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    try? await Task.sleep(nanoseconds: 1_200_000_000) // try?-ok(cancellation only)
                 }
             }
         }
@@ -843,7 +843,7 @@ final class CursorConnectorManager {
         var insertedAny = false
         for line in lines {
             guard let payload = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any], // try?-ok(skip malformed log line)
                   let requestID = json["request_id"] as? String,
                   let providerRaw = json["provider"] as? String,
                   let provider = ConnectorProvider(rawValue: providerRaw),

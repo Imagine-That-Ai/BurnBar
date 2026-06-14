@@ -167,7 +167,7 @@ final class ComputerUseRuntimeController: ObservableObject {
         var record = fields
         record["timestamp"] = ISO8601DateFormatter().string(from: Date())
         record["timestampMillis"] = String(Int(Date().timeIntervalSince1970 * 1000))
-        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), // try?-ok(best-effort proof encode)
               let line = String(data: data, encoding: .utf8)
         else { return }
         print("OpenBurnBar ComputerUseE2E \(line)")
@@ -179,10 +179,10 @@ final class ComputerUseRuntimeController: ObservableObject {
         if !FileManager.default.fileExists(atPath: url.path) {
             FileManager.default.createFile(atPath: url.path, contents: nil)
         }
-        if let handle = try? FileHandle(forWritingTo: url) {
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: lineData)
-            try? handle.close()
+        if let handle = try? FileHandle(forWritingTo: url) { // try?-ok(best-effort proof sidecar)
+            _ = try? handle.seekToEnd() // try?-ok(best-effort append seek)
+            try? handle.write(contentsOf: lineData) // try?-ok(best-effort proof write)
+            try? handle.close() // try?-ok(file handle teardown)
         }
     }
     #endif

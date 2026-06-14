@@ -42,7 +42,7 @@ final class ArtifactDiscoverySettings {
 
     static func decodeJSONStringArray(_ json: String) -> [String] {
         guard let data = json.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+              let decoded = try? JSONDecoder().decode([String].self, from: data) else { // try?-ok(malformed settings JSON)
             return []
         }
         return decoded.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
@@ -52,7 +52,7 @@ final class ArtifactDiscoverySettings {
         let normalized = values
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        guard let data = try? JSONEncoder().encode(normalized),
+        guard let data = try? JSONEncoder().encode(normalized), // try?-ok(string-array encode fallback)
               let json = String(data: data, encoding: .utf8) else {
             return "[]"
         }

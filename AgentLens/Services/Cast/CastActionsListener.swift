@@ -40,7 +40,7 @@ final class CastActionsListener {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     self?.attachIfPossible()
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: 3_000_000_000) // try?-ok(sleep cancellation only)
                 }
             }
         }
@@ -280,7 +280,7 @@ final class CastActionsListener {
             })
             scanner.start()
             Task {
-                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                try? await Task.sleep(nanoseconds: 12_000_000_000) // try?-ok(sleep cancellation only)
                 scanner.stop()
                 if !resumed {
                     resumed = true

@@ -98,7 +98,7 @@ final class CastDiscovery {
             })
             scanner.start()
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000)) // try?-ok(sleep cancellation only)
                 scanner.stop()
                 continuation.resume(returning: collected)
             }
@@ -331,7 +331,7 @@ private final class CastNetServiceDiscovery: NSObject, NetServiceBrowserDelegate
             browser.searchForServices(ofType: "_googlecast._tcp.", inDomain: "local.")
 
             timeoutTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) // try?-ok(sleep cancellation only)
                 self?.finish()
             }
         }

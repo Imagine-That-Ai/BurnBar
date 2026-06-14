@@ -67,7 +67,7 @@ final class AugmentParser: LogParser, Sendable {
 
         var result: [URL] = []
         for case let file as URL in enumerator {
-            let isRegularFile = (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            let isRegularFile = (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true // try?-ok(skip on metadata read failure)
             guard isRegularFile else { continue }
             guard ["json", "jsonl"].contains(file.pathExtension.lowercased()) else { continue }
             result.append(file)
@@ -90,13 +90,13 @@ final class AugmentParser: LogParser, Sendable {
         file: URL,
         sessionId: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open guard-return-nil)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         var summary = AugmentSummary()
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) else {
+                  let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(skip malformed log line)
                 continue
             }
             summary.consume(json)
@@ -109,8 +109,8 @@ final class AugmentParser: LogParser, Sendable {
         file: URL,
         sessionId: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let data = try? Data(contentsOf: file),
-              let json = try? JSONSerialization.jsonObject(with: data) else {
+        guard let data = try? Data(contentsOf: file), // try?-ok(log read guard-return-nil)
+              let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(malformed JSON guard-return-nil)
             return nil
         }
 
@@ -190,7 +190,7 @@ final class AugmentParser: LogParser, Sendable {
     }
 
     private func modificationDate(of file: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+        (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime read with fallback)
     }
 }
 

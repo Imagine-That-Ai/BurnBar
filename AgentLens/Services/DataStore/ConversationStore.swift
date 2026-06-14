@@ -196,7 +196,7 @@ final class ConversationStore: Sendable {
             #"\bAIza[0-9A-Za-z\-_]{16,}\b"#,
             #"\bgh[pousr]_[A-Za-z0-9]{20,}\b"#
         ]
-        return patterns.compactMap { try? NSRegularExpression(pattern: $0) }
+        return patterns.compactMap { try? NSRegularExpression(pattern: $0) } // try?-ok(literal regex compile)
     }()
 
     static func looksLikePlaceholderCredential(_ text: String) -> Bool {
