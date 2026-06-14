@@ -98,6 +98,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         switch runtime {
         case .codex:
             let executable = try await executable(named: "codex")
+            // try?-ok(fire-and-forget probe, default fallback)
             if let output = try? await run(executable: executable, arguments: ["debug", "models"], timeoutSeconds: 12),
                let data = output.data(using: .utf8) {
                 let discovered = CLIRuntimeModelCatalog.parseCodexDebugModels(data)
@@ -132,10 +133,10 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         case .grok:
             let executable = try await executable(named: "grok")
             var discovered: [CLIRuntimeModelOption] = []
-            if let output = try? await run(executable: executable, arguments: ["models"], timeoutSeconds: 12) {
+            if let output = try? await run(executable: executable, arguments: ["models"], timeoutSeconds: 12) { // try?-ok(fire-and-forget probe, skip on fail)
                 discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModels(output))
             }
-            if let cacheData = try? Data(contentsOf: Self.grokModelsCacheURL()) {
+            if let cacheData = try? Data(contentsOf: Self.grokModelsCacheURL()) { // try?-ok(best-effort cache read)
                 discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModelsCache(cacheData))
             }
             let deduplicated = Self.deduplicated(discovered)
@@ -168,8 +169,8 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
     private static func antigravitySelectedModelName() -> String? {
         let settingsURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".gemini/antigravity-cli/settings.json")
-        guard let data = try? Data(contentsOf: settingsURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let data = try? Data(contentsOf: settingsURL), // try?-ok(optional settings read)
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional json parse)
               let selectedModel = object["model"] as? String else {
             return nil
         }
