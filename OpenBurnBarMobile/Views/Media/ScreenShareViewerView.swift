@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 @preconcurrency import AVKit
 @preconcurrency import MediaPlayer
 #if canImport(UIKit)
@@ -4229,41 +4230,59 @@ private struct VolumeButtonScrollBridge: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: MPVolumeView, context: Context) {
-        context.coordinator.onVolumeStep = onVolumeStep
+        context.coordinator.updateOnVolumeStep(onVolumeStep)
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, @unchecked Sendable {
-        var onVolumeStep: (@MainActor (Double) -> Void)?
-        private var observation: NSKeyValueObservation?
-        private var lastVolume: Float = AVAudioSession.sharedInstance().outputVolume
+    final class Coordinator: NSObject, Sendable {
+        // The AVAudioSession KVO callback fires off the main thread, so the mutable
+        // state (a MainActor closure + a non-Sendable KVO token + last volume) is
+        // confined to an OSAllocatedUnfairLock — making the coordinator Sendable.
+        private struct State {
+            var onVolumeStep: (@MainActor @Sendable (Double) -> Void)?
+            var observation: NSKeyValueObservation?
+            var lastVolume: Float
+        }
 
-        func start(onVolumeStep: @escaping @MainActor (Double) -> Void) {
-            self.onVolumeStep = onVolumeStep
-            lastVolume = AVAudioSession.sharedInstance().outputVolume
-            observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
+        private let state = OSAllocatedUnfairLock<State>(
+            uncheckedState: State(lastVolume: AVAudioSession.sharedInstance().outputVolume)
+        )
+
+        func start(onVolumeStep: @escaping @MainActor @Sendable (Double) -> Void) {
+            state.withLockUnchecked {
+                $0.onVolumeStep = onVolumeStep
+                $0.lastVolume = AVAudioSession.sharedInstance().outputVolume
+            }
+            let observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
                 guard let self, let newValue = change.newValue else { return }
-                let delta = newValue - self.lastVolume
-                self.lastVolume = newValue
-                guard abs(delta) > 0.001 else { return }
-                let callback = SendableVolumeStepCallback(self.onVolumeStep)
+                let resolved = self.state.withLockUnchecked { state -> (delta: Float, callback: SendableVolumeStepCallback) in
+                    let delta = newValue - state.lastVolume
+                    state.lastVolume = newValue
+                    return (delta, SendableVolumeStepCallback(state.onVolumeStep))
+                }
+                guard abs(resolved.delta) > 0.001 else { return }
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        callback.call(delta > 0 ? -0.28 : 0.28)
+                        resolved.callback.call(resolved.delta > 0 ? -0.28 : 0.28)
                     }
                 }
             }
+            state.withLockUnchecked { $0.observation = observation }
+        }
+
+        func updateOnVolumeStep(_ onVolumeStep: (@MainActor @Sendable (Double) -> Void)?) {
+            state.withLockUnchecked { $0.onVolumeStep = onVolumeStep }
         }
     }
 }
 
-private struct SendableVolumeStepCallback: @unchecked Sendable {
-    private let callback: (@MainActor (Double) -> Void)?
+private struct SendableVolumeStepCallback: Sendable {
+    private let callback: (@MainActor @Sendable (Double) -> Void)?
 
-    init(_ callback: (@MainActor (Double) -> Void)?) {
+    init(_ callback: (@MainActor @Sendable (Double) -> Void)?) {
         self.callback = callback
     }
 

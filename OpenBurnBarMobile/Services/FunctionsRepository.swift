@@ -8,6 +8,8 @@ import OpenBurnBarCore
 
 /// Internal (not `private`) since the per-domain API splits of
 /// `FunctionsRepository` (tech-debt finding-67) call it from their own files.
+// AUDIT(@unchecked Sendable): immutable bridged NSDictionary of untyped callable
+// data. sendable-allowlist: firestore-any-payload
 struct FirebaseCallablePayload: @unchecked Sendable {
     let rawValue: NSDictionary
 
@@ -106,6 +108,8 @@ enum ParsePrimitives {
 
 /// Internal (not `private`) since the per-domain API splits of
 /// `FunctionsRepository` (tech-debt finding-67) call it from their own files.
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase HTTPSCallable; the SDK
+// is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 final class FirebaseCallableExecutor: @unchecked Sendable {
     private let callable: HTTPSCallable
 
