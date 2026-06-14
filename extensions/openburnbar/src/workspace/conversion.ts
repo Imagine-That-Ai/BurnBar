@@ -6,7 +6,6 @@ import type { BurnBarJSONValue } from '../types';
 import type {
   BurnBarReadFileResult,
   BurnBarSearchWorkspaceResult,
-  BurnBarSearchBurnbarIndexResult,
   OpenBurnBarApplyPatchResult,
   BurnBarRunTerminalResult
 } from './types';
@@ -23,23 +22,6 @@ export function searchWorkspaceResultToJSON(result: BurnBarSearchWorkspaceResult
       character: match.character,
       preview: match.preview
     }))
-  };
-}
-
-export function searchBurnbarIndexResultToJSON(result: BurnBarSearchBurnbarIndexResult): BurnBarJSONValue {
-  return {
-    plan: result.plan,
-    aggregateOccurrenceCount: result.aggregateOccurrenceCount ?? null,
-    hits: result.hits.map((hit) => ({
-      chunkID: hit.chunkID,
-      sourceKind: hit.sourceKind,
-      sourceID: hit.sourceID,
-      title: hit.title,
-      snippet: hit.snippet,
-      provider: hit.provider ?? null,
-      projectName: hit.projectName ?? null
-    })),
-    degradedMessage: result.degradedMessage ?? null
   };
 }
 

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 const execFile = promisify(nodeExecFile);
 
-export interface OpenBurnBarDaemonRuntimePaths {
+interface OpenBurnBarDaemonRuntimePaths {
   launchAgentPlistPath: string;
 }
 
@@ -18,7 +18,7 @@ export interface OpenBurnBarRepairServiceLike {
   repair(): Promise<OpenBurnBarRepairResult>;
 }
 
-export interface OpenBurnBarRepairServiceOptions {
+interface OpenBurnBarRepairServiceOptions {
   execFile?: typeof execFile;
   existsSync?: (path: string) => boolean;
   platform?: NodeJS.Platform;
@@ -28,7 +28,7 @@ export interface OpenBurnBarRepairServiceOptions {
 
 export const OPENBURNBAR_DAEMON_LAUNCH_AGENT_LABEL = 'com.openburnbar.daemon';
 
-export function defaultOpenBurnBarRuntimePaths(): OpenBurnBarDaemonRuntimePaths {
+function defaultOpenBurnBarRuntimePaths(): OpenBurnBarDaemonRuntimePaths {
   return {
     launchAgentPlistPath: join(homedir(), 'Library', 'LaunchAgents', `${OPENBURNBAR_DAEMON_LAUNCH_AGENT_LABEL}.plist`)
   };

@@ -55,14 +55,14 @@ import type {
   BurnBarControllerSummaryResponse
 } from '../types';
 
-export const DEFAULT_BURNBAR_SOCKET_PATH = join(
+const DEFAULT_BURNBAR_SOCKET_PATH = join(
   homedir(),
   'Library',
   'Application Support',
   'OpenBurnBar',
   'openburnbar-daemon.sock'
 );
-export const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(
+const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(
   homedir(),
   'Library',
   'LaunchAgents',
@@ -91,14 +91,14 @@ function resolveDefaultAuthToken(): string | undefined {
   }
 }
 
-export interface OpenBurnBarDaemonClientOptions {
+interface OpenBurnBarDaemonClientOptions {
   socketPath?: string;
   timeoutMs?: number;
   authToken?: string;
   maxInFlight?: number;
 }
 
-export class OpenBurnBarDaemonClientError extends Error {
+class OpenBurnBarDaemonClientError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'OpenBurnBarDaemonClientError';
