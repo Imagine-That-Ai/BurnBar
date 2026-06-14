@@ -6,9 +6,9 @@ rule, which matches only a subset of empty catches.
 
 ## What is counted
 
-| Metric | Scope | Baseline file |
-|--------|-------|---------------|
-| Empty `catch {}` | `AgentLens/` + `OpenBurnBarDaemon/` | `budgets/empty-catch-baseline.json` |
+| Metric | Scope | Gate |
+|--------|-------|------|
+| Empty `catch {}` | `AgentLens/` + `OpenBurnBarDaemon/` | assert-zero; no baseline |
 | `try?` | `AgentLens/Services/` | `budgets/try-optional-baseline.json` |
 
 ## Local workflow
@@ -26,13 +26,14 @@ Run budget gates:
 ./scripts/debt/check-try-optional-budget.sh
 ```
 
-Regenerate baselines only after intentional burn-down:
+Regenerate ratcheted baselines only after intentional burn-down:
 
 ```bash
-./scripts/debt/update-empty-catch-baseline.sh
 ./scripts/debt/update-try-optional-baseline.sh
 ```
 
-CI fails on **increase**; lowering a baseline belongs in the same PR as the fixes.
+Empty catches are now zero-locked: CI fails on any new empty `catch {}`. For
+ratcheted metrics, CI fails on **increase**; lowering a baseline belongs in the
+same PR as the fixes.
 
 See also [`docs/TYPE_DEBT.md`](TYPE_DEBT.md) for unsafe cast tracking.
