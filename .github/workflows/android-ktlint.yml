@@ -1,0 +1,70 @@
+# Pre-merge ktlint gate for Android Kotlin sources.
+#
+# Why this exists: the full `openburnbar-pr-harness` (which runs `:app:ktlintCheck`)
+# only fires on `push:main` + `schedule`, and `cancel-in-progress` usually kills it
+# before it finishes — so Android ktlint is effectively validated only by the
+# nightly run. That let three sibling-PR files red `main` between runs (see #360 /
+# #365). This job closes that window by linting Android Kotlin sources on every PR,
+# with no Android SDK / Gradle needed: it drives the standalone ktlint binary at the
+# exact version the Gradle shim resolves, so the PR gate, the shim, and the harness
+# always agree.
+name: Android ktlint (PR)
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ktlint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-ktlint:
+    name: Android ktlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: "temurin"
+      - name: Lint Android Kotlin sources with ktlint
+        env:
+          # MUST equal `ktlintCliVersion` in
+          # android/gradle/ktlint-android-sources.gradle.kts. The drift check below
+          # fails the build otherwise, so this PR gate, the Gradle shim, and the
+          # push:main harness can never disagree on the ktlint engine. When bumping,
+          # change PINNED_VER *and* re-pin PINNED_SHA together.
+          PINNED_VER: "1.0.1"
+          PINNED_SHA: "099091ed4254f79ee77c7ee1d62fd0dccfbbe780ddfba204765b3ab3b5997b95"
+        run: |
+          set -euo pipefail
+
+          shim="android/gradle/ktlint-android-sources.gradle.kts"
+          shim_ver="$(grep -oE 'ktlintCliVersion = "[0-9.]+"' "$shim" | grep -oE '[0-9.]+')"
+          if [ "$shim_ver" != "$PINNED_VER" ]; then
+            echo "::error file=$shim::ktlint version drift: the Gradle shim pins $shim_ver but this workflow pins $PINNED_VER. Update PINNED_VER and re-pin PINNED_SHA in .github/workflows/android-ktlint.yml to match."
+            exit 1
+          fi
+
+          # Lint exactly the source roots the Gradle shim covers (:app + :iroh-relay,
+          # every source set). Anti-vacuous-pass guard: refuse to "pass" on zero
+          # files — a silent "0 scanned -> green" is precisely how ktlint sat inert
+          # under AGP built-in Kotlin to begin with.
+          count="$(find android/app/src android/openburnbar-iroh-relay/src -name '*.kt' | wc -l | tr -d ' ')"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::0 Android Kotlin source files matched — enforcement is silently off; check the globs in this workflow."
+            exit 1
+          fi
+          echo "ktlint ${PINNED_VER}: linting ${count} Android Kotlin source files"
+
+          curl -sSLf "https://github.com/pinterest/ktlint/releases/download/${PINNED_VER}/ktlint" -o /tmp/ktlint
+          echo "${PINNED_SHA}  /tmp/ktlint" | sha256sum -c -
+          chmod +x /tmp/ktlint
+
+          # ktlint reads each module's .editorconfig (generated UniFFI/codegen output
+          # is excluded there), so the verdict is identical to `:app:ktlintCheck`.
+          # Globs resolve from the repo root; `**` is ktlint's own matcher, not shell.
+          /tmp/ktlint "android/app/src/**/*.kt" "android/openburnbar-iroh-relay/src/**/*.kt" --relative
