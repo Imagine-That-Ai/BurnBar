@@ -147,8 +147,12 @@ extension SearchService {
 
             func cursorConnectorKey(for account: String) -> String? {
                 let keychain = KeychainStore()
-                let raw = try? keychain.string(for: account, allowUserInteraction: false)
-                return nonEmpty(raw ?? nil)
+                let raw = keychain.credentialIfPresent(
+                    for: account,
+                    allowUserInteraction: false,
+                    event: "cross_encoder_connector_key_read_failed"
+                )
+                return nonEmpty(raw)
             }
 
             let env = ProcessInfo.processInfo.environment

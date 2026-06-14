@@ -223,7 +223,11 @@ struct ZAIQuotaAdapter: ProviderQuotaAdapter {
 
     private func cursorConnectorKey(for account: String) -> String? {
         let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "zai_quota_key_read_failed"
+        )
         return quotaNonEmpty(raw ?? nil)
     }
 

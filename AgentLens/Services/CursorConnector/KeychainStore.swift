@@ -261,7 +261,7 @@ extension KeychainStore {
     ///
     /// This accessor preserves the nil-on-absent contract callers rely on while
     /// making a real credential-availability fault observable. Use it instead of
-    /// `try? keychain.string(for:)` wherever a missing credential should degrade
+    /// an optional-try keychain read wherever a missing credential should degrade
     /// gracefully but a *broken* keychain should not be silently misread as
     /// "not configured".
     ///

@@ -386,6 +386,101 @@ final class CursorConnectorTests: XCTestCase {
     }
 }
 
+// MARK: - Cursor connector credential-read fault path
+
+/// Proves the security fix in `CursorConnectorManager`: both untagged
+/// `try? keychain.string(for:…)` credential reads — the provider API-key read in
+/// `apiKey(for:)` and the secret-broker read in `CursorConnectorSecretBroker` —
+/// now flow through `KeychainStore.credentialIfPresent(for:event:)`. That
+/// accessor distinguishes a genuinely absent credential (returns `nil`) from a
+/// real Keychain fault (locked keychain / ACL denial / unhandled `OSStatus` /
+/// corrupt data), which it logs via `AppLogger` and *then* returns `nil` from —
+/// instead of `try?` collapsing a broken keychain into the same silent `nil` as
+/// "no credential configured".
+///
+/// The fault is driven through the same `KeychainStore(backend:)` initializer
+/// seam these production sites rely on, using a fake `KeychainStoreBackend` whose
+/// `data(for:)` throws `KeychainStoreError.unhandled(errSecNotAvailable)`.
+@MainActor
+final class CursorConnectorCredentialReadTests: XCTestCase {
+    private let service = "tests.cursor-connector.credential-read"
+
+    func test_credentialIfPresent_onKeychainFault_returnsNilWithoutThrowing() {
+        // A broken/locked keychain throws on read. The accessor must observe the
+        // fault (log it) and degrade to nil — it must not crash and must not
+        // propagate the error to the connector control flow.
+        let backend = FaultInjectingCursorKeychainBackend()
+        backend.readError = KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+
+        XCTAssertNil(
+            store.credentialIfPresent(
+                for: "provider.zai.apiKey",
+                event: "cursor_provider_api_key_read_failed"
+            )
+        )
+        XCTAssertTrue(
+            backend.readWasAttempted,
+            "The fault path must actually reach the backend read."
+        )
+    }
+
+    func test_credentialIfPresent_whenAbsent_returnsNil() {
+        // No fault, no stored value: a genuinely absent credential still yields
+        // nil, identical to the historical `try?` behavior callers depend on.
+        let backend = FaultInjectingCursorKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+
+        XCTAssertNil(
+            store.credentialIfPresent(
+                for: "provider.minimax.apiKey",
+                event: "cursor_secret_broker_key_read_failed"
+            )
+        )
+    }
+
+    func test_credentialIfPresent_whenPresent_returnsStoredValue() throws {
+        // Sanity: a present credential is still returned unchanged, so the fix
+        // does not alter the happy path.
+        let backend = FaultInjectingCursorKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        try store.set("sk-cursor-live", for: "provider.zai.apiKey")
+
+        XCTAssertEqual(
+            store.credentialIfPresent(
+                for: "provider.zai.apiKey",
+                event: "cursor_provider_api_key_read_failed"
+            ),
+            "sk-cursor-live"
+        )
+    }
+}
+
+/// A `KeychainStoreBackend` that can store/return values like a real keychain,
+/// or be flipped into a hard-fault mode where `data(for:)` throws — modeling a
+/// locked keychain / ACL denial that `try?` used to swallow silently.
+private final class FaultInjectingCursorKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
+    var readError: Error?
+    private(set) var readWasAttempted = false
+    private var storage: [String: [String: Data]] = [:]
+
+    func set(_ value: Data, service: String, account: String) throws {
+        storage[service, default: [:]][account] = value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        readWasAttempted = true
+        if let readError {
+            throw readError
+        }
+        return storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        storage[service]?[account] = nil
+    }
+}
+
 private final class RecordingSecurityKeychainOperations: SecurityKeychainOperations, @unchecked Sendable {
     struct Event: Equatable {
         enum Operation: Equatable {

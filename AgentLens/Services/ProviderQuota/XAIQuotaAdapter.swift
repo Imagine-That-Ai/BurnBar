@@ -38,6 +38,17 @@ import OpenBurnBarCore
 
 struct XAIQuotaAdapter: ProviderQuotaAdapter {
 
+    // MARK: - Dependencies
+
+    /// Keychain used to read the Cursor-connector management key fallback.
+    /// Injected so tests can drive a faulting backend through this seam; the
+    /// default reads the live keychain exactly as before.
+    private let keychain: KeychainStore
+
+    init(keychain: KeychainStore = KeychainStore()) {
+        self.keychain = keychain
+    }
+
     // MARK: - Constants
 
     static let consoleURL = "https://console.x.ai"
@@ -465,9 +476,12 @@ struct XAIQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func cursorConnectorKey(for account: String) -> String? {
-        let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
-        return quotaNonEmpty(raw ?? nil)
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "xai_quota_management_key_read_failed"
+        )
+        return quotaNonEmpty(raw)
     }
 
     private func iso8601(_ date: Date) -> String {

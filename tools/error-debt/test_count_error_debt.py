@@ -82,6 +82,17 @@ def main() -> int:
         (1, 1),
     )
 
+    # A `try?` mentioned only in a comment is prose, not debt.
+    expect("comment-only", count("// Replaces try? expr patterns"), (0, 0))
+    expect("doc-comment-only", count("/// uses try? under the hood"), (0, 0))
+
+    # A code `try?` with a trailing non-tag comment still counts once.
+    expect("code-plus-comment", count("let x = try? foo() // best effort"), (1, 0))
+
+    # `//` inside a string literal is not a comment, so it is not stripped — and
+    # a `try?` living only in the trailing comment is still ignored.
+    expect("slashes-in-string", count('let u = "https://x" // try? here'), (0, 0))
+
     print("\nAll try? counter tests passed.")
     return 0
 

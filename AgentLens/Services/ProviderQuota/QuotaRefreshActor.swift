@@ -523,7 +523,11 @@ private func resolveDaemonPlanAPIKey(
 
     for slot in orderedSlots {
         let account = "provider.\(providerID).slot.\(slot.slotID).apiKey"
-        if let key = try? providerRuntimeKeyStore.string(for: account, allowUserInteraction: false),
+        if let key = providerRuntimeKeyStore.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "daemon_plan_api_key_read_failed"
+        ),
            let normalized = quotaNonEmpty(key) {
             return normalized
         }
@@ -570,7 +574,11 @@ private func resolveDaemonAccountCredentials(
 
         for slot in configuration.credentialSlots where slot.isEnabled {
             let secretAccount = "provider.\(configuration.providerID).slot.\(slot.slotID).apiKey"
-            guard let key = try? providerRuntimeKeyStore.string(for: secretAccount, allowUserInteraction: false),
+            guard let key = providerRuntimeKeyStore.credentialIfPresent(
+                for: secretAccount,
+                allowUserInteraction: false,
+                event: "daemon_account_api_key_read_failed"
+            ),
                   let normalizedKey = quotaNonEmpty(key) else {
                 continue
             }
