@@ -127,12 +127,7 @@ object ControlFrameSealSession {
      * Replace [payload] with its sealed shell: `streamClass` stays visible
      * for routing, everything else rides inside the OBCFS1 envelope.
      */
-    fun sealPayload(
-        payload: HermesRealtimeRelayControlPayload,
-        key: ByteArray,
-        peerNodeId: String,
-        frameType: String,
-    ): HermesRealtimeRelayControlPayload {
+    fun sealPayload(payload: HermesRealtimeRelayControlPayload, key: ByteArray, peerNodeId: String, frameType: String): HermesRealtimeRelayControlPayload {
         val plaintext = HermesRealtimeRelayControlPayloadCodec.encodeToBytes(payload)
         val sealed = ControlFrameSeal.seal(plaintext = plaintext, key = key, peerNodeId = peerNodeId, frameType = frameType)
         return HermesRealtimeRelayControlPayload(
@@ -146,12 +141,7 @@ object ControlFrameSealSession {
      * decode/AAD/tag failure throws and the frame must be dropped, never
      * dispatched.
      */
-    fun openPayload(
-        payload: HermesRealtimeRelayControlPayload,
-        key: ByteArray,
-        peerNodeId: String,
-        frameType: String,
-    ): HermesRealtimeRelayControlPayload {
+    fun openPayload(payload: HermesRealtimeRelayControlPayload, key: ByteArray, peerNodeId: String, frameType: String): HermesRealtimeRelayControlPayload {
         val sealed =
             payload.sealedFrameBase64
                 ?.let { encoded -> runCatching { HermesRelayCryptoSupport.base64Decode(encoded) }.getOrNull() }
@@ -164,9 +154,8 @@ object ControlFrameSealSession {
         }
     }
 
-    private fun deriveKey(sessionSecret: ByteArray, connectionId: String): ByteArray =
-        ControlFrameSeal.deriveSessionKey(
-            hpkeSessionKey = sessionSecret,
-            salt = connectionId.toByteArray(Charsets.UTF_8),
-        )
+    private fun deriveKey(sessionSecret: ByteArray, connectionId: String): ByteArray = ControlFrameSeal.deriveSessionKey(
+        hpkeSessionKey = sessionSecret,
+        salt = connectionId.toByteArray(Charsets.UTF_8),
+    )
 }

@@ -72,11 +72,7 @@ internal fun EmptyStateHero(
 }
 
 @Composable
-internal fun EmptyStateHeroCard(
-    runtime: AssistantRuntimeID,
-    provider: AgentProvider,
-    selectedModel: CliRuntimeModelOption?,
-) {
+internal fun EmptyStateHeroCard(runtime: AssistantRuntimeID, provider: AgentProvider, selectedModel: CliRuntimeModelOption?) {
     val glassStrokeBrush = Brush.linearGradient(AuroraGradients.glassStroke)
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -166,11 +162,7 @@ private fun EmptyStateModelBadge(provider: AgentProvider, selectedModel: CliRunt
 }
 
 @Composable
-internal fun EmptyStateQuickPrompts(
-    quickPrompts: List<String>,
-    provider: AgentProvider,
-    onQuickPrompt: (String) -> Unit,
-) {
+internal fun EmptyStateQuickPrompts(quickPrompts: List<String>, provider: AgentProvider, onQuickPrompt: (String) -> Unit) {
     if (quickPrompts.isEmpty()) return
     Text(
         text = "SUGGESTED PROMPTS",
@@ -234,52 +226,52 @@ internal fun MessageBubble(
 
 @Composable
 internal fun UserMessageBubble(message: AssistantChatMessage, provider: AgentProvider) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Surface(
-                    shape =
-                    RoundedCornerShape(
-                        topStart = 20.dp,
-                        topEnd = 20.dp,
-                        bottomStart = 20.dp,
-                        bottomEnd = 4.dp,
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Column(horizontalAlignment = Alignment.End) {
+            Surface(
+                shape =
+                RoundedCornerShape(
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomStart = 20.dp,
+                    bottomEnd = 4.dp,
+                ),
+                color = Color(provider.brandColor).copy(alpha = 0.12f),
+                border =
+                BorderStroke(
+                    width = 0.75.dp,
+                    brush =
+                    Brush.linearGradient(
+                        listOf(Color(provider.brandColor).copy(alpha = 0.45f), Color(provider.accentColor).copy(alpha = 0.15f)),
                     ),
-                    color = Color(provider.brandColor).copy(alpha = 0.12f),
-                    border =
-                    BorderStroke(
-                        width = 0.75.dp,
-                        brush =
-                        Brush.linearGradient(
-                            listOf(Color(provider.brandColor).copy(alpha = 0.45f), Color(provider.accentColor).copy(alpha = 0.15f)),
-                        ),
-                    ),
+                ),
+            ) {
+                Text(
+                    text = message.text,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier =
+                    Modifier
+                        .widthIn(max = 280.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+            if (message.attachments.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(
-                        text = message.text,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier =
-                        Modifier
-                            .widthIn(max = 280.dp)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
-                }
-                if (message.attachments.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        message.attachments.forEach { att ->
-                            AttachmentChip(att = att, accent = Color(provider.brandColor))
-                        }
+                    message.attachments.forEach { att ->
+                        AttachmentChip(att = att, accent = Color(provider.brandColor))
                     }
                 }
             }
         }
+    }
 }
 
 @Composable

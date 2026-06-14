@@ -18,9 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,7 +54,7 @@ fun BifurcatedInsightsScreen(onSelectProvider: (AgentProvider) -> Unit, onSelect
                 },
             ),
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
 
         // HEADER & TITLE
         Row(
@@ -80,7 +80,7 @@ fun BifurcatedInsightsScreen(onSelectProvider: (AgentProvider) -> Unit, onSelect
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
 
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
 
         // VIEW PORT CONTAINER
         Box(

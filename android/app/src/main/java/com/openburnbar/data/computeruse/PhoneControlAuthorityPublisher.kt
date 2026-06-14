@@ -83,12 +83,7 @@ object PhoneControlAuthorityDocumentFactory {
      * publish the 65-byte X9.63 key, the `android-se-` peerNodeId, and the
      * `"se-p256"` discriminator the server persists as `signingKeyKind`.
      */
-    fun document(
-        connectionId: String,
-        deviceId: String,
-        identity: PhoneControlSigningIdentity,
-        publishedAtMillis: Long,
-    ): PhoneControlAuthorityDoc {
+    fun document(connectionId: String, deviceId: String, identity: PhoneControlSigningIdentity, publishedAtMillis: Long): PhoneControlAuthorityDoc {
         val peerNodeId = peerNodeId(identity)
         return PhoneControlAuthorityDoc(
             id = peerNodeId,
@@ -147,8 +142,7 @@ class PhoneControlSigningKeyStore(context: Context) {
      * `computer_use_phone_control_secure_enclave_key` Remote Config flag.
      * Mirrors the iOS `PhoneControlSigningKeyStore.signingIdentity()`.
      */
-    fun signingIdentity(): PhoneControlSigningIdentity =
-        signingIdentity(secureEnclaveEnabled = PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
+    fun signingIdentity(): PhoneControlSigningIdentity = signingIdentity(secureEnclaveEnabled = PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
 
     /**
      * Resolution order (identical to iOS):

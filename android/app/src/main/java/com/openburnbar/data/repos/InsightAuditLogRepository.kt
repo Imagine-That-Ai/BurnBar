@@ -60,12 +60,11 @@ class InsightAuditLogRepository(private val context: Context) {
         val widgetCount: Int = 0,
         val canvasID: String = "",
     ) {
-        fun toJsonLine(): String =
-            """{"timestamp":"$timestamp","modelProvider":"$modelProvider","modelID":"$modelID",""" +
-                """"egressTier":"$egressTier","promptHash":"$promptHash",""" +
-                """"digestHash":"$digestHash","egressBytes":$egressBytes,""" +
-                """"estimatedCostUSD":$estimatedCostUSD,"status":"$status",""" +
-                """"widgetCount":$widgetCount,"canvasID":"$canvasID"}"""
+        fun toJsonLine(): String = """{"timestamp":"$timestamp","modelProvider":"$modelProvider","modelID":"$modelID",""" +
+            """"egressTier":"$egressTier","promptHash":"$promptHash",""" +
+            """"digestHash":"$digestHash","egressBytes":$egressBytes,""" +
+            """"estimatedCostUSD":$estimatedCostUSD,"status":"$status",""" +
+            """"widgetCount":$widgetCount,"canvasID":"$canvasID"}"""
 
         companion object {
             fun fromJsonLine(line: String): AuditEntry {

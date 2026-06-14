@@ -11,12 +11,7 @@ internal class HermesServiceMessageLaunch(
     private val messageActions: HermesServiceMessageActions,
     private val scope: CoroutineScope,
 ) {
-    fun launchDesktopAgentRelaySend(
-        content: String,
-        resolvedModelName: String,
-        attachments: List<HermesAttachment>,
-        conversationId: String?,
-    ) {
+    fun launchDesktopAgentRelaySend(content: String, resolvedModelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
         if (attachments.isNotEmpty()) {
             messageActions.appendAssistantError(
                 "Desktop agent relay from Android accepts text prompts today. Remove attachments and try again.",
@@ -35,12 +30,7 @@ internal class HermesServiceMessageLaunch(
         }
     }
 
-    fun launchSelectedConnectionSend(
-        content: String,
-        resolvedModelName: String,
-        attachments: List<HermesAttachment>,
-        conversationId: String?,
-    ) {
+    fun launchSelectedConnectionSend(content: String, resolvedModelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
         val selected = service.selectedConnectionInternal.value
         when (selected.mode) {
             HermesConnectionMode.RELAY_LINK -> launchRelaySend(selected, content, resolvedModelName, attachments, conversationId)
@@ -83,12 +73,7 @@ internal class HermesServiceMessageLaunch(
         }
     }
 
-    private fun launchHttpSend(
-        content: String,
-        resolvedModelName: String,
-        attachments: List<HermesAttachment>,
-        conversationId: String?,
-    ) {
+    private fun launchHttpSend(content: String, resolvedModelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
         val endpoint =
             HermesServiceEndpointSupport.selectedEndpointURL(service.selectedConnectionInternal.value)
                 ?: HermesServiceEndpointSupport.legacyEndpointURL(service.legacyConnectionInternal)
@@ -118,16 +103,14 @@ internal class HermesServiceMessageLaunch(
         }
     }
 
-    private fun sendFailureHandler(modelName: String): CoroutineExceptionHandler =
-        CoroutineExceptionHandler { _, error ->
-            val message = error.hermesSendFailureMessage()
-            runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
-            service.runtimeErrorTextInternal.value = message
-            messageActions.appendAssistantError(message, modelName)
-        }
+    private fun sendFailureHandler(modelName: String): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
+        val message = error.hermesSendFailureMessage()
+        runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
+        service.runtimeErrorTextInternal.value = message
+        messageActions.appendAssistantError(message, modelName)
+    }
 
-    private fun Throwable.hermesSendFailureMessage(): String =
-        message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
+    private fun Throwable.hermesSendFailureMessage(): String = message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
 
     private companion object {
         private const val TAG = "BurnBar"

@@ -1,20 +1,15 @@
 package com.openburnbar.ui.hermes
 
-import com.openburnbar.data.hermes.clearMessages
-import com.openburnbar.data.hermes.loadThread
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.openburnbar.data.hermes.HermesAttachmentLimits
 import com.openburnbar.data.hermes.HermesService
+import com.openburnbar.data.hermes.clearMessages
+import com.openburnbar.data.hermes.loadThread
 
 @Composable
-internal fun HermesViewRoute(
-    ui: HermesViewUiState,
-    hermesService: HermesService,
-    connection: HermesViewConnectionState,
-    context: android.content.Context,
-) {
+internal fun HermesViewRoute(ui: HermesViewUiState, hermesService: HermesService, connection: HermesViewConnectionState, context: android.content.Context) {
     when {
         ui.showSetupWizard ->
             HermesSetupWizard(

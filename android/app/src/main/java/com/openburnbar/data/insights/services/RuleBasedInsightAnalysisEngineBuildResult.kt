@@ -29,10 +29,7 @@ internal data class RuleBasedBuildState(
     val citations: List<InsightCitation>,
 )
 
-internal fun buildRuleBasedInsightResult(
-    request: InsightAnalysisRequest,
-    platform: InsightAnalysisPlatform,
-): InsightAnalysisResult {
+internal fun buildRuleBasedInsightResult(request: InsightAnalysisRequest, platform: InsightAnalysisPlatform): InsightAnalysisResult {
     val digest = request.context.digest
     val topProvider = digest.providers.maxByOrNull { it.costUSD }
     val topModel = digest.models.maxByOrNull { it.costUSD }
@@ -82,26 +79,20 @@ internal data class RuleBasedFinalAssembly(
     val digest: InsightDigest,
 )
 
-private fun ruleBasedHeadlineFor(digest: InsightDigest): String =
-    if (digest.totals.sessionCount > 0) {
-        "${ruleBasedCurrency(digest.totals.costUSD)} analyzed across ${digest.totals.sessionCount} sessions"
-    } else {
-        "No synced activity in this window"
-    }
+private fun ruleBasedHeadlineFor(digest: InsightDigest): String = if (digest.totals.sessionCount > 0) {
+    "${ruleBasedCurrency(digest.totals.costUSD)} analyzed across ${digest.totals.sessionCount} sessions"
+} else {
+    "No synced activity in this window"
+}
 
-private fun ruleBasedBodyFor(digest: InsightDigest): String =
-    if (digest.totals.sessionCount > 0) {
-        val topProvider = digest.providers.maxByOrNull { it.costUSD }
-        "The main thing to inspect is whether ${topProvider?.displayName ?: "your top provider"} is doing the right work for its cost profile."
-    } else {
-        "Insights has no usable rows for this window yet. Refresh sync or choose a broader window."
-    }
+private fun ruleBasedBodyFor(digest: InsightDigest): String = if (digest.totals.sessionCount > 0) {
+    val topProvider = digest.providers.maxByOrNull { it.costUSD }
+    "The main thing to inspect is whether ${topProvider?.displayName ?: "your top provider"} is doing the right work for its cost profile."
+} else {
+    "Insights has no usable rows for this window yet. Refresh sync or choose a broader window."
+}
 
-private fun buildRuleBasedNarrativeSection(
-    request: InsightAnalysisRequest,
-    digest: InsightDigest,
-    citations: List<InsightCitation>,
-): RuleBasedBuildState {
+private fun buildRuleBasedNarrativeSection(request: InsightAnalysisRequest, digest: InsightDigest, citations: List<InsightCitation>): RuleBasedBuildState {
     val headline = ruleBasedHeadlineFor(digest)
     val body = ruleBasedBodyFor(digest)
     val narrative =
@@ -208,12 +199,7 @@ private fun appendRuleBasedProviderRanking(
     )
 }
 
-private fun appendRuleBasedTimeSeries(
-    state: RuleBasedBuildState,
-    digest: InsightDigest,
-    request: InsightAnalysisRequest,
-    window: InsightTimeWindow,
-) {
+private fun appendRuleBasedTimeSeries(state: RuleBasedBuildState, digest: InsightDigest, request: InsightAnalysisRequest, window: InsightTimeWindow) {
     if (digest.daily.isEmpty()) return
     val tsData =
         InsightWidgetData.TimeSeries(
@@ -247,12 +233,7 @@ private fun appendRuleBasedTimeSeries(
     )
 }
 
-private fun appendRuleBasedDonut(
-    state: RuleBasedBuildState,
-    digest: InsightDigest,
-    request: InsightAnalysisRequest,
-    window: InsightTimeWindow,
-) {
+private fun appendRuleBasedDonut(state: RuleBasedBuildState, digest: InsightDigest, request: InsightAnalysisRequest, window: InsightTimeWindow) {
     if (digest.providers.size < 2) return
     val total = digest.providers.sumOf { it.costUSD }
     val slices =
@@ -285,12 +266,7 @@ private fun appendRuleBasedDonut(
     )
 }
 
-private fun appendRuleBasedModelRanking(
-    state: RuleBasedBuildState,
-    digest: InsightDigest,
-    request: InsightAnalysisRequest,
-    window: InsightTimeWindow,
-) {
+private fun appendRuleBasedModelRanking(state: RuleBasedBuildState, digest: InsightDigest, request: InsightAnalysisRequest, window: InsightTimeWindow) {
     if (digest.models.isEmpty()) return
     val modelRows =
         digest.models
@@ -324,10 +300,7 @@ private fun appendRuleBasedModelRanking(
     )
 }
 
-private fun appendRuleBasedTopModelRecommendation(
-    state: RuleBasedBuildState,
-    topModel: InsightDigest.ModelSnapshot?,
-) {
+private fun appendRuleBasedTopModelRecommendation(state: RuleBasedBuildState, topModel: InsightDigest.ModelSnapshot?) {
     topModel ?: return
     state.recommendations.add(
         InsightRecommendation(
@@ -354,7 +327,10 @@ private fun assembleRuleBasedInsightResult(input: RuleBasedFinalAssembly): Insig
         if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) {
             InsightBriefingAnswer(
                 question = request.prompt,
-                answer = "${state.headline}. ${state.body} ${state.findings.firstOrNull()?.recommendedAction ?: "Review the cited evidence and choose the next action from the brief."}",
+                answer = "${state.headline}. ${state.body} ${
+                    state.findings.firstOrNull()?.recommendedAction
+                        ?: "Review the cited evidence and choose the next action from the brief."
+                }",
                 bullets = ruleBasedGroundedPointsForReply(digest, topProvider, topModel),
                 citations = state.citations.take(INSIGHT_MAX_CITATIONS),
                 source = InsightBriefingAnswer.Source.LOCAL_RULES,

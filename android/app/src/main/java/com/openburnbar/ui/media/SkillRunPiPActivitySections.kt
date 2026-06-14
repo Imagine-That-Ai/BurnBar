@@ -36,12 +36,7 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 
 @Composable
-internal fun SkillRunPiPScreen(
-    mission: CLIAgentMissionSnapshot?,
-    error: String?,
-    onEnterPiP: () -> Unit,
-    onClose: () -> Unit,
-) {
+internal fun SkillRunPiPScreen(mission: CLIAgentMissionSnapshot?, error: String?, onEnterPiP: () -> Unit, onClose: () -> Unit) {
     val accent =
         when {
             mission?.isWaitingForApproval == true -> AuroraColors.amber
@@ -71,8 +66,8 @@ internal fun SkillRunPiPScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
-                modifier = Modifier.padding(AuroraSpacing.md.dp),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                modifier = Modifier.padding(AuroraSpacing.MD.dp),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             ) {
                 SkillRunPiPHeaderRow(
                     mission = mission,
@@ -89,16 +84,10 @@ internal fun SkillRunPiPScreen(
 }
 
 @Composable
-private fun SkillRunPiPHeaderRow(
-    mission: CLIAgentMissionSnapshot?,
-    error: String?,
-    accent: Color,
-    onEnterPiP: () -> Unit,
-    onClose: () -> Unit,
-) {
+private fun SkillRunPiPHeaderRow(mission: CLIAgentMissionSnapshot?, error: String?, accent: Color, onEnterPiP: () -> Unit, onClose: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         Icon(
             imageVector = skillRunPiPMissionIcon(mission, error),
@@ -156,7 +145,7 @@ private fun SkillRunPiPBodyText(mission: CLIAgentMissionSnapshot?, error: String
 
 @Composable
 private fun SkillRunPiPStatusPills(mission: CLIAgentMissionSnapshot?, accent: Color) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         SkillRunPiPPill(mission?.displayStatus?.uppercase() ?: "LISTENING", accent)
         mission?.deliveryMode?.displayLabel?.let { SkillRunPiPPill(it, AuroraColors.whimsy) }
     }

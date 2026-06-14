@@ -1,7 +1,7 @@
 package com.openburnbar.data.cloud
 
-import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
@@ -53,8 +53,7 @@ object AndroidCloudVaultTrustedDeviceChainVerifier {
         firestore: FirebaseFirestore,
         deviceId: String,
         localIdentity: AndroidSignalIdentityKeypair,
-    ): AndroidCloudVaultVerifiedTrustedDevice =
-        verifyTrustedDeviceChain(uid, firestore, deviceId, localIdentity, emptySet())
+    ): AndroidCloudVaultVerifiedTrustedDevice = verifyTrustedDeviceChain(uid, firestore, deviceId, localIdentity, emptySet())
 }
 
 private suspend fun verifyTrustedDeviceChain(
@@ -101,12 +100,7 @@ private suspend fun loadTrustedDeviceMaterial(userRef: DocumentReference, device
     )
 }
 
-private suspend fun loadEscrowPublicKeyData(
-    userRef: DocumentReference,
-    deviceId: String,
-    keyVersion: Int,
-    escrowFingerprint: String,
-): ByteArray {
+private suspend fun loadEscrowPublicKeyData(userRef: DocumentReference, deviceId: String, keyVersion: Int, escrowFingerprint: String): ByteArray {
     val escrowPublicKeyDoc =
         userRef.collection("escrow_public_keys").document("${deviceId}_$keyVersion").get().await()
     val escrowPublicKeyB64 =
@@ -120,11 +114,7 @@ private suspend fun loadEscrowPublicKeyData(
     return CloudVaultCryptoSupport.decodeBase64(escrowPublicKeyB64)
 }
 
-private suspend fun loadSignalIdentityMaterial(
-    userRef: DocumentReference,
-    deviceId: String,
-    keyVersion: Int,
-): TrustedSignalIdentityMaterial {
+private suspend fun loadSignalIdentityMaterial(userRef: DocumentReference, deviceId: String, keyVersion: Int): TrustedSignalIdentityMaterial {
     val signalIdentityKeyId = AndroidSignalIdentityKeypair.identityKeyId(deviceId, keyVersion)
     val signalDoc =
         userRef.collection("signal_identity_public_keys").document(signalIdentityKeyId).get().await()
@@ -147,16 +137,15 @@ private suspend fun loadSignalIdentityMaterial(
     )
 }
 
-private fun TrustedDeviceMaterial.toVerifiedTrustedDevice(): AndroidCloudVaultVerifiedTrustedDevice =
-    AndroidCloudVaultVerifiedTrustedDevice(
-        deviceId = deviceId,
-        keyVersion = keyVersion,
-        escrowPublicKeyFingerprint = escrowPublicKeyFingerprint,
-        escrowPublicKeyData = escrowPublicKeyData,
-        signalIdentityKeyId = signalIdentityKeyId,
-        signalIdentityPublicKeyFingerprint = signalIdentityPublicKeyFingerprint,
-        signalIdentityPublicKeyData = signalIdentityPublicKeyData,
-    )
+private fun TrustedDeviceMaterial.toVerifiedTrustedDevice(): AndroidCloudVaultVerifiedTrustedDevice = AndroidCloudVaultVerifiedTrustedDevice(
+    deviceId = deviceId,
+    keyVersion = keyVersion,
+    escrowPublicKeyFingerprint = escrowPublicKeyFingerprint,
+    escrowPublicKeyData = escrowPublicKeyData,
+    signalIdentityKeyId = signalIdentityKeyId,
+    signalIdentityPublicKeyFingerprint = signalIdentityPublicKeyFingerprint,
+    signalIdentityPublicKeyData = signalIdentityPublicKeyData,
+)
 
 private fun TrustedDeviceMaterial.requireLocalIdentityMatch(localIdentity: AndroidSignalIdentityKeypair) {
     check(signalIdentityPublicKeyData.contentEquals(localIdentity.publicKeyData)) {
@@ -206,10 +195,7 @@ private suspend fun verifyTrustedDeviceApprover(
     ) { "Trusted device ${verified.deviceId} has an invalid trust-chain signature." }
 }
 
-private fun TrustedDeviceMaterial.trustChainPayload(
-    uid: String,
-    approver: AndroidCloudVaultVerifiedTrustedDevice,
-): CloudVaultDeviceTrustChainPayload =
+private fun TrustedDeviceMaterial.trustChainPayload(uid: String, approver: AndroidCloudVaultVerifiedTrustedDevice): CloudVaultDeviceTrustChainPayload =
     CloudVaultDeviceTrustChainPayload(
         uid = uid,
         targetDeviceId = deviceId,

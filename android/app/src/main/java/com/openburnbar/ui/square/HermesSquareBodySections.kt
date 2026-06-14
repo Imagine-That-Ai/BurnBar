@@ -55,11 +55,7 @@ internal fun HermesSquareTopBar(state: HermesSquareUiState, actions: HermesSquar
 }
 
 @Composable
-internal fun HermesSquareLazyContent(
-    state: HermesSquareUiState,
-    actions: HermesSquareUiActions,
-    innerPadding: PaddingValues,
-) {
+internal fun HermesSquareLazyContent(state: HermesSquareUiState, actions: HermesSquareUiActions, innerPadding: PaddingValues) {
     LazyColumn(
         contentPadding = PaddingValues(top = innerPadding.calculateTopPadding() + 12.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),

@@ -82,7 +82,6 @@ fun HermesSquareScreen(
     )
 }
 
-
 // MARK: - Phase D voice entry
 
 @Composable

@@ -1,7 +1,7 @@
 package com.openburnbar.data.insights
 
-import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentChatPresentationMode
+import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.assistants.SkillRunDeliveryMode

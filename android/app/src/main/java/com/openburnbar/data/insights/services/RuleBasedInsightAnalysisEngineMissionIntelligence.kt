@@ -120,11 +120,7 @@ private fun buildRuleBasedMissionCandidates(
     return missions
 }
 
-private fun appendRuleBasedAccretionMission(
-    missions: MutableList<InsightMissionCandidate>,
-    context: RuleBasedMissionContext,
-    sourceInsightIDs: List<String>,
-) {
+private fun appendRuleBasedAccretionMission(missions: MutableList<InsightMissionCandidate>, context: RuleBasedMissionContext, sourceInsightIDs: List<String>) {
     val accretionEvidence =
         ruleBasedNonEmptyEvidence(
             listOf(context.projectCitation, context.modelCitation, context.providerCitation),
@@ -162,11 +158,7 @@ private fun appendRuleBasedAccretionMission(
     )
 }
 
-private fun appendRuleBasedDiligenceMission(
-    missions: MutableList<InsightMissionCandidate>,
-    context: RuleBasedMissionContext,
-    sourceInsightIDs: List<String>,
-) {
+private fun appendRuleBasedDiligenceMission(missions: MutableList<InsightMissionCandidate>, context: RuleBasedMissionContext, sourceInsightIDs: List<String>) {
     val diligenceEvidence =
         ruleBasedNonEmptyEvidence(
             listOf(context.projectCitation, context.quotaCitation, context.providerCitation),
@@ -184,7 +176,8 @@ private fun appendRuleBasedDiligenceMission(
             } else {
                 "Run a diligence pass on ${context.projectName}"
             },
-            summary = "Use the diligence lens to turn the brief's risk signals into an evidence-backed launch-readiness check with explicit blockers, owner, and proof.",
+            summary = "Use the diligence lens to turn the brief's risk signals into an evidence-backed " +
+                "launch-readiness check with explicit blockers, owner, and proof.",
             projectID = context.topProject?.id,
             projectDisplayName = context.topProject?.displayName,
             lens = InsightMissionCandidate.Lens.DILIGENCE,
@@ -300,7 +293,8 @@ private fun buildRuleBasedMissionRecommendations(
         InsightRecommendation(
             title = "Convert model-board advice into a routing experiment",
             rationale = "Benchmark evidence is useful only after a bounded comparison against your actual ${context.projectName} work.",
-            recommendedAction = "Run one UI/design or routine-coding session through the best-fit candidate, then compare quality, cost signal, and quota health before changing defaults.",
+            recommendedAction = "Run one UI/design or routine-coding session through the best-fit candidate, " +
+                "then compare quality, cost signal, and quota health before changing defaults.",
             estimatedImpact = "Turns abstract model rankings into a safer routing decision.",
             evidence =
             listOfNotNull(context.modelCitation) +
@@ -311,7 +305,5 @@ private fun buildRuleBasedMissionRecommendations(
     )
 }
 
-internal fun ruleBasedNonEmptyEvidence(
-    candidates: List<InsightCitation?>,
-    fallback: InsightCitation,
-): List<InsightCitation> = candidates.filterNotNull().ifEmpty { listOf(fallback) }
+internal fun ruleBasedNonEmptyEvidence(candidates: List<InsightCitation?>, fallback: InsightCitation): List<InsightCitation> =
+    candidates.filterNotNull().ifEmpty { listOf(fallback) }

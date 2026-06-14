@@ -306,7 +306,7 @@ private fun WidgetCard(widget: InsightWidget, theme: InsightTheme, isSelected: B
         border = BorderStroke(1.dp, borderColor),
         onClick = onSelect,
     ) {
-        Box(modifier = Modifier.padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)) {
+        Box(modifier = Modifier.padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp)) {
             InsightWidgetRenderer(
                 widget = widget,
                 onCitationTap = onCitationTap,

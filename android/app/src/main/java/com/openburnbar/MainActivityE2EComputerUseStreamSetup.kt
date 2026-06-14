@@ -62,15 +62,15 @@ internal object MainActivityE2EComputerUseStreamSetup {
         kotlinx.coroutines.runBlocking {
             stream.send(
                 HermesRealtimeRelayFrame(
-                type = HermesRealtimeRelayFrameType.CONTROL_CLASSIFY,
-                uid = uid,
-                connectionId = connectionId,
-                control =
-                HermesRealtimeRelayControlPayload(
-                    streamClass = MediaStreamClass.CONTROL_INPUT.raw,
-                    authorityPeerNodeId = peerNodeId,
+                    type = HermesRealtimeRelayFrameType.CONTROL_CLASSIFY,
+                    uid = uid,
+                    connectionId = connectionId,
+                    control =
+                    HermesRealtimeRelayControlPayload(
+                        streamClass = MediaStreamClass.CONTROL_INPUT.raw,
+                        authorityPeerNodeId = peerNodeId,
+                    ),
                 ),
-            ),
             )
         }
     }

@@ -69,10 +69,7 @@ internal data class CallHUDControlCallbacks(
 )
 
 @Composable
-internal fun CallHUDControlStrip(
-    media: CallHUDMediaState,
-    callbacks: CallHUDControlCallbacks,
-) {
+internal fun CallHUDControlStrip(media: CallHUDMediaState, callbacks: CallHUDControlCallbacks) {
     val isMicMuted = media.isMicMuted
     val isCameraMuted = media.isCameraMuted
     val isSharing = media.isSharing

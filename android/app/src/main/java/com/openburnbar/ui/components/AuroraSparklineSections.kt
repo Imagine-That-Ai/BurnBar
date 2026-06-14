@@ -10,12 +10,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 
-internal fun buildAuroraSparklinePoints(
-    data: List<Float>,
-    width: Float,
-    height: Float,
-    progress: Float,
-): List<Offset> {
+internal fun buildAuroraSparklinePoints(data: List<Float>, width: Float, height: Float, progress: Float): List<Offset> {
     val minVal = data.minOrNull() ?: 0f
     val maxVal = data.maxOrNull() ?: 1f
     val range = (maxVal - minVal).coerceAtLeast(0.001f)
@@ -27,26 +22,20 @@ internal fun buildAuroraSparklinePoints(
     }
 }
 
-internal fun buildCatmullRomPath(points: List<Offset>): Path =
-    Path().apply {
-        moveTo(points.first().x, points.first().y)
-        for (index in 0 until points.size - 1) {
-            val p0 = points.getOrNull(index - 1) ?: points[index]
-            val p1 = points[index]
-            val p2 = points[index + 1]
-            val p3 = points.getOrNull(index + 2) ?: points[index + 1]
-            val cp1 = Offset(p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f)
-            val cp2 = Offset(p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f)
-            cubicTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y)
-        }
+internal fun buildCatmullRomPath(points: List<Offset>): Path = Path().apply {
+    moveTo(points.first().x, points.first().y)
+    for (index in 0 until points.size - 1) {
+        val p0 = points.getOrNull(index - 1) ?: points[index]
+        val p1 = points[index]
+        val p2 = points[index + 1]
+        val p3 = points.getOrNull(index + 2) ?: points[index + 1]
+        val cp1 = Offset(p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f)
+        val cp2 = Offset(p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f)
+        cubicTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y)
     }
+}
 
-internal fun DrawScope.drawAuroraSparklineFill(
-    path: Path,
-    fillColor: Color,
-    width: Float,
-    height: Float,
-) {
+internal fun DrawScope.drawAuroraSparklineFill(path: Path, fillColor: Color, width: Float, height: Float) {
     val fillPath =
         Path().apply {
             addPath(path)

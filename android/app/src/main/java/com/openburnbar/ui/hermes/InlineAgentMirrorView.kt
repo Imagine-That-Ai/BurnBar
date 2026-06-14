@@ -83,14 +83,11 @@ enum class InlineMirrorPhase {
     WAITING_FOR_APPROVAL,
     WAITING_FOR_FRAMES,
     LIVE,
-    ERROR
+    ERROR,
 }
 
 @Composable
-fun InlineAgentMirrorView(
-    runtime: String = "hermes",
-    modifier: Modifier = Modifier,
-) {
+fun InlineAgentMirrorView(runtime: String = "hermes", modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val coordinator = remember { BurnBarApplication.mediaControlCoordinator }
@@ -115,7 +112,8 @@ fun InlineAgentMirrorView(
     val aspectRatio = inlineMirrorAspectRatio(stats)
 
     var retryTrigger by remember { mutableStateOf(0) }
-    val stateCallbacks = InlineMirrorStateCallbacks({ phase = it }, { statusMessage = it }, { requestID = it }, { mirrorSessionID = it }, { phoneControlSender = it })
+    val stateCallbacks =
+        InlineMirrorStateCallbacks({ phase = it }, { statusMessage = it }, { requestID = it }, { mirrorSessionID = it }, { phoneControlSender = it })
 
     InlineMirrorConnectionLifecycle(
         coordinator = coordinator,
@@ -148,12 +146,11 @@ fun InlineAgentMirrorView(
     InlineMirrorContent(uiState, pipeline, coroutineScope, handlers, modifier)
 }
 
-private fun inlineMirrorAspectRatio(stats: VideoReceivePipeline.Stats): Float =
-    if (stats.widthPx > 0 && stats.heightPx > 0) {
-        stats.widthPx.toFloat() / stats.heightPx.toFloat()
-    } else {
-        INLINE_MIRROR_DEFAULT_ASPECT_WIDTH / INLINE_MIRROR_DEFAULT_ASPECT_HEIGHT
-    }
+private fun inlineMirrorAspectRatio(stats: VideoReceivePipeline.Stats): Float = if (stats.widthPx > 0 && stats.heightPx > 0) {
+    stats.widthPx.toFloat() / stats.heightPx.toFloat()
+} else {
+    INLINE_MIRROR_DEFAULT_ASPECT_WIDTH / INLINE_MIRROR_DEFAULT_ASPECT_HEIGHT
+}
 
 private data class InlineMirrorStateCallbacks(
     val onPhaseChange: (InlineMirrorPhase) -> Unit,
@@ -175,12 +172,7 @@ private data class InlineMirrorHandlers(
     val onRetry: () -> Unit,
 )
 
-private fun sendInlineMirrorKey(
-    coroutineScope: CoroutineScope,
-    phoneControlSender: PhoneControlSender?,
-    key: String,
-    modifiers: List<String> = emptyList(),
-) {
+private fun sendInlineMirrorKey(coroutineScope: CoroutineScope, phoneControlSender: PhoneControlSender?, key: String, modifiers: List<String> = emptyList()) {
     val sender = phoneControlSender ?: return
     coroutineScope.launch(Dispatchers.IO) {
         runCatching {
@@ -292,10 +284,7 @@ private fun InlineMirrorAckCollector(
     }
 }
 
-private fun inlineMirrorPhoneControlSender(
-    context: Context,
-    coordinator: MediaControlStreamCoordinator,
-): PhoneControlSender? {
+private fun inlineMirrorPhoneControlSender(context: Context, coordinator: MediaControlStreamCoordinator): PhoneControlSender? {
     val activePair = coordinator.activePair.value ?: return null
     val keyStore = PhoneControlSigningKeyStore(context)
     val identity = keyStore.signingIdentity()
@@ -320,10 +309,7 @@ private fun inlineMirrorPhoneControlSender(
 }
 
 @Composable
-private fun InlineMirrorPipelinePhaseEffect(
-    pipeline: VideoReceivePipeline,
-    callbacks: InlineMirrorStateCallbacks,
-) {
+private fun InlineMirrorPipelinePhaseEffect(pipeline: VideoReceivePipeline, callbacks: InlineMirrorStateCallbacks) {
     LaunchedEffect(pipeline) {
         pipeline.phase.collectLatest { p ->
             if (p is VideoReceivePipeline.Phase.Running) {
@@ -426,11 +412,7 @@ private fun InlineMirrorLiveContent(
 }
 
 @Composable
-private fun InlineMirrorSurface(
-    aspectRatio: Float,
-    pipeline: VideoReceivePipeline,
-    coroutineScope: CoroutineScope,
-) {
+private fun InlineMirrorSurface(aspectRatio: Float, pipeline: VideoReceivePipeline, coroutineScope: CoroutineScope) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -510,11 +492,7 @@ private fun InlineMirrorPanicBanner() {
 }
 
 @Composable
-private fun InlineMirrorPlaceholder(
-    phase: InlineMirrorPhase,
-    statusMessage: String,
-    onRetry: () -> Unit,
-) {
+private fun InlineMirrorPlaceholder(phase: InlineMirrorPhase, statusMessage: String, onRetry: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -573,10 +551,7 @@ private fun InlineMirrorLoadingStatus(statusMessage: String) {
 }
 
 @Composable
-private fun TerminalButton(
-    label: String,
-    onClick: () -> Unit,
-) {
+private fun TerminalButton(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
@@ -584,14 +559,14 @@ private fun TerminalButton(
             .border(0.5.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = Color.White,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
         )
     }
 }
@@ -607,10 +582,7 @@ internal data class InlineMirrorAckPresentation(
  * status line under the canvas. Any non-accepted decision is terminal for the
  * attempt; the Mac's own `detail` copy wins when present.
  */
-internal fun inlineMirrorAckPresentation(
-    decision: HermesRealtimeRelayMirrorAck.Decision,
-    detail: String?,
-): InlineMirrorAckPresentation = when (decision) {
+internal fun inlineMirrorAckPresentation(decision: HermesRealtimeRelayMirrorAck.Decision, detail: String?): InlineMirrorAckPresentation = when (decision) {
     HermesRealtimeRelayMirrorAck.Decision.ACCEPTED ->
         InlineMirrorAckPresentation(InlineMirrorPhase.WAITING_FOR_FRAMES, "Mac accepted request. Starting stream...")
     HermesRealtimeRelayMirrorAck.Decision.DENIED ->

@@ -2,20 +2,20 @@
 
 package com.openburnbar.ui.navigation
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,10 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -118,11 +118,7 @@ internal fun BurnBarContent(
     }
 }
 
-private fun androidx.navigation.NavGraphBuilder.burnBarPulseRoute(
-    navigateToBurn: () -> Unit,
-    navigateToHermes: () -> Unit,
-    navigateToStreams: () -> Unit,
-) {
+private fun androidx.navigation.NavGraphBuilder.burnBarPulseRoute(navigateToBurn: () -> Unit, navigateToHermes: () -> Unit, navigateToStreams: () -> Unit) {
     composable(
         BurnBarTab.PULSE.route,
         deepLinks = listOf(navDeepLink { uriPattern = "burnbar://pulse" }),
@@ -142,10 +138,7 @@ private fun androidx.navigation.NavGraphBuilder.burnBarBurnRoute() {
     ) { BurnView() }
 }
 
-private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(
-    navController: NavHostController,
-    isCloudMember: Boolean,
-) {
+private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(navController: NavHostController, isCloudMember: Boolean) {
     composable(
         BurnBarTab.INSIGHTS.route,
         deepLinks = listOf(navDeepLink { uriPattern = "burnbar://insights" }),
@@ -190,10 +183,7 @@ private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(
     }
 }
 
-private fun androidx.navigation.NavGraphBuilder.burnBarStreamsRoute(
-    navController: NavHostController,
-    isCloudMember: Boolean,
-) {
+private fun androidx.navigation.NavGraphBuilder.burnBarStreamsRoute(navController: NavHostController, isCloudMember: Boolean) {
     composable(
         BurnBarTab.STREAMS.route,
         deepLinks =
@@ -503,11 +493,7 @@ internal fun BurnBarNavigationRail(currentTab: BurnBarTab, onSelect: (BurnBarTab
 }
 
 @Composable
-private fun BurnBarNavigationRailItem(
-    tab: BurnBarTab,
-    selected: Boolean,
-    onSelect: () -> Unit,
-) {
+private fun BurnBarNavigationRailItem(tab: BurnBarTab, selected: Boolean, onSelect: () -> Unit) {
     Column(
         modifier =
         Modifier
@@ -568,11 +554,7 @@ internal data class BurnBarSignedInShellState(
 )
 
 @Composable
-internal fun BurnBarSignedInShell(
-    state: BurnBarSignedInShellState,
-    navController: NavHostController,
-    navigateTo: (BurnBarTab) -> Unit,
-) {
+internal fun BurnBarSignedInShell(state: BurnBarSignedInShellState, navController: NavHostController, navigateTo: (BurnBarTab) -> Unit) {
     if (state.isWideScreen) {
         BurnBarWideScreenShell(state = state, navController = navController, navigateTo = navigateTo)
     } else {
@@ -582,11 +564,7 @@ internal fun BurnBarSignedInShell(
 }
 
 @Composable
-private fun BurnBarWideScreenShell(
-    state: BurnBarSignedInShellState,
-    navController: NavHostController,
-    navigateTo: (BurnBarTab) -> Unit,
-) {
+private fun BurnBarWideScreenShell(state: BurnBarSignedInShellState, navController: NavHostController, navigateTo: (BurnBarTab) -> Unit) {
     androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxSize()) {
         BurnBarNavigationRail(
             currentTab = state.currentTab,
@@ -614,11 +592,7 @@ private fun BurnBarWideScreenShell(
 }
 
 @Composable
-private fun BurnBarPhoneShell(
-    state: BurnBarSignedInShellState,
-    navController: NavHostController,
-    navigateTo: (BurnBarTab) -> Unit,
-) {
+private fun BurnBarPhoneShell(state: BurnBarSignedInShellState, navController: NavHostController, navigateTo: (BurnBarTab) -> Unit) {
     Box(
         modifier =
         Modifier
@@ -663,7 +637,7 @@ private fun BurnBarSignedInOverlays(state: BurnBarSignedInShellState, navigateTo
             modifier =
             Modifier
                 .fillMaxSize()
-                .padding(bottom = if (!state.isWideScreen) 84.dp else com.openburnbar.ui.theme.AuroraSpacing.lg.dp),
+                .padding(bottom = if (!state.isWideScreen) 84.dp else com.openburnbar.ui.theme.AuroraSpacing.LG.dp),
             contentAlignment = androidx.compose.ui.Alignment.BottomEnd,
         ) {
             com.openburnbar.ui.components.FloatingChatPill(
@@ -681,6 +655,6 @@ private fun BurnBarSignedInOverlays(state: BurnBarSignedInShellState, navigateTo
         modifier =
         Modifier
             .fillMaxSize()
-            .padding(bottom = if (!state.isWideScreen) 104.dp else com.openburnbar.ui.theme.AuroraSpacing.lg.dp),
+            .padding(bottom = if (!state.isWideScreen) 104.dp else com.openburnbar.ui.theme.AuroraSpacing.LG.dp),
     )
 }

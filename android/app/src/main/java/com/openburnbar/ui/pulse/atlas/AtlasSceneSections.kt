@@ -88,8 +88,8 @@ fun TrendAtlasCard(
 
     AuroraGlassCard(
         modifier = modifier,
-        cornerRadius = AuroraRadius.xl,
-        contentPadding = AuroraSpacing.lg.dp,
+        cornerRadius = AuroraRadius.XL,
+        contentPadding = AuroraSpacing.LG.dp,
     ) {
         TrendAtlasCardBody(
             digest = digest,
@@ -126,9 +126,9 @@ internal fun TrendAtlasCardBody(
     )
     Spacer(Modifier.height(4.dp))
     Text(text = scene.subtitle, style = AuroraType.body, color = MaterialTheme.colorScheme.onSurface)
-    Spacer(Modifier.height(AuroraSpacing.md.dp))
+    Spacer(Modifier.height(AuroraSpacing.MD.dp))
     SceneChipRail(current = scene, onSelect = onSceneChange)
-    Spacer(Modifier.height(AuroraSpacing.md.dp))
+    Spacer(Modifier.height(AuroraSpacing.MD.dp))
     TrendAtlasSceneContent(
         scene = scene,
         digest = digest,
@@ -143,7 +143,7 @@ internal fun TrendAtlasCardBody(
             }
         },
     )
-    Spacer(Modifier.height(AuroraSpacing.md.dp))
+    Spacer(Modifier.height(AuroraSpacing.MD.dp))
     InsightAutoRotator(insights = insights, paused = paused)
 }
 

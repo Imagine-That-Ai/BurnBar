@@ -90,11 +90,7 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Escrow device registration failed.")
     }
 
-    suspend fun approveEscrowDeviceTrust(
-        deviceId: String,
-        approverDeviceId: String? = null,
-        trustChain: Map<String, Any>? = null,
-    ) {
+    suspend fun approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = null, trustChain: Map<String, Any>? = null) {
         requireAuthenticatedUser()
         val nonce = issueHighRiskActionNonce()
         val payload = mutableMapOf<String, Any>("deviceId" to deviceId, "nonce" to nonce)
@@ -141,7 +137,7 @@ class ComputerUseSecurityCallableClient(
         if (requirementId.isNullOrEmpty() || rotatingDeviceId.isNullOrEmpty()) {
             return revocation.copy(
                 cloudVaultRotationFailureMessage =
-                    "Cloud Vault rotation is required, but this device's trusted device identity is unavailable.",
+                "Cloud Vault rotation is required, but this device's trusted device identity is unavailable.",
             )
         }
         return runCatching {
@@ -258,12 +254,7 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Relay sender-key publication failed.")
     }
 
-    suspend fun publishAgentGrantAuthority(
-        deviceId: String,
-        peerNodeId: String,
-        publicKeyBase64: String,
-        keyKind: String? = null,
-    ) {
+    suspend fun publishAgentGrantAuthority(deviceId: String, peerNodeId: String, publicKeyBase64: String, keyKind: String? = null) {
         requireAuthenticatedUser()
         bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()

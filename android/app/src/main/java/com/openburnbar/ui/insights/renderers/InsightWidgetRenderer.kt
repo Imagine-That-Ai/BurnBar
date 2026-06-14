@@ -109,7 +109,7 @@ fun InsightWidgetRenderer(
     Column(modifier = modifier.fillMaxWidth()) {
         if (showHeader) {
             WidgetHeader(widget)
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
         }
         when (widget.kind) {
             InsightWidgetKind.KPI_TILE -> KpiTileRenderer(widget, theme)
@@ -141,20 +141,19 @@ fun InsightWidgetRenderer(
         }
         val citations = widget.rendererCitations()
         if (citations.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
             CitationChipRow(citations = citations, onTap = onCitationTap)
         }
     }
 }
 
-private fun InsightWidget.rendererCitations(): List<InsightCitation> =
-    when (val widgetData = data) {
-        is InsightWidgetData.AnomalyTable -> widgetData.rows.flatMap { it.citations }
-        is InsightWidgetData.Narrative -> widgetData.citations
-        is InsightWidgetData.Recommendation -> widgetData.citations
-        is InsightWidgetData.Drilldown -> widgetData.rows.map { it.citation }
-        else -> emptyList()
-    }.distinctBy { it.id }
+private fun InsightWidget.rendererCitations(): List<InsightCitation> = when (val widgetData = data) {
+    is InsightWidgetData.AnomalyTable -> widgetData.rows.flatMap { it.citations }
+    is InsightWidgetData.Narrative -> widgetData.citations
+    is InsightWidgetData.Recommendation -> widgetData.citations
+    is InsightWidgetData.Drilldown -> widgetData.rows.map { it.citation }
+    else -> emptyList()
+}.distinctBy { it.id }
 
 // ─── Widget header ────────────────────────────────────────────────────────────
 
@@ -237,7 +236,7 @@ private fun KpiTileRenderer(w: InsightWidget, theme: InsightTheme) {
             }
         }
         if (data.sparkline.isNotEmpty()) {
-            MiniSparkline(data.sparkline, color = accent, modifier = Modifier.size(72.dp, InsightsSpacing.sparklineHeight.dp))
+            MiniSparkline(data.sparkline, color = accent, modifier = Modifier.size(72.dp, InsightsSpacing.SPARKLINE_HEIGHT.dp))
         }
     }
 }
@@ -252,7 +251,7 @@ private fun TimeSeriesRenderer(w: InsightWidget) {
         if (data.series.isNotEmpty() && data.series.first().points.isNotEmpty()) {
             SparklineChart(
                 series = data.series,
-                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp),
+                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.CHART_HEIGHT.dp),
             )
         } else {
             Text("No data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -382,9 +381,9 @@ private fun RecommendationRenderer(w: InsightWidget) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(InsightsSpacing.cardRadius.dp),
+        shape = RoundedCornerShape(InsightsSpacing.CARD_RADIUS.dp),
     ) {
-        Column(modifier = Modifier.padding(AuroraSpacing.sm.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.SM.dp)) {
             Text(text = data.headline, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(2.dp))
             Text(text = data.rationale, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -674,7 +673,7 @@ private fun ForecastRenderer(w: InsightWidget) {
         if (data.actual.isNotEmpty()) {
             SparklineChart(
                 series = listOf(InsightWidgetData.TimeSeries.Series(id = "actual", name = "Actual", points = data.actual, colorHex = null)),
-                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp),
+                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.CHART_HEIGHT.dp),
             )
         }
         if (data.summary != null) Text(text = data.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

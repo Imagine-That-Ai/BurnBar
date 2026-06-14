@@ -38,11 +38,10 @@ object PhoneControlSecureEnclaveKeyPolicy {
  * ON (each caller already falls back to the legacy lane on any establishment
  * or keystore failure, so this never breaks functionality).
  */
-internal fun remoteConfigProtectionFlag(key: String): Boolean =
-    runCatching {
-        val value = FirebaseRemoteConfig.getInstance().getValue(key)
-        if (value.source == FirebaseRemoteConfig.VALUE_SOURCE_STATIC) true else value.asBoolean()
-    }.getOrDefault(true)
+internal fun remoteConfigProtectionFlag(key: String): Boolean = runCatching {
+    val value = FirebaseRemoteConfig.getInstance().getValue(key)
+    if (value.source == FirebaseRemoteConfig.VALUE_SOURCE_STATIC) true else value.asBoolean()
+}.getOrDefault(true)
 
 /**
  * F2 — AndroidKeyStore custody for the non-exportable P-256 phone-control

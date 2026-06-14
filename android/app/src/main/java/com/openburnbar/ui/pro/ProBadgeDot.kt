@@ -30,7 +30,7 @@ import com.openburnbar.ui.theme.LocalAuroraReduceMotion
  * of Pro is never invisible without being intrusive.
  */
 @Composable
-fun ProBadgeDot(modifier: Modifier = Modifier, pulse: ProBadgePulse = ProBadgePulse.Breathing, diameter: Dp = ProLayout.badgeDotDp.dp) {
+fun ProBadgeDot(modifier: Modifier = Modifier, pulse: ProBadgePulse = ProBadgePulse.Breathing, diameter: Dp = ProLayout.BADGE_DOT_DP.dp) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val breathing =
         if (pulse == ProBadgePulse.Breathing && !reduceMotion) {
@@ -39,7 +39,7 @@ fun ProBadgeDot(modifier: Modifier = Modifier, pulse: ProBadgePulse = ProBadgePu
                 targetValue = 1.0f,
                 animationSpec =
                 infiniteRepeatable(
-                    animation = tween(ProMotion.breathingDurationMs, easing = LinearEasing),
+                    animation = tween(ProMotion.BREATHING_DURATION_MS, easing = LinearEasing),
                     repeatMode = RepeatMode.Reverse,
                 ),
                 label = "proBadgeBreathPhase",

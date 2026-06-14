@@ -37,12 +37,7 @@ import com.openburnbar.ui.theme.AuroraType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun BudgetSettingsScaffold(
-    isDark: Boolean,
-    onBack: () -> Unit,
-    onAddRule: () -> Unit,
-    content: @Composable () -> Unit,
-) {
+internal fun BudgetSettingsScaffold(isDark: Boolean, onBack: () -> Unit, onAddRule: () -> Unit, content: @Composable () -> Unit) {
     Column(
         modifier =
         Modifier
@@ -50,11 +45,11 @@ internal fun BudgetSettingsScaffold(
             .background(
                 if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground,
             )
-            .padding(horizontal = AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         BudgetSettingsHeader(onBack = onBack, onAddRule = onAddRule)
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         content()
     }
 }
@@ -72,7 +67,7 @@ internal fun BudgetSettingsHeader(onBack: () -> Unit, onAddRule: () -> Unit) {
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             text = "Budgeting & Rules",
             style = AuroraType.displayLarge,
@@ -92,14 +87,14 @@ internal fun BudgetSettingsHeader(onBack: () -> Unit, onAddRule: () -> Unit) {
 @Composable
 internal fun BudgetSettingsIntroCard() {
     AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(AuroraSpacing.md.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.MD.dp)) {
             Text(
                 text = "How Budgeting Works",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
             Text(
                 text = "Per-usage credentials get hard blocks when a rule is exceeded. Subscription credentials are exempt.",
                 style = AuroraType.caption,
@@ -110,14 +105,9 @@ internal fun BudgetSettingsIntroCard() {
 }
 
 @Composable
-internal fun BudgetSettingsContent(
-    state: BudgetCenterState,
-    isDark: Boolean,
-    onRuleDeleted: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+internal fun BudgetSettingsContent(state: BudgetCenterState, isDark: Boolean, onRuleDeleted: () -> Unit, modifier: Modifier = Modifier) {
     LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         modifier = modifier.fillMaxWidth(),
     ) {
         item { BudgetSettingsIntroCard() }

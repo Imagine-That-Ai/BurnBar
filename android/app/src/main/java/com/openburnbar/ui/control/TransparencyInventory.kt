@@ -44,13 +44,13 @@ internal fun TierChip(tier: EncryptionTier, modifier: Modifier = Modifier) {
     Row(
         modifier =
         modifier
-            .background(color.copy(alpha = 0.14f), RoundedCornerShape(AuroraRadius.full.dp))
-            .border(0.75.dp, color.copy(alpha = 0.45f), RoundedCornerShape(AuroraRadius.full.dp))
-            .padding(horizontal = AuroraSpacing.sm.dp, vertical = 2.dp),
+            .background(color.copy(alpha = 0.14f), RoundedCornerShape(AuroraRadius.FULL.dp))
+            .border(0.75.dp, color.copy(alpha = 0.45f), RoundedCornerShape(AuroraRadius.FULL.dp))
+            .padding(horizontal = AuroraSpacing.SM.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.size(7.dp).background(color, CircleShape))
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         Text(PensieveControlTokens.tierLabel(tier), style = AuroraType.tiny, color = color)
     }
 }
@@ -81,14 +81,14 @@ internal fun TransparencyInventoryItem(
         // A locked marquee feature taps straight into the evocative unlock sheet
         // (spec §5) instead of opening a detail pane behind a raw lock string.
         onClick = { if (gatedFeature != null && onUnlock != null) onUnlock(gatedFeature) else onClick() },
-        cornerRadius = AuroraRadius.lg,
+        cornerRadius = AuroraRadius.LG,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             DomainGlyph(accent = accent, selected = selected)
-            Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -97,7 +97,7 @@ internal fun TransparencyInventoryItem(
                         color = PensieveControlTokens.mercuryBright,
                     )
                     if (locked) {
-                        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                         com.openburnbar.ui.pro.TierLockBadge(tier = requiredCloudTierForDomain(domain.id))
                     }
                 }
@@ -109,7 +109,7 @@ internal fun TransparencyInventoryItem(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TierChip(domain.encryptionTier)
@@ -157,11 +157,10 @@ private fun FootprintLabel(row: DomainRow) {
 }
 
 /** A domain is "locked" when its entitlement gate exceeds the member's tier. */
-internal fun isDomainLocked(domain: DataDomain, tier: DataTier): Boolean =
-    when (domain.entitlementGate) {
-        null -> false
-        "burnbar_pro" -> tier == DataTier.FREE
-        "burnbar_pro_max" -> tier != DataTier.PRO && tier != DataTier.ULTRA
-        "burnbar_pro_max_ultra", "burnbar_ultra" -> tier != DataTier.ULTRA
-        else -> false
-    }
+internal fun isDomainLocked(domain: DataDomain, tier: DataTier): Boolean = when (domain.entitlementGate) {
+    null -> false
+    "burnbar_pro" -> tier == DataTier.FREE
+    "burnbar_pro_max" -> tier != DataTier.PRO && tier != DataTier.ULTRA
+    "burnbar_pro_max_ultra", "burnbar_ultra" -> tier != DataTier.ULTRA
+    else -> false
+}

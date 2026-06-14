@@ -23,8 +23,10 @@ class AndroidCloudVaultRevocationRotationTest {
             listOf(
                 mapOf("requirementId" to "req-1", "survivorDeviceIds" to listOf("dev-a", "dev-b")),
                 mapOf("id" to "req-2", "survivorDeviceIds" to listOf(" dev-c ", "")),
-                mapOf("survivorDeviceIds" to listOf("dev-x")), // no id => dropped
-                mapOf("requirementId" to "", "survivorDeviceIds" to listOf("dev-y")), // empty id => dropped
+                // no id => dropped
+                mapOf("survivorDeviceIds" to listOf("dev-x")),
+                // empty id => dropped
+                mapOf("requirementId" to "", "survivorDeviceIds" to listOf("dev-y")),
             )
 
         val parsed = AndroidCloudVaultRevocationRotation.parsePendingRequirements(raw)
@@ -56,7 +58,8 @@ class AndroidCloudVaultRevocationRotationTest {
         val requirements =
             listOf(
                 AndroidCloudVaultRevocationRotation.PendingRequirement("req-1", listOf("dev-a")),
-                AndroidCloudVaultRevocationRotation.PendingRequirement("req-1", listOf("dev-a")), // repeat
+                // repeat
+                AndroidCloudVaultRevocationRotation.PendingRequirement("req-1", listOf("dev-a")),
                 AndroidCloudVaultRevocationRotation.PendingRequirement("req-2", listOf("dev-a")),
             )
 

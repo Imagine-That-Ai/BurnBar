@@ -84,11 +84,7 @@ internal fun WallpaperProviderGlyphSection(
 }
 
 @Composable
-private fun WallpaperProviderGlyphPicker(
-    prefs: SharedPreferences,
-    providerGlyphs: Set<AgentProvider>,
-    onProviderGlyphsChange: (Set<AgentProvider>) -> Unit,
-) {
+private fun WallpaperProviderGlyphPicker(prefs: SharedPreferences, providerGlyphs: Set<AgentProvider>, onProviderGlyphsChange: (Set<AgentProvider>) -> Unit) {
     Column(
         modifier =
         Modifier

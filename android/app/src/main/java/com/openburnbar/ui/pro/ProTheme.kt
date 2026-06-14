@@ -80,19 +80,19 @@ object ProTypography {
 }
 
 object ProMotion {
-    const val specularDurationMs = 2800
-    const val mercuryShimmerDurationMs = 3000L
-    const val breathingDurationMs = 2400
+    const val SPECULAR_DURATION_MS = 2800
+    const val MERCURY_SHIMMER_DURATION_MS = 3000L
+    const val BREATHING_DURATION_MS = 2400
 
     fun <T> posterSettleSpec(): AnimationSpec<T> = spring(stiffness = 240f, dampingRatio = 0.78f)
 }
 
 object ProLayout {
-    const val cardRadiusDp = 18
-    const val bandRadiusDp = 14
-    const val foilStrokeDp = 1.0f
-    const val crestLargeDp = 48
-    const val crestMediumDp = 36
-    const val crestSmallDp = 24
-    const val badgeDotDp = 6
+    const val CARD_RADIUS_DP = 18
+    const val BAND_RADIUS_DP = 14
+    const val FOIL_STROKE_DP = 1.0f
+    const val CREST_LARGE_DP = 48
+    const val CREST_MEDIUM_DP = 36
+    const val CREST_SMALL_DP = 24
+    const val BADGE_DOT_DP = 6
 }

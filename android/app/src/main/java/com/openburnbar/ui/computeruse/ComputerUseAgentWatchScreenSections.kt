@@ -93,12 +93,7 @@ internal fun ComputerUseAgentWatchContent(
 }
 
 @Composable
-private fun AgentWatchLiveSession(
-    state: ComputerUseWatchState,
-    hasLiveMirror: Boolean,
-    callbacks: AgentWatchCallbacks,
-    modifier: Modifier = Modifier,
-) {
+private fun AgentWatchLiveSession(state: ComputerUseWatchState, hasLiveMirror: Boolean, callbacks: AgentWatchCallbacks, modifier: Modifier = Modifier) {
     Box(
         modifier =
         modifier
@@ -117,7 +112,7 @@ private fun AgentWatchLiveSession(
             Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .padding(AuroraSpacing.md.dp),
+                .padding(AuroraSpacing.MD.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             StatusStrip(state = state, onDowngrade = callbacks.onDowngrade)
@@ -144,7 +139,7 @@ private fun AgentWatchLiveSession(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(AuroraSpacing.md.dp),
+                .padding(AuroraSpacing.MD.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             TimelinePreview(entries = state.actionTimeline.takeLast(3))
@@ -393,7 +388,12 @@ private fun SetupChecklist(model: SetupChecklistModel, actions: SetupChecklistAc
             )
             ChecklistRow(
                 title = "Live Computer Use session",
-                detail = if (model.hasLiveSession) "Streaming — the mirror will appear above." else "Ask the agent on your Mac to do something. The mirror auto-opens here.",
+                detail =
+                if (model.hasLiveSession) {
+                    "Streaming — the mirror will appear above."
+                } else {
+                    "Ask the agent on your Mac to do something. The mirror auto-opens here."
+                },
                 isDone = model.hasLiveSession,
                 actionLabel = null,
                 onAction = {},
