@@ -618,10 +618,10 @@ private struct MobileChatHistoryIndex: Codable {
 /// limited to routing/count/list metadata.
 @MainActor
 final class MobileChatFirestoreStore: MobileChatCloudMirroring {
-    private let firestoreProvider: () -> Firestore
+    private let firestoreProvider: @Sendable () -> Firestore
     private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "MobileChatFirestoreStore")
 
-    init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
+    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
         self.firestoreProvider = firestoreProvider
     }
 
@@ -647,7 +647,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
     func upsert(_ thread: MobileChatThread) async throws {
         let uid = try resolveUID()
         let db = firestoreProvider()
-        let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
+        let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: firestoreProvider())
         let cloudThread = Self.threadForCloud(thread)
         let payloadData = try Self.cloudPayloadEncoder.encode(cloudThread)
         let aadContext = try CloudVaultAADContext(
@@ -698,7 +698,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             if let signalEnvelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
                 domainID: "conversations_chat",
                 uid: uid,
-                firestore: db,
+                firestore: firestoreProvider(),
                 collection: "mobile_assistant_chats",
                 docId: thread.id,
                 plaintext: payloadData,
@@ -855,14 +855,14 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             .order(by: "updatedAt", descending: true)
             .limit(to: 200)
             .getDocuments()
-        let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid, firestore: db)
+        let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid, firestore: firestoreProvider())
         // Resolve the PINNED trusted-sender set once so a thread written by ANOTHER trusted
         // device verifies its sender signature cross-device (else only self-authored threads
         // verify and peer threads fall back to legacy).
         var trustedSenders: [String: Data] = [:]
         if let identity = key?.signalIdentity {
             trustedSenders = await MobileCloudVaultSignalPayloads.trustedSenderPublicKeys(
-                uid: uid, firestore: db, localIdentity: identity
+                uid: uid, firestore: firestoreProvider(), localIdentity: identity
             )
         }
 

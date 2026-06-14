@@ -17,6 +17,7 @@ extension Notification.Name {
 /// RR-5 / T-PTR-02: survivor-side Cloud Vault rotation pickup on iOS launch,
 /// foreground, and post-revoke. Mirrors Android `CloudVaultRotationPickupLifecycle`
 /// and Mac `AppDelegate` pickup triggers.
+@MainActor
 enum CloudVaultRotationPickupLifecycle {
     private static let debounceInterval: TimeInterval = 30
     private static var installed = false
@@ -34,7 +35,8 @@ enum CloudVaultRotationPickupLifecycle {
             object: nil,
             queue: .main
         ) { _ in
-            schedulePickup(force: false)
+            // Delivered on `.main`, so assume main-actor isolation.
+            MainActor.assumeIsolated { schedulePickup(force: false) }
         }
 
         postRevokeObserver = NotificationCenter.default.addObserver(
@@ -42,7 +44,8 @@ enum CloudVaultRotationPickupLifecycle {
             object: nil,
             queue: .main
         ) { _ in
-            schedulePickup(force: true)
+            // Delivered on `.main`, so assume main-actor isolation.
+            MainActor.assumeIsolated { schedulePickup(force: true) }
         }
 
         schedulePickup(force: true)

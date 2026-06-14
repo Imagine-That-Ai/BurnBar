@@ -155,16 +155,15 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
                 fileManager: fileManager,
                 snapshotStore: snapshotStore
             ),
-            miniMaxModeProvider: { mode },
-            factoryPlanProvider: { .unknown },
-            xaiPlanProvider: { .unknown },
-            mimoTokenPlanRegionProvider: { .sgp },
-            mimoTokenPlanTierProvider: { nil },
-            mimoTokenPlanBillingCycleProvider: { .monthly },
+            miniMaxMode: mode,
+            factoryPlan: .unknown,
+            xaiPlan: .unknown,
+            mimoTokenPlanRegion: .sgp,
+            mimoTokenPlanTier: nil,
+            mimoTokenPlanBillingCycle: .monthly,
             claudeBridgeStatus: ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil),
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
-            refreshClaudeBridgeStatus: { ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil) },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
             resolvedAPIKeys: apiKey.map { ["minimax": $0] } ?? [:]
         )

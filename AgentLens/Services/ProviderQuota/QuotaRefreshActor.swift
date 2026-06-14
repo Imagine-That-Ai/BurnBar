@@ -45,7 +45,10 @@ actor QuotaRefreshActor {
     let adapters: [AgentProvider: any ProviderQuotaAdapter]
     let refreshProviders: [AgentProvider]
 
-    private var codexRolloutScanCache: CodexRolloutScanCache
+    /// Codex rollout-scan cache held in a `Locked` box so the `@Sendable`
+    /// write-back passed to off-actor adapters can update it without crossing the
+    /// actor boundary on every scan.
+    private let codexRolloutScanCacheBox: Locked<CodexRolloutScanCache>
 
     init(
         settingsManager: SettingsManager,
@@ -98,7 +101,7 @@ actor QuotaRefreshActor {
         case .failed, .missing:
             break
         }
-        self.codexRolloutScanCache = initialCache
+        self.codexRolloutScanCacheBox = Locked(initialCache)
     }
 
     func fetchSnapshot(
@@ -166,11 +169,16 @@ actor QuotaRefreshActor {
 
         let keyStore = self.keyStore
         let runtimeKeyStore = self.providerRuntimeKeyStore
-        let resolvedKeys = await MainActor.run {
-            resolveAllAPIKeys(keyStore: keyStore, providerRuntimeKeyStore: runtimeKeyStore)
+        let planReaders = self.planReaders
+        // Resolve every main-actor input (API keys + the user's plan selection)
+        // in a single hop so adapters run off the main actor on `Sendable` values.
+        let resolved = await MainActor.run { () -> (keys: [String: String?], plan: ProviderQuotaPlanSnapshot) in
+            let keys = resolveAllAPIKeys(keyStore: keyStore, providerRuntimeKeyStore: runtimeKeyStore)
+            return (keys, planReaders.resolvedSnapshot())
         }
+        let plan = resolved.plan
 
-        let currentCache = self.codexRolloutScanCache
+        let codexCacheBox = self.codexRolloutScanCacheBox
         let context = ProviderQuotaAdapterContext(
             appPaths: appPaths,
             fileManager: fileManager,
@@ -180,23 +188,22 @@ actor QuotaRefreshActor {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: planReaders.miniMaxModeProvider,
-            factoryPlanProvider: planReaders.factoryPlanProvider,
-            xaiPlanProvider: planReaders.xaiPlanProvider,
-            mimoTokenPlanRegionProvider: planReaders.mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: planReaders.mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: planReaders.mimoTokenPlanBillingCycleProvider,
+            miniMaxMode: plan.miniMaxMode,
+            factoryPlan: plan.factoryPlan,
+            xaiPlan: plan.xaiPlan,
+            mimoTokenPlanRegion: plan.mimoTokenPlanRegion,
+            mimoTokenPlanTier: plan.mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: plan.mimoTokenPlanBillingCycle,
             claudeBridgeStatus: claudeBridgeStatus,
-            codexRolloutScanCache: currentCache,
-            updateCodexRolloutScanCache: { [self] cache, didChange in
-                self.codexRolloutScanCache = cache
+            codexRolloutScanCache: codexCacheBox.read(),
+            updateCodexRolloutScanCache: { [codexCacheBox, snapshotStore] cache, didChange in
+                codexCacheBox.write(cache)
                 if didChange {
                     snapshotStore.persistCodexRolloutScanCache(cache)
                 }
             },
-            refreshClaudeBridgeStatus: { claudeBridgeStatus },
             claudeCredentialsReader: claudeCredentialsReader,
-            resolvedAPIKeys: resolvedKeys
+            resolvedAPIKeys: resolved.keys
         )
         return context
     }

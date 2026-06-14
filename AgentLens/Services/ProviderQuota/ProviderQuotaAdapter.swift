@@ -6,10 +6,13 @@ protocol ProviderQuotaAdapter: Sendable {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot
 }
 
-// AUDIT(@unchecked Sendable): This is an immutable adapter payload assembled on
-// the main actor before quota work is dispatched. Reference-typed members are
-// either read-only service handles or have their own synchronization/actor
-// boundary. Closures are used only as configuration readers.
+// Immutable adapter payload assembled before quota work is dispatched into
+// `QuotaRefreshActor`/adapters. Every member is `Sendable`: value snapshots of
+// the user's plan selection (read on the main actor at build time), value-type
+// service handles (`ClaudeQuotaBridgeManager`/`ProviderQuotaSnapshotStore` are
+// structs), and the codex-cache write-back closure captures only the `Locked`
+// box plus the value-type snapshot store — so the context is genuinely
+// `Sendable` with no actor-isolated captures.
 struct ProviderQuotaAdapterContext: Sendable {
     let appPaths: OpenBurnBarAppPaths
     let fileManager: FileManager
@@ -19,16 +22,15 @@ struct ProviderQuotaAdapterContext: Sendable {
     let dataStoreActor: DataStoreActor
     let snapshotStore: ProviderQuotaSnapshotStore
     let bridgeManager: ClaudeQuotaBridgeManager
-    let miniMaxModeProvider: () -> MiniMaxQuotaMode
-    let factoryPlanProvider: () -> FactoryQuotaPlanTier
-    let xaiPlanProvider: () -> XAIQuotaPlanTier
-    let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
-    let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
-    let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
+    let miniMaxMode: MiniMaxQuotaMode
+    let factoryPlan: FactoryQuotaPlanTier
+    let xaiPlan: XAIQuotaPlanTier
+    let mimoTokenPlanRegion: ProviderEndpointRegion
+    let mimoTokenPlanTier: MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle
     let claudeBridgeStatus: ClaudeQuotaBridgeStatus
     let codexRolloutScanCache: CodexRolloutScanCache
-    let updateCodexRolloutScanCache: (CodexRolloutScanCache, Bool) -> Void
-    let refreshClaudeBridgeStatus: () -> ClaudeQuotaBridgeStatus
+    let updateCodexRolloutScanCache: @Sendable (CodexRolloutScanCache, Bool) -> Void
     /// Optional explicit Claude OAuth credentials. Production uses
     /// `NoClaudeCredentialsReader` so OpenBurnBar never reads Claude
     /// Code's Keychain item or `.credentials.json` fallback.
@@ -49,16 +51,15 @@ extension ProviderQuotaAdapterContext {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
-            refreshClaudeBridgeStatus: refreshClaudeBridgeStatus,
             claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedAPIKeys
         )
@@ -74,16 +75,15 @@ extension ProviderQuotaAdapterContext {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
-            refreshClaudeBridgeStatus: refreshClaudeBridgeStatus,
             claudeCredentialsReader: reader,
             resolvedAPIKeys: resolvedAPIKeys
         )
@@ -99,16 +99,15 @@ extension ProviderQuotaAdapterContext {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
             claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
-            refreshClaudeBridgeStatus: refreshClaudeBridgeStatus,
             claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedAPIKeys
         )

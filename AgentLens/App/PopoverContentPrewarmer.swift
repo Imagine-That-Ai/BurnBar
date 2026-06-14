@@ -22,14 +22,16 @@ import Foundation
 final class PopoverContentPrewarmer {
     private let isPopoverShown: () -> Bool
     private let prime: () -> Void
-    private let scheduler: (@escaping () -> Void) -> Void
+    private let scheduler: (@escaping @MainActor () -> Void) -> Void
     private(set) var isPrimeScheduled = false
 
     init(
         isPopoverShown: @escaping () -> Bool,
         prime: @escaping () -> Void,
-        scheduler: @escaping (@escaping () -> Void) -> Void = { work in
-            DispatchQueue.main.async { work() }
+        scheduler: @escaping (@escaping @MainActor () -> Void) -> Void = { work in
+            // `work` is `@MainActor` (hence `Sendable`), so it can cross into the
+            // dispatch block; it runs back on the main actor next runloop turn.
+            DispatchQueue.main.async { MainActor.assumeIsolated { work() } }
         }
     ) {
         self.isPopoverShown = isPopoverShown

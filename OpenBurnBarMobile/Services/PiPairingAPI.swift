@@ -166,7 +166,7 @@ final class PiPairingAPI: PiPairingServicing {
     }
 
     private func decodeHermesValue<T: Decodable>(_ type: T.Type, from raw: Any) throws -> T {
-        let sanitized = FirestoreRepository.shared.sanitizeForJSON(raw)
+        let sanitized = FirestoreRepository.sanitizeForJSON(raw)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         return try JSONDecoder().decode(type, from: data)
     }

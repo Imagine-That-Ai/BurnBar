@@ -241,6 +241,7 @@ extension View {
 /// Shared pill plate for the segmented picker and every toolbar pill. On
 /// macOS 26 a faint surface wash rides on real Liquid Glass (nothing sits
 /// under glass); earlier systems keep the hand-tuned material stack.
+@MainActor
 @ViewBuilder
 private var toolbarPillSurface: some View {
     let shape = RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)

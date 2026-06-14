@@ -40,7 +40,7 @@ struct MimoQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        let region = context.mimoTokenPlanRegionProvider()
+        let region = context.mimoTokenPlanRegion
         let profile = ProviderEndpointProfileRegistry.mimoTokenPlan(region: region)
         guard let remainsURL = profile.quotaRemainsURL.flatMap(URL.init(string:)) else {
             return unavailableSnapshot(
@@ -88,8 +88,8 @@ struct MimoQuotaAdapter: ProviderQuotaAdapter {
             }
         }
 
-        if let tier = context.mimoTokenPlanTierProvider() {
-            let cycle = context.mimoTokenPlanBillingCycleProvider()
+        if let tier = context.mimoTokenPlanTier {
+            let cycle = context.mimoTokenPlanBillingCycle
             let limit = tier.creditLimit(billingCycle: cycle)
             return ProviderQuotaSnapshot(
                 provider: .mimo,

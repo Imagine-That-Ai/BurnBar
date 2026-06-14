@@ -188,7 +188,7 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         // chosen a tier yet, fall back to Pro (20M) so the card still renders
         // meaningful numbers — marked `isEstimated` so the UI reflects that
         // it's inferred rather than confirmed.
-        let planTier = context.factoryPlanProvider()
+        let planTier = context.factoryPlan
         let confirmedCap = planTier.monthlyTokenCap
         let monthlyCap = confirmedCap ?? Self.inferredMonthlyTokenCap
         let isInferredCap = confirmedCap == nil

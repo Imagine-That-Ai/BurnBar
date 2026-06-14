@@ -120,25 +120,39 @@ private final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
     }
 }
 
-// AUDIT(@unchecked Sendable): quota adapters need synchronous plan readers while
-// running inside the quota refresh actor. The readers are immutable closures
-// installed during ProviderQuotaService initialization; their backing settings
-// storage is UserDefaults-based and thread-safe for reads.
+/// An immutable, `Sendable` value snapshot of the user's quota-plan selection,
+/// captured on the main actor and handed to adapters that run off it. This is
+/// the Swift-6-safe replacement for synchronously reaching into `@MainActor`
+/// `SettingsManager` from inside `QuotaRefreshActor`.
+struct ProviderQuotaPlanSnapshot: Sendable {
+    let miniMaxMode: MiniMaxQuotaMode
+    let factoryPlan: FactoryQuotaPlanTier
+    let xaiPlan: XAIQuotaPlanTier
+    let mimoTokenPlanRegion: ProviderEndpointRegion
+    let mimoTokenPlanTier: MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle
+}
+
+// Quota adapters need the user's plan selection while running off the main
+// actor. The readers are immutable `@MainActor` closures (which are `Sendable`)
+// installed during `ProviderQuotaService` initialization; their backing
+// `SettingsManager` is main-actor isolated, so the values are snapshotted with
+// `resolvedSnapshot()` on the main actor before any off-actor quota work.
 final class ProviderQuotaPlanReaders: Sendable {
-    let miniMaxModeProvider: () -> MiniMaxQuotaMode
-    let factoryPlanProvider: () -> FactoryQuotaPlanTier
-    let xaiPlanProvider: () -> XAIQuotaPlanTier
-    let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
-    let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
-    let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
+    let miniMaxModeProvider: @MainActor () -> MiniMaxQuotaMode
+    let factoryPlanProvider: @MainActor () -> FactoryQuotaPlanTier
+    let xaiPlanProvider: @MainActor () -> XAIQuotaPlanTier
+    let mimoTokenPlanRegionProvider: @MainActor () -> ProviderEndpointRegion
+    let mimoTokenPlanTierProvider: @MainActor () -> MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycleProvider: @MainActor () -> MimoTokenPlanBillingCycle
 
     init(
-        miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
-        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
-        xaiPlanProvider: @escaping () -> XAIQuotaPlanTier,
-        mimoTokenPlanRegionProvider: @escaping () -> ProviderEndpointRegion,
-        mimoTokenPlanTierProvider: @escaping () -> MimoTokenPlanTier?,
-        mimoTokenPlanBillingCycleProvider: @escaping () -> MimoTokenPlanBillingCycle
+        miniMaxModeProvider: @escaping @MainActor () -> MiniMaxQuotaMode,
+        factoryPlanProvider: @escaping @MainActor () -> FactoryQuotaPlanTier,
+        xaiPlanProvider: @escaping @MainActor () -> XAIQuotaPlanTier,
+        mimoTokenPlanRegionProvider: @escaping @MainActor () -> ProviderEndpointRegion,
+        mimoTokenPlanTierProvider: @escaping @MainActor () -> MimoTokenPlanTier?,
+        mimoTokenPlanBillingCycleProvider: @escaping @MainActor () -> MimoTokenPlanBillingCycle
     ) {
         self.miniMaxModeProvider = miniMaxModeProvider
         self.factoryPlanProvider = factoryPlanProvider
@@ -146,6 +160,19 @@ final class ProviderQuotaPlanReaders: Sendable {
         self.mimoTokenPlanRegionProvider = mimoTokenPlanRegionProvider
         self.mimoTokenPlanTierProvider = mimoTokenPlanTierProvider
         self.mimoTokenPlanBillingCycleProvider = mimoTokenPlanBillingCycleProvider
+    }
+
+    /// Snapshots every plan reader into a `Sendable` value on the main actor.
+    @MainActor
+    func resolvedSnapshot() -> ProviderQuotaPlanSnapshot {
+        ProviderQuotaPlanSnapshot(
+            miniMaxMode: miniMaxModeProvider(),
+            factoryPlan: factoryPlanProvider(),
+            xaiPlan: xaiPlanProvider(),
+            mimoTokenPlanRegion: mimoTokenPlanRegionProvider(),
+            mimoTokenPlanTier: mimoTokenPlanTierProvider(),
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycleProvider()
+        )
     }
 }
 
@@ -168,12 +195,12 @@ final class ProviderQuotaService {
     private let session: URLSession
     private let environment: [String: String]
     private let homeDirectoryURL: URL
-    private let miniMaxModeProvider: () -> MiniMaxQuotaMode
-    private let factoryPlanProvider: () -> FactoryQuotaPlanTier
-    private let xaiPlanProvider: () -> XAIQuotaPlanTier
-    private let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
-    private let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
-    private let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
+    private let miniMaxModeProvider: @MainActor () -> MiniMaxQuotaMode
+    private let factoryPlanProvider: @MainActor () -> FactoryQuotaPlanTier
+    private let xaiPlanProvider: @MainActor () -> XAIQuotaPlanTier
+    private let mimoTokenPlanRegionProvider: @MainActor () -> ProviderEndpointRegion
+    private let mimoTokenPlanTierProvider: @MainActor () -> MimoTokenPlanTier?
+    private let mimoTokenPlanBillingCycleProvider: @MainActor () -> MimoTokenPlanBillingCycle
     private let claudeCredentialsReader: any ClaudeCredentialsReading
     private let refreshProviders: [AgentProvider]
     private let planReaders: ProviderQuotaPlanReaders
@@ -194,8 +221,11 @@ final class ProviderQuotaService {
     private(set) var claudeBridgeStatus: ClaudeQuotaBridgeStatus
     private(set) var routingStatesByProviderID: [ProviderID: ProviderRoutingStateSnapshot] = [:]
     private(set) var routingEvents: [ProviderRoutingDecisionEvent] = []
-    var onSnapshotsPersistedForCloudSync: (([ProviderQuotaSnapshot]) -> Void)?
-    private var codexRolloutScanCache: CodexRolloutScanCache = .empty
+    var onSnapshotsPersistedForCloudSync: (@Sendable ([ProviderQuotaSnapshot]) -> Void)?
+    /// Codex rollout-scan cache. A `Locked` box (not a plain stored property) so
+    /// the `@Sendable` write-back handed to off-actor adapters can update it
+    /// without capturing `self` (main-actor isolated).
+    private let codexRolloutScanCacheBox = Locked<CodexRolloutScanCache>(.empty)
     private var connectedQuotaProviderIDsCache: (fetchedAt: Date, ids: Set<ProviderID>)?
     private var suppressRoutingEventPersistence = false
     private var routingEventsDirty = false
@@ -214,12 +244,12 @@ final class ProviderQuotaService {
         session: URLSession = .shared,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
-        miniMaxModeProvider: (() -> MiniMaxQuotaMode)? = nil,
-        factoryPlanProvider: (() -> FactoryQuotaPlanTier)? = nil,
-        xaiPlanProvider: (() -> XAIQuotaPlanTier)? = nil,
-        mimoTokenPlanRegionProvider: (() -> ProviderEndpointRegion)? = nil,
-        mimoTokenPlanTierProvider: (() -> MimoTokenPlanTier?)? = nil,
-        mimoTokenPlanBillingCycleProvider: (() -> MimoTokenPlanBillingCycle)? = nil,
+        miniMaxModeProvider: (@MainActor () -> MiniMaxQuotaMode)? = nil,
+        factoryPlanProvider: (@MainActor () -> FactoryQuotaPlanTier)? = nil,
+        xaiPlanProvider: (@MainActor () -> XAIQuotaPlanTier)? = nil,
+        mimoTokenPlanRegionProvider: (@MainActor () -> ProviderEndpointRegion)? = nil,
+        mimoTokenPlanTierProvider: (@MainActor () -> MimoTokenPlanTier?)? = nil,
+        mimoTokenPlanBillingCycleProvider: (@MainActor () -> MimoTokenPlanBillingCycle)? = nil,
         claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) {
@@ -1050,25 +1080,19 @@ final class ProviderQuotaService {
             dataStoreActor: dataStore.actor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
+            miniMaxMode: miniMaxModeProvider(),
+            factoryPlan: factoryPlanProvider(),
+            xaiPlan: xaiPlanProvider(),
+            mimoTokenPlanRegion: mimoTokenPlanRegionProvider(),
+            mimoTokenPlanTier: mimoTokenPlanTierProvider(),
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycleProvider(),
             claudeBridgeStatus: claudeBridgeStatus,
-            codexRolloutScanCache: codexRolloutScanCache,
-            updateCodexRolloutScanCache: { [weak self] cache, didChange in
-                self?.handleCodexRolloutScanCacheUpdate(cache, didChange: didChange)
-            },
-            refreshClaudeBridgeStatus: { [weak self] in
-                self?.refreshClaudeBridgeStatus()
-                return self?.claudeBridgeStatus ?? ClaudeQuotaBridgeStatus(
-                    state: .notInstalled,
-                    wrapperPath: "",
-                    detailText: "",
-                    lastPayloadAt: nil
-                )
+            codexRolloutScanCache: codexRolloutScanCacheBox.read(),
+            updateCodexRolloutScanCache: { [codexCacheBox = codexRolloutScanCacheBox, store = snapshotStore] cache, didChange in
+                codexCacheBox.write(cache)
+                if didChange {
+                    store.persistCodexRolloutScanCache(cache)
+                }
             },
             claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedKeys
@@ -1194,13 +1218,6 @@ final class ProviderQuotaService {
             return .kimi
         default:
             return nil
-        }
-    }
-
-    private func handleCodexRolloutScanCacheUpdate(_ cache: CodexRolloutScanCache, didChange: Bool) {
-        codexRolloutScanCache = cache
-        if didChange {
-            persistCodexRolloutScanCache()
         }
     }
 
@@ -1421,7 +1438,7 @@ final class ProviderQuotaService {
     private func loadPersistedCodexRolloutScanCache() {
         switch snapshotStore.loadPersistedCodexRolloutScanCache() {
         case .loaded(let cache):
-            codexRolloutScanCache = cache
+            codexRolloutScanCacheBox.write(cache)
         case .failed(let target, let message):
             AppLogger.dataStore.silentFailure(
                 "ProviderQuotaService: \(target.label) load failed",
@@ -1432,9 +1449,6 @@ final class ProviderQuotaService {
         }
     }
 
-    private func persistCodexRolloutScanCache() {
-        snapshotStore.persistCodexRolloutScanCache(codexRolloutScanCache)
-    }
 }
 
 private struct ProviderQuotaPersistenceLoadError: LocalizedError {

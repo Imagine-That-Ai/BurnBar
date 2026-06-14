@@ -126,8 +126,9 @@ extension OpenBurnBarDaemonManager {
             var settings = snapshot.providers[index]
             settings.setModelsAdvertisement(modelIDs: modelIDs, isEnabled: isEnabled)
             snapshot.providers[index] = settings
+            let updatedSnapshot = snapshot
             _ = try await daemonRPC {
-                try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+                try OpenBurnBarDaemonSocketClient.updateConfig(updatedSnapshot, at: socketURL)
             }
         }
     }

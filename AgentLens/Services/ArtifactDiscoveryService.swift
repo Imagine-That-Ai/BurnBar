@@ -125,13 +125,13 @@ actor ArtifactDiscoveryService {
     private let dataStoreActor: DataStoreActor
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let fileManager: FileManager
-    private let nowProvider: () -> Date
+    private let nowProvider: @Sendable () -> Date
 
     init(
         dataStoreActor: DataStoreActor,
         settingsProvider: any ArtifactDiscoverySettingsProviding,
         fileManager: FileManager = .default,
-        nowProvider: @escaping () -> Date = Date.init
+        nowProvider: @escaping @Sendable () -> Date = Date.init
     ) {
         self.dataStoreActor = dataStoreActor
         self.settingsProvider = settingsProvider

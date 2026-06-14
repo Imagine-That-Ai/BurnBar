@@ -113,7 +113,7 @@ struct XAIQuotaAdapter: ProviderQuotaAdapter {
     // MARK: - Fetch
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let plan = context.xaiPlanProvider()
+        let plan = context.xaiPlan
         let mgmtKey = resolveManagementKey(context: context)
 
         // Branch 1 — developer credits.

@@ -18,7 +18,7 @@ final class AgentContextTargetReceiver: Sendable {
     private let macAccessibilityInspector: MacAccessibilityInspector
     private let displayBoundsProvider: DisplayBoundsProvider
     private let replyFrameSink: FrameSink
-    private let auditLoggerProvider: () -> ComputerUseAuditLogger?
+    private let auditLoggerProvider: @MainActor () -> ComputerUseAuditLogger?
 
     private let seenClientIntentIds = Locked<Set<String>>([])
 
@@ -29,7 +29,7 @@ final class AgentContextTargetReceiver: Sendable {
         macAccessibilityInspector: MacAccessibilityInspector = MacAccessibilityInspector(),
         displayBoundsProvider: @escaping DisplayBoundsProvider,
         replyFrameSink: @escaping FrameSink,
-        auditLoggerProvider: @escaping () -> ComputerUseAuditLogger?
+        auditLoggerProvider: @escaping @MainActor () -> ComputerUseAuditLogger?
     ) {
         self.sessionId = sessionId
         self.validator = validator
@@ -192,19 +192,28 @@ final class AgentContextTargetReceiver: Sendable {
         }
 
         // 6. Audit target event without sensitive values or screenshot bytes.
-        if let logger = auditLoggerProvider() {
+        // ComputerUseAuditLogger maintains a mutable hash chain and is owned by the
+        // @MainActor coordinator, so the whole audit append runs on the main actor;
+        // only Sendable primitives cross the hop (no non-Sendable target/snapshot/logger).
+        let auditNormalizedX = target.normalizedX
+        let auditNormalizedY = target.normalizedY
+        let auditInstruction = target.instruction
+        let auditBundleId = snapshot?.bundleId
+        let auditWindowTitle = snapshot?.title
+        await MainActor.run {
+            guard let logger = auditLoggerProvider() else { return }
             let contextIntent = PhoneControlIntent(
                 kind: .contextTarget,
-                normalizedX: target.normalizedX,
-                normalizedY: target.normalizedY,
-                text: target.instruction
+                normalizedX: auditNormalizedX,
+                normalizedY: auditNormalizedY,
+                text: auditInstruction
             )
             let action = ComputerUseAction.phoneIntent(contextIntent)
 
             let scopeContext = ComputerUseScopeContext(
                 url: nil,
-                bundleId: snapshot?.bundleId,
-                windowTitle: snapshot?.title
+                bundleId: auditBundleId,
+                windowTitle: auditWindowTitle
             )
 
             do {
