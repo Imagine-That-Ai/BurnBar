@@ -101,7 +101,7 @@ extension CameraCaptureService: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 }
 
-private struct SendableSampleBuffer: @unchecked Sendable {
+private struct SendableSampleBuffer: Sendable {
     let value: CMSampleBuffer
 
     init(_ value: CMSampleBuffer) {

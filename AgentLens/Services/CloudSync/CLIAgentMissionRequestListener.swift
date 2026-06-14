@@ -667,15 +667,10 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
 // used by the desktop chat surface, and the existing CLIAgentSessionMirror writes
 // Codex / Claude / OpenClaw transcripts back to `cli_sessions` for mobile viewing.
 
-final class MissionCancellationTracker: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _isCancelled = false
-    var isCancelled: Bool {
-        lock.lock(); defer { lock.unlock() }; return _isCancelled
-    }
-    func cancel() {
-        lock.lock(); defer { lock.unlock() }; _isCancelled = true
-    }
+final class MissionCancellationTracker: Sendable {
+    private let _isCancelled = Locked(false)
+    var isCancelled: Bool { _isCancelled.read() }
+    func cancel() { _isCancelled.write(true) }
 }
 
 @MainActor

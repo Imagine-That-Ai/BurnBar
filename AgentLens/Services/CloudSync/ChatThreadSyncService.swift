@@ -15,7 +15,7 @@ import OpenBurnBarCore
 /// Uses existing DataStore APIs:
 ///   - `fetchChatThreadSummaries(limit:)` → `[ChatThreadSummary]`
 ///   - `fetchChatMessages(threadID:)` → `[ChatMessageRecord]`
-final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
+final class ChatThreadSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 

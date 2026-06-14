@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 struct CLIExecutableResolver: Sendable {
     fileprivate struct CacheKey: Hashable, Sendable {
@@ -259,26 +260,19 @@ struct CLIExecutableResolver: Sendable {
     }
 }
 
-private final class ExecutableResolverCache: @unchecked Sendable {
-    private let lock = NSLock()
-    private var values: [CLIExecutableResolver.CacheKey: String] = [:]
+private final class ExecutableResolverCache: Sendable {
+    private let values = Locked<[CLIExecutableResolver.CacheKey: String]>([:])
 
     func value(for key: CLIExecutableResolver.CacheKey) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return values[key]
+        values.withLock { $0[key] }
     }
 
     func set(_ value: String, for key: CLIExecutableResolver.CacheKey) {
-        lock.lock()
-        defer { lock.unlock() }
-        values[key] = value
+        values.withLock { $0[key] = value }
     }
 
     func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-        values.removeAll()
+        values.withLock { $0.removeAll() }
     }
 }
 

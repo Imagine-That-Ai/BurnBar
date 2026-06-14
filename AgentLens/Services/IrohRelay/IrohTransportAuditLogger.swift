@@ -4,7 +4,7 @@ import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
-final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Sendable {
+final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
     static let shared = FirestoreIrohAuditLogger()
 
     private let firestoreProvider: @Sendable () -> Firestore

@@ -9,7 +9,7 @@ import OpenBurnBarCore
 /// to; the underlying snapshot/canvas fetches happen on demand inside
 /// `bundle(for:)`.
 @MainActor
-final class MobileAgentInsightsProducer: AgentInsightsBundleProducer, @unchecked Sendable {
+final class MobileAgentInsightsProducer: AgentInsightsBundleProducer {
 
     private let store: InsightsStore
     private let dataSource: MobileInsightDataSource

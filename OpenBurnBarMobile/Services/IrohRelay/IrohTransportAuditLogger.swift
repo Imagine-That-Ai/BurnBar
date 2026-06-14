@@ -6,7 +6,7 @@ import OpenBurnBarIrohRelay
 /// `IrohTransportAuditEventDoc` schema in `functions/src/types.ts`.
 /// Writes to `/users/{uid}/iroh_audit_events/{eventId}`. Read-only from the
 /// client side (rules deny update + delete).
-final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Sendable {
+final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
     static let shared = FirestoreIrohAuditLogger()
 
     private let firestoreProvider: @Sendable () -> Firestore

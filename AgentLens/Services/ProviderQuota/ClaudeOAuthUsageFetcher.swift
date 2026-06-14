@@ -600,7 +600,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
 /// audit (it's a thread-safe Foundation singleton in practice) rather
 /// than scattering `@unchecked` annotations across every struct that
 /// holds one.
-struct FileManagerSendableBox: @unchecked Sendable {
+struct FileManagerSendableBox: Sendable {
     let value: FileManager
     init(_ value: FileManager) { self.value = value }
 }

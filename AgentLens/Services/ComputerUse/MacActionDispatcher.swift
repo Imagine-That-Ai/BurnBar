@@ -9,7 +9,7 @@ import OpenBurnBarComputerUseCore
 /// live in `ComputerUseSessionCoordinator` / `ComputerUseRunCoordinator`;
 /// this type only translates already-approved typed actions into AppKit/AX
 /// operations and returns a structured result for audit/tool output.
-public final class MacActionDispatcher: @unchecked Sendable {
+public final class MacActionDispatcher: Sendable {
     public enum DispatchError: Error, Sendable, Equatable {
         case missingCoordinates(String)
         case missingText

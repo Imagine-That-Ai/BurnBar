@@ -7,7 +7,7 @@ import OpenBurnBarCore
 /// (`SecureEnclave.P256.Signing.PrivateKey` on device). Both produce the raw
 /// (`r‖s`) ECDSA-over-SHA256 signature `PhoneControlVerifyingKey` accepts, so
 /// the signer code is identical whether the key lives in the enclave or not.
-public protocol PhoneControlP256AuthoritySigning {
+public protocol PhoneControlP256AuthoritySigning: Sendable {
     var publicKey: P256.Signing.PublicKey { get }
     func signature(for data: Data) throws -> P256.Signing.ECDSASignature
 }
@@ -28,7 +28,7 @@ public enum PhoneControlSecureEnclaveKeyPolicy {
 /// every envelope-producing path signs through it, so key custody (software
 /// Ed25519 vs. Secure-Enclave/StrongBox P-256) is a property of the stored
 /// identity rather than of each call site.
-public enum PhoneControlAuthoritySigningKey: @unchecked Sendable {
+public enum PhoneControlAuthoritySigningKey: Sendable {
     case ed25519(Curve25519.Signing.PrivateKey)
     /// A NIST P-256 key — `P256.Signing.PrivateKey` in tests / software
     /// fallback, `SecureEnclave.P256.Signing.PrivateKey` on device.

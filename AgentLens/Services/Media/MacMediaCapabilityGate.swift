@@ -694,7 +694,7 @@ struct RemoteUnlockCredentialKeyMaterial: Sendable {
     var privateKey: Curve25519.KeyAgreement.PrivateKey
 }
 
-final class RemoteUnlockCredentialKeyStore: @unchecked Sendable {
+final class RemoteUnlockCredentialKeyStore: Sendable {
     static let shared = RemoteUnlockCredentialKeyStore()
 
     private let service = "com.openburnbar.remote-unlock.hpke"

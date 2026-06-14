@@ -53,7 +53,7 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
 // MARK: - Live Implementations
 
 /// Thin wrapper around real Firebase Firestore SDK.
-final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
+final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, Sendable {
     private let firestoreOverride: Firestore?
 
     init(firestore: Firestore? = nil) {
@@ -182,7 +182,7 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @uncheck
     }
 }
 
-final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway, @unchecked Sendable {
+final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway, Sendable {
     private let snapshot: QuerySnapshot
 
     init(snapshot: QuerySnapshot) {
@@ -194,7 +194,7 @@ final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway, @u
     }
 }
 
-final class CloudSyncDocumentSnapshotLiveGateway: CloudSyncDocumentSnapshotGateway, @unchecked Sendable {
+final class CloudSyncDocumentSnapshotLiveGateway: CloudSyncDocumentSnapshotGateway, Sendable {
     private let document: DocumentSnapshot
 
     init(document: DocumentSnapshot) {

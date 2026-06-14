@@ -8,7 +8,7 @@ import Security
 /// the same reason the Mac splits them: two iroh endpoints need two
 /// NodeIds so discovery can resolve each ALPN to its own physical
 /// listener.
-final class IrohBlobKeyStore: @unchecked Sendable {
+final class IrohBlobKeyStore: Sendable {
     static let shared = IrohBlobKeyStore()
 
     private let service: String

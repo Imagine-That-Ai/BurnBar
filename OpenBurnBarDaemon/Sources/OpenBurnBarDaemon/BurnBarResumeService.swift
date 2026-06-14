@@ -5,6 +5,10 @@ import SQLite3
 
 private let resumeSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+// AUDIT(@unchecked Sendable): holds a raw SQLite `OpaquePointer?` connection that
+// is not Sendable. Every database operation is serialized onto a dedicated
+// `DispatchQueue`, so the pointer is never touched concurrently; this audited
+// conformance reflects that manual confinement.
 final class BurnBarResumeService: @unchecked Sendable {
     private struct ConversationRow {
         let id: String

@@ -11,7 +11,7 @@ import OpenBurnBarComputerUseCore
 ///
 /// Pure AX queries — no synthesis. The deny matcher consumes the
 /// inspector's role/subrole output via a `ComputerUseAccessibilityDenyReason`.
-public final class MacAccessibilityInspector: @unchecked Sendable {
+public final class MacAccessibilityInspector: Sendable {
     public struct Snapshot: Sendable, Equatable {
         public let role: String?
         public let subrole: String?

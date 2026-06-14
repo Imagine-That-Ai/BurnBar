@@ -85,7 +85,7 @@ public final class AgentInsightsViewModel {
 
 /// Returns a pre-built bundle for every scope. Handy in tests and previews
 /// where you don't want to construct a real data source.
-public final class StaticAgentInsightsBundleProducer: AgentInsightsBundleProducer, @unchecked Sendable {
+public final class StaticAgentInsightsBundleProducer: AgentInsightsBundleProducer, Sendable {
     private let provide: @Sendable (AgentInsightsScope) -> AgentInsightsBundle
 
     public init(_ provide: @escaping @Sendable (AgentInsightsScope) -> AgentInsightsBundle) {

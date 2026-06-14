@@ -10,7 +10,7 @@ import Security
 /// Normal operation keeps this stable. If macOS denies access to a stale
 /// Keychain ACL item from an older/dev-signed build, the host regenerates and
 /// republishes the verifier key so iOS does not get stuck behind a prompt.
-final class IrohPairingKeyStore: @unchecked Sendable {
+final class IrohPairingKeyStore: Sendable {
     static let shared = IrohPairingKeyStore()
 
     private let service: String

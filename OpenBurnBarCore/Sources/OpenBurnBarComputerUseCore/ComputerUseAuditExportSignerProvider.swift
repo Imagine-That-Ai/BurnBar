@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import OpenBurnBarCore
 #if os(macOS)
 import LocalAuthentication
 import Security
@@ -90,7 +91,7 @@ public enum ComputerUseAuditExportSignerStoreError: Error, Equatable {
 }
 
 /// Trusted-device signer for Phase 13 audit exports and WS3 signed chain heads.
-public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExportSignerProviding, @unchecked Sendable {
+public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExportSignerProviding, Sendable {
     public static let defaultService = "ai.openburnbar.computer-use.audit-export"
     public static let defaultAccount = "trusted-device-ed25519-v1"
 
@@ -98,20 +99,20 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
     private let account: String
     private let legacyRawKeyURL: URL?
     private let keyStore: any ComputerUseAuditExportKeyStoring
-    private let fileManager: FileManager
+    private let fileSystem: any SendableFileSystem
 
     public init(
         service: String = Self.defaultService,
         account: String = Self.defaultAccount,
         legacyRawKeyURL: URL? = nil,
         keyStore: (any ComputerUseAuditExportKeyStoring)? = nil,
-        fileManager: FileManager = .default
+        fileSystem: any SendableFileSystem = DefaultSendableFileSystem()
     ) {
         self.service = service
         self.account = account
         self.legacyRawKeyURL = legacyRawKeyURL
         self.keyStore = keyStore ?? ComputerUseAuditExportSecurityKeyStore()
-        self.fileManager = fileManager
+        self.fileSystem = fileSystem
     }
 
     public func signer() throws -> ComputerUseEd25519AuditExportSigner {
@@ -143,13 +144,13 @@ public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExpo
 
     private func migrateLegacyRawKeyIfPresent() throws -> Curve25519.Signing.PrivateKey? {
         guard let legacyRawKeyURL,
-              fileManager.fileExists(atPath: legacyRawKeyURL.path) else {
+              fileSystem.fileExists(atPath: legacyRawKeyURL.path) else {
             return nil
         }
         let data = try Data(contentsOf: legacyRawKeyURL)
         let key = try decodeKey(data)
         try keyStore.set(key.rawRepresentation, service: service, account: account)
-        try? fileManager.removeItem(at: legacyRawKeyURL)
+        try? fileSystem.removeItem(at: legacyRawKeyURL)
         return key
     }
 

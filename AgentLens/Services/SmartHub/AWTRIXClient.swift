@@ -3,7 +3,7 @@ import OpenBurnBarCore
 
 // MARK: - AWTRIX HTTP Client
 
-struct AWTRIXClient: @unchecked Sendable {
+struct AWTRIXClient: Sendable {
     private static let minimumCustomAppLifetimeSeconds = 900
     private static let sentinelPublishOrder: [SentinelApp] = [.right, .select, .left]
 

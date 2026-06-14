@@ -413,14 +413,19 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
 
 // MARK: - Readable Index
 
-// AUDIT(@unchecked Sendable): `loadedData` is set once via load()/view() before the object
-// is shared for concurrent reads; no further mutation occurs after initialization.
-private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersistentVectorIndexReadableIndex {
+/// The mapped index bytes and quantizer are loaded once via `load()`/`view()`
+/// and then read concurrently through the `Sendable` snapshot, so they live in a
+/// `Locked` box that mediates every access — making the index genuinely `Sendable`.
+private final class BurnBarHNSWReadableIndex: Sendable, BurnBarPersistentVectorIndexReadableIndex {
+    private struct Loaded {
+        var data: Data?
+        var quantizer: BurnBarScalarQuantizer?
+    }
+
     private let dimensions: Int
     private let metric: BurnBarEmbeddingDistanceMetric
     private let efSearch: Int
-    private var loadedData: Data?
-    private var quantizer: BurnBarScalarQuantizer?
+    private let loaded = Locked(Loaded())
 
     init(dimensions: Int, distanceMetric: BurnBarEmbeddingDistanceMetric, efSearch: Int) {
         self.dimensions = dimensions
@@ -429,33 +434,36 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
     }
 
     func load(from url: URL) throws {
-        loadedData = try Data(contentsOf: url)
-        try parseQuantizerIfNeeded()
+        try ingest(try Data(contentsOf: url))
     }
 
     func view(from url: URL) throws {
-        loadedData = try Data(contentsOf: url, options: [.mappedIfSafe])
-        try parseQuantizerIfNeeded()
+        try ingest(try Data(contentsOf: url, options: [.mappedIfSafe]))
     }
 
-    private func parseQuantizerIfNeeded() throws {
-        guard let data = loadedData else {
-            quantizer = nil
-            return
+    private func ingest(_ data: Data) throws {
+        let quantizer = try Self.parseQuantizer(from: data, dimensions: dimensions)
+        loaded.withLock {
+            $0.data = data
+            $0.quantizer = quantizer
         }
+    }
+
+    private static func parseQuantizer(from data: Data, dimensions: Int) throws -> BurnBarScalarQuantizer? {
         let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
         guard header.version >= 2, header.quantizationType == 1 else {
-            quantizer = nil
-            return
+            return nil
         }
         guard let (q, _) = BurnBarScalarQuantizer.read(from: data, dimensions: dimensions, offset: BurnBarHNSWIndexFormat.v2HeaderSize) else {
             throw BurnBarPersistentVectorIndexError.missingIndexFile(URL(fileURLWithPath: "corrupt-hnsw-index"))
         }
-        quantizer = q
+        return q
     }
 
     func search(vector: [Float], limit: Int) throws -> ([UInt64], [Float]) {
-        guard let data = loadedData else { return ([], []) }
+        let snapshot = loaded.read()
+        guard let data = snapshot.data else { return ([], []) }
+        let quantizer = snapshot.quantizer
         guard limit > 0 else { return ([], []) }
 
         let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
@@ -520,7 +528,7 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
             // Helper: compute distance from query to a node
             func distanceToNode(_ nodeIdx: Int) -> Float {
                 let meta = nodeMetas[nodeIdx]
-                if let quantizer = self.quantizer {
+                if let quantizer {
                     let bytePtr = base.advanced(by: meta.vectorOffset).assumingMemoryBound(to: UInt8.self)
                     let buffer = UnsafeBufferPointer(start: bytePtr, count: self.dimensions)
                     return hnswQuantizedDistanceFromBuffer(lhs: query, rhs: buffer, quantizer: quantizer, metric: self.metric)
