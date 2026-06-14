@@ -1162,6 +1162,7 @@
 		B09D04CAD6652E3820D4CB5A /* ContextPackDashboardSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F0C614CF08FB09A79D2DB6 /* ContextPackDashboardSurfaceTests.swift */; };
 		B0A69FB67601C15D5F6AF831 /* OpenBurnBarMAS.entitlements in Resources */ = {isa = PBXBuildFile; fileRef = EB735B330517DAC7EA04D4FA /* OpenBurnBarMAS.entitlements */; };
 		B0D922A4394EF45C0EAAC480 /* MiniSparklineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EDB57075454977C720922F /* MiniSparklineTests.swift */; };
+		FE0001CA11C0DE0000000002 /* IncomingCallSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0001CA11C0DE0000000001 /* IncomingCallSheetTests.swift */; };
 		B0E827C51CBB04E2C0D0BC9C /* SessionSummaryWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EE64443DF146CA4597F6904 /* SessionSummaryWizardView.swift */; };
 		B0F8D7A1E5FDD9D6879841A0 /* HermesLiveGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFFDD98A3EE525028068947D /* HermesLiveGlyph.swift */; };
 		B0FC0DF6DD179A242F562F68 /* DashboardBracketSwarmBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C62AB8F0E34A625BAADDC38 /* DashboardBracketSwarmBackground.swift */; };
@@ -3300,6 +3301,7 @@
 		E1A643E7F0D0B330F7DC261E /* RelayEphemeralKeyCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayEphemeralKeyCache.swift; sourceTree = "<group>"; };
 		E1E1A6DBF72E8382E1359755 /* OpenBurnBarDaemonManager+Controller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenBurnBarDaemonManager+Controller.swift"; sourceTree = "<group>"; };
 		E1EDB57075454977C720922F /* MiniSparklineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniSparklineTests.swift; sourceTree = "<group>"; };
+		FE0001CA11C0DE0000000001 /* IncomingCallSheetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomingCallSheetTests.swift; sourceTree = "<group>"; };
 		E1EE1B5496AA0690663695C7 /* AgentWatchActionPublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchActionPublisherTests.swift; sourceTree = "<group>"; };
 		E204C6FBD075FCAC560595D3 /* OllamaIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaIntegrationTests.swift; sourceTree = "<group>"; };
 		E2967D10979391FB05338DA8 /* CastActionsListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CastActionsListener.swift; sourceTree = "<group>"; };
@@ -4261,6 +4263,7 @@
 				712EA25EC23EDFC34BD75BAD /* MercuryEnvelopeCardTests.swift */,
 				EAF697F1FB281B03EDB8C230 /* MercuryShimmerModifierTests.swift */,
 				E1EDB57075454977C720922F /* MiniSparklineTests.swift */,
+				FE0001CA11C0DE0000000001 /* IncomingCallSheetTests.swift */,
 				CFD2A54DACEB23CCC20256C8 /* NarrativeCardViewTests.swift */,
 				F0D93B3B52B08361673CBBFD /* NestHubSettingsCardTests.swift */,
 				1862F519FB0C428CCBB3D58A /* OnboardingCompleteViewTests.swift */,
@@ -8278,6 +8281,7 @@
 				006EBA6C4A91ACF1D26FDA23 /* MimoQuotaAdapterTests.swift in Sources */,
 				3A2F1516F9871AFC12A850F3 /* MiniMaxQuotaAdapterTests.swift in Sources */,
 				B0D922A4394EF45C0EAAC480 /* MiniSparklineTests.swift in Sources */,
+				FE0001CA11C0DE0000000002 /* IncomingCallSheetTests.swift in Sources */,
 				C1C7CD8BCA133AAB002E1B9D /* MockBurnBarDaemonSocketClient.swift in Sources */,
 				8A13D18E23DCCB722CD36F08 /* ModelPricingTests.swift in Sources */,
 				4510FE6662DD6C5AF66FDA94 /* MultiSourceReconciliationTests.swift in Sources */,
