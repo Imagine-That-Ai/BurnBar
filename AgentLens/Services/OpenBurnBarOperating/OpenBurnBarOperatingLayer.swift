@@ -1,5 +1,5 @@
 import Foundation
-import SwiftUI
+import Observation
 
 // Runtime operating layer: models and composition live alongside this type in `BurnBarOperating/`
 // (`BurnBarOperatingModels`, `OpenBurnBarOperatingComposer`, `OpenBurnBarOperatingLayer+MissionActions`, …).

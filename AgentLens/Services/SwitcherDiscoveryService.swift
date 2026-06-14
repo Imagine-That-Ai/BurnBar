@@ -1,4 +1,5 @@
-import SwiftUI
+import Combine
+import Foundation
 import OpenBurnBarCore
 
 // MARK: - Discovery Models
