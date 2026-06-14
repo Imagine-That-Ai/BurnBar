@@ -80,14 +80,6 @@ interface DeviceNotificationState {
   invalidatedAtMillis?: number;
 }
 
-interface SubmitAgentNotificationReplyRequest {
-  eventId: string;
-  sealedReplyPayload: CloudVaultSealedPayload;
-  vaultKeyID: string;
-  deviceId?: string;
-  clientReplyId?: string;
-}
-
 interface CloudVaultSealedPayload {
   schemaVersion: number;
   algorithm: "AES-256-GCM";

@@ -229,7 +229,7 @@ class FakeFirestore {
   asFirestore(): Firestore {
     // The engine takes the nominal admin `Firestore` class, which a
     // structural in-memory fake can never satisfy.
-    // @ts-expect-error in-memory fake is structurally sufficient for rollup tests
+    // @ts-expect-error reason: in-memory fake is structurally sufficient for rollup tests
     return this;
   }
 }

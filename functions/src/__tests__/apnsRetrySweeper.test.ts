@@ -39,7 +39,7 @@ function fakeSnapshot(
       }),
     },
   };
-  // @ts-expect-error test double for QueryDocumentSnapshot
+  // @ts-expect-error reason: test double for QueryDocumentSnapshot
   const doc: QueryDocumentSnapshot = snapshot;
   return { snapshot: doc, updates };
 }
@@ -175,7 +175,7 @@ describe("sweepStuckVoIPPushes", () => {
     };
     const collectionGroup = vi.fn(() => query);
     const db = { collectionGroup };
-    // @ts-expect-error partial Firestore stub for voip sweeper tests
+    // @ts-expect-error reason: partial Firestore stub for voip sweeper tests
     return { db, collectionGroup, query };
   }
 

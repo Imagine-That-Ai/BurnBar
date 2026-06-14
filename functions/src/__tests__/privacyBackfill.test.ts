@@ -92,7 +92,7 @@ class FakeFirestore {
     this.store.set(path, data);
   }
   asFirestore(): Firestore {
-    // @ts-expect-error in-memory fake is structurally sufficient for tests
+    // @ts-expect-error reason: in-memory fake is structurally sufficient for tests
     return this;
   }
 }

@@ -195,7 +195,7 @@ function callRequest(
     rawRequest: { headers: {} },
     acceptsStreaming: false,
   };
-  // @ts-expect-error partial CallableRequest stub for escrow trust handler tests
+  // @ts-expect-error reason: partial CallableRequest stub for escrow trust handler tests
   return request;
 }
 

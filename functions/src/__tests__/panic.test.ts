@@ -39,7 +39,7 @@ function docs(n: number): StubDoc[] {
 
 // drainCollection takes a FirebaseFirestore.Query; the stub satisfies the slice we use.
 function asQuery(q: StubQuery): FirebaseFirestore.Query {
-  // @ts-expect-error StubQuery implements the query surface drainCollection uses
+  // @ts-expect-error reason: StubQuery implements the query surface drainCollection uses
   return q;
 }
 

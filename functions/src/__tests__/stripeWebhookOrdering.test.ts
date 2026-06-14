@@ -229,7 +229,7 @@ describe("Stripe checkout watermark stamping", () => {
       current_period_end: periodEndSeconds,
       items: { data: [] },
     }));
-    // @ts-expect-error Stripe stub for checkout watermark test
+    // @ts-expect-error reason: Stripe stub for checkout watermark test
     const stripe: Stripe = { subscriptions: { retrieve } };
     const session = {
       id: "cs_test_1",
@@ -237,7 +237,7 @@ describe("Stripe checkout watermark stamping", () => {
       subscription: SUBSCRIPTION_ID,
       payment_status: "paid",
     };
-    // @ts-expect-error Stripe checkout session stub
+    // @ts-expect-error reason: Stripe checkout session stub
     const typedSession: Stripe.Checkout.Session = session;
 
     await applyStripeCheckoutSession(stripe, typedSession, {
@@ -270,7 +270,7 @@ describe("stripe_webhook_events ledger TTL", () => {
 
   function fakeEvent(id: string, createdSeconds: number): Stripe.Event {
     const event = { id, type: "customer.subscription.updated", created: createdSeconds };
-    // @ts-expect-error Stripe event stub
+    // @ts-expect-error reason: Stripe event stub
     const typed: Stripe.Event = event;
     return typed;
   }

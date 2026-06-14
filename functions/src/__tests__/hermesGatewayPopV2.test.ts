@@ -225,7 +225,7 @@ async function call(opts: {
   const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
   // Single typed seam: the dispatcher takes real express req/res; the fakes
   // cover exactly the surface it touches.
-  // @ts-expect-error express req/res fakes cover the dispatcher surface under test
+  // @ts-expect-error reason: express req/res fakes cover the dispatcher surface under test
   const dispatch: (req: unknown, res: unknown) => Promise<void> = dispatchHermesGatewayRequest;
   const { res, captured } = makeRes();
   await dispatch(makeReq(opts), res);

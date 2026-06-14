@@ -65,7 +65,7 @@ describe("exportUserData — fail-closed on required audit write", () => {
   });
 
   it("propagates the error when the required audit write fails", async () => {
-    // @ts-expect-error onCall harness exposes .run for tests
+    // @ts-expect-error reason: onCall harness exposes .run for tests
     await expect(exportUserData.run(authedRequest())).rejects.toThrow(/audit append failed/);
     expect(appendAuditEventRequired).toHaveBeenCalledTimes(1);
   });

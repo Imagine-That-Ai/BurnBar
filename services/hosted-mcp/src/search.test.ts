@@ -122,7 +122,7 @@ function makeSearchFirestore(): Firestore {
       return query;
     }
   };
-  // @ts-expect-error in-memory Firestore stub for hosted search tests
+  // @ts-expect-error reason: in-memory Firestore stub for hosted search tests
   return db;
 }
 
