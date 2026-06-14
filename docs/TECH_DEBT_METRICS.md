@@ -24,6 +24,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | `functions/src/types/legacy.ts` LOC | 3203 | shrinking (TypeSpec migration) | — |
 | `functions/src/index.ts` LOC | 185 | modularize | — |
 | `import SwiftUI` in Services/ + DataStore/ | 20 | ≤ 3 | 0 |
+| Phase 1 security register open items (`docs/governance/PHASE1_SECURITY_REGISTER.md`) | 0 | ≤ 3 | 0 |
 | Rust `unwrap()`/`expect()` in `crates/{burnbar-remote,openburnbar-iroh}` | 0 | 0 | 0 |
 
 ## Top service files (lines)
@@ -41,3 +42,5 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 - [SLO runbook](runbooks/slos.md)
 - [Type debt budget](TYPE_DEBT.md)
 - [Technical readiness](TECHNICAL_READINESS.md)
+- [Phase 1 security register](governance/PHASE1_SECURITY_REGISTER.md)
+- [Accepted risk register](governance/RISK_REGISTER.md)

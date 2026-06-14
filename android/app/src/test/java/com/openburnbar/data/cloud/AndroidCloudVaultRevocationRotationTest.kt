@@ -12,6 +12,12 @@ import org.junit.Test
  */
 class AndroidCloudVaultRevocationRotationTest {
     @Test
+    fun listPendingCallablePayloadIncludesCallerDeviceId() {
+        val payload = AndroidCloudVaultRevocationRotation.listPendingCallablePayload("  dev-a  ")
+        assertEquals("dev-a", payload["callerDeviceId"])
+    }
+
+    @Test
     fun parsePendingRequirementsAcceptsRequirementIdOrId() {
         val raw =
             listOf(
