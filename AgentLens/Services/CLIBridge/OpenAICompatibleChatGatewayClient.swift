@@ -402,7 +402,8 @@ final class AgentToolBroker: Sendable {
             executable: invocation.executable,
             arguments: invocation.arguments,
             workingDirectory: workspaceURL,
-            timeoutSeconds: timeout
+            timeoutSeconds: timeout,
+            environment: invocation.environment
         )
         return jsonPayload([
             "ok": result.exitCode == 0,
@@ -708,6 +709,7 @@ final class AgentToolBroker: Sendable {
     private struct ShellInvocation {
         let executable: String
         let arguments: [String]
+        let environment: [String: String]?
     }
 
     private static func workspaceSandboxedShellInvocation(
@@ -723,7 +725,8 @@ final class AgentToolBroker: Sendable {
         let profile = restrictedShellSandboxProfile(workspacePath: workspacePath)
         return ShellInvocation(
             executable: sandboxExecutable,
-            arguments: ["-p", profile, "/bin/zsh", "-f", "-lc", command]
+            arguments: ["-p", profile, "/bin/zsh", "-f", "-lc", command],
+            environment: restrictedShellEnvironment(workspacePath: workspacePath)
         )
     }
 
@@ -737,6 +740,63 @@ final class AgentToolBroker: Sendable {
         "/.m2/repository", "/.npm", "/.bun/bin", "/.deno", "/go/pkg",
         "/.zshenv", "/.zprofile", "/.zshrc", "/.profile", "/.bashrc", "/.bash_profile"
     ]
+
+    /// Home-relative state and credential directories that stay explicitly denied
+    /// even though the broader T-TOOL-10 profile denies home file data by default.
+    static let restrictedShellHomeReadDenySubpaths: [String] = [
+        "/Library/Application Support/com.openburnbar.AgentLens",
+        "/.openburnbar",
+        "/.config/openburnbar",
+        "/.terraform.d",
+        "/.cloudflared",
+        "/.config/git",
+        "/Library/Application Support/Slack"
+    ]
+
+    /// Home-relative credential files that should never be exposed to restricted
+    /// shell reads, including when future tooling allowlists expand.
+    static let restrictedShellHomeReadDenyLiterals: [String] = [
+        "/.env",
+        "/.envrc",
+        "/.cargo/credentials",
+        "/.cargo/credentials.toml",
+        "/.gem/credentials",
+        "/.config/configstore/firebase-tools.json"
+    ]
+
+    /// Clean environment for the restricted shell. `Process` inherits the parent
+    /// environment by default, which can expose API tokens even when Seatbelt
+    /// blocks home-directory file reads. Keep only deterministic execution basics.
+    static func restrictedShellEnvironment(
+        workspacePath: String,
+        homePath: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> [String: String] {
+        let workspace = canonicalSandboxPath(workspacePath)
+        let home = canonicalSandboxPath(homePath)
+        let pathEntries = [
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+            "\(home)/.homebrew/bin",
+            "\(home)/.local/bin",
+            "\(home)/.cargo/bin",
+            "\(home)/.bun/bin",
+            "\(home)/.deno/bin"
+        ]
+        return [
+            "PATH": pathEntries.joined(separator: ":"),
+            "HOME": home,
+            "PWD": workspace,
+            "SHELL": "/bin/zsh",
+            "TMPDIR": workspace,
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
+            "TERM": "dumb"
+        ]
+    }
 
     /// Seatbelt profile for the **restricted** agent shell (`shell_run`).
     ///
@@ -773,6 +833,14 @@ final class AgentToolBroker: Sendable {
             "(allow file-read* (subpath \"\(ws)\"))",
             "(allow file-write* (subpath \"\(ws)\"))"
         ]
+        for subpath in restrictedShellHomeReadDenySubpaths {
+            let homeSubpath = canonicalHomePath + subpath
+            lines.append("(deny file-read* (subpath \"\(escapeSandboxProfileString(homeSubpath))\"))")
+        }
+        for literal in restrictedShellHomeReadDenyLiterals {
+            let homeLiteral = canonicalHomePath + literal
+            lines.append("(deny file-read* (literal \"\(escapeSandboxProfileString(homeLiteral))\"))")
+        }
         // Re-allow only the null/stdio device nodes so ordinary redirects keep
         // working (`… 2>/dev/null`). Writes otherwise stay strictly confined to
         // the workspace — the anti-persistence guarantee that blocks ~/.ssh,
@@ -834,13 +902,15 @@ final class AgentToolBroker: Sendable {
         executable: String,
         arguments: [String],
         workingDirectory: URL,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        environment: [String: String]? = nil
     ) async throws -> ProcessResult {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
             process.currentDirectoryURL = workingDirectory
+            process.environment = environment
             let stdout = Pipe()
             let stderr = Pipe()
             process.standardOutput = stdout
