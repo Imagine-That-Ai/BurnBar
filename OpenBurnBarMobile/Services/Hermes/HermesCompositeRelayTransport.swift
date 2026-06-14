@@ -24,6 +24,12 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
     private let fallback: HermesRelayTransporting
     private let irohEnabled: @Sendable () -> Bool
 
+    /// T-TRN-03 — sliding-window alarm so a burst of iroh→Firestore fallbacks (a
+    /// relay outage, or an attacker suppressing iroh to harvest cloud-visible
+    /// metadata) emits a single elevated audit event instead of one-per-fallback
+    /// noise. Shared across all sends on this composite.
+    private static let fallbackRateAlarm = FallbackRateAlarm()
+
     /// Fallback chain. The primary is the iroh peer-to-peer transport;
     /// failures now cascade directly to the Firestore long-poll transport
     /// because the Cloud Run WSS relay and Redis backend were retired.
@@ -133,17 +139,33 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
 
     private static func recordFallback(payload: HermesRelayPayload, error: Error, hop: String) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // T-TRN-03 — classify the downgrade. A control-plane stream dropping to
+        // the cloud-visible Firestore path is audited at elevated severity
+        // ("controlPlaneDowngrade"), and a burst of any fallback raises the
+        // sliding-window alarm exactly once. Both ride the existing
+        // `.fallbackToFirestore` event in `detail` (the shared audit enum lives
+        // in OpenBurnBarCore and is not extended here).
+        let isControlPlane = HermesTransportDowngradePolicy.isControlPlane(payload.operation)
+        let alarmTripped = fallbackRateAlarm.record()
+        var detail: [String: String] = [
+            "hop": hop,
+            "target": "firestore",
+            "plane": isControlPlane ? "control" : "content",
+            "error": String(error.localizedDescription.prefix(256))
+        ]
+        if isControlPlane {
+            detail["controlPlaneDowngrade"] = "true"
+        }
+        if alarmTripped {
+            detail["fallbackRateAlarm"] = "true"
+        }
         await FirestoreIrohAuditLogger.shared.record(
             event: .fallbackToFirestore,
             uid: uid,
             connectionId: payload.connectionID,
             transport: .firestore,
             rttMillis: nil,
-            detail: [
-                "hop": hop,
-                "target": "firestore",
-                "error": String(error.localizedDescription.prefix(256))
-            ]
+            detail: detail
         )
     }
 }

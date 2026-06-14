@@ -162,4 +162,53 @@ class AndroidCloudVaultSignalPayloadsTest {
             ),
         )
     }
+
+    // T-AND-04 / T-CVS-02: the explicit per-user sender-set-complete marker replaces the old
+    // `trustedSenderPublicKeys.size > 1` heuristic. `senderSetComplete` (the signal handed to the
+    // fallback policy) must be true for an authoritative COMPLETE set AND for a transient
+    // UNAVAILABLE read (fail closed), and false ONLY for a genuine INCOMPLETE rollout gap.
+    @Test
+    fun completeEnrollmentMarksSenderSetComplete() {
+        val set =
+            AndroidCloudVaultSignalPayloads.TrustedSenderSet(
+                publicKeys = emptyMap(),
+                enrollment = AndroidCloudVaultSignalPayloads.SenderSetEnrollment.COMPLETE,
+            )
+        assertTrue(set.senderSetComplete)
+    }
+
+    @Test
+    fun transientUnavailableReadFailsClosed() {
+        // A transient escrow read (UNAVAILABLE) must FAIL CLOSED — senderSetComplete = true — so an
+        // unknown sender is not treated as legacy-eligible on a flaky read (the old size heuristic's
+        // bug). A single-entry map (only the local identity) would have been size <= 1 == "not
+        // complete" under the old rule; the explicit marker corrects that.
+        val set =
+            AndroidCloudVaultSignalPayloads.TrustedSenderSet(
+                publicKeys = mapOf("local" to ByteArray(1)),
+                enrollment = AndroidCloudVaultSignalPayloads.SenderSetEnrollment.UNAVAILABLE,
+            )
+        assertTrue(set.senderSetComplete)
+    }
+
+    @Test
+    fun incompleteRolloutGapStaysLegacyEligible() {
+        val set =
+            AndroidCloudVaultSignalPayloads.TrustedSenderSet(
+                publicKeys = mapOf("local" to ByteArray(1)),
+                enrollment = AndroidCloudVaultSignalPayloads.SenderSetEnrollment.INCOMPLETE,
+            )
+        assertFalse(set.senderSetComplete)
+    }
+
+    @Test
+    fun unknownSenderFailsClosedWhenSetIsComplete() {
+        // Cross-check against the policy: an unknown sender is an attack ONCE the set is complete
+        // (COMPLETE or fail-closed UNAVAILABLE), and a readiness gap while INCOMPLETE.
+        val unknown = CloudVaultSignalSenderAuthException.SenderNotTrusted("peer-x")
+        // INCOMPLETE -> legacy-eligible (rollout-lenient).
+        assertTrue(SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(unknown, senderSetComplete = false))
+        // COMPLETE / UNAVAILABLE -> fail closed.
+        assertFalse(SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(unknown, senderSetComplete = true))
+    }
 }

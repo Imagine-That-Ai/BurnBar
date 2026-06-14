@@ -145,6 +145,13 @@ jobs:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
           OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
+          # T-SC-06: the GPG key that detach-signs the release checksums. It is
+          # part of the fail-closed gate (not GPG-optional) so a strict release
+          # can never publish an UNSIGNED checksums file: the "Sign checksums"
+          # step is conditional on this secret, and without the signature the
+          # provenance chain (checksums .asc) that downstream verifiers and the
+          # corresponding-source story depend on would be silently absent.
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
         run: |
@@ -157,6 +164,7 @@ jobs:
             APPLE_NOTARY_KEY_ID \
             APPLE_NOTARY_API_KEY_P8 \
             OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 \
+            RELEASE_SIGNING_KEY \
             FIREBASE_PLIST_BASE64 \
             FIREBASE_APP_CHECK_DEBUG_TOKEN; do
             if [[ -z "${!var}" ]]; then
@@ -1110,7 +1118,17 @@ jobs:
           [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")
           [[ -n "$SOURCE_PATH" && -f "$SOURCE_PATH" ]] && ASSETS+=("$SOURCE_PATH")
           [[ -n "$SOURCE_SHA256_PATH" && -f "$SOURCE_SHA256_PATH" ]] && ASSETS+=("$SOURCE_SHA256_PATH")
-          [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")
+
+          # T-SC-06: RELEASE_SIGNING_KEY is a required release secret (validated
+          # fail-closed in build-and-release), so the checksums signature MUST be
+          # present here. Refuse to publish an unsigned-checksum release rather
+          # than silently dropping the .asc — a release with no checksum
+          # signature is not a strict release.
+          if [[ -z "$SIG_PATH" || ! -f "$SIG_PATH" ]]; then
+            echo "::error::Checksum signature (.asc) missing — refusing to publish an unsigned-checksum release. RELEASE_SIGNING_KEY is required; the Sign checksums step must have produced ${CHECKSUMS_PATH}.asc."
+            exit 1
+          fi
+          ASSETS+=("$SIG_PATH")
 
           # Decide prerelease + latest flags up front. A prerelease (-beta etc.)
           # tag is ALWAYS published as a prerelease and NEVER repoints "latest",

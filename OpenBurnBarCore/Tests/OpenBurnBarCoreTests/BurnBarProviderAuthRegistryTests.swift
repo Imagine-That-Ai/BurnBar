@@ -20,6 +20,16 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertEqual(viaAlias?.displayName, "Kimi (Moonshot)")
     }
 
+    func test_descriptor_kimiCodingUsesRoutingDescriptor() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "kimi-coding")
+        let viaAlias = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "kimi-code")
+
+        XCTAssertEqual(descriptor?.providerID, "kimi-coding")
+        XCTAssertEqual(viaAlias?.providerID, "kimi-coding")
+        XCTAssertTrue(descriptor?.supportsProxyRouting ?? false)
+        XCTAssertEqual(descriptor?.primaryMethodID, "kimi-coding-plan")
+    }
+
     func test_descriptorOrFallback_returnsRegisteredDescriptorWhenAvailable() {
         let descriptor = BurnBarProviderAuthRegistry.descriptorOrFallback(
             forCatalogProviderID: "zai",
@@ -191,6 +201,7 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
     func test_agentProvider_fromCatalogProviderID_mapsKimiAlias() {
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("moonshot"), .kimi)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("Kimi"), .kimi)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("kimi-coding"), .kimi)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("zai"), .zai)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("minimax"), .minimax)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("openai"), .openAI)

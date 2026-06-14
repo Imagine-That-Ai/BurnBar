@@ -168,10 +168,15 @@ struct ScreenShareViewerView: View {
         onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
     ) {
+        let resolvedControlInputEnabled = controlInputEnabled ?? controlStatus.isLive
+
         self.coordinator = coordinator
         self.resetToken = resetToken
         self.controlStatus = controlStatus
-        self.controlInputEnabled = controlInputEnabled ?? controlStatus.isLive
+        self.controlInputEnabled = resolvedControlInputEnabled
+        self._interactionMode = State(
+            initialValue: Self.defaultInteractionMode(controlInputEnabled: resolvedControlInputEnabled)
+        )
         self.controlRoundTripMillis = controlRoundTripMillis
         self.displays = displays
         self.selectedDisplayId = selectedDisplayId
@@ -220,6 +225,10 @@ struct ScreenShareViewerView: View {
 
     private var standardControlInputEnabled: Bool {
         controlInputEnabled
+    }
+
+    private static func defaultInteractionMode(controlInputEnabled: Bool) -> ScreenShareInteractionMode {
+        controlInputEnabled ? .control : .view
     }
 
     var body: some View {
@@ -537,7 +546,7 @@ struct ScreenShareViewerView: View {
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
-                interactionMode = .view
+                interactionMode = Self.defaultInteractionMode(controlInputEnabled: standardControlInputEnabled)
                 isTyping = false
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
@@ -568,6 +577,25 @@ struct ScreenShareViewerView: View {
                 deferredControlTapSmartZoomTask = nil
                 cancelPendingControlRightClick()
                 controlRightClickSentForCurrentPress = false
+            }
+        }
+        .onChange(of: controlInputEnabled) { _, newValue in
+            if newValue {
+                guard interactionMode == .view else { return }
+                withAnimation(.snappy) {
+                    interactionMode = .control
+                    isTyping = false
+                }
+            } else if interactionMode != .view {
+                withAnimation(.snappy) {
+                    interactionMode = .view
+                    isTyping = false
+                    controlPanTranslation = .zero
+                    deferredControlTapSmartZoomTask?.cancel()
+                    deferredControlTapSmartZoomTask = nil
+                    cancelPendingControlRightClick()
+                    controlRightClickSentForCurrentPress = false
+                }
             }
         }
         .onChange(of: isTyping) { _, newValue in

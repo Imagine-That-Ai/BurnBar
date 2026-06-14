@@ -765,9 +765,10 @@ public actor ComputerUseRunCoordinator {
         browser action: BrowserAction,
         on driver: OpenBurnBarPlaywrightDriver
     ) async throws -> OpenBurnBarPlaywrightDriver.Response {
+        let response: OpenBurnBarPlaywrightDriver.Response
         switch action.kind {
         case .click:
-            return try await driver.click(
+            response = try await driver.click(
                 selector: action.selector,
                 positionX: action.positionX,
                 positionY: action.positionY,
@@ -777,27 +778,80 @@ public actor ComputerUseRunCoordinator {
             guard let selector = action.selector, let text = action.text else {
                 throw DispatchError.invalidArguments("fill requires selector and text")
             }
-            return try await driver.fill(selector: selector, text: text, timeoutMillis: action.timeoutMillis)
+            response = try await driver.fill(selector: selector, text: text, timeoutMillis: action.timeoutMillis)
         case .goto:
             guard let url = action.url else {
                 throw DispatchError.invalidArguments("goto requires url")
             }
-            let validatedURL = try OpenBurnBarBrowserTargetPolicy.validatedURL(url, allowDataURL: true)
-            return try await driver.goto(url: validatedURL.absoluteString, timeoutMillis: action.timeoutMillis)
+            // T-AI-04: validate the navigation target host AND its post-DNS
+            // resolved IPs (anti-rebind) before navigating, so a hostname that
+            // resolves to a loopback/private/metadata address is refused.
+            let validatedURL = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(url, allowDataURL: true)
+            response = try await driver.goto(url: validatedURL.absoluteString, timeoutMillis: action.timeoutMillis)
         case .key:
             guard let key = action.key else {
                 throw DispatchError.invalidArguments("key requires key")
             }
-            return try await driver.key(key)
+            response = try await driver.key(key)
         case .select:
             guard let selector = action.selector, let value = action.value else {
                 throw DispatchError.invalidArguments("select requires selector and value")
             }
-            return try await driver.select(selector: selector, value: value)
+            response = try await driver.select(selector: selector, value: value)
         case .screenshot:
             return try await driver.screenshot()
         case .extract:
             return try await driver.extract(selector: action.selector)
         }
+        // T-AI-04: per-navigation / redirect / JS-nav re-validation. Each action's
+        // own response carries the URL the page LANDED on (the bridge attaches
+        // `finalURL` on goto and the live `url` on every interactive action), so a
+        // server-side redirect or in-page JS navigation onto a blocked host is
+        // refused WITHOUT an extra driver round trip. Re-checking from the
+        // response (not a fresh `currentURL()` call) preserves the driver's
+        // request accounting and adds no latency.
+        try Self.enforceLandedURL(from: response)
+        return response
+    }
+
+    /// T-AI-04 — re-validate the URL the page landed on, read from the action's
+    /// own response (`finalURL` for navigation, `url` for interactive actions). A
+    /// blocked landed host is refused so a redirect / JS-nav cannot steer the
+    /// agent's browser onto the loopback/metadata plane. Absent fields are a
+    /// no-op (the action did not navigate); only http/https with a host is
+    /// range-checked, consistent with `validatedURL`.
+    static func enforceLandedURL(from response: OpenBurnBarPlaywrightDriver.Response) throws {
+        let landed = urlString(from: response.result, key: "finalURL")
+            ?? urlString(from: response.result, key: "url")
+        guard let landed else { return }
+        try enforceLandedURLString(landed)
+    }
+
+    static func enforceLandedURLString(_ landed: String) throws {
+        let trimmed = landed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return }
+        // Pages legitimately sit on about:blank / data: between navigations;
+        // those carry no host to rebind and are not range-checked.
+        let lower = trimmed.lowercased()
+        if lower.hasPrefix("about:") || lower.hasPrefix("data:") || lower.hasPrefix("blob:") {
+            return
+        }
+        guard let url = URL(string: trimmed), let host = url.host, host.isEmpty == false else {
+            return
+        }
+        if OpenBurnBarBrowserTargetPolicy.isBlockedHost(host) {
+            throw DispatchError.invalidArguments(
+                "browser navigated to a blocked local, private, or metadata host: \(host)"
+            )
+        }
+    }
+
+    /// Extract a string URL field from a driver response result object.
+    private static func urlString(from result: BurnBarJSONValue?, key: String) -> String? {
+        guard case .object(let dict)? = result,
+              case .string(let value)? = dict[key] else {
+            return nil
+        }
+        return value
     }
 }

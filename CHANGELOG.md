@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The macOS Mercury incoming screen-mirror / call sheet now renders the requesting account's profile photo in the avatar circle, falling back to the name monogram while it loads or when no photo is available (e.g. Sign in with Apple), instead of always showing only the name initial.
+
 ### Security - Cure53 remediation sweep (2026-06-12)
 
 - Fail-closed local data protection across macOS, iOS, and Android: encrypted database startup now refuses existing plaintext stores when encryption is enabled, mobile enables complete file protection and screenshot protection, Android remote-unlock secrets require biometric-gated Keystore keys, and the legacy provider continuity vault is scrubbed instead of reused.

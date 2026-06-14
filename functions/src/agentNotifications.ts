@@ -21,6 +21,14 @@ const DEVICE_COLLECTION = "devices";
 const ACTIVE_TTL_MS = 90_000;
 const GENERIC_PREVIEW = "OpenBurnBar has a new agent reply.";
 /**
+ * Firestore TTL for `agent_notification_events` (T-PRV-06). A notification event
+ * is ephemeral signalling: once fanned out (or sealed failed) it has no lasting
+ * value, so it self-expires after 7 days. The matching `expireAt` ttl:true index
+ * in `firestore.indexes.json` performs the deletion. The field is stamped at
+ * write time below.
+ */
+const AGENT_NOTIFICATION_EVENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
  * A `pending` event older than this is considered stuck (the create-trigger
  * fan-out aborted or partially failed). The sweeper retries it. 2 minutes is
  * long enough that the inline fan-out from the document trigger has settled but
@@ -61,6 +69,8 @@ export interface AgentReplyNotificationEvent {
   createdAtMillis: number;
   updatedAt: FirebaseFirestore.Timestamp;
   updatedAtMillis: number;
+  /** Firestore TTL anchor (T-PRV-06); the event self-expires after this time. */
+  expireAt: FirebaseFirestore.Timestamp;
   status: "pending" | "fanout_complete" | "fanout_failed";
   fanoutAttemptCount: number;
   replyEnabled: boolean;
@@ -312,6 +322,7 @@ export async function createEventFromThreadWrite(args: {
     createdAtMillis: nowMillis,
     updatedAt: now,
     updatedAtMillis: nowMillis,
+    expireAt: Timestamp.fromMillis(nowMillis + AGENT_NOTIFICATION_EVENT_TTL_MS),
     status: "pending",
     fanoutAttemptCount: 0,
     replyEnabled: true,
@@ -600,6 +611,13 @@ function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | und
     createdAtMillis: numberValue(raw.createdAtMillis) ?? 0,
     updatedAt: raw.updatedAt,
     updatedAtMillis: numberValue(raw.updatedAtMillis) ?? 0,
+    // Tolerate legacy events written before the TTL field existed: fall back to
+    // a derived expiry so the sweeper still re-reads them. New events always
+    // carry an explicit `expireAt`.
+    expireAt:
+      raw.expireAt instanceof Timestamp
+        ? raw.expireAt
+        : Timestamp.fromMillis((numberValue(raw.createdAtMillis) ?? Date.now()) + AGENT_NOTIFICATION_EVENT_TTL_MS),
     status: raw.status,
     fanoutAttemptCount: raw.fanoutAttemptCount,
     replyEnabled: raw.replyEnabled,

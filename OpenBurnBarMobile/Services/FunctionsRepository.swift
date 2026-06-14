@@ -752,6 +752,10 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     case gatewayApprovalAppCheckBlocked
     case gatewayReplayCounterExhausted
     case gatewayInvalidSealedControlPayload
+    /// T-CRY-01 — the envelope version that would be sealed (or that arrived on a
+    /// reply) is below the v3 high-water this device already observed for the
+    /// peer. A downgrade is refused fail-closed; the operator must re-pair.
+    case gatewayEnvelopeVersionDowngrade
 
     var errorDescription: String? {
         switch self {
@@ -777,6 +781,11 @@ enum FunctionsError: Error, LocalizedError, Equatable {
             return "Reconnect Hermes on your Mac before sending more private gateway messages."
         case .gatewayInvalidSealedControlPayload:
             return "Could not prepare this private Hermes control message. Reconnect Hermes on your Mac, then try again."
+        case .gatewayEnvelopeVersionDowngrade:
+            // Same calm, action-first copy as a key change: a downgrade looks
+            // different from when the connection was set up, so the message is
+            // kept on-device until the operator re-pairs.
+            return "This Hermes connection looks different from when you set it up, so your message was kept on this device for your safety. Reconnect Hermes on your Mac to keep sending privately."
         }
     }
 }

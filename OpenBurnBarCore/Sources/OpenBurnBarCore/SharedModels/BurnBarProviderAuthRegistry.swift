@@ -300,6 +300,7 @@ public enum BurnBarProviderAuthRegistry {
     public static let descriptors: [BurnBarProviderAuthDescriptor] = [
         zaiDescriptor,
         minimaxDescriptor,
+        kimiCodingDescriptor,
         moonshotKimiDescriptor,
         ollamaDescriptor,
         openAIDescriptor,
@@ -437,6 +438,31 @@ public enum BurnBarProviderAuthRegistry {
         summary: "MiniMax coding plans for routing and quota in one place.",
         proxyHint: "Routed via api.minimax.io (OpenAI-compatible).",
         quotaHint: "Live coding plan quota requires the sk-cp- key."
+    )
+
+    private static let kimiCodingDescriptor = BurnBarProviderAuthDescriptor(
+        providerID: "kimi-coding",
+        displayName: "Kimi Coding",
+        aliasProviderIDs: ["kimi-code", "kimicoding", "kimi-for-coding"],
+        methods: [
+            BurnBarProviderAuthMethod(
+                id: "kimi-coding-plan",
+                kind: .apiKey,
+                displayName: "Kimi Coding Plan Key",
+                summary: "Routes Kimi K2.7 Code traffic through the Kimi Coding endpoint.",
+                helperText: "Paste the bearer token used by Kimi Code for api.kimi.com/coding/v1. OpenBurnBar stores it in your Mac Keychain.",
+                placeholder: "sk-kimi-...",
+                dashboardURL: "https://kimi.com/code/console",
+                dashboardLabel: "Open Kimi console",
+                storage: .daemonSlot,
+                unlocksProxyRouting: true,
+                unlocksQuotaRefresh: false
+            )
+        ],
+        primaryMethodID: "kimi-coding-plan",
+        summary: "Kimi Coding plan routing for Kimi K2.7 Code.",
+        proxyHint: "Routed via api.kimi.com/coding/v1.",
+        quotaHint: "Quota remains tracked by the Kimi browser session token connection."
     )
 
     private static let moonshotKimiDescriptor = BurnBarProviderAuthDescriptor(

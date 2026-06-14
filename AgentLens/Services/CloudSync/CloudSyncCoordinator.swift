@@ -214,6 +214,15 @@ final class CloudSyncCoordinator {
             return true
         }
         guard shouldProceed else { return }
+        // T-PTR-02 — "surviving trusted device came online" trigger. A remote
+        // replica pull only runs when the Mac is signed in, cloud-sync enabled,
+        // and reachable, i.e. it has just reconnected to the cloud. Post a
+        // one-shot signal so the AppDelegate can finish any pending Cloud Vault
+        // rotation requirement this Mac is a survivor for — closing the gap
+        // where the app was already foregrounded (so `didBecomeActive` never
+        // re-fires) when connectivity returned. The pickup itself is debounced
+        // and idempotent, so an extra post is harmless.
+        NotificationCenter.default.post(name: .openBurnBarCloudSyncDidComeOnline, object: nil)
         await downloadSync.sync()
         await MainActor.run {
             lastSyncDate = downloadSync.lastSyncDate
@@ -420,4 +429,13 @@ final class CloudSyncCoordinator {
         }
         await fetchCloudTotal()
     }
+}
+
+extension Notification.Name {
+    /// T-PTR-02 — posted when the Mac completes a cloud reconnect (a remote
+    /// replica pull), i.e. a surviving trusted device has come online. The
+    /// AppDelegate observes this to run the Cloud Vault rotation pickup so a
+    /// pending `cloud_vault_rotation_requirement` is actually completed when
+    /// connectivity returns, not only on launch / window activation / revoke.
+    static let openBurnBarCloudSyncDidComeOnline = Notification.Name("openBurnBarCloudSyncDidComeOnline")
 }

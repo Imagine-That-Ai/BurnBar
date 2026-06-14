@@ -144,6 +144,11 @@ class BurnBarApplication : Application() {
         super.onCreate()
         appContext = applicationContext
         OpenBurnBarIrohNativeContext.install(applicationContext)
+        // T-AND-06: install the Sentry privacy scrubber BEFORE anything can capture a crash/ANR,
+        // so no payload or breadcrumb can ship prompt/credential fragments off device. This reads
+        // the manifest-configured DSN/options and adds beforeSend/beforeBreadcrumb on top.
+        runCatching { SentryPrivacyInit.install(applicationContext) }
+            .onFailure { Log.w("BurnBar", "Sentry privacy scrubber install failed: ${it.message}") }
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         // F2/F7/F10: land remote kill-switch values so the default-ON

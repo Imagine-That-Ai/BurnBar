@@ -70,6 +70,72 @@ final class ChatSessionControllerAttachmentTests: XCTestCase {
         XCTAssertNotNil(controller.attachmentError)
     }
 
+    // MARK: - T-ATT-05: content-sniffing / mime-vs-bytes verification
+
+    /// A blob whose bytes are an HTML document but which is labeled `.png` /
+    /// `image/png` must be refused on import — it must not be admitted and then
+    /// rendered as an image in the Mercury preview path.
+    func test_importFile_rejectsHTMLBlobMislabeledAsPNG() throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("att-mislabel-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let htmlBytes = Data("<!DOCTYPE html><html><body><script>alert(1)</script></body></html>".utf8)
+        let tmpURL = try writeTempFile(named: "totally-an-image.png", data: htmlBytes)
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        XCTAssertThrowsError(try HermesAttachmentLoader.importFile(at: tmpURL, intoWorkspace: workspace)) { error in
+            guard case HermesAttachmentLoader.LoaderError.unsafeAttachment = error else {
+                return XCTFail("Expected unsafeAttachment, got \(error)")
+            }
+        }
+    }
+
+    /// A genuine PNG still imports cleanly (no false positive from the sniff).
+    func test_importFile_acceptsGenuinePNG() throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("att-genuine-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let tmpURL = try writeTempFile(named: "tiny.png", data: makeTinyPNG())
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        let attachment = try HermesAttachmentLoader.importFile(at: tmpURL, intoWorkspace: workspace)
+        XCTAssertEqual(attachment.kind, .image)
+    }
+
+    /// Pure sniff helpers: active markup is detected (even past a BOM /
+    /// whitespace) and known image magic numbers are recognized.
+    func test_contentSniff_pureHelpers() {
+        XCTAssertTrue(HermesAttachmentLoader.bytesSniffAsActiveContent(Data("<svg onload=alert(1)>".utf8)))
+        XCTAssertTrue(HermesAttachmentLoader.bytesSniffAsActiveContent(Data("   \n<html>".utf8)))
+        XCTAssertTrue(HermesAttachmentLoader.bytesSniffAsActiveContent(Data([0xEF, 0xBB, 0xBF]) + Data("<!doctype html>".utf8)))
+        XCTAssertFalse(HermesAttachmentLoader.bytesSniffAsActiveContent(makeTinyPNG()))
+
+        XCTAssertTrue(HermesAttachmentLoader.bytesLookLikeKnownImage(makeTinyPNG()))
+        XCTAssertTrue(HermesAttachmentLoader.bytesLookLikeKnownImage(Data([0xFF, 0xD8, 0xFF, 0xE0])))
+        XCTAssertFalse(HermesAttachmentLoader.bytesLookLikeKnownImage(Data("not an image at all".utf8)))
+    }
+
+    /// An image-typed claim whose magic bytes match no known image format is a
+    /// type mismatch and is refused.
+    func test_enforceSafe_rejectsImageMimeWithNonImageBytes() {
+        XCTAssertThrowsError(
+            try HermesAttachmentLoader.enforceSafeAttachmentForAgentImport(
+                name: "fake.png",
+                mimeType: "image/png",
+                byteSize: 24,
+                headBytes: Data("this is plainly not image bytes".utf8)
+            )
+        ) { error in
+            guard case HermesAttachmentLoader.LoaderError.unsafeAttachment = error else {
+                return XCTFail("Expected unsafeAttachment, got \(error)")
+            }
+        }
+    }
+
     func test_openOrCreateChatThread_usesMobileThreadIDAndRestoresMessages() throws {
         let harness = try OpenBurnBarSearchIntegrationHarness(name: "mobile-chat-continuity")
         defer { harness.cleanup() }

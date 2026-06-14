@@ -118,7 +118,7 @@ extension ProviderBrand {
             candidates.append("MimoLogo")
         case "cursor-agent", "cursoragent":
             candidates.append("CursorLogo")
-        case "moonshot", "kimi":
+        case "moonshot", "kimi", "kimi-coding", "kimi-code", "kimicoding":
             candidates.append(contentsOf: ["KimiLogo", "MoonshotLogo", "KimiProviderLogo"])
         case "mlx":
             candidates.append("MLXLogo")
@@ -171,7 +171,8 @@ extension ProviderBrand {
         case "mimo", "xiaomi", "xiaomimimo":
             return Color(hex: "FF6900")
         case "ollama":      return Color(hex: "8B8589")
-        case "moonshot":    return Color(hex: "6366F1")
+        case "moonshot", "kimi", "kimi-coding", "kimi-code", "kimicoding":
+            return Color(hex: "6366F1")
         case "cursor-agent", "cursoragent": return Color(hex: "00E5FF")
         case "misc":        return DesignSystem.Colors.textSecondary
         default:            return DesignSystem.Colors.textSecondary
@@ -196,7 +197,8 @@ extension ProviderBrand {
         case "zai":         return "bolt.fill"
         case "minimax":     return "star.fill"
         case "ollama":      return "server.rack"
-        case "moonshot":    return "moon.fill"
+        case "moonshot", "kimi", "kimi-coding", "kimi-code", "kimicoding":
+            return "moon.fill"
         case "cursor-agent", "cursoragent": return "cursor.rays"
         case "misc":        return "cube.transparent"
         default:            return "cube.transparent"

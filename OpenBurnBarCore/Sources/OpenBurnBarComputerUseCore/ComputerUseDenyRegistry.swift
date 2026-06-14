@@ -166,14 +166,17 @@ public enum ComputerUseDenyRegistry {
             effect: .deny,
             origin: .builtIn,
             label: "URLs containing /admin",
-            windowTitleRegex: ".*/admin.*"
+            // T-TOOL-08: match the live tab URL path, not the (spoofable /
+            // unreliable) window title.
+            urlRegex: ".*/admin.*"
         ),
         ComputerUseScopeRule(
             id: ComputerUseScopeRuleID("builtin.billing_paths"),
             effect: .deny,
             origin: .builtIn,
             label: "URLs containing /billing",
-            windowTitleRegex: ".*/billing.*"
+            // T-TOOL-08: match the live tab URL path, not the window title.
+            urlRegex: ".*/billing.*"
         )
     ]
 

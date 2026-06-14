@@ -121,6 +121,12 @@ function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | und
     createdAtMillis: numberValue(raw.createdAtMillis) ?? 0,
     updatedAt: raw.updatedAt,
     updatedAtMillis: numberValue(raw.updatedAtMillis) ?? 0,
+    // T-PRV-06 TTL anchor; tolerate legacy events written before the field
+    // existed by deriving it from createdAt.
+    expireAt:
+      raw.expireAt instanceof Timestamp
+        ? raw.expireAt
+        : Timestamp.fromMillis((numberValue(raw.createdAtMillis) ?? Date.now()) + 7 * 24 * 60 * 60 * 1000),
     status: raw.status,
     fanoutAttemptCount: raw.fanoutAttemptCount,
     replyEnabled: raw.replyEnabled,

@@ -889,7 +889,8 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         using keypair: HermesGatewayRelayKeypair,
         uid: String,
         targetClient: HermesGatewayClientRecord? = nil,
-        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
+        versionFloorStore: HermesGatewayVersionFloorStore = HermesGatewayVersionFloorStore()
     ) -> HermesGatewayMessageRecord {
         var resolved = self
         // Downgrade protection (evaluated for BOTH sealed and unsealed docs): if
@@ -906,6 +907,26 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         // sender. A swapped/forged sender key fails the GCM tag, so a compromised
         // relay can no longer seal a forged reply to this phone's public key.
         resolved.requiresSealedReply = pinStore.requiresSealedReplies(uid: uid, clientId: clientId)
+        // T-CRY-01 — anti-downgrade on the OPEN path. Once this device observed a
+        // v3-capable peer for this client, refuse to open a v2-versioned reply: a
+        // relay that re-advertises v2 and seals a v2 reply is a downgrade. The
+        // floor only ratchets up; `resolvedText` stays nil for a below-floor reply
+        // so the render path shows the calm unverified state rather than a
+        // downgraded body. Ratchet (Phase 6) replies carry no relay version and
+        // are unaffected.
+        if isRelaySealed, let observed = relayKeyVersion {
+            if targetClient?.supportsRelayEnvelopeVersions.contains(HermesRelayCrypto.gatewayRelayKeyVersionV3) == true {
+                versionFloorStore.raiseFloorIfObserved(
+                    HermesRelayCrypto.gatewayRelayKeyVersionV3,
+                    uid: uid,
+                    clientId: clientId
+                )
+            }
+            if let floor = versionFloorStore.pinnedFloor(uid: uid, clientId: clientId), observed < floor {
+                resolved.resolvedText = nil
+                return resolved
+            }
+        }
         if isRatchetSealed {
             return decodedRatchetText(uid: uid, targetClient: targetClient, resolved: resolved)
         }

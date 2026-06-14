@@ -2,7 +2,6 @@
 // a P0 migration gate.
 package com.openburnbar.data.cloud
 
-import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -20,7 +19,6 @@ import java.security.spec.ECGenParameterSpec
 import java.security.spec.PKCS8EncodedKeySpec
 import javax.crypto.Cipher
 import javax.crypto.KeyAgreement
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -1206,17 +1204,18 @@ internal object AndroidLocalSecretBox {
     private fun secretKey(): SecretKey {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (keyStore.getKey(ALIAS, null) as? SecretKey)?.let { return it }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        val spec =
-            KeyGenParameterSpec.Builder(
-                ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        generator.init(spec)
-        return generator.generateKey()
+        // T-AND-01: this AES-GCM key wraps BOTH the cloud-vault device keypair
+        // (AndroidCloudVaultDeviceKeypair) and the Signal at-rest identity key
+        // (AndroidSignalIdentityKeyStore) at rest, so harden it with StrongBox +
+        // user-authentication (graceful fallback when unsupported) so the wrapped
+        // private keys are not recoverable from a rooted / forensic image.
+        return AndroidKeystoreHardening.generateHardenedWrappingKey(
+            androidKeyStore = "AndroidKeyStore",
+            alias = ALIAS,
+        ) {
+            setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            setRandomizedEncryptionRequired(true)
+        }
     }
 }

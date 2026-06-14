@@ -632,6 +632,41 @@ service cloud.firestore {
       return !("signalEnvelope" in request.resource.data);
     }
 
+    // T-AZ-04: belt-and-suspenders plaintext-content ban for sealed collections.
+    // Each sealed collection already pins an exact `hasOnly(...)` allowlist, so an
+    // unknown field is rejected outright. This helper is the additional, explicit
+    // denylist of the cleartext content/title/body field names a sealed mirror
+    // must NEVER carry — it mirrors the per-collection denylists already inlined
+    // on `conversations`/`mission_groups`/`cli_agent_mission_events`/`chat_threads`
+    // and the session-log manifest, so every sealed collection enforces the SAME
+    // shape and a future allowlist edit cannot silently re-admit a plaintext key.
+    // NOTE: this is a rules-side defense-in-depth measure only. Full no-plaintext
+    // also depends on client correctness — producers must seal content into the
+    // `sealedPayload` envelope and never serialize the cleartext into Firestore
+    // (independently validated by the Swift/TS unit tests).
+    function forbidsSealedPlaintextContentFields() {
+      return !request.resource.data.keys().hasAny([
+        "body",
+        "text",
+        "title",
+        "preview",
+        "message",
+        "messages",
+        "fullMessage",
+        "snippet",
+        "summary",
+        "summaryTitle",
+        "content",
+        "transcript",
+        "prompt",
+        "lastAssistantMessage",
+        "projectName",
+        "workingDirectory",
+        "ciphertext",
+        "payloadCiphertext"
+      ]);
+    }
+
     function validSignalBase64(value, maxLen) {
       return value is string
         && value.size() > 0
@@ -757,6 +792,7 @@ service cloud.firestore {
           "status",
           "profileName",
           "advertisedModel",
+          "hostInstallationId",
           "relayPublicKey",
           "relayKeyVersion",
           "relayEncryption",
@@ -783,6 +819,7 @@ service cloud.firestore {
         && request.resource.data.id is string
         && request.resource.data.id == connectionId
         && request.resource.data.displayName is string
+        && (!("hostInstallationId" in request.resource.data) || (request.resource.data.hostInstallationId is string && request.resource.data.hostInstallationId.size() <= 128))
         && request.resource.data.capabilities is list;
     }
 
@@ -1064,14 +1101,26 @@ service cloud.firestore {
         && request.resource.data.schemaVersion is int;
     }
 
-    function sharedArtifactOwnerRead() {
+    // T-AZ-02: bind the `workspaceId` PATH segment to the caller. The canonical
+    // tenant shape is `workspaces/workspace-{uid}/...` (see header), so a caller
+    // may only ever touch their OWN workspace path — they cannot read or write
+    // another tenant's `workspaces/workspace-<victimUid>/...` subtree even if they
+    // were to forge a matching `ownerUserID` document field. This is the path-level
+    // tenant boundary; the per-document `ownerUserID`/`workspaceID`/`teamID` checks
+    // below remain as defense-in-depth on the document body.
+    function callerOwnsWorkspacePath(workspaceId) {
       return isSignedIn()
+        && workspaceId == "workspace-" + request.auth.uid;
+    }
+
+    function sharedArtifactOwnerRead(workspaceId) {
+      return callerOwnsWorkspacePath(workspaceId)
         && resource.data.ownerUserID is string
         && resource.data.ownerUserID == request.auth.uid;
     }
 
     function sharedArtifactOwnerWrite(workspaceId, teamId) {
-      return isSignedIn()
+      return callerOwnsWorkspacePath(workspaceId)
         && requestWithinBasicLimits()
         && request.resource.data.ownerUserID is string
         && request.resource.data.ownerUserID == request.auth.uid
@@ -1328,6 +1377,7 @@ service cloud.firestore {
         && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
         && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
         && (!("lastAssistantMessageID" in request.resource.data) || (request.resource.data.lastAssistantMessageID is string && request.resource.data.lastAssistantMessageID.size() <= 512))
+        && forbidsSealedPlaintextContentFields()
         && forbidsDirectSignalEnvelope();
       }
 
@@ -1374,7 +1424,8 @@ service cloud.firestore {
         && (!("encryptedTranscriptAvailable" in request.resource.data) || request.resource.data.encryptedTranscriptAvailable is bool)
         && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
         && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
-        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int);
+        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
+        && forbidsSealedPlaintextContentFields();
       }
 
       allow read: if ownsUserNamespace(userId);
@@ -1479,6 +1530,7 @@ service cloud.firestore {
         && (!("siblingCount" in request.resource.data) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
         && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
         && (!("resumeAction" in request.resource.data) || request.resource.data.resumeAction in ["new", "resume", "fork", "forward"])
+        && forbidsSealedPlaintextContentFields()
         && forbidsDirectSignalEnvelope();
       }
 
@@ -2206,9 +2258,26 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // T-PTR-06: the wrapper doc ID is the deterministic
+    // `<vaultKeyID>_<targetDeviceId>_<keyVersion>` composite both writers use
+    // (CloudVaultKeyAccess.swift / MobileCloudVaultKeyAccess.swift). Binding the
+    // path segment to that composite — combined with `matchesCurrentVaultKey`
+    // (current rotation generation only) and the trusted-escrow-device gate —
+    // CAPS a stolen-session owner to exactly ONE wrapper per (current vaultKeyID,
+    // trusted target device, keyVersion): they cannot mint extra same-generation
+    // wrappers under arbitrary doc IDs; a re-write of the canonical ID only
+    // overwrites it. `allow delete: if false` keeps active wrappers non-deletable
+    // by the owner (availability / revocation stays server-owned).
+    function validKeyWrapperDocId(wrapperId) {
+      return wrapperId == request.resource.data.vaultKeyID
+        + "_" + request.resource.data.targetDeviceId
+        + "_" + string(request.resource.data.keyVersion);
+    }
+
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableHostedCloudBackup(userId)
+        && validKeyWrapperDocId(wrapperId)
         && request.resource.data.keys().hasOnly([
           "uid",
           "targetDeviceId",
@@ -2704,7 +2773,8 @@ service cloud.firestore {
           "iroh_pairing_published",
           "iroh_pairing_verified",
           "iroh_pairing_rejected",
-          "iroh_fallback_to_wss"
+          "iroh_fallback_to_wss",
+          "iroh_fallback_to_firestore"
         ]
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1;
@@ -2771,6 +2841,17 @@ service cloud.firestore {
       // Phone-control verifier keys are server-owned for the same reason as
       // host pairing roots. `publishPhoneControlAuthority` verifies a trusted
       // native mobile escrow device and existing host pairing before writing.
+      allow create, update, delete: if false;
+    }
+
+    // Mobile iroh QUIC NodeId allow-list entries. This is intentionally
+    // separate from phone-control `controllers/*`: the Mac's inbound policy
+    // checks the QUIC peer NodeId surfaced by iroh, while phone-control
+    // controller IDs are derived from app-layer signing keys. Clients publish
+    // through `publishIrohPeerNodeId`, which verifies App Check, nonce
+    // freshness, trusted native mobile escrow state, and the existing pairing.
+    match /users/{userId}/iroh_pairing/{connectionId}/iroh_controllers/{irohPeerNodeId} {
+      allow read: if ownsUserNamespace(userId);
       allow create, update, delete: if false;
     }
 
@@ -4190,14 +4271,14 @@ service cloud.firestore {
     // --- Shared artifacts (unchanged) ---
 
     match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
-      allow read: if sharedArtifactOwnerRead();
+      allow read: if sharedArtifactOwnerRead(workspaceId);
       allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
-      allow delete: if sharedArtifactOwnerRead();
+      allow delete: if sharedArtifactOwnerRead(workspaceId);
 
       match /versions/{revisionId} {
-        allow read: if sharedArtifactOwnerRead();
+        allow read: if sharedArtifactOwnerRead(workspaceId);
         allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
-        allow delete: if sharedArtifactOwnerRead();
+        allow delete: if sharedArtifactOwnerRead(workspaceId);
       }
     }
 

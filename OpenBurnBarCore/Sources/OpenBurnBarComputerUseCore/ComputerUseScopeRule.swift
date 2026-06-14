@@ -44,6 +44,12 @@ public struct ComputerUseScopeRule: Codable, Hashable, Sendable, Identifiable {
     /// URL prefix matched against the live frontmost browser tab's URL,
     /// case-insensitive. `nil` means "do not constrain on URL".
     public let urlPrefix: String?
+    /// Regex matched (case-insensitive, unanchored) against the live frontmost
+    /// browser tab's URL. Unlike ``urlPrefix`` this matches a path segment
+    /// anywhere in the URL (e.g. `.*/admin.*`), so a sensitive path is denied
+    /// regardless of host — the URL/path-based replacement for window-title
+    /// heuristics (T-TOOL-08). `nil` means "do not constrain on URL regex".
+    public let urlRegex: String?
     /// macOS bundle id matched against the frontmost application. `nil`
     /// means "do not constrain on bundle id". Wildcards: trailing `*` is
     /// treated as a prefix match (`com.apple.*`).
@@ -67,6 +73,7 @@ public struct ComputerUseScopeRule: Codable, Hashable, Sendable, Identifiable {
         origin: Origin,
         label: String,
         urlPrefix: String? = nil,
+        urlRegex: String? = nil,
         bundleId: String? = nil,
         windowTitleRegex: String? = nil,
         actionBudget: Int? = nil,
@@ -78,6 +85,7 @@ public struct ComputerUseScopeRule: Codable, Hashable, Sendable, Identifiable {
         self.origin = origin
         self.label = label
         self.urlPrefix = urlPrefix
+        self.urlRegex = urlRegex
         self.bundleId = bundleId
         self.windowTitleRegex = windowTitleRegex
         self.actionBudget = actionBudget
@@ -179,6 +187,18 @@ public struct ComputerUseScopeMatcher: Sendable {
         if let prefix = rule.urlPrefix {
             guard let url = context.url else { return false }
             if !url.lowercased().hasPrefix(prefix.lowercased()) { return false }
+        }
+        if let urlRegex = rule.urlRegex {
+            guard let url = context.url else { return false }
+            // Unanchored, case-insensitive match anywhere in the URL — the
+            // path-based replacement for window-title heuristics (T-TOOL-08).
+            guard let compiled = try? NSRegularExpression(pattern: urlRegex, options: [.caseInsensitive]) else {
+                return false
+            }
+            let range = NSRange(url.startIndex..<url.endIndex, in: url)
+            if compiled.firstMatch(in: url, options: [], range: range) == nil {
+                return false
+            }
         }
         if let bundleId = rule.bundleId {
             guard let liveBundle = context.bundleId else { return false }

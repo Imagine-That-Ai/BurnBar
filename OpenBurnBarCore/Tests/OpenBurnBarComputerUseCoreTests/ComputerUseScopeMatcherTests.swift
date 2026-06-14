@@ -342,4 +342,35 @@ final class ComputerUseScopeMatcherTests: XCTestCase {
             .allowed(rule: rule.id)
         )
     }
+
+    // MARK: url regex (path-based) matching — T-TOOL-08
+
+    func testURLRegexMatchesAdminPathAnywhereInURL() {
+        let rule = ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("deny.admin"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Deny /admin",
+            urlRegex: ".*/admin.*"
+        )
+        // Matches an /admin path regardless of host (unlike a urlPrefix).
+        XCTAssertTrue(matcher.matches(rule: rule, context: ComputerUseScopeContext(url: "https://shop.example.com/admin/orders")))
+        XCTAssertTrue(matcher.matches(rule: rule, context: ComputerUseScopeContext(url: "https://internal.corp/app/admin")))
+        // Does not fire on a benign path, and a window title containing /admin no
+        // longer triggers it (the spoofable heuristic is gone).
+        XCTAssertFalse(matcher.matches(rule: rule, context: ComputerUseScopeContext(url: "https://example.com/account")))
+        XCTAssertFalse(matcher.matches(rule: rule, context: ComputerUseScopeContext(windowTitle: "Project /admin notes")))
+        // No URL in context → a URL-scoped rule cannot match here.
+        XCTAssertFalse(matcher.matches(rule: rule, context: ComputerUseScopeContext(bundleId: "com.apple.Terminal")))
+    }
+
+    func testBuiltInAdminDenyFiresOnURLNotTitle() {
+        let admin = ComputerUseDenyRegistry.builtInRules.first { $0.id == ComputerUseScopeRuleID("builtin.admin_paths") }!
+        XCTAssertEqual(admin.urlRegex, ".*/admin.*")
+        XCTAssertNil(admin.windowTitleRegex, "admin deny must no longer rely on the window-title heuristic")
+        XCTAssertEqual(
+            matcher.evaluate(rules: [admin], context: ComputerUseScopeContext(url: "https://app.example.com/admin/users")),
+            .denied(rule: admin.id)
+        )
+    }
 }

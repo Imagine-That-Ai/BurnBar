@@ -153,6 +153,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private let transportFactory: @MainActor (_ relayURL: String?) -> any IrohRelayTransport
     private let pairingPublicKeyProvider: any IrohPairingPublicKeyProviding
     private let auditLogger: any IrohTransportAuditLogging
+    /// T-TRN-02 + T-TRN-05 — phone-side admission for the verified pairing record:
+    /// TOFU-pins the admitted NodeId per connection and enforces a monotonic
+    /// `publishedAtMillis` high-water so a within-window replay or a NodeId swap is
+    /// refused even when the Ed25519 signature verifies.
+    private let admissionStore: IrohPairingAdmissionStore
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var endpoint: (any IrohRelayTransport)?
@@ -194,6 +199,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             HermesIrohRelayTransport.defaultTransport(relayURL: relayURL)
         },
         connectTimeout: TimeInterval = HermesIrohRelayTransport.defaultConnectTimeout,
+        admissionStore: IrohPairingAdmissionStore = IrohPairingAdmissionStore(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.directory = directory
@@ -201,6 +207,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         self.auditLogger = auditLogger
         self.transportFactory = transportFactory
         self.connectTimeout = connectTimeout
+        self.admissionStore = admissionStore
         self.now = now
     }
 
@@ -316,6 +323,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             now: now()
         )
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
+        _ = try await publishIrohPeerNodeId(uid: uid, connectionID: connectionID)
         return try await transport.connect(
             to: verifiedTarget,
             timeout: Self.defaultMediaControlConnectTimeout
@@ -335,6 +343,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             now: now()
         )
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
+        _ = try await publishIrohPeerNodeId(uid: uid, connectionID: connectionID)
         return try await transport.connect(
             to: verifiedTarget,
             timeout: connectTimeout
@@ -408,6 +417,34 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             throw HermesServiceError.relayUnavailable("Could not verify iroh pairing record.")
         }
 
+        // 1b. T-TRN-02 + T-TRN-05 — phone-side admission on top of the verified
+        // signature: TOFU-pin the admitted NodeId for this connection and reject a
+        // replay of an older record (monotonic `publishedAtMillis` high-water). A
+        // refusal is audited and fails closed — a relay cannot steer this phone to
+        // a swapped or reassigned NodeAddr even with a validly signed record.
+        if let record = try? await directory.fetch(uid: uid, connectionId: payload.connectionID) {
+            let admission = admissionStore.admit(
+                nodeId: verifiedTarget.nodeId,
+                publishedAtMillis: record.publishedAtMillis,
+                uid: uid,
+                connectionId: payload.connectionID
+            )
+            if !admission.allowsDial {
+                await auditLogger.record(
+                    event: .pairingRejected,
+                    uid: uid,
+                    connectionId: payload.connectionID,
+                    transport: nil,
+                    rttMillis: nil,
+                    detail: [
+                        "stage": "admission",
+                        "admissionResult": Self.admissionAuditLabel(admission)
+                    ]
+                )
+                throw HermesServiceError.relayUnavailable("Could not verify iroh pairing record.")
+            }
+        }
+
         // 2. Bring up the iroh endpoint (idempotent, race-safe) and dial.
         // Every await below is explicitly bounded. The Rust transport has
         // its own timeouts, but the physical-device proof also needs the
@@ -428,10 +465,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 try await self.transport(relayURL: verifiedTarget.relayURL)
             }
             stage = "dial_start"
-            let localNodeId = identity?.nodeId ?? ""
-            if !localNodeId.isEmpty {
-                await persistIrohPeerNodeId(localNodeId, uid: uid)
-            }
+            let localNodeId = try await publishIrohPeerNodeId(uid: uid, connectionID: payload.connectionID)
             await auditLogger.record(
                 event: .pairingVerified,
                 uid: uid,
@@ -927,6 +961,19 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         return normalized.isEmpty ? nil : normalized
     }
 
+    /// Coarse, content-free label for a refused admission so the audit event
+    /// names *why* the dial was refused without leaking the NodeId / timestamp
+    /// (those are scrubbed by `IrohAuditMetadataScrubber` anyway).
+    nonisolated static func admissionAuditLabel(_ result: IrohPairingAdmissionStore.AdmissionResult) -> String {
+        switch result {
+        case .admittedFirstUse: return "admittedFirstUse"
+        case .admitted: return "admitted"
+        case .nodeIdMismatch: return "nodeIdMismatch"
+        case .staleReplay: return "staleReplay"
+        case .unknownKeychainError: return "keychainError"
+        }
+    }
+
     private func chunkRecord(
         from frame: HermesRealtimeRelayFrame,
         keyData: Data,
@@ -982,27 +1029,26 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         return LoopbackIrohRelayTransport(rendezvous: rendezvous)
     }
 
-    private func persistIrohPeerNodeId(_ nodeId: String, uid: String) async {
-        guard FirebaseApp.app() != nil else { return }
+    private func publishIrohPeerNodeId(uid: String, connectionID: String) async throws -> String {
+        guard FirebaseApp.app() != nil else {
+            throw HermesServiceError.relayUnavailable("Iroh relay requires Firebase before publishing this device's peer identity.")
+        }
+        guard let nodeId = identity?.nodeId.trimmingCharacters(in: .whitespacesAndNewlines),
+              !nodeId.isEmpty else {
+            throw HermesServiceError.relayUnavailable("Iroh relay did not expose this device's peer identity.")
+        }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
         let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
-        do {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("devices").document(deviceId)
-                .setData(
-                    [
-                        "deviceId": deviceId,
-                        "irohPeerNodeId": nodeId,
-                        "updated_at_millis": nowMillis
-                    ],
-                    merge: true
-                )
-        } catch {
-            #if DEBUG
-            print("HermesIrohRelayTransport irohPeerNodeId persist failed: \(irohPublicErrorClass(error))")
-            #endif
-        }
+        try await ComputerUseSecurityCallableClient.publishIrohPeerNodeId(
+            deviceId: deviceId,
+            connectionId: connectionID,
+            irohPeerNodeId: nodeId,
+            publishedAtMillis: nowMillis
+        )
+        #if DEBUG
+        print("HermesIrohRelayTransport irohPeerNodeId published uid=\(uid) connectionID=\(connectionID) nodeId=\(nodeId)")
+        #endif
+        return nodeId
     }
 }
 

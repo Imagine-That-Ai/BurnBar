@@ -527,4 +527,128 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(wrapped.verificationHash, try CloudVaultCrypto.recoveryVerificationHash(for: recoveryKey))
         XCTAssertNotNil(wrapped.verificationHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
     }
+
+    // MARK: - T-CVS-06: enforced v1 (global) AAD cutover
+
+    func test_v1AADRejectionFlag_defaultsOffAndOverridable() {
+        // Default off so reads do not regress before the backfill re-seals to v2.
+        XCTAssertFalse(CloudVaultV1AADRejectionFlag.defaultEnabled)
+
+        let defaults = ephemeralDefaults()
+        XCTAssertFalse(CloudVaultV1AADRejectionFlag.isEnabled(defaults: defaults))
+        defaults.set(true, forKey: CloudVaultV1AADRejectionFlag.userDefaultsKey)
+        XCTAssertTrue(CloudVaultV1AADRejectionFlag.isEnabled(defaults: defaults))
+        defaults.set(false, forKey: CloudVaultV1AADRejectionFlag.userDefaultsKey)
+        XCTAssertFalse(CloudVaultV1AADRejectionFlag.isEnabled(defaults: defaults))
+    }
+
+    func test_aadResolution_acceptsV1WhenOff_rejectsV1WhenOn() throws {
+        let context = try CloudVaultAADContext(
+            uid: "userA",
+            collection: "project_memory_snapshots",
+            docID: "pm_fixture",
+            field: "sealedSnapshot"
+        )
+
+        // v2 (full domain-separated) AAD is accepted regardless of the flag.
+        XCTAssertEqual(
+            try CloudVaultCrypto.resolveAADForTesting(
+                envelopeAAD: context.stringValue,
+                context: context,
+                rejectLegacyV1: false
+            ),
+            context.data
+        )
+        XCTAssertEqual(
+            try CloudVaultCrypto.resolveAADForTesting(
+                envelopeAAD: context.stringValue,
+                context: context,
+                rejectLegacyV1: true
+            ),
+            context.data
+        )
+
+        // v1 (global) AAD is accepted pre-cutover (flag off)…
+        XCTAssertEqual(
+            try CloudVaultCrypto.resolveAADForTesting(
+                envelopeAAD: context.legacyV1StringValue,
+                context: context,
+                rejectLegacyV1: false
+            ),
+            context.legacyV1Data
+        )
+
+        // …and refused post-cutover (flag on) so the weaker path is removed.
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.resolveAADForTesting(
+                envelopeAAD: context.legacyV1StringValue,
+                context: context,
+                rejectLegacyV1: true
+            )
+        ) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("Expected invalidEnvelope rejecting v1 AAD, got \(error)")
+            }
+        }
+    }
+
+    func test_openBlob_v1AADEnvelope_opensWhenOff_rejectsWhenOn() throws {
+        let key = Data(repeating: 0x73, count: 32)
+        let body = Data("legacy v1-AAD sealed body".utf8)
+        let context = try CloudVaultAADContext(
+            uid: "userB",
+            collection: "project_memory_snapshots",
+            docID: "pm_v1_fixture",
+            field: "sealedSnapshot"
+        )
+        let v1Envelope = try makeV1AADBlobEnvelope(body, keyData: key, context: context)
+
+        // Pre-cutover (flag off): the v1 envelope still decrypts.
+        let originalDefault = CloudVaultV1AADRejectionFlag.defaultEnabled
+        CloudVaultV1AADRejectionFlag.defaultEnabled = false
+        defer { CloudVaultV1AADRejectionFlag.defaultEnabled = originalDefault }
+        XCTAssertEqual(
+            try CloudVaultCrypto.openBlob(v1Envelope, keyData: key, aadContext: context),
+            body
+        )
+
+        // Post-cutover (flag on): the same v1 envelope is refused (fail closed).
+        CloudVaultV1AADRejectionFlag.defaultEnabled = true
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.openBlob(v1Envelope, keyData: key, aadContext: context)
+        ) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("Expected invalidEnvelope rejecting v1 blob, got \(error)")
+            }
+        }
+    }
+
+    /// Seal a v2-schema blob that authenticates with the *legacy v1* AAD string,
+    /// reproducing a pre-backfill at-rest record so the cutover gate can be
+    /// exercised end-to-end through ``CloudVaultCrypto/openBlob``.
+    private func makeV1AADBlobEnvelope(
+        _ data: Data,
+        keyData: Data,
+        context: CloudVaultAADContext
+    ) throws -> CloudVaultBlobEnvelope {
+        let sealed = try AES.GCM.seal(
+            data,
+            using: SymmetricKey(data: keyData),
+            authenticating: context.legacyV1Data
+        )
+        let combined = try XCTUnwrap(sealed.combined)
+        return CloudVaultBlobEnvelope(
+            keyVersion: CloudVaultCrypto.currentKeyVersion,
+            plaintextHMAC: try CloudVaultCrypto.blobPlaintextHMAC(data, keyData: keyData),
+            sealedBoxBase64: combined.base64EncodedString(),
+            aad: context.legacyV1StringValue
+        )
+    }
+
+    private func ephemeralDefaults() -> UserDefaults {
+        let suite = "cloudvault.v1aad.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
 }

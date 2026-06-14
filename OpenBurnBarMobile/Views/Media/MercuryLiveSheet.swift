@@ -1965,9 +1965,9 @@ struct MercuryLiveSheet: View {
                     setClipboardStatus("Mac denied clipboard")
                     return
                 }
-                #if canImport(UIKit)
-                UIPasteboard.general.string = text
-                #endif
+                // T-IOS-05 — text grabbed from the paired Mac's clipboard can
+                // hold secrets; copy with an expiration + local-only scope.
+                SecurePasteboard.copy(text)
                 setClipboardStatus("Mac clipboard copied")
             }
         case .empty:

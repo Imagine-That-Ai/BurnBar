@@ -4,6 +4,7 @@ import { Timestamp } from "firebase-admin/firestore";
 
 import {
   buildFcmMessage,
+  createEventFromThreadWrite,
   eventIdFor,
   fanoutAgentReplyEvent,
   latestAssistantReply,
@@ -38,6 +39,43 @@ assert.equal(
   eventIdFor({ sourceKind: "mobile_assistant_chat", threadId: "thread/1", messageId: "a.1" }),
   "mobile_assistant_chat_thread_1_a_1"
 );
+
+// ---------------------------------------------------------------------------
+// T-PRV-06: createEventFromThreadWrite stamps a Firestore TTL anchor (`expireAt`)
+// on every agent_notification_events doc so it self-expires.
+// ---------------------------------------------------------------------------
+{
+  const created = {};
+  const firestore = {
+    collection: () => ({
+      doc: () => ({
+        collection: () => ({
+          doc: () => ({
+            async create(doc) {
+              Object.assign(created, doc);
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+  const eventId = await createEventFromThreadWrite({
+    uid: "u1",
+    threadId: "thread-ttl",
+    sourceKind: "cli_session",
+    sourcePath: "users/u1/cli_sessions/thread-ttl",
+    before,
+    after,
+    firestore,
+  });
+  assert.ok(eventId);
+  // The TTL field exists and is a Firestore Timestamp roughly 7 days out.
+  assert.ok(created.expireAt, "event must carry an expireAt TTL anchor");
+  assert.equal(typeof created.expireAt.toMillis, "function");
+  const ttlDeltaMs = created.expireAt.toMillis() - created.createdAtMillis;
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  assert.ok(Math.abs(ttlDeltaMs - sevenDaysMs) < 5_000, "expireAt should be ~7 days after creation");
+}
 
 const event = {
   id: "event-1",

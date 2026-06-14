@@ -37,6 +37,9 @@ struct AddProviderConnectionView: View {
                 }
             }
         }
+        // T-IOS-03 — provider credentials (API keys / tokens) are typed here;
+        // mask them from the app-switcher snapshot and screen recording.
+        .sensitiveContentPrivacyGuard()
     }
 }
 

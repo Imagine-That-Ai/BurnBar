@@ -1,5 +1,14 @@
 name: Droid Wiki Refresh
 
+# Least-privilege default: the agentic `droid exec --skip-permissions-unsafe`
+# run below must never receive a write token. Declaring `contents: read` at the
+# top level makes the no-write-token guarantee file-local (it does not depend on
+# the repository/org default GITHUB_TOKEN permission setting), so the unattended
+# Droid run can read the checked-out tree but cannot push, open PRs, or mutate
+# any GitHub resource.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]

@@ -744,7 +744,7 @@ private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
         return .openCode
     case "deepseek", "deep-seek":
         return .deepSeek
-    case "moonshot", "kimi":
+    case "moonshot", "kimi", "kimi-coding", "kimi-code", "kimicoding":
         return .kimi
     case "xai", "x-ai", "x.ai", "grok":
         return .xAI

@@ -1,8 +1,22 @@
 import Foundation
+import OpenBurnBarCore
 
 enum MobileDataProtectionBootstrap {
-    private static let protection: FileProtectionType = .complete
-    private static let maxRecursiveItems = 2_000
+    private static let protection: FileProtectionType = .completeUnlessOpen
+
+    /// Sweep cap kept high enough to cover the whole on-device working set in
+    /// one pass. The previous 2_000 cap could silently leave deeper Firestore
+    /// cache / attachment trees unprotected; `Int.max` makes the sweep
+    /// deterministic (every reachable item is visited) rather than truncated.
+    private static let maxRecursiveItems = Int.max
+
+    /// App Group container shared with the keyboard + widget extensions. The
+    /// extensions cannot run this bootstrap (different processes, no launch
+    /// hook of their own), so the app protects the shared tree on every launch
+    /// and the writers harden their own files inline via
+    /// `AppGroupDataProtection`. Sourced from the existing core identifier so it
+    /// stays in lockstep with the snapshot/inbox/usage stores.
+    static let appGroupIdentifier = TextExpansionSnapshotStore.appGroupIdentifier
 
     static func apply(fileManager: FileManager = .default) {
         let protectedDirectories = [
@@ -20,6 +34,15 @@ enum MobileDataProtectionBootstrap {
             excludeFromBackup: true,
             fileManager: fileManager
         )
+
+        // T-IOS-11 — extend the sweep + backup exclusion to the App Group
+        // container so the keyboard inbox, text-expansion snapshot, usage log,
+        // and widget snapshot are protected at rest just like the sandbox tree.
+        if let appGroupURL = fileManager.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        ) {
+            protectTree(at: appGroupURL, excludeFromBackup: true, fileManager: fileManager)
+        }
     }
 
     private static func protectTree(
@@ -61,4 +84,11 @@ enum MobileDataProtectionBootstrap {
         values.isExcludedFromBackup = true
         try? protectedURL.setResourceValues(values)
     }
+
+    /// T-IOS-11 — name of the Firestore on-disk cache directory inside the app
+    /// sandbox. Asserting its protection class keeps the encrypted-at-rest
+    /// posture testable without a device: the offline cache holds decrypted
+    /// query results and must inherit `.completeUnlessOpen` like everything
+    /// else the bootstrap sweeps.
+    static var firestoreCacheProtectionClass: FileProtectionType { protection }
 }

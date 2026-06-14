@@ -4085,6 +4085,36 @@
       ],
       "models": [
         {
+          "id": "glm-5.2",
+          "displayName": "GLM-5.2",
+          "visibility": "public",
+          "aliases": [
+            "glm-5.2"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "glm-5.2"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "glm",
+                "5.2"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.2,
+            "outputPerMToken": 4,
+            "cacheReadPerMToken": 0.24
+          }
+        },
+        {
           "id": "glm-5-turbo",
           "displayName": "GLM-5 Turbo",
           "visibility": "public",
@@ -4341,6 +4371,48 @@
       "formatFamily": "openai_compat",
       "models": [
         {
+          "id": "kimi-k2.7",
+          "displayName": "Kimi K2.7",
+          "visibility": "public",
+          "aliases": [
+            "kimi-k2-7",
+            "moonshotai/kimi-k2.7",
+            "moonshotai/Kimi-K2.7",
+            "kimi-k2.7-code",
+            "moonshotai/kimi-k2.7-code"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "kimi",
+                "k2.7"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "kimi",
+                "k2",
+                "7"
+              ],
+              "any": [],
+              "none": [
+                "k2.5",
+                "k2.6"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.73,
+            "outputPerMToken": 3.49,
+            "cacheReadPerMToken": 0.25
+          },
+          "canonicalModelID": "kimi-k2.7",
+          "capabilityClassID": "kimi-k2.7",
+          "capabilityClassRank": 100
+        },
+        {
           "id": "kimi-k2.6",
           "displayName": "Kimi K2.6",
           "visibility": "public",
@@ -4494,6 +4566,8 @@
               "any": [],
               "none": [
                 "k2.5",
+                "k2.6",
+                "k2.7",
                 "thinking"
               ]
             },
@@ -4510,6 +4584,65 @@
             "outputPerMToken": 2.5,
             "cacheReadPerMToken": 0.15
           }
+        }
+      ]
+    },
+    {
+      "id": "kimi-coding",
+      "displayName": "Kimi Coding",
+      "baseURL": "https://api.kimi.com/coding/v1",
+      "visibility": "public",
+      "logoKey": "KimiProviderLogo",
+      "capabilities": [
+        "routing",
+        "accounting"
+      ],
+      "formatFamily": "openai_compat",
+      "models": [
+        {
+          "id": "kimi-for-coding",
+          "displayName": "Kimi K2.7 Code",
+          "visibility": "public",
+          "aliases": [
+            "kimi-code/kimi-for-coding",
+            "kimi-coding",
+            "kimi-code",
+            "kimi-k2.7-code"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "kimi-for-coding"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "kimi",
+                "coding"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "kimi",
+                "k2.7",
+                "code"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "canonicalModelID": "kimi-for-coding",
+          "capabilityClassID": "kimi-for-coding",
+          "capabilityClassRank": 100
         }
       ]
     },
@@ -4834,6 +4967,47 @@
             "outputPerMToken": 0,
             "cacheReadPerMToken": 0
           }
+        },
+        {
+          "id": "kimi-k2.7:cloud",
+          "displayName": "Kimi K2.7",
+          "visibility": "public",
+          "aliases": [
+            "kimi-k2.7-cloud"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "kimi",
+                "k2.7"
+              ],
+              "any": [
+                ":cloud",
+                "-cloud"
+              ],
+              "none": []
+            },
+            {
+              "all": [
+                "kimi",
+                "k2",
+                "7"
+              ],
+              "any": [
+                ":cloud",
+                "-cloud"
+              ],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "canonicalModelID": "kimi-k2.7",
+          "capabilityClassID": "kimi-k2.7",
+          "capabilityClassRank": 100
         },
         {
           "id": "ollama-cloud-family",

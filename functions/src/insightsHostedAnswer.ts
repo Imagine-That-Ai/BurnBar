@@ -72,7 +72,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
 import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
-import { wrapCallableHandler } from "./logging.js";
+import { logInfo, wrapCallableHandler } from "./logging.js";
 import {
   INSIGHTS_HOSTED_DEFAULT_INPUT_PRICE_PER_MTOKEN,
   INSIGHTS_HOSTED_DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
@@ -387,6 +387,90 @@ async function callOpenRouter(args: {
 }
 
 // ---------------------------------------------------------------------------
+// Semantic safety (T-AI-05)
+// ---------------------------------------------------------------------------
+
+/**
+ * The client renders missionCandidates / recommendations as *actionable* cards
+ * (a mission the user can accept, a recommendedAction they can run). A
+ * prompt-injected or hallucinating model could try to smuggle an executable or
+ * destructive directive into one of those string fields. Before forwarding the
+ * envelope we scan those action-bearing fields for shell/SQL/filesystem
+ * destructive shapes and DROP any offending entry (fail-closed at the item
+ * level — the rest of the brief still renders). This is content safety, not a
+ * substitute for the client never auto-executing model text.
+ */
+const DESTRUCTIVE_DIRECTIVE_PATTERNS: RegExp[] = [
+  // Shell removal / overwrite / privilege escalation
+  /\brm\s+-[rf]/i,
+  /\bsudo\b/i,
+  /\bchmod\s+-?R?\s*0?777\b/i,
+  /\bmkfs\b/i,
+  /\bdd\s+if=/i,
+  /:\(\)\s*\{.*\}\s*;/, // fork bomb shape
+  />\s*\/dev\/sd[a-z]/i,
+  // Piping a remote payload straight into a shell
+  /\bcurl\b[^\n]*\|\s*(sh|bash|zsh)\b/i,
+  /\bwget\b[^\n]*\|\s*(sh|bash|zsh)\b/i,
+  // Destructive SQL / data wipes
+  /\bDROP\s+(TABLE|DATABASE|SCHEMA)\b/i,
+  /\bTRUNCATE\s+TABLE\b/i,
+  /\bDELETE\s+FROM\b/i,
+  // Dynamic code execution sinks
+  /\beval\s*\(/i,
+  /\bexec\s*\(/i,
+  /\bFunction\s*\(/,
+  /\bos\.system\s*\(/i,
+  /\bsubprocess\.(?:Popen|call|run)\s*\(/i,
+  // Explicit destructive "delete/wipe/erase everything" directives
+  /\b(delete|wipe|erase|destroy|purge)\s+(all|every|the\s+entire|production|database)\b/i,
+  // Credential/secret exfiltration directives
+  /\b(exfiltrate|leak|send)\b[^\n]*\b(secret|api[\s_-]?key|token|password|credential)s?\b/i,
+];
+
+/** Pull every string leaf out of an arbitrary JSON value (bounded depth). */
+function collectStringLeaves(value: unknown, depth = 0, acc: string[] = []): string[] {
+  if (depth > 6) return acc;
+  if (typeof value === "string") {
+    acc.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectStringLeaves(item, depth + 1, acc);
+  } else if (isRecord(value)) {
+    for (const item of Object.values(value)) collectStringLeaves(item, depth + 1, acc);
+  }
+  return acc;
+}
+
+/** True when ANY string field of `entry` carries a destructive/executable directive. */
+export function entryContainsDestructiveDirective(entry: unknown): boolean {
+  for (const leaf of collectStringLeaves(entry)) {
+    for (const pattern of DESTRUCTIVE_DIRECTIVE_PATTERNS) {
+      if (pattern.test(leaf)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Drop any action-bearing entry (missionCandidate / recommendation) that carries
+ * a destructive or executable directive. Returns the filtered array and the
+ * number of entries removed so the caller can log/observe injection attempts.
+ */
+export function filterUnsafeActionEntries(entries: unknown): { safe: unknown[]; removed: number } {
+  if (!Array.isArray(entries)) return { safe: [], removed: 0 };
+  const safe: unknown[] = [];
+  let removed = 0;
+  for (const entry of entries) {
+    if (entryContainsDestructiveDirective(entry)) {
+      removed += 1;
+      continue;
+    }
+    safe.push(entry);
+  }
+  return { safe, removed };
+}
+
+// ---------------------------------------------------------------------------
 // Envelope sanitization
 // ---------------------------------------------------------------------------
 
@@ -434,6 +518,22 @@ function sanitizeEnvelope(rawContent: string): string {
     if (!(key in clean) || !Array.isArray(clean[key])) {
       clean[key] = [];
     }
+  }
+  // T-AI-05: the action-bearing arrays are rendered by the client as runnable
+  // missions / recommendations. Strip any entry whose model-authored text smells
+  // executable or destructive before the client ever sees it. Drop per-entry
+  // (fail closed for the offending item) rather than failing the whole brief.
+  let removedTotal = 0;
+  for (const actionKey of ["missionCandidates", "recommendations"] as const) {
+    const { safe, removed } = filterUnsafeActionEntries(clean[actionKey]);
+    clean[actionKey] = safe;
+    removedTotal += removed;
+  }
+  if (removedTotal > 0) {
+    logInfo({
+      event: "insights_hosted.unsafe_action_entries_dropped",
+      removed_count: removedTotal,
+    });
   }
   return JSON.stringify(clean);
 }

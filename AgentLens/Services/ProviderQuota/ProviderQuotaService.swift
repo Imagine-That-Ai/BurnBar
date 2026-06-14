@@ -1287,7 +1287,7 @@ final class ProviderQuotaService {
             return .openCode
         case "deepseek", "deep-seek":
             return .deepSeek
-        case "moonshot", "kimi":
+        case "moonshot", "kimi", "kimi-coding", "kimi-code", "kimicoding":
             return .kimi
         default:
             return nil

@@ -12,9 +12,13 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 providerID: "zai",
                 isEnabled: true,
                 baseURL: "https://api.z.ai/api/coding/paas/v4",
-                preferredModelIDs: ["glm-5-turbo", "glm-5"]
+                preferredModelIDs: ["glm-5.2", "glm-5-turbo", "glm-5"]
             )
         )
+
+        let latestRoute = try await harness.router.route(modelName: "glm-5.2")
+        XCTAssertEqual(latestRoute.providerID, "zai")
+        XCTAssertEqual(latestRoute.resolvedModelID, "glm-5.2")
 
         let route = try await harness.router.route(modelName: "glm-5-turbo")
         XCTAssertEqual(route.providerID, "zai")
@@ -155,6 +159,43 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let cloudRoute = try await harness.router.route(modelName: "deepseek-v4-flash:cloud", preferredProviderID: "ollama")
         XCTAssertEqual(cloudRoute.providerID, "ollama")
         XCTAssertEqual(cloudRoute.resolvedModelID, "deepseek-v4-flash")
+    }
+
+    func testRouterRoutesKimi27OllamaCloudAlias() async throws {
+        let harness = try makeHarness(name: "ollama-kimi-27-cloud")
+        try await harness.configStore.setSecret("ollama-key", for: "ollama")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://ollama.com/api",
+                preferredModelIDs: ["kimi-k2.7:cloud"]
+            )
+        )
+
+        let route = try await harness.router.route(modelName: "kimi-k2.7:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(route.providerID, "ollama")
+        XCTAssertEqual(route.requestedModel, "kimi-k2.7:cloud")
+        XCTAssertEqual(route.resolvedModelID, "kimi-k2.7")
+        XCTAssertEqual(route.modelCapabilityClassID, "kimi-k2.7")
+    }
+
+    func testRouterRoutesKimiCodingPlanModel() async throws {
+        let harness = try makeHarness(name: "kimi-coding")
+        try await harness.configStore.setSecret("kimi-coding-key", for: "kimi-coding")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "kimi-coding",
+                isEnabled: true,
+                baseURL: "https://api.kimi.com/coding/v1",
+                preferredModelIDs: ["kimi-for-coding"]
+            )
+        )
+
+        let route = try await harness.router.route(modelName: "kimi-for-coding", preferredProviderID: "kimi-coding")
+        XCTAssertEqual(route.providerID, "kimi-coding")
+        XCTAssertEqual(route.resolvedModelID, "kimi-for-coding")
+        XCTAssertEqual(route.apiKey, "kimi-coding-key")
     }
 
     func testRouterRoutesLocalOllamaModelWithoutCredential() async throws {

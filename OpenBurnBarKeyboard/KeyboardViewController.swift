@@ -71,6 +71,28 @@ final class KeyboardViewController: UIInputViewController {
         CFNotificationCenterRemoveEveryObserver(center, Unmanaged.passUnretained(self).toOpaque())
     }
 
+    // MARK: - App Group Data Protection (T-IOS-01)
+
+    /// Hardens every App Group file the keyboard writes so a snippet/usage write
+    /// from the extension lands with `.completeUnlessOpen` + no backup, matching
+    /// the app's `MobileDataProtectionBootstrap` posture. The extension has no
+    /// launch hook of its own, so it protects the shared container + its own
+    /// files inline after each write. Best-effort; never blocks input.
+    private func protectSharedAppGroupFiles() {
+        AppGroupDataProtection.protectContainer(
+            appGroupIdentifier: TextExpansionSnapshotStore.appGroupIdentifier
+        )
+        if let url = TextExpansionSnapshotStore.snapshotURL() {
+            AppGroupDataProtection.protect(url)
+        }
+        if let url = TextExpansionUsageStore.usageURL() {
+            AppGroupDataProtection.protect(url)
+        }
+        if let url = TextExpansionInbox.inboxURL() {
+            AppGroupDataProtection.protect(url)
+        }
+    }
+
     // MARK: - Snippets
 
     private func reloadSnippets() {
@@ -181,6 +203,7 @@ final class KeyboardViewController: UIInputViewController {
 
         // Record the usage statistics in the shared App Group
         TextExpansionUsageStore.recordUse(snippetID: result.match.snippet.id)
+        protectSharedAppGroupFiles()
 
         // Reset suggestions and reload snippets
         suggestions = []
@@ -255,6 +278,7 @@ final class KeyboardViewController: UIInputViewController {
             },
             onSnippetUsed: { [weak self] snippet in
                 TextExpansionUsageStore.recordUse(snippetID: snippet.id)
+                self?.protectSharedAppGroupFiles()
                 self?.reloadSnippets()
             },
             onSuggestionSelected: { [weak self] suggestion in

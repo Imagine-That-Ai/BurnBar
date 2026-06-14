@@ -323,27 +323,37 @@ enum MacCloudVaultKeyAccess {
         }
         let existingDevice = existingSnapshot?.data()
         let existingTrustState = existingDevice?["trustState"] as? String
+        let storedFingerprint = existingDevice?["publicKeyFingerprint"] as? String
+        let storedKeyVersion = existingDevice?["keyVersion"] as? Int
+        let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
+            && storedKeyVersion == keypair.keyVersion
+        let shouldPublishEscrowIdentity = existingSnapshot?.exists == false || localIdentityMatchesStored
         let sourceIsTrusted = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
+            && localIdentityMatchesStored
 
         var devicePayload: [String: Any] = [
             "deviceId": deviceId,
             "deviceName": Host.current().localizedName ?? "Mac",
             "platform": "macOS",
-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
-            "keyVersion": keypair.keyVersion,
             "updatedAt": FieldValue.serverTimestamp()
         ]
+        if shouldPublishEscrowIdentity {
+            devicePayload["publicKeyFingerprint"] = keypair.publicKeyFingerprint
+            devicePayload["keyVersion"] = keypair.keyVersion
+        }
         if existingSnapshot?.exists == false {
             devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
         }
         try await deviceRef.setData(devicePayload, merge: true)
-        try await EscrowPublicKeyPublisher.publishIfNeeded(
-            userRef: userRef,
-            deviceId: deviceId,
-            publicKeyData: keypair.publicKeyData,
-            publicKeyFingerprint: keypair.publicKeyFingerprint,
-            keyVersion: keypair.keyVersion
-        )
+        if shouldPublishEscrowIdentity {
+            try await EscrowPublicKeyPublisher.publishIfNeeded(
+                userRef: userRef,
+                deviceId: deviceId,
+                publicKeyData: keypair.publicKeyData,
+                publicKeyFingerprint: keypair.publicKeyFingerprint,
+                keyVersion: keypair.keyVersion
+            )
+        }
         let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
         try await SignalIdentityPublicKeyPublisher.publishIfNeeded(
             userRef: userRef,

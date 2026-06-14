@@ -15,9 +15,29 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { logInfo, logError } from "./logging.js";
+import { checkPublicHealthRateLimit, clientIpFromHttpRequest } from "./callables/publicRateLimit.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { sourceMetadata } from "./sourceMetadata.js";
 import { sentryStatus } from "./sentry.js";
+
+/**
+ * T-AZ-08: per-IP rate gate shared by all public health/pricing probe
+ * endpoints. Returns `true` when the caller may proceed; when it returns
+ * `false` the handler has already written a 429 and must stop. Fail-open: a
+ * limiter-store error never blocks a legitimate probe.
+ */
+async function allowPublicProbe(req: Parameters<typeof clientIpFromHttpRequest>[0], res: HttpResponseLike): Promise<boolean> {
+  const allowed = await checkPublicHealthRateLimit(clientIpFromHttpRequest(req));
+  if (!allowed) {
+    res.status(429).json({ status: "rate_limited", error: "Too many requests. Try again later." });
+    return false;
+  }
+  return true;
+}
+
+interface HttpResponseLike {
+  status: (code: number) => { json: (body: unknown) => void };
+}
 
 const FUNCTION_VERSION = process.env.FUNCTION_VERSION ?? "unknown";
 
@@ -44,9 +64,13 @@ async function probeFirestore(timeoutMs = 3000): Promise<number> {
 }
 
 /** Liveness probe — returns 200 if the function process is alive. */
-export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, (_req, res) => {
-  res.status(200).json({ status: "alive", timestamp: new Date().toISOString(), ...sourceMetadata() });
-});
+export const healthLive = onRequest(
+  { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
+  async (req, res) => {
+    if (!(await allowPublicProbe(req, res))) return;
+    res.status(200).json({ status: "alive", timestamp: new Date().toISOString(), ...sourceMetadata() });
+  },
+);
 
 /**
  * Readiness probe — verifies Firestore responds within 3 seconds.
@@ -54,7 +78,8 @@ export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, inv
  */
 export const healthReady = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
-  async (_req, res) => {
+  async (req, res) => {
+    if (!(await allowPublicProbe(req, res))) return;
     // H13: surface whether crash reporting is actually enabled so the
     // post-deploy gate can probe the live endpoint for sentry.enabled=true and
     // fail closed when functions ship with SENTRY_DSN unset (shipping dark).
@@ -92,7 +117,8 @@ export const healthReady = onRequest(
  */
 export const healthCheck = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
-  async (_req, res) => {
+  async (req, res) => {
+    if (!(await allowPublicProbe(req, res))) return;
     let firestoreStatus: "ok" | "error" = "ok";
     let latencyMs = 0;
 

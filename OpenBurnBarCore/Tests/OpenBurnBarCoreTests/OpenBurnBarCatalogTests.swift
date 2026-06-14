@@ -8,7 +8,10 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.schemaVersion, 1)
         XCTAssertNoThrow(try catalog.validate())
         XCTAssertEqual(catalog.provider(id: "zai")?.baseURL, "https://api.z.ai/api/coding/paas/v4")
-        XCTAssertEqual(catalog.suggestedModels(forProviderID: "zai").map(\.id), ["glm-5-turbo", "glm-5"])
+        XCTAssertEqual(catalog.suggestedModels(forProviderID: "zai").map(\.id), ["glm-5.2", "glm-5-turbo", "glm-5"])
+        XCTAssertEqual(catalog.suggestedModels(forProviderID: "kimi-coding").map(\.id), ["kimi-for-coding"])
+        XCTAssertEqual(catalog.suggestedModels(forProviderID: "moonshot").map(\.id), ["kimi-k2.7", "kimi-k2.6", "kimi-k2.5"])
+        XCTAssertTrue(catalog.suggestedModels(forProviderID: "ollama").map(\.id).contains("kimi-k2.7:cloud"))
     }
 
     func test_catalogModelMissingPricingUsesFallbackPricing() throws {
@@ -63,6 +66,9 @@ final class BurnBarCatalogTests: XCTestCase {
         let catalog = BurnBarCatalogLoader.bundledCatalog
 
         XCTAssertTrue(catalog.supportsModel(named: "glm-5-plus", providerID: "zai"))
+        XCTAssertTrue(catalog.supportsModel(named: "glm-5.2", providerID: "zai"))
+        XCTAssertTrue(catalog.supportsModel(named: "kimi-code/kimi-for-coding", providerID: "kimi-coding"))
+        XCTAssertTrue(catalog.supportsModel(named: "kimi-k2.7:cloud", providerID: "ollama"))
         XCTAssertTrue(catalog.supportsModel(named: "MiniMax-M3-pro", providerID: "minimax"))
         XCTAssertFalse(catalog.supportsModel(named: "pony-alpha-2", providerID: "zai"))
     }
@@ -211,6 +217,7 @@ final class BurnBarCatalogTests: XCTestCase {
             "meta": "MetaProviderLogo",
             "deepseek": "DeepSeekProviderLogo",
             "moonshot": "KimiProviderLogo",
+            "kimi-coding": "KimiProviderLogo",
             "cohere": "CohereProviderLogo",
             "mistral": "MistralProviderLogo",
             "alibaba": "AlibabaProviderLogo",

@@ -1,4 +1,16 @@
 # CODEOWNERS — OpenBurnBar
+#
+# GitHub requires a review from EVERY owner listed for a touched path before a
+# PR is mergeable when "Require review from Code Owners" branch protection is
+# on. Listing two owners on the sensitive surfaces below creates real
+# separation of duties: the default owner can no longer self-approve a change
+# to a release/deploy workflow, the Firestore rules, or a release-critical
+# path — the @Ajnunezg/security-reviewers team must also approve.
+#
+# Separation-of-duties policy (who may sit on the security-reviewers team and
+# the solo-operator fallback when no second human exists) is documented in
+# docs/SOLO_OPERATOR_POLICY.md. The team handle is required here so the control
+# is enforced by GitHub at review time, not by convention.
 
 # Default owner for everything
 * @Ajnunezg
@@ -14,9 +26,35 @@ OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/ @Ajnunezg
 # Editor extension
 extensions/openburnbar/ @Ajnunezg
 
-# CI/CD
-.github/workflows/ @Ajnunezg
+# --- Sensitive surfaces: require a SECOND reviewer (separation of duties) ---
+# These paths match the "sensitive surface" list in docs/SOLO_OPERATOR_POLICY.md
+# (release/deploy workflows, Firestore/storage security rules, billing /
+# entitlements, the provenance manifest). A second CODEOWNER is mandatory so a
+# single owner can never both author and approve a change here.
+
+# CI/CD — all workflows, plus the release/deploy lanes specifically.
+.github/workflows/ @Ajnunezg @Ajnunezg/security-reviewers
+.github/workflows/release.yml @Ajnunezg @Ajnunezg/security-reviewers
+.github/workflows/deploy-production.yml @Ajnunezg @Ajnunezg/security-reviewers
+.github/workflows/deploy-hosting.yml @Ajnunezg @Ajnunezg/security-reviewers
+.github/workflows/deploy-firestore.yml @Ajnunezg @Ajnunezg/security-reviewers
+.github/workflows/supply-chain-provenance.yml @Ajnunezg @Ajnunezg/security-reviewers
+.github/CODEOWNERS @Ajnunezg @Ajnunezg/security-reviewers
+
+# Firestore / storage security rules and the deploy config that ships them.
+firestore.rules @Ajnunezg @Ajnunezg/security-reviewers
+firestore.indexes.json @Ajnunezg @Ajnunezg/security-reviewers
+storage.rules @Ajnunezg @Ajnunezg/security-reviewers
+firebase.json @Ajnunezg @Ajnunezg/security-reviewers
+
+# Billing / entitlements (release-critical money path).
+functions/src/callables/stripe.ts @Ajnunezg @Ajnunezg/security-reviewers
+functions/src/callables/shared.ts @Ajnunezg @Ajnunezg/security-reviewers
+
+# Supply-chain provenance manifest and release signing/preflight tooling.
+third_party/hermes-agent/ @Ajnunezg @Ajnunezg/security-reviewers
+scripts/ci/check_burnbar_release_preflight.py @Ajnunezg @Ajnunezg/security-reviewers
+scripts/supply-chain/ @Ajnunezg @Ajnunezg/security-reviewers
 
 # Infrastructure
-firestore.rules @Ajnunezg
 project.yml @Ajnunezg

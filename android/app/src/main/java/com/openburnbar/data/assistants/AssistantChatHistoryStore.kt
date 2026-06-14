@@ -48,6 +48,15 @@ private const val THREAD_FILE_ESCAPE_HEX_WIDTH = 4
 private const val SIGNAL_CHAT_DOMAIN = "conversations_chat"
 
 /**
+ * T-CVS-01 — per-document "must be Signal" marker field. Written `true` alongside a
+ * `signalEnvelope` once Signal sealing is active for a doc, so a reader can tell a doc
+ * whose envelope was STRIPPED (marker present, envelope gone) apart from a legitimately
+ * legacy-only doc (no marker) and hard-fail-closed on the former instead of silently
+ * decoding the unauthenticated legacy AES-GCM `sealedPayload`.
+ */
+private const val SIGNAL_REQUIRED_MARKER_FIELD = "signalRequired"
+
+/**
  * Persisted shape of a single assistant chat thread on Android. Matches the
  * iOS `MobileChatThread` so the same Firestore documents round-trip.
  */
@@ -356,6 +365,24 @@ class AssistantChatHistoryStore internal constructor(
 
     companion object {
         private val sanitizeRegex = Regex("[^A-Za-z0-9_-]")
+
+        /**
+         * T-CVS-01 — whether a Firestore chat document asserts it MUST be Signal-sealed (carries the
+         * `signalRequired` marker). Pure + unit-tested so the fail-closed decision is verifiable
+         * without Firebase. A legacy-only doc lacks the marker, so it stays legacy-eligible; a doc
+         * WITH the marker but no `signalEnvelope` is a stripped-envelope downgrade and must fail
+         * closed (the document is dropped, never decoded via the unauthenticated legacy payload).
+         */
+        fun documentAssertsSignalRequired(data: Map<String, Any?>): Boolean =
+            data[SIGNAL_REQUIRED_MARKER_FIELD] as? Boolean == true
+
+        /**
+         * T-CVS-01 — whether a signal-required doc that is MISSING its `signalEnvelope` must
+         * fail closed (drop) rather than fall through to legacy. True exactly when the doc is marked
+         * signal-required and has no envelope.
+         */
+        fun signalRequiredButEnvelopeStripped(data: Map<String, Any?>): Boolean =
+            documentAssertsSignalRequired(data) && data["signalEnvelope"] == null
 
         fun sanitizePartitionKey(raw: String): String {
             val cleaned = raw.replace(sanitizeRegex, "-").trim('-')
@@ -751,7 +778,12 @@ internal class AssistantChatFirestoreMirror(
                         localIdentity = identity,
                         otherRecipients = recipients,
                     ),
-                )?.let { payload["signalEnvelope"] = it }
+                )?.let {
+                    payload["signalEnvelope"] = it
+                    // T-CVS-01: stamp the per-doc "must be Signal" marker so a future reader rejects
+                    // a stripped-envelope copy of THIS doc instead of falling through to legacy.
+                    payload[SIGNAL_REQUIRED_MARKER_FIELD] = true
+                }
             }
         }.onFailure { Log.w("AssistantChatFirestoreMirror", "Signal at-rest seal failed; writing chat legacy-only", it) }
     }
@@ -773,12 +805,22 @@ internal class AssistantChatFirestoreMirror(
             }.getOrNull()
         // RR-7a sender-auth: resolve the PINNED trusted-sender public keys once (local identity +
         // every trusted escrow device's published identity) so cross-device envelopes verify their
-        // sender signature fail-closed. Best-effort — local identity always present; a partial set
-        // is treated as `senderSetComplete = false` by the fallback policy.
-        val trustedSenders =
+        // sender signature fail-closed. T-AND-04: resolve the EXPLICIT per-user sender-set-complete
+        // enrollment marker rather than the old `size > 1` heuristic. On a transient escrow read the
+        // resolver returns UNAVAILABLE (senderSetComplete = true) so an unknown sender fails closed
+        // instead of being treated as an incomplete-and-legacy-eligible set.
+        val trustedSenderSet =
             signalIdentity?.let {
-                runCatching { AndroidCloudVaultSignalPayloads.trustedSenderPublicKeys(uid = uid, firestore = firestore, localIdentity = it) }.getOrNull()
-            } ?: emptyMap()
+                runCatching {
+                    AndroidCloudVaultSignalPayloads.resolveTrustedSenderSet(uid = uid, firestore = firestore, localIdentity = it)
+                }.getOrNull()
+            }
+                ?: AndroidCloudVaultSignalPayloads.TrustedSenderSet(
+                    publicKeys = emptyMap(),
+                    // No local Signal identity yet (pre-activation): no envelope can verify, and the
+                    // legacy E2EE path still requires the vault key, so leave this rollout-lenient.
+                    enrollment = AndroidCloudVaultSignalPayloads.SenderSetEnrollment.INCOMPLETE,
+                )
         val snapshot =
             collection(uid)
                 .orderBy("updatedAt", Query.Direction.DESCENDING)
@@ -786,9 +828,16 @@ internal class AssistantChatFirestoreMirror(
                 .get()
                 .await()
         return snapshot.documents.mapNotNull { document ->
-            decodeThread(document.id, document.data ?: return@mapNotNull null, key?.keyData, uid, signalIdentity, trustedSenders)
+            decodeThread(document.id, document.data ?: return@mapNotNull null, key?.keyData, uid, signalIdentity, trustedSenderSet)
         }
     }
+
+    /**
+     * T-CVS-01: whether this document asserts it MUST be Signal-sealed (the `signalRequired`
+     * marker). Delegates to the pure, unit-tested [AssistantChatHistoryStore.documentAssertsSignalRequired].
+     */
+    private fun documentAssertsSignalRequired(data: Map<String, Any?>): Boolean =
+        AssistantChatHistoryStore.documentAssertsSignalRequired(data)
 
     /** Outcome of the Signal-first decode: a decoded thread, a fail-closed drop, or fall through to legacy. */
     private sealed interface SignalFirstDecode {
@@ -812,10 +861,28 @@ internal class AssistantChatFirestoreMirror(
         data: Map<String, Any?>,
         uid: String?,
         signalIdentity: AndroidSignalIdentityKeypair?,
-        trustedSenderPublicKeys: Map<String, ByteArray>,
+        trustedSenderSet: AndroidCloudVaultSignalPayloads.TrustedSenderSet,
     ): SignalFirstDecode {
-        if (data["signalEnvelope"] == null || uid == null) return SignalFirstDecode.FallThrough
-        val senderSetComplete = trustedSenderPublicKeys.size > 1
+        if (uid == null) return SignalFirstDecode.FallThrough
+        if (data["signalEnvelope"] == null) {
+            // T-CVS-01: a doc that asserts it MUST be Signal (mustBeSignal marker) but carries no
+            // signalEnvelope is a stripped envelope — never silently fall through to the
+            // sender-unauthenticated legacy AES-GCM path. Fail closed. A legacy-only doc (no marker)
+            // legitimately has no envelope, so it still falls through.
+            return if (documentAssertsSignalRequired(data)) {
+                Log.w("AssistantChatFirestoreMirror", "Doc marked signal-required is missing signalEnvelope; dropping thread")
+                SignalFirstDecode.FailClosed
+            } else {
+                SignalFirstDecode.FallThrough
+            }
+        }
+        // T-CVS-02: once at-rest Signal sealing is ACTIVE for this domain, an unknown sender is a
+        // downgrade attempt regardless of trusted-set size — so force senderSetComplete = true when
+        // activation is live, in addition to the explicit per-user enrollment marker. Pre-activation
+        // we keep the rollout-lenient INCOMPLETE behavior so a legitimate legacy doc still reads.
+        val activationLive =
+            runCatching { AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CHAT_DOMAIN) }.getOrDefault(false)
+        val senderSetComplete = activationLive || trustedSenderSet.senderSetComplete
         val result =
             runCatching {
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
@@ -824,12 +891,14 @@ internal class AssistantChatFirestoreMirror(
                     collection = "mobile_assistant_chats",
                     docId = documentID,
                     localIdentity = signalIdentity,
-                    trustedSenderPublicKeys = trustedSenderPublicKeys,
+                    trustedSenderPublicKeys = trustedSenderSet.publicKeys,
                 )?.let { json.decodeFromString<AssistantChatThread>(it.toString(Charsets.UTF_8)) }
             }
         result.getOrNull()?.let { return SignalFirstDecode.Decoded(it) }
         val error = result.exceptionOrNull() ?: return SignalFirstDecode.FallThrough
-        if (!SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(error, senderSetComplete)) {
+        // T-CVS-01: a signal-required doc must NEVER downgrade to legacy on a Signal-open failure,
+        // regardless of the sender-set readiness gate.
+        if (documentAssertsSignalRequired(data) || !SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(error, senderSetComplete)) {
             Log.w("AssistantChatFirestoreMirror", "Signal at-rest open failed closed; dropping thread", error)
             return SignalFirstDecode.FailClosed
         }
@@ -843,9 +912,10 @@ internal class AssistantChatFirestoreMirror(
         vaultKey: ByteArray? = null,
         uid: String? = null,
         signalIdentity: AndroidSignalIdentityKeypair? = null,
-        trustedSenderPublicKeys: Map<String, ByteArray> = emptyMap(),
+        trustedSenderSet: AndroidCloudVaultSignalPayloads.TrustedSenderSet =
+            AndroidCloudVaultSignalPayloads.TrustedSenderSet(emptyMap(), AndroidCloudVaultSignalPayloads.SenderSetEnrollment.INCOMPLETE),
     ): AssistantChatThread? {
-        when (val signalFirst = decodeSignalThread(documentID, data, uid, signalIdentity, trustedSenderPublicKeys)) {
+        when (val signalFirst = decodeSignalThread(documentID, data, uid, signalIdentity, trustedSenderSet)) {
             is SignalFirstDecode.Decoded -> return signalFirst.thread
             SignalFirstDecode.FailClosed -> return null
             SignalFirstDecode.FallThrough -> Unit

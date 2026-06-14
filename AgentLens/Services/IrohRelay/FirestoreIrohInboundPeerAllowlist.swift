@@ -19,7 +19,20 @@ enum FirestoreIrohInboundPeerAllowlist {
             .collection("controllers")
             .getDocuments()
         for doc in controllers?.documents ?? [] {
-            if let peer = doc.data()["peerNodeId"] as? String, !peer.isEmpty {
+            if let peer = trimmedString(doc.data()["peerNodeId"]) {
+                allowed.insert(peer)
+            } else if !doc.documentID.isEmpty {
+                allowed.insert(doc.documentID)
+            }
+        }
+
+        let irohControllers = try? await db
+            .collection("users").document(uid)
+            .collection("iroh_pairing").document(connectionId)
+            .collection("iroh_controllers")
+            .getDocuments()
+        for doc in irohControllers?.documents ?? [] {
+            if let peer = trimmedString(doc.data()["irohPeerNodeId"]) {
                 allowed.insert(peer)
             } else if !doc.documentID.isEmpty {
                 allowed.insert(doc.documentID)
@@ -27,5 +40,11 @@ enum FirestoreIrohInboundPeerAllowlist {
         }
 
         return IrohInboundPeerPolicy(allowedPeerNodeIds: allowed)
+    }
+
+    private static func trimmedString(_ value: Any?) -> String? {
+        guard let string = value as? String else { return nil }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

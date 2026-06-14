@@ -33,7 +33,6 @@ GENERATED_KT_DIR="${KOTLIN_PKG_DIR}/uniffi/openburnbar_iroh"
 BUILD_DIR="${ROOT_DIR}/build/iroh-aar"
 ARCHS_DIR="${BUILD_DIR}/jni"
 UNIFFI_HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-kotlin-helper"
-DETERMINISTIC_ZIP_TIME="${IROH_AAR_ZIP_TIME:-202401010000.00}"
 
 PROFILE="${IROH_BUILD_PROFILE:-release}"
 PROFILE_FLAG=""
@@ -87,7 +86,7 @@ ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 [[ -d "${ANDROID_SDK}" ]] || abort "Android SDK not found at ${ANDROID_SDK}; export ANDROID_HOME"
 
 ensure_ndk() {
-  local desired_version="${IROH_ANDROID_NDK_VERSION:-${ANDROID_NDK_VERSION:-29.0.14206865}}"
+  local desired_version="${IROH_ANDROID_NDK_VERSION:-29.0.14206865}"
   local ndk_root="${ANDROID_SDK}/ndk/${desired_version}"
   if [[ -d "${ndk_root}" ]]; then
     log "found NDK at ${ndk_root}"
@@ -280,20 +279,10 @@ find "${GENERATED_KT_DIR}" -name '*.kt' -type f | while IFS= read -r generated_f
   awk '
     /^@file:Suppress\(/ { next }
     /^[[:space:]]*@Suppress\(/ { next }
-    {
-      sub(/[[:space:]]+$/, "")
-      lines[++line_count] = $0
-    }
-    END {
-      while (line_count > 0 && lines[line_count] == "") {
-        line_count--
-      }
-      for (line = 1; line <= line_count; line++) {
-        print lines[line]
-      }
-    }
+    { sub(/[[:space:]]+$/, ""); print }
   ' "${generated_file}" > "${sanitized_file}"
   mv "${sanitized_file}" "${generated_file}"
+  perl -0pi -e 's/\n+\z/\n/' "${generated_file}"
 done
 
 # --- Assemble the AAR ----------------------------------------------------------
@@ -320,21 +309,13 @@ cat > "${AAR_STAGING}/AndroidManifest.xml" <<EOF
 EOF
 
 # Empty classes.jar — required by AGP even though the AAR only ships .so.
-# Store entries without compression so macOS and Linux Info-ZIP builds produce
-# identical bytes instead of platform-specific deflate streams.
 EMPTY_JAR_DIR="${BUILD_DIR}/empty-classes"
 rm -rf "${EMPTY_JAR_DIR}"
-mkdir -p "${EMPTY_JAR_DIR}/META-INF"
-cat > "${EMPTY_JAR_DIR}/META-INF/MANIFEST.MF" <<'EOF'
-Manifest-Version: 1.0
-Created-By: OpenBurnBar
-
-EOF
-find "${EMPTY_JAR_DIR}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
-(
-  cd "${EMPTY_JAR_DIR}"
-  COPYFILE_DISABLE=1 zip -0 -X -q "${AAR_STAGING}/classes.jar" META-INF/MANIFEST.MF
-)
+mkdir -p "${EMPTY_JAR_DIR}"
+jar --create \
+  --file "${AAR_STAGING}/classes.jar" \
+  --date=2000-01-01T00:00:00+00:00 \
+  -C "${EMPTY_JAR_DIR}" .
 
 # proguard.txt + R.txt (empty) — required by AGP.
 : > "${AAR_STAGING}/proguard.txt"
@@ -342,10 +323,10 @@ find "${EMPTY_JAR_DIR}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 
 mkdir -p "${VENDOR_DIR}"
 rm -f "${AAR_PATH}"
-find "${AAR_STAGING}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
+find "${AAR_STAGING}" -exec touch -t 200001010000 {} +
 (
   cd "${AAR_STAGING}"
-  find . -type f | LC_ALL=C sort | COPYFILE_DISABLE=1 zip -0 -X -q "${AAR_PATH}" -@
+  zip -X -rq "${AAR_PATH}" .
 )
 
 log "DONE: ${AAR_PATH}"

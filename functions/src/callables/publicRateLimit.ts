@@ -9,7 +9,13 @@ import { Timestamp } from "firebase-admin/firestore";
 
 import { db } from "../adminRuntime.js";
 
-export type PublicHttpRateLimitAction = "cli_link_start" | "hermes_gateway_device_start";
+export type PublicHttpRateLimitAction =
+  | "cli_link_start"
+  | "hermes_gateway_device_start"
+  // T-AZ-08: per-IP throttle in front of the unauthenticated pricing/health
+  // probe endpoints so a single source cannot turn them into a cheap
+  // amplification / Firestore-probe DoS vector.
+  | "public_health_probe";
 
 export type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_gateway_approve_fail";
 
@@ -24,6 +30,11 @@ export type HermesGatewayBearerRateLimitAction =
 const PUBLIC_HTTP_LIMITS: Record<PublicHttpRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   cli_link_start: { windowSeconds: 3600, maxAttempts: 20 },
   hermes_gateway_device_start: { windowSeconds: 3600, maxAttempts: 20 },
+  // Generous: real monitoring/load-balancer probes poll on the order of once a
+  // few seconds, so 600/min/IP never trips for legitimate callers but caps a
+  // flood. Health/pricing endpoints fail OPEN if the limiter store itself errors
+  // (see checkPublicHealthRateLimit) so a Firestore blip never breaks liveness.
+  public_health_probe: { windowSeconds: 60, maxAttempts: 600 },
 };
 
 const APPROVAL_LIMITS: Record<CallableApprovalRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
@@ -98,6 +109,28 @@ async function incrementRateLimit(
 export async function checkPublicHttpRateLimit(keyMaterial: string, action: PublicHttpRateLimitAction): Promise<void> {
   const limit = PUBLIC_HTTP_LIMITS[action];
   await incrementRateLimit(rateLimitDocId(keyMaterial, action), action, limit);
+}
+
+/**
+ * Per-IP rate gate for the public, unauthenticated pricing/health probe
+ * endpoints (T-AZ-08). Returns `true` when the request is within budget and
+ * `false` when the per-IP window is exhausted (the caller should answer 429).
+ *
+ * Crucially fail-OPEN: a failure in the rate-limit store itself (Firestore blip)
+ * must never make a liveness/readiness probe report the service as down, so any
+ * non–rate-limit error is swallowed and the request is allowed through. Only a
+ * genuine `resource-exhausted` outcome returns `false`.
+ */
+export async function checkPublicHealthRateLimit(clientIp: string): Promise<boolean> {
+  try {
+    await checkPublicHttpRateLimit(clientIp, "public_health_probe");
+    return true;
+  } catch (error) {
+    if (error instanceof HttpsError && error.code === "resource-exhausted") {
+      return false;
+    }
+    return true;
+  }
 }
 
 export async function checkHermesGatewayBearerRateLimit(

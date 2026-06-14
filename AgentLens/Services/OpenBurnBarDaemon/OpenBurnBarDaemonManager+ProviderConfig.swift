@@ -821,7 +821,7 @@ extension OpenBurnBarDaemonManager {
             return .copilot
         case "ollama":
             return .ollama
-        case "moonshot", "kimi":
+        case "moonshot", "kimi", "kimi-coding", "kimi-code", "kimicoding":
             return .kimi
         case "mimo", "xiaomi", "xiaomimimo":
             return .mimo

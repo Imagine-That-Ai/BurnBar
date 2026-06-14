@@ -53,7 +53,7 @@ public enum OpenBurnBarModelDisplayName {
             return "Z.ai"
         case "kimi", "moonshot":
             return "Moonshot Kimi"
-        case "kimicoding":
+        case "kimicoding", "kimi-coding", "kimi-code":
             return "KimiCoding"
         case "deepseek":
             return "DeepSeek"

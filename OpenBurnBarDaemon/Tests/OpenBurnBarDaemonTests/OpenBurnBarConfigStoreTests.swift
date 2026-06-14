@@ -82,7 +82,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(providerIDs.contains("anthropic"), "Expected anthropic in defaults")
         XCTAssertTrue(providerIDs.contains("openai"), "Expected openai in defaults")
         XCTAssertEqual(snapshot.routerMode, .providerFamilyFailover)
-        XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5-turbo", "glm-5"])
+        XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5.2", "glm-5-turbo", "glm-5"])
+        XCTAssertEqual(snapshot.providerSettings(id: "kimi-coding")?.preferredModelIDs, ["kimi-for-coding"])
         XCTAssertEqual(snapshot.providerSettings(id: "minimax")?.preferredModelIDs, ["minimax-m2.7-highspeed"])
     }
 
@@ -103,7 +104,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(configuration.settings.isEnabled)
         XCTAssertTrue(configuration.hasCredential)
         XCTAssertEqual(configuration.settings.baseURL, "https://proxy.example.com/zai")
-        XCTAssertEqual(configuration.preferredModels.map(\.id), ["glm-5", "glm-5-turbo"])
+        XCTAssertEqual(configuration.preferredModels.map(\.id), ["glm-5", "glm-5.2", "glm-5-turbo"])
         XCTAssertEqual(configuration.apiKey, "zai-secret")
     }
 

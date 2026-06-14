@@ -55,6 +55,17 @@ final class ScreenPrivacyGuardTests: XCTestCase {
         XCTAssertNil(state.maskReason)
     }
 
+    // T-IOS-03 — the sensitive-data purpose reuses the exact same masking
+    // contract as the Mac-mirror guard, so chat / provider-credential /
+    // recovery-key screens mask on the identical background + capture vectors.
+    func testSensitiveDataPurposeMasksOnSameVectors() {
+        XCTAssertNotEqual(ScreenPrivacyPurpose.macMirror, ScreenPrivacyPurpose.sensitiveData)
+        let backgrounded = MobileScreenPrivacyState(scenePhase: .inactive, isCaptured: false)
+        XCTAssertTrue(backgrounded.shouldMask)
+        let captured = MobileScreenPrivacyState(scenePhase: .active, isCaptured: true)
+        XCTAssertTrue(captured.shouldMask)
+    }
+
     func testUnmaskRestoresWhenReturningToActiveAndCaptureStops() {
         var state = MobileScreenPrivacyState(scenePhase: .background, isCaptured: true)
         XCTAssertTrue(state.shouldMask)

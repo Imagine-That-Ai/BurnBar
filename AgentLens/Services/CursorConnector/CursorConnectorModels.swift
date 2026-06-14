@@ -57,7 +57,7 @@ enum ConnectorProvider: String, Codable, CaseIterable, Identifiable {
 
     private var fallbackSuggestedModels: [String] {
         switch self {
-        case .zai: return ["glm-5", "glm-5-turbo"]
+        case .zai: return ["glm-5.2", "glm-5-turbo", "glm-5"]
         case .minimax: return ["MiniMax-M2.7-highspeed"]
         case .ollama: return ["deepseek-v4-flash", "gpt-oss:120b", "gpt-oss:20b"]
         }

@@ -219,6 +219,7 @@ const authScopedCallables = entries(
     "publishIrohPairingRecord",
     "revokeIrohPairingRecord",
     "publishPhoneControlAuthority",
+    "publishIrohPeerNodeId",
     "publishRelaySenderKey",
     "publishAgentGrantAuthority",
     "queueAgentCapabilityGrantRequest",

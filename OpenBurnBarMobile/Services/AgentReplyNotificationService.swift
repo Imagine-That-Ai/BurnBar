@@ -19,6 +19,43 @@ struct AgentReplyNotificationBanner: Identifiable, Equatable {
     let deepLink: URL?
 }
 
+/// T-IOS-04 — client-side redaction for agent-reply push previews.
+///
+/// The agent-reply chat body is end-to-end sealed (see `HermesGatewayMessageRecord`),
+/// but the push *preview* arrives over the FCM/APNs payload that the cloud relay
+/// can read and that lands on the lock screen. To guarantee no reply content
+/// leaks into a banner regardless of what the server puts in `preview`, the
+/// receive path substitutes a generic string unless this build explicitly opts
+/// into showing previews. The full fix — a Notification Service Extension that
+/// decrypts the sealed body on-device and renders a redacted summary — needs a
+/// new app extension target and is tracked Deferred; this guarantees the client
+/// never *displays* a server-supplied plaintext preview in the meantime.
+enum AgentReplyPushRedaction {
+    /// `UserDefaults` opt-in; default off ⇒ previews are always generic.
+    static let showRawPreviewDefaultsKey = "openburnbar.agentReplyPush.showRawPreview.enabled"
+
+    /// The generic, content-free banner body shown in place of any reply text.
+    static let genericPreview = "You have a new reply"
+
+    static func showRawPreviewEnabled(defaults: UserDefaults = .standard) -> Bool {
+        if defaults.object(forKey: showRawPreviewDefaultsKey) != nil {
+            return defaults.bool(forKey: showRawPreviewDefaultsKey)
+        }
+        return false
+    }
+
+    /// Returns the preview to display: the generic string unless raw previews are
+    /// explicitly enabled AND the candidate is non-empty (an empty candidate
+    /// always falls back to the generic copy so the banner is never blank).
+    static func redactedPreview(_ candidate: String, defaults: UserDefaults = .standard) -> String {
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard showRawPreviewEnabled(defaults: defaults), !trimmed.isEmpty else {
+            return genericPreview
+        }
+        return trimmed
+    }
+}
+
 private struct AgentReplyNotificationPayload: Sendable {
     let type: String
     let eventID: String
@@ -36,10 +73,19 @@ private struct AgentReplyNotificationPayload: Sendable {
         runtime = Self.string(userInfo["runtime"]) ?? "hermes"
         threadID = Self.string(userInfo["thread_id"]) ?? ""
         title = Self.string(userInfo["title"]) ?? "Agent replied"
-        // Server-side previews are generic today, but any future plaintext
-        // preview must land here markdown-free — banners render plain text.
-        preview = HermesAtomParser.plainText(Self.string(userInfo["preview"]) ?? "")
+        // T-IOS-04 — client guarantee that the agent-reply preview is
+        // redacted/generic before it is displayed. A server change to redact at
+        // source is out of scope, and the Notification Service Extension that
+        // would let us decrypt-then-redact a sealed body before the banner shows
+        // is a Deferred target; here, on the RECEIVE path, we refuse to render any
+        // server-supplied plaintext preview. `redactedPreview` returns the generic
+        // string unless the build explicitly opts into showing previews (default
+        // off), so a server (compromised or not) cannot leak reply content into a
+        // lock-screen banner. Markdown is flattened first in case previews are
+        // ever enabled.
+        let rawPreview = HermesAtomParser.plainText(Self.string(userInfo["preview"]) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        preview = AgentReplyPushRedaction.redactedPreview(rawPreview)
         provider = Self.string(userInfo["provider"]).flatMap(AgentProvider.init(rawValue:))
         deepLink = Self.string(userInfo["deep_link"])
     }

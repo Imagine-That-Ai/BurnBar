@@ -144,21 +144,105 @@ enum DatabaseEncryptionService {
     /// Recovery bundle format version (1 byte at head of exported data).
     private static let recoveryBundleVersion: UInt8 = 1
 
-    /// Minimum PBKDF2 iterations for recovery-bundle key derivation.
-    private static let recoveryBundleIterations: UInt32 = 100_000
+    /// PBKDF2 iterations for recovery-bundle key derivation (T-CVS-04).
+    /// Raised from 100k → 600k to match the OWASP 2023 PBKDF2-HMAC-SHA256
+    /// floor. New exports always use this count; old bundles still import via
+    /// their embedded count provided it clears `recoveryBundleMinimumIterations`.
+    static let recoveryBundleIterations: UInt32 = 600_000
+
+    /// Import-side minimum PBKDF2 iteration floor (T-CVS-04). A forged or
+    /// downgraded bundle that specifies a weak work factor (e.g. `1`) is
+    /// rejected before any derivation runs, so an attacker cannot hand the user
+    /// a cheap-to-brute-force bundle. Set below the current export count so
+    /// genuine bundles produced by recent app versions (which used 100k) still
+    /// import; brand-new exports use the much higher `recoveryBundleIterations`.
+    static let recoveryBundleMinimumIterations: UInt32 = 100_000
+
+    /// Minimum recovery-bundle passphrase length (T-CVS-04). Short passphrases
+    /// defeat any iteration count, so export is refused below this length.
+    static let recoveryBundleMinimumPassphraseLength = 12
+
+    /// Errors surfaced by recovery-bundle export/import when the caller-supplied
+    /// passphrase or bundle parameters fail the T-CVS-04 strength/floor gates.
+    enum RecoveryBundleError: Error, CustomStringConvertible, Equatable {
+        case weakPassphrase(reason: String)
+        case iterationFloorViolation(declared: UInt32, minimum: UInt32)
+
+        var description: String {
+            switch self {
+            case let .weakPassphrase(reason):
+                return "Recovery passphrase is too weak: \(reason)"
+            case let .iterationFloorViolation(declared, minimum):
+                return "Recovery bundle declares \(declared) PBKDF2 iterations, "
+                    + "below the minimum accepted floor of \(minimum); refusing to import."
+            }
+        }
+    }
+
+    /// Pure passphrase-strength gate for recovery-bundle export (T-CVS-04).
+    /// Conservative, dependency-free stand-in for zxcvbn: requires a minimum
+    /// length AND at least three of {lowercase, uppercase, digit, symbol} OR a
+    /// clearly long passphrase (>= 20 chars), and rejects a handful of obvious
+    /// weak inputs. Returns `nil` when acceptable, otherwise a human-readable
+    /// reason. Pure so the security decision is unit-testable.
+    static func recoveryPassphraseRejectionReason(_ passphrase: String) -> String? {
+        let trimmed = passphrase
+        if trimmed.count < recoveryBundleMinimumPassphraseLength {
+            return "must be at least \(recoveryBundleMinimumPassphraseLength) characters"
+        }
+        let lowered = trimmed.lowercased()
+        let bannedSubstrings = ["password", "123456", "qwerty", "letmein", "openburnbar"]
+        if bannedSubstrings.contains(where: { lowered.contains($0) }) {
+            return "contains a common, easily guessed phrase"
+        }
+        // A single repeated character (e.g. "aaaaaaaaaaaa") clears length but
+        // carries almost no entropy.
+        if Set(trimmed).count <= 2 {
+            return "has too little character variety"
+        }
+        let hasLower = trimmed.contains { $0.isLowercase }
+        let hasUpper = trimmed.contains { $0.isUppercase }
+        let hasDigit = trimmed.contains { $0.isNumber }
+        let hasSymbol = trimmed.contains { !$0.isLetter && !$0.isNumber }
+        let classes = [hasLower, hasUpper, hasDigit, hasSymbol].filter { $0 }.count
+        // A long passphrase (a memorable multi-word phrase) is acceptable even
+        // with fewer character classes; a short one must mix classes.
+        if trimmed.count < 20, classes < 3 {
+            return "must mix upper/lowercase, digits, or symbols (or be a longer passphrase)"
+        }
+        return nil
+    }
 
     /// Exports the current database encryption key as a passphrase-wrapped
     /// recovery bundle. The user must provide and remember the passphrase;
     /// without it the bundle cannot be decrypted.
     ///
-    /// The bundle uses PBKDF2-HMAC-SHA256 (100k iterations, random 16-byte salt)
-    /// to derive a 256-bit AES key from the passphrase, then encrypts the
-    /// database key with AES-GCM. The returned data is safe to write to disk or
-    /// transfer because it cannot be decrypted without the passphrase.
+    /// The bundle uses PBKDF2-HMAC-SHA256 (600k iterations — T-CVS-04, OWASP
+    /// 2023 floor — with a random 16-byte salt) to derive a 256-bit AES key from
+    /// the passphrase, then encrypts the database key with AES-GCM. The returned
+    /// data is safe to write to disk or transfer because it cannot be decrypted
+    /// without the passphrase.
+    ///
+    /// T-CVS-04 — export is refused for a passphrase that fails
+    /// ``recoveryPassphraseRejectionReason`` (too short / too low entropy), since
+    /// a weak passphrase defeats any iteration count.
     ///
     /// - Returns: The wrapped recovery bundle as opaque data, or `nil` if the
-    ///   key cannot be retrieved or wrapping fails.
+    ///   key cannot be retrieved, the passphrase is too weak, or wrapping fails.
+    ///   Use ``exportRecoveryBundleStrict(password:)`` to surface the weakness
+    ///   reason to the user.
     static func exportRecoveryBundle(password: String) -> Data? {
+        try? exportRecoveryBundleStrict(password: password)
+    }
+
+    /// Throwing variant of ``exportRecoveryBundle(password:)`` (T-CVS-04) that
+    /// surfaces ``RecoveryBundleError/weakPassphrase(reason:)`` so the export UI
+    /// can tell the user *why* their passphrase was rejected. Returns `nil` only
+    /// when the database key itself is unavailable or wrapping fails.
+    static func exportRecoveryBundleStrict(password: String) throws -> Data? {
+        if let reason = recoveryPassphraseRejectionReason(password) {
+            throw RecoveryBundleError.weakPassphrase(reason: reason)
+        }
         guard let key = getKey() else { return nil }
         #if canImport(CommonCrypto)
         let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
@@ -211,9 +295,21 @@ enum DatabaseEncryptionService {
     ///   - data: The recovery bundle produced by `exportRecoveryBundle(password:)`.
     ///   - password: The passphrase the user chose when exporting.
     /// - Returns: The unwrapped database key string, or `nil` if decryption fails
-    ///   (wrong passphrase, corrupted bundle, or unsupported version).
+    ///   (wrong passphrase, corrupted bundle, unsupported version, or a declared
+    ///   PBKDF2 iteration count below ``recoveryBundleMinimumIterations`` —
+    ///   T-CVS-04).
     @discardableResult
     static func importRecoveryBundle(data: Data, password: String) -> String? {
+        try? importRecoveryBundleStrict(data: data, password: password)
+    }
+
+    /// Throwing variant of ``importRecoveryBundle(data:password:)`` (T-CVS-04)
+    /// that surfaces ``RecoveryBundleError/iterationFloorViolation`` when a
+    /// forged/downgraded bundle specifies a weak work factor, so a forged bundle
+    /// cannot smuggle in cheap-to-brute-force parameters. Returns `nil` for the
+    /// ordinary failure modes (wrong passphrase, corruption, bad version).
+    @discardableResult
+    static func importRecoveryBundleStrict(data: Data, password: String) throws -> String? {
         #if canImport(CommonCrypto)
         guard data.count > 21 else { return nil }
         let version = data[0]
@@ -222,6 +318,15 @@ enum DatabaseEncryptionService {
         let salt = data.subdata(in: 1..<17)
         let iterations = data.subdata(in: 17..<21).withUnsafeBytes { ptr in
             ptr.load(as: UInt32.self).bigEndian
+        }
+        // T-CVS-04 — enforce the import-side minimum-iteration floor BEFORE any
+        // key derivation. A forged bundle that declares e.g. `1` iteration is
+        // rejected outright so it can never be opened with weak parameters.
+        guard iterations >= recoveryBundleMinimumIterations else {
+            throw RecoveryBundleError.iterationFloorViolation(
+                declared: iterations,
+                minimum: recoveryBundleMinimumIterations
+            )
         }
         let combined = data.subdata(in: 21..<data.count)
 

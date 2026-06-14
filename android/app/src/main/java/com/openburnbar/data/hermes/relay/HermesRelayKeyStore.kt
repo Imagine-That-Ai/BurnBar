@@ -2,9 +2,9 @@ package com.openburnbar.data.hermes.relay
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.openburnbar.data.cloud.AndroidKeystoreHardening
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
 import java.security.KeyStore
 import java.security.KeyFactory
@@ -13,7 +13,6 @@ import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.spec.PKCS8EncodedKeySpec
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
@@ -172,18 +171,18 @@ class HermesRelayKeyStore(context: Context) {
                     ?: error("Keystore entry $KEY_ALIAS is not a secret key")
             return secretEntry.secretKey
         }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val spec =
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(AES_WRAPPING_KEY_BITS)
-                .build()
-        generator.init(spec)
-        return generator.generateKey()
+        // T-AND-01: this AES-GCM key wraps the Hermes relay client private key + the
+        // iroh endpoint secret at rest, so harden it with StrongBox + user-authentication
+        // (graceful fallback when unsupported) so the wrapped key material is not
+        // recoverable from a rooted / forensic image.
+        return AndroidKeystoreHardening.generateHardenedWrappingKey(
+            androidKeyStore = ANDROID_KEYSTORE,
+            alias = KEY_ALIAS,
+        ) {
+            setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            setKeySize(AES_WRAPPING_KEY_BITS)
+        }
     }
 
     private fun keystore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }

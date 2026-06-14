@@ -57,6 +57,9 @@ const dbMock = {
     limit() {
       return this;
     },
+    select() {
+      return this;
+    },
     get: async () => ({ docs: [], empty: true }),
   }),
   runTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {

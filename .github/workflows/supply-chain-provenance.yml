@@ -20,12 +20,76 @@ permissions:
 
 jobs:
   attest-release:
+    # T-SC-09: tighten the workflow_run gate. The triggering run must be a
+    # SUCCESSFUL run of the trusted "OpenBurnBar Release" workflow, fired by a
+    # tag PUSH (the only legitimate release trigger), originating in THIS
+    # repository (not a fork), with a v* head ref. workflow_run carries the
+    # untrusted attacker-controllable head ref, so identity (workflow name +
+    # event + repo) is verified here in the gate AND re-verified against the
+    # GitHub API in the "Verify triggering run provenance" step below before any
+    # privileged attestation runs.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v'))
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.name == 'OpenBurnBar Release' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          # Fetch tags so the provenance gate below can resolve the v* tag and
+          # confirm it points at the triggering run's head SHA.
+          fetch-depth: 0
+
+      # T-SC-09: re-verify the triggering run's identity against the GitHub API
+      # (the workflow_run payload is attacker-influenceable). Confirm the run is
+      # the trusted release workflow, succeeded, ran in this repo, and that its
+      # head SHA is the commit an existing v* tag points at — so an unrelated or
+      # forged run cannot drive a privileged release attestation.
+      - name: Verify triggering run provenance
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "/repos/${REPO}/actions/runs/${RUN_ID}")"
+          name="$(echo "$run_json" | jq -r '.name')"
+          path="$(echo "$run_json" | jq -r '.path')"
+          event="$(echo "$run_json" | jq -r '.event')"
+          conclusion="$(echo "$run_json" | jq -r '.conclusion')"
+          head_repo="$(echo "$run_json" | jq -r '.head_repository.full_name')"
+          api_head_sha="$(echo "$run_json" | jq -r '.head_sha')"
+
+          fail=0
+          [[ "$path" == ".github/workflows/release.yml" ]] || { echo "::error::Triggering run is not release.yml (got: $path)"; fail=1; }
+          [[ "$event" == "push" ]] || { echo "::error::Triggering run event is not a tag push (got: $event)"; fail=1; }
+          [[ "$conclusion" == "success" ]] || { echo "::error::Triggering run did not succeed (got: $conclusion)"; fail=1; }
+          [[ "$head_repo" == "$REPO" ]] || { echo "::error::Triggering run is from a fork ($head_repo), not $REPO"; fail=1; }
+          [[ "$api_head_sha" == "$RUN_HEAD_SHA" ]] || { echo "::error::Triggering run head SHA mismatch between event and API"; fail=1; }
+
+          # The head ref must be a real v* tag whose commit equals the run's head
+          # SHA — proving the attestation binds to a published tag, not an
+          # arbitrary branch tip named like a tag.
+          tag_sha="$(git rev-parse -q --verify "refs/tags/${RUN_HEAD_BRANCH}^{commit}" 2>/dev/null || true)"
+          if [[ -z "$tag_sha" ]]; then
+            echo "::error::No tag ${RUN_HEAD_BRANCH} resolves in this repository."
+            fail=1
+          elif [[ "$tag_sha" != "$RUN_HEAD_SHA" ]]; then
+            echo "::error::Tag ${RUN_HEAD_BRANCH} ($tag_sha) does not point at the triggering run's head SHA ($RUN_HEAD_SHA)."
+            fail=1
+          fi
+
+          if [[ "$fail" -ne 0 ]]; then
+            echo "::error::Triggering run provenance verification FAILED — refusing to attest."
+            exit 1
+          fi
+          echo "Triggering run provenance verified: $name ($path) @ $RUN_HEAD_SHA via tag $RUN_HEAD_BRANCH"
 
       - name: Resolve release tag
         id: tag
@@ -52,6 +116,46 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           path: ${{ runner.temp }}/release-artifacts
         if: github.event_name == 'workflow_run'
+
+      # T-SC-08: the attestation subject must be the AS-SHIPPED bytes, not just
+      # the source tree. Collect the DMG/ZIP/corresponding-source artifacts that
+      # the release run actually published, and fail closed on the workflow_run
+      # path when they are missing (a release whose artifacts cannot be
+      # downloaded must not produce a green provenance attestation). The
+      # workflow_dispatch path is a manual re-attest where artifacts may not be
+      # re-downloadable, so it stays source-tree-only and is labelled as such.
+      - name: Resolve published artifact subjects
+        id: subjects
+        env:
+          ARTIFACTS_DIR: ${{ runner.temp }}/release-artifacts
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          SUBJECTS_FILE="${{ runner.temp }}/attest-subjects.txt"
+          : > "$SUBJECTS_FILE"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            if [[ ! -d "$ARTIFACTS_DIR" ]]; then
+              echo "::error::Release artifacts were not downloaded — refusing to attest a release with no as-shipped bytes."
+              exit 1
+            fi
+            # The DMG, ZIP, and corresponding-source archive are the published,
+            # downloadable bytes. Bind the attestation to them.
+            while IFS= read -r -d '' f; do
+              echo "$f" >> "$SUBJECTS_FILE"
+            done < <(find "$ARTIFACTS_DIR" -type f \
+              \( -name '*.dmg' -o -name '*.zip' -o -name '*-corresponding-source.tar.gz' \) -print0)
+            if [[ ! -s "$SUBJECTS_FILE" ]]; then
+              echo "::error::No published DMG/ZIP/source artifacts found under $ARTIFACTS_DIR — cannot attest as-shipped bytes."
+              exit 1
+            fi
+            echo "have_artifacts=true" >> "$GITHUB_OUTPUT"
+            echo "Attestation subjects (as-shipped published artifacts):"
+            cat "$SUBJECTS_FILE"
+          else
+            echo "have_artifacts=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::workflow_dispatch manual re-attest — no downloadable run artifacts; SBOM/VEX attested over the source tree only."
+          fi
+          echo "subjects_file=$SUBJECTS_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
@@ -81,16 +185,41 @@ jobs:
             --product-version "$VERSION"
           echo "path=$VEX" >> "$GITHUB_OUTPUT"
 
-      - name: Attest SBOM and VEX (cosign / GitHub attestations)
+      # T-SC-08: attest the SBOM/VEX predicate over the PUBLISHED artifact
+      # subjects so the attestation binds to the as-shipped bytes. On a
+      # workflow_run release every downloaded DMG/ZIP/source artifact becomes a
+      # cosign subject; on a manual workflow_dispatch re-attest (no downloadable
+      # artifacts) we attest the SBOM/VEX blobs themselves, as before.
+      - name: Attest SBOM and VEX over published artifacts (cosign)
         env:
           SBOM_PATH: ${{ steps.sbom.outputs.path }}
           VEX_PATH: ${{ steps.vex.outputs.path }}
+          SUBJECTS_FILE: ${{ steps.subjects.outputs.subjects_file }}
+          HAVE_ARTIFACTS: ${{ steps.subjects.outputs.have_artifacts }}
         run: |
-          cosign attest --yes \
-            --predicate-type https://slsa.dev/provenance/v1 \
-            --type slsaprovenance \
-            "$SBOM_PATH" || cosign attest --yes "$SBOM_PATH"
-          cosign attest --yes "$VEX_PATH"
+          set -euo pipefail
+          if [[ "$HAVE_ARTIFACTS" == "true" ]]; then
+            # Bind both predicates to each as-shipped artifact.
+            while IFS= read -r subject; do
+              [[ -n "$subject" ]] || continue
+              echo ">> attesting $subject"
+              cosign attest --yes \
+                --predicate "$SBOM_PATH" \
+                --type spdxjson \
+                "$subject"
+              cosign attest --yes \
+                --predicate "$VEX_PATH" \
+                --type openvex \
+                "$subject"
+            done < "$SUBJECTS_FILE"
+          else
+            # Manual re-attest path: no downloadable artifacts to bind to.
+            cosign attest --yes \
+              --predicate-type https://slsa.dev/provenance/v1 \
+              --type slsaprovenance \
+              "$SBOM_PATH" || cosign attest --yes "$SBOM_PATH"
+            cosign attest --yes "$VEX_PATH"
+          fi
 
       - name: Upload provenance bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -99,6 +228,57 @@ jobs:
           path: |
             ${{ steps.sbom.outputs.path }}
             ${{ steps.vex.outputs.path }}
+
+      # T-SC-02: scripts/supply-chain/run-ecosystem-deny-checks.sh silently
+      # SKIPS the cargo-deny and OSV-Scanner ecosystem checks when those
+      # binaries are absent (`command -v ... || skip`). On the release
+      # provenance lane that is a fail-OPEN no-op. Install both tools (pinned)
+      # so the script's `command -v` succeeds and the checks actually run.
+      - name: Install Rust toolchain (cargo-deny)
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-deny and OSV-Scanner (pinned)
+        run: |
+          set -euo pipefail
+          # cargo-deny install mirrors fast-feedback.yml / rust-sast.yml: locked,
+          # with a retry loop so a transient crates.io flake does not mask the
+          # ecosystem-deny signal.
+          for attempt in 1 2 3; do
+            if cargo install cargo-deny --locked; then
+              break
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::error::Failed to install cargo-deny after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+
+          # OSV-Scanner pinned binary release (same v2.3.8 the security-pr.yml
+          # and rust-sast.yml OSV lanes pin via the action).
+          OSV_VERSION="v2.3.8"
+          curl -sSfL \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_VERSION}/osv-scanner_linux_amd64" \
+            -o /usr/local/bin/osv-scanner
+          chmod +x /usr/local/bin/osv-scanner
+
+      # Fail CLOSED: prove both binaries are now on PATH before running the
+      # script. If either is missing the ecosystem-deny step would silently pass
+      # — refuse to proceed instead.
+      - name: Assert ecosystem-deny tools are present (fail closed)
+        run: |
+          set -euo pipefail
+          missing=()
+          command -v cargo-deny  >/dev/null 2>&1 || missing+=("cargo-deny")
+          command -v osv-scanner >/dev/null 2>&1 || missing+=("osv-scanner")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Ecosystem-deny scanners missing after install: ${missing[*]} — refusing to run a fail-open ecosystem-deny check."
+            exit 1
+          fi
+          cargo-deny --version
+          osv-scanner --version
 
       - name: Ecosystem deny checks
         run: bash scripts/supply-chain/run-ecosystem-deny-checks.sh

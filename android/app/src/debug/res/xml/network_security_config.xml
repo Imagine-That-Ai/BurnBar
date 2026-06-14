@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG-ONLY network security policy (T-AND-02).
+
+  Overrides `app/src/main/res/xml/network_security_config.xml` for debuggable builds
+  ONLY. The main (release) config DEFAULT-DENIES cleartext for every host except the
+  static loopback/emulator allow-list. Android's Network Security Config cannot express
+  the RFC1918 LAN-direct CIDR ranges (10/8, 172.16/12, 192.168/16) the developer-facing
+  "LAN-direct gateway" feature points the app at over HTTP, so this debug override
+  re-permits cleartext in the base config so a developer can connect to an arbitrary LAN
+  IP during development.
+
+  This file is NOT packaged into release artifacts: only `src/main` (this default-deny's
+  source) and `src/release` source sets contribute to a release build, so release users
+  always get the fail-closed policy. The app-layer `HermesProtocol.validatedBaseURL`
+  remains the gate in every build.
+-->
+<network-security-config>
+    <!-- Debug: permit cleartext (the RFC1918 LAN-direct dev feature needs it and NSC
+         cannot CIDR-scope it). Release builds never see this file. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Backend / control-plane hosts stay TLS-only even in debug so a dev build can
+         never silently downgrade Firebase/Functions traffic to HTTP. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseio.com</domain>
+        <domain includeSubdomains="true">firebaseapp.com</domain>
+        <domain includeSubdomains="true">firebaseappcheck.googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseinstallations.googleapis.com</domain>
+        <domain includeSubdomains="true">identitytoolkit.googleapis.com</domain>
+        <domain includeSubdomains="true">securetoken.googleapis.com</domain>
+        <domain includeSubdomains="true">firestore.googleapis.com</domain>
+        <domain includeSubdomains="true">cloudfunctions.net</domain>
+        <domain includeSubdomains="true">run.app</domain>
+        <domain includeSubdomains="true">web.app</domain>
+        <domain includeSubdomains="true">gstatic.com</domain>
+        <domain includeSubdomains="true">trycloudflare.com</domain>
+    </domain-config>
+</network-security-config>

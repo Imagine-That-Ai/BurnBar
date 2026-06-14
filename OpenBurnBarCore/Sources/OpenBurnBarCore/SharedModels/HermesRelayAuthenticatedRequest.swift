@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Security)
+import Security
+#endif
 
 public enum HermesRelayAuthenticatedRequestDenyReason: String, Codable, Sendable, Equatable {
     case senderAuthRequired = "sender_auth_required"
@@ -88,6 +91,35 @@ public struct HermesRelayOpenedAuthenticatedRequest: Sendable, Equatable {
     }
 }
 
+/// Tamper-resistant anchor for the per-sender replay high-water-mark.
+///
+/// **Threat closed (T-CRY-03).** The replay cache persists `maxCounter` in a
+/// plaintext JSON file. Deleting that file resets every sender's high-water-mark
+/// to `-1`, so an attacker who can remove it re-opens the monotonic-counter
+/// replay window (already-seen `(counter, requestID)` pairs become acceptable
+/// again). The end-to-end signature layer does not stop this — the freshness
+/// decision is anchored only in deletable filesystem state.
+///
+/// **Fix.** Mirror the monotonic `maxCounter` into a second, harder-to-delete
+/// store (the Keychain, `WhenUnlockedThisDeviceOnly`, never synced). On load the
+/// cache takes the **MAX** of the file value and the anchor and refuses to go
+/// backwards, so deleting the JSON file alone cannot lower a sender's
+/// high-water-mark. This mirrors ``ControllerKeyPinBacking``: a pure seam over an
+/// injectable backing, unit-testable with an in-memory backing on CI runners
+/// without a Keychain entitlement; the shipping app always uses the Keychain.
+public protocol HermesReplayCounterAnchorBacking: Sendable {
+    /// The anchored high-water-mark for `scopeKey`, or `nil` if none / unreadable.
+    /// `nil` is treated as "no anchor" (the file value stands) — a missing anchor
+    /// must never *lower* a counter, only the MAX with a present anchor can raise it.
+    func loadMaxCounter(scopeKey: String) -> Int64?
+    /// Persist `maxCounter` for `scopeKey`, monotonically (never lower an existing
+    /// anchored value). Best-effort: a failure leaves the file value as the source
+    /// of truth and is not fatal to admitting a genuinely fresh request.
+    func storeMaxCounter(_ maxCounter: Int64, scopeKey: String)
+    /// Drop the anchor for `scopeKey` (used by `reset()` for a deliberate clear).
+    func clear(scopeKey: String)
+}
+
 public actor HermesRelayReplayCache {
     private struct SenderReplayState: Codable, Sendable, Equatable {
         var maxCounter: Int64
@@ -101,15 +133,18 @@ public actor HermesRelayReplayCache {
     private let persistenceURL: URL?
     private let requestIDTTL: TimeInterval
     private let now: @Sendable () -> Date
+    private let counterAnchor: HermesReplayCounterAnchorBacking?
     private var senders: [String: SenderReplayState]
 
     public init(
         persistenceURL: URL? = nil,
         requestIDTTL: TimeInterval = 24 * 60 * 60,
+        counterAnchor: HermesReplayCounterAnchorBacking? = HermesRelayReplayCache.defaultCounterAnchor(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.persistenceURL = persistenceURL
         self.requestIDTTL = requestIDTTL
+        self.counterAnchor = counterAnchor
         self.now = now
         if let persistenceURL,
            let data = try? Data(contentsOf: persistenceURL),
@@ -117,6 +152,18 @@ public actor HermesRelayReplayCache {
             self.senders = state.senders
         } else {
             self.senders = [:]
+        }
+        // Fold the Keychain anchor into every known scope: if the file was deleted
+        // or rolled back, the anchored high-water-mark wins. We never lower a
+        // file value with a missing/lower anchor — only raise it.
+        if let counterAnchor {
+            for (key, var state) in senders {
+                if let anchored = counterAnchor.loadMaxCounter(scopeKey: key),
+                   anchored > state.maxCounter {
+                    state.maxCounter = anchored
+                    senders[key] = state
+                }
+            }
         }
     }
 
@@ -129,6 +176,12 @@ public actor HermesRelayReplayCache {
         let key = scopeKey(uid: uid, connectionID: connectionID, sender: sender)
         let cutoff = now().addingTimeInterval(-requestIDTTL)
         var state = senders[key] ?? SenderReplayState(maxCounter: -1, requestIDs: [:])
+        // Anchor wins even for a scope absent from the (possibly deleted) file:
+        // a fresh in-memory `-1` must not silently re-admit counters already seen.
+        if let anchored = counterAnchor?.loadMaxCounter(scopeKey: key),
+           anchored > state.maxCounter {
+            state.maxCounter = anchored
+        }
         state.requestIDs = state.requestIDs.filter { $0.value >= cutoff }
         guard sender.counter > state.maxCounter,
               state.requestIDs[requestID] == nil else {
@@ -138,11 +191,18 @@ public actor HermesRelayReplayCache {
         state.requestIDs[requestID] = now()
         senders[key] = state
         try persist()
+        // Mirror the new high-water-mark to the deletion-resistant anchor so a
+        // later file deletion cannot silently reset it.
+        counterAnchor?.storeMaxCounter(sender.counter, scopeKey: key)
     }
 
     public func reset() throws {
+        let clearedKeys = Array(senders.keys)
         senders.removeAll()
         try persist()
+        for key in clearedKeys {
+            counterAnchor?.clear(scopeKey: key)
+        }
     }
 
     private func persist() throws {
@@ -312,5 +372,109 @@ public struct HermesRelayAuthenticatedRequestOpener: Sendable {
             return false
         }
         return lhsData == rhsData
+    }
+}
+
+extension HermesRelayReplayCache {
+    /// Production default: the device Keychain anchor. On platforms without the
+    /// Security framework (Linux CI) there is no Keychain, so the anchor is
+    /// `nil` and the file value stands alone — the shipping macOS/iOS app always
+    /// resolves to the Keychain-backed anchor.
+    public static func defaultCounterAnchor() -> HermesReplayCounterAnchorBacking? {
+        #if canImport(Security)
+        return HermesReplayCounterKeychainAnchorBacking()
+        #else
+        return nil
+        #endif
+    }
+}
+
+#if canImport(Security)
+/// Keychain-backed replay high-water-mark anchor: one
+/// `kSecClassGenericPassword` item per `scopeKey`, accessible only
+/// `WhenUnlockedThisDeviceOnly` and never synced off device. Stores the raw
+/// decimal `maxCounter` so a deleted JSON replay file cannot silently reset it.
+public struct HermesReplayCounterKeychainAnchorBacking: HermesReplayCounterAnchorBacking {
+    public static let service = "com.openburnbar.hermes.relay-replay-counter-anchor"
+
+    public init() {}
+
+    public func loadMaxCounter(scopeKey: String) -> Int64? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: scopeKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess,
+              let data = item as? Data,
+              let text = String(data: data, encoding: .utf8),
+              let value = Int64(text) else {
+            // Absent or unreadable: no anchor to apply. A present-but-undecodable
+            // item is treated as "no anchor" so a corrupted record can never lower
+            // a legitimately higher file value; the file remains the source of truth.
+            return nil
+        }
+        return value
+    }
+
+    public func storeMaxCounter(_ maxCounter: Int64, scopeKey: String) {
+        // Monotonic: never lower an already-anchored value.
+        if let existing = loadMaxCounter(scopeKey: scopeKey), existing >= maxCounter {
+            return
+        }
+        let data = Data(String(maxCounter).utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: scopeKey
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecItemNotFound {
+            var create = query
+            create[kSecValueData as String] = data
+            create[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            SecItemAdd(create as CFDictionary, nil)
+        }
+    }
+
+    public func clear(scopeKey: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: scopeKey
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
+#endif
+
+/// In-memory replay high-water-mark anchor for tests and non-Keychain platforms.
+/// Thread-safe and monotonic — a `store` never lowers an existing value, mirroring
+/// the Keychain backing's contract so the fail-closed anchor logic is verifiable
+/// without a Keychain entitlement.
+public final class InMemoryHermesReplayCounterAnchorBacking: HermesReplayCounterAnchorBacking, @unchecked Sendable {
+    private let lock = NSLock()
+    private var store: [String: Int64] = [:]
+
+    public init() {}
+
+    public func loadMaxCounter(scopeKey: String) -> Int64? {
+        lock.lock(); defer { lock.unlock() }
+        return store[scopeKey]
+    }
+
+    public func storeMaxCounter(_ maxCounter: Int64, scopeKey: String) {
+        lock.lock(); defer { lock.unlock() }
+        if let existing = store[scopeKey], existing >= maxCounter { return }
+        store[scopeKey] = maxCounter
+    }
+
+    public func clear(scopeKey: String) {
+        lock.lock(); defer { lock.unlock() }
+        store[scopeKey] = nil
     }
 }

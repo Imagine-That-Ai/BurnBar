@@ -311,6 +311,11 @@ final class DashboardStore {
             // (or the on-disk copy went stale): every listener tick used to
             // rewrite an identical snapshot and burn the widget reload budget.
             if try BurnBarWidgetShared.writeSnapshotIfChanged(snapshot) {
+                // T-IOS-01 — harden the just-written widget snapshot in the
+                // shared App Group container (.completeUnlessOpen + no backup).
+                if let snapshotURL = BurnBarWidgetShared.snapshotURL {
+                    AppGroupDataProtection.protect(snapshotURL)
+                }
                 WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
             }
         } catch {

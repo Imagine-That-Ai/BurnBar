@@ -8,7 +8,7 @@ final class CursorConnectorTests: XCTestCase {
     func test_connectorProvider_defaults_comeFromCatalog() {
         XCTAssertEqual(ConnectorProvider.zai.displayName, "Z.ai")
         XCTAssertEqual(ConnectorProvider.zai.defaultBaseURL, "https://api.z.ai/api/coding/paas/v4")
-        XCTAssertEqual(ConnectorProvider.zai.suggestedModels, ["glm-5-turbo", "glm-5"])
+        XCTAssertEqual(ConnectorProvider.zai.suggestedModels, ["glm-5.2", "glm-5-turbo", "glm-5"])
 
         XCTAssertEqual(ConnectorProvider.minimax.displayName, "MiniMax")
         XCTAssertEqual(ConnectorProvider.minimax.defaultBaseURL, "https://api.minimax.io/v1")

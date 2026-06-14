@@ -25,6 +25,14 @@ actor CLIBridgeStreamRuntimeCoordinator {
         runningProcess = nil
     }
 
+    /// T-TOOL-03: terminate the current spawned CLI process (if any) regardless of
+    /// token. Used by grant revocation to kill an in-flight agent immediately
+    /// while leaving the HTTP gateway stream untouched.
+    func terminateRunningProcess() {
+        runningProcess?.terminate()
+        runningProcess = nil
+    }
+
     func nextHTTPStreamID() -> UInt64 {
         nextHTTPStreamToken += 1
         return nextHTTPStreamToken

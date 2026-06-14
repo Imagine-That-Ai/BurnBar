@@ -25,7 +25,11 @@ enum DesktopGrantLocalAuthenticator {
         return try await authenticate(reason: "Allow \(promptName) desktop permissions for this agent thread.")
     }
 
-    private static func authenticate(reason: String) async throws -> Bool {
+    /// Performs a fresh device-owner authentication (Touch ID / password) with
+    /// the given reason. Used by the per-action re-authorization gates
+    /// (T-TOOL-02 unrestricted-shell re-auth) in addition to the grant-time
+    /// `authenticateIfNeeded` callers above.
+    static func authenticate(reason: String) async throws -> Bool {
         let context = LAContext()
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {

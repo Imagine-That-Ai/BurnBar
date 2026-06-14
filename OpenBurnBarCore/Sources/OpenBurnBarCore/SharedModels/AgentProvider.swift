@@ -218,7 +218,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .geminiCLI
         case "antigravity", "antigravitycli", "antigravity-cli":
             return .antigravity
-        case "moonshot", "kimi":
+        case "moonshot", "kimi", "kimi-coding", "kimi-code", "kimicoding":
             return .kimi
         case "minimax":
             return .minimax
