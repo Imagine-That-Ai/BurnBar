@@ -40,6 +40,7 @@ final class CLIProfileStreamFailoverRunner: Sendable {
                 workspaceDirectory: attempt.workingDirectory,
                 capabilityGrant: capabilityGrant,
                 environmentOverrides: attempt.environmentOverrides,
+                grantStillActive: CLIBridge.spawnedCLIGrantPoll(for: capabilityGrant),
                 continuation: continuation
             )
         }
