@@ -92,7 +92,15 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
             now: Date(),
             duration: 60
         )
-        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+        // T-TOOL-02(b): the unrestricted shell now requires a fresh local-auth
+        // re-authorization before dispatch; wire an auto-approving reauthorizer so
+        // this test still exercises the F3 audited dispatch path.
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true },
+            unrestrictedShellReauthorizer: { _ in true }
+        )
         // The dispatch path constructs the F3 audit line (grant id, runtime,
         // command digest + length — never plaintext) before running the command.
         let payload = try jsonPayload(from: await broker.invokeOpenAITool(
