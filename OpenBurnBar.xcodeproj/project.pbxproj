@@ -594,6 +594,8 @@
 		5427CEE7E8CF0597006D60A2 /* DashboardToolbarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F814AEC4F62540ED385090D /* DashboardToolbarTests.swift */; };
 		548A6A1FE879EFB7C904BFAD /* CrossSurfaceUpgradeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6B9A52E744A7897FD4ECF6 /* CrossSurfaceUpgradeTests.swift */; };
 		54FB338D294F4D08E1001CE4 /* AgentToolBrokerShellAuditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1D0770DF59ABB462A4CA28 /* AgentToolBrokerShellAuditTests.swift */; };
+		37B74E626E465DA79ECA955B /* AgentToolBrokerReauthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B64746A778FF95418EE83066 /* AgentToolBrokerReauthTests.swift */; };
+		AB4998BCF81E5766ECE05A43 /* AgentSecurityPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E4BF3DBFE7E6B5437B0ACF3 /* AgentSecurityPolicyTests.swift */; };
 		55C22C6DB539241078C1705D /* CloudSyncTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D7F7D2809523BB74FDBE435 /* CloudSyncTypes.swift */; };
 		55D3F0D003E503726EB54ACB /* MobileProviderWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1AC994C633BFAD9F7FCC1D /* MobileProviderWizardView.swift */; };
 		5613F8822E66FC920DB86F64 /* OnboardingTourView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C336EFFAFC8AE269811FC4 /* OnboardingTourView.swift */; };
@@ -999,6 +1001,7 @@
 		912DDCBBF4B3A92FF5A955BC /* MobileProviderWizardProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F06DFB885F24A546A167188 /* MobileProviderWizardProtocols.swift */; };
 		91761B3F465900EBDF36DAE6 /* ControllerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC23D5A7FC1B04BF845D4F85 /* ControllerSettings.swift */; };
 		919B59353FDF89121D1185BD /* CLIBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C39AD878BD781A5964AB634 /* CLIBridge.swift */; };
+		8ABF652ACA0D5105AF5F8E18 /* AgentSecurityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E4BB6111700A10B74283A4 /* AgentSecurityPolicy.swift */; };
 		91CAF36F47023A687F7B6899 /* ChatPanelHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180FD16A512D7B248E3E4DB4 /* ChatPanelHeader.swift */; };
 		91EEE2182D84A265C69ADCB2 /* HermesRichBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7BABCC0A6A31F30E6CA37D /* HermesRichBubble.swift */; };
 		91FDE7F2E551EC02EDF09070 /* MobileMissionConsoleSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6D633C1E2F1BA791C0F88F7 /* MobileMissionConsoleSheet.swift */; };
@@ -2070,6 +2073,7 @@
 		1C25DAF67D90C6EFEE0E0FCD /* SessionLogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogsView.swift; sourceTree = "<group>"; };
 		1C2F37A6CA116C4E9D547608 /* UsageConflictResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageConflictResolutionTests.swift; sourceTree = "<group>"; };
 		1C39AD878BD781A5964AB634 /* CLIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridge.swift; sourceTree = "<group>"; };
+		D6E4BB6111700A10B74283A4 /* AgentSecurityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSecurityPolicy.swift; sourceTree = "<group>"; };
 		1C44496E82E3EC63C1D499B1 /* DatabaseWorkspaceSnapshotBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseWorkspaceSnapshotBuilder.swift; sourceTree = "<group>"; };
 		1C714CC045D405C1DC97F89B /* AuthRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthRepository.swift; sourceTree = "<group>"; };
 		1CB9DF165CF0C179B630A10A /* AgentWatchHUDSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchHUDSession.swift; sourceTree = "<group>"; };
@@ -3105,6 +3109,8 @@
 		B9E8C5D6C724DD30E6AB3BAB /* UsageAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregatorTests.swift; sourceTree = "<group>"; };
 		BA11ADCA4D227D44846D6BB0 /* DashboardCredentialLaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCredentialLaneView.swift; sourceTree = "<group>"; };
 		BA1D0770DF59ABB462A4CA28 /* AgentToolBrokerShellAuditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolBrokerShellAuditTests.swift; sourceTree = "<group>"; };
+		B64746A778FF95418EE83066 /* AgentToolBrokerReauthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolBrokerReauthTests.swift; sourceTree = "<group>"; };
+		5E4BF3DBFE7E6B5437B0ACF3 /* AgentSecurityPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSecurityPolicyTests.swift; sourceTree = "<group>"; };
 		BAB5236CD14E447A1D8CEAE8 /* ChatSessionControllerSearchStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionControllerSearchStateTests.swift; sourceTree = "<group>"; };
 		BAF38721AE12196C89AC7172 /* ClineFormatParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClineFormatParser.swift; sourceTree = "<group>"; };
 		BB62D297736054C4CE279585 /* DashboardActivityLaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardActivityLaneView.swift; sourceTree = "<group>"; };
@@ -5481,6 +5487,8 @@
 				8537A335990BE01EF9D19CBF /* AgentCapabilityGrantQueueListenerMattersTests.swift */,
 				C73E119D13462D8CC6BCAB7B /* AgentsLandingSummaryTests.swift */,
 				BA1D0770DF59ABB462A4CA28 /* AgentToolBrokerShellAuditTests.swift */,
+				B64746A778FF95418EE83066 /* AgentToolBrokerReauthTests.swift */,
+				5E4BF3DBFE7E6B5437B0ACF3 /* AgentSecurityPolicyTests.swift */,
 				351ED70C9419DBCC6B166739 /* AnthropicCredentialProbeTests.swift */,
 				603A743C097E3928C09C0B83 /* AntigravityQuotaAdapterTests.swift */,
 				47C19410C7B06E587492CFDD /* AppCommandRouterLinkCliTests.swift */,
@@ -6330,6 +6338,7 @@
 				963A4552560E5AFEADF81CD6 /* AsyncPipeLineReader.swift */,
 				2683C5C3062D0E0643B8ADF7 /* CLIArgumentBuilder.swift */,
 				1C39AD878BD781A5964AB634 /* CLIBridge.swift */,
+				D6E4BB6111700A10B74283A4 /* AgentSecurityPolicy.swift */,
 				133DC428626DD2C6CE418AD0 /* CLIBridgeQuotaSignalRecorder.swift */,
 				5D850D4540C83A33EFD02F53 /* CLIBridgeTypes.swift */,
 				C2A23AE840875169E629AC00 /* CLIExecutableResolver.swift */,
@@ -8297,6 +8306,8 @@
 				89A8EAF48D23B0468B7AEF94 /* AgentCapabilityGrantQueueListenerMattersTests.swift in Sources */,
 				701B4110742F767D6D29262F /* AgentFocusFollowControllerTests.swift in Sources */,
 				54FB338D294F4D08E1001CE4 /* AgentToolBrokerShellAuditTests.swift in Sources */,
+				37B74E626E465DA79ECA955B /* AgentToolBrokerReauthTests.swift in Sources */,
+				AB4998BCF81E5766ECE05A43 /* AgentSecurityPolicyTests.swift in Sources */,
 				5DE0406CDA98B79E71FDCB28 /* AgentWatchActionPublisherTests.swift in Sources */,
 				DB06F3057823ABA30177FDC4 /* AgentsLandingSummaryTests.swift in Sources */,
 				8E21AB20085586CC74D1B799 /* AnthropicCredentialProbeTests.swift in Sources */,
@@ -8658,6 +8669,7 @@
 				8084DFFD7BC513221D9F5CED /* CLIAssistantConsentSheet.swift in Sources */,
 				06EE8D71697AC9E7FA26103F /* CLIAssistantSettings.swift in Sources */,
 				919B59353FDF89121D1185BD /* CLIBridge.swift in Sources */,
+				8ABF652ACA0D5105AF5F8E18 /* AgentSecurityPolicy.swift in Sources */,
 				B8151398380FD4A36317BD8C /* CLIBridgeQuotaSignalRecorder.swift in Sources */,
 				90E00F8D8BB0D11B9AE5B9F4 /* CLIBridgeStreamRuntimeCoordinator.swift in Sources */,
 				C5D86C7FECD54FF7CC5CCD89 /* CLIBridgeTypes.swift in Sources */,
