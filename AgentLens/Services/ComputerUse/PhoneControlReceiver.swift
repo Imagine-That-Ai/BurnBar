@@ -20,7 +20,7 @@ import OpenBurnBarComputerUseCore
 ///   A verified phone authority still has to clear the same secure-field/system-auth
 ///   protections as autonomous input. The narrow login-window recovery path exists
 ///   only behind the explicit operator opt-out flag in `ComputerUseCapabilityGate`.
-public final class PhoneControlReceiver: @unchecked Sendable {
+public final class PhoneControlReceiver: Sendable {
     public typealias DispatchHandler = @Sendable (
         _ action: ComputerUseAction,
         _ sessionId: ComputerUseSessionID,
@@ -35,14 +35,17 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     public let sessionId: ComputerUseSessionID
     public let validator: PhoneControlAuthorityValidator
     /// When set, resolves attestation policy from Remote Config + Mac `obb_app_check` claim.
-    public var attestationRequirementProvider: (@Sendable () async -> PhoneControlAttestationRequirement)?
+    private let attestationRequirementProviderBox = Locked<(@Sendable () async -> PhoneControlAttestationRequirement)?>(nil)
+    public var attestationRequirementProvider: (@Sendable () async -> PhoneControlAttestationRequirement)? {
+        get { attestationRequirementProviderBox.read() }
+        set { attestationRequirementProviderBox.write(newValue) }
+    }
     public let signer: ComputerUsePhoneControlSigner
     private let dispatchHandler: DispatchHandler
     private let denyFrameSink: FrameSink
     private let displayBoundsProvider: DisplayBoundsProvider
     private let authorizedPeerNodeProvider: AuthorizedPeerNodeProvider?
-    private let seenIntentQueue = DispatchQueue(label: "com.openburnbar.phoneControl.receiver.seenIntentIds")
-    private var seenClientIntentIds: Set<String> = []
+    private let seenClientIntentIds = Locked<Set<String>>([])
 
     public init(
         sessionId: ComputerUseSessionID,
@@ -221,7 +224,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     }
 
     private func markClientIntentSeen(_ clientIntentId: String) -> Bool {
-        seenIntentQueue.sync {
+        seenClientIntentIds.withLock { seenClientIntentIds in
             if seenClientIntentIds.contains(clientIntentId) {
                 return false
             }

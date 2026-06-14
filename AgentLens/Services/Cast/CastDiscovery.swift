@@ -1,6 +1,6 @@
 import Foundation
-import Network
 import OpenBurnBarCore
+import Network
 import os.log
 
 // MARK: - Cast Discovery
@@ -299,13 +299,12 @@ private final class ContinuationResumeGate: Sendable {
     private let didResume = Locked(false)
 
     func resume(_ continuation: CheckedContinuation<Void, Never>) {
-        let shouldResume = didResume.withLock { didResume in
+        let shouldResume = didResume.withLock { didResume -> Bool in
             guard !didResume else { return false }
             didResume = true
             return true
         }
-        guard shouldResume else { return }
-        continuation.resume()
+        if shouldResume { continuation.resume() }
     }
 }
 

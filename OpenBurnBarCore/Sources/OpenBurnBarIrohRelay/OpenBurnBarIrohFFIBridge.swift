@@ -29,6 +29,7 @@ import Foundation
 /// transport-level protocols. Every Rust call is wrapped in
 /// `withCheckedThrowingContinuation` on a dedicated dispatch queue so we
 /// never hop the iroh runtime on the main thread.
+/// sendable-allowlist: iroh-ffi-handle
 public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Sendable {
     private let handle: IrohEndpointHandle
     private let queue: DispatchQueue
@@ -132,6 +133,7 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
 // `DispatchQueue`s; the blocking FFI calls rule out an actor (it would stall the
 // cooperative pool), so queue confinement plus this audited conformance is the
 // correct model. The stream is never touched off its queues.
+// sendable-allowlist: iroh-ffi-handle
 public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Sendable {
     private let stream: IrohStream
     private let sendQueue: DispatchQueue

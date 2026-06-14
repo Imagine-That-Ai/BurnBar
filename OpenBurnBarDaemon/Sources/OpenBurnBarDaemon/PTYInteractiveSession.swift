@@ -54,6 +54,7 @@ public enum PTYInteractiveSessionError: Error, LocalizedError, Equatable {
 /// `@unchecked Sendable`: all mutable state is guarded by `Locked`. The output
 /// read loop runs on a dedicated serial `DispatchQueue`; the caller-supplied
 /// `onOutput` handler is invoked on that queue and must be `@Sendable`.
+/// sendable-allowlist: process-handle
 public final class PTYInteractiveSession: @unchecked Sendable {
 
     public struct Configuration: Sendable {

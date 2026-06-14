@@ -1,136 +1,117 @@
 # `@unchecked Sendable` → real `Sendable` remediation
 
-Tracks the elimination of `@unchecked Sendable` escape hatches in OpenBurnBar
-production Swift, making the Swift 6 concurrency migration real instead of
-asserted. Governed by `budgets/unchecked-sendable-baseline.json` (CI fails on
-increase via `scripts/debt/check-unchecked-sendable-budget.sh`).
+Records the elimination of every *fixable* `@unchecked Sendable` escape hatch in
+OpenBurnBar production Swift — making the Swift 6 concurrency migration real
+instead of asserted. Governed by a **fail-closed assert-zero gate**
+(`scripts/debt/check-unchecked-sendable-budget.sh`) over the dual-bucket counter
+(`tools/concurrency-debt/count-unchecked-sendable.sh`).
 
-## Status
+## Status — ratchet bucket is ZERO
 
-| Root | Real annotations | Notes |
+| Root | Ratchet (fixable) | Allowlist (irreducible) |
 |---|---|---|
-| OpenBurnBarCore/Sources | **7** (was 23) | 16 removed — see below |
-| OpenBurnBarDaemon/Sources | **8** (was 11) | 3 removed — see below |
-| AgentLens | 101 | classified backlog below |
-| OpenBurnBarMobile | 26 | classified backlog below |
-| **Total budget** | **142** | target: ≤ 120 (30d) / 0 (90d) |
+| OpenBurnBarCore/Sources | **0** (was 23) | 5 |
+| OpenBurnBarDaemon/Sources | **0** (was 11) | 5 |
+| AgentLens | **0** (was 101) | 9 |
+| OpenBurnBarMobile | **0** (was 26) | 5 |
+| **Total** | **0** (was 161 real) | **24** |
 
-> The budget counter (`tools/concurrency-debt/count-unchecked-sendable.sh`)
-> previously counted `// AUDIT(@unchecked Sendable)` *comment* lines as if they
-> were annotations (13 phantom counts repo-wide). It now counts real conformance
-> annotations only, so the budget equals the number of live escape hatches and an
-> AUDIT justification no longer inflates the debt.
+Every `@unchecked Sendable` that *could* become a genuine `Sendable` was converted
+(plain `Sendable`, `@MainActor`, a `Locked`/`OSAllocatedUnfairLock` box, a typed
+`Sendable` payload, or an `actor`). The 24 that remain are genuinely irreducible —
+each carries a `sendable-allowlist: <reason-id>` token (registry below) and is
+**not** counted against the budget.
 
-## The constraint that shapes every fix
+> Two earlier accounting bugs were fixed along the way: the counter once counted
+> `// AUDIT(@unchecked Sendable)` *comment* lines as annotations (13 phantom counts
+> repo-wide), and treated all annotations as equally fixable. It now (1) ignores
+> comment lines and (2) splits real conformances into a ratchet bucket (enforced
+> → 0) and an allowlist bucket (documented, not enforced).
+
+## The dual-bucket gate (permanence)
+
+`scripts/debt/check-unchecked-sendable-budget.sh` is fail-closed:
+
+1. **Ratchet must be 0.** Any new `@unchecked Sendable` conformance without an
+   allowlist token fails CI and is printed with its `file:line`.
+2. **Allowlist tokens must use a registered reason-id** (the set below). A novel
+   reason-id fails until it is added to the gate *and* documented here.
+
+There is no baseline file — the budget is *asserted* to be zero, not ratcheted
+against a stored number. The gate runs in `openburnbar-pr-harness.yml`
+(`platform-misc`).
+
+## The constraint that shaped every fix
 
 Deployment target is **macOS 14 / iOS 17**, so `Mutex` from `Synchronization`
-(macOS 15+/iOS 18+) is unavailable. The real permanent fixes here are:
+(macOS 15+/iOS 18+) is unavailable. The real permanent fixes used:
 
-1. **Drop `@unchecked` → plain `Sendable`** — the type's stored properties are
-   already immutable and `Sendable` (or only an existential needed a `: Sendable`
-   refinement). `SWIFT_STRICT_CONCURRENCY: complete` makes this build-verified: if
-   the compiler accepts plain `Sendable`, the type is provably race-free.
+1. **Drop `@unchecked` → plain `Sendable`** — stored properties already immutable
+   and `Sendable` (or an existential/protocol needed a `: Sendable` refinement).
+   `SWIFT_STRICT_CONCURRENCY: complete` makes this build-verified.
 2. **`@MainActor`-isolate** — UI/observable/controller types only ever touched on
-   the main thread.
+   the main thread (e.g. `ComputerUseRuntimeController`, `SettingsRouter`,
+   `TextExpansionRuntimeController`).
 3. **Box mutable state in `Locked` / `OSAllocatedUnfairLock`** — `OSAllocatedUnfairLock`
    (macOS 13+/iOS 16+) is itself `Sendable`, so a class holding one plus immutable
    `let`s conforms to plain `Sendable` *while keeping a synchronous API* (no actor
    ripple). Use the shared `Locked<T>` box (`OpenBurnBarCore/.../BurnBarLockedState.swift`)
    for `Sendable` state, or `OSAllocatedUnfairLock<State>(uncheckedState:)` +
-   `withLockUnchecked` when the guarded state is non-`Sendable`. This is the workhorse.
-4. **Convert to `actor`** — mutable state genuinely accessed asynchronously. Forces
-   callers to `await`; land per-type with concurrency tests.
-5. **Model the smuggled value as a typed `Sendable` struct** — when `@unchecked`
-   exists only to carry a non-`Sendable` `[String: Any]` / Firestore value across an
-   isolation hop.
-6. **Keep `@unchecked` with an `AUDIT(...)` justification** — last resort, only when
-   the type wraps an inherently non-`Sendable` handle (FFI object, raw pointer, a
-   Foundation type not yet `Sendable`-annotated) whose thread-safety is enforced
-   externally (a dedicated `DispatchQueue` or lock).
+   `withLockUnchecked` for non-`Sendable` state ([String: Any], `Error`,
+   `CMSampleBuffer`, continuations, weak refs). The workhorse.
+4. **Convert to `actor`** — mutable state genuinely accessed asynchronously
+   (`VectorSemanticCandidateProvider`, the libsignal `OBBSignalSessionCipherTransport`).
+   Land per-type with concurrency tests.
+5. **Model the smuggled value as a typed `Sendable` struct / `SendableFileSystem`
+   seam** — `OpenBurnBarCore/.../SendableFileSystem.swift` replaced the stored
+   non-`Sendable` `FileManager` in 5 types with a genuinely-`Sendable` protocol +
+   `FileManager.default`-backed struct, keeping test injection (no allowlist).
 
 `Locked<T>` itself was the keystone: it was `@unchecked` on `NSLock` "because macOS
 14 precludes `OSAllocatedUnfairLock`" — but that lock has been available since macOS
-13. Rebuilding `Locked<T>` on `OSAllocatedUnfairLock` makes it plain `Sendable` and
-turns every consumer into a candidate for the same.
+13 (the comment confused it with `Mutex`). Rebuilding `Locked<T>` on
+`OSAllocatedUnfairLock` made it plain `Sendable` and turned every consumer into a
+candidate for the same.
 
-## Audited exceptions kept in Core + Daemon (15)
+## Allowlist registry (24 irreducible exceptions)
 
-These are correctly `@unchecked` with an in-code `AUDIT(@unchecked Sendable): …`
-comment; each is a genuine non-`Sendable`-handle case, not unremediated debt.
+Each is `@unchecked Sendable` because it wraps an inherently non-`Sendable` handle
+whose thread-safety is enforced externally; the reason-id is validated by the gate.
 
-| File | Type | Why it stays `@unchecked` |
-|---|---|---|
-| `OpenBurnBarIrohRelay/OpenBurnBarIrohFFIBridge.swift` | `OpenBurnBarIrohFFIBackend` | UniFFI `IrohEndpointHandle`, serialized on a dedicated `DispatchQueue` (blocking calls rule out an actor) |
-| `OpenBurnBarIrohRelay/OpenBurnBarIrohFFIBridge.swift` | `OpenBurnBarIrohFFIStream` | UniFFI `IrohStream`, serialized on send/receive queues |
-| `OpenBurnBarIrohRelay/OpenBurnBarIrohBlobFFIBridge.swift` | `OpenBurnBarIrohBlobFFIBackend` | UniFFI `IrohBlobNode`, serialized on a dedicated queue |
-| `OpenBurnBarCore/BurnBarPersistentVectorIndex.swift` | `BurnBarMappedWritableIndex` | single-threaded index builder; never shared until `save()` |
-| `OpenBurnBarCore/BurnBarHNSWVectorIndex.swift` | `BurnBarHNSWWritableIndex` | single-threaded HNSW graph builder |
-| `OpenBurnBarSignalSessionTransport/OBBSignalSessionCipherTransport.swift` | `OBBSignalSessionCipherTransport` | libsignal `OBBSignalProtocolStore`/`ProtocolAddress` (non-Sendable). **Recommended follow-up: actor-isolate** (per-connection ratchet) in a dedicated PR with concurrency tests |
-| `OpenBurnBarComputerUseCore/ComputerUseAuditExportSignerProvider.swift` | `ComputerUseKeychainAuditExportSignerProvider` | stores `FileManager` (thread-safe, not yet `Sendable`-annotated) |
-| `OpenBurnBarDaemon/OpenBurnBarIndexedSearchService.swift` | `BurnBarIndexedSearchService` | raw SQLite `OpaquePointer`, serialized on `dbQueue` |
-| `OpenBurnBarDaemon/BurnBarResumeService.swift` | `BurnBarResumeService` | raw SQLite `OpaquePointer`, serialized on a dedicated queue |
-| `OpenBurnBarDaemon/PTYInteractiveSession.swift` | `PTYInteractiveSession` | non-`Sendable` `Process`; mutable state already in `Locked`, output on a serial queue |
-| `OpenBurnBarDaemon/PensieveKnowledgeWatcher.swift` | `PensieveKnowledgeWatcher` | `FileManager` + dispatch-source state mutated only on `workQueue` |
-| `OpenBurnBarDaemon/ClaudeInteractiveSessionExecutor.swift` | `ClaudeInteractiveSessionExecutor` | stores `FileManager` |
-| `OpenBurnBarDaemon/ClaudeInteractiveHandoffService.swift` | `ClaudeInteractiveHandoffService` | stores `FileManager` |
-| `OpenBurnBarDaemon/OpenBurnBarSwitcherShell.swift` | `BurnBarCLIShellShimInstaller` | stores `FileManager` |
-| `OpenBurnBarRemoteAccessAgentCore/VirtualHIDKeyboardEngine.swift` | `VirtualHIDKeyboardEngine` | non-`Sendable` CoreHID/IOHID backend, serialized on a queue + lock |
+| reason-id | Count | What it covers | Why irreducible |
+|---|---|---|---|
+| `iroh-ffi-handle` | 3 | `OpenBurnBarIrohFFI{Backend,Stream}`, `OpenBurnBarIrohBlobFFIBackend` | UniFFI Swift handles (non-editable, AAR parity) serialized on a dedicated `DispatchQueue`; the Rust objects are `Send+Sync` but the blocking FFI calls rule out an actor |
+| `sqlite-raw-pointer` | 2 | `BurnBarResumeService`, `BurnBarIndexedSearchService` | raw SQLite `OpaquePointer` confined to a serial `dbQueue`; boxing the pointer would guard nothing |
+| `single-threaded-vector-builder` | 2 | `BurnBarMappedWritableIndex`, `BurnBarHNSWWritableIndex` | single-threaded index builders, immutable-by-contract after `save()`; never shared during construction |
+| `corehid-backend` | 1 | `VirtualHIDKeyboardEngine` | non-`Sendable` CoreHID/IOHID backend, serialized on a queue + lock (Apple SDK gap) |
+| `process-handle` | 1 | `PTYInteractiveSession` | non-`Sendable` `Process`; mutable state already in `Locked`, output on a serial queue |
+| `firebase-sdk-handle` | 6 | `CloudSync{Collection,Document,Query,WriteBatch}LiveGateway`, `FirebaseSessionLogEncryptedCloudClient`, `FirebaseCallableExecutor` | non-`Sendable` Firebase SDK handles (`CollectionReference`/`DocumentReference`/`Query`/`WriteBatch`/`Functions`/`HTTPSCallable`), internally thread-safe |
+| `firestore-any-payload` | 3 | `ClaimedRelayRequest`, `LiveUsageDocumentChange`, `FirebaseCallablePayload` | immutable carriers of Firestore's untyped `[String: Any]`/`NSDictionary` across one confined hop |
+| `firestore-any-test-fake` | 1 | `QueryPredicate` (CloudSync fake gateway) | test-only enum carrying Firestore's untyped `Any` comparison values |
+| `foundation-sdk-shim` | 5 | `@retroactive` shims for `FileManager`/`UserDefaults`/`NSDictionary`/`KeyPath`; `RemoteUnlockSavedCredentialStore` (stores `UserDefaults`) | thread-safe Foundation types not yet `Sendable`-annotated by Apple |
 
-The five `FileManager`-only exceptions can drop `@unchecked` the moment Foundation
-annotates `FileManager: Sendable` (already `Sendable` in the Swift 6 SDK roadmap).
+The `firebase-sdk-handle` and `foundation-sdk-shim` entries can be cleared once
+those SDKs annotate their types `Sendable`; the FFI/SQLite/CoreHID/Process/builder
+entries are structural.
 
 ## Swift 6 language mode
 
-The per-target `swiftLanguageMode(.v6)` flip is intentionally **not** done here: the
-plan flips a target only once it reaches *zero* `@unchecked Sendable`, and Core/Daemon
-still hold the audited exceptions above. Flipping early would also surface unrelated
-strict-concurrency diagnostics out of this tranche's scope. The genuine-`Sendable`
-conversions in this PR are the prerequisite work for that flip.
+With the ratchet at zero, each SwiftPM target is now eligible for
+`swiftLanguageMode(.v6)` once its remaining allowlist exceptions are confirmed to
+compile under it (they are `@unchecked`, which Swift 6 still permits). That flip is
+the natural follow-up PR; the genuine-`Sendable` conversions here are its
+prerequisite.
 
-## AgentLens + OpenBurnBarMobile backlog (next tranches)
+## Verification
 
-Full per-site classification from the 9-agent audit (2026-06-14). Sequenced
-security-first, then by ascending risk/ripple.
-
-### Fix-type summary (119 annotations across AgentLens + OpenBurnBarMobile)
-
-| Recommended fix | Count | Caller ripple |
-|---|---|---|
-| Drop `@unchecked` → plain `Sendable` (all-immutable / already-Sendable members) | 57 | none |
-| `@MainActor`-isolate (main-thread-only UI/observable types) | 15 | sync-preserved, none, forces-async |
-| Box mutable state in `Locked`/`OSAllocatedUnfairLock` (sync API preserved) | 32 | none, sync-preserved |
-| Model the smuggled `[String: Any]`/Firestore value as a typed `Sendable` struct | 9 | none, sync-preserved |
-| Convert to `actor` (async-accessed mutable state) | 2 | forces-async |
-| Keep `@unchecked` with an AUDIT justification (inherently non-Sendable handle) | 4 | none |
-
-**Sequencing:** security-sensitive sites first (25 flagged: crypto / keychain / capability-token / pairing-key / signing). Then by ascending risk and ripple — `plain-sendable` and `@MainActor` are build-verified no-ops; `actor-isolate` (forces callers to `await`) lands last and per-type with concurrency tests.
-
-### Security-sensitive sites (do first)
-
-| File | Type | Fix |
-|---|---|---|
-| `AgentLens/Services/CLIBridge/OpenAICompatibleChatGatewayClient.swift` | `AgentToolBroker` | keep-audited-lock |
-| `AgentLens/Services/CloudSync/RelayEphemeralKeyCache.swift` | `RelayEphemeralKeyCache` | osallocatedunfairlock-box |
-| `AgentLens/Services/ComputerUse/ComputerUseCapabilityTokenService.swift` | `ComputerUseCapabilitySigningKeyStore` | plain-sendable |
-| `AgentLens/Services/ComputerUse/Mac/RemoteUnlockCapabilitySigningKeyStore.swift` | `RemoteUnlockCapabilitySigningKeyStore` | osallocatedunfairlock-box |
-| `AgentLens/Services/ComputerUse/PhoneControlAuthorityProvider.swift` | `FirestorePhoneControlAuthorityProvider` | plain-sendable |
-| `AgentLens/Services/ComputerUse/PhoneControlAuthorityValidator.swift` | `PhoneControlAuthorityValidator` | osallocatedunfairlock-box |
-| `AgentLens/Services/ComputerUse/PhoneControlConsumedProofStore.swift` | `PhoneControlConsumedProofStore` | plain-sendable |
-| `AgentLens/Services/ComputerUse/PhoneControlReceiver.swift` | `PhoneControlReceiver` | osallocatedunfairlock-box |
-| `AgentLens/Services/ComputerUse/PhoneControlReplayCounterStore.swift` | `PhoneControlReplayCounterStore` | plain-sendable |
-| `AgentLens/Services/CursorConnector/CursorConnectorManager.swift` | `CursorConnectorSecretBroker` | osallocatedunfairlock-box |
-| `AgentLens/Services/HermesRelaySenderTrustResolver.swift` | `FirestoreHermesRelaySenderTrustResolver` | plain-sendable |
-| `AgentLens/Services/HomeAssistant/HomeAssistantTokenStore.swift` | `InMemoryHomeAssistantTokenStore` | osallocatedunfairlock-box |
-| `AgentLens/Services/Insights/MacFirebaseTokenProvider.swift` | `MacFirebaseTokenProvider` | plain-sendable |
-| `AgentLens/Services/IrohRelay/IrohPairingKeyStore.swift` | `IrohPairingKeyStore` | plain-sendable |
-| `AgentLens/Services/IrohRelay/IrohPairingPublicKeyPublisher.swift` | `IrohPairingPublicKeyPublisher` | plain-sendable |
-| `AgentLens/Services/IrohRelay/IrohRelayKeyStore.swift` | `IrohRelayKeyStore` | plain-sendable |
-| `AgentLens/Services/Media/IrohBlobKeyStore.swift` | `IrohBlobKeyStore` | plain-sendable |
-| `AgentLens/Services/Media/MacMediaCapabilityGate.swift` | `RemoteUnlockCredentialKeyStore` | plain-sendable |
-| `OpenBurnBarMobile/Services/ComputerUse/PhoneControlAuthorityPublisher.swift` | `PhoneControlAuthorityPublisher` | plain-sendable |
-| `OpenBurnBarMobile/Services/ComputerUse/PhoneControlSender.swift` | `PhoneControlSender` | osallocatedunfairlock-box |
-| `OpenBurnBarMobile/Services/ComputerUse/PhoneControlSender.swift` | `PhoneControlSigningKeyStore` | osallocatedunfairlock-box |
-| `OpenBurnBarMobile/Services/IrohRelay/FirestoreIrohPairingPublicKeyProvider.swift` | `FirestoreIrohPairingPublicKeyProvider` | plain-sendable |
-| `OpenBurnBarMobile/Services/IrohRelay/IrohRelayKeyStore.swift` | `IrohRelayKeyStore` | plain-sendable |
-| `OpenBurnBarMobile/Services/Media/IrohBlobKeyStore.swift` | `IrohBlobKeyStore` | plain-sendable |
-| `OpenBurnBarMobile/Services/MobileFirebaseTokenProvider.swift` | `MobileFirebaseTokenProvider` | plain-sendable |
+All conversions were build-verified per batch:
+- **OpenBurnBarCore** `swift build` + `swift test` (incl.
+  `testConcurrentSendsSerializeRatchetWithoutCorruption`: 16 concurrent sends
+  through the libsignal actor decrypt exactly once — proof the ratchet is
+  serialized without corruption).
+- **OpenBurnBarDaemon** `swift build`.
+- **AgentLens** macOS `xcodebuild` and **OpenBurnBarMobile** iOS-simulator
+  `xcodebuild` (the SwiftPM lane does not cover the app targets).
+- `swiftlint --strict` clean on every touched file; the assert-zero gate green
+  with both negative cases (un-allowlisted conformance, unknown reason-id) proven
+  to fail.

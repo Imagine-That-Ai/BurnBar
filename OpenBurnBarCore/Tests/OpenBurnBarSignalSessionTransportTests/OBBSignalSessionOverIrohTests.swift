@@ -140,6 +140,93 @@ final class OBBSignalSessionOverIrohTests: XCTestCase {
         XCTAssertEqual(decoded.signalMessageType, Int(CiphertextMessage.MessageType.preKey.rawValue))
     }
 
+    /// Concurrency contract: with the cipher transport actor-isolated, firing many
+    /// `send(...)` calls concurrently on one session advances the libsignal Double
+    /// Ratchet under serialized, compiler-enforced isolation. The peer must be able
+    /// to decrypt every message (in any order, via skipped-message keys) — proof the
+    /// ratchet state was never corrupted by interleaved mutation.
+    func testConcurrentSendsSerializeRatchetWithoutCorruption() async throws {
+        let uid = "signal-user"
+        let alicePeer = OBBSignalSessionPeer(
+            uid: uid, deviceId: "ios-device", identityKeyId: "ios-device_1",
+            keyVersion: 1, signalDeviceId: 1, registrationId: 0x3F11
+        )
+        let bobPeer = OBBSignalSessionPeer(
+            uid: uid, deviceId: "mac-device", identityKeyId: "mac-device_1",
+            keyVersion: 1, signalDeviceId: 1, registrationId: 0x3F12
+        )
+        let aliceAddress = try alicePeer.protocolAddress()
+        let bobAddress = try bobPeer.protocolAddress()
+        let aliceStore = try makeStore(identity: IdentityKeyPair.generate(), registrationId: alicePeer.registrationId)
+        let bobStore = try makeStore(identity: IdentityKeyPair.generate(), registrationId: bobPeer.registrationId)
+
+        let bobPrekeys = try OBBSignalPreKeyGenerator.generatePreKeys(
+            identityKeypair: bobStore.identityKeypair,
+            preKeyId: 41337, signedPreKeyId: 23, kyberPreKeyId: 9,
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        try OBBSignalPreKeyGenerator.storePreKeys(bobPrekeys, into: bobStore, context: NullContext())
+        let claimedBobBundle = try claimedBundle(uid: uid, peer: bobPeer, store: bobStore, prekeys: bobPrekeys)
+
+        let rendezvous = LoopbackIrohRelayRendezvous()
+        let macTransport = LoopbackIrohRelayTransport(nodeId: "mac-concurrent-loopback", rendezvous: rendezvous)
+        let iosTransport = LoopbackIrohRelayTransport(nodeId: "ios-concurrent-loopback", rendezvous: rendezvous)
+        _ = try await macTransport.start()
+        _ = try await iosTransport.start()
+
+        let alice = OBBSignalSessionCipherTransport(store: aliceStore, localAddress: aliceAddress)
+        let bob = OBBSignalSessionCipherTransport(store: bobStore, localAddress: bobAddress)
+
+        // Host accepts and decrypts the initial preKey message to establish its
+        // receiving session, then keeps the inbound stream open for the burst.
+        let acceptTask = Task<any IrohRelayStream, Error> {
+            try await macTransport.accept(timeout: 5)
+        }
+        let outbound = try await iosTransport.connect(to: "mac-concurrent-loopback", timeout: 5)
+        let firstFrame = try await alice.establishOutbound(
+            claimSignalPrekeyBundle: { claimedBobBundle },
+            plaintext: Data("session-init".utf8),
+            on: outbound,
+            uid: uid, connectionId: "c", requestId: "r0"
+        )
+        let inbound = try await acceptTask.value
+        // Drain the establishOutbound frame off the loopback stream and decrypt it
+        // so Bob's session is live before the concurrent burst.
+        _ = try await inbound.receive()
+        let initial = try await bob.decrypt(frame: firstFrame, from: aliceAddress)
+        XCTAssertEqual(initial.plaintext, Data("session-init".utf8))
+
+        // Fire 16 concurrent sends. The actor serializes the ratchet advances; we
+        // keep each returned frame (the stream write is an ignored side effect).
+        let payloads = (0 ..< 16).map { "concurrent-message-\($0)" }
+        let frames = try await withThrowingTaskGroup(of: HermesRealtimeRelayFrame.self) { group -> [HermesRealtimeRelayFrame] in
+            for payload in payloads {
+                group.addTask {
+                    try await alice.send(
+                        Data(payload.utf8), to: bobAddress, on: outbound,
+                        uid: uid, connectionId: "c", requestId: "burst"
+                    )
+                }
+            }
+            var collected: [HermesRealtimeRelayFrame] = []
+            for try await frame in group { collected.append(frame) }
+            return collected
+        }
+        XCTAssertEqual(frames.count, payloads.count)
+
+        // Bob decrypts every frame (out-of-order delivery handled by skipped keys).
+        var decrypted: Set<String> = []
+        for frame in frames {
+            let message = try await bob.decrypt(frame: frame, from: aliceAddress)
+            decrypted.insert(String(decoding: message.plaintext, as: UTF8.self))
+        }
+        XCTAssertEqual(decrypted, Set(payloads), "every concurrently-sent message must decrypt exactly once")
+
+        await outbound.close()
+        await iosTransport.shutdown()
+        await macTransport.shutdown()
+    }
+
     private func makeStore(
         identity: IdentityKeyPair,
         registrationId: UInt32,

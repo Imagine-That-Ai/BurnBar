@@ -88,7 +88,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// Per-file invalidation key: a transcript is unchanged iff both its
     /// modification time and byte size are unchanged. Mirrors
     /// `CodexRolloutFileSignature`.
-    private struct JSONLFileSignature: Equatable, Sendable {
+    private struct JSONLFileSignature: Equatable {
         let modifiedAt: TimeInterval
         let sizeBytes: Int64
     }
@@ -97,7 +97,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// timestamp and token total. Window membership (5-hour / 7-day) is applied
     /// at aggregation time, so cached contributions stay valid as the rolling
     /// windows slide.
-    private struct JSONLContribution: Sendable {
+    private struct JSONLContribution {
         let timestamp: Date
         let total: Int
     }
@@ -116,22 +116,21 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// modification-time window cutoff already keeps a cold first scan cheap, so
     /// the persisted variant's complexity isn't warranted here.
     private final class JSONLScanCache: Sendable {
-        private struct Entry: Sendable {
+        private struct Entry {
             let signature: JSONLFileSignature
             let contributions: [JSONLContribution]
         }
-
-        private let entries = Locked([String: Entry]())
+        private let entries = Locked<[String: Entry]>([:])
 
         func contributions(forPath path: String, signature: JSONLFileSignature) -> [JSONLContribution]? {
-            guard let entry = entries.read()[path], entry.signature == signature else { return nil }
-            return entry.contributions
+            entries.withLock { entries in
+                guard let entry = entries[path], entry.signature == signature else { return nil }
+                return entry.contributions
+            }
         }
 
         func store(path: String, signature: JSONLFileSignature, contributions: [JSONLContribution]) {
-            entries.withLock {
-                $0[path] = Entry(signature: signature, contributions: contributions)
-            }
+            entries.withLock { $0[path] = Entry(signature: signature, contributions: contributions) }
         }
 
         /// Drop entries for transcripts that fell out of the widest rolling

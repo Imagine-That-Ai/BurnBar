@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 import OSLog
 #if canImport(Darwin)
 import Darwin
@@ -12,11 +13,21 @@ struct AgentToolExecutionPayload {
     let detail: String?
 }
 
-final class AgentToolBroker: @unchecked Sendable {
+final class AgentToolBroker: Sendable {
     let grant: AgentCapabilityGrant
     let workspaceURL: URL
     #if canImport(AppKit) && !DISTRIBUTION_MAS
-    weak var computerUseRuntimeController: ComputerUseRuntimeController?
+    private struct WeakController {
+        weak var value: ComputerUseRuntimeController?
+    }
+
+    // Set-once-at-init weak link to the @MainActor runtime controller; the lock
+    // mediates the (weak) slot so the broker stays plainly Sendable.
+    private let computerUseRuntimeControllerBox = OSAllocatedUnfairLock(uncheckedState: WeakController())
+    var computerUseRuntimeController: ComputerUseRuntimeController? {
+        get { computerUseRuntimeControllerBox.withLockUnchecked { $0.value } }
+        set { computerUseRuntimeControllerBox.withLockUnchecked { $0.value = newValue } }
+    }
     #endif
     private let grantStillActive: (@Sendable () async -> Bool)?
 
@@ -49,7 +60,7 @@ final class AgentToolBroker: @unchecked Sendable {
         return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
-    private var browserSessionID: String?
+    private let browserSessionIDBox = Locked<String?>(nil)
 
     private enum WorkspaceAccessMode {
         case read
@@ -228,8 +239,8 @@ final class AgentToolBroker: @unchecked Sendable {
     private func invokeDaemonBrowserTool(_ invocation: BurnBarToolInvocation) async -> AgentToolExecutionPayload {
         do {
             let sessionID: String
-            if let browserSessionID {
-                sessionID = browserSessionID
+            if let existing = browserSessionIDBox.read() {
+                sessionID = existing
             } else {
                 let response = try await OpenBurnBarDaemonManager.shared.startComputerUseSession(
                     ComputerUseSessionStartRequest(
@@ -243,8 +254,15 @@ final class AgentToolBroker: @unchecked Sendable {
                         runID: invocation.runID
                     )
                 )
-                browserSessionID = response.sessionId
-                sessionID = response.sessionId
+                // Publish atomically: if a concurrent first-call already created a
+                // session while we awaited, prefer the stored id and let our
+                // just-created session lapse via the daemon's idle-timeout GC. Keeps
+                // the cached id deterministic under the rare concurrent-init race.
+                sessionID = browserSessionIDBox.withLock { stored in
+                    if let stored { return stored }
+                    stored = response.sessionId
+                    return response.sessionId
+                }
             }
             let response = try await OpenBurnBarDaemonManager.shared.invokeComputerUse(
                 ComputerUseInvokeRequest(sessionId: sessionID, invocation: invocation)
@@ -779,31 +797,30 @@ final class AgentToolBroker: @unchecked Sendable {
             process.standardOutput = stdout
             process.standardError = stderr
             final class Box: Sendable {
-                private static let captureLimit = 200_000
-
-                private struct State: Sendable {
+                private struct State {
                     var resumed = false
                     var timedOut = false
                     var stdoutData = Data()
                     var stderrData = Data()
                 }
 
+                private let captureLimit = 200_000
                 private let state = Locked(State())
 
                 func append(_ data: Data, toStdout: Bool) {
                     guard !data.isEmpty else { return }
                     state.withLock { state in
                         if toStdout {
-                            Self.appendBounded(data, to: &state.stdoutData)
+                            appendBounded(data, to: &state.stdoutData)
                         } else {
-                            Self.appendBounded(data, to: &state.stderrData)
+                            appendBounded(data, to: &state.stderrData)
                         }
                     }
                 }
 
-                private static func appendBounded(_ data: Data, to target: inout Data) {
-                    guard target.count < Self.captureLimit else { return }
-                    let remaining = Self.captureLimit - target.count
+                private func appendBounded(_ data: Data, to target: inout Data) {
+                    guard target.count < captureLimit else { return }
+                    let remaining = captureLimit - target.count
                     target.append(data.prefix(remaining))
                 }
 
@@ -817,7 +834,9 @@ final class AgentToolBroker: @unchecked Sendable {
                     }
                 }
 
-                func finish() -> (timedOut: Bool, stdoutData: Data, stderrData: Data)? {
+                /// Atomically marks the process result consumed (returns nil if a
+                /// prior caller already resumed) and returns the captured output.
+                func completeIfNotYetResumed() -> (timedOut: Bool, stdout: Data, stderr: Data)? {
                     state.withLock { state in
                         guard !state.resumed else { return nil }
                         state.resumed = true
@@ -837,12 +856,14 @@ final class AgentToolBroker: @unchecked Sendable {
                 stderr.fileHandleForReading.readabilityHandler = nil
                 box.append(stdout.fileHandleForReading.readDataToEndOfFile(), toStdout: true)
                 box.append(stderr.fileHandleForReading.readDataToEndOfFile(), toStdout: false)
-                guard let output = box.finish() else { return }
+                guard let completion = box.completeIfNotYetResumed() else {
+                    return
+                }
                 continuation.resume(returning: ProcessResult(
                     exitCode: Int(process.terminationStatus),
-                    stdout: String(decoding: output.stdoutData, as: UTF8.self),
-                    stderr: String(decoding: output.stderrData, as: UTF8.self),
-                    timedOut: output.timedOut
+                    stdout: String(decoding: completion.stdout, as: UTF8.self),
+                    stderr: String(decoding: completion.stderr, as: UTF8.self),
+                    timedOut: completion.timedOut
                 ))
             }
             do {
