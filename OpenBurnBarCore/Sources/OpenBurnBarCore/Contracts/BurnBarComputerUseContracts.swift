@@ -22,6 +22,21 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     public let clientID: BurnBarClientID
     public let runID: BurnBarRunID?
 
+    /// T-DMN-04 — the single-use, op-hash-bound Ed25519 local-auth proof that
+    /// authorizes starting a high-risk computer-use session. The Mac app already
+    /// validates this in `PhoneControlAuthorityValidator`; carrying it on the
+    /// socket lets the daemon INDEPENDENTLY re-verify it against the PINNED phone
+    /// key, so the proof binding survives a compromise of the first-party app.
+    /// Optional on the wire: legacy payloads decode it as `nil`, and a daemon with
+    /// proof enforcement OFF (unsigned developer builds) ignores it.
+    public let localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
+    /// The source device this session-start claims to originate from. The daemon
+    /// requires `proof.deviceId == sourceDeviceId`. Optional for wire compat.
+    public let sourceDeviceId: String?
+    /// The canonical op/intent hash (hex) the daemon is about to honor. The proof
+    /// MUST be bound to exactly these bytes. Optional for wire compat.
+    public let intentHashHex: String?
+
     public init(
         mode: String,
         trustMode: String,
@@ -31,7 +46,10 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         actionCap: Int = 50,
         sessionTimeoutSeconds: Int = 1800,
         clientID: BurnBarClientID,
-        runID: BurnBarRunID? = nil
+        runID: BurnBarRunID? = nil,
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
+        sourceDeviceId: String? = nil,
+        intentHashHex: String? = nil
     ) {
         self.mode = mode
         self.trustMode = trustMode
@@ -42,6 +60,9 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         self.sessionTimeoutSeconds = sessionTimeoutSeconds
         self.clientID = clientID
         self.runID = runID
+        self.localAuthProof = localAuthProof
+        self.sourceDeviceId = sourceDeviceId
+        self.intentHashHex = intentHashHex
     }
 }
 
@@ -74,9 +95,29 @@ public struct ComputerUseInvokeRequest: Codable, Hashable, Sendable {
     public let sessionId: String
     public let invocation: BurnBarToolInvocation
 
-    public init(sessionId: String, invocation: BurnBarToolInvocation) {
+    /// T-DMN-04 — the single-use, op-hash-bound Ed25519 local-auth proof that
+    /// authorizes this high-risk computer-use action. The daemon independently
+    /// re-verifies it against the PINNED phone key so the binding survives an
+    /// app compromise. Optional on the wire (legacy/dev-build compatible); see
+    /// `ComputerUseSessionStartRequest.localAuthProof`.
+    public let localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
+    /// The source device this invoke claims to originate from.
+    public let sourceDeviceId: String?
+    /// The canonical op/intent hash (hex) the daemon is about to honor.
+    public let intentHashHex: String?
+
+    public init(
+        sessionId: String,
+        invocation: BurnBarToolInvocation,
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
+        sourceDeviceId: String? = nil,
+        intentHashHex: String? = nil
+    ) {
         self.sessionId = sessionId
         self.invocation = invocation
+        self.localAuthProof = localAuthProof
+        self.sourceDeviceId = sourceDeviceId
+        self.intentHashHex = intentHashHex
     }
 }
 
