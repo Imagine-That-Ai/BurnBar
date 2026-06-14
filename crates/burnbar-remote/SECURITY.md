@@ -80,7 +80,10 @@ Deterministic gate:
 
 ```bash
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets -- \
+  -D warnings \
+  -D clippy::unwrap_used \
+  -D clippy::expect_used
 cargo test --workspace
 cargo doc --workspace --no-deps
 cargo run -p burnbar-remote-bench

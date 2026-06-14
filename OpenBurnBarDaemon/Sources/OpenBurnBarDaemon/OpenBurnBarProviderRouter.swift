@@ -137,9 +137,14 @@ public struct BurnBarRouteRankingResult: Hashable, Sendable {
 public actor BurnBarProviderRoutingDecisionEventStore {
     private let fileURL: URL
     private let encoder: JSONEncoder
+    private let logger: BurnBarDaemonLogger
 
-    public init(fileURL: URL = BurnBarDaemonPaths.defaultRoutingDecisionEventsURL) {
+    public init(
+        fileURL: URL = BurnBarDaemonPaths.defaultRoutingDecisionEventsURL,
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "provider-routing-events")
+    ) {
         self.fileURL = fileURL
+        self.logger = logger
         self.encoder = JSONEncoder()
         self.encoder.dateEncodingStrategy = .iso8601
         self.encoder.outputFormatting = [.sortedKeys]
@@ -166,6 +171,15 @@ public actor BurnBarProviderRoutingDecisionEventStore {
             }
         } catch {
             // Routing must never fail because audit persistence failed.
+            logger.silentFailure(
+                "BurnBarProviderRoutingDecisionEventStore.append",
+                error: error,
+                context: [
+                    "eventID": event.id.uuidString,
+                    "selectedProviderID": event.selectedProviderID?.rawValue ?? "none",
+                    "modelID": event.modelID ?? "none"
+                ]
+            )
         }
     }
 }

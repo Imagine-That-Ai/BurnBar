@@ -267,6 +267,7 @@ jobs:
 
           Rules:
           - Work in the Cursor cloud environment.
+          - Use Composer 2.5 standard only. Do not use Composer 2.5 Fast.
           - Use the existing repair PR if one is provided. Otherwise start from
             main and open a PR if the failure is code-owned.
           - When opening a PR, title it "[cursor] OpenBurnBar nightly CI repair"

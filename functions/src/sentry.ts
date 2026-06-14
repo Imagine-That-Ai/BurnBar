@@ -207,5 +207,3 @@ export function sentryUserIdForUID(uid: string): string {
   const digest = createHash("sha256").update(uid, "utf8").digest("hex").slice(0, 16);
   return `uid:${digest}`;
 }
-
-
