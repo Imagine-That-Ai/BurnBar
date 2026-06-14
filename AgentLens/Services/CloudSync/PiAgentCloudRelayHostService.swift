@@ -316,7 +316,7 @@ final class PiAgentCloudRelayHostService {
                 try await forwardUnaryRequest(reference: reference, context: prepared.context, operation: operation, data: prepared.data)
             }
         } catch {
-            try? await failRelayRequest(reference: reference, message: error.localizedDescription, context: context)
+            try? await failRelayRequest(reference: reference, message: error.localizedDescription, context: context) // try?-ok(best-effort failure report)
         }
     }
 
@@ -585,7 +585,7 @@ final class PiAgentCloudRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            _ = try? await writeRelayChunk(
+            _ = try? await writeRelayChunk( // try?-ok(best-effort error chunk)
                 reference: reference,
                 context: context,
                 sequence: 0,

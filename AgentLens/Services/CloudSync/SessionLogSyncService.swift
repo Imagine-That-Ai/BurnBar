@@ -138,8 +138,8 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
 
             let userRef = context.firestoreGateway.collection("users").document(uid)
             let logsRef = userRef.collection("session_logs")
-            let sessionModelMap = (try? context.dataStore.sessionModelMap()) ?? [:]
-            let sessionFacetsMap = (try? context.dataStore.sessionFacetsMap()) ?? [:]
+            let sessionModelMap = (try? context.dataStore.sessionModelMap()) ?? [:] // try?-ok(best-effort metadata read)
+            let sessionFacetsMap = (try? context.dataStore.sessionFacetsMap()) ?? [:] // try?-ok(best-effort metadata read)
 
             var processedAnyBatch = false
             repeat {
@@ -1440,10 +1440,10 @@ private extension SessionLogSyncService {
 
     static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
         guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(optional envelope parse)
             return nil
         }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(optional envelope decode)
     }
 }
 
@@ -1727,10 +1727,10 @@ extension CloudSyncService {
 
     private static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
         guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(optional envelope parse)
             return nil
         }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(optional envelope decode)
     }
 
     // MARK: - Chunking
