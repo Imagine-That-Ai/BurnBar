@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import OpenBurnBarCore
 
 // MARK: - SettingsManagerProtocol
@@ -23,9 +22,6 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
 
     /// Current appearance mode (system, light, dark).
     var appearanceMode: AppearanceMode { get set }
-
-    /// Derived SwiftUI color scheme from appearance mode.
-    var preferredSwiftUIColorScheme: ColorScheme? { get }
 
     /// Provider glyphs enabled in the desktop swarm wallpaper logo cycle.
     var desktopWallpaperProviderGlyphs: [AgentProvider] { get set }

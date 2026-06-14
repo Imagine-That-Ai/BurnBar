@@ -61,9 +61,9 @@ enum CloudVaultRotationPickupLifecycle {
         guard Auth.auth().currentUser?.isAnonymous == false else { return }
         lastPickupAt = now
 
-        let rotatingDeviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
         Task {
             do {
+                let rotatingDeviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
                 let result = try await MobileCloudVaultRevocationRotation.pickUpPendingCloudVaultRotations(
                     rotatingDeviceId: rotatingDeviceId
                 )

@@ -1,6 +1,5 @@
 import Foundation
 import GRDB
-import SwiftUI
 import OpenBurnBarCore
 
 // MARK: - Shared Database Spine
