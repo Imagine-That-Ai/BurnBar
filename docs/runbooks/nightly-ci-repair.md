@@ -21,10 +21,13 @@ Mac being awake.
 - `nightly-e2e.yml` runs nightly at `43 9 * * *` UTC and manual dispatch. It
   opens or closes a deduplicated failure issue via
   `.github/actions/ops-failure-issue`.
-- `cursor-nightly-ci-repair.yml` runs at `15 11 * * *` UTC. It gathers the
-  latest failed scheduled logs and starts a Cursor Cloud Agent through Cursor's
-  API. Cursor works in the cloud and opens a repair PR when the failure is
-  code-owned.
+- `cursor-nightly-ci-repair.yml` is the repair loop. It runs nightly at
+  `15 11 * * *` UTC, after the scheduled confidence lanes have had time to
+  finish. If those lanes are green, it exits. If they are red, it gathers the
+  latest failed logs and starts a Cursor Cloud Agent through Cursor's API.
+- Once a Cursor repair PR exists, completed CI on that marked PR wakes the same
+  workflow again. If the repair PR is red, Cursor continues that PR. If the PR
+  is pending or green, the workflow does not spawn another agent.
 
 After this workflow change lands on `main`, update branch protection so the
 required PR checks are:
@@ -77,7 +80,14 @@ The workflow uses a restricted-autonomy pattern:
 
 - GitHub Actions reads scheduled CI results and failed logs.
 - GitHub Actions sends only the summary and capped failed-log excerpt to Cursor.
-- Cursor starts from `main`, works in the cloud, and may open a PR.
+- Cursor starts from `main` when no repair PR exists, works in the cloud, and
+  may open a PR.
+- Cursor repair PRs must include the `cursor-nightly-ci-repair` marker. Future
+  loop iterations find that PR and continue it instead of opening duplicates.
+- Only the nightly or manual trigger can create the first repair PR. Random CI
+  finishing on unrelated PRs cannot start a new Cursor repair.
+- If an existing repair PR is only waiting on pending checks or already green,
+  the loop waits instead of spawning another agent.
 - Cursor is instructed not to edit branch protection, required checks, release
   gates, workflow definitions, or tests just to hide a failure.
 - If the failure is external infrastructure, credentials, GitHub outage,
