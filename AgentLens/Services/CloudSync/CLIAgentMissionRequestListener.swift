@@ -2718,27 +2718,25 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
     }
 }
 
-private final class LockedProcessOutput: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stdoutStorage = ""
-    private var stderrStorage = ""
+private final class LockedProcessOutput: Sendable {
+    private struct State: Sendable {
+        var stdoutStorage = ""
+        var stderrStorage = ""
+    }
+
+    private let state = Locked(State())
 
     func appendStdout(_ text: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        stdoutStorage += text
+        state.withLock { $0.stdoutStorage += text }
     }
 
     func appendStderr(_ text: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        stderrStorage += text
+        state.withLock { $0.stderrStorage += text }
     }
 
     func snapshot() -> (stdout: String, stderr: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        return (stdoutStorage, stderrStorage)
+        let snapshot = state.read()
+        return (snapshot.stdoutStorage, snapshot.stderrStorage)
     }
 }
 

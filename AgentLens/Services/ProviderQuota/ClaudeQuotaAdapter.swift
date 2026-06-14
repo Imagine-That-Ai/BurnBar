@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 /// Multi-source Claude quota adapter. Tries the cheapest, most current
 /// data first and falls back gracefully while respecting the user's
@@ -87,7 +88,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// Per-file invalidation key: a transcript is unchanged iff both its
     /// modification time and byte size are unchanged. Mirrors
     /// `CodexRolloutFileSignature`.
-    private struct JSONLFileSignature: Equatable {
+    private struct JSONLFileSignature: Equatable, Sendable {
         let modifiedAt: TimeInterval
         let sizeBytes: Int64
     }
@@ -96,7 +97,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// timestamp and token total. Window membership (5-hour / 7-day) is applied
     /// at aggregation time, so cached contributions stay valid as the rolling
     /// windows slide.
-    private struct JSONLContribution {
+    private struct JSONLContribution: Sendable {
         let timestamp: Date
         let total: Int
     }
@@ -114,23 +115,23 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// persistence plumbed through `ProviderQuotaAdapterContext`): the
     /// modification-time window cutoff already keeps a cold first scan cheap, so
     /// the persisted variant's complexity isn't warranted here.
-    private final class JSONLScanCache: @unchecked Sendable {
-        private struct Entry {
+    private final class JSONLScanCache: Sendable {
+        private struct Entry: Sendable {
             let signature: JSONLFileSignature
             let contributions: [JSONLContribution]
         }
-        private let lock = NSLock()
-        private var entries: [String: Entry] = [:]
+
+        private let entries = Locked([String: Entry]())
 
         func contributions(forPath path: String, signature: JSONLFileSignature) -> [JSONLContribution]? {
-            lock.lock(); defer { lock.unlock() }
-            guard let entry = entries[path], entry.signature == signature else { return nil }
+            guard let entry = entries.read()[path], entry.signature == signature else { return nil }
             return entry.contributions
         }
 
         func store(path: String, signature: JSONLFileSignature, contributions: [JSONLContribution]) {
-            lock.lock(); defer { lock.unlock() }
-            entries[path] = Entry(signature: signature, contributions: contributions)
+            entries.withLock {
+                $0[path] = Entry(signature: signature, contributions: contributions)
+            }
         }
 
         /// Drop entries for transcripts that fell out of the widest rolling
@@ -139,8 +140,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         /// derives the cutoff from the same `now`, so none evicts another
         /// scope's still-relevant entries.
         func pruneEntries(olderThan cutoffEpoch: TimeInterval) {
-            lock.lock(); defer { lock.unlock() }
-            entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
+            entries.withLock { entries in
+                entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
+            }
         }
     }
 
