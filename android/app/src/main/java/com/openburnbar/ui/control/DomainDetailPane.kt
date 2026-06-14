@@ -78,8 +78,8 @@ internal fun DomainDetailPane(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+        contentPadding = PaddingValues(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         item { DomainHeader(domain = domain, row = row, locked = locked) }
         if (locked) {
@@ -121,7 +121,7 @@ internal fun DomainDetailPane(
 @Composable
 private fun DomainHeader(domain: DataDomain, row: DomainRow?, locked: Boolean) {
     val accent = PensieveControlTokens.tierColor(domain.encryptionTier)
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier.size(44.dp).background(accent.copy(alpha = 0.16f), CircleShape),
@@ -129,7 +129,7 @@ private fun DomainHeader(domain: DataDomain, row: DomainRow?, locked: Boolean) {
             ) {
                 Box(modifier = Modifier.size(16.dp).background(accent, CircleShape))
             }
-            Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
             Column {
                 Text(
                     domain.title,
@@ -152,7 +152,7 @@ private fun DomainHeader(domain: DataDomain, row: DomainRow?, locked: Boolean) {
 @Composable
 private fun RetentionCard(domain: DataDomain) {
     AuroraGlassCard {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Text("Retention", style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold), color = PensieveControlTokens.textMute)
             Text(retentionLabel(domain.retention), style = AuroraType.body, color = PensieveControlTokens.textBase)
             if (domain.storagePaths.isNotEmpty()) {
@@ -180,12 +180,9 @@ private data class DomainActionsCallbacks(
 )
 
 @Composable
-private fun DomainActions(
-    state: DomainActionsState,
-    callbacks: DomainActionsCallbacks,
-) {
+private fun DomainActions(state: DomainActionsState, callbacks: DomainActionsCallbacks) {
     val domain = state.domain
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         domain.actions.forEach { action ->
             when (action) {
                 "export" ->
@@ -245,10 +242,10 @@ internal fun ControlActionButton(
         modifier =
         modifier
             .fillMaxWidth()
-            .background(accent.copy(alpha = if (enabled) 0.10f else 0.04f), RoundedCornerShape(AuroraRadius.md.dp))
-            .border(0.75.dp, accent.copy(alpha = if (enabled) 0.45f else 0.18f), RoundedCornerShape(AuroraRadius.md.dp))
+            .background(accent.copy(alpha = if (enabled) 0.10f else 0.04f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .border(0.75.dp, accent.copy(alpha = if (enabled) 0.45f else 0.18f), RoundedCornerShape(AuroraRadius.MD.dp))
             .then(if (enabled && !loading) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.md.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.MD.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (loading) {
@@ -256,7 +253,7 @@ internal fun ControlActionButton(
         } else {
             Icon(icon, contentDescription = null, tint = accentForEnabled(accent, enabled))
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             label,
             style = AuroraType.headline.copy(fontWeight = FontWeight.SemiBold),
@@ -265,13 +262,12 @@ internal fun ControlActionButton(
     }
 }
 
-private fun accentForEnabled(accent: Color, enabled: Boolean): Color =
-    if (enabled) accent else accent.copy(alpha = 0.4f)
+private fun accentForEnabled(accent: Color, enabled: Boolean): Color = if (enabled) accent else accent.copy(alpha = 0.4f)
 
 @Composable
 private fun LockedDomainNotice(domain: DataDomain, tier: DataTier, onUpgrade: () -> Unit) {
     AuroraGlassCard {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Text(
                 "Included with ${gateLabel(domain.entitlementGate)}",
                 style = AuroraType.headline.copy(fontWeight = FontWeight.SemiBold),
@@ -315,31 +311,28 @@ private fun DeleteDomainDialog(domain: DataDomain, onConfirm: () -> Unit, onDism
     )
 }
 
-private fun retentionLabel(retention: String): String =
-    when (retention) {
-        "rolling" -> "Rolling window — older entries age out automatically."
-        "until_deleted" -> "Kept until you delete it."
-        "until_disconnected" -> "Kept until you disconnect the account."
-        "until_revoked" -> "Kept until you revoke access."
-        "permanent" -> "Kept for the life of your account."
-        "append_only" -> "Append-only — entries are never edited, only added."
-        else -> retention.replace("_", " ").replaceFirstChar { it.uppercase() }
-    }
+private fun retentionLabel(retention: String): String = when (retention) {
+    "rolling" -> "Rolling window — older entries age out automatically."
+    "until_deleted" -> "Kept until you delete it."
+    "until_disconnected" -> "Kept until you disconnect the account."
+    "until_revoked" -> "Kept until you revoke access."
+    "permanent" -> "Kept for the life of your account."
+    "append_only" -> "Append-only — entries are never edited, only added."
+    else -> retention.replace("_", " ").replaceFirstChar { it.uppercase() }
+}
 
-private fun actionLabel(action: String, domain: DataDomain): String =
-    when (action) {
-        "configure" -> "Configure ${domain.title}"
-        "sync" -> "Sync now"
-        "revoke" -> "Revoke access"
-        "approve" -> "Approve a device"
-        "recover" -> "Recovery options"
-        else -> action.replaceFirstChar { it.uppercase() } + " ${domain.title}"
-    }
+private fun actionLabel(action: String, domain: DataDomain): String = when (action) {
+    "configure" -> "Configure ${domain.title}"
+    "sync" -> "Sync now"
+    "revoke" -> "Revoke access"
+    "approve" -> "Approve a device"
+    "recover" -> "Recovery options"
+    else -> action.replaceFirstChar { it.uppercase() } + " ${domain.title}"
+}
 
-private fun gateLabel(gate: String?): String =
-    when (gate) {
-        "burnbar_pro" -> "Cloud Pro"
-        "burnbar_pro_max" -> "Cloud Pro"
-        "burnbar_ultra", "burnbar_pro_max_ultra" -> "Ultra"
-        else -> "a paid plan"
-    }
+private fun gateLabel(gate: String?): String = when (gate) {
+    "burnbar_pro" -> "Cloud Pro"
+    "burnbar_pro_max" -> "Cloud Pro"
+    "burnbar_ultra", "burnbar_pro_max_ultra" -> "Ultra"
+    else -> "a paid plan"
+}

@@ -1,8 +1,6 @@
 package com.openburnbar.ui.media
 
-import java.util.UUID
 import android.app.PictureInPictureParams
-import com.openburnbar.data.computeruse.PhoneControlIntentKind
 import android.os.Build
 import android.util.Log
 import android.util.Rational
@@ -14,6 +12,7 @@ import com.openburnbar.data.computeruse.PhoneControlAgentContextTarget
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
 import com.openburnbar.data.computeruse.PhoneControlIntent
+import com.openburnbar.data.computeruse.PhoneControlIntentKind
 import com.openburnbar.data.computeruse.PhoneControlSender
 import com.openburnbar.data.computeruse.PhoneControlSigningKeyStore
 import com.openburnbar.data.media.MediaStreamClass
@@ -23,6 +22,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorDisplaySelection
+import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 
@@ -151,12 +151,7 @@ internal fun ScreenShareViewerActivity.sendMirrorDisplaySelect(displayId: String
     }
 }
 
-internal fun ScreenShareViewerActivity.sendTapNormalized(
-    x: Double,
-    y: Double,
-    mouseButton: Int?,
-    displayId: String,
-) {
+internal fun ScreenShareViewerActivity.sendTapNormalized(x: Double, y: Double, mouseButton: Int?, displayId: String) {
     sendPhoneControlIntent(
         PhoneControlIntent(
             kind = PhoneControlIntentKind.TAP,
@@ -168,13 +163,7 @@ internal fun ScreenShareViewerActivity.sendTapNormalized(
     )
 }
 
-internal fun ScreenShareViewerActivity.sendScrollDragNormalized(
-    x1: Double,
-    y1: Double,
-    x2: Double,
-    y2: Double,
-    displayId: String,
-) {
+internal fun ScreenShareViewerActivity.sendScrollDragNormalized(x1: Double, y1: Double, x2: Double, y2: Double, displayId: String) {
     sendPhoneControlIntent(
         PhoneControlIntent(
             kind = PhoneControlIntentKind.SCROLL,

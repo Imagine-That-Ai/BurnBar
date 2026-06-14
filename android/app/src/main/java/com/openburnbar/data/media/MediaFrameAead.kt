@@ -55,6 +55,7 @@ object MediaFrameAead {
     private const val NONCE_BYTES = 12
     private const val TAG_BYTES = 16
     private const val TAG_BITS = TAG_BYTES * Byte.SIZE_BITS
+
     /** magic(6) + version(1) + AES-GCM combined(nonce 12 + tag 16 + ciphertext). */
     private const val HEADER_BYTES = 7
     private const val U32_BYTES = 4
@@ -97,14 +98,7 @@ object MediaFrameAead {
     }
 
     /** Seal an encoded media frame payload. Returns `magic ‖ version ‖ AES-GCM combined`. */
-    fun seal(
-        plaintext: ByteArray,
-        key: ByteArray,
-        streamClass: String,
-        kind: UByte,
-        gopID: UInt,
-        frameIndex: UInt,
-    ): ByteArray {
+    fun seal(plaintext: ByteArray, key: ByteArray, streamClass: String, kind: UByte, gopID: UInt, frameIndex: UInt): ByteArray {
         require(key.size == KEY_BYTES) { "media frame session key must be 32 bytes" }
         val nonce = ByteArray(NONCE_BYTES).also(secureRandom::nextBytes)
         val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
@@ -119,14 +113,7 @@ object MediaFrameAead {
      * position. Any AAD mismatch (wrong stream class, kind, or index) or a
      * tampered ciphertext throws [MediaFrameAeadSealException.OpenFailed].
      */
-    fun open(
-        envelope: ByteArray,
-        key: ByteArray,
-        streamClass: String,
-        kind: UByte,
-        gopID: UInt,
-        frameIndex: UInt,
-    ): ByteArray {
+    fun open(envelope: ByteArray, key: ByteArray, streamClass: String, kind: UByte, gopID: UInt, frameIndex: UInt): ByteArray {
         require(key.size == KEY_BYTES) { "media frame session key must be 32 bytes" }
         headerFailure(envelope)?.let { throw it }
         val nonce = envelope.copyOfRange(HEADER_BYTES, HEADER_BYTES + NONCE_BYTES)
@@ -167,6 +154,5 @@ object MediaFrameAeadNegotiation {
     const val REMOTE_CONFIG_KEY = "computer_use_media_frame_aead_enabled"
 
     /** Seal only when BOTH peers support it. */
-    fun resolveSealingEnabled(localSupports: Boolean, remoteSupports: Boolean): Boolean =
-        localSupports && remoteSupports
+    fun resolveSealingEnabled(localSupports: Boolean, remoteSupports: Boolean): Boolean = localSupports && remoteSupports
 }

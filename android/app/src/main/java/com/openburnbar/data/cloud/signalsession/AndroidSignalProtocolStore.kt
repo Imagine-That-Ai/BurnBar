@@ -54,14 +54,13 @@ class AndroidSignalProtocolStore(
             identityKeyPair: IdentityKeyPair,
             registrationId: Int,
             vault: SignalRecordVault = InMemorySignalRecordVault(),
-        ): AndroidSignalProtocolStore =
-            AndroidSignalProtocolStore(
-                identityKeyPair = identityKeyPair,
-                registrationId = registrationId,
-                vault = vault,
-                identityTrustEvaluator = null,
-                allowTestingTofu = true,
-            )
+        ): AndroidSignalProtocolStore = AndroidSignalProtocolStore(
+            identityKeyPair = identityKeyPair,
+            registrationId = registrationId,
+            vault = vault,
+            identityTrustEvaluator = null,
+            allowTestingTofu = true,
+        )
     }
 
     // MARK: - IdentityKeyStore
@@ -70,10 +69,7 @@ class AndroidSignalProtocolStore(
 
     override fun getLocalRegistrationId(): Int = backingRegistrationId
 
-    override fun saveIdentity(
-        address: SignalProtocolAddress,
-        identityKey: IdentityKey,
-    ): IdentityKeyStore.IdentityChange = synchronized(lock) {
+    override fun saveIdentity(address: SignalProtocolAddress, identityKey: IdentityKey): IdentityKeyStore.IdentityChange = synchronized(lock) {
         val account = identityAccount(address)
         val existing = vault.read(account)?.let { IdentityKey(it) }
         vault.write(account, identityKey.serialize())
@@ -84,16 +80,13 @@ class AndroidSignalProtocolStore(
         }
     }
 
-    override fun isTrustedIdentity(
-        address: SignalProtocolAddress,
-        identityKey: IdentityKey,
-        direction: IdentityKeyStore.Direction,
-    ): Boolean = synchronized(lock) {
-        identityTrustEvaluator?.let { return@synchronized it(address, identityKey) }
-        val trusted = vault.read(identityAccount(address))?.let { IdentityKey(it) }
-        // Trust-on-first-use: unknown peers are trusted; a changed key is rejected.
-        trusted == null || trusted == identityKey
-    }
+    override fun isTrustedIdentity(address: SignalProtocolAddress, identityKey: IdentityKey, direction: IdentityKeyStore.Direction): Boolean =
+        synchronized(lock) {
+            identityTrustEvaluator?.let { return@synchronized it(address, identityKey) }
+            val trusted = vault.read(identityAccount(address))?.let { IdentityKey(it) }
+            // Trust-on-first-use: unknown peers are trusted; a changed key is rejected.
+            trusted == null || trusted == identityKey
+        }
 
     override fun getIdentity(address: SignalProtocolAddress): IdentityKey? = synchronized(lock) {
         vault.read(identityAccount(address))?.let { IdentityKey(it) }
@@ -133,8 +126,7 @@ class AndroidSignalProtocolStore(
         vault.write("signed-prekey:$id", record.serialize())
     }
 
-    override fun containsSignedPreKey(id: Int): Boolean =
-        synchronized(lock) { vault.read("signed-prekey:$id") != null }
+    override fun containsSignedPreKey(id: Int): Boolean = synchronized(lock) { vault.read("signed-prekey:$id") != null }
 
     override fun removeSignedPreKey(id: Int) = synchronized(lock) { vault.delete("signed-prekey:$id") }
 
@@ -158,14 +150,9 @@ class AndroidSignalProtocolStore(
         vault.write("kyber-prekey:$id", record.serialize())
     }
 
-    override fun containsKyberPreKey(id: Int): Boolean =
-        synchronized(lock) { vault.read("kyber-prekey:$id") != null }
+    override fun containsKyberPreKey(id: Int): Boolean = synchronized(lock) { vault.read("kyber-prekey:$id") != null }
 
-    override fun markKyberPreKeyUsed(
-        kyberPreKeyId: Int,
-        signedPreKeyId: Int,
-        baseKey: ECPublicKey,
-    ) = synchronized(lock) {
+    override fun markKyberPreKeyUsed(kyberPreKeyId: Int, signedPreKeyId: Int, baseKey: ECPublicKey) = synchronized(lock) {
         // Replay guard (mirrors InMemoryKyberPreKeyStore): a base key reused for the same
         // (kyber id, signed-prekey id) pair is a replay. Seen base keys persist as a
         // concatenation of fixed-size serializations; the read-modify-write runs under the lock.
@@ -191,9 +178,7 @@ class AndroidSignalProtocolStore(
         vault.read(sessionAccount(address))?.let { SessionRecord(it) }
     }
 
-    override fun loadExistingSessions(
-        addresses: MutableList<SignalProtocolAddress>,
-    ): MutableList<SessionRecord> = synchronized(lock) {
+    override fun loadExistingSessions(addresses: MutableList<SignalProtocolAddress>): MutableList<SessionRecord> = synchronized(lock) {
         addresses.map { address ->
             val bytes = vault.read(sessionAccount(address))
                 ?: throw NoSessionException("no session for ${address.name}.${address.deviceId}")
@@ -213,11 +198,9 @@ class AndroidSignalProtocolStore(
         vault.write(sessionAccount(address), record.serialize())
     }
 
-    override fun containsSession(address: SignalProtocolAddress): Boolean =
-        synchronized(lock) { vault.read(sessionAccount(address)) != null }
+    override fun containsSession(address: SignalProtocolAddress): Boolean = synchronized(lock) { vault.read(sessionAccount(address)) != null }
 
-    override fun deleteSession(address: SignalProtocolAddress) =
-        synchronized(lock) { vault.delete(sessionAccount(address)) }
+    override fun deleteSession(address: SignalProtocolAddress) = synchronized(lock) { vault.delete(sessionAccount(address)) }
 
     override fun deleteAllSessions(name: String) = synchronized(lock) {
         val prefix = "session:${escape(name)}:"
@@ -226,28 +209,19 @@ class AndroidSignalProtocolStore(
 
     // MARK: - SenderKeyStore (groups — unused by 1:1 sessions, present so this is a SignalProtocolStore)
 
-    override fun storeSenderKey(
-        sender: SignalProtocolAddress,
-        distributionId: UUID,
-        record: SenderKeyRecord,
-    ) = synchronized(lock) {
+    override fun storeSenderKey(sender: SignalProtocolAddress, distributionId: UUID, record: SenderKeyRecord) = synchronized(lock) {
         vault.write(senderKeyAccount(sender, distributionId), record.serialize())
     }
 
-    override fun loadSenderKey(
-        sender: SignalProtocolAddress,
-        distributionId: UUID,
-    ): SenderKeyRecord? = synchronized(lock) {
+    override fun loadSenderKey(sender: SignalProtocolAddress, distributionId: UUID): SenderKeyRecord? = synchronized(lock) {
         vault.read(senderKeyAccount(sender, distributionId))?.let { SenderKeyRecord(it) }
     }
 
     // MARK: - Account naming (always called while `lock` is held)
 
-    private fun identityAccount(address: SignalProtocolAddress): String =
-        "trusted-identity:${escape(address.name)}:${address.deviceId}"
+    private fun identityAccount(address: SignalProtocolAddress): String = "trusted-identity:${escape(address.name)}:${address.deviceId}"
 
-    private fun sessionAccount(address: SignalProtocolAddress): String =
-        "session:${escape(address.name)}:${address.deviceId}"
+    private fun sessionAccount(address: SignalProtocolAddress): String = "session:${escape(address.name)}:${address.deviceId}"
 
     private fun senderKeyAccount(sender: SignalProtocolAddress, distributionId: UUID): String =
         "senderkey:${escape(sender.name)}:${sender.deviceId}:$distributionId"

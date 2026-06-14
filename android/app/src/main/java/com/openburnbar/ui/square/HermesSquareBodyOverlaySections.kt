@@ -53,11 +53,7 @@ import com.openburnbar.ui.components.AuroraBottomSheet
 import com.openburnbar.ui.theme.AuroraColors
 
 @Composable
-internal fun BoxScope.HermesSquareVoiceBannerOverlay(
-    state: HermesSquareUiState,
-    actions: HermesSquareUiActions,
-    innerPadding: PaddingValues,
-) {
+internal fun BoxScope.HermesSquareVoiceBannerOverlay(state: HermesSquareUiState, actions: HermesSquareUiActions, innerPadding: PaddingValues) {
     AnimatedVisibility(
         visible = state.voiceBanner != null,
         enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -170,7 +166,13 @@ private fun HermesSquareThreadManageActions(item: ThreadInboxItem, actions: Herm
         },
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text("Rename Conversation", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.fillMaxWidth())
+        Text(
+            "Rename Conversation",
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
     TextButton(
         onClick = {
@@ -200,14 +202,20 @@ private fun HermesSquareThreadManageActions(item: ThreadInboxItem, actions: Herm
 @Composable
 private fun HermesSquareThreadManageReorder(item: ThreadInboxItem, actions: HermesSquareUiActions) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-        TextButton(onClick = { actions.moveThreadItem(item, -1); actions.setThreadToManage(null) }, modifier = Modifier.weight(1f)) {
+        TextButton(onClick = {
+            actions.moveThreadItem(item, -1)
+            actions.setThreadToManage(null)
+        }, modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Move Up", fontSize = 14.sp)
             }
         }
-        TextButton(onClick = { actions.moveThreadItem(item, 1); actions.setThreadToManage(null) }, modifier = Modifier.weight(1f)) {
+        TextButton(onClick = {
+            actions.moveThreadItem(item, 1)
+            actions.setThreadToManage(null)
+        }, modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
@@ -295,10 +303,16 @@ private fun HermesSquareMissionManageDialog(state: HermesSquareUiState, actions:
             text = { Text("Would you like to cancel this active mission or dismiss it from your console?") },
             confirmButton = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { actions.onMissionCancelDismiss(mission); actions.setMissionToManage(null) }, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = {
+                        actions.onMissionCancelDismiss(mission)
+                        actions.setMissionToManage(null)
+                    }, modifier = Modifier.fillMaxWidth()) {
                         Text("Cancel & Dismiss", color = MaterialTheme.colorScheme.error)
                     }
-                    TextButton(onClick = { actions.onMissionDismiss(mission); actions.setMissionToManage(null) }, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = {
+                        actions.onMissionDismiss(mission)
+                        actions.setMissionToManage(null)
+                    }, modifier = Modifier.fillMaxWidth()) {
                         Text("Just Dismiss")
                     }
                     TextButton(onClick = { actions.setMissionToManage(null) }, modifier = Modifier.fillMaxWidth()) { Text("Keep Running") }
@@ -320,16 +334,25 @@ private fun HermesSquarePinnedAgentManageDialog(state: HermesSquareUiState, acti
             confirmButton = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (index > 0) {
-                        TextButton(onClick = { actions.persistPinned(state.pinned.moving(index, index - 1)); actions.setPinnedAgentToManage(null) }, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(onClick = {
+                            actions.persistPinned(state.pinned.moving(index, index - 1))
+                            actions.setPinnedAgentToManage(null)
+                        }, modifier = Modifier.fillMaxWidth()) {
                             Text("Move Left")
                         }
                     }
                     if (index < state.pinned.pinnedURIs.size - 1) {
-                        TextButton(onClick = { actions.persistPinned(state.pinned.moving(index, index + 1)); actions.setPinnedAgentToManage(null) }, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(onClick = {
+                            actions.persistPinned(state.pinned.moving(index, index + 1))
+                            actions.setPinnedAgentToManage(null)
+                        }, modifier = Modifier.fillMaxWidth()) {
                             Text("Move Right")
                         }
                     }
-                    TextButton(onClick = { actions.persistPinned(state.pinned.unpinning(uri)); actions.setPinnedAgentToManage(null) }, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = {
+                        actions.persistPinned(state.pinned.unpinning(uri))
+                        actions.setPinnedAgentToManage(null)
+                    }, modifier = Modifier.fillMaxWidth()) {
                         Text("Unpin Agent", color = MaterialTheme.colorScheme.error)
                     }
                     TextButton(onClick = { actions.setPinnedAgentToManage(null) }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }

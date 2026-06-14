@@ -76,12 +76,11 @@ internal class HermesEmptyResponseRescue {
         if (finishReason != null) lastFinishReason = finishReason
     }
 
-    fun resolved(): EmptyResponseFallback =
-        HermesChatMessageOutcome.emptyResponseFallback(
-            refusal = refusal.toString(),
-            reasoning = reasoning.toString(),
-            finishReason = lastFinishReason,
-        )
+    fun resolved(): EmptyResponseFallback = HermesChatMessageOutcome.emptyResponseFallback(
+        refusal = refusal.toString(),
+        reasoning = reasoning.toString(),
+        finishReason = lastFinishReason,
+    )
 
     private fun extractRefusal(envelope: JSONObject?): String? {
         envelope ?: return null
@@ -125,18 +124,17 @@ internal class HermesEmptyResponseRescue {
 internal class HermesServiceToolDispatch(
     private val atomNavigator: () -> HermesAtomNavigator?,
 ) {
-    fun dispatchLocalToolCall(toolName: String, argumentsJson: String): Int =
-        if (
-            MobileToolCatalog.dispatchLocal(
-                toolName = toolName,
-                argumentsJson = argumentsJson,
-                navigator = atomNavigator(),
-            )
-        ) {
-            1
-        } else {
-            0
-        }
+    fun dispatchLocalToolCall(toolName: String, argumentsJson: String): Int = if (
+        MobileToolCatalog.dispatchLocal(
+            toolName = toolName,
+            argumentsJson = argumentsJson,
+            navigator = atomNavigator(),
+        )
+    ) {
+        1
+    } else {
+        0
+    }
 
     fun dispatchLocalToolCalls(json: JSONObject): Int {
         val choices = json.optJSONArray("choices") ?: return 0

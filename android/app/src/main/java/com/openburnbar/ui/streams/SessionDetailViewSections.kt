@@ -27,8 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.ui.burn.ProviderAuroraAvatar
@@ -48,17 +48,17 @@ internal fun SessionDetailHeroCard(usage: TokenUsage, provider: AgentProvider?, 
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.xl.dp),
+                .padding(AuroraSpacing.XL.dp),
         ) {
             provider?.let {
                 ProviderAuroraAvatar(provider = it, size = 64, showHalo = true)
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val modelKey = usage.model
                 if (!modelKey.isNullOrBlank()) {
                     ModelLogo(modelKey = modelKey, size = 20.dp)
-                    Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+                    Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
                 }
                 Text(
                     text = modelKey ?: "Unknown model",
@@ -72,7 +72,7 @@ internal fun SessionDetailHeroCard(usage: TokenUsage, provider: AgentProvider?, 
                 fontSize = AuroraTypography.body.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
             SessionDetailMetricRow(usage = usage, cacheHitRatio = cacheHitRatio)
         }
     }
@@ -80,7 +80,7 @@ internal fun SessionDetailHeroCard(usage: TokenUsage, provider: AgentProvider?, 
 
 @Composable
 private fun SessionDetailMetricRow(usage: TokenUsage, cacheHitRatio: Double) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
         SessionDetailMetricPill(title = "Cost", value = Formatting.formatCurrency(usage.effectiveCost))
         SessionDetailMetricPill(title = "Tokens", value = Formatting.formatTokens(usage.totalTokens))
         val durationMin =
@@ -99,17 +99,17 @@ private fun SessionDetailMetricRow(usage: TokenUsage, cacheHitRatio: Double) {
 @Composable
 internal fun SessionDetailTokenBreakdownCard(usage: TokenUsage) {
     AuroraGlassCard {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.LG.dp)) {
             Text(
                 text = "Tokens",
                 fontSize = AuroraTypography.headline.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             SessionDetailTokenMixBar(usage = usage)
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
                 SessionDetailTokenPill(label = "Input", value = usage.inputTokens, color = AuroraColors.whimsy)
                 SessionDetailTokenPill(label = "Output", value = usage.outputTokens, color = AuroraColors.ember)
                 if (usage.cacheCreationTokens > 0) {
@@ -131,14 +131,14 @@ internal fun SessionDetailTokenBreakdownCard(usage: TokenUsage) {
 @Composable
 internal fun SessionDetailProvenanceCard(usage: TokenUsage) {
     AuroraGlassCard {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.LG.dp)) {
             Text(
                 text = "Provenance",
                 fontSize = AuroraTypography.headline.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             SessionDetailProvenanceChip(label = "Method", value = usage.provenanceMethod ?: "—")
             SessionDetailProvenanceChip(label = "Confidence", value = usage.provenanceConfidence ?: "—")
             if (!usage.projectName.isNullOrEmpty()) {
@@ -151,14 +151,14 @@ internal fun SessionDetailProvenanceCard(usage: TokenUsage) {
 @Composable
 internal fun SessionDetailDeviceCard(sourceDeviceId: String) {
     AuroraGlassCard {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.LG.dp)) {
             Text(
                 text = "Device",
                 fontSize = AuroraTypography.headline.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             SessionDetailProvenanceChip(label = "ID", value = sourceDeviceId)
         }
     }
@@ -222,7 +222,7 @@ private fun SessionDetailTokenPill(label: String, value: Int, color: Color? = nu
                         .background(color, RoundedCornerShape(4.5.dp)),
                 )
             }
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         }
         Text(
             text = label,
@@ -246,7 +246,7 @@ private fun SessionDetailMetricPill(title: String, value: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier =
         Modifier
-            .clip(RoundedCornerShape(AuroraRadius.sm.dp))
+            .clip(RoundedCornerShape(AuroraRadius.SM.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {

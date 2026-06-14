@@ -45,8 +45,7 @@ object ControlSealSessionEstablisher {
 
     /** Default-ON protection flag, same key the iOS client reads; a fetched
      * Remote Config value is the kill switch and always wins. */
-    fun remoteConfigEnabled(): Boolean =
-        remoteConfigProtectionFlag(ControlFrameSealNegotiation.REMOTE_CONFIG_KEY)
+    fun remoteConfigEnabled(): Boolean = remoteConfigProtectionFlag(ControlFrameSealNegotiation.REMOTE_CONFIG_KEY)
 
     /**
      * Establish when (and only when) the default-off RC flag is on AND the
@@ -57,12 +56,7 @@ object ControlSealSessionEstablisher {
      * must not lose remote control. The Mac's HPKE relay recipient key comes
      * from the paired connection record — never from the stream itself.
      */
-    suspend fun establishIfNegotiated(
-        uid: String,
-        connectionId: String,
-        controllerPeerNodeId: String,
-        macCapabilities: Set<String>,
-    ): Session? {
+    suspend fun establishIfNegotiated(uid: String, connectionId: String, controllerPeerNodeId: String, macCapabilities: Set<String>): Session? {
         if (!remoteConfigEnabled()) return null
         if (!ControlFrameSealNegotiation.resolveSealingEnabled(
                 localSupports = true,
@@ -106,10 +100,7 @@ object ControlSealSessionEstablisher {
      * payload is replaced by its sealed shell (`streamClass` +
      * `sealedFrameBase64` only) before it reaches the stream.
      */
-    fun sealingFrameSink(
-        base: suspend (HermesRealtimeRelayFrame) -> Unit,
-        session: Session,
-    ): suspend (HermesRealtimeRelayFrame) -> Unit = { frame ->
+    fun sealingFrameSink(base: suspend (HermesRealtimeRelayFrame) -> Unit, session: Session): suspend (HermesRealtimeRelayFrame) -> Unit = { frame ->
         val control = frame.control
         val outbound =
             if (control != null) {

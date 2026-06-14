@@ -82,7 +82,8 @@ class AndroidInsightAnalysisEngine(
         return try {
             val result = gateway.analyze(request)
             if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP && result.briefingAnswer ==
-                null) {
+                null
+            ) {
                 val answerSource =
                     if (result.modelTag.providerKey == AndroidBurnBarHostedInsightGateway.PROVIDER_KEY) {
                         InsightBriefingAnswer.Source.HOSTED_FALLBACK
@@ -114,8 +115,7 @@ class AndroidInsightAnalysisEngine(
         }
     }
 
-    private suspend fun tryHostedThenLocalFallback(
-        request: InsightAnalysisRequest, reason: String): InsightAnalysisResult {
+    private suspend fun tryHostedThenLocalFallback(request: InsightAnalysisRequest, reason: String): InsightAnalysisResult {
         if (request.instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) {
             error(reason)
         }
@@ -183,10 +183,10 @@ class AndroidInsightAnalysisEngine(
         )
     }
 
-    internal suspend fun ensureBriefingAnswer(
-        result: InsightAnalysisResult, request: InsightAnalysisRequest): InsightAnalysisResult {
+    internal suspend fun ensureBriefingAnswer(result: InsightAnalysisResult, request: InsightAnalysisRequest): InsightAnalysisResult {
         if (request.instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP || result.briefingAnswer !=
-            null) {
+            null
+        ) {
             return result
         }
         if (result.modelTag.providerKey == "local-rules") {
@@ -216,8 +216,7 @@ class AndroidInsightAnalysisEngine(
             "Production callers should route through tryHostedThenLocalFallback to give the " +
             "BurnBar-hosted route a chance before degrading.",
     )
-    private suspend fun fallbackForQuestionOrThrow(
-        request: InsightAnalysisRequest, reason: String): InsightAnalysisResult =
+    private suspend fun fallbackForQuestionOrThrow(request: InsightAnalysisRequest, reason: String): InsightAnalysisResult =
         tryHostedThenLocalFallback(request, reason)
 
     private fun composeAnswerBody(result: InsightAnalysisResult): String = buildList {
@@ -358,14 +357,10 @@ class RuleBasedInsightAnalysisEngine(
     }
 
     companion object {
-        fun materializeCanvas(result: InsightAnalysisResult, prompt: String): InsightCanvas =
-            ruleBasedMaterializeCanvas(result, prompt)
+        fun materializeCanvas(result: InsightAnalysisResult, prompt: String): InsightCanvas = ruleBasedMaterializeCanvas(result, prompt)
 
-        fun enrichMissionCandidates(
-            result: InsightAnalysisResult,
-            request: InsightAnalysisRequest,
-            platform: InsightAnalysisPlatform,
-        ): InsightAnalysisResult = ruleBasedEnrichMissionCandidates(result, request, platform)
+        fun enrichMissionCandidates(result: InsightAnalysisResult, request: InsightAnalysisRequest, platform: InsightAnalysisPlatform): InsightAnalysisResult =
+            ruleBasedEnrichMissionCandidates(result, request, platform)
     }
 }
 
@@ -381,10 +376,12 @@ object InsightAggregator {
         val sources = (includedDataSources + evidencePacks.flatMap { it.includedDataSources }).distinct().sorted()
         val truncated =
             buildList {
-                if (digest.providers.size >= INSIGHT_PROVIDER_TRIM_THRESHOLD && "provider_summaries" in includedDataSources)
+                if (digest.providers.size >= INSIGHT_PROVIDER_TRIM_THRESHOLD && "provider_summaries" in includedDataSources) {
                     add("provider_summaries")
-                if (digest.models.size >= INSIGHT_MODEL_TRIM_THRESHOLD && "model_summaries" in includedDataSources)
+                }
+                if (digest.models.size >= INSIGHT_MODEL_TRIM_THRESHOLD && "model_summaries" in includedDataSources) {
                     add("model_summaries")
+                }
                 if (digest.daily.size >= INSIGHT_DAILY_TRIM_THRESHOLD && "daily_points" in includedDataSources) add("daily_points")
             }
         val budget =

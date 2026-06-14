@@ -116,67 +116,59 @@ internal fun mirrorClickAction(
     scope: CoroutineScope,
     snapshot: () -> PairedMacControlsMirrorRequestInput,
     write: PairedMacControlsWriteCallbacks,
-): () -> Unit =
-    {
-        launchMirrorRequest(
-            scope = scope,
-            input = snapshot(),
-            onRecoveringMercuryChange = write.setRecoveringMercury,
-        ) { result ->
-            write.setCoordinator(result.coordinator)
-            write.setPendingRequestID(result.pendingRequestID)
-            write.setStatusMessage(result.statusMessage)
-        }
+): () -> Unit = {
+    launchMirrorRequest(
+        scope = scope,
+        input = snapshot(),
+        onRecoveringMercuryChange = write.setRecoveringMercury,
+    ) { result ->
+        write.setCoordinator(result.coordinator)
+        write.setPendingRequestID(result.pendingRequestID)
+        write.setStatusMessage(result.statusMessage)
     }
+}
 
 internal fun checkMercuryClickAction(
     scope: CoroutineScope,
     snapshot: () -> PairedMacControlsCheckMercuryInput,
     write: PairedMacControlsWriteCallbacks,
-): () -> Unit =
-    {
-        val checkResult = evaluateCheckMercury(snapshot())
-        write.setStatusMessage(checkResult.immediateStatusMessage)
-        if (checkResult.shouldRestartMercury) {
-            val input = snapshot()
-            val connection = resolveRequestedConnectionID(input.connectionID, input.activePair)
-            val application = input.app
-            if (connection != null && application != null) {
-                launchCheckMercuryRestart(scope, application, connection) { result ->
-                    write.setCoordinator(result.coordinator)
-                    write.setStatusMessage(result.statusMessage)
-                }
+): () -> Unit = {
+    val checkResult = evaluateCheckMercury(snapshot())
+    write.setStatusMessage(checkResult.immediateStatusMessage)
+    if (checkResult.shouldRestartMercury) {
+        val input = snapshot()
+        val connection = resolveRequestedConnectionID(input.connectionID, input.activePair)
+        val application = input.app
+        if (connection != null && application != null) {
+            launchCheckMercuryRestart(scope, application, connection) { result ->
+                write.setCoordinator(result.coordinator)
+                write.setStatusMessage(result.statusMessage)
             }
         }
     }
+}
 
 internal fun callMacClickAction(
     scope: CoroutineScope,
     snapshot: () -> Pair<MediaControlStreamCoordinator?, MediaControlStreamCoordinator.Phase>,
     write: PairedMacControlsWriteCallbacks,
-): () -> Unit =
-    {
-        val (coordinator, phase) = snapshot()
-        launchCallMacRequest(scope, coordinator, phase) { result ->
-            write.setCoordinator(result.coordinator)
-            write.setPendingCallRequestID(result.pendingRequestID)
-            write.setStatusMessage(result.statusMessage)
-        }
+): () -> Unit = {
+    val (coordinator, phase) = snapshot()
+    launchCallMacRequest(scope, coordinator, phase) { result ->
+        write.setCoordinator(result.coordinator)
+        write.setPendingCallRequestID(result.pendingRequestID)
+        write.setStatusMessage(result.statusMessage)
     }
+}
 
-internal fun pairedMacRequesterDisplayName(): String =
-    FirebaseAuth.getInstance().currentUser?.displayName
-        ?.takeIf { it.isNotBlank() }
-        ?: "Android"
+internal fun pairedMacRequesterDisplayName(): String = FirebaseAuth.getInstance().currentUser?.displayName
+    ?.takeIf { it.isNotBlank() }
+    ?: "Android"
 
-internal fun resolveRequestedConnectionID(
-    connectionID: String?,
-    activePair: MediaControlStreamCoordinator.ActivePair?,
-): String? =
-    connectionID
-        ?.trim()
-        ?.takeIf { it.isNotBlank() && !it.startsWith("paired-mac:") }
-        ?: activePair?.connectionID
+internal fun resolveRequestedConnectionID(connectionID: String?, activePair: MediaControlStreamCoordinator.ActivePair?): String? = connectionID
+    ?.trim()
+    ?.takeIf { it.isNotBlank() && !it.startsWith("paired-mac:") }
+    ?: activePair?.connectionID
 
 internal suspend fun executeMirrorRequest(input: PairedMacControlsMirrorRequestInput): PairedMacControlsMirrorRequestResult {
     val name = pairedMacRequesterDisplayName()
@@ -230,33 +222,29 @@ internal suspend fun executeMirrorRequest(input: PairedMacControlsMirrorRequestI
     }
 }
 
-internal fun evaluateCheckMercury(input: PairedMacControlsCheckMercuryInput): PairedMacControlsCheckMercuryResult =
-    when {
-        input.coordinator == null ->
-            PairedMacControlsCheckMercuryResult(
-                immediateStatusMessage =
-                "Mercury is not started yet. Open BurnBar on the Mac and wait for the paired Mac tile to show online.",
-                shouldRestartMercury = false,
-            )
-        input.phase !is MediaControlStreamCoordinator.Phase.Live -> {
-            val connection = resolveRequestedConnectionID(input.connectionID, input.activePair)
-            val canRestart = connection != null && input.app != null
-            PairedMacControlsCheckMercuryResult(
-                immediateStatusMessage = if (canRestart) "Restarting Mercury..." else input.phase.userMessage(),
-                shouldRestartMercury = canRestart,
-            )
-        }
-        else ->
-            PairedMacControlsCheckMercuryResult(
-                immediateStatusMessage = "Mercury is live. Ask to Mirror is ready.",
-                shouldRestartMercury = false,
-            )
+internal fun evaluateCheckMercury(input: PairedMacControlsCheckMercuryInput): PairedMacControlsCheckMercuryResult = when {
+    input.coordinator == null ->
+        PairedMacControlsCheckMercuryResult(
+            immediateStatusMessage =
+            "Mercury is not started yet. Open BurnBar on the Mac and wait for the paired Mac tile to show online.",
+            shouldRestartMercury = false,
+        )
+    input.phase !is MediaControlStreamCoordinator.Phase.Live -> {
+        val connection = resolveRequestedConnectionID(input.connectionID, input.activePair)
+        val canRestart = connection != null && input.app != null
+        PairedMacControlsCheckMercuryResult(
+            immediateStatusMessage = if (canRestart) "Restarting Mercury..." else input.phase.userMessage(),
+            shouldRestartMercury = canRestart,
+        )
     }
+    else ->
+        PairedMacControlsCheckMercuryResult(
+            immediateStatusMessage = "Mercury is live. Ask to Mirror is ready.",
+            shouldRestartMercury = false,
+        )
+}
 
-internal suspend fun restartMercuryForCheck(
-    app: BurnBarApplication,
-    connectionID: String,
-): PairedMacControlsMirrorRequestResult {
+internal suspend fun restartMercuryForCheck(app: BurnBarApplication, connectionID: String): PairedMacControlsMirrorRequestResult {
     return runCatching {
         app.ensureMediaControlStream(connectionID = connectionID, forceRestart = true)
         PairedMacControlsMirrorRequestResult(

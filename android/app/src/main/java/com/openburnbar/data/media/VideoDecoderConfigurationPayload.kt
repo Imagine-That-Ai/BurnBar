@@ -21,7 +21,8 @@ internal data class VideoDecoderConfigurationPayload(
 ) {
     enum class Codec(val rawValue: Byte) {
         HEVC(1),
-        H264(2);
+        H264(2),
+        ;
 
         companion object {
             fun from(rawValue: Byte): Codec? = entries.firstOrNull { it.rawValue == rawValue }
@@ -85,18 +86,15 @@ internal data class VideoDecoderConfigurationPayload(
             )
         }
 
-        private fun ByteArray.startsWith(prefix: ByteArray): Boolean =
-            size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
+        private fun ByteArray.startsWith(prefix: ByteArray): Boolean = size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
 
-        private fun readUInt16(data: ByteArray, offset: Int): Int =
-            (data[offset].toInt() and 0xFF shl 8) or
-                (data[offset + 1].toInt() and 0xFF)
+        private fun readUInt16(data: ByteArray, offset: Int): Int = (data[offset].toInt() and 0xFF shl 8) or
+            (data[offset + 1].toInt() and 0xFF)
 
-        private fun readInt32(data: ByteArray, offset: Int): Int =
-            (data[offset].toInt() and 0xFF shl 24) or
-                (data[offset + 1].toInt() and 0xFF shl 16) or
-                (data[offset + 2].toInt() and 0xFF shl 8) or
-                (data[offset + 3].toInt() and 0xFF)
+        private fun readInt32(data: ByteArray, offset: Int): Int = (data[offset].toInt() and 0xFF shl 24) or
+            (data[offset + 1].toInt() and 0xFF shl 16) or
+            (data[offset + 2].toInt() and 0xFF shl 8) or
+            (data[offset + 3].toInt() and 0xFF)
     }
 }
 
@@ -137,9 +135,8 @@ internal object VideoPayloadNormalizer {
         return units.takeIf { it.isNotEmpty() }
     }
 
-    private fun ByteArray.hasAnnexBStartCode(): Boolean =
-        size >= 4 && this[0] == 0.toByte() && this[1] == 0.toByte() &&
-            (this[2] == 1.toByte() || this[2] == 0.toByte() && this[3] == 1.toByte())
+    private fun ByteArray.hasAnnexBStartCode(): Boolean = size >= 4 && this[0] == 0.toByte() && this[1] == 0.toByte() &&
+        (this[2] == 1.toByte() || this[2] == 0.toByte() && this[3] == 1.toByte())
 
     private fun withStartCode(nal: ByteArray): ByteArray = START_CODE + nal
 

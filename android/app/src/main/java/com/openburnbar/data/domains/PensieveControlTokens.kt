@@ -60,31 +60,28 @@ object PensieveControlTokens {
     val tierEndToEnd = hex(PensieveTokens.colorTierEndToEnd)
 
     /** Tier accent color for a given [EncryptionTier]. */
-    fun tierColor(tier: EncryptionTier): Color =
-        when (tier) {
-            EncryptionTier.SERVER_READABLE -> tierServerReadable
-            EncryptionTier.ZERO_ACCESS -> tierZeroAccess
-            EncryptionTier.END_TO_END -> tierEndToEnd
-        }
+    fun tierColor(tier: EncryptionTier): Color = when (tier) {
+        EncryptionTier.SERVER_READABLE -> tierServerReadable
+        EncryptionTier.ZERO_ACCESS -> tierZeroAccess
+        EncryptionTier.END_TO_END -> tierEndToEnd
+    }
 
     /** Human-facing label for a tier (sentence-case, benefit-first). */
-    fun tierLabel(tier: EncryptionTier): String =
-        when (tier) {
-            EncryptionTier.SERVER_READABLE -> "Server-readable"
-            EncryptionTier.ZERO_ACCESS -> "Zero-access"
-            EncryptionTier.END_TO_END -> "End-to-end sealed"
-        }
+    fun tierLabel(tier: EncryptionTier): String = when (tier) {
+        EncryptionTier.SERVER_READABLE -> "Server-readable"
+        EncryptionTier.ZERO_ACCESS -> "Zero-access"
+        EncryptionTier.END_TO_END -> "End-to-end sealed"
+    }
 
     /** One-line plain-language promise per tier (no jargon). */
-    fun tierPromise(tier: EncryptionTier): String =
-        when (tier) {
-            EncryptionTier.SERVER_READABLE ->
-                "Stored as plain data so the cockpit can show it. BurnBar's servers can read this."
-            EncryptionTier.ZERO_ACCESS ->
-                "Encrypted at rest. BurnBar holds only the wrapped key under your device's trust."
-            EncryptionTier.END_TO_END ->
-                "Sealed on your device with your vault key. BurnBar never sees the contents or the key."
-        }
+    fun tierPromise(tier: EncryptionTier): String = when (tier) {
+        EncryptionTier.SERVER_READABLE ->
+            "Stored as plain data so the cockpit can show it. BurnBar's servers can read this."
+        EncryptionTier.ZERO_ACCESS ->
+            "Encrypted at rest. BurnBar holds only the wrapped key under your device's trust."
+        EncryptionTier.END_TO_END ->
+            "Sealed on your device with your vault key. BurnBar never sees the contents or the key."
+    }
 
     // ── Parsers ──
     // Accepts "#rrggbb" / "#aarrggbb" hex and "rgba(r, g, b, a)" strings exactly

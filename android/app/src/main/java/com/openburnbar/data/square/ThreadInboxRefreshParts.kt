@@ -24,10 +24,7 @@ internal fun buildThreadInboxRefreshParts(
     return ThreadInboxRefreshParts(cliSessionsByItemID, merged.sortedForInbox())
 }
 
-private fun threadInboxHistoryItems(
-    history: AssistantChatHistoryStore,
-    mobileCLIThreadIDs: MutableSet<String>,
-): List<ThreadInboxItem> =
+private fun threadInboxHistoryItems(history: AssistantChatHistoryStore, mobileCLIThreadIDs: MutableSet<String>): List<ThreadInboxItem> =
     history.threads.value.mapNotNull { thread ->
         val agentURI: String
         val source: ThreadInboxItem.Source
@@ -78,10 +75,7 @@ private fun threadInboxHistoryItems(
         )
     }
 
-private fun threadInboxCliMirrorItems(
-    parsed: List<CLIAgentSessionRecord>,
-    mobileCLIThreadIDs: Set<String>,
-): List<ThreadInboxItem> =
+private fun threadInboxCliMirrorItems(parsed: List<CLIAgentSessionRecord>, mobileCLIThreadIDs: Set<String>): List<ThreadInboxItem> =
     parsed.filter { it.id !in mobileCLIThreadIDs }.map { record ->
         ThreadInboxItem(
             id = "cli:${record.id}",
@@ -101,22 +95,21 @@ private fun threadInboxCliMirrorItems(
         )
     }
 
-private fun threadInboxMissionItems(host: MobileMissionConsoleHost): List<ThreadInboxItem> =
-    host.snapshot.value.activeMissions.map { tile ->
-        val runtimeID =
-            tile.runtimeID?.let { runtimeStr ->
-                AssistantRuntimeID.values().firstOrNull { it.token == runtimeStr }
-            }
-        val agentURI = runtimeID?.let { AgentIdentity.builtInURI(it) } ?: "agent://burnbar/auto"
-        ThreadInboxItem(
-            id = "mission:${tile.id}",
-            agentURI = agentURI,
-            title = tile.title,
-            preview = tile.phaseDetail ?: tile.phase.displayLabel,
-            lastActivityAtEpoch = tile.startedAt?.toEpochMilli() ?: System.currentTimeMillis(),
-            unreadCount = if (tile.approvalPending) 1 else 0,
-            needsAttention = tile.approvalPending || tile.phase == ActiveMission.Phase.FAILED || tile.phase == ActiveMission.Phase.BLOCKED,
-            source = ThreadInboxItem.Source.MISSION_GROUP,
-            liveMissionID = tile.id,
-        )
-    }
+private fun threadInboxMissionItems(host: MobileMissionConsoleHost): List<ThreadInboxItem> = host.snapshot.value.activeMissions.map { tile ->
+    val runtimeID =
+        tile.runtimeID?.let { runtimeStr ->
+            AssistantRuntimeID.values().firstOrNull { it.token == runtimeStr }
+        }
+    val agentURI = runtimeID?.let { AgentIdentity.builtInURI(it) } ?: "agent://burnbar/auto"
+    ThreadInboxItem(
+        id = "mission:${tile.id}",
+        agentURI = agentURI,
+        title = tile.title,
+        preview = tile.phaseDetail ?: tile.phase.displayLabel,
+        lastActivityAtEpoch = tile.startedAt?.toEpochMilli() ?: System.currentTimeMillis(),
+        unreadCount = if (tile.approvalPending) 1 else 0,
+        needsAttention = tile.approvalPending || tile.phase == ActiveMission.Phase.FAILED || tile.phase == ActiveMission.Phase.BLOCKED,
+        source = ThreadInboxItem.Source.MISSION_GROUP,
+        liveMissionID = tile.id,
+    )
+}

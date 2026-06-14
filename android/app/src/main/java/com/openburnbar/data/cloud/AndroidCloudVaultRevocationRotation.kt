@@ -59,27 +59,22 @@ object AndroidCloudVaultRevocationRotation {
      * `requirementId` or `id` for the requirement key and trims/filters survivor ids — byte-for-byte
      * the Swift `parsePendingRequirements`.
      */
-    fun parsePendingRequirements(raw: List<*>): List<PendingRequirement> =
-        raw.mapNotNull { entry ->
-            val map = entry as? Map<*, *> ?: return@mapNotNull null
-            val requirementId = (map["requirementId"] as? String ?: map["id"] as? String)?.takeIf { it.isNotEmpty() }
-                ?: return@mapNotNull null
-            val survivors =
-                (map["survivorDeviceIds"] as? List<*>).orEmpty()
-                    .mapNotNull { (it as? String)?.trim()?.takeIf { id -> id.isNotEmpty() } }
-            PendingRequirement(requirementId = requirementId, survivorDeviceIds = survivors)
-        }
+    fun parsePendingRequirements(raw: List<*>): List<PendingRequirement> = raw.mapNotNull { entry ->
+        val map = entry as? Map<*, *> ?: return@mapNotNull null
+        val requirementId = (map["requirementId"] as? String ?: map["id"] as? String)?.takeIf { it.isNotEmpty() }
+            ?: return@mapNotNull null
+        val survivors =
+            (map["survivorDeviceIds"] as? List<*>).orEmpty()
+                .mapNotNull { (it as? String)?.trim()?.takeIf { id -> id.isNotEmpty() } }
+        PendingRequirement(requirementId = requirementId, survivorDeviceIds = survivors)
+    }
 
     /**
      * Pure survivor filter: keeps requirements where [rotatingDeviceId] is a listed survivor, dropping
      * [alreadyActioned] ids and de-duplicating repeats so a single pass runs each requirement at most
      * once. Mirrors the Swift `eligibleRequirements`.
      */
-    fun eligibleRequirements(
-        requirements: List<PendingRequirement>,
-        rotatingDeviceId: String,
-        alreadyActioned: Set<String> = emptySet(),
-    ): List<String> {
+    fun eligibleRequirements(requirements: List<PendingRequirement>, rotatingDeviceId: String, alreadyActioned: Set<String> = emptySet()): List<String> {
         val trimmed = rotatingDeviceId.trim()
         if (trimmed.isEmpty()) return emptyList()
         val seen = alreadyActioned.toMutableSet()
@@ -232,26 +227,25 @@ object AndroidCloudVaultRevocationRotation {
         localIdentity: AndroidSignalIdentityKeypair,
         nextKey: ByteArray,
         nextVaultKeyID: String,
-    ): List<Map<String, Any>> =
-        survivorDeviceIds.map { survivorDeviceId ->
-            val survivor =
-                AndroidCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDeviceById(
-                    uid = uid,
-                    firestore = firestore,
-                    deviceId = survivorDeviceId,
-                    localIdentity = localIdentity,
-                )
-            val wrapped = CloudVaultCrypto.wrapVaultKey(nextKey, survivor.escrowPublicKeyData)
-            mapOf(
-                "wrapperId" to "${nextVaultKeyID}_${survivor.deviceId}_${survivor.keyVersion}",
-                "targetDeviceId" to survivor.deviceId,
-                "sourceDeviceId" to rotatingDeviceId,
-                "publicKeyFingerprint" to survivor.escrowPublicKeyFingerprint,
-                "keyVersion" to survivor.keyVersion,
-                "vaultKeyID" to nextVaultKeyID,
-                "wrappedVaultKey" to CloudVaultCryptoSupport.encodeBase64(wrapped),
+    ): List<Map<String, Any>> = survivorDeviceIds.map { survivorDeviceId ->
+        val survivor =
+            AndroidCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDeviceById(
+                uid = uid,
+                firestore = firestore,
+                deviceId = survivorDeviceId,
+                localIdentity = localIdentity,
             )
-        }
+        val wrapped = CloudVaultCrypto.wrapVaultKey(nextKey, survivor.escrowPublicKeyData)
+        mapOf(
+            "wrapperId" to "${nextVaultKeyID}_${survivor.deviceId}_${survivor.keyVersion}",
+            "targetDeviceId" to survivor.deviceId,
+            "sourceDeviceId" to rotatingDeviceId,
+            "publicKeyFingerprint" to survivor.escrowPublicKeyFingerprint,
+            "keyVersion" to survivor.keyVersion,
+            "vaultKeyID" to nextVaultKeyID,
+            "wrappedVaultKey" to CloudVaultCryptoSupport.encodeBase64(wrapped),
+        )
+    }
 
     private suspend fun callRotateCloudVaultKey(
         functions: FirebaseFunctions,

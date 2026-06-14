@@ -74,7 +74,7 @@ fun buildQuotaRingItems(snapshots: List<ProviderQuotaSnapshot>): List<QuotaRingI
 fun QuotaRingsConstellation(items: List<QuotaRingItem>, onProviderClick: (String) -> Unit, modifier: Modifier = Modifier) {
     LazyRow(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         items(items, key = { it.providerKey }) { item ->
             ProviderQuotaChip(
@@ -215,7 +215,8 @@ fun FleetHealthGauge(progress: Double, accent: Color, modifier: Modifier = Modif
             )
         }
         Text(
-            text = "\uD83D\uDD25", // fire emoji
+            // fire emoji
+            text = "\uD83D\uDD25",
             fontSize = 26.sp,
         )
     }

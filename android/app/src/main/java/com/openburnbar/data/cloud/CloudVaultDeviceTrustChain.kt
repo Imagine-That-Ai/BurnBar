@@ -23,16 +23,15 @@ data class CloudVaultDeviceTrustChainProof(
     val approverSignalIdentityPublicKeyFingerprint: String,
     val signature: String,
 ) {
-    fun asMap(): Map<String, Any> =
-        mapOf(
-            "version" to version,
-            "algorithm" to algorithm,
-            "targetSignalIdentityKeyId" to targetSignalIdentityKeyId,
-            "targetSignalIdentityPublicKeyFingerprint" to targetSignalIdentityPublicKeyFingerprint,
-            "approverSignalIdentityKeyId" to approverSignalIdentityKeyId,
-            "approverSignalIdentityPublicKeyFingerprint" to approverSignalIdentityPublicKeyFingerprint,
-            "signature" to signature,
-        )
+    fun asMap(): Map<String, Any> = mapOf(
+        "version" to version,
+        "algorithm" to algorithm,
+        "targetSignalIdentityKeyId" to targetSignalIdentityKeyId,
+        "targetSignalIdentityPublicKeyFingerprint" to targetSignalIdentityPublicKeyFingerprint,
+        "approverSignalIdentityKeyId" to approverSignalIdentityKeyId,
+        "approverSignalIdentityPublicKeyFingerprint" to approverSignalIdentityPublicKeyFingerprint,
+        "signature" to signature,
+    )
 }
 
 data class CloudVaultTrustedDeviceActionProofPayload(
@@ -55,15 +54,14 @@ data class CloudVaultTrustedDeviceActionProof(
     val issuedAtMillis: Long,
     val signature: String,
 ) {
-    fun asMap(): Map<String, Any> =
-        mapOf(
-            "version" to version,
-            "algorithm" to algorithm,
-            "deviceSignalIdentityKeyId" to deviceSignalIdentityKeyId,
-            "deviceSignalIdentityPublicKeyFingerprint" to deviceSignalIdentityPublicKeyFingerprint,
-            "issuedAtMillis" to issuedAtMillis,
-            "signature" to signature,
-        )
+    fun asMap(): Map<String, Any> = mapOf(
+        "version" to version,
+        "algorithm" to algorithm,
+        "deviceSignalIdentityKeyId" to deviceSignalIdentityKeyId,
+        "deviceSignalIdentityPublicKeyFingerprint" to deviceSignalIdentityPublicKeyFingerprint,
+        "issuedAtMillis" to issuedAtMillis,
+        "signature" to signature,
+    )
 }
 
 object CloudVaultTrustedDeviceActionProofSigner {
@@ -104,25 +102,17 @@ object CloudVaultTrustedDeviceActionProofSigner {
         return builder.toString().toByteArray(Charsets.UTF_8)
     }
 
-    fun sign(
-        payload: CloudVaultTrustedDeviceActionProofPayload,
-        identity: AndroidSignalIdentityKeypair,
-    ): String {
+    fun sign(payload: CloudVaultTrustedDeviceActionProofPayload, identity: AndroidSignalIdentityKeypair): String {
         val signature =
             CloudVaultCryptoSupport.decodeSignalPrivateKey(identity.privateKeyData)
                 .calculateSignature(canonicalPayload(payload))
         return CloudVaultCryptoSupport.encodeBase64(signature)
     }
 
-    fun verify(
-        payload: CloudVaultTrustedDeviceActionProofPayload,
-        signatureBase64: String,
-        publicKeyData: ByteArray,
-    ): Boolean =
-        runCatching {
-            val signature = CloudVaultCryptoSupport.decodeBase64(signatureBase64)
-            ECPublicKey(publicKeyData).verifySignature(canonicalPayload(payload), signature)
-        }.getOrDefault(false)
+    fun verify(payload: CloudVaultTrustedDeviceActionProofPayload, signatureBase64: String, publicKeyData: ByteArray): Boolean = runCatching {
+        val signature = CloudVaultCryptoSupport.decodeBase64(signatureBase64)
+        ECPublicKey(publicKeyData).verifySignature(canonicalPayload(payload), signature)
+    }.getOrDefault(false)
 }
 
 object CloudVaultDeviceTrustChain {
@@ -163,23 +153,15 @@ object CloudVaultDeviceTrustChain {
         return builder.toString().toByteArray(Charsets.UTF_8)
     }
 
-    fun sign(
-        payload: CloudVaultDeviceTrustChainPayload,
-        approverIdentity: AndroidSignalIdentityKeypair,
-    ): String {
+    fun sign(payload: CloudVaultDeviceTrustChainPayload, approverIdentity: AndroidSignalIdentityKeypair): String {
         val signature =
             CloudVaultCryptoSupport.decodeSignalPrivateKey(approverIdentity.privateKeyData)
                 .calculateSignature(canonicalPayload(payload))
         return CloudVaultCryptoSupport.encodeBase64(signature)
     }
 
-    fun verify(
-        payload: CloudVaultDeviceTrustChainPayload,
-        signatureBase64: String,
-        approverPublicKeyData: ByteArray,
-    ): Boolean =
-        runCatching {
-            val signature = CloudVaultCryptoSupport.decodeBase64(signatureBase64)
-            ECPublicKey(approverPublicKeyData).verifySignature(canonicalPayload(payload), signature)
-        }.getOrDefault(false)
+    fun verify(payload: CloudVaultDeviceTrustChainPayload, signatureBase64: String, approverPublicKeyData: ByteArray): Boolean = runCatching {
+        val signature = CloudVaultCryptoSupport.decodeBase64(signatureBase64)
+        ECPublicKey(approverPublicKeyData).verifySignature(canonicalPayload(payload), signature)
+    }.getOrDefault(false)
 }

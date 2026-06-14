@@ -32,7 +32,7 @@ class CloudVaultCryptoTest {
 
         val sealed = CloudVaultCrypto.sealPayload(payload, key, vaultKeyID)
 
-        assertEquals(CloudVaultCrypto.currentSealedPayloadSchemaVersion, sealed.schemaVersion)
+        assertEquals(CloudVaultCrypto.CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION, sealed.schemaVersion)
         assertEquals("OpenBurnBar-CloudVaultSealedPayload-v2", sealed.aad)
         assertArrayEquals(payload, CloudVaultCrypto.openPayload(sealed, key))
         assertTrue(CloudVaultCrypto.sealedPayloadMap(sealed).containsKey("aad"))
@@ -53,10 +53,10 @@ class CloudVaultCryptoTest {
         val sealedBox = aesGcmCombined(plaintext, key)
         val envelope =
             CloudVaultBlobEnvelope(
-                schemaVersion = CloudVaultCrypto.currentBlobEnvelopeSchemaVersion,
+                schemaVersion = CloudVaultCrypto.CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION,
                 keyVersion = 1,
                 plaintextHMAC = CloudVaultCrypto.blobPlaintextHmac(plaintext, key),
-                integrityHashVersion = CloudVaultCrypto.blobIntegrityHashVersion,
+                integrityHashVersion = CloudVaultCrypto.BLOB_INTEGRITY_HASH_VERSION,
                 sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(sealedBox),
                 aad = "OpenBurnBar-CloudVaultBlob-v2",
             )
@@ -94,15 +94,15 @@ class CloudVaultCryptoTest {
         val chunkHash = CloudVaultCrypto.sessionChunkHash(chunk, key)
         assertNotEquals(CloudVaultCrypto.sha256Hex(chunk.toByteArray()), chunkHash)
         assertTrue(chunkHash.matches(Regex("^[a-f0-9]{64}$")))
-        assertEquals(2, CloudVaultCrypto.sessionBodyHashVersion)
-        assertEquals(2, CloudVaultCrypto.sessionChunkHashVersion)
-        assertEquals(2, CloudVaultCrypto.projectMemoryContentHashVersion)
+        assertEquals(2, CloudVaultCrypto.SESSION_BODY_HASH_VERSION)
+        assertEquals(2, CloudVaultCrypto.SESSION_CHUNK_HASH_VERSION)
+        assertEquals(2, CloudVaultCrypto.PROJECT_MEMORY_CONTENT_HASH_VERSION)
         assertEquals(
             bodyHash,
             CloudVaultCrypto.expectedSessionBodyHash(
                 body,
                 key,
-                CloudVaultCrypto.sessionBodyHashVersion,
+                CloudVaultCrypto.SESSION_BODY_HASH_VERSION,
             ),
         )
         assertEquals(
@@ -137,7 +137,7 @@ class CloudVaultCryptoTest {
             )
 
         val sealedText = CloudVaultCrypto.sealText("context-bound title", key, context)
-        assertEquals(CloudVaultCrypto.currentSealedTextSchemaVersion, sealedText.schemaVersion)
+        assertEquals(CloudVaultCrypto.CURRENT_SEALED_TEXT_SCHEMA_VERSION, sealedText.schemaVersion)
         assertEquals(context.stringValue, sealedText.aad)
         assertEquals("context-bound title", CloudVaultCrypto.openText(sealedText, key, context))
         assertTrue(runCatching { CloudVaultCrypto.openText(sealedText, key) }.isFailure)
@@ -146,10 +146,10 @@ class CloudVaultCryptoTest {
         val body = "context-bound body".toByteArray()
         val sealedBlob =
             CloudVaultBlobEnvelope(
-                schemaVersion = CloudVaultCrypto.currentBlobEnvelopeSchemaVersion,
+                schemaVersion = CloudVaultCrypto.CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION,
                 keyVersion = 1,
                 plaintextHMAC = CloudVaultCrypto.blobPlaintextHmac(body, key),
-                integrityHashVersion = CloudVaultCrypto.blobIntegrityHashVersion,
+                integrityHashVersion = CloudVaultCrypto.BLOB_INTEGRITY_HASH_VERSION,
                 sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(aesGcmCombined(body, key, context.bytes)),
                 aad = context.stringValue,
             )

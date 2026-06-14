@@ -2,9 +2,7 @@ package com.openburnbar.ui.media
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
 
-internal fun ScreenShareViewerActivity.screenShareViewerScreenOptions(
-    ui: ScreenShareViewerActivityUiState,
-): ScreenShareViewerScreenOptions =
+internal fun ScreenShareViewerActivity.screenShareViewerScreenOptions(ui: ScreenShareViewerActivityUiState): ScreenShareViewerScreenOptions =
     ScreenShareViewerScreenOptions(
         lastPeerHeartbeatAtMillis = ui.lastPeerHeartbeatAtMillis,
         availableDisplays = ui.lastMirrorAck?.availableDisplays ?: emptyList(),

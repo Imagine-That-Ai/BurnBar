@@ -7,7 +7,8 @@ import java.util.Date
 @IgnoreExtraProperties
 data class BudgetRule(
     val id: String = "",
-    val scope: String = "", // credential, project, global, organization
+    // credential, project, global, organization
+    val scope: String = "",
     val identifier: String? = null,
     @get:PropertyName("providerID")
     @PropertyName("providerID")
@@ -18,8 +19,10 @@ data class BudgetRule(
     val projectName: String? = null,
     val label: String? = null,
     val amountUSD: Double = 0.0,
-    val period: String = "", // day, week, month, allTime
-    val behavior: String = "", // warnThenBlock, hardBlock, warnOnly, hardBlockWithFallback
+    // day, week, month, allTime
+    val period: String = "",
+    // warnThenBlock, hardBlock, warnOnly, hardBlockWithFallback
+    val behavior: String = "",
     val fallbackCredentialIDsJSON: String? = null,
     val pausedUntil: Date? = null,
     val createdAt: Date? = null,
@@ -86,7 +89,8 @@ enum class BudgetBillingMode(val value: String) {
 data class BudgetEvent(
     val id: String = "",
     val ruleID: String = "",
-    val kind: String = "", // warning, block, override, pause, resume, ruleCreated, ruleUpdated, ruleDeleted
+    // warning, block, override, pause, resume, ruleCreated, ruleUpdated, ruleDeleted
+    val kind: String = "",
     val source: String? = null,
     val amountAtEvent: Double = 0.0,
     val limitAtEvent: Double = 0.0,

@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.chartstudio
 
-import com.openburnbar.ui.chartstudio.charts.NativeChart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -44,9 +43,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.derived.TrendDataDigest
+import com.openburnbar.ui.chartstudio.charts.NativeChart
 import com.openburnbar.ui.chartstudio.charts.NativeChartDisplay
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.components.AuroraSparkline
@@ -84,9 +84,9 @@ internal fun ChartStudioScrollBody(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(top = AuroraSpacing.md.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(top = AuroraSpacing.MD.dp, bottom = 88.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         QuickFactStrip(digest)
         InsightsGallery(digest)
@@ -117,8 +117,8 @@ internal fun HeaderBar(connection: com.openburnbar.data.hermes.HermesConnectionR
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(top = AuroraSpacing.md.dp, bottom = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(top = AuroraSpacing.MD.dp, bottom = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -136,7 +136,7 @@ internal fun HeaderBar(connection: com.openburnbar.data.hermes.HermesConnectionR
                 modifier = Modifier.size(18.dp),
             )
         }
-        Spacer(Modifier.width(AuroraSpacing.md.dp))
+        Spacer(Modifier.width(AuroraSpacing.MD.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Chart Studio",
@@ -174,7 +174,7 @@ internal fun HeaderBar(connection: com.openburnbar.data.hermes.HermesConnectionR
 internal fun AICanvasSection(state: ChartStudioState, onClear: () -> Unit, onRetry: () -> Unit, onFollowUp: (String) -> Unit) {
     Column {
         AICanvasSectionHeader(onClear = onClear)
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
             AICanvasSectionBody(state = state, onRetry = onRetry, onFollowUp = onFollowUp)
         }
@@ -220,7 +220,7 @@ private fun AICanvasSectionBody(state: ChartStudioState, onRetry: () -> Unit, on
 @Composable
 private fun AICanvasErrorBody(errorMessage: String, onRetry: () -> Unit) {
     Text(text = errorMessage, style = AuroraType.body, color = AuroraColors.warning)
-    Spacer(Modifier.height(AuroraSpacing.sm.dp))
+    Spacer(Modifier.height(AuroraSpacing.SM.dp))
     TextButton(onClick = onRetry) {
         Text("Try again", color = AuroraColors.ember, fontWeight = FontWeight.SemiBold)
     }
@@ -243,7 +243,7 @@ private fun AICanvasStreamingBody(streamingText: String) {
         )
     }
     if (streamingText.isNotBlank()) {
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         Box(
             modifier =
             Modifier
@@ -271,7 +271,7 @@ internal fun QuickFactStrip(digest: TrendDataDigest) {
     val facts = remember(digest) { StandardGallery.quickFacts(digest) }
     if (facts.isEmpty()) return
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         items(facts.size) { i ->
@@ -340,8 +340,8 @@ internal fun InsightsGallery(digest: TrendDataDigest) {
     if (items.isEmpty()) return
     Column {
         SectionHeaderRow(label = "Insights")
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             items.forEach { item ->
                 GalleryItemCard(item)
             }
@@ -363,7 +363,7 @@ internal fun GalleryItemCard(item: StandardGallery.GalleryItem) {
             style = AuroraType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         when (val r = item.rendering) {
             is ChartStudioRendering.Native -> NativeChart(spec = r.spec, display = NativeChartDisplay.GALLERY)
             is ChartStudioRendering.Mermaid ->
@@ -374,7 +374,7 @@ internal fun GalleryItemCard(item: StandardGallery.GalleryItem) {
             is ChartStudioRendering.Insight -> InsightCard(spec = r.spec)
             is ChartStudioRendering.Composed ->
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                 ) {
                     r.items.forEach { child -> RenderingHost(child) }
                 }
@@ -395,9 +395,9 @@ internal fun PromptCarousel(suggestions: List<String>, onSelect: (String) -> Uni
     if (suggestions.isEmpty()) return
     Column {
         SectionHeaderRow(label = "Ask Hermes")
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             items(suggestions.size) { i ->
@@ -447,9 +447,9 @@ internal fun RecentCanvasesStrip(canvases: List<ChartStudioCanvasStore.Canvas>, 
     if (canvases.isEmpty()) return
     Column {
         SectionHeaderRow(label = "Recent")
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             items(canvases.size) { i ->
@@ -509,7 +509,7 @@ internal fun RenderingHost(rendering: ChartStudioRendering, onFollowUp: ((String
             )
         is ChartStudioRendering.Composed ->
             Column(
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
             ) {
                 rendering.items.forEach { child -> RenderingHost(child, onFollowUp) }
             }
@@ -534,7 +534,7 @@ internal fun WelcomeBlock() {
                 tint = AuroraColors.hermesAureate,
                 modifier = Modifier.size(24.dp),
             )
-            Spacer(Modifier.width(AuroraSpacing.md.dp))
+            Spacer(Modifier.width(AuroraSpacing.MD.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Ask for any chart you want",
@@ -550,7 +550,7 @@ internal fun WelcomeBlock() {
                 )
             }
         }
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
         listOf(
             "“Stack my burn last 14 days by provider”",
             "“Heatmap of my hourly usage”",
@@ -603,8 +603,8 @@ private fun ComposerBarContainer(content: @Composable () -> Unit) {
                     colors = listOf(Color.Transparent, AuroraColors.darkBackground.copy(alpha = 0.85f)),
                 ),
             )
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(top = AuroraSpacing.sm.dp, bottom = AuroraSpacing.md.dp)
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(top = AuroraSpacing.SM.dp, bottom = AuroraSpacing.MD.dp)
             .imePadding()
             .navigationBarsPadding(),
     ) {
@@ -613,13 +613,7 @@ private fun ComposerBarContainer(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun ComposerInputRow(
-    state: ChartStudioState,
-    focused: Boolean,
-    onSubmit: (String) -> Unit,
-    onStop: () -> Unit,
-    onFocusChanged: (Boolean) -> Unit,
-) {
+private fun ComposerInputRow(state: ChartStudioState, focused: Boolean, onSubmit: (String) -> Unit, onStop: () -> Unit, onFocusChanged: (Boolean) -> Unit) {
     Row(
         modifier =
         Modifier

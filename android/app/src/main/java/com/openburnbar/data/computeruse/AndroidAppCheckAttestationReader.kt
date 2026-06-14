@@ -15,9 +15,8 @@ object PhoneControlAttestationPolicy {
     /** Same key the iOS client reads (`PhoneControlAttestationPolicy.remoteConfigKey`). */
     const val REMOTE_CONFIG_KEY = "computer_use_phone_control_attestation_required"
 
-    fun attestationRequired(): Boolean =
-        runCatching { FirebaseRemoteConfig.getInstance().getBoolean(REMOTE_CONFIG_KEY) }
-            .getOrDefault(false)
+    fun attestationRequired(): Boolean = runCatching { FirebaseRemoteConfig.getInstance().getBoolean(REMOTE_CONFIG_KEY) }
+        .getOrDefault(false)
 }
 
 /**
@@ -45,15 +44,14 @@ object AndroidAppCheckAttestationReader {
     @Volatile
     private var cachedDigest: String? = null
 
-    suspend fun currentAttestationDigestForEnvelope(): String? =
-        runCatching {
-            val user = FirebaseAuth.getInstance().currentUser ?: return null
-            if (user.isAnonymous) return null
-            val claims = user.getIdToken(false).await()?.claims ?: return null
-            val claim = AppCheckAttestationBinding.parseClaim(claims) ?: return null
-            if (!AppCheckAttestationBinding.isFresh(claim)) return null
-            AppCheckAttestationBinding.digestHex(claim).also { cachedDigest = it }
-        }.getOrNull()
+    suspend fun currentAttestationDigestForEnvelope(): String? = runCatching {
+        val user = FirebaseAuth.getInstance().currentUser ?: return null
+        if (user.isAnonymous) return null
+        val claims = user.getIdToken(false).await()?.claims ?: return null
+        val claim = AppCheckAttestationBinding.parseClaim(claims) ?: return null
+        if (!AppCheckAttestationBinding.isFresh(claim)) return null
+        AppCheckAttestationBinding.digestHex(claim).also { cachedDigest = it }
+    }.getOrNull()
 
     /**
      * Synchronous best-effort digest for envelope builders that cannot
@@ -70,9 +68,7 @@ object AndroidAppCheckAttestationReader {
      * Prefer [ensureAttestationDigestOrThrow] on the control-action send path so
      * Android STOPS being structurally attach-only when the ramp is on.
      */
-    suspend fun ensureAttestationBoundIfRequired(
-        securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
-    ) {
+    suspend fun ensureAttestationBoundIfRequired(securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient()) {
         if (!PhoneControlAttestationPolicy.attestationRequired()) return
         if (currentAttestationDigestForEnvelope() != null) return
         runCatching { securityCallables.bindAppCheckAttestation() }
@@ -91,9 +87,7 @@ object AndroidAppCheckAttestationReader {
      * @return the fresh attestation digest to attach when strict mode is on, or `null` when the ramp
      *   is off (caller falls back to its best-effort [attestationDigestProvider]).
      */
-    suspend fun ensureAttestationDigestOrThrow(
-        securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
-    ): String? {
+    suspend fun ensureAttestationDigestOrThrow(securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient()): String? {
         if (!PhoneControlAttestationPolicy.attestationRequired()) return null
         currentAttestationDigestForEnvelope()?.let { return it }
         runCatching { securityCallables.bindAppCheckAttestation() }

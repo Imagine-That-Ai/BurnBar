@@ -173,64 +173,45 @@ private fun rememberBudgetCenterLocalState(deps: BudgetCenterDependencies): Budg
     )
 }
 
-private fun BudgetCenterLocalState.toBudgetCenterState(): BudgetCenterState =
-    BudgetCenterState(snapshot = snapshot, actions = actions)
+private fun BudgetCenterLocalState.toBudgetCenterState(): BudgetCenterState = BudgetCenterState(snapshot = snapshot, actions = actions)
 
-private fun budgetCenterOnRuleCreated(
-    deps: BudgetCenterDependencies,
-    refreshData: () -> Unit,
-    dismissDialog: () -> Unit,
-): (BudgetRule) -> Unit =
-    { newRule ->
-        deps.scope.launch {
-            withContext(Dispatchers.IO) {
-                deps.dao.upsertRule(newRule.toEntity())
-                deps.repo.budget.uploadBudgetRule(newRule)
-                deps.syncManager.sync()
-            }
-            dismissDialog()
-            refreshData()
+private fun budgetCenterOnRuleCreated(deps: BudgetCenterDependencies, refreshData: () -> Unit, dismissDialog: () -> Unit): (BudgetRule) -> Unit = { newRule ->
+    deps.scope.launch {
+        withContext(Dispatchers.IO) {
+            deps.dao.upsertRule(newRule.toEntity())
+            deps.repo.budget.uploadBudgetRule(newRule)
+            deps.syncManager.sync()
         }
+        dismissDialog()
+        refreshData()
     }
+}
 
-private fun budgetCenterOnToggleRule(
-    deps: BudgetCenterDependencies,
-    refreshData: () -> Unit,
-): (BudgetRuleEntity, Boolean) -> Unit =
-    { entity, isChecked ->
-        deps.scope.launch {
-            withContext(Dispatchers.IO) {
-                val updated = entity.copy(isEnabled = isChecked, updatedAt = System.currentTimeMillis(), syncedAt = null)
-                deps.dao.upsertRule(updated)
-                deps.repo.budget.uploadBudgetRule(updated.toModel())
-                deps.syncManager.sync()
-            }
-            refreshData()
+private fun budgetCenterOnToggleRule(deps: BudgetCenterDependencies, refreshData: () -> Unit): (BudgetRuleEntity, Boolean) -> Unit = { entity, isChecked ->
+    deps.scope.launch {
+        withContext(Dispatchers.IO) {
+            val updated = entity.copy(isEnabled = isChecked, updatedAt = System.currentTimeMillis(), syncedAt = null)
+            deps.dao.upsertRule(updated)
+            deps.repo.budget.uploadBudgetRule(updated.toModel())
+            deps.syncManager.sync()
         }
+        refreshData()
     }
+}
 
-private fun budgetCenterOnDeleteRule(
-    deps: BudgetCenterDependencies,
-    refreshData: () -> Unit,
-): (BudgetRule) -> Unit =
-    { rule ->
-        deps.scope.launch {
-            withContext(Dispatchers.IO) {
-                deps.dao.deleteRule(rule.id)
-                deps.repo.budget.deleteBudgetRule(rule.id)
-                deps.syncManager.sync()
-            }
-            refreshData()
+private fun budgetCenterOnDeleteRule(deps: BudgetCenterDependencies, refreshData: () -> Unit): (BudgetRule) -> Unit = { rule ->
+    deps.scope.launch {
+        withContext(Dispatchers.IO) {
+            deps.dao.deleteRule(rule.id)
+            deps.repo.budget.deleteBudgetRule(rule.id)
+            deps.syncManager.sync()
         }
+        refreshData()
     }
+}
 
 @Composable
-internal fun BudgetCenterContent(
-    state: BudgetCenterState,
-    contentPadding: PaddingValues,
-    isDark: Boolean,
-    onRuleDeletedToast: () -> Unit,
-) {
+internal fun BudgetCenterContent(state: BudgetCenterState, contentPadding: PaddingValues, isDark: Boolean, onRuleDeletedToast: () -> Unit) {
     val totalLimit = state.rules.sumOf { it.amountUSD }
     val totalSpend = state.rules.sumOf { state.spendMap[it.id] ?: 0.0 }
     val aggregatePercent = if (totalLimit > 0.0) totalSpend / totalLimit else 0.0
@@ -238,7 +219,7 @@ internal fun BudgetCenterContent(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         item { BudgetCenterSummaryBanner(totalSpend, totalLimit, aggregatePercent, isDark) }
         item { BudgetCenterForecastCard(state.rules, totalSpend, totalLimit, isDark) }

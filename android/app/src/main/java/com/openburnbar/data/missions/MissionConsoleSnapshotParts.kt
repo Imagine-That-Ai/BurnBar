@@ -46,10 +46,7 @@ internal fun buildMissionConsoleSnapshotParts(
     )
 }
 
-private fun missionConsoleTickerEntries(
-    orderedMissions: List<CLIAgentMissionSnapshot>,
-    runtimeIDGuess: (String?) -> String?,
-): List<TickerEntry> =
+private fun missionConsoleTickerEntries(orderedMissions: List<CLIAgentMissionSnapshot>, runtimeIDGuess: (String?) -> String?): List<TickerEntry> =
     orderedMissions
         .flatMap { mission ->
             mission.events.takeLast(MISSION_TICKER_EVENTS).map { ev ->

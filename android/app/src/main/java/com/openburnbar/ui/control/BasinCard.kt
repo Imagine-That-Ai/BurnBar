@@ -48,10 +48,7 @@ import kotlin.math.sin
  * "here is everything of yours, and how it's sealed."
  */
 @Composable
-internal fun BasinCard(
-    snapshot: ControlCenterSnapshot,
-    modifier: Modifier = Modifier,
-) {
+internal fun BasinCard(snapshot: ControlCenterSnapshot, modifier: Modifier = Modifier) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val transition = rememberInfiniteTransition(label = "basin")
     val phase by transition.animateFloat(
@@ -68,7 +65,7 @@ internal fun BasinCard(
     val droplets = remember(snapshot) { layoutDroplets(snapshot.rows) }
 
     AuroraGlassCard(modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Text(
                 "The Basin",
                 style = AuroraType.title.copy(fontWeight = FontWeight.Bold),
@@ -149,7 +146,7 @@ private fun DrawScope.drawDroplet(d: BasinDroplet, phase: Float) {
 
 @Composable
 private fun BasinLegend() {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
         LegendDot(EncryptionTier.END_TO_END, "Sealed")
         LegendDot(EncryptionTier.ZERO_ACCESS, "Zero-access")
         LegendDot(EncryptionTier.SERVER_READABLE, "Readable")
@@ -169,7 +166,7 @@ private fun LegendDot(tier: EncryptionTier, label: String) {
                 drawCircle(color = PensieveControlTokens.tierColor(tier))
             }
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         Text(label, style = AuroraType.tiny, color = PensieveControlTokens.textMute)
     }
 }

@@ -97,12 +97,7 @@ internal object HermesRelayCryptoHpkeV3 {
      * [recipientPublicKeyX963], authenticated by [senderPrivateKey]. [aad] MUST
      * be the request `keyAAD`. Mirrors Python `seal_key_v3`.
      */
-    fun sealKey(
-        key: ByteArray,
-        recipientPublicKeyX963: ByteArray,
-        senderPrivateKey: java.security.PrivateKey,
-        aad: ByteArray,
-    ): RelayKeyWrapV3 {
+    fun sealKey(key: ByteArray, recipientPublicKeyX963: ByteArray, senderPrivateKey: java.security.PrivateKey, aad: ByteArray): RelayKeyWrapV3 {
         require(key.size == CONTENT_KEY_BYTES) { "content key must be 32 bytes" }
         val (sharedSecret, enc) = authEncap(recipientPublicKeyX963, senderPrivateKey)
         val (hpkeKey, baseNonce) = keySchedule(sharedSecret, info(aad))
@@ -135,10 +130,7 @@ internal object HermesRelayCryptoHpkeV3 {
     // --- RFC 9180 §4.1 DHKEM(P-256, HKDF-SHA256) Auth mode ---
 
     /** AuthEncap(pkR, skS) → (shared_secret, enc). Internal for known-answer tests. */
-    internal fun authEncap(
-        recipientPublicKeyX963: ByteArray,
-        senderPrivateKey: java.security.PrivateKey,
-    ): Pair<ByteArray, ByteArray> {
+    internal fun authEncap(recipientPublicKeyX963: ByteArray, senderPrivateKey: java.security.PrivateKey): Pair<ByteArray, ByteArray> {
         val recipient = HermesRelayCryptoEc.decodeUncompressedPublicKey(recipientPublicKeyX963)
         val ephemeral = HermesRelayCryptoEc.generateEphemeralKeyPair()
         val ephemeralPublic =
@@ -152,11 +144,7 @@ internal object HermesRelayCryptoHpkeV3 {
     }
 
     /** AuthDecap(enc, skR, pkS) → shared_secret. Internal for known-answer tests. */
-    internal fun authDecap(
-        enc: ByteArray,
-        recipientPrivateKey: java.security.PrivateKey,
-        senderPublicKeyX963: ByteArray,
-    ): ByteArray {
+    internal fun authDecap(enc: ByteArray, recipientPrivateKey: java.security.PrivateKey, senderPublicKeyX963: ByteArray): ByteArray {
         val ephemeralPublic = HermesRelayCryptoEc.decodeUncompressedPublicKey(enc)
         val senderPublic = HermesRelayCryptoEc.decodeUncompressedPublicKey(senderPublicKeyX963)
         val dh = dh(recipientPrivateKey, ephemeralPublic) + dh(recipientPrivateKey, senderPublic)
@@ -170,11 +158,10 @@ internal object HermesRelayCryptoHpkeV3 {
     private fun dh(privateKey: java.security.PrivateKey, peer: java.security.PublicKey): ByteArray =
         HermesRelayCryptoHkdf.leftPadTo(HermesRelayCryptoEc.ecdh(privateKey, peer), DH_LEN)
 
-    private fun serializePublicKey(publicKey: java.security.PublicKey): ByteArray =
-        HermesRelayCryptoEc.encodeUncompressedPublicKey(
-            publicKey as? java.security.interfaces.ECPublicKey
-                ?: error("Hermes relay HPKE v3 requires an EC public key"),
-        )
+    private fun serializePublicKey(publicKey: java.security.PublicKey): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(
+        publicKey as? java.security.interfaces.ECPublicKey
+            ?: error("Hermes relay HPKE v3 requires an EC public key"),
+    )
 
     private fun extractAndExpand(dh: ByteArray, kemContext: ByteArray): ByteArray {
         val eaePrk = labeledExtract(KEM_SUITE_ID, ByteArray(0), "eae_prk", dh)
@@ -196,24 +183,16 @@ internal object HermesRelayCryptoHpkeV3 {
 
     // --- RFC 9180 §4 labeled KDF (over HermesRelayCryptoHkdf's RFC 5869 core) ---
 
-    private fun labeledExtract(suiteId: ByteArray, salt: ByteArray, label: String, ikm: ByteArray): ByteArray =
-        HermesRelayCryptoHkdf.hkdfExtract(
-            salt = salt,
-            ikm = HPKE_V1 + suiteId + label.toByteArray(Charsets.US_ASCII) + ikm,
-        )
+    private fun labeledExtract(suiteId: ByteArray, salt: ByteArray, label: String, ikm: ByteArray): ByteArray = HermesRelayCryptoHkdf.hkdfExtract(
+        salt = salt,
+        ikm = HPKE_V1 + suiteId + label.toByteArray(Charsets.US_ASCII) + ikm,
+    )
 
-    private fun labeledExpand(
-        suiteId: ByteArray,
-        prk: ByteArray,
-        label: String,
-        info: ByteArray,
-        length: Int,
-    ): ByteArray =
-        HermesRelayCryptoHkdf.hkdfExpand(
-            prk = prk,
-            info = i2osp2(length) + HPKE_V1 + suiteId + label.toByteArray(Charsets.US_ASCII) + info,
-            length = length,
-        )
+    private fun labeledExpand(suiteId: ByteArray, prk: ByteArray, label: String, info: ByteArray, length: Int): ByteArray = HermesRelayCryptoHkdf.hkdfExpand(
+        prk = prk,
+        info = i2osp2(length) + HPKE_V1 + suiteId + label.toByteArray(Charsets.US_ASCII) + info,
+        length = length,
+    )
 
     // --- single-shot AEAD (sequence 0 ⇒ nonce = base_nonce) ---
 
@@ -232,6 +211,5 @@ internal object HermesRelayCryptoHpkeV3 {
     }
 
     /** I2OSP(value, 2) — two-byte big-endian length (RFC 9180 notation). */
-    private fun i2osp2(value: Int): ByteArray =
-        byteArrayOf(((value ushr BYTE_BITS) and BYTE_MASK).toByte(), (value and BYTE_MASK).toByte())
+    private fun i2osp2(value: Int): ByteArray = byteArrayOf(((value ushr BYTE_BITS) and BYTE_MASK).toByte(), (value and BYTE_MASK).toByte())
 }

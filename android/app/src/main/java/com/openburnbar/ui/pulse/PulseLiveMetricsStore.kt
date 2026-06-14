@@ -85,18 +85,17 @@ class PulseLiveMetricsStore(
         _tick.value = tickFor(inputs.value, clock())
     }
 
-    private fun tickFor(inputs: Inputs, nowMillis: Long): PulseLiveTick =
-        PulseLiveTick(
-            nowMillis = nowMillis,
-            liveUsageQueryStartMillis = livePulseUsageQueryStartMillis(nowMillis),
-            windowMetrics =
-            inputs.rollups?.let { rollups ->
-                pulseWindowMetrics(
-                    scope = inputs.timelineScope,
-                    rollups = rollups,
-                    recentUsages = inputs.usages,
-                    nowMillis = nowMillis,
-                )
-            } ?: EMPTY_WINDOW_METRICS,
-        )
+    private fun tickFor(inputs: Inputs, nowMillis: Long): PulseLiveTick = PulseLiveTick(
+        nowMillis = nowMillis,
+        liveUsageQueryStartMillis = livePulseUsageQueryStartMillis(nowMillis),
+        windowMetrics =
+        inputs.rollups?.let { rollups ->
+            pulseWindowMetrics(
+                scope = inputs.timelineScope,
+                rollups = rollups,
+                recentUsages = inputs.usages,
+                nowMillis = nowMillis,
+            )
+        } ?: EMPTY_WINDOW_METRICS,
+    )
 }

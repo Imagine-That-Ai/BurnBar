@@ -28,9 +28,9 @@ fun MercuryCrest(size: MercuryCrestSize = MercuryCrestSize.Small, shimmer: Boole
     val reduceMotion = LocalAuroraReduceMotion.current
     val diameter: Dp =
         when (size) {
-            MercuryCrestSize.Small -> ProLayout.crestSmallDp.dp
-            MercuryCrestSize.Medium -> ProLayout.crestMediumDp.dp
-            MercuryCrestSize.Large -> ProLayout.crestLargeDp.dp
+            MercuryCrestSize.Small -> ProLayout.CREST_SMALL_DP.dp
+            MercuryCrestSize.Medium -> ProLayout.CREST_MEDIUM_DP.dp
+            MercuryCrestSize.Large -> ProLayout.CREST_LARGE_DP.dp
         }
     val ringWidth: Dp =
         when (size) {
@@ -46,7 +46,7 @@ fun MercuryCrest(size: MercuryCrestSize = MercuryCrestSize.Small, shimmer: Boole
                 targetValue = 1f,
                 animationSpec =
                 infiniteRepeatable(
-                    animation = tween(ProMotion.mercuryShimmerDurationMs.toInt(), easing = LinearEasing),
+                    animation = tween(ProMotion.MERCURY_SHIMMER_DURATION_MS.toInt(), easing = LinearEasing),
                     repeatMode = RepeatMode.Restart,
                 ),
                 label = "crestShimmerPhase",

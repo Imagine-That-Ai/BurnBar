@@ -134,14 +134,14 @@ object GatedFeatureCatalog {
                 publicName = "BurnBar Cloud",
                 requiredTier = CloudTier.CLOUD,
                 oneLineBenefit =
-                    "Every agent conversation, backed up and safe — so a wiped Mac never means a lost thread.",
+                "Every agent conversation, backed up and safe — so a wiped Mac never means a lost thread.",
                 benefitBullets =
-                    listOf(
-                        "Your whole session history rides along, encrypted, ready to pick back up the moment you sign in on any device",
-                        "Hosted quota refresh keeps your five-hour and weekly windows current even when your Mac is asleep",
-                        "Reinstall, switch machines, or hand off to a new laptop — your runs are already there waiting",
-                        "One verified subscription lights up everything in Cloud across iPhone, iPad, and Mac",
-                    ),
+                listOf(
+                    "Your whole session history rides along, encrypted, ready to pick back up the moment you sign in on any device",
+                    "Hosted quota refresh keeps your five-hour and weekly windows current even when your Mac is asleep",
+                    "Reinstall, switch machines, or hand off to a new laptop — your runs are already there waiting",
+                    "One verified subscription lights up everything in Cloud across iPhone, iPad, and Mac",
+                ),
                 imageVector = Icons.Filled.Cloud,
             ),
             // crossDeviceResume — Cross-device resume — cloud
@@ -150,13 +150,13 @@ object GatedFeatureCatalog {
                 publicName = "Cross-device resume",
                 requiredTier = CloudTier.CLOUD,
                 oneLineBenefit =
-                    "Start on your Mac, keep going on your phone — the conversation never drops the thread.",
+                "Start on your Mac, keep going on your phone — the conversation never drops the thread.",
                 benefitBullets =
-                    listOf(
-                        "Walk away from your desk mid-run and pick the exact same conversation back up on your iPhone or iPad",
-                        "No copy-paste, no re-explaining context — the agent remembers where you both left off",
-                        "Your iPhone, iPad, and Mac stay in lockstep, the same backed-up history on every screen",
-                    ),
+                listOf(
+                    "Walk away from your desk mid-run and pick the exact same conversation back up on your iPhone or iPad",
+                    "No copy-paste, no re-explaining context — the agent remembers where you both left off",
+                    "Your iPhone, iPad, and Mac stay in lockstep, the same backed-up history on every screen",
+                ),
                 imageVector = Icons.Filled.SyncAlt,
             ),
             // cloudSearch — Cloud search — cloud
@@ -165,13 +165,13 @@ object GatedFeatureCatalog {
                 publicName = "Cloud search",
                 requiredTier = CloudTier.CLOUD,
                 oneLineBenefit =
-                    "Find that one answer from three weeks ago — searchable across every device, in seconds.",
+                "Find that one answer from three weeks ago — searchable across every device, in seconds.",
                 benefitBullets =
-                    listOf(
-                        "Search your entire encrypted session history from any signed-in device, not just the Mac it happened on",
-                        "That fix, that command, that explanation — surface it instantly instead of scrolling forever",
-                        "Your past work becomes a searchable library, everywhere you are",
-                    ),
+                listOf(
+                    "Search your entire encrypted session history from any signed-in device, not just the Mac it happened on",
+                    "That fix, that command, that explanation — surface it instantly instead of scrolling forever",
+                    "Your past work becomes a searchable library, everywhere you are",
+                ),
                 imageVector = Icons.Filled.Search,
             ),
             // agentControl — Agent Control — cloud_pro
@@ -180,14 +180,14 @@ object GatedFeatureCatalog {
                 publicName = "Agent Control",
                 requiredTier = CloudTier.PRO,
                 oneLineBenefit =
-                    "Hand off the busywork and watch an agent do it — every click in plain sight, every step under your grant.",
+                "Hand off the busywork and watch an agent do it — every click in plain sight, every step under your grant.",
                 benefitBullets =
-                    listOf(
-                        "Let an agent drive a real browser to fill the form, pull the data, click through the flow while your hands stay free",
-                        "Watch every move live on your Mac or mirrored to your phone — nothing ever happens out of sight",
-                        "Approve each step, or set the lines once and let it move freely inside them; mark off-limits windows it can never touch",
-                        "Stop it instantly with a shortcut or a gesture, and read back a tamper-proof record of everything it did",
-                    ),
+                listOf(
+                    "Let an agent drive a real browser to fill the form, pull the data, click through the flow while your hands stay free",
+                    "Watch every move live on your Mac or mirrored to your phone — nothing ever happens out of sight",
+                    "Approve each step, or set the lines once and let it move freely inside them; mark off-limits windows it can never touch",
+                    "Stop it instantly with a shortcut or a gesture, and read back a tamper-proof record of everything it did",
+                ),
                 imageVector = Icons.Filled.TouchApp,
             ),
             // floo — Floo (phone ↔ Mac) — cloud_pro
@@ -196,14 +196,14 @@ object GatedFeatureCatalog {
                 publicName = "Floo",
                 requiredTier = CloudTier.PRO,
                 oneLineBenefit =
-                    "Your Mac, in your pocket — see it, reach in, and run it from your phone, end to end private.",
+                "Your Mac, in your pocket — see it, reach in, and run it from your phone, end to end private.",
                 benefitBullets =
-                    listOf(
-                        "Open a live view of your whole desktop, or just one window, and watch a long agent run from the couch",
-                        "Reach in and take over: tap, scroll, and type — touch a field and your keyboard rises and zooms right to it",
-                        "Send a file, screenshot, or photo either direction in a tap; share one clipboard across both devices",
-                        "Call your Mac, or unlock it with Face ID — your password sealed end to end, never in a log or a server",
-                    ),
+                listOf(
+                    "Open a live view of your whole desktop, or just one window, and watch a long agent run from the couch",
+                    "Reach in and take over: tap, scroll, and type — touch a field and your keyboard rises and zooms right to it",
+                    "Send a file, screenshot, or photo either direction in a tap; share one clipboard across both devices",
+                    "Call your Mac, or unlock it with Face ID — your password sealed end to end, never in a log or a server",
+                ),
                 imageVector = Icons.Filled.PhoneIphone,
             ),
             // hostedMCP — Hosted Remote MCP — cloud_pro
@@ -212,13 +212,14 @@ object GatedFeatureCatalog {
                 publicName = "Hosted Remote MCP",
                 requiredTier = CloudTier.PRO,
                 oneLineBenefit =
-                    "Give any agent, anywhere, a secure line into your sealed memory and tools — no Mac required.",
+                "Give any agent, anywhere, a secure line into your sealed memory and tools — no Mac required.",
                 benefitBullets =
-                    listOf(
-                        "Your hosted endpoint lets a remote agent recall your private knowledge without anything running on your Mac",
-                        "The server routes tools and ranks over cloaked structures; plaintext and vault keys stay device-only, while search patterns remain visible",
-                        "Always-on access from your phone, a cloud agent, or another tool — isolated to your account alone",
-                    ),
+                listOf(
+                    "Your hosted endpoint lets a remote agent recall your private knowledge without anything running on your Mac",
+                    "The server routes tools and ranks over cloaked structures; plaintext and vault keys " +
+                        "stay device-only, while search patterns remain visible",
+                    "Always-on access from your phone, a cloud agent, or another tool — isolated to your account alone",
+                ),
                 imageVector = Icons.Filled.Storage,
             ),
             // dataVault — Data Vault / agent memory — cloud_pro
@@ -227,14 +228,14 @@ object GatedFeatureCatalog {
                 publicName = "Data Vault",
                 requiredTier = CloudTier.PRO,
                 oneLineBenefit =
-                    "A private memory your agents can recall — your repo docs, notes, and chats, sealed on your device.",
+                "A private memory your agents can recall — your repo docs, notes, and chats, sealed on your device.",
                 benefitBullets =
-                    listOf(
-                        "Your agents quietly recall the repo docs, notes, and chat-derived memories that matter, mid-task",
-                        "Every chunk of text is sealed on your device before it leaves — hosted recall searches cloaked structures, and some patterns stay visible",
-                        "Nearest-neighbor recall finds candidates by meaning while exposing structural signals, not plaintext content",
-                        "Sources, chunks, and storage you control, with one tap to delete any source or purge it all",
-                    ),
+                listOf(
+                    "Your agents quietly recall the repo docs, notes, and chat-derived memories that matter, mid-task",
+                    "Every chunk of text is sealed on your device before it leaves — hosted recall searches cloaked structures, and some patterns stay visible",
+                    "Nearest-neighbor recall finds candidates by meaning while exposing structural signals, not plaintext content",
+                    "Sources, chunks, and storage you control, with one tap to delete any source or purge it all",
+                ),
                 imageVector = Icons.Filled.Memory,
             ),
             // tenXMemory — 10× agent memory — cloud_ultra
@@ -243,14 +244,14 @@ object GatedFeatureCatalog {
                 publicName = "10× agent memory",
                 requiredTier = CloudTier.ULTRA,
                 oneLineBenefit =
-                    "Give your agents a whole second brain — 10× the private memory they can recall while they work.",
+                "Give your agents a whole second brain — 10× the private memory they can recall while they work.",
                 benefitBullets =
-                    listOf(
-                        "Jump from 3 sources to 15, from 5,000 memory chunks to 50,000, from 25 MB to 250 MB of recallable knowledge",
-                        "Feed in far more repo docs, notes, and chat memories so your agents stay deeply in context across big projects",
-                        "Same on-device seal and cloaked vectors — search runs over encrypted structures (some access patterns stay visible)",
-                        "Everything in Cloud Pro stays included: Floo, Agent Control, and the same hosted action and relay allowance",
-                    ),
+                listOf(
+                    "Jump from 3 sources to 15, from 5,000 memory chunks to 50,000, from 25 MB to 250 MB of recallable knowledge",
+                    "Feed in far more repo docs, notes, and chat memories so your agents stay deeply in context across big projects",
+                    "Same on-device seal and cloaked vectors — search runs over encrypted structures (some access patterns stay visible)",
+                    "Everything in Cloud Pro stays included: Floo, Agent Control, and the same hosted action and relay allowance",
+                ),
                 imageVector = Icons.Filled.AutoAwesome,
             ),
         )
@@ -262,6 +263,5 @@ object GatedFeatureCatalog {
      * Look up the gated feature for an id. Total over [GatedFeatureID] — every
      * case is populated in [ordered], so this never returns null.
      */
-    fun feature(id: GatedFeatureID): GatedFeature =
-        byID[id] ?: error("GatedFeature catalog is missing an entry for $id")
+    fun feature(id: GatedFeatureID): GatedFeature = byID[id] ?: error("GatedFeature catalog is missing an entry for $id")
 }

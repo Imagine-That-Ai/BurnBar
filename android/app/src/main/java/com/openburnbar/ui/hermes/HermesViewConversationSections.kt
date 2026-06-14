@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.hermes
 
-import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +37,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
@@ -46,12 +46,7 @@ import com.openburnbar.ui.theme.AuroraTypography
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-fun ConversationListView(
-    isConnected: Boolean,
-    onStartChat: (String) -> Unit,
-    onOpenLibrary: () -> Unit = {},
-    onOpenSetup: () -> Unit = {},
-) {
+fun ConversationListView(isConnected: Boolean, onStartChat: (String) -> Unit, onOpenLibrary: () -> Unit = {}, onOpenSetup: () -> Unit = {}) {
     Scaffold(
         topBar = {
             ConversationListTopBar(
@@ -114,9 +109,9 @@ private fun ConversationListEmptyHero(onStartChat: (String) -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        AuroraGlassCard(modifier = Modifier.padding(AuroraSpacing.xl.dp)) {
+        AuroraGlassCard(modifier = Modifier.padding(AuroraSpacing.XL.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.XL.dp))
                 Box(
                     modifier =
                     Modifier
@@ -132,21 +127,21 @@ private fun ConversationListEmptyHero(onStartChat: (String) -> Unit) {
                         tint = Color.White,
                     )
                 }
-                Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
                 Text(
                     text = "Start your first conversation",
                     fontSize = AuroraTypography.title.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
                 Text(
                     text = "Hermes connects to your Mac to answer questions about your AI burn data.",
                     fontSize = AuroraTypography.body.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
+                    modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
                 )
-                Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
                 Button(
                     onClick = { onStartChat("New Chat") },
                     colors = ButtonDefaults.buttonColors(containerColor = AuroraColors.hermesMercury),

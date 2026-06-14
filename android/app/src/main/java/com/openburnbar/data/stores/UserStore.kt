@@ -17,11 +17,11 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.auth.OAuthProvider
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.OAuthProvider
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.R
@@ -219,11 +219,7 @@ class UserStore : ViewModel() {
         startProviderSignIn(activity, provider, "GitHub")
     }
 
-    private fun startProviderSignIn(
-        activity: android.app.Activity,
-        provider: OAuthProvider,
-        label: String,
-    ) {
+    private fun startProviderSignIn(activity: android.app.Activity, provider: OAuthProvider, label: String) {
         // If a pending result already exists (e.g. activity recreated mid-flow),
         // prefer it so we don't kick off a second auth web sheet.
         val pending = auth.pendingAuthResult

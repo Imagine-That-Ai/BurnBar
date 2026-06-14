@@ -44,29 +44,28 @@ fun ModelLaneScene(digest: TrendDataDigest, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun rememberModelLanes(digest: TrendDataDigest): List<Lane> =
-    remember(digest.models, digest.recentSessions) {
-        digest.models.take(5).map { model ->
-            val sessions = digest.recentSessions.filter { it.model.equals(model.model, ignoreCase = true) }
-            val velocity =
-                sessions
-                    .filter { it.outputTokensPerSecond > 0 }
-                    .map { it.outputTokensPerSecond }
-                    .takeIf { it.isNotEmpty() }
-                    ?.average()
-                    ?: 0.0
-            Lane(
-                model = model,
-                color = Color(model.brand.emblemColor),
-                velocity = velocity,
-                sparklineValues =
-                sessions
-                    .sortedBy { it.startedAtMs }
-                    .map { (it.costUsd * 100).toFloat() }
-                    .takeLast(20),
-            )
-        }
+private fun rememberModelLanes(digest: TrendDataDigest): List<Lane> = remember(digest.models, digest.recentSessions) {
+    digest.models.take(5).map { model ->
+        val sessions = digest.recentSessions.filter { it.model.equals(model.model, ignoreCase = true) }
+        val velocity =
+            sessions
+                .filter { it.outputTokensPerSecond > 0 }
+                .map { it.outputTokensPerSecond }
+                .takeIf { it.isNotEmpty() }
+                ?.average()
+                ?: 0.0
+        Lane(
+            model = model,
+            color = Color(model.brand.emblemColor),
+            velocity = velocity,
+            sparklineValues =
+            sessions
+                .sortedBy { it.startedAtMs }
+                .map { (it.costUsd * 100).toFloat() }
+                .takeLast(20),
+        )
     }
+}
 
 @Composable
 private fun LaneRow(lane: Lane, rank: Int) {

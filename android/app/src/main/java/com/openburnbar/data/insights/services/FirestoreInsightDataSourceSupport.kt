@@ -113,17 +113,16 @@ internal fun assembleFirestoreDigest(
     window: InsightTimeWindow,
     components: FirestoreDigestComponents,
     modelBenchmarks: List<InsightDigest.ModelBenchmarkSummary>,
-): InsightDigest =
-    InsightDigestBuilder.build(
-        input =
-        InsightDigestBuildInput(
-            filter = InsightFilter(window = window),
-            totals = components.totals,
-            providers = components.providers,
-            models = components.models,
-            projects = emptyList(),
-            daily = components.daily,
-            quotaSnapshots = components.quotaSummaries,
-            modelBenchmarks = modelBenchmarks,
-        ),
-    )
+): InsightDigest = InsightDigestBuilder.build(
+    input =
+    InsightDigestBuildInput(
+        filter = InsightFilter(window = window),
+        totals = components.totals,
+        providers = components.providers,
+        models = components.models,
+        projects = emptyList(),
+        daily = components.daily,
+        quotaSnapshots = components.quotaSummaries,
+        modelBenchmarks = modelBenchmarks,
+    ),
+)

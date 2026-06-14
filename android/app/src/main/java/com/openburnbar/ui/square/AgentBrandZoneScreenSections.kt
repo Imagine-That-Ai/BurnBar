@@ -7,6 +7,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,14 +16,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddComment
@@ -39,10 +42,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openburnbar.data.missions.MobileMissionConsoleHost
 import com.openburnbar.data.square.AgentAvailability
 import com.openburnbar.data.square.AgentIdentity
@@ -122,9 +122,18 @@ internal fun AgentBrandZoneScreenLayout(
             onDismissDispatch = { showDispatch = false },
             onDismissForward = { showForward = false },
             onDismissSubscribe = { showSubscribe = false },
-            onDispatchResult = { msg -> statusMessage = msg; showDispatch = false },
-            onForwardResult = { msg -> statusMessage = msg; showForward = false },
-            onSubscribeResult = { msg -> statusMessage = msg; showSubscribe = false },
+            onDispatchResult = { msg ->
+                statusMessage = msg
+                showDispatch = false
+            },
+            onForwardResult = { msg ->
+                statusMessage = msg
+                showForward = false
+            },
+            onSubscribeResult = { msg ->
+                statusMessage = msg
+                showSubscribe = false
+            },
         ),
     )
 }
@@ -224,13 +233,7 @@ private fun RowScope.BrandHeroDetails(identity: AgentIdentity, accent: Color) {
 }
 
 @Composable
-internal fun QuickActions(
-    accent: Color,
-    onNewThread: () -> Unit,
-    onDispatch: () -> Unit,
-    onForward: () -> Unit,
-    onSubscribe: () -> Unit,
-) {
+internal fun QuickActions(accent: Color, onNewThread: () -> Unit, onDispatch: () -> Unit, onForward: () -> Unit, onSubscribe: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuickAction(label = "New thread", icon = Icons.Filled.AddComment, accent = accent, onClick = onNewThread, modifier = Modifier.weight(1f))
         QuickAction(label = "Dispatch", icon = Icons.AutoMirrored.Filled.Send, accent = accent, onClick = onDispatch, modifier = Modifier.weight(1f))
@@ -420,10 +423,7 @@ internal fun rememberAccelerometerTilt(): TiltState {
 }
 
 @Composable
-internal fun AgentBrandZoneMainColumn(
-    state: AgentBrandZoneMainColumnState,
-    actions: AgentBrandZoneMainColumnActions,
-) {
+internal fun AgentBrandZoneMainColumn(state: AgentBrandZoneMainColumnState, actions: AgentBrandZoneMainColumnActions) {
     Column(
         modifier =
         state.modifier

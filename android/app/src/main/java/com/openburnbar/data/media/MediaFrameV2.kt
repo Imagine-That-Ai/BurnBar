@@ -187,12 +187,7 @@ class MediaFrameV2Codec(
         if (version != VERSION) throw CodecError.UnsupportedVersion(version)
     }
 
-    private fun validatePayloadBounds(
-        metadataLength: Int,
-        payloadLength: Int,
-        buffer: ByteBuffer,
-        totalEnvelopeBytes: Int,
-    ) {
+    private fun validatePayloadBounds(metadataLength: Int, payloadLength: Int, buffer: ByteBuffer, totalEnvelopeBytes: Int) {
         val payloadEnd = buffer.position() + metadataLength + payloadLength
         val hasInvalidPayloadBounds =
             metadataLength < 0 || payloadLength < 0 || payloadEnd > totalEnvelopeBytes

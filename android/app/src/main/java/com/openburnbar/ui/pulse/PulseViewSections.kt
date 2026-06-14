@@ -108,10 +108,7 @@ internal data class PulseViewScaffoldState(
 )
 
 @Composable
-internal fun PulseViewScaffold(
-    state: PulseViewScaffoldState,
-    content: @Composable () -> Unit,
-) {
+internal fun PulseViewScaffold(state: PulseViewScaffoldState, content: @Composable () -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
         PulseDepthBackdrop()
 
@@ -145,8 +142,8 @@ private fun PulseViewTitleBar(photoUrl: String?, displayName: String?) {
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(top = AuroraSpacing.md.dp, bottom = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(top = AuroraSpacing.MD.dp, bottom = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Spacer(modifier = Modifier.weight(1f))
@@ -173,8 +170,8 @@ private fun PulseViewLoadingSkeleton() {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(top = 80.dp, start = AuroraSpacing.lg.dp, end = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+            .padding(top = 80.dp, start = AuroraSpacing.LG.dp, end = AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         ShimmerCard(height = 180)
         ShimmerCard(height = 80)
@@ -239,17 +236,13 @@ private data class PulseViewContentDerived(
 )
 
 @Composable
-private fun PulseViewContentColumn(
-    model: PulseContentModel,
-    navigation: PulseContentNavigation,
-    derived: PulseViewContentDerived,
-) {
+private fun PulseViewContentColumn(model: PulseContentModel, navigation: PulseContentNavigation, derived: PulseViewContentDerived) {
     Column(
         modifier =
         Modifier
             .verticalScroll(rememberScrollState())
             .padding(bottom = 128.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         Spacer(modifier = Modifier.height(72.dp))
 
@@ -329,7 +322,7 @@ private fun PulseViewControlsSection(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = AuroraSpacing.lg.dp),
+                .padding(horizontal = AuroraSpacing.LG.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TimelineScopePicker(selected = timelineScope, onSelect = onTimelineChange)
@@ -388,20 +381,14 @@ private fun PulseLiveMetricsStore.collectLiveTick(
 }
 
 @Composable
-private fun PulseViewForecastSection(
-    rollups: UsageRollups,
-    pulseUsages: List<com.openburnbar.data.models.TokenUsage>,
-) {
+private fun PulseViewForecastSection(rollups: UsageRollups, pulseUsages: List<com.openburnbar.data.models.TokenUsage>) {
     StaggeredEntrance(delay = 50) {
         VelocityForecastCard(rollups = rollups, liveUsages = pulseUsages)
     }
 }
 
 @Composable
-private fun PulseViewQuotaSection(
-    snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>,
-    onNavigateToBurn: (() -> Unit)?,
-) {
+private fun PulseViewQuotaSection(snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>, onNavigateToBurn: (() -> Unit)?) {
     StaggeredEntrance(delay = 75) {
         QuotaPulseCard(
             snapshots = snapshots,
@@ -412,26 +399,19 @@ private fun PulseViewQuotaSection(
 }
 
 @Composable
-private fun PulseViewAtlasSection(
-    rollups: UsageRollups,
-    recentUsages: List<com.openburnbar.data.models.TokenUsage>,
-    displayMode: UsageDisplayMode,
-) {
+private fun PulseViewAtlasSection(rollups: UsageRollups, recentUsages: List<com.openburnbar.data.models.TokenUsage>, displayMode: UsageDisplayMode) {
     StaggeredEntrance(delay = 100) {
         TrendAtlasCard(
             rollups = rollups,
             recentUsages = recentUsages,
             displayMode = displayMode,
-            modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
+            modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
         )
     }
 }
 
 @Composable
-private fun PulseViewHermesSection(
-    hermesService: HermesService,
-    onNavigateToHermes: (() -> Unit)?,
-) {
+private fun PulseViewHermesSection(hermesService: HermesService, onNavigateToHermes: (() -> Unit)?) {
     StaggeredEntrance(delay = 125) {
         HermesQuickAskCard(
             service = hermesService,
@@ -448,10 +428,7 @@ private fun PulseViewHermesSection(
 }
 
 @Composable
-private fun PulseViewSessionsSection(
-    recentUsages: List<com.openburnbar.data.models.TokenUsage>,
-    onNavigateToStreams: (() -> Unit)?,
-) {
+private fun PulseViewSessionsSection(recentUsages: List<com.openburnbar.data.models.TokenUsage>, onNavigateToStreams: (() -> Unit)?) {
     StaggeredEntrance(delay = 150) {
         RecentSessionsStripCard(
             sessions = recentUsages,

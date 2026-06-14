@@ -74,10 +74,7 @@ internal fun BudgetAddRuleDialog(
 }
 
 @Composable
-private fun BudgetAddRuleDialogForm(
-    form: BudgetAddRuleFormState,
-    onFormChange: (BudgetAddRuleFormState) -> Unit,
-) {
+private fun BudgetAddRuleDialogForm(form: BudgetAddRuleFormState, onFormChange: (BudgetAddRuleFormState) -> Unit) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth(),
@@ -90,10 +87,7 @@ private fun BudgetAddRuleDialogForm(
     }
 }
 
-private fun LazyListScope.budgetAddRuleScopeSection(
-    form: BudgetAddRuleFormState,
-    onFormChange: (BudgetAddRuleFormState) -> Unit,
-) {
+private fun LazyListScope.budgetAddRuleScopeSection(form: BudgetAddRuleFormState, onFormChange: (BudgetAddRuleFormState) -> Unit) {
     item {
         Text("Scope", style = AuroraType.caption, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
@@ -108,10 +102,7 @@ private fun LazyListScope.budgetAddRuleScopeSection(
     }
 }
 
-private fun LazyListScope.budgetAddRuleScopeFieldsSection(
-    form: BudgetAddRuleFormState,
-    onFormChange: (BudgetAddRuleFormState) -> Unit,
-) {
+private fun LazyListScope.budgetAddRuleScopeFieldsSection(form: BudgetAddRuleFormState, onFormChange: (BudgetAddRuleFormState) -> Unit) {
     if (form.selectedScope == "credential") {
         item {
             OutlinedTextField(
@@ -152,10 +143,7 @@ private fun LazyListScope.budgetAddRuleScopeFieldsSection(
     }
 }
 
-private fun LazyListScope.budgetAddRuleAmountSection(
-    form: BudgetAddRuleFormState,
-    onFormChange: (BudgetAddRuleFormState) -> Unit,
-) {
+private fun LazyListScope.budgetAddRuleAmountSection(form: BudgetAddRuleFormState, onFormChange: (BudgetAddRuleFormState) -> Unit) {
     item {
         OutlinedTextField(
             value = form.ruleLabel,
@@ -174,10 +162,7 @@ private fun LazyListScope.budgetAddRuleAmountSection(
     }
 }
 
-private fun LazyListScope.budgetAddRulePeriodSection(
-    form: BudgetAddRuleFormState,
-    onFormChange: (BudgetAddRuleFormState) -> Unit,
-) {
+private fun LazyListScope.budgetAddRulePeriodSection(form: BudgetAddRuleFormState, onFormChange: (BudgetAddRuleFormState) -> Unit) {
     item {
         Text("Reset Period", style = AuroraType.caption, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -192,10 +177,7 @@ private fun LazyListScope.budgetAddRulePeriodSection(
     }
 }
 
-private fun LazyListScope.budgetAddRuleBehaviorSection(
-    form: BudgetAddRuleFormState,
-    onFormChange: (BudgetAddRuleFormState) -> Unit,
-) {
+private fun LazyListScope.budgetAddRuleBehaviorSection(form: BudgetAddRuleFormState, onFormChange: (BudgetAddRuleFormState) -> Unit) {
     item {
         Text("Enforcement Behavior", style = AuroraType.caption, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
