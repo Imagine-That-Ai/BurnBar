@@ -3,6 +3,7 @@ import CoreHID
 import Dispatch
 import Foundation
 import IOKit.hid
+import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
 /// Virtual HID keyboard + pointing device — lives only in the input-execution leaf (WS1 TCB).
@@ -421,25 +422,20 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
 
         private func waitForTask(_ operation: @escaping @Sendable () async throws -> Void) -> Result<Void, Error> {
             let semaphore = DispatchSemaphore(value: 0)
-            let lock = NSLock()
-            var result: Result<Void, Error> = .success(())
+            // Sendable box for the cross-Task result so the Task closure captures
+            // only Sendable values (Swift 6).
+            let resultBox = Locked<Result<Void, Error>>(.success(()))
             Task {
                 do {
                     try await operation()
-                    lock.lock()
-                    result = .success(())
-                    lock.unlock()
+                    resultBox.write(.success(()))
                 } catch {
-                    lock.lock()
-                    result = .failure(error)
-                    lock.unlock()
+                    resultBox.write(.failure(error))
                 }
                 semaphore.signal()
             }
             semaphore.wait()
-            lock.lock()
-            defer { lock.unlock() }
-            return result
+            return resultBox.read()
         }
     }
 

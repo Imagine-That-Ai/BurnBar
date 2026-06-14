@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import PackageDescription
@@ -105,7 +105,9 @@ let package = Package(
         ),
         .testTarget(
             name: "OpenBurnBarDaemonTests",
-            dependencies: ["OpenBurnBarDaemon"]
+            dependencies: ["OpenBurnBarDaemon"],
+            // Harness-only test target stays Swift 5 (region-isolation checker gaps).
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
             name: "OpenBurnBarPrivilegedSocketRedTeamProbe",
@@ -122,7 +124,10 @@ let package = Package(
             dependencies: [
                 "OpenBurnBarRemoteAccessAgentCore",
                 .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore")
-            ]
+            ],
+            // Harness-only test target stays Swift 5 (region-isolation checker gaps).
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )
