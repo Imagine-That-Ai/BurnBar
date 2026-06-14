@@ -18,9 +18,24 @@ const SCRUB_PATTERNS: Array<[RegExp, string]> = [
   [/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, "[email]"],
   // IPv4 addresses
   [/\b(\d{1,3}\.){3}\d{1,3}\b/g, "[ip]"],
-  // API keys / bearer tokens (long alphanumeric strings with known prefixes)
-  // Note: Stripe sk-, Google AIza, Google OAuth ya29., JWT eyJ headers
-  [/\b(sk-|AIza|ya29\.|eyJ)[A-Za-z0-9\-_.+/]{20,}/g, "[REDACTED]"],
+  // API keys / bearer tokens (long alphanumeric strings with known prefixes).
+  // Provider token shapes covered:
+  //   - Stripe live/test secret + restricted keys: sk-, sk_live_, sk_test_, rk_live_, rk_test_
+  //   - Anthropic: sk-ant-
+  //   - xAI (Grok): xai-
+  //   - OpenAI project/service keys: sk-proj-, sk-svcacct- (subsumed by sk-)
+  //   - Google API: AIza
+  //   - Google OAuth refresh/access: ya29.
+  //   - GitHub PATs / app tokens: ghp_, gho_, ghu_, ghs_, ghr_, github_pat_
+  //   - Slack: xox[baprs]-
+  //   - Google service-account / generic JWT headers: eyJ
+  // The leading word boundary is intentionally dropped for prefixes that
+  // contain a non-word char before alphanumerics (e.g. `sk-ant-`) so the
+  // longer, more specific shapes still match inside larger strings.
+  [
+    /(sk-ant-|sk-proj-|sk-svcacct-|sk_live_|sk_test_|rk_live_|rk_test_|sk-|xai-|AIza|ya29\.|gh[opusr]_|github_pat_|xox[baprs]-|eyJ)[A-Za-z0-9\-_.+/]{16,}/g,
+    "[REDACTED]",
+  ],
   // Credit card-like numbers (16 digits, optional separators)
   [/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]"],
   // NOTE: Firebase Auth UIDs (28-char alphanumeric) are handled by key-based
@@ -70,13 +85,17 @@ function isLogFieldRecord(value: LogFieldValue): value is { [key: string]: LogFi
 }
 
 function scrubValue(key: string, value: LogFieldValue): LogFieldValue {
+  // Sensitive keys redact regardless of value type: a secret/token logged as a
+  // number or boolean (or a stringy-coerced primitive) must never pass through
+  // just because it is not a `string`. Coerce-then-redact so the allowlist below
+  // governs every primitive, not only strings.
+  if (isSensitiveLogKey(key) && value !== null && value !== undefined) {
+    return "[REDACTED]";
+  }
   if (typeof value === "string") {
     // Never log raw UIDs — always hash/truncate
     if (key === "uid" || key === "userId" || key === "user_id") {
       return value.slice(0, 8);
-    }
-    if (isSensitiveLogKey(key)) {
-      return "[REDACTED]";
     }
     return scrubString(value);
   }
@@ -85,6 +104,16 @@ function scrubValue(key: string, value: LogFieldValue): LogFieldValue {
   }
   if (isLogFieldRecord(value)) {
     return scrubFields(value);
+  }
+  // Coerce-and-scrub the remaining primitives (number, boolean). A number or
+  // boolean cannot itself carry an email/IP/token, but stringify-then-scrub keeps
+  // the model uniform (allowlist/coerce) and is defensive against a caller that
+  // smuggles a secret-shaped token through a non-string primitive — scrubString
+  // is a no-op for ordinary numerics, so non-sensitive numbers/booleans still
+  // round-trip to their original value via the JSON number/boolean type.
+  if (typeof value === "number" || typeof value === "boolean") {
+    const scrubbed = scrubString(String(value));
+    return scrubbed === String(value) ? value : scrubbed;
   }
   return value;
 }

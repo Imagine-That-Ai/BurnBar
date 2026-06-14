@@ -131,9 +131,8 @@ const CLIENT_ID = "hgw_attach_client";
 const TOKEN = "obb_hgw_test_token_attachments";
 const TOKEN_HASH = hashHermesGatewayBearerToken(TOKEN);
 const { publicKey: AGENT_SIGNING_PUBLIC_KEY, privateKey: AGENT_SIGNING_PRIVATE_KEY } = generateKeyPairSync("ed25519");
-const exportedAgentSigningSpki = AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" });
 const AGENT_SIGNING_PUBLIC_KEY_BASE64 = Buffer.from(
-  Buffer.isBuffer(exportedAgentSigningSpki) ? exportedAgentSigningSpki : Buffer.from(exportedAgentSigningSpki),
+  AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" }) as Buffer,
 )
   .subarray(-32)
   .toString("base64");
@@ -219,7 +218,13 @@ interface TestHttpResponse {
 }
 
 function makeReq(path: string, body: Record<string, unknown>) {
-  const headers: Record<string, string> = { authorization: `Bearer ${TOKEN}`, ...popHeaders("POST", path, body) };
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${TOKEN}`,
+    // T-GW-02: PoP-signed write routes now require an application/json content
+    // type. A real signing client always sets it; mirror that here.
+    "content-type": "application/json",
+    ...popHeaders("POST", path, body),
+  };
   return {
     method: "POST",
     path,
