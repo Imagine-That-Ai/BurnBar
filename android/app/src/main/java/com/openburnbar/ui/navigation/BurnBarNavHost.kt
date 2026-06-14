@@ -195,10 +195,7 @@ fun BurnBarNavHost(
  * haven't loaded (the unlock UI then shows no amount — never a hardcoded dollar
  * figure). Maps the gating tier to its monthly subscription SKU.
  */
-private fun monthlyPriceForTier(
-    prices: Map<String, HostedQuotaProductDetails>,
-    tier: com.openburnbar.ui.pro.CloudTier,
-): String? {
+private fun monthlyPriceForTier(prices: Map<String, HostedQuotaProductDetails>, tier: com.openburnbar.ui.pro.CloudTier): String? {
     val productID =
         when (tier) {
             com.openburnbar.ui.pro.CloudTier.ULTRA -> HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID

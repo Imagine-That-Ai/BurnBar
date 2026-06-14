@@ -1,5 +1,6 @@
 package com.openburnbar.ui.burn
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
@@ -23,9 +23,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,7 +46,6 @@ import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraShadows
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
-import androidx.compose.ui.graphics.Color
 import kotlin.math.roundToInt
 
 @Composable
@@ -66,14 +66,10 @@ fun BurnView(
 // ── Provider Ring Strip ──
 
 @Composable
-fun ProviderRingStrip(
-    snapshots: List<ProviderQuotaSnapshot>,
-    onProviderClick: (ProviderQuotaSnapshot) -> Unit,
-    modifier: Modifier = Modifier,
-) {
+fun ProviderRingStrip(snapshots: List<ProviderQuotaSnapshot>, onProviderClick: (ProviderQuotaSnapshot) -> Unit, modifier: Modifier = Modifier) {
     LazyRow(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         items(snapshots) { snapshot ->
             val provider = AgentProvider.fromKey(snapshot.provider)
@@ -93,15 +89,15 @@ fun ProviderChip(snapshot: ProviderQuotaSnapshot, provider: AgentProvider?, onCl
         Modifier
             .clickable { onClick() }
             .auroraGlass(
-                cornerRadius = AuroraRadius.md.dp,
+                cornerRadius = AuroraRadius.MD.dp,
                 tintAlpha = 0.42f,
                 shadow = AuroraShadows.small,
             )
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ProviderAvatar(providerKey = snapshot.provider, size = 24)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Column {
             Text(
                 provider?.displayName ?: snapshot.provider,
@@ -129,15 +125,15 @@ fun ProviderChip(snapshot: ProviderQuotaSnapshot, provider: AgentProvider?, onCl
 fun UrgentBanner(count: Int, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = AuroraColors.burnOrange.copy(alpha = 0.15f),
     ) {
         Row(
-            modifier = Modifier.padding(AuroraSpacing.md.dp),
+            modifier = Modifier.padding(AuroraSpacing.MD.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Filled.Warning, contentDescription = null, tint = AuroraColors.burnOrange, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text(
                 "$count provider(s) below 25% quota",
                 color = AuroraColors.burnOrange,
@@ -156,7 +152,7 @@ internal fun DefaultWindowSelector(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         Text(
             "Default window",
@@ -168,7 +164,7 @@ internal fun DefaultWindowSelector(modifier: Modifier = Modifier) {
             val selected = current == option
             Surface(
                 onClick = { prefs.setDefaultWindow(option) },
-                shape = RoundedCornerShape(AuroraRadius.full.dp),
+                shape = RoundedCornerShape(AuroraRadius.FULL.dp),
                 color = if (selected) AuroraColors.ember.copy(alpha = 0.18f) else Color.Transparent,
                 border =
                 BorderStroke(
@@ -186,7 +182,7 @@ internal fun DefaultWindowSelector(modifier: Modifier = Modifier) {
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    modifier = Modifier.padding(horizontal = AuroraSpacing.md.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = AuroraSpacing.MD.dp, vertical = 6.dp),
                 )
             }
         }

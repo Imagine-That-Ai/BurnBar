@@ -90,7 +90,7 @@ private fun TerminalChrome(variant: String, title: String?) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFEBC2E)))
         Spacer(Modifier.width(4.dp))
         Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF28C840)))
-        Spacer(Modifier.width(AuroraSpacing.md.dp))
+        Spacer(Modifier.width(AuroraSpacing.MD.dp))
         Text(
             text = title ?: variantLabel(variant),
             style = AuroraType.tiny.copy(fontFamily = FontFamily.Monospace),

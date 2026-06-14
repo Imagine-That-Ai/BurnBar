@@ -121,13 +121,19 @@ private fun MenuBarPrefsView(onBack: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(
-                if (useWebsiteBackground) androidx.compose.ui.graphics.Color.Transparent else if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground,
+                if (useWebsiteBackground) {
+                    androidx.compose.ui.graphics.Color.Transparent
+                } else if (isDark) {
+                    AuroraColors.darkBackground
+                } else {
+                    AuroraColors.lightBackground
+                },
             )
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AuroraSpacing.lg.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("Back") }
@@ -151,7 +157,7 @@ private fun MenuBarPrefsCard(suppressed: Boolean, onSuppressedChange: (Boolean) 
             style = AuroraType.title,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         Text(
             text =
             "BurnBar runs a persistent notification with today's cost — the Android equivalent of the iOS " +
@@ -161,7 +167,7 @@ private fun MenuBarPrefsCard(suppressed: Boolean, onSuppressedChange: (Boolean) 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
 
         AuroraSettingsToggle(
             icon = Icons.Filled.Notifications,

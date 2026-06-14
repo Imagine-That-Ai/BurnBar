@@ -5,4 +5,3 @@ internal data class VelocityForecastState(
     val projected: Double,
     val aheadOfPace: Boolean,
 )
-

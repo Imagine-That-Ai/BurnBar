@@ -212,11 +212,11 @@ class PiService {
                 id = threadID,
                 runtime = "pi",
                 title =
-                    if (firstUser.isNotEmpty()) {
-                        firstUser.take(PiServiceConstants.CHAT_TITLE_MAX_CHARS)
-                    } else {
-                        "New Pi chat"
-                    },
+                if (firstUser.isNotEmpty()) {
+                    firstUser.take(PiServiceConstants.CHAT_TITLE_MAX_CHARS)
+                } else {
+                    "New Pi chat"
+                },
                 preview = lastNonEmpty.take(PiServiceConstants.CHAT_PREVIEW_MAX_CHARS),
                 modelName = _selectedModelID.value,
                 createdAtMillis = createdAt,

@@ -60,10 +60,10 @@ fun AuroraBottomSheet(
     ) {
         Box(
             Modifier
-                .padding(horizontal = AuroraSpacing.lg.dp)
+                .padding(horizontal = AuroraSpacing.LG.dp)
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
-                .padding(bottom = AuroraSpacing.xxl.dp),
+                .padding(bottom = AuroraSpacing.XXL.dp),
         ) {
             content()
         }
@@ -75,7 +75,7 @@ private fun AuroraDragHandle() {
     Box(
         modifier =
         Modifier
-            .padding(vertical = AuroraSpacing.sm.dp)
+            .padding(vertical = AuroraSpacing.SM.dp)
             .size(width = 40.dp, height = 4.dp)
             .clip(RoundedCornerShape(2.dp))
             .background(AuroraColors.hermesMercury.copy(alpha = 0.6f)),

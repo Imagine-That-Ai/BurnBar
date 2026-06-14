@@ -37,12 +37,11 @@ private const val ED25519_PUBLIC_KEY_BYTES = 32
 private const val RELAY_ERROR_REQUEST_FAILED = "request_failed"
 private const val RELAY_ERROR_TRANSPORT_FAILED = "transport_failed"
 
-private fun publicRelayErrorMessage(errorCode: String?): String =
-    when (errorCode) {
-        RELAY_ERROR_TRANSPORT_FAILED -> "The remote Hermes relay connection failed."
-        RELAY_ERROR_REQUEST_FAILED, null, "" -> "The remote Hermes relay could not complete the request."
-        else -> "The remote Hermes relay could not complete the request."
-    }
+private fun publicRelayErrorMessage(errorCode: String?): String = when (errorCode) {
+    RELAY_ERROR_TRANSPORT_FAILED -> "The remote Hermes relay connection failed."
+    RELAY_ERROR_REQUEST_FAILED, null, "" -> "The remote Hermes relay could not complete the request."
+    else -> "The remote Hermes relay could not complete the request."
+}
 
 /**
  * Android iroh transport. Conforms to `HermesRelayTransporting` so it
@@ -176,12 +175,7 @@ class HermesIrohRelayTransport(
         return IrohRelayTransportError.PairingRejected(detail = detail, source = err)
     }
 
-    private suspend fun connectVerifiedStream(
-        verifiedTarget: IrohDialTarget,
-        uid: String,
-        connectionId: String,
-        dialTimeout: Long,
-    ): IrohRelayStream {
+    private suspend fun connectVerifiedStream(verifiedTarget: IrohDialTarget, uid: String, connectionId: String, dialTimeout: Long): IrohRelayStream {
         val transport = transport(verifiedTarget.relayURL)
         return try {
             withTimeoutOrNull(dialTimeout) {
@@ -299,8 +293,7 @@ class HermesIrohRelayTransport(
         relayExchangeTimeout()
     }
 
-    private fun relayExchangeTimeout(): Nothing =
-        throw HermesRelayException("Iroh relay timed out before response.complete.")
+    private fun relayExchangeTimeout(): Nothing = throw HermesRelayException("Iroh relay timed out before response.complete.")
 
     private fun relayExchangeFail(error: HermesRelayException): Nothing = throw error
 
@@ -320,60 +313,59 @@ class HermesIrohRelayTransport(
         requestId: String,
         uid: String,
         connectionId: String,
-    ): RelayFrameAction =
-        when (frame.type) {
-            HermesRealtimeRelayFrameType.RESPONSE_CHUNK -> {
-                val chunk =
-                    chunkRecord(
-                        frame = frame,
-                        keyData = symmetricKey,
-                        requestId = requestId,
-                        uid = uid,
-                        connectionId = connectionId,
-                    )
-                if (chunk == null) {
-                    RelayFrameAction.Continue
-                } else {
-                    auditLogger.record(
-                        event = IrohTransportAuditEvent.STREAM_OPENED,
-                        uid = uid,
-                        connectionId = connectionId,
-                        transport = IrohTransportSelection.IROH_DIRECT,
-                        rttMillis = null,
-                        detail =
-                        mapOf(
-                            "side" to "android",
-                            "stage" to "android_response_chunk_received",
-                            "requestId" to requestId,
-                            "sequence" to chunk.sequence.toString(),
-                            "kind" to chunk.kind.wireValue,
-                            "textBytes" to (chunk.text?.toByteArray(Charsets.UTF_8)?.size ?: 0).toString(),
-                        ),
-                    )
-                    auditLogger.record(
-                        event = IrohTransportAuditEvent.STREAM_OPENED,
-                        uid = uid,
-                        connectionId = connectionId,
-                        transport = IrohTransportSelection.IROH_DIRECT,
-                        rttMillis = null,
-                        detail =
-                        mapOf(
-                            "side" to "android",
-                            "stage" to "android_response_chunk_processed",
-                            "requestId" to requestId,
-                            "sequence" to chunk.sequence.toString(),
-                        ),
-                    )
-                    RelayFrameAction.Emit(chunk)
-                }
-            }
-            HermesRealtimeRelayFrameType.RESPONSE_COMPLETE -> RelayFrameAction.Complete
-            HermesRealtimeRelayFrameType.RESPONSE_ERROR ->
-                RelayFrameAction.Fail(
-                    HermesRelayException(publicRelayErrorMessage(frame.payload?.errorCode)),
+    ): RelayFrameAction = when (frame.type) {
+        HermesRealtimeRelayFrameType.RESPONSE_CHUNK -> {
+            val chunk =
+                chunkRecord(
+                    frame = frame,
+                    keyData = symmetricKey,
+                    requestId = requestId,
+                    uid = uid,
+                    connectionId = connectionId,
                 )
-            else -> RelayFrameAction.Continue
+            if (chunk == null) {
+                RelayFrameAction.Continue
+            } else {
+                auditLogger.record(
+                    event = IrohTransportAuditEvent.STREAM_OPENED,
+                    uid = uid,
+                    connectionId = connectionId,
+                    transport = IrohTransportSelection.IROH_DIRECT,
+                    rttMillis = null,
+                    detail =
+                    mapOf(
+                        "side" to "android",
+                        "stage" to "android_response_chunk_received",
+                        "requestId" to requestId,
+                        "sequence" to chunk.sequence.toString(),
+                        "kind" to chunk.kind.wireValue,
+                        "textBytes" to (chunk.text?.toByteArray(Charsets.UTF_8)?.size ?: 0).toString(),
+                    ),
+                )
+                auditLogger.record(
+                    event = IrohTransportAuditEvent.STREAM_OPENED,
+                    uid = uid,
+                    connectionId = connectionId,
+                    transport = IrohTransportSelection.IROH_DIRECT,
+                    rttMillis = null,
+                    detail =
+                    mapOf(
+                        "side" to "android",
+                        "stage" to "android_response_chunk_processed",
+                        "requestId" to requestId,
+                        "sequence" to chunk.sequence.toString(),
+                    ),
+                )
+                RelayFrameAction.Emit(chunk)
+            }
         }
+        HermesRealtimeRelayFrameType.RESPONSE_COMPLETE -> RelayFrameAction.Complete
+        HermesRealtimeRelayFrameType.RESPONSE_ERROR ->
+            RelayFrameAction.Fail(
+                HermesRelayException(publicRelayErrorMessage(frame.payload?.errorCode)),
+            )
+        else -> RelayFrameAction.Continue
+    }
 
     private suspend fun transport(relayURL: String?): IrohRelayTransport = stateLock.withLock {
         val existing = endpoint

@@ -68,11 +68,7 @@ fun MissionStatusBanner(status: InsightsViewModel.MissionStatus, onDismiss: () -
 }
 
 @Composable
-private fun MissionDispatchedBanner(
-    status: InsightsViewModel.MissionStatus.Dispatched,
-    onDismiss: () -> Unit,
-    onOpen: () -> Unit,
-) {
+private fun MissionDispatchedBanner(status: InsightsViewModel.MissionStatus.Dispatched, onDismiss: () -> Unit, onOpen: () -> Unit) {
     MissionBanner(
         model =
         MissionBannerModel(
@@ -86,11 +82,7 @@ private fun MissionDispatchedBanner(
 }
 
 @Composable
-private fun MissionTrackingBanner(
-    status: InsightsViewModel.MissionStatus.Tracking,
-    onDismiss: () -> Unit,
-    onOpen: () -> Unit,
-) {
+private fun MissionTrackingBanner(status: InsightsViewModel.MissionStatus.Tracking, onDismiss: () -> Unit, onOpen: () -> Unit) {
     val isDark = isSystemInDarkTheme()
     val presentation = missionTrackingPresentation(status.mission, isDark)
     MissionBanner(
@@ -107,11 +99,7 @@ private fun MissionTrackingBanner(
 }
 
 @Composable
-private fun MissionFailedBanner(
-    status: InsightsViewModel.MissionStatus.Failed,
-    onDismiss: () -> Unit,
-    onOpen: () -> Unit,
-) {
+private fun MissionFailedBanner(status: InsightsViewModel.MissionStatus.Failed, onDismiss: () -> Unit, onOpen: () -> Unit) {
     val isDark = isSystemInDarkTheme()
     MissionBanner(
         model =
@@ -196,7 +184,7 @@ private fun MissionBanner(model: MissionBannerModel, actions: MissionBannerActio
         Modifier
             .fillMaxWidth()
             .clickable(onClick = actions.onOpen),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         tonalElevation = 1.dp,
         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -204,10 +192,10 @@ private fun MissionBanner(model: MissionBannerModel, actions: MissionBannerActio
         Row(
             modifier =
             Modifier.padding(
-                horizontal = AuroraSpacing.md.dp,
-                vertical = AuroraSpacing.sm.dp,
+                horizontal = AuroraSpacing.MD.dp,
+                vertical = AuroraSpacing.SM.dp,
             ),
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             verticalAlignment = Alignment.Top,
         ) {
             MissionBannerIcon(icon = model.icon, tone = model.tone)
@@ -344,9 +332,9 @@ private fun MissionLiveDetailContent(
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp),
-        contentPadding = PaddingValues(bottom = AuroraSpacing.xl.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
+        contentPadding = PaddingValues(bottom = AuroraSpacing.XL.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         item { MissionLiveDetailHeader(mission) }
         item { MissionLiveDetailChipRow(mission, showSkillRunCompanionControls) }
@@ -381,7 +369,7 @@ private fun MissionLiveDetailContent(
 
 @Composable
 private fun MissionLiveDetailHeader(mission: CLIAgentMissionSnapshot) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         Text(
             text = "Mission Live",
             style = AuroraType.headline,
@@ -402,7 +390,7 @@ private fun MissionLiveDetailHeader(mission: CLIAgentMissionSnapshot) {
 
 @Composable
 private fun MissionLiveDetailChipRow(mission: CLIAgentMissionSnapshot, showSkillRunCompanionControls: Boolean) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         item { MissionDetailChip(mission.displayStatus.uppercase(), Icons.Filled.GraphicEq) }
         item { MissionDetailChip(mission.runtimeLabel, Icons.Filled.CheckCircle) }
         item { MissionDetailChip(mission.currentStepLabel, Icons.Filled.GraphicEq) }
@@ -432,7 +420,7 @@ private fun LazyListScope.missionLiveCompanionControlsItem(
 ) {
     if (showSkillRunCompanionControls && (onFloat != null || onPictureInPicture != null)) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
                 onFloat?.let { callback ->
                     TextButton(onClick = { callback(mission) }) {
                         Text(
@@ -456,14 +444,11 @@ private fun LazyListScope.missionLiveCompanionControlsItem(
     }
 }
 
-private fun LazyListScope.missionLiveApprovalItem(
-    mission: CLIAgentMissionSnapshot,
-    onApprovalResponse: (String, Boolean) -> Unit,
-) {
+private fun LazyListScope.missionLiveApprovalItem(mission: CLIAgentMissionSnapshot, onApprovalResponse: (String, Boolean) -> Unit) {
     if (mission.isWaitingForApproval) {
         item {
             MissionDetailSection(title = mission.approvalTitle?.takeIf { it.isNotBlank() } ?: "Approval required") {
-                Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
                     Text(
                         text =
                         mission.approvalMessage?.takeIf { it.isNotBlank() }
@@ -471,7 +456,7 @@ private fun LazyListScope.missionLiveApprovalItem(
                         style = AuroraType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
                         TextButton(onClick = { onApprovalResponse(mission.id, true) }) {
                             Text(
                                 text = "Approve",
@@ -565,7 +550,7 @@ private enum class MissionEventFilter(val label: String) {
 
 @Composable
 private fun MissionEventFilterBar(activeFilters: Set<MissionEventFilter>, onToggle: (MissionEventFilter) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         items(MissionEventFilter.entries) { filter ->
             FilterChip(
                 selected = filter in activeFilters,
@@ -587,8 +572,8 @@ private fun MissionQueuedDetailContent(title: String, runtime: String, detail: S
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+            .padding(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         Text(
             text = "Mission Live",
@@ -606,19 +591,19 @@ private fun MissionQueuedDetailContent(title: String, runtime: String, detail: S
             style = AuroraType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XL.dp))
     }
 }
 
 @Composable
 private fun MissionDetailChip(label: String, icon: ImageVector) {
     Surface(
-        shape = RoundedCornerShape(AuroraRadius.sm.dp),
+        shape = RoundedCornerShape(AuroraRadius.SM.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = AuroraSpacing.sm.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = AuroraSpacing.SM.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -640,7 +625,7 @@ private fun MissionDetailChip(label: String, icon: ImageVector) {
 
 @Composable
 private fun MissionDetailSection(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         Text(
             text = title,
             style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
@@ -668,7 +653,7 @@ private fun MissionTimelineRow(event: CLIAgentMissionEvent) {
             else -> Icons.Filled.GraphicEq
         }
     Row(
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
@@ -704,7 +689,7 @@ private fun MissionTimelineEventContent(event: CLIAgentMissionEvent) {
 
 @Composable
 private fun MissionTimelineEventHeader(event: CLIAgentMissionEvent) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         Text(
             text = (event.title ?: event.phase.replace("_", " ")).uppercase(),
             style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
@@ -723,7 +708,7 @@ private fun MissionTimelineEventHeader(event: CLIAgentMissionEvent) {
 @Composable
 private fun MissionTimelineEventMessage(event: CLIAgentMissionEvent) {
     Surface(
-        shape = RoundedCornerShape(AuroraRadius.sm.dp),
+        shape = RoundedCornerShape(AuroraRadius.SM.dp),
         color =
         if (event.prefersMonospace) {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
@@ -745,7 +730,7 @@ private fun MissionTimelineEventMetadataChips(event: CLIAgentMissionEvent) {
     if (event.toolName.isNullOrBlank() && event.artifactPath.isNullOrBlank() && event.changedFilePath.isNullOrBlank()) {
         return
     }
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         event.toolName?.takeIf { it.isNotBlank() }?.let { tool ->
             item { MissionDetailChip(tool, Icons.Filled.Tune) }
         }

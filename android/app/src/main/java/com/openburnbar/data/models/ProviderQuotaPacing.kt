@@ -14,7 +14,7 @@ private val FALLBACK_MONTH: Duration = Duration.ofDays(30)
 enum class PaceSeverity {
     ON_PACE,
     AHEAD_OF_BUDGET,
-    BEHIND_BUDGET
+    BEHIND_BUDGET,
 }
 
 data class IdealPace(
@@ -24,17 +24,13 @@ data class IdealPace(
     val usedFraction: Double,
     val delta: Double,
     val severity: PaceSeverity,
-    val humanLabel: String
+    val humanLabel: String,
 )
 
 object PacingMath {
     const val ON_PACE_THRESHOLD = 0.03
 
-    fun windowDuration(
-        kind: QuotaWindowKind,
-        resetsAt: Instant,
-        zoneId: ZoneId = ZoneId.systemDefault()
-    ): Duration? {
+    fun windowDuration(kind: QuotaWindowKind, resetsAt: Instant, zoneId: ZoneId = ZoneId.systemDefault()): Duration? {
         return when (kind) {
             QuotaWindowKind.FIVE_HOUR -> FIVE_HOUR_WINDOW
             QuotaWindowKind.DAILY -> Duration.ofDays(1)
@@ -62,7 +58,7 @@ object PacingMath {
         resetsAt: Instant?,
         progressFraction: Double,
         now: Instant = Instant.now(),
-        zoneId: ZoneId = ZoneId.systemDefault()
+        zoneId: ZoneId = ZoneId.systemDefault(),
     ): IdealPace? {
         resetsAt ?: return null
         val duration = windowDuration(windowKind, resetsAt, zoneId) ?: return null
@@ -101,7 +97,7 @@ object PacingMath {
             usedFraction = used,
             delta = delta,
             severity = severity,
-            humanLabel = humanLabel(delta, severity)
+            humanLabel = humanLabel(delta, severity),
         )
     }
 

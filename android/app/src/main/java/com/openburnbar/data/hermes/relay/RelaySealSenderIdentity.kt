@@ -42,8 +42,7 @@ internal object RelaySealSenderIdentity {
      * and the iOS `MobileHermesAuthenticatedRelayRequestSealer.relaySenderKeyID`:
      * `"relay-v3-" ‖ first 12 bytes of SHA-256(key) as hex`.
      */
-    fun relaySenderKeyId(publicKeyX963: ByteArray): String =
-        "relay-v3-" + CloudVaultCrypto.sha256Hex(publicKeyX963).take(KEY_ID_HEX_CHARS)
+    fun relaySenderKeyId(publicKeyX963: ByteArray): String = "relay-v3-" + CloudVaultCrypto.sha256Hex(publicKeyX963).take(KEY_ID_HEX_CHARS)
 
     suspend fun prepareAndPublish(
         uid: String,
@@ -97,11 +96,7 @@ internal object RelaySealSenderIdentity {
      * with the legacy collection fallback the chat lane also keeps) — never
      * from the stream itself. Returns null when the record is missing the key.
      */
-    suspend fun macRelayPublicKeyBase64(
-        uid: String,
-        connectionId: String,
-        firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
-    ): String? {
+    suspend fun macRelayPublicKeyBase64(uid: String, connectionId: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): String? {
         for (collection in listOf("hermes_connections", "hermes_relay_connections")) {
             val data =
                 runCatching {

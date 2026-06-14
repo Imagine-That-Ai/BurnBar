@@ -186,11 +186,7 @@ private data class ControlCenterPaneCallbacks(
 )
 
 @Composable
-private fun ControlCenterListDetail(
-    paneState: ControlCenterPaneState,
-    store: ControlCenterStore,
-    callbacks: ControlCenterPaneCallbacks,
-) {
+private fun ControlCenterListDetail(paneState: ControlCenterPaneState, store: ControlCenterStore, callbacks: ControlCenterPaneCallbacks) {
     Row(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(0.42f).fillMaxHeight()) {
             ControlCenterInventoryList(
@@ -221,11 +217,7 @@ private fun ControlCenterListDetail(
 }
 
 @Composable
-private fun ControlCenterSinglePane(
-    paneState: ControlCenterPaneState,
-    store: ControlCenterStore,
-    callbacks: ControlCenterPaneCallbacks,
-) {
+private fun ControlCenterSinglePane(paneState: ControlCenterPaneState, store: ControlCenterStore, callbacks: ControlCenterPaneCallbacks) {
     val selectedRow = paneState.selectedDomainId?.let { store.row(it) }
     if (selectedRow != null) {
         // Phone: detail replaces the list; back-press handled by host nav.
@@ -250,11 +242,7 @@ private fun ControlCenterSinglePane(
 }
 
 @Composable
-private fun ControlCenterInventoryList(
-    paneState: ControlCenterPaneState,
-    store: ControlCenterStore,
-    callbacks: ControlCenterPaneCallbacks,
-) {
+private fun ControlCenterInventoryList(paneState: ControlCenterPaneState, store: ControlCenterStore, callbacks: ControlCenterPaneCallbacks) {
     val snapshot = paneState.snapshot
     val recovery by store.recoveryMethods.collectAsState()
     val recoveryBusy by store.recoveryBusy.collectAsState()
@@ -267,8 +255,8 @@ private fun ControlCenterInventoryList(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+        contentPadding = PaddingValues(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         item { TierBand(tier = snapshot.tier, limits = snapshot.pensieveLimits, onManagePlan = callbacks.onManagePlan) }
         paneState.error?.let { item { ControlCenterError(it, onDismiss = { store.clearError() }) } }
@@ -324,7 +312,7 @@ private fun ControlCenterInventoryHeading() {
 @Composable
 private fun TierBand(tier: DataTier, limits: PensieveLimits?, onManagePlan: () -> Unit) {
     AuroraGlassCard {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "You're on ${tier.label}",
@@ -369,7 +357,7 @@ private fun ControlCenterError(message: String, onDismiss: () -> Unit) {
 @Composable
 private fun ControlCenterDetailPlaceholder() {
     Column(
-        modifier = Modifier.fillMaxSize().padding(AuroraSpacing.xl.dp),
+        modifier = Modifier.fillMaxSize().padding(AuroraSpacing.XL.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

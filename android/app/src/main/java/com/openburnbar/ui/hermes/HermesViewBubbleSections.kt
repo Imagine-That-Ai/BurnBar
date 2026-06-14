@@ -71,9 +71,7 @@ private data class ChatBubblePermissionState(
 )
 
 @Composable
-private fun rememberChatBubblePermissionState(
-    matchingItem: com.openburnbar.data.computeruse.SystemPermissionItem?,
-): ChatBubblePermissionState {
+private fun rememberChatBubblePermissionState(matchingItem: com.openburnbar.data.computeruse.SystemPermissionItem?): ChatBubblePermissionState {
     var presentedPermissionItem by remember {
         mutableStateOf<com.openburnbar.data.computeruse.SystemPermissionItem?>(null)
     }
@@ -107,9 +105,8 @@ internal fun systemPermissionItemsByToolCallId(
 internal fun matchingSystemPermissionItem(
     inboxByToolCallId: Map<String, com.openburnbar.data.computeruse.SystemPermissionItem>,
     message: HermesMessage,
-): com.openburnbar.data.computeruse.SystemPermissionItem? =
-    inboxByToolCallId[message.id]
-        ?: message.toolCalls.firstNotNullOfOrNull { tc -> inboxByToolCallId[tc.id] }
+): com.openburnbar.data.computeruse.SystemPermissionItem? = inboxByToolCallId[message.id]
+    ?: message.toolCalls.firstNotNullOfOrNull { tc -> inboxByToolCallId[tc.id] }
 
 @Composable
 private fun ChatBubbleAgentLayout(message: HermesMessage, permissionState: ChatBubblePermissionState) {
@@ -122,7 +119,7 @@ private fun ChatBubbleAgentLayout(message: HermesMessage, permissionState: ChatB
             ChatBubbleAgentHeader(message = message)
         }
         ChatBubbleAgentSurface(message = message, isUser = isUser, permissionState = permissionState)
-        Spacer(modifier = Modifier.height(if (isUser) AuroraSpacing.xxs.dp else AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(if (isUser) AuroraSpacing.XXS.dp else AuroraSpacing.SM.dp))
     }
 }
 
@@ -130,13 +127,13 @@ private fun ChatBubbleAgentLayout(message: HermesMessage, permissionState: ChatB
 private fun ChatBubbleAgentHeader(message: HermesMessage) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(start = AuroraSpacing.md.dp + 4.dp, bottom = AuroraSpacing.xxs.dp),
+        modifier = Modifier.padding(start = AuroraSpacing.MD.dp + 4.dp, bottom = AuroraSpacing.XXS.dp),
     ) {
         BreathingDot(
             color = if (message.isStreaming) AuroraColors.success else AuroraColors.hermesMercury,
             size = 6,
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         Text(
             text = "via Hermes · ${message.modelName}",
             fontSize = 11.sp,
@@ -147,11 +144,7 @@ private fun ChatBubbleAgentHeader(message: HermesMessage) {
 }
 
 @Composable
-private fun ChatBubbleAgentSurface(
-    message: HermesMessage,
-    isUser: Boolean,
-    permissionState: ChatBubblePermissionState,
-) {
+private fun ChatBubbleAgentSurface(message: HermesMessage, isUser: Boolean, permissionState: ChatBubblePermissionState) {
     Surface(
         shape =
         RoundedCornerShape(
@@ -207,18 +200,14 @@ private fun ChatBubbleMessageBody(message: HermesMessage, isUser: Boolean) {
     }
 }
 
-private fun chatBubbleDisplayText(message: HermesMessage): String =
-    when {
-        message.content.isEmpty() && message.isStreaming -> "…"
-        message.isStreaming -> message.content + "▍"
-        else -> message.content
-    }
+private fun chatBubbleDisplayText(message: HermesMessage): String = when {
+    message.content.isEmpty() && message.isStreaming -> "…"
+    message.isStreaming -> message.content + "▍"
+    else -> message.content
+}
 
 @Composable
-private fun ChatBubbleMetadata(
-    message: HermesMessage,
-    permissionState: ChatBubblePermissionState,
-) {
+private fun ChatBubbleMetadata(message: HermesMessage, permissionState: ChatBubblePermissionState) {
     if (message.toolCalls.isNotEmpty()) {
         Spacer(modifier = Modifier.height(8.dp))
         ChatBubbleToolCallStrip(toolCalls = message.toolCalls)

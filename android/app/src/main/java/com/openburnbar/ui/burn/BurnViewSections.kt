@@ -43,12 +43,7 @@ import com.openburnbar.ui.theme.AuroraSpacing
 
 /** Redesigned top-level screen driven by state, aligned with iOS layout choices. */
 @Composable
-internal fun BurnViewContent(
-    quotaStore: QuotaStore,
-    demoDataStore: DemoDataStore,
-    dashboardStore: DashboardStore,
-    activityStore: ActivityStore,
-) {
+internal fun BurnViewContent(quotaStore: QuotaStore, demoDataStore: DemoDataStore, dashboardStore: DashboardStore, activityStore: ActivityStore) {
     val store = rememberBurnViewStoreState(quotaStore, demoDataStore, dashboardStore, activityStore)
     val context = LocalContext.current
     var selectedProvider by remember { mutableStateOf<AgentProvider?>(null) }
@@ -143,10 +138,7 @@ private data class BurnViewLoadedColumnState(
 )
 
 @Composable
-private fun BurnViewLoadedContent(
-    input: BurnViewLoadedInput,
-    selectionCallbacks: BurnViewSelectionCallbacks,
-) {
+private fun BurnViewLoadedContent(input: BurnViewLoadedInput, selectionCallbacks: BurnViewSelectionCallbacks) {
     val sharedPrefs = remember { input.context.getSharedPreferences("burnbar_quota_prefs", Context.MODE_PRIVATE) }
     var pinnedKeys by remember { mutableStateOf(sharedPrefs.getStringSet("pinned_quotas", emptySet()) ?: emptySet()) }
     val presentation = rememberBurnViewPresentation(input.store, input.selectedProvider, input.sortMode, input.showInactive, pinnedKeys)
@@ -207,17 +199,14 @@ private fun rememberBurnViewSetupSlots(snapshots: List<ProviderQuotaSnapshot>): 
 }
 
 @Composable
-private fun BurnViewLoadedColumn(
-    state: BurnViewLoadedColumnState,
-    callbacks: BurnViewLoadedCallbacks,
-) {
+private fun BurnViewLoadedColumn(state: BurnViewLoadedColumnState, callbacks: BurnViewLoadedCallbacks) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.linearGradient(listOf(AuroraColors.ember.copy(alpha = 0.03f), Color.Transparent, AuroraColors.amber.copy(alpha = 0.02f))))
             .verticalScroll(rememberScrollState())
-            .padding(bottom = AuroraSpacing.xxl.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+            .padding(bottom = AuroraSpacing.XXL.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         BurnViewHeroSection(state.presentation, state.selectedProvider, callbacks)
         BurnViewFilterSection(state.store, state.sortMode, state.showInactive, callbacks)
@@ -231,54 +220,41 @@ private fun BurnViewLoadedColumn(
 }
 
 @Composable
-private fun BurnViewHeroSection(
-    presentation: BurnViewPresentation,
-    selectedProvider: AgentProvider?,
-    callbacks: BurnViewLoadedCallbacks,
-) {
+private fun BurnViewHeroSection(presentation: BurnViewPresentation, selectedProvider: AgentProvider?, callbacks: BurnViewLoadedCallbacks) {
     SubscriptionConstellationHero(
         snapshots = presentation.sortedSnapshots,
         selectedProvider = selectedProvider,
         onOrbTap = { provider -> callbacks.onSelectedProviderChange(if (selectedProvider == provider) null else provider) },
-        onClearSelection = { callbacks.onSelectedProviderChange(null) }
+        onClearSelection = { callbacks.onSelectedProviderChange(null) },
     )
 }
 
 @Composable
-private fun BurnViewFilterSection(
-    store: BurnViewStoreState,
-    sortMode: QuotaSortMode,
-    showInactive: Boolean,
-    callbacks: BurnViewLoadedCallbacks,
-) {
+private fun BurnViewFilterSection(store: BurnViewStoreState, sortMode: QuotaSortMode, showInactive: Boolean, callbacks: BurnViewLoadedCallbacks) {
     QuotaFilterRail(
         state = QuotaFilterRailState(
             viewMode = store.burnStyle,
             sort = sortMode,
             showInactive = showInactive,
-            isRefreshing = store.isLoading
+            isRefreshing = store.isLoading,
         ),
         actions = QuotaFilterRailActions(
             onViewModeChange = { store.quotaPrefs.setBurnViewStyle(it.key) },
             onSortChange = callbacks.onSortModeChange,
             onShowInactiveChange = callbacks.onShowInactiveChange,
-            onRefreshAll = callbacks.onRefreshAll
-        )
+            onRefreshAll = callbacks.onRefreshAll,
+        ),
     )
 }
 
 @Composable
-private fun BurnViewFocusBanner(
-    presentation: BurnViewPresentation,
-    selectedProvider: AgentProvider?,
-    onSelectedProviderChange: (AgentProvider?) -> Unit,
-) {
+private fun BurnViewFocusBanner(presentation: BurnViewPresentation, selectedProvider: AgentProvider?, onSelectedProviderChange: (AgentProvider?) -> Unit) {
     selectedProvider?.let { focusedProvider ->
         ProviderFocusBanner(
             provider = focusedProvider,
             accountCount = presentation.filteredSnapshots.size,
             totalProviderCount = presentation.totalProviderCount,
-            onClearSelection = { onSelectedProviderChange(null) }
+            onClearSelection = { onSelectedProviderChange(null) },
         )
     }
 }
@@ -302,21 +278,18 @@ private fun BurnViewEmptyFocus() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = AuroraSpacing.xl.dp),
-        contentAlignment = Alignment.Center
+            .padding(vertical = AuroraSpacing.XL.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(text = "No active plans found for focus.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun BurnViewListRows(
-    store: BurnViewStoreState,
-    snapshots: List<ProviderQuotaSnapshot>,
-) {
+private fun BurnViewListRows(store: BurnViewStoreState, snapshots: List<ProviderQuotaSnapshot>) {
     Column(
-        modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+        modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         snapshots.forEach { snapshot ->
             SubscriptionListRow(snapshot = snapshot, accounts = store.accounts)
@@ -332,8 +305,8 @@ private fun BurnViewCards(
     callbacks: BurnViewLoadedCallbacks,
 ) {
     Column(
-        modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp)
+        modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         presentation.filteredSnapshots.forEach { snapshot ->
             val snapshotKey = snapshot.quotaSortKey()
@@ -342,13 +315,13 @@ private fun BurnViewCards(
                     snapshot = snapshot,
                     accounts = store.accounts,
                     signedInEmail = store.signedInEmail,
-                    isPinned = presentation.pinnedKeys.contains(snapshotKey)
+                    isPinned = presentation.pinnedKeys.contains(snapshotKey),
                 ),
                 actions = SubscriptionCardActions(
                     onRefresh = callbacks.onRefreshAll,
                     onTogglePin = { pin -> callbacks.updatePinnedKeys(sharedPrefs, presentation.pinnedKeys, snapshotKey, pin) },
-                    onOpenDetail = { callbacks.onOpenUrl(snapshot.managementUrl ?: "") }
-                )
+                    onOpenDetail = { callbacks.onOpenUrl(snapshot.managementUrl ?: "") },
+                ),
             )
         }
     }

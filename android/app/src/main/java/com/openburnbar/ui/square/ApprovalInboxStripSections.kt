@@ -40,13 +40,7 @@ import com.openburnbar.data.missions.ApprovalAsk
 import com.openburnbar.ui.theme.AuroraColors
 
 @Composable
-internal fun ApprovalAskRow(
-    ask: ApprovalAsk,
-    onApprove: () -> Unit,
-    onDeny: () -> Unit,
-    onApproveAlways: () -> Unit,
-    onDenyAlways: () -> Unit,
-) {
+internal fun ApprovalAskRow(ask: ApprovalAsk, onApprove: () -> Unit, onDeny: () -> Unit, onApproveAlways: () -> Unit, onDenyAlways: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
@@ -64,12 +58,12 @@ internal fun ApprovalAskRow(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-        ApprovalAskActions(
-            onApprove = onApprove,
-            onDeny = onDeny,
-            onApproveAlways = onApproveAlways,
-            onDenyAlways = onDenyAlways,
-        )
+            ApprovalAskActions(
+                onApprove = onApprove,
+                onDeny = onDeny,
+                onApproveAlways = onApproveAlways,
+                onDenyAlways = onDenyAlways,
+            )
         }
     }
 }
@@ -102,12 +96,7 @@ private fun ApprovalAskHeader(ask: ApprovalAsk) {
 }
 
 @Composable
-private fun ApprovalAskActions(
-    onApprove: () -> Unit,
-    onDeny: () -> Unit,
-    onApproveAlways: () -> Unit,
-    onDenyAlways: () -> Unit,
-) {
+private fun ApprovalAskActions(onApprove: () -> Unit, onDeny: () -> Unit, onApproveAlways: () -> Unit, onDenyAlways: () -> Unit) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -158,12 +147,7 @@ private fun ApprovalAlwaysMenuTrigger(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ApprovalAlwaysDropdown(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    onApproveAlways: () -> Unit,
-    onDenyAlways: () -> Unit,
-) {
+private fun ApprovalAlwaysDropdown(expanded: Boolean, onDismiss: () -> Unit, onApproveAlways: () -> Unit, onDenyAlways: () -> Unit) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
             text = { Text("Always approve this class") },

@@ -63,17 +63,17 @@ internal fun YoursServerFlipCard(domain: DataDomain, modifier: Modifier = Modifi
                 rotationY = rotation
                 cameraDistance = 12f * density
             }
-            .clip(RoundedCornerShape(AuroraRadius.lg.dp))
+            .clip(RoundedCornerShape(AuroraRadius.LG.dp))
             .background(PensieveControlTokens.glassBgElevated)
             .border(
                 width = 0.75.dp,
                 color = PensieveControlTokens.glassLineBright,
-                shape = RoundedCornerShape(AuroraRadius.lg.dp),
+                shape = RoundedCornerShape(AuroraRadius.LG.dp),
             )
             .clickable {
                 face = if (face == BasinFace.YOURS) BasinFace.SERVER else BasinFace.YOURS
             }
-            .padding(AuroraSpacing.lg.dp),
+            .padding(AuroraSpacing.LG.dp),
     ) {
         // Back face content is counter-rotated so text isn't mirrored.
         Box(modifier = Modifier.graphicsLayer { rotationY = if (showingYours) 0f else 180f }) {
@@ -99,14 +99,8 @@ internal fun YoursServerFlipCard(domain: DataDomain, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun FlipFace(
-    accent: Color,
-    title: String,
-    subtitle: String,
-    facets: List<String>,
-    hintColorless: Boolean,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp), modifier = Modifier.fillMaxWidth()) {
+private fun FlipFace(accent: Color, title: String, subtitle: String, facets: List<String>, hintColorless: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp), modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier =
@@ -115,17 +109,17 @@ private fun FlipFace(
                     .clip(androidx.compose.foundation.shape.CircleShape)
                     .background(accent),
             )
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text(title, style = AuroraType.headline.copy(fontWeight = FontWeight.SemiBold), color = PensieveControlTokens.mercuryBright)
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text("Tap to flip", style = AuroraType.tiny, color = PensieveControlTokens.textDim)
         }
         Text(subtitle, style = AuroraType.caption, color = PensieveControlTokens.textMute)
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
         facets.forEach { facet ->
             Row(verticalAlignment = Alignment.Top) {
                 Text("•", style = AuroraType.body, color = accent.copy(alpha = if (hintColorless) 0.4f else 1f))
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 Text(
                     facet,
                     style = AuroraType.body,

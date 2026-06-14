@@ -86,12 +86,7 @@ object QuotaResetFormatter {
      * (`displayResetInstant`) delegates to the same logic, the bar and the
      * countdown can never disagree.
      */
-    fun advancedResetIfElapsed(
-        resetsAt: Instant,
-        windowLabel: String?,
-        now: Instant = Instant.now(),
-        zone: ZoneId = ZoneId.systemDefault(),
-    ): Instant? {
+    fun advancedResetIfElapsed(resetsAt: Instant, windowLabel: String?, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): Instant? {
         if (resetsAt.isAfter(now)) return null
 
         val marker = windowLabel.orEmpty().lowercase(Locale.US)

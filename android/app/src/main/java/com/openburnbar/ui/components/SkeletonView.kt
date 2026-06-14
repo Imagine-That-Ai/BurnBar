@@ -28,7 +28,7 @@ import com.openburnbar.ui.theme.AuroraRadius
  */
 
 @Composable
-fun SkeletonView(modifier: Modifier = Modifier, cornerRadius: Int = AuroraRadius.lg) {
+fun SkeletonView(modifier: Modifier = Modifier, cornerRadius: Int = AuroraRadius.LG) {
     val infiniteTransition = rememberInfiniteTransition()
     val shimmerOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -76,6 +76,6 @@ fun SkeletonText(widthFraction: Float = 0.6f, height: Int = 14, modifier: Modifi
         modifier
             .fillMaxWidth(widthFraction)
             .height(height.dp)
-            .clip(RoundedCornerShape(AuroraRadius.full.dp)),
+            .clip(RoundedCornerShape(AuroraRadius.FULL.dp)),
     )
 }

@@ -54,7 +54,8 @@ private const val SIGNAL_CHAT_DOMAIN = "conversations_chat"
 @Serializable
 data class AssistantChatThread(
     val id: String,
-    val runtime: String, // "hermes" or "pi"
+    // "hermes" or "pi"
+    val runtime: String,
     var title: String,
     var preview: String,
     var modelName: String? = null,
@@ -72,7 +73,8 @@ data class AssistantChatThread(
 @Serializable
 data class AssistantChatMessage(
     val id: String = UUID.randomUUID().toString(),
-    val role: String, // "user" | "assistant" | "system"
+    // "user" | "assistant" | "system"
+    val role: String,
     var text: String,
     var timestampMillis: Long,
     var modelName: String? = null,
@@ -380,17 +382,17 @@ class AssistantChatHistoryStore internal constructor(
             return sorted(byID.values.toList())
         }
 
-        @Volatile private var INSTANCE: AssistantChatHistoryStore? = null
+        @Volatile private var instance: AssistantChatHistoryStore? = null
 
         /**
          * Process-wide singleton. The first call wires up the real
          * file + Firestore stores. Subsequent calls return the cached instance.
          */
         fun shared(context: Context): AssistantChatHistoryStore {
-            val cached = INSTANCE
+            val cached = instance
             if (cached != null) return cached
             synchronized(this) {
-                val again = INSTANCE
+                val again = instance
                 if (again != null) return again
                 val store =
                     AssistantChatHistoryStore(
@@ -398,7 +400,7 @@ class AssistantChatHistoryStore internal constructor(
                         cloud = AssistantChatFirestoreMirror(),
                     )
                 store.attachAuthListener()
-                INSTANCE = store
+                instance = store
                 return store
             }
         }
@@ -583,10 +585,10 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
                         AssistantChatHistorySnapshot(threads = json.decodeFromString<List<AssistantChatThread>>(text))
                     }.getOrNull()
                 } ?: run {
-                    // Unreadable legacy file: leave it rather than lose data.
-                    digestCache[partition] = mutableMapOf()
-                    return
-                }
+                // Unreadable legacy file: leave it rather than lose data.
+                digestCache[partition] = mutableMapOf()
+                return
+            }
 
         digestCache[partition] = mutableMapOf()
         saveSnapshot(snapshot, partition)
@@ -603,16 +605,13 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
         }
     }
 
-    private fun partitionDir(partition: String): File =
-        File(root, "partition-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}")
+    private fun partitionDir(partition: String): File = File(root, "partition-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}")
 
     private fun indexFile(partition: String): File = File(partitionDir(partition), "index.json")
 
-    private fun threadFile(partition: String, threadID: String): File =
-        File(partitionDir(partition), "thread-${sanitizeThreadFileComponent(threadID)}.json")
+    private fun threadFile(partition: String, threadID: String): File = File(partitionDir(partition), "thread-${sanitizeThreadFileComponent(threadID)}.json")
 
-    private fun legacyFile(partition: String): File =
-        File(root, "assistant-chat-history-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}.json")
+    private fun legacyFile(partition: String): File = File(root, "assistant-chat-history-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}.json")
 
     companion object {
         /** Filesystem-safe, 1:1-reversible-via-index thread file component. */
@@ -632,11 +631,9 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
             return out.ifEmpty { "_thread" }
         }
 
-        private fun isSafeThreadFileChar(ch: Char): Boolean =
-            isAsciiAlphanumeric(ch) || ch == '_' || ch == '-'
+        private fun isSafeThreadFileChar(ch: Char): Boolean = isAsciiAlphanumeric(ch) || ch == '_' || ch == '-'
 
-        private fun isAsciiAlphanumeric(ch: Char): Boolean =
-            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9'
+        private fun isAsciiAlphanumeric(ch: Char): Boolean = ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9'
     }
 }
 
@@ -691,11 +688,7 @@ internal class AssistantChatFirestoreMirror(
         collection(uid).document(thread.id).set(payload).await()
     }
 
-    private fun firestorePayload(
-        thread: AssistantChatThread,
-        vaultKeyID: String,
-        sealedPayload: CloudVaultSealedPayload,
-    ): MutableMap<String, Any?> {
+    private fun firestorePayload(thread: AssistantChatThread, vaultKeyID: String, sealedPayload: CloudVaultSealedPayload): MutableMap<String, Any?> {
         val payload =
             mutableMapOf<String, Any?>(
                 "id" to thread.id,
@@ -720,12 +713,7 @@ internal class AssistantChatFirestoreMirror(
         return payload
     }
 
-    private suspend fun addSignalEnvelopeIfAvailable(
-        uid: String,
-        threadID: String,
-        plaintextBytes: ByteArray,
-        payload: MutableMap<String, Any?>,
-    ) {
+    private suspend fun addSignalEnvelopeIfAvailable(uid: String, threadID: String, plaintextBytes: ByteArray, payload: MutableMap<String, Any?>) {
         // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM "sealedPayload" already
         // in `payload` is the FLOOR; the additive "signalEnvelope" is gated by the
         // conversations_chat sealingScheme and is BEST-EFFORT. On ANY seal failure (e.g. a
@@ -737,7 +725,10 @@ internal class AssistantChatFirestoreMirror(
                 val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
                 val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
                 AndroidSignalIdentityKeyStore.publishIfNeeded(
-                    uid = uid, deviceId = escrow.deviceId, identity = identity, firestore = firestore,
+                    uid = uid,
+                    deviceId = escrow.deviceId,
+                    identity = identity,
+                    firestore = firestore,
                 )
                 val recipients =
                     AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)

@@ -86,13 +86,7 @@ internal fun AgentPermissionPresetFlowRow(
 }
 
 @Composable
-private fun AgentPermissionPresetButton(
-    preset: AgentPermissionPreset,
-    selected: Boolean,
-    isWorking: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
+private fun AgentPermissionPresetButton(preset: AgentPermissionPreset, selected: Boolean, isWorking: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val colors =
         if (preset == AgentPermissionPreset.YOLO) {
             ButtonDefaults.buttonColors(
@@ -113,10 +107,7 @@ private fun AgentPermissionPresetButton(
     }
 }
 
-private fun isPresetSelected(
-    receipt: com.openburnbar.data.computeruse.AgentCapabilityGrantReceipt?,
-    preset: AgentPermissionPreset,
-): Boolean {
+private fun isPresetSelected(receipt: com.openburnbar.data.computeruse.AgentCapabilityGrantReceipt?, preset: AgentPermissionPreset): Boolean {
     return receipt?.capabilities?.sorted() == preset.capabilities.map { it.wireValue }.sorted() &&
         receipt.trustMode == preset.trustMode &&
         receipt.isActive
@@ -174,10 +165,7 @@ internal fun PermissionButtonContent(preset: AgentPermissionPreset, isWorking: B
 }
 
 @Composable
-internal fun AgentPermissionStatusFooter(
-    statusText: String,
-    receipt: com.openburnbar.data.computeruse.AgentCapabilityGrantReceipt?,
-) {
+internal fun AgentPermissionStatusFooter(statusText: String, receipt: com.openburnbar.data.computeruse.AgentCapabilityGrantReceipt?) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = statusText,

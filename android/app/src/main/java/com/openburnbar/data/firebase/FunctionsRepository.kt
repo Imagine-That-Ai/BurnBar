@@ -279,20 +279,19 @@ class FunctionsRepository {
         phoneRelayPublicKey: String? = null,
         phoneRelayKeyVersion: Int? = null,
         phoneRelayEncryption: String? = null,
-    ): Map<String, Any> =
-        callMap(
-            "approveHermesGatewayDeviceGrant",
-            buildHermesGatewayDeviceGrantPayload(
-                userCode = userCode,
-                displayName = displayName,
-                destinationId = destinationId,
-                scopes = scopes,
-                phoneRelayPublicKey = phoneRelayPublicKey,
-                phoneRelayKeyVersion = phoneRelayKeyVersion,
-                phoneRelayEncryption = phoneRelayEncryption,
-                clientAppBuild = BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() },
-            ),
-        )
+    ): Map<String, Any> = callMap(
+        "approveHermesGatewayDeviceGrant",
+        buildHermesGatewayDeviceGrantPayload(
+            userCode = userCode,
+            displayName = displayName,
+            destinationId = destinationId,
+            scopes = scopes,
+            phoneRelayPublicKey = phoneRelayPublicKey,
+            phoneRelayKeyVersion = phoneRelayKeyVersion,
+            phoneRelayEncryption = phoneRelayEncryption,
+            clientAppBuild = BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() },
+        ),
+    )
 
     suspend fun adoptProviderAccountForDevice(
         accountId: String,
