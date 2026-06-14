@@ -43,8 +43,16 @@ final class AuthRepository {
         guard auth.currentUser != nil else {
             throw CloudGatewayError.classified(.notAuthenticated)
         }
-        let callable = Functions.functions(region: "us-central1").httpsCallable("deleteUserCloudData")
-        _ = try await callable.call([String: Any]())
+        guard let uid = auth.currentUser?.uid else {
+            throw CloudGatewayError.classified(.notAuthenticated)
+        }
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "deleteUserCloudData",
+            deviceId: deviceId,
+            actionKind: "user_cloud_data_delete",
+            subjectId: uid
+        )
         try? auth.signOut()
     }
 

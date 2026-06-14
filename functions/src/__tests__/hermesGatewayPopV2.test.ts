@@ -215,6 +215,7 @@ function makeReq(opts: {
   path: string;
   query: Record<string, unknown>;
   signedQuery?: Record<string, unknown>;
+  fixedNonce?: string;
 }): TestHttpRequest {
   const body = {};
   const headers: Record<string, string> = {
@@ -358,7 +359,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
       };
     };
 
-    const headers = {
+    const headers: Record<string, string> = {
       authorization: `Bearer ${TOKEN}`,
       ...popHeadersFuture({
         version: 2,
@@ -371,7 +372,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     };
 
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
-    const dispatch = dispatchHermesGatewayRequest as never;
+    const dispatch = dispatchHermesGatewayRequest as unknown as (req: unknown, res: unknown) => Promise<void>;
     const { res, captured } = makeRes();
     const req = {
       method: "GET",
@@ -390,7 +391,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`);
     expect(nonceDoc).toBeDefined();
     const expectedExpire = futureTime.getTime() + 5 * 60 * 1000;
-    expect(nonceDoc?.expireAt?.toMillis()).toBe(expectedExpire);
+    expect((nonceDoc?.expireAt as { toMillis(): number })?.toMillis()).toBe(expectedExpire);
 
     dateNowSpy.mockRestore();
   });

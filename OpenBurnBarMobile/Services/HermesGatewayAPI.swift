@@ -91,6 +91,15 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         }
 
         try await prepareHermesGatewayApprovalContext()
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let envelope = try await ComputerUseSecurityCallableClient.highRiskOwnerActionEnvelope(
+            actionKind: "hermes_gateway_device_grant_approve",
+            subjectId: userCode,
+            deviceId: deviceId
+        )
+        for (key, value) in envelope {
+            payload[key] = value
+        }
         let executor = FirebaseCallableExecutor(callable)
         let callablePayload = FirebaseCallablePayload(payload)
         let result: HTTPSCallableResult
@@ -424,7 +433,6 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         advertisedModel: String? = nil,
         capabilities: [String] = ["chat_completions"]
     ) async throws -> HermesConnectionRecord {
-        let callable = try functionsClient().httpsCallable("completeHermesPairing")
         var payload: [String: Any] = [
             "pairingId": pairingId,
             "code": code,
@@ -440,7 +448,14 @@ final class HermesGatewayAPI: HermesGatewayRepository {
             payload["advertisedModel"] = advertisedModel
         }
 
-        let result = try await callable.call(payload)
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "completeHermesPairing",
+            deviceId: deviceId,
+            actionKind: "hermes_pairing_complete",
+            subjectId: pairingId,
+            payload: payload
+        )
         return try decodeHermesValue(HermesConnectionRecord.self, from: result.data)
     }
 
@@ -462,8 +477,14 @@ final class HermesGatewayAPI: HermesGatewayRepository {
     }
 
     func revokeRemoteMcpClient(clientID: String) async throws {
-        let callable = try functionsClient().httpsCallable("revokeRemoteMcpClient")
-        _ = try await callable.call(["clientId": clientID])
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "revokeRemoteMcpClient",
+            deviceId: deviceId,
+            actionKind: "remote_mcp_grant_revoke",
+            subjectId: clientID,
+            payload: ["clientId": clientID]
+        )
     }
 
     private func decodeHermesValue<T: Decodable>(_ type: T.Type, from raw: Any) throws -> T {

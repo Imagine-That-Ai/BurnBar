@@ -410,15 +410,102 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func providerAccountSubjectId(provider: String, accountID: String?) -> String {
+        let raw = accountID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? accountID!
+            : "\(provider)_default"
+        let lowered = raw.lowercased()
+        let sanitized = lowered
+            .replacingOccurrences(of: /[^a-z0-9_-]/, with: "-")
+            .replacingOccurrences(of: /-+/, with: "-")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return sanitized.isEmpty ? "\(provider)_default" : sanitized
+    }
+
+    static func highRiskOwnerActionEnvelope(
+        actionKind: String,
+        subjectId: String,
+        deviceId: String,
+        approve: Bool = true
+    ) async throws -> [String: Any] {
+        let uid = try requireSignedInUser().uid
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let identity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+        let platform = await MainActor.run {
+            UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+        }
+        let userRef = Firestore.firestore().collection("users").document(uid)
+        try await MobileSignalIdentityPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: deviceId,
+            platform: platform,
+            identity: identity
+        )
+        let issuedAtMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        let proofPayload = CloudVaultTrustedDeviceActionProofPayload(
+            uid: uid,
+            deviceId: deviceId,
+            actionKind: actionKind,
+            subjectId: subjectId,
+            approve: approve,
+            nonce: nonce,
+            issuedAtMillis: issuedAtMillis,
+            deviceSignalIdentityKeyId: identity.identityKeyId,
+            deviceSignalIdentityPublicKeyFingerprint: identity.publicKeyFingerprint
+        )
+        let signature = try CloudVaultTrustedDeviceActionProof.sign(proofPayload, identity: identity)
+        return [
+            "nonce": nonce,
+            "trustedDeviceId": deviceId,
+            "actionProof": [
+                "version": CloudVaultTrustedDeviceActionProof.version,
+                "algorithm": CloudVaultTrustedDeviceActionProof.algorithm,
+                "deviceSignalIdentityKeyId": identity.identityKeyId,
+                "deviceSignalIdentityPublicKeyFingerprint": identity.publicKeyFingerprint,
+                "issuedAtMillis": issuedAtMillis,
+                "signature": signature
+            ]
+        ]
+    }
+
+    @discardableResult
+    static func callHighRiskOwnerAction(
+        _ callableName: String,
+        deviceId: String,
+        actionKind: String,
+        subjectId: String,
+        payload: [String: Any] = [:],
+        approve: Bool = true
+    ) async throws -> HTTPSCallableResult {
+        var merged = payload
+        let envelope = try await highRiskOwnerActionEnvelope(
+            actionKind: actionKind,
+            subjectId: subjectId,
+            deviceId: deviceId,
+            approve: approve
+        )
+        for (key, value) in envelope {
+            merged[key] = value
+        }
+        return try await functions.httpsCallable(callableName).call(merged)
+    }
+
     /// Bind a CLI-agent mission approve/reject decision to this trusted native
     /// escrow device via the App-Check-enforced `respondMissionApproval` callable.
     static func respondMissionApproval(requestId: String, approve: Bool, deviceId: String) async throws {
-        _ = try requireSignedInUser()
-        let result = try await functions.httpsCallable("respondMissionApproval").call([
-            "requestId": requestId,
-            "approve": approve,
-            "deviceId": deviceId
-        ])
+        let result = try await callHighRiskOwnerAction(
+            "respondMissionApproval",
+            deviceId: deviceId,
+            actionKind: "computer_use_mission_approval",
+            subjectId: requestId,
+            payload: [
+                "requestId": requestId,
+                "approve": approve,
+                "deviceId": deviceId
+            ],
+            approve: approve
+        )
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Mission approval response failed.")
         }
@@ -429,12 +516,18 @@ enum ComputerUseSecurityCallableClient {
     /// `respondHermesGatewayApproval` callable. Mirrors `respondMissionApproval`
     /// but targets the gateway's own `hermes_gateway_approvals` collection.
     static func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws {
-        _ = try requireSignedInUser()
-        let result = try await functions.httpsCallable("respondHermesGatewayApproval").call([
-            "approvalId": approvalId,
-            "approve": approve,
-            "deviceId": deviceId
-        ])
+        let result = try await callHighRiskOwnerAction(
+            "respondHermesGatewayApproval",
+            deviceId: deviceId,
+            actionKind: "hermes_gateway_approval",
+            subjectId: approvalId,
+            payload: [
+                "approvalId": approvalId,
+                "approve": approve,
+                "deviceId": deviceId
+            ],
+            approve: approve
+        )
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Gateway approval response failed.")
         }

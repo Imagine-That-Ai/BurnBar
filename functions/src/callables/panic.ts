@@ -168,6 +168,10 @@ export const revokeAllAccess = onCall(
       throw new HttpsError("invalid-argument", "scope must be sync or all.");
     }
     const scope: PanicScope = scopeRaw;
+    await enforceHighRiskOwnerAction(request, uid, {
+      actionKind: "revoke_all_access",
+      subjectId: scope,
+    });
 
     // Each surface is best-effort + independent: a failure on one must not block
     // the others (this is a panic button — revoke as much as possible). But a

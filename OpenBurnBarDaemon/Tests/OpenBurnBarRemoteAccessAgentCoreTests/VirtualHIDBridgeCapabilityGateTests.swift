@@ -99,4 +99,127 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             return
         }
     }
+
+    func test_bindingRejectsMismatchedEscrowDevice() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let nonceStore = InMemoryCapabilityTokenNonceStore()
+        let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "click",
+            boundEscrowDeviceId: "iphone-a"
+        )
+        let request = VirtualHIDBridgeCapabilityGate.Request(
+            kind: "click",
+            text: nil,
+            key: nil,
+            modifiers: nil,
+            capabilityToken: token
+        )
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(escrowDeviceId: "iphone-b")
+        guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validate(
+            request,
+            verifier: leafVerifier,
+            presenterBinding: binding
+        ) else {
+            XCTFail("Expected escrow device mismatch")
+            return
+        }
+    }
+
+    func test_bindingRejectsMismatchedAttestationHash() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let nonceStore = InMemoryCapabilityTokenNonceStore()
+        let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "click",
+            attestationHashBlake3: "aaa"
+        )
+        let request = VirtualHIDBridgeCapabilityGate.Request(
+            kind: "click",
+            text: nil,
+            key: nil,
+            modifiers: nil,
+            capabilityToken: token
+        )
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(attestationHashBlake3: "bbb")
+        guard case .failure(.capabilityTokenAttestationMismatch) = VirtualHIDBridgeCapabilityGate.validate(
+            request,
+            verifier: leafVerifier,
+            presenterBinding: binding
+        ) else {
+            XCTFail("Expected attestation mismatch")
+            return
+        }
+    }
+
+    func test_bindingRejectsMismatchedScopeHash() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let nonceStore = InMemoryCapabilityTokenNonceStore()
+        let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope-a",
+            actionKind: "click"
+        )
+        let request = VirtualHIDBridgeCapabilityGate.Request(
+            kind: "click",
+            text: nil,
+            key: nil,
+            modifiers: nil,
+            capabilityToken: token
+        )
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(scopeHash: "scope-b")
+        guard case .failure(.capabilityTokenScopeMismatch) = VirtualHIDBridgeCapabilityGate.validate(
+            request,
+            verifier: leafVerifier,
+            presenterBinding: binding
+        ) else {
+            XCTFail("Expected scope mismatch")
+            return
+        }
+    }
+
+    func test_bindingAcceptsMatchingPresenter() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let nonceStore = InMemoryCapabilityTokenNonceStore()
+        let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope-a",
+            actionKind: "click",
+            boundEscrowDeviceId: "iphone-a",
+            attestationHashBlake3: "attest-a"
+        )
+        let request = VirtualHIDBridgeCapabilityGate.Request(
+            kind: "click",
+            text: nil,
+            key: nil,
+            modifiers: nil,
+            capabilityToken: token
+        )
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
+            escrowDeviceId: "iphone-a",
+            attestationHashBlake3: "attest-a",
+            scopeHash: "scope-a"
+        )
+        if case .failure = VirtualHIDBridgeCapabilityGate.validate(
+            request,
+            verifier: leafVerifier,
+            presenterBinding: binding
+        ) {
+            XCTFail("Expected success with matching binding")
+        }
+    }
 }

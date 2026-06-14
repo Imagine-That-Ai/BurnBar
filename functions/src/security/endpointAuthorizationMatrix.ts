@@ -9,20 +9,29 @@ type EndpointAuthorizationEntry = {
   objectIdsFromClient: string[];
   ownershipCheck: string;
   negativeBolaTest: string;
+  highRiskComputerUse: boolean;
+  actionKind?: string;
   publicJustification?: string;
   notes?: string;
 };
 
-type MatrixDefaults = Omit<EndpointAuthorizationEntry, "exportedName" | "objectIdsFromClient"> & {
+type MatrixDefaults = Omit<EndpointAuthorizationEntry, "exportedName" | "objectIdsFromClient" | "highRiskComputerUse" | "actionKind"> & {
   objectIdsFromClient?: string[];
+  highRiskComputerUse?: boolean;
+  actionKind?: string;
 };
 
 function entries(names: string[], defaults: MatrixDefaults): EndpointAuthorizationEntry[] {
-  return names.map((exportedName) => ({
-    exportedName,
-    objectIdsFromClient: defaults.objectIdsFromClient ?? [],
-    ...defaults,
-  }));
+  return names.map((exportedName) => {
+    const { highRiskComputerUse, actionKind, ...rest } = defaults;
+    return {
+      exportedName,
+      objectIdsFromClient: rest.objectIdsFromClient ?? [],
+      highRiskComputerUse: highRiskComputerUse === true,
+      ...(actionKind !== undefined ? { actionKind } : {}),
+      ...rest,
+    };
+  });
 }
 
 const publicHealth = entries(["healthCheck", "healthLive", "healthReady"], {
@@ -112,7 +121,8 @@ const codePairingCallables = entries(
     tenantSource: "request auth uid and pairing/link session",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "pairing/link session belongs to authenticated uid or one-time secret/code",
-    negativeBolaTest: "pairing-link-replay-and-cross-user-tests",
+    negativeBolaTest:
+      "functions/src/__tests__/phoneControlPairingBinding.test.ts; functions/src/__tests__/hermesGatewayKeyImmutability.test.ts; functions/src/__tests__/irohPairingFreshness.test.ts",
   },
 );
 
@@ -123,7 +133,8 @@ const gatewayHttp = entries(["burnBarHermesGateway"], {
   tenantSource: "token index resolves uid and clientId",
   objectIdsFromClient: ["messageId", "eventId", "attachmentId", "clientId", "destinationId"],
   ownershipCheck: "resolveGatewayGrant checks active client, scope, expiry, PoP, and uid/client namespace",
-  negativeBolaTest: "hermesGatewayPopV2.test.ts and hermesGatewayAttachmentInit.test.ts",
+  negativeBolaTest:
+    "functions/src/__tests__/hermesGatewayPopV2.test.ts; functions/src/__tests__/hermesGatewayAttachmentInit.test.ts",
 });
 
 const authScopedCallables = entries(
@@ -244,7 +255,7 @@ const authScopedCallables = entries(
     ownershipCheck:
       "handler must derive uid from request.auth.uid and validate object path or owner uid before Admin SDK access",
     negativeBolaTest:
-      "endpoint-specific BOLA tests required; matrix drift is enforced by endpointAuthorizationMatrix.test.ts",
+      "functions/src/__tests__/misc.test.ts; functions/src/__tests__/stripe.test.ts; functions/src/__tests__/hermesGatewayPopV2.test.ts; functions/src/__tests__/hermesGatewayAttachmentInit.test.ts; functions/src/__tests__/projectMemoryDocId.test.ts; functions/src/__tests__/knowledgeMemoryDedupHash.test.ts; functions/src/__tests__/submitAgentNotificationReply.test.ts; functions/src/__tests__/highRiskOwnerActionCallableGuards.test.ts; firestore-rules-tests/computer-use.test.js; firestore-rules-tests/session-log-backup.test.js",
   },
 );
 
@@ -255,8 +266,25 @@ const outboundServiceJobs = entries(["sendVoIPOutbound", "sendFcmOutbound"], {
   tenantSource: "request.auth.uid and registered device token owner",
   objectIdsFromClient: ["deviceId", "notificationId"],
   ownershipCheck: "push target must be owned by authenticated uid or server-generated event",
-  negativeBolaTest: "push-resilience.test.ts and agent notification reply tests",
+  negativeBolaTest: "functions/src/__tests__/voipPushMetadata.test.ts; functions/src/__tests__/submitAgentNotificationReply.test.ts",
 });
+
+const HIGH_RISK_ENDPOINTS: Record<string, string> = {
+  approveHermesGatewayDeviceGrant: "hermes_gateway_device_grant_approve",
+  connectProviderAccount: "provider_account_connect",
+  connectProviderCredential: "provider_credential_connect",
+  connectHostedQuotaAccount: "hosted_quota_account_connect",
+  connectSelfHostedQuotaAccount: "self_hosted_quota_account_connect",
+  exportUserData: "data_export",
+  deleteUserCloudData: "user_cloud_data_delete",
+  revokeAllAccess: "revoke_all_access",
+  updateProviderAccount: "provider_account_update",
+  revokeRemoteMcpClient: "remote_mcp_grant_revoke",
+  deleteHostedQuotaCredentials: "hosted_quota_credential_delete",
+  deleteProviderAccount: "provider_account_delete",
+  completeHermesPairing: "hermes_pairing_complete",
+  completePiAgentPairing: "pi_agent_pairing_complete",
+};
 
 export const endpointAuthorizationMatrix: EndpointAuthorizationEntry[] = [
   ...publicHealth,
@@ -267,7 +295,13 @@ export const endpointAuthorizationMatrix: EndpointAuthorizationEntry[] = [
   ...gatewayHttp,
   ...authScopedCallables,
   ...outboundServiceJobs,
-].sort((left, right) => left.exportedName.localeCompare(right.exportedName));
+].map((entry) => {
+  const actionKind = HIGH_RISK_ENDPOINTS[entry.exportedName];
+  if (actionKind) {
+    return { ...entry, highRiskComputerUse: true, actionKind };
+  }
+  return entry;
+}).sort((left, right) => left.exportedName.localeCompare(right.exportedName));
 
 export function endpointAuthorizationByName(): Map<string, (typeof endpointAuthorizationMatrix)[number]> {
   return new Map(endpointAuthorizationMatrix.map((entry) => [entry.exportedName, entry]));

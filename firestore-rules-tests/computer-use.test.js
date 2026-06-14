@@ -22,6 +22,8 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   deleteDoc,
   doc,
@@ -30,8 +32,10 @@ import {
   Timestamp,
 } from "firebase/firestore";
 
-const PROJECT_ID = "burnbar-test";
-const RULES_PATH = "../firestore.rules";
+const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
+const RULES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
+const FIRESTORE_HOST = process.env.FIRESTORE_TEST_HOST || "127.0.0.1";
+const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080", 10);
 
 const aliceUid = "alice-uid";
 const bobUid = "bob-uid";
@@ -176,8 +180,8 @@ async function main() {
     projectId: PROJECT_ID,
     firestore: {
       rules: readFileSync(RULES_PATH, "utf8"),
-      host: "127.0.0.1",
-      port: 8080,
+      host: FIRESTORE_HOST,
+      port: FIRESTORE_PORT,
     },
   });
 
@@ -211,6 +215,56 @@ async function main() {
           ...validSessionDoc,
           userId: bobUid,
         })
+      );
+    });
+
+    await step("session update cannot mutate userId or add descriptor fields", async () => {
+      const path = `users/${aliceUid}/computer_use_sessions/session-1`;
+      await assertFails(
+        setDoc(
+          doc(aliceDB, path),
+          {
+            ...validSessionDoc,
+            userId: bobUid,
+          },
+          { merge: true }
+        )
+      );
+      await assertFails(setDoc(doc(aliceDB, path), { screenshots: ["plaintext-screen"] }, { merge: true }));
+      await assertFails(
+        setDoc(
+          doc(aliceDB, path),
+          {
+            actionDescriptors: [{ url: "https://example.test/private" }],
+          },
+          { merge: true }
+        )
+      );
+    });
+
+    await step("session update cannot mutate mode or trustMode", async () => {
+      const path = `users/${aliceUid}/computer_use_sessions/session-1`;
+      await assertFails(setDoc(doc(aliceDB, path), { mode: "system" }, { merge: true }));
+      await assertFails(setDoc(doc(aliceDB, path), { trustMode: "trusted" }, { merge: true }));
+    });
+
+    await step("session end-of-session update with audit head succeeds", async () => {
+      await assertSucceeds(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/computer_use_sessions/session-1`),
+          {
+            endedAt: Timestamp.fromMillis(Date.now()),
+            endReason: "completed",
+            actionCount: 1,
+            approvalCount: 1,
+            rejectionCount: 0,
+            panicHaltCount: 0,
+            visionSpendUSD: 0.02,
+            auditHeadHashHex: "b".repeat(64),
+            updatedAt: Timestamp.fromMillis(Date.now()),
+          },
+          { merge: true }
+        )
       );
     });
 

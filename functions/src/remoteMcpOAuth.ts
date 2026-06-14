@@ -110,3 +110,23 @@ export async function issueRemoteMcpGrantForSignedInUser(
     grantMode,
   };
 }
+
+export function isRemoteMcpProductionIssuerRuntime(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.NODE_ENV === "test") return false;
+  return typeof env.K_SERVICE === "string" && env.K_SERVICE.length > 0;
+}
+
+export function assertRemoteMcpIssuerTokenPosture(
+  config: { tokenSecret?: string; tokenEd25519PrivateKeyBase64PEM?: string },
+  env: Record<string, string | undefined> = process.env,
+): void {
+  const isProduction = env.REMOTE_MCP_RUNTIME_ENVIRONMENT === "production" || isRemoteMcpProductionIssuerRuntime(env);
+  if (isProduction) {
+    if (config.tokenSecret) {
+      throw new Error("REMOTE_MCP_TOKEN_HMAC_SECRET must not be used in production. Ed25519 signing is required.");
+    }
+    if (!config.tokenEd25519PrivateKeyBase64PEM) {
+      throw new Error("REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 must be set in production.");
+    }
+  }
+}

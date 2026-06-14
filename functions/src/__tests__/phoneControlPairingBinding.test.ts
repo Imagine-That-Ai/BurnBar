@@ -125,6 +125,23 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       writes.forEach((write) => write());
       return result;
     },
+    batch() {
+      const ops: Array<() => void> = [];
+      return {
+        set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
+          ops.push(() => {
+            const existing = opts?.merge ? (store.get(ref.path) ?? {}) : {};
+            store.set(ref.path, { ...existing, ...data });
+          });
+        },
+        delete(ref: { path: string }) {
+          ops.push(() => store.delete(ref.path));
+        },
+        async commit() {
+          ops.forEach((op) => op());
+        },
+      };
+    },
   };
 
   return { store, dbMock, FieldValueMock, FakeTimestamp };

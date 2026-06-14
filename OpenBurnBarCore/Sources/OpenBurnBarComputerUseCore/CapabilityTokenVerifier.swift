@@ -182,16 +182,24 @@ public struct CapabilityTokenLeafVerifier: Sendable {
         guard (try? signer.verify(token: token, publicKey: trust.publicKey)) == true else {
             return .failure(.signatureInvalid)
         }
-        if let required = request.requiredAttestationHashBlake3 {
-            guard token.attestationHashBlake3 == required else {
+        // Attestation binding is enforced symmetrically: if either side carries
+        // a hash, the token must match the required hash. This prevents a bound
+        // token from being accepted under an unbound request (replay across
+        // same-UID first-party contexts) and vice versa.
+        let requiredAttestation = request.requiredAttestationHashBlake3
+        let tokenAttestation = token.attestationHashBlake3
+        if requiredAttestation != nil || tokenAttestation != nil {
+            guard tokenAttestation == requiredAttestation else {
                 return .failure(.attestationMismatch)
             }
         }
-        if let bound = request.boundEscrowDeviceId ?? token.boundEscrowDeviceId {
-            if let tokenBound = token.boundEscrowDeviceId, tokenBound != bound {
-                return .failure(.escrowDeviceMismatch)
-            }
-            if token.boundEscrowDeviceId == nil, request.boundEscrowDeviceId != nil {
+
+        // Escrow-device binding is enforced symmetrically: if either side
+        // specifies a device, they must agree.
+        let requiredDevice = request.boundEscrowDeviceId
+        let tokenDevice = token.boundEscrowDeviceId
+        if requiredDevice != nil || tokenDevice != nil {
+            guard tokenDevice == requiredDevice else {
                 return .failure(.escrowDeviceMismatch)
             }
         }

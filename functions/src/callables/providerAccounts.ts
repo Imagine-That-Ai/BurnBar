@@ -36,7 +36,6 @@ import { errorMessage, optionalStringField, requireProviderAccountDoc, stripUnde
 import type { ProviderAccountConnectContext, ProviderAccountDoc } from "../types.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
-import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 
 // ---------------------------------------------------------------------------
 // Callable: connectProviderAccount
@@ -296,10 +295,6 @@ export const connectSelfHostedQuotaAccount = onCall(
         actionKind: "self_hosted_quota_account_connect",
         subjectId: accountID,
       });
-      await enforceHighRiskOwnerAction(request, uid, {
-        actionKind: "self_hosted_quota_account_connect",
-        subjectId: `${provider}:${accountID}`,
-      });
       const label =
         boundedTrimmedString(request.data.label, "label", 80) ?? `${hostedProviderLabel(provider)} self-hosted`;
       const now = nowISO();
@@ -430,10 +425,6 @@ export const deleteHostedQuotaCredentials = onCall(
       await enforceHighRiskOwnerAction(request, uid, {
         actionKind: "hosted_quota_credential_delete",
         subjectId: accountID,
-      });
-      await enforceHighRiskOwnerAction(request, uid, {
-        actionKind: "hosted_quota_credential_delete",
-        subjectId: `${provider}:${accountID}`,
       });
       const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
       const accountSnap = await accountRef.get();
@@ -576,6 +567,10 @@ export const deleteProviderAccount = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     const accountID = accountIDFor("account", request.data.accountID);
+    await enforceHighRiskOwnerAction(request, uid, {
+      actionKind: "provider_account_delete",
+      subjectId: accountID,
+    });
     const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
     const accountSnap = await accountRef.get();
     if (!accountSnap.exists) {

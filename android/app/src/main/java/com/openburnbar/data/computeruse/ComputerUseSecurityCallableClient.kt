@@ -6,6 +6,11 @@ import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.cloud.AndroidCloudVaultRevocationRotation
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
+import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProof
+import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofPayload
+import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofSigner
 import kotlinx.coroutines.tasks.await
 
 data class RelaySenderKeyPublishRequest(
@@ -284,23 +289,114 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Agent grant request queueing failed.")
     }
 
+    fun providerAccountSubjectId(provider: String, accountId: String?): String {
+        val raw = accountId?.trim()?.takeIf { it.isNotEmpty() } ?: "${provider}_default"
+        val lowered = raw.lowercase()
+        val sanitized =
+            lowered
+                .replace(Regex("[^a-z0-9_-]"), "-")
+                .replace(Regex("-+"), "-")
+                .trim('-')
+        return sanitized.ifEmpty { "${provider}_default" }
+    }
+
+    suspend fun highRiskOwnerActionEnvelope(
+        actionKind: String,
+        subjectId: String,
+        deviceId: String,
+        approve: Boolean = true,
+        firestore: com.google.firebase.firestore.FirebaseFirestore = com.google.firebase.firestore.FirebaseFirestore.getInstance(),
+    ): Map<String, Any> {
+        val uid = requireAuthenticatedUser()
+        bindAppCheckAttestation()
+        val nonce = issueHighRiskActionNonce()
+        val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        val resolvedDeviceId = deviceId.trim().ifEmpty { keypair.deviceId }
+        val identity = AndroidSignalIdentityKeyStore.loadOrCreate(resolvedDeviceId, keypair.keyVersion)
+        AndroidSignalIdentityKeyStore.publishIfNeeded(
+            uid = uid,
+            deviceId = resolvedDeviceId,
+            identity = identity,
+            firestore = firestore,
+        )
+        val issuedAtMillis = System.currentTimeMillis()
+        val proofPayload =
+            CloudVaultTrustedDeviceActionProofPayload(
+                uid = uid,
+                deviceId = resolvedDeviceId,
+                actionKind = actionKind,
+                subjectId = subjectId,
+                approve = approve,
+                nonce = nonce,
+                issuedAtMillis = issuedAtMillis,
+                deviceSignalIdentityKeyId = identity.identityKeyId,
+                deviceSignalIdentityPublicKeyFingerprint = identity.publicKeyFingerprint,
+            )
+        val signature = CloudVaultTrustedDeviceActionProofSigner.sign(proofPayload, identity)
+        val actionProof =
+            CloudVaultTrustedDeviceActionProof(
+                deviceSignalIdentityKeyId = identity.identityKeyId,
+                deviceSignalIdentityPublicKeyFingerprint = identity.publicKeyFingerprint,
+                issuedAtMillis = issuedAtMillis,
+                signature = signature,
+            ).asMap()
+        return mapOf(
+            "nonce" to nonce,
+            "trustedDeviceId" to resolvedDeviceId,
+            "actionProof" to actionProof,
+        )
+    }
+
+    suspend fun callHighRiskOwnerAction(
+        callableName: String,
+        deviceId: String,
+        actionKind: String,
+        subjectId: String,
+        payload: Map<String, Any> = emptyMap(),
+        approve: Boolean = true,
+    ): Map<*, *> {
+        val envelope = highRiskOwnerActionEnvelope(actionKind, subjectId, deviceId, approve)
+        val merged = LinkedHashMap<String, Any>(payload.size + envelope.size)
+        merged.putAll(payload)
+        merged.putAll(envelope)
+        val result = functions.getHttpsCallable(callableName).call(merged).await()
+        return requireOk(result.getData(), "$callableName failed.")
+    }
+
     /**
      * Bind a CLI-agent mission approve/reject decision to this trusted native
      * escrow device via the App-Check-enforced `respondMissionApproval` callable.
      */
     suspend fun respondMissionApproval(requestId: String, approve: Boolean, deviceId: String) {
-        requireAuthenticatedUser()
-        val result =
-            functions.getHttpsCallable("respondMissionApproval")
-                .call(
-                    mapOf(
-                        "requestId" to requestId,
-                        "approve" to approve,
-                        "deviceId" to deviceId,
-                    ),
-                )
-                .await()
-        requireOk(result.getData(), "Mission approval response failed.")
+        callHighRiskOwnerAction(
+            callableName = "respondMissionApproval",
+            deviceId = deviceId,
+            actionKind = "computer_use_mission_approval",
+            subjectId = requestId,
+            payload =
+            mapOf(
+                "requestId" to requestId,
+                "approve" to approve,
+                "deviceId" to deviceId,
+            ),
+            approve = approve,
+        )
+    }
+
+    suspend fun respondHermesGatewayApproval(approvalId: String, approve: Boolean, deviceId: String) {
+        callHighRiskOwnerAction(
+            callableName = "respondHermesGatewayApproval",
+            deviceId = deviceId,
+            actionKind = "hermes_gateway_approval",
+            subjectId = approvalId,
+            payload =
+            mapOf(
+                "approvalId" to approvalId,
+                "approve" to approve,
+                "deviceId" to deviceId,
+            ),
+            approve = approve,
+        )
     }
 
     private suspend fun refreshAuthClaimsAfterBind() {

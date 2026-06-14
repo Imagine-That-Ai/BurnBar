@@ -4,7 +4,9 @@ import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.BuildConfig
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.CloudVaultSealedText
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.openburnbar.data.hermes.relay.HermesRelayCrypto
 import com.openburnbar.data.models.DeviceLinkCapability
 import kotlinx.coroutines.tasks.await
@@ -93,7 +95,12 @@ internal val DEFAULT_HERMES_GATEWAY_SCOPES =
 
 class FunctionsRepository {
     private val functions: FirebaseFunctions = Firebase.functions
-    internal val piAgent: FunctionsPiAgentRepository by lazy { FunctionsPiAgentRepository(functions, ::callMap) }
+    private val securityClient = ComputerUseSecurityCallableClient(functions)
+    internal val piAgent: FunctionsPiAgentRepository by lazy {
+        FunctionsPiAgentRepository(functions, ::callMap, securityClient, ::localDeviceId)
+    }
+
+    private fun localDeviceId(): String = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
 
     suspend fun searchStreams(query: String, limit: Int = 20): List<Map<String, Any>> {
         val result =
@@ -226,9 +233,14 @@ class FunctionsRepository {
     }
 
     suspend fun deleteProviderAccount(accountId: String) {
-        functions.getHttpsCallable("deleteProviderAccount")
-            .call(mapOf("accountId" to accountId))
-            .await()
+        val subjectId = securityClient.providerAccountSubjectId("account", accountId)
+        securityClient.callHighRiskOwnerAction(
+            callableName = "deleteProviderAccount",
+            deviceId = localDeviceId(),
+            actionKind = "provider_account_delete",
+            subjectId = subjectId,
+            payload = mapOf("accountID" to accountId),
+        )
     }
 
     suspend fun addProviderConnection(providerId: String, credentials: Map<String, String>): Map<String, Any> {
@@ -262,13 +274,24 @@ class FunctionsRepository {
         tokenPlanTier?.takeIf { it.isNotBlank() }?.let { payload["tokenPlanTier"] = it }
         tokenPlanBillingCycle?.takeIf { it.isNotBlank() }?.let { payload["tokenPlanBillingCycle"] = it }
         authMethodId?.takeIf { it.isNotBlank() }?.let { payload["authMethodID"] = it }
-        return callMap("connectProviderAccount", payload)
+        val subjectId = securityClient.providerAccountSubjectId(providerId, null)
+        return securityClient.callHighRiskOwnerAction(
+            callableName = "connectProviderAccount",
+            deviceId = localDeviceId(),
+            actionKind = "provider_account_connect",
+            subjectId = subjectId,
+            payload = payload,
+        ).asStringAnyMap() ?: emptyMap()
     }
 
     suspend fun revokeRemoteMcpClient(clientId: String) {
-        functions.getHttpsCallable("revokeRemoteMcpClient")
-            .call(mapOf("clientId" to clientId))
-            .await()
+        securityClient.callHighRiskOwnerAction(
+            callableName = "revokeRemoteMcpClient",
+            deviceId = localDeviceId(),
+            actionKind = "remote_mcp_grant_revoke",
+            subjectId = clientId,
+            payload = mapOf("clientId" to clientId),
+        )
     }
 
     suspend fun approveHermesGatewayDeviceGrant(
@@ -279,19 +302,26 @@ class FunctionsRepository {
         phoneRelayPublicKey: String? = null,
         phoneRelayKeyVersion: Int? = null,
         phoneRelayEncryption: String? = null,
-    ): Map<String, Any> = callMap(
-        "approveHermesGatewayDeviceGrant",
-        buildHermesGatewayDeviceGrantPayload(
-            userCode = userCode,
-            displayName = displayName,
-            destinationId = destinationId,
-            scopes = scopes,
-            phoneRelayPublicKey = phoneRelayPublicKey,
-            phoneRelayKeyVersion = phoneRelayKeyVersion,
-            phoneRelayEncryption = phoneRelayEncryption,
-            clientAppBuild = BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() },
-        ),
-    )
+    ): Map<String, Any> {
+        val payload =
+            buildHermesGatewayDeviceGrantPayload(
+                userCode = userCode,
+                displayName = displayName,
+                destinationId = destinationId,
+                scopes = scopes,
+                phoneRelayPublicKey = phoneRelayPublicKey,
+                phoneRelayKeyVersion = phoneRelayKeyVersion,
+                phoneRelayEncryption = phoneRelayEncryption,
+                clientAppBuild = BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() },
+            )
+        return securityClient.callHighRiskOwnerAction(
+            callableName = "approveHermesGatewayDeviceGrant",
+            deviceId = localDeviceId(),
+            actionKind = "hermes_gateway_device_grant_approve",
+            subjectId = userCode,
+            payload = payload,
+        ).asStringAnyMap() ?: emptyMap()
+    }
 
     suspend fun adoptProviderAccountForDevice(
         accountId: String,

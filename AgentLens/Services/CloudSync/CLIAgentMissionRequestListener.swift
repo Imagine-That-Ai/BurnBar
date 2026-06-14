@@ -1898,10 +1898,19 @@ final class CLIAgentMissionRequestListener {
         let rootURL = fileManager.temporaryDirectory
             .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
         let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
-        try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
+        
+        defer {
+            try? fileManager.removeItem(at: sessionURL)
+        }
+        
+        try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 
         let scriptURL = sessionURL.appendingPathComponent("run.command")
         let logURL = sessionURL.appendingPathComponent("terminal.log")
+        
+        // Pre-create log file with strict 0o600 permissions so tee respects it
+        fileManager.createFile(atPath: logURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+
         let exitURL = sessionURL.appendingPathComponent("exit.status")
         let pidURL = sessionURL.appendingPathComponent("terminal.pid")
         let command = ([executable] + arguments)
