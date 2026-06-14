@@ -73,6 +73,7 @@ Kinds: `eslint-disable`, `ts-suppress`, `noqa`, `kotlin-suppress`, `detekt`,
 # --- Debt-budget ratchets: deleted at zero; CI fails on increase (docs/TECH_DEBT_METRICS.md) ---
 budgets/hand-maintained-ts-baseline.json
 budgets/knip-baseline.json
+budgets/swift-file-size-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable

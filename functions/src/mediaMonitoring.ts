@@ -8,6 +8,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
+import { forEachInPages } from "./rollupPagination.js";
 import type { MediaFeature, MediaSessionDailyRollupDoc } from "./types.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
@@ -103,11 +104,10 @@ async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaS
   const firestore = options.firestore ?? getFirestore();
   const window = utcDayWindow(options.dateUTC);
 
-  const snapshot = await firestore
+  const query = firestore
     .collectionGroup("media_session_events")
     .where("startedAt", ">=", window.start.toISOString())
-    .where("startedAt", "<", window.end.toISOString())
-    .get();
+    .where("startedAt", "<", window.end.toISOString());
 
   const perFeature = buildEmptyPerFeature();
 
@@ -122,14 +122,15 @@ async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaS
 
   const uniqueUids = new Set<string>();
 
-  for (const doc of snapshot.docs) {
+  // Stream the day in bounded pages so a high-volume day cannot OOM the rollup.
+  const totalEvents = await forEachInPages(query, "startedAt", (doc) => {
     const raw = doc.data();
     const segments = doc.ref.path.split("/");
     if (segments.length === 4 && segments[0] === "users" && segments[1]) {
       uniqueUids.add(segments[1]);
     }
     const feature = stringField(raw, "feature");
-    if (!isMediaFeature(feature)) continue;
+    if (!isMediaFeature(feature)) return;
 
     const bucket = perFeature[feature];
     bucket.sessionCount += 1;
@@ -156,7 +157,7 @@ async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaS
         bucket.totalSeconds += Math.round((endedMs - startedMs) / 1000);
       }
     }
-  }
+  });
 
   for (const feature of FEATURES) {
     const bucket = perFeature[feature];
@@ -193,7 +194,7 @@ async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaS
     windowStart: window.start.toISOString(),
     windowEnd: window.end.toISOString(),
     generatedAt: new Date().toISOString(),
-    totalEvents: snapshot.size,
+    totalEvents,
     uniqueUsers: uniqueUids.size,
     perFeature,
     schemaVersion: ROLLUP_SCHEMA_VERSION,
@@ -208,6 +209,8 @@ export const rollupMediaSessionDaily = onSchedule(
     schedule: "every 24 hours",
     timeZone: "UTC",
     region: FUNCTIONS_REGION,
+    memory: "1GiB",
+    timeoutSeconds: 540,
   },
   async () => {
     const target = previousUtcDay(new Date());

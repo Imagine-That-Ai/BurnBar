@@ -16,6 +16,7 @@
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
+import { forEachInPages } from "./rollupPagination.js";
 import type { ComputerUseSessionDailyRollupDoc } from "./types.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
@@ -34,6 +35,7 @@ export const rollupComputerUseDaily = onSchedule(
     schedule: "30 0 * * *",
     timeZone: "UTC",
     region: FUNCTIONS_REGION,
+    memory: "1GiB",
     timeoutSeconds: 540,
   },
   async () => {
@@ -44,33 +46,39 @@ export const rollupComputerUseDaily = onSchedule(
     const dayStart = new Date(`${dayKey}T00:00:00Z`);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-    const sessionSnap = await firestore
+    const sessionQuery = firestore
       .collectionGroup("computer_use_sessions")
       .where("startedAt", ">=", Timestamp.fromDate(dayStart))
-      .where("startedAt", "<", Timestamp.fromDate(dayEnd))
-      .get();
-    const actionSnap = await firestore
+      .where("startedAt", "<", Timestamp.fromDate(dayEnd));
+    const actionQuery = firestore
       .collectionGroup("computer_use_actions")
       .where("recordedAt", ">=", Timestamp.fromDate(dayStart))
-      .where("recordedAt", "<", Timestamp.fromDate(dayEnd))
-      .get();
+      .where("recordedAt", "<", Timestamp.fromDate(dayEnd));
 
-    const sessions = sessionSnap.docs.map((d) => {
+    // Stream both day-ranges in bounded pages so a high-volume day cannot OOM the rollup.
+    const sessions: Array<{ endReason: string | undefined }> = [];
+    await forEachInPages(sessionQuery, "startedAt", (d) => {
       const data = d.data();
-      return {
-        endReason: stringField(data, "endReason"),
-      };
+      sessions.push({ endReason: stringField(data, "endReason") });
     });
-    const actions = actionSnap.docs.map((d) => {
+    const actions: Array<{
+      approvalLatencyMillis: number | undefined;
+      status: string | undefined;
+      denyReason: string | undefined;
+      visionTokensCostUSD: number | undefined;
+      toolKind: string;
+      approvedBy: string | undefined;
+    }> = [];
+    await forEachInPages(actionQuery, "recordedAt", (d) => {
       const data = d.data();
-      return {
+      actions.push({
         approvalLatencyMillis: numberField(data, "approvalLatencyMillis"),
         status: stringField(data, "status"),
         denyReason: stringField(data, "denyReason"),
         visionTokensCostUSD: numberField(data, "visionTokensCostUSD"),
         toolKind: stringField(data, "toolKind") ?? "",
         approvedBy: stringField(data, "approvedBy"),
-      };
+      });
     });
 
     const latencyMs = actions
