@@ -89,6 +89,11 @@ public enum ComputerUseAuditExportSignerStoreError: Error, Equatable {
     case keychainUnavailable
 }
 
+// AUDIT(@unchecked Sendable): every stored property is immutable and Sendable
+// except `fileManager: FileManager`, which Foundation does not (yet) mark
+// Sendable. `FileManager` instances are documented as safe for concurrent use,
+// and this provider only ever issues read/stat/move calls through it, so sharing
+// the value across isolation domains is safe.
 /// Trusted-device signer for Phase 13 audit exports and WS3 signed chain heads.
 public struct ComputerUseKeychainAuditExportSignerProvider: ComputerUseAuditExportSignerProviding, @unchecked Sendable {
     public static let defaultService = "ai.openburnbar.computer-use.audit-export"

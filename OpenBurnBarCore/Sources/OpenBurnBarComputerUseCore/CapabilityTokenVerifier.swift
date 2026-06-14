@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import OpenBurnBarCore
 
 public enum CapabilityTokenVerificationFailure: String, Codable, Sendable, Equatable, Error {
     case missingToken = "capability_token_missing"
@@ -23,9 +24,8 @@ public protocol CapabilityTokenNonceStore: Sendable {
 }
 
 /// In-memory nonce store for unit tests and ephemeral coordinators.
-public final class InMemoryCapabilityTokenNonceStore: CapabilityTokenNonceStore, @unchecked Sendable {
-    private let lock = NSLock()
-    private var consumed: Set<String> = []
+public final class InMemoryCapabilityTokenNonceStore: CapabilityTokenNonceStore, Sendable {
+    private let consumed = Locked<Set<String>>([])
 
     public init() {}
 
@@ -34,24 +34,26 @@ public final class InMemoryCapabilityTokenNonceStore: CapabilityTokenNonceStore,
     }
 
     public func hasConsumed(nonce: String, domain: CapabilityToken.Domain) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return consumed.contains(key(nonce: nonce, domain: domain))
+        consumed.withLock { $0.contains(key(nonce: nonce, domain: domain)) }
     }
 
     public func consume(nonce: String, domain: CapabilityToken.Domain) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        let entry = key(nonce: nonce, domain: domain)
-        guard !consumed.contains(entry) else {
-            throw CapabilityTokenVerificationFailure.nonceReplay
+        try consumed.withLock { consumed in
+            let entry = key(nonce: nonce, domain: domain)
+            guard !consumed.contains(entry) else {
+                throw CapabilityTokenVerificationFailure.nonceReplay
+            }
+            consumed.insert(entry)
         }
-        consumed.insert(entry)
     }
 }
 
 /// File-backed nonce ledger shared by the Virtual HID bridge (offline, no network).
-public final class FileCapabilityTokenNonceStore: CapabilityTokenNonceStore, @unchecked Sendable {
+///
+/// The only shared state is the on-disk ledger; an `NSLock` (itself `Sendable`)
+/// serializes every load/persist cycle, and all stored properties are immutable,
+/// so the type is plainly `Sendable`.
+public final class FileCapabilityTokenNonceStore: CapabilityTokenNonceStore, Sendable {
     public struct Ledger: Codable, Sendable, Equatable {
         public var consumed: [String]
         public init(consumed: [String] = []) {

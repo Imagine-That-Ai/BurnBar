@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
 /// UNIX-domain socket front-end for the privileged input-execution leaf.
@@ -12,7 +13,7 @@ import OpenBurnBarComputerUseCore
 /// directory could be tampered with: this is the structural defense against
 /// socket-path squatting that a world-writable location like `/tmp` cannot
 /// provide.
-public final class PrivilegedInputExecutionSocketServer: @unchecked Sendable {
+public final class PrivilegedInputExecutionSocketServer: Sendable {
     public typealias Handler = @Sendable (PrivilegedInputDispatchEnvelope) throws -> PrivilegedInputDispatchResponse
 
     public enum ServerError: Error, Equatable, Sendable {
@@ -35,8 +36,7 @@ public final class PrivilegedInputExecutionSocketServer: @unchecked Sendable {
     /// and a code-signature evaluation, so an unbounded accept loop would let a
     /// same-uid flood pile blocked threads inside a privileged helper.
     private let connectionSlots: DispatchSemaphore
-    private let stateLock = NSLock()
-    private var stopRequested = false
+    private let stopRequested = Locked(false)
 
     public init(
         socketPath: String,
@@ -109,9 +109,7 @@ public final class PrivilegedInputExecutionSocketServer: @unchecked Sendable {
     }
 
     private var isStopped: Bool {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        return stopRequested
+        stopRequested.read()
     }
 
     /// Accept connections until `stop()` is called. Blocks the calling thread.
@@ -152,9 +150,7 @@ public final class PrivilegedInputExecutionSocketServer: @unchecked Sendable {
     }
 
     public func stop() {
-        stateLock.lock()
-        stopRequested = true
-        stateLock.unlock()
+        stopRequested.write(true)
     }
 
     private func bindSocket() throws {

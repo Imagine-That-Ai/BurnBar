@@ -6,6 +6,11 @@ import IOKit.hid
 import OpenBurnBarComputerUseCore
 
 /// Virtual HID keyboard + pointing device — lives only in the input-execution leaf (WS1 TCB).
+///
+/// AUDIT(@unchecked Sendable): wraps a non-Sendable `VirtualHIDBackend` (a CoreHID /
+/// IOHIDUserDevice handle). All HID report submission is serialized through the
+/// dedicated `queue` and `lock`, so the backend is never touched concurrently; this
+/// audited conformance reflects that manual confinement.
 public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
     public enum EngineError: String, Error, Sendable {
         case missingPassword = "missing_password"

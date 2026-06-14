@@ -49,11 +49,16 @@ public struct PensieveWatchRoot: Sendable {
 /// Serializes the daemon's prepare/enqueue work so a folder-change burst can't
 /// run two ingests at once. Mirrors the lightweight process gates in the
 /// CloudSync services.
-private final class PensieveWatcherGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var running = false
-    func tryEnter() -> Bool { lock.lock(); defer { lock.unlock() }; guard !running else { return false }; running = true; return true }
-    func leave() { lock.lock(); running = false; lock.unlock() }
+private final class PensieveWatcherGate: Sendable {
+    private let running = Locked(false)
+    func tryEnter() -> Bool {
+        running.withLock { running in
+            guard !running else { return false }
+            running = true
+            return true
+        }
+    }
+    func leave() { running.write(false) }
 }
 
 /// FSEvents-style folder watcher for Pensieve. Debounces directory-change events
@@ -65,6 +70,12 @@ private final class PensieveWatcherGate: @unchecked Sendable {
 /// Reuses `BurnBarDaemonHeartbeat` cadence as the periodic backstop so a missed
 /// FS event still gets reconciled (the daemon already runs that heartbeat loop;
 /// this watcher piggybacks on the same support directory + atomic-write pattern).
+///
+/// AUDIT(@unchecked Sendable): the watcher's mutable state (dispatch sources,
+/// descriptors, debounce/backstop work items, enqueued-ID set) is only mutated on
+/// its private serial `workQueue`, and it also stores a non-Sendable `FileManager`.
+/// The queue confinement plus Foundation's thread-safe `FileManager` make sharing
+/// safe; this audited conformance reflects that manual isolation.
 public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     private let roots: [PensieveWatchRoot]
     private let queueDirectoryURL: URL

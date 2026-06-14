@@ -1,28 +1,27 @@
 import Foundation
+import os
 
 // MARK: - Locked<T>
 
-/// A small sendable box around mutable state protected by `NSLock`.
+/// A small Sendable box around mutable state protected by an unfair lock.
 ///
-/// macOS 14 deployment target precludes `OSAllocatedUnfairLock`, so this
-/// uses `NSLock` with a `Sendable` conformance for use in concurrent contexts.
+/// Backed by `OSAllocatedUnfairLock` (available macOS 13+ / iOS 16+, comfortably
+/// below this target's macOS 14 / iOS 17 floor), which is itself `Sendable`. The
+/// lock fully mediates access to the boxed value, so `Locked` conforms to plain
+/// `Sendable` — the compiler can verify the box is concurrency-safe without an
+/// `@unchecked` escape hatch.
 ///
 /// `Locked` is reference-typed so that in-place mutation is visible to all
 /// owners of the box, similar to a `class`-based container.
-///
-/// Thread safety guaranteed by NSLock; the compiler cannot verify lock-based invariants.
-public final class Locked<T: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _value: T
+public final class Locked<T: Sendable>: Sendable {
+    private let storage: OSAllocatedUnfairLock<T>
 
     public init(_ value: T) {
-        self._value = value
+        storage = OSAllocatedUnfairLock(initialState: value)
     }
 
-    public func withLock<R>(_ action: (inout T) -> R) -> R {
-        lock.lock()
-        defer { lock.unlock() }
-        return action(&_value)
+    public func withLock<R>(_ action: (inout T) throws -> R) rethrows -> R {
+        try storage.withLockUnchecked(action)
     }
 
     public func read() -> T { withLock { $0 } }

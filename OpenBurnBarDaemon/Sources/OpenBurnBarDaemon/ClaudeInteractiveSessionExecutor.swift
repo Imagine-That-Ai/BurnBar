@@ -30,6 +30,12 @@ import OpenBurnBarCore
 /// real token usage from the freshly-written `~/.claude/projects/<encoded>/*.jsonl`
 /// — far more reliable than parsing the ANSI render. ANSI scraping remains as a
 /// fallback. Concurrency is bounded by an async semaphore (the "pool").
+///
+/// AUDIT(@unchecked Sendable): every stored property is immutable and Sendable
+/// (mutable warn-once flag is already a `Locked` box) except `fileManager:
+/// FileManager`, which Foundation does not yet mark Sendable. `FileManager` is
+/// documented as safe for concurrent use, so sharing the value is safe; drop this
+/// conformance once Foundation annotates `FileManager: Sendable`.
 public final class ClaudeInteractiveSessionExecutor: @unchecked Sendable {
 
     public struct Configuration: Sendable {

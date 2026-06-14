@@ -25,6 +25,11 @@ import OpenBurnBarCore
 /// fresh window; the script `cd`s to the working directory and `exec`s an
 /// interactive `claude` (no `-p`). Reading the prompt/system text from sidecar
 /// files avoids all shell-quoting hazards.
+///
+/// AUDIT(@unchecked Sendable): all stored properties are immutable and Sendable
+/// except `fileManager: FileManager`, which Foundation does not yet mark Sendable.
+/// `FileManager` is documented as safe for concurrent use, so sharing the value is
+/// safe; drop this conformance once Foundation annotates `FileManager: Sendable`.
 public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
 
     public enum TerminalApp: String, Codable, Sendable, CaseIterable {
