@@ -364,6 +364,8 @@
 		32417DAA7AAA64E2CC25D6BB /* ChatVisualSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D25A3B4C66605779A75D7649 /* ChatVisualSnapshotTests.swift */; };
 		32625FEBFB470D60260AF4B3 /* QuotaSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDCA8B0E1078186235CA4CD8 /* QuotaSettingsTests.swift */; };
 		32749DDB386C2A8D5D1F4D80 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DDD78C272747496AD869A7B /* AppDelegate.swift */; };
+		A0A0A0A0A0A0A0A0A0A0A042 /* MobileSentryScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A0A0A0A0A0A0A0A0A0A041 /* MobileSentryScrubber.swift */; };
+		A0A0A0A0A0A0A0A0A0A0B042 /* MobileSentryScrubberTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A0A0A0A0A0A0A0A0A0B041 /* MobileSentryScrubberTests.swift */; };
 		3299B467CEEDAAA025241546 /* RemoteClipboardControllerMattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBFC9D55BAF72E290C70380E /* RemoteClipboardControllerMattersTests.swift */; };
 		32A0E04101CD6BB197317B34 /* AgentLiveStagePresenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CB569E61444A77447D17072 /* AgentLiveStagePresenterTests.swift */; };
 		32AAAB76FE69E4F3B93F2EBB /* MacScreenshotService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0C956FA28C84C9157107BA /* MacScreenshotService.swift */; };
@@ -2822,6 +2824,8 @@
 		8D8FA436A31CC762EF50D12D /* AppearanceMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceMode.swift; sourceTree = "<group>"; };
 		8DD413F53C19DB6C6E9B5D68 /* DirectDownloadReleaseMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectDownloadReleaseMetadata.swift; sourceTree = "<group>"; };
 		8DDD78C272747496AD869A7B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A0A0A0A0A0A0A0A0A0A0A041 /* MobileSentryScrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSentryScrubber.swift; sourceTree = "<group>"; };
+		A0A0A0A0A0A0A0A0A0A0B041 /* MobileSentryScrubberTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSentryScrubberTests.swift; sourceTree = "<group>"; };
 		8E1BB23607A24B250F95BD8E /* AssistantModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelCatalogTests.swift; sourceTree = "<group>"; };
 		8E35A5D2DBFE8A6EB2EEA85A /* OpenBurnBarQueryTracer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarQueryTracer.swift; sourceTree = "<group>"; };
 		8E9BD75A4E045C3FDB71CB54 /* DrainTargetSwitcherGroupedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrainTargetSwitcherGroupedTests.swift; sourceTree = "<group>"; };
@@ -4766,6 +4770,7 @@
 			children = (
 				8DDD78C272747496AD869A7B /* AppDelegate.swift */,
 				9C274EB418E086F07AEAD9BE /* AppServices.swift */,
+				A0A0A0A0A0A0A0A0A0A0A041 /* MobileSentryScrubber.swift */,
 				B1679A53C4DAE3C1AB063BA1 /* AppStoreScreenshotMode.swift */,
 				D56D5FC7DD70CD8410C4D35D /* AuthGateView.swift */,
 				EBF1271B6C9A7FF24DFB6AB2 /* MobileDataProtectionBootstrap.swift */,
@@ -5982,6 +5987,7 @@
 				15049D57AE2B75ADA9E16805 /* QuotaStoreOrderTests.swift */,
 				7435E5DC76E20C2EBD9C8D54 /* RollbackServiceSealTests.swift */,
 				3340CCD66BE7C420E3A7333C /* ScreenPrivacyGuardTests.swift */,
+				A0A0A0A0A0A0A0A0A0A0B041 /* MobileSentryScrubberTests.swift */,
 				6B1EA87EE0285381B93CF8B3 /* ScreenShareAutoTypeFollowPolicyTests.swift */,
 				8202AE88D7CD46C57864773A /* ScreenSharePiPControllerTests.swift */,
 				C7C233E18671B202E330BCB9 /* ScreenShareSmartTextDoubleTapTests.swift */,
@@ -7736,6 +7742,7 @@
 				9B4D7168AA813801D79A9A0F /* QuotaStoreOrderTests.swift in Sources */,
 				596E62F3AEB79A51BCFD8CA2 /* RollbackServiceSealTests.swift in Sources */,
 				3D7AB9F23B1A1C3FCE275FA0 /* ScreenPrivacyGuardTests.swift in Sources */,
+				A0A0A0A0A0A0A0A0A0A0B042 /* MobileSentryScrubberTests.swift in Sources */,
 				2F29F1D741822449231674A2 /* ScreenShareAutoTypeFollowPolicyTests.swift in Sources */,
 				37AA96AD477D9048CD6911AE /* ScreenSharePiPControllerTests.swift in Sources */,
 				3130412FA016126996BE0304 /* ScreenShareSmartTextDoubleTapTests.swift in Sources */,
@@ -8147,6 +8154,7 @@
 				D454F89B1BFEB0FE240772D2 /* MobileCloudVaultTrustedDeviceChainVerifier.swift in Sources */,
 				F6F3231EE94026BC2BFD97A0 /* MobileComputerUseRemoteConfig.swift in Sources */,
 				29EEC8CC1999820E93A373F5 /* MobileDataProtectionBootstrap.swift in Sources */,
+				A0A0A0A0A0A0A0A0A0A0A042 /* MobileSentryScrubber.swift in Sources */,
 				AA4642D5179773C772E57062 /* MobileE2ERoute.swift in Sources */,
 				2FD65404E48456BECE1491FF /* MobileFirebaseTokenProvider.swift in Sources */,
 				349094C6E18C1A3D3475A2EF /* MobileInsightAggregator.swift in Sources */,
