@@ -289,27 +289,24 @@ final class OpenBurnBarDaemonManager {
     }
 
     /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.
-    func daemonRPC<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
-        try await Task.detached(priority: .utility) {
-            try work()
-        }.value
+    /// `nonisolated` so the work runs off the main actor (SE-0338); it only calls
+    /// the passed `@Sendable` closure, so it needs no detached task.
+    nonisolated func daemonRPC<T: Sendable>(_ work: @Sendable () throws -> T) async throws -> T {
+        try work()
     }
 
     /// Process launch and `waitUntilExit` are blocking Foundation calls. Keep them off the main actor.
-    func daemonProcess(_ executable: String, _ arguments: [String]) async throws -> String {
+    /// `nonisolated` so they run off the main actor (SE-0338); `dependencies` is a
+    /// `Sendable` `let`, so it is safe to read here.
+    nonisolated func daemonProcess(_ executable: String, _ arguments: [String]) async throws -> String {
         let runProcess = dependencies.runProcess
-        return try await Task.detached(priority: .utility) {
-            try runProcess(executable, arguments)
-        }.value
+        return try runProcess(executable, arguments)
     }
 
     /// Daemon binary refresh checks can hash multi-megabyte build products. Keep that off the main actor.
-    func daemonNeedsRefreshCheck() async -> Bool {
-        let paths = paths
-        let dependencies = dependencies
-        return await Task.detached(priority: .utility) {
-            Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
-        }.value
+    /// `nonisolated` so the hashing runs off the main actor (SE-0338).
+    nonisolated func daemonNeedsRefreshCheck() async -> Bool {
+        Self.installedDaemonBinaryNeedsRefresh(paths: paths, dependencies: dependencies)
     }
 
     var socketPathDisplay: String {

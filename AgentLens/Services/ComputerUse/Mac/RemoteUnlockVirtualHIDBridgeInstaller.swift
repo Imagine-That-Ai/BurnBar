@@ -31,9 +31,7 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
 
         do {
             let fileManager = self.fileManager
-            try await Task.detached(priority: .userInitiated) {
-                try Self.installOrRepairSynchronously(fileManager: fileManager)
-            }.value
+            try await Self.installOrRepairOffMain(fileManager: fileManager)
             Self.recordPolicyRejection(nil)
             await SystemPermissionMonitor.shared.refreshNow(emitting: true)
         } catch {
@@ -48,7 +46,10 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         }
     }
 
-    nonisolated private static func installOrRepairSynchronously(fileManager: FileManager) throws {
+    /// `nonisolated` `async` so the blocking staging/copy/codesign work runs off
+    /// the main actor (SE-0338); `installOrRepair()` stays on the main actor for
+    /// its `@Published` UI state.
+    nonisolated private static func installOrRepairOffMain(fileManager: FileManager) async throws {
         let bridgeSource = try resolveHelperBinary(named: "OpenBurnBarVirtualHIDBridge", fileManager: fileManager)
         let privilegedExecutionSource = try resolvePrivilegedInputExecutionSource(fileManager: fileManager)
         let stagingDirectory = URL(fileURLWithPath: "/tmp/openburnbar-virtual-hid-bridge-install-\(UUID().uuidString)", isDirectory: true)
