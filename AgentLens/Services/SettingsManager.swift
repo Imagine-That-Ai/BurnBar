@@ -1,7 +1,8 @@
+import AppKit
 import Foundation
 import FirebaseCore
 import FirebaseRemoteConfig
-import SwiftUI
+import Observation
 import OpenBurnBarCore
 
 // MARK: - Settings Manager
@@ -36,6 +37,7 @@ final class SettingsManager {
     /// computed property bridges below so SwiftUI observation
     /// tracking always re-evaluates when appearance shifts.
     private var appearanceMutationVersion: Int = 0
+    var appearanceMutationVersionForPresentation: Int { appearanceMutationVersion }
     let behavior: BehaviorSettings
     let alerts: AlertSettings
     let controller: ControllerSettings
@@ -388,14 +390,6 @@ final class SettingsManager {
     var excludeBrandShapesFromSwarm: Bool {
         get { _ = appearanceMutationVersion; return appearance.excludeBrandShapesFromSwarm }
         set { appearance.excludeBrandShapesFromSwarm = newValue }
-    }
-
-    var preferredSwiftUIColorScheme: ColorScheme? {
-        _ = appearanceMutationVersion
-        // Editorial is light-locked — its paper palette never sits on a dark
-        // appearance, so pin the scheme to light regardless of the mode picker.
-        if appearance.appearanceSkin == .editorial { return .light }
-        return appearance.appearanceMode.colorScheme
     }
 
     var launchAtLogin: Bool {
