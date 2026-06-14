@@ -360,7 +360,10 @@ private enum CodexOAuthQuotaFetcher {
         }
 
         let deadline = Date().addingTimeInterval(8)
-        while process.isRunning && Date() < deadline {
+        // `&& !Task.isCancelled` so cancellation bails the poll promptly (then the
+        // process is reaped below) instead of busy-spinning to the deadline: the
+        // optional-cancelled sleep below is swallowed and would otherwise re-loop.
+        while process.isRunning && Date() < deadline && !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(100))
         }
         if process.isRunning {

@@ -1937,7 +1937,16 @@ final class CLIAgentMissionRequestListener {
                 return finalOutput
             }
 
-            try await Task.sleep(nanoseconds: 250_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 250_000_000)
+            } catch is CancellationError {
+                // Task cancellation throws here and would skip the tracker/timeout
+                // teardown below, so tear down the visible Terminal session now —
+                // matching the former detached task, which reaped it via its
+                // orphan running on to the deadline.
+                Self.killVisibleTerminalSession(pidURL: pidURL)
+                throw CancellationError()
+            }
         }
 
         Self.killVisibleTerminalSession(pidURL: pidURL)
@@ -2074,6 +2083,18 @@ final class CLIAgentMissionRequestListener {
         }
 
         try process.run()
+
+        // Safety net for the task-cancellation path: a `CancellationError` thrown
+        // from `Task.sleep` below skips the tracker/timeout cleanup, so reap the
+        // process and detach the stream handlers on every exit here. (The former
+        // detached task was cancellation-immune and reaped via its orphan.)
+        // No-op on the normal return path, where the process has already exited
+        // and the handlers were already cleared.
+        defer {
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+            if process.isRunning { process.terminate() }
+        }
 
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while process.isRunning && Date() < deadline {
