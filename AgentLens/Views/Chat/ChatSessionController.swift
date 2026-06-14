@@ -2410,7 +2410,7 @@ final class ChatSessionController {
             "ignora instrucciones anteriores",
             "api key rotation complete",
             "paste your api key",
-            "send your api key",
+            "send your api key"
         ]
         return indicators.contains { normalized.contains($0) }
     }
