@@ -50,7 +50,7 @@ enum RefreshBackgroundWork {
         orchestrator: RefreshOrchestrator,
         existingUsages: [TokenUsage],
         settings: RefreshSettingsSnapshot
-    ) async -> FullRefreshResult {
+    ) async throws -> FullRefreshResult {
         var result = FullRefreshResult(
             postPersistence: PostPersistenceResult()
         )
@@ -65,7 +65,7 @@ enum RefreshBackgroundWork {
 
         // discover → parse → reconcile → persist
         let discovery = pipeline.discover()
-        let parsed = await pipeline.parse(from: discovery)
+        let parsed = try await pipeline.parse(from: discovery)
         let reconciled = await pipeline.reconcile(parsed: parsed)
         let persisted = pipeline.persist(parsed: parsed)
 
