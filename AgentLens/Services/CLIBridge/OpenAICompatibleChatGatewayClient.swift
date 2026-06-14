@@ -778,22 +778,25 @@ final class AgentToolBroker: @unchecked Sendable {
             let stderr = Pipe()
             process.standardOutput = stdout
             process.standardError = stderr
-            final class Box: @unchecked Sendable {
+            final class Box: Sendable {
+                private struct State {
+                    var resumed = false
+                    var timedOut = false
+                    var stdoutData = Data()
+                    var stderrData = Data()
+                }
+
                 private let captureLimit = 200_000
-                let lock = NSLock()
-                var resumed = false
-                var timedOut = false
-                var stdoutData = Data()
-                var stderrData = Data()
+                private let state = Locked(State())
 
                 func append(_ data: Data, toStdout: Bool) {
                     guard !data.isEmpty else { return }
-                    lock.lock()
-                    defer { lock.unlock() }
-                    if toStdout {
-                        appendBounded(data, to: &stdoutData)
-                    } else {
-                        appendBounded(data, to: &stderrData)
+                    state.withLock { state in
+                        if toStdout {
+                            appendBounded(data, to: &state.stdoutData)
+                        } else {
+                            appendBounded(data, to: &state.stderrData)
+                        }
                     }
                 }
 
@@ -804,13 +807,23 @@ final class AgentToolBroker: @unchecked Sendable {
                 }
 
                 func markTimedOutIfStillRunning(_ process: Process) -> Bool {
-                    lock.lock()
-                    defer { lock.unlock() }
-                    let shouldTerminate = !resumed && process.isRunning
-                    if shouldTerminate {
-                        timedOut = true
+                    state.withLock { state in
+                        let shouldTerminate = !state.resumed && process.isRunning
+                        if shouldTerminate {
+                            state.timedOut = true
+                        }
+                        return shouldTerminate
                     }
-                    return shouldTerminate
+                }
+
+                /// Atomically marks the process result consumed (returns nil if a
+                /// prior caller already resumed) and returns the captured output.
+                func completeIfNotYetResumed() -> (timedOut: Bool, stdout: Data, stderr: Data)? {
+                    state.withLock { state in
+                        guard !state.resumed else { return nil }
+                        state.resumed = true
+                        return (state.timedOut, state.stdoutData, state.stderrData)
+                    }
                 }
             }
             let box = Box()
@@ -825,21 +838,14 @@ final class AgentToolBroker: @unchecked Sendable {
                 stderr.fileHandleForReading.readabilityHandler = nil
                 box.append(stdout.fileHandleForReading.readDataToEndOfFile(), toStdout: true)
                 box.append(stderr.fileHandleForReading.readDataToEndOfFile(), toStdout: false)
-                box.lock.lock()
-                guard !box.resumed else {
-                    box.lock.unlock()
+                guard let completion = box.completeIfNotYetResumed() else {
                     return
                 }
-                box.resumed = true
-                let timedOut = box.timedOut
-                let out = box.stdoutData
-                let err = box.stderrData
-                box.lock.unlock()
                 continuation.resume(returning: ProcessResult(
                     exitCode: Int(process.terminationStatus),
-                    stdout: String(decoding: out, as: UTF8.self),
-                    stderr: String(decoding: err, as: UTF8.self),
-                    timedOut: timedOut
+                    stdout: String(decoding: completion.stdout, as: UTF8.self),
+                    stderr: String(decoding: completion.stderr, as: UTF8.self),
+                    timedOut: completion.timedOut
                 ))
             }
             do {

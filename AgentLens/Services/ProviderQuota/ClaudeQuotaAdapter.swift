@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 /// Multi-source Claude quota adapter. Tries the cheapest, most current
 /// data first and falls back gracefully while respecting the user's
@@ -114,23 +115,22 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// persistence plumbed through `ProviderQuotaAdapterContext`): the
     /// modification-time window cutoff already keeps a cold first scan cheap, so
     /// the persisted variant's complexity isn't warranted here.
-    private final class JSONLScanCache: @unchecked Sendable {
+    private final class JSONLScanCache: Sendable {
         private struct Entry {
             let signature: JSONLFileSignature
             let contributions: [JSONLContribution]
         }
-        private let lock = NSLock()
-        private var entries: [String: Entry] = [:]
+        private let entries = Locked<[String: Entry]>([:])
 
         func contributions(forPath path: String, signature: JSONLFileSignature) -> [JSONLContribution]? {
-            lock.lock(); defer { lock.unlock() }
-            guard let entry = entries[path], entry.signature == signature else { return nil }
-            return entry.contributions
+            entries.withLock { entries in
+                guard let entry = entries[path], entry.signature == signature else { return nil }
+                return entry.contributions
+            }
         }
 
         func store(path: String, signature: JSONLFileSignature, contributions: [JSONLContribution]) {
-            lock.lock(); defer { lock.unlock() }
-            entries[path] = Entry(signature: signature, contributions: contributions)
+            entries.withLock { $0[path] = Entry(signature: signature, contributions: contributions) }
         }
 
         /// Drop entries for transcripts that fell out of the widest rolling
@@ -139,8 +139,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         /// derives the cutoff from the same `now`, so none evicts another
         /// scope's still-relevant entries.
         func pruneEntries(olderThan cutoffEpoch: TimeInterval) {
-            lock.lock(); defer { lock.unlock() }
-            entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
+            entries.withLock { entries in
+                entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
+            }
         }
     }
 
