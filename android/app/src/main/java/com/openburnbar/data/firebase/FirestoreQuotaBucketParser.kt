@@ -48,22 +48,19 @@ internal object FirestoreQuotaBucketParser {
         return name?.takeIf { it.isNotBlank() }
     }
 
-    private fun readUnit(raw: Map<*, *>, meta: Map<String, Any?>): String? =
-        stringValue(raw["unit"]) ?: stringValue(meta["unit"])
+    private fun readUnit(raw: Map<*, *>, meta: Map<String, Any?>): String? = stringValue(raw["unit"]) ?: stringValue(meta["unit"])
 
-    private fun stringValue(value: Any?): String? =
-        when (value) {
-            is String -> value.takeIf { it.isNotBlank() }
-            is Number, is Boolean -> value.toString()
-            else -> null
-        }
+    private fun stringValue(value: Any?): String? = when (value) {
+        is String -> value.takeIf { it.isNotBlank() }
+        is Number, is Boolean -> value.toString()
+        else -> null
+    }
 
-    private fun numberValue(value: Any?): Double? =
-        when (value) {
-            is Number -> value.toDouble()
-            is String -> value.trim().removeSuffix("%").toDoubleOrNull()
-            else -> null
-        }
+    private fun numberValue(value: Any?): Double? = when (value) {
+        is Number -> value.toDouble()
+        is String -> value.trim().removeSuffix("%").toDoubleOrNull()
+        else -> null
+    }
 }
 
 private object FirestoreQuotaBucketMeta {
@@ -97,13 +94,7 @@ private object FirestoreQuotaBucketValues {
         return Resolved(adjusted.used, adjusted.limit, adjusted.remaining)
     }
 
-    private fun applyPercentAndDerivations(
-        unit: String?,
-        used: Double?,
-        limit: Double?,
-        remaining: Double?,
-        usedPercent: Double?,
-    ): Resolved {
+    private fun applyPercentAndDerivations(unit: String?, used: Double?, limit: Double?, remaining: Double?, usedPercent: Double?): Resolved {
         var resolvedUsed = used
         var resolvedLimit = normalizePercentLimit(unit, limit, usedPercent, remaining)
         resolvedUsed = deriveUsedFromPercent(resolvedUsed, usedPercent)
@@ -114,28 +105,16 @@ private object FirestoreQuotaBucketValues {
         return Resolved(resolvedUsed ?: 0.0, resolvedLimit ?: 0.0, resolvedRemaining ?: 0.0)
     }
 
-    private fun normalizePercentLimit(
-        unit: String?,
-        limit: Double?,
-        usedPercent: Double?,
-        remaining: Double?,
-    ): Double? {
+    private fun normalizePercentLimit(unit: String?, limit: Double?, usedPercent: Double?, remaining: Double?): Double? {
         val isPercentWithDerivedLimits =
             unit == "percent" && (limit == null || limit == 0.0) &&
                 (usedPercent != null || remaining != null)
         return if (isPercentWithDerivedLimits) 100.0 else limit
     }
 
-    private fun deriveUsedFromPercent(used: Double?, usedPercent: Double?): Double? =
-        if (used == null && usedPercent != null) usedPercent else used
+    private fun deriveUsedFromPercent(used: Double?, usedPercent: Double?): Double? = if (used == null && usedPercent != null) usedPercent else used
 
-    private fun deriveRemainingFromUsed(
-        unit: String?,
-        used: Double?,
-        limitValue: Double,
-        remaining: Double?,
-        limit: Double?,
-    ): Double? {
+    private fun deriveRemainingFromUsed(unit: String?, used: Double?, limitValue: Double, remaining: Double?, limit: Double?): Double? {
         val canDeriveRemainingFromUsed =
             remaining == null && unit == "percent" && used != null && limitValue > 0.0
         return if (canDeriveRemainingFromUsed) {
@@ -145,12 +124,7 @@ private object FirestoreQuotaBucketValues {
         }
     }
 
-    private fun deriveUsedFromRemaining(
-        used: Double?,
-        remaining: Double?,
-        limitValue: Double,
-        limit: Double?,
-    ): Double? {
+    private fun deriveUsedFromRemaining(used: Double?, remaining: Double?, limitValue: Double, limit: Double?): Double? {
         val canDeriveUsedFromRemaining = used == null && remaining != null && limitValue > 0.0
         return if (canDeriveUsedFromRemaining) {
             maxOf(0.0, (limit ?: 100.0) - remaining)
@@ -161,12 +135,7 @@ private object FirestoreQuotaBucketValues {
 
     private data class LimitTriple(val used: Double?, val limit: Double?, val remaining: Double?)
 
-    private fun applyNegativeLimit(
-        used: Double?,
-        limit: Double?,
-        remaining: Double?,
-        meta: MutableMap<String, Any?>,
-    ): LimitTriple {
+    private fun applyNegativeLimit(used: Double?, limit: Double?, remaining: Double?, meta: MutableMap<String, Any?>): LimitTriple {
         if (limit == null || limit >= 0.0) return LimitTriple(used, limit, remaining)
         if (remaining != null && remaining > 0.0) {
             val resolvedUsed = maxOf(0.0, used ?: 0.0)
@@ -185,12 +154,11 @@ private object FirestoreQuotaBucketValues {
         return null
     }
 
-    private fun numberValue(value: Any?): Double? =
-        when (value) {
-            is Number -> value.toDouble()
-            is String -> value.trim().removeSuffix("%").toDoubleOrNull()
-            else -> null
-        }
+    private fun numberValue(value: Any?): Double? = when (value) {
+        is Number -> value.toDouble()
+        is String -> value.trim().removeSuffix("%").toDoubleOrNull()
+        else -> null
+    }
 }
 
 internal fun Map<*, *>.toQuotaBucket(): QuotaBucket? = FirestoreQuotaBucketParser.parse(this)

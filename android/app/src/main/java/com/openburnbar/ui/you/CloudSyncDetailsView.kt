@@ -73,8 +73,8 @@ fun CloudSyncDetailsView(syncStore: CloudSyncHealthStore = viewModel()) {
             Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(AuroraSpacing.lg.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+            contentPadding = PaddingValues(AuroraSpacing.LG.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
         ) {
             item { StatusCard(health = health, isLoading = isLoading, onRefresh = { syncStore.refresh() }) }
             item { TimestampsCard(lastPublishedAt = lastPublishedAt, lastReadAt = lastReadAt) }
@@ -109,7 +109,7 @@ private fun StatusCard(health: CloudSyncHealth, isLoading: Boolean, onRefresh: (
         }
 
     AuroraGlassCard {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier =
@@ -141,7 +141,7 @@ private fun StatusCard(health: CloudSyncHealth, isLoading: Boolean, onRefresh: (
 private fun TimestampsCard(lastPublishedAt: java.util.Date?, lastReadAt: java.util.Date?) {
     val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
     AuroraGlassCard {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Text("Activity", fontWeight = FontWeight.SemiBold, fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             DetailRow("Last Mac write", lastPublishedAt?.let { sdf.format(it) } ?: "Never")
             DetailRow("Last mobile read", lastReadAt?.let { sdf.format(it) } ?: "Never")
@@ -152,7 +152,7 @@ private fun TimestampsCard(lastPublishedAt: java.util.Date?, lastReadAt: java.ut
 @Composable
 private fun PublisherCard(publisher: com.openburnbar.data.stores.CloudPublisherDevice?) {
     AuroraGlassCard {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Text(
                 "Publishing device",
                 fontWeight = FontWeight.SemiBold,

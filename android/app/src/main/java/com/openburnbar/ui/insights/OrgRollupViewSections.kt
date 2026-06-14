@@ -43,8 +43,7 @@ import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal fun orgRollupSharedPrefs(context: Context): SharedPreferences =
-    context.getSharedPreferences("burnbar_enterprise", Context.MODE_PRIVATE)
+internal fun orgRollupSharedPrefs(context: Context): SharedPreferences = context.getSharedPreferences("burnbar_enterprise", Context.MODE_PRIVATE)
 
 internal fun orgRollupWindowStartMs(period: String): Long {
     if (period == "allTime") return 0L
@@ -67,11 +66,7 @@ internal fun orgRollupWindowStartMs(period: String): Long {
     }
 }
 
-internal suspend fun fetchOrgRollupRows(
-    dao: BudgetDatabaseAccess,
-    segment: String,
-    period: String,
-): List<OrgRollupRow> {
+internal suspend fun fetchOrgRollupRows(dao: BudgetDatabaseAccess, segment: String, period: String): List<OrgRollupRow> {
     val windowStart = orgRollupWindowStartMs(period)
     return withContext(Dispatchers.IO) {
         when (segment) {
@@ -96,7 +91,7 @@ internal fun OrgRollupHeader(isDark: Boolean) {
             tint = if (isDark) AuroraColors.purpleDark else AuroraColors.purple,
             modifier = Modifier.size(28.dp),
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Column {
             Text(
                 text = "ENTERPRISE",
@@ -114,23 +109,19 @@ internal fun OrgRollupHeader(isDark: Boolean) {
 }
 
 @Composable
-internal fun OrgRollupLockedGate(
-    sharedPrefs: SharedPreferences,
-    onEnable: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+internal fun OrgRollupLockedGate(sharedPrefs: SharedPreferences, onEnable: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         AuroraGlassCard(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.lg.dp),
+                .padding(AuroraSpacing.LG.dp),
         ) {
             Column(
                 modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(AuroraSpacing.lg.dp),
+                    .padding(AuroraSpacing.LG.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -140,20 +131,20 @@ internal fun OrgRollupLockedGate(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(48.dp),
                 )
-                Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
                 Text(
                     text = "Enterprise View Disabled",
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
                 Text(
                     text = "Enable enterpriseOrgViewEnabled settings to aggregate cross-device token spends, cost metrics, and device seat counts.",
                     style = AuroraType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
                 Button(
                     onClick = {
                         onEnable()
@@ -168,12 +159,7 @@ internal fun OrgRollupLockedGate(
 }
 
 @Composable
-internal fun OrgRollupFilterBar(
-    selectedSegment: String,
-    selectedPeriod: String,
-    onSegmentSelected: (String) -> Unit,
-    onPeriodSelected: (String) -> Unit,
-) {
+internal fun OrgRollupFilterBar(selectedSegment: String, selectedPeriod: String, onSegmentSelected: (String) -> Unit, onPeriodSelected: (String) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -234,16 +220,11 @@ internal fun OrgRollupContentBody(
 }
 
 @Composable
-private fun OrgRollupRowsList(
-    rollupRows: List<OrgRollupRow>,
-    selectedSegment: String,
-    isDark: Boolean,
-    modifier: Modifier = Modifier,
-) {
+private fun OrgRollupRowsList(rollupRows: List<OrgRollupRow>, selectedSegment: String, isDark: Boolean, modifier: Modifier = Modifier) {
     val totalCost = rollupRows.sumOf { it.totalCost }
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         items(rollupRows) { row ->
             val share = if (totalCost > 0.0) row.totalCost / totalCost else 0.0
@@ -253,18 +234,13 @@ private fun OrgRollupRowsList(
 }
 
 @Composable
-private fun OrgRollupRowCard(
-    row: OrgRollupRow,
-    share: Double,
-    selectedSegment: String,
-    isDark: Boolean,
-) {
+private fun OrgRollupRowCard(row: OrgRollupRow, share: Double, selectedSegment: String, isDark: Boolean) {
     AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.md.dp),
+                .padding(AuroraSpacing.MD.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -302,7 +278,7 @@ private fun OrgRollupRowCard(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
             LinearProgressIndicator(
                 progress = { share.toFloat().coerceIn(0f, 1f) },
                 modifier =

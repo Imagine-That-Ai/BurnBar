@@ -2,7 +2,9 @@
 
 package com.openburnbar.ui.insights
 
-import com.openburnbar.data.models.AgentProvider
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseInOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -66,6 +68,7 @@ import com.openburnbar.data.insights.InsightGeneratedWidget
 import com.openburnbar.data.insights.InsightRecommendation
 import com.openburnbar.data.insights.InsightSeverity
 import com.openburnbar.data.insights.InsightTheme as CanvasTheme
+import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.insights.renderers.InsightWidgetRenderer
 import com.openburnbar.ui.theme.AuroraColors
@@ -73,9 +76,6 @@ import com.openburnbar.ui.theme.AuroraMotion
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.EaseInOut
-import androidx.compose.animation.core.tween
 
 // ─── Mercury hairline ──────────────────────────────────────────────────────
 
@@ -96,7 +96,7 @@ internal fun MercuryHairline(isDark: Boolean, reduceMotion: Boolean, shimmer: Bo
                 targetValue = 1f,
                 animationSpec =
                 androidx.compose.animation.core.tween(
-                    durationMillis = AuroraMotion.mercuryShimmerDuration.toInt(),
+                    durationMillis = AuroraMotion.MERCURY_SHIMMER_DURATION.toInt(),
                     easing = androidx.compose.animation.core.EaseInOut,
                 ),
             )
@@ -141,7 +141,7 @@ internal fun FindingsSection(findings: List<InsightFinding>, onCitationTap: (Ins
         Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_FINDINGS),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         SectionHeader(title = SECTION_FINDINGS_TITLE)
         findings.take(3).forEachIndexed { index, finding ->
@@ -155,15 +155,10 @@ internal fun FindingsSection(findings: List<InsightFinding>, onCitationTap: (Ins
 }
 
 @Composable
-private fun FindingRowHeader(
-    ordinal: Int,
-    severityColor: Color,
-    severityLabel: String,
-    confidence: InsightConfidence,
-) {
+private fun FindingRowHeader(ordinal: Int, severityColor: Color, severityLabel: String, confidence: InsightConfidence) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -190,7 +185,7 @@ internal fun FindingRow(ordinal: Int, finding: InsightFinding, onCitationTap: (I
         Modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         // 3dp leading severity bar — full row height — mirrors iOS FindingRow.
         Box(
@@ -202,7 +197,7 @@ internal fun FindingRow(ordinal: Int, finding: InsightFinding, onCitationTap: (I
         )
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         ) {
             FindingRowHeader(
                 ordinal = ordinal,
@@ -271,12 +266,12 @@ internal fun AnomalyAtlasSection(anomalies: List<InsightAnomaly>, onCitationTap:
         Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_ANOMALIES),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SectionHeader(title = SECTION_ANOMALIES_TITLE)
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(end = AuroraSpacing.md.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(end = AuroraSpacing.MD.dp),
         ) {
             items(anomalies) { anomaly ->
                 AnomalyInstrumentCell(anomaly = anomaly, onCitationTap = onCitationTap)
@@ -299,18 +294,18 @@ internal fun AnomalyInstrumentCell(anomaly: InsightAnomaly, onCitationTap: (Insi
         modifier =
         Modifier
             .width(220.dp)
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(
                 BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                RoundedCornerShape(AuroraRadius.md.dp),
+                RoundedCornerShape(AuroraRadius.MD.dp),
             )
             .clickable {
                 anomaly.evidence.firstOrNull()?.let(onCitationTap)
             }
-            .padding(AuroraSpacing.md.dp)
+            .padding(AuroraSpacing.MD.dp)
             .semantics { contentDescription = accessibilityLabel },
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
     ) {
         Text(
             text = "z %.1f".format(anomaly.score),
@@ -422,7 +417,7 @@ internal fun RecommendationsSection(recommendations: List<InsightRecommendation>
         Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_RECOMMENDATIONS),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SectionHeader(title = SECTION_RECOMMENDATIONS_TITLE)
         recommendations.forEach { rec ->
@@ -436,17 +431,14 @@ internal fun RecommendationsSection(recommendations: List<InsightRecommendation>
 }
 
 @Composable
-private fun RecommendationCardHeader(
-    recommendation: InsightRecommendation,
-    isDark: Boolean,
-) {
+private fun RecommendationCardHeader(recommendation: InsightRecommendation, isDark: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top,
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SeverityChip(severity = recommendation.severity)
@@ -476,15 +468,15 @@ internal fun RecommendationCard(recommendation: InsightRecommendation, isDark: B
         modifier =
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(
                 BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                RoundedCornerShape(AuroraRadius.md.dp),
+                RoundedCornerShape(AuroraRadius.MD.dp),
             )
-            .padding(AuroraSpacing.md.dp),
+            .padding(AuroraSpacing.MD.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             RecommendationCardHeader(recommendation = recommendation, isDark = isDark)
             Text(
                 text = recommendation.title,
@@ -622,7 +614,7 @@ internal fun GeneratedViewsSection(
         Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_GENERATED),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SectionHeader(title = SECTION_GENERATED_TITLE)
         generated.forEachIndexed { index, item ->
@@ -651,19 +643,19 @@ internal fun GeneratedView(
         modifier =
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(
                 BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                RoundedCornerShape(AuroraRadius.md.dp),
+                RoundedCornerShape(AuroraRadius.MD.dp),
             )
-            .padding(AuroraSpacing.md.dp),
+            .padding(AuroraSpacing.MD.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             ) {
                 Text(
                     text = "Fig. %02d".format(figureOrdinal),
@@ -716,13 +708,13 @@ internal fun FigureCaption(reason: String, isDark: Boolean) {
     val aureate = if (isDark) AuroraColors.hermesAureateDark else AuroraColors.hermesAureate
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         Box(
             modifier =
             Modifier
                 .width(1.5.dp)
-                .height(AuroraSpacing.lg.dp)
+                .height(AuroraSpacing.LG.dp)
                 .background(Brush.verticalGradient(listOf(mercury, aureate))),
         )
         Text(
@@ -745,13 +737,13 @@ internal fun FollowUpSection(questions: List<InsightFollowUpQuestion>, isDark: B
         Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_FOLLOWUPS),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SectionHeader(title = SECTION_FOLLOWUPS_TITLE)
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
         ) {
             questions.forEachIndexed { index, question ->
                 if (index > 0) {
@@ -807,7 +799,7 @@ internal fun AuditFooterSection(result: InsightAnalysisResult, isDark: Boolean, 
         Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_AUDIT),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         MercuryHairline(isDark = isDark, reduceMotion = true, shimmer = false)
         Row(
@@ -854,10 +846,10 @@ internal fun SeverityChip(severity: InsightSeverity) {
     Box(
         modifier =
         Modifier
-            .clip(RoundedCornerShape(AuroraRadius.full.dp))
+            .clip(RoundedCornerShape(AuroraRadius.FULL.dp))
             .border(
                 BorderStroke(0.5.dp, color.copy(alpha = 0.6f)),
-                RoundedCornerShape(AuroraRadius.full.dp),
+                RoundedCornerShape(AuroraRadius.FULL.dp),
             )
             .padding(horizontal = 8.dp, vertical = 2.dp)
             .semantics { contentDescription = "Severity ${label.lowercase()}" },
@@ -897,10 +889,10 @@ internal fun ConfidenceChip(confidence: InsightConfidence) {
     Row(
         modifier =
         Modifier
-            .clip(RoundedCornerShape(AuroraRadius.full.dp))
+            .clip(RoundedCornerShape(AuroraRadius.FULL.dp))
             .border(
                 BorderStroke(0.5.dp, whimsy.copy(alpha = 0.5f)),
-                RoundedCornerShape(AuroraRadius.full.dp),
+                RoundedCornerShape(AuroraRadius.FULL.dp),
             )
             .padding(horizontal = 8.dp, vertical = 2.dp)
             .semantics { contentDescription = "Confidence $label" },
@@ -926,8 +918,8 @@ internal fun CitationChipRow(citations: List<InsightCitation>, onTap: (InsightCi
     val overflow = citations.size - visible.size
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
     ) {
         visible.forEach { citation ->
             CitationChip(citation = citation, onTap = onTap)
@@ -946,13 +938,12 @@ internal fun CitationChipRow(citations: List<InsightCitation>, onTap: (InsightCi
     }
 }
 
-internal fun citationProvider(citation: InsightCitation): AgentProvider? =
-    when (val kind = citation.kind) {
-        is InsightCitation.Kind.Agent -> AgentProvider.fromKey(kind.provider)
-        is InsightCitation.Kind.Session -> kind.provider?.let { AgentProvider.fromKey(it) }
-        is InsightCitation.Kind.Quota -> AgentProvider.fromKey(kind.provider)
-        else -> null
-    }
+internal fun citationProvider(citation: InsightCitation): AgentProvider? = when (val kind = citation.kind) {
+    is InsightCitation.Kind.Agent -> AgentProvider.fromKey(kind.provider)
+    is InsightCitation.Kind.Session -> kind.provider?.let { AgentProvider.fromKey(it) }
+    is InsightCitation.Kind.Quota -> AgentProvider.fromKey(kind.provider)
+    else -> null
+}
 
 @Composable
 internal fun CitationChip(citation: InsightCitation, onTap: (InsightCitation) -> Unit) {
@@ -960,10 +951,10 @@ internal fun CitationChip(citation: InsightCitation, onTap: (InsightCitation) ->
     Row(
         modifier =
         Modifier
-            .clip(RoundedCornerShape(AuroraRadius.full.dp))
+            .clip(RoundedCornerShape(AuroraRadius.FULL.dp))
             .border(
                 BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                RoundedCornerShape(AuroraRadius.full.dp),
+                RoundedCornerShape(AuroraRadius.FULL.dp),
             )
             .clickable { onTap(citation) }
             .padding(horizontal = 8.dp, vertical = 2.dp)

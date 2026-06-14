@@ -11,22 +11,13 @@ import kotlin.math.roundToInt
 private const val CACHE_TARGET_WARNING_MARGIN = 0.10
 private const val ISO_DATE_LENGTH = 10
 
-internal fun buildVerdictRings(
-    thresholds: RuleBasedVerdictEngine.Thresholds,
-    digest: InsightDigest,
-    prior: InsightDigest?,
-): List<VerdictRing> =
-    listOf(
-        verdictSpendRing(thresholds, digest, prior?.totals),
-        verdictCacheRing(thresholds, digest.totals, prior?.totals),
-        verdictSessionsRing(thresholds, digest.totals, prior?.totals),
-    )
+internal fun buildVerdictRings(thresholds: RuleBasedVerdictEngine.Thresholds, digest: InsightDigest, prior: InsightDigest?): List<VerdictRing> = listOf(
+    verdictSpendRing(thresholds, digest, prior?.totals),
+    verdictCacheRing(thresholds, digest.totals, prior?.totals),
+    verdictSessionsRing(thresholds, digest.totals, prior?.totals),
+)
 
-private fun verdictSpendRing(
-    thresholds: RuleBasedVerdictEngine.Thresholds,
-    digest: InsightDigest,
-    priorTotals: InsightDigest.Totals?,
-): VerdictRing {
+private fun verdictSpendRing(thresholds: RuleBasedVerdictEngine.Thresholds, digest: InsightDigest, priorTotals: InsightDigest.Totals?): VerdictRing {
     val totals = digest.totals
     val spendTarget =
         maxOf(
@@ -48,11 +39,7 @@ private fun verdictSpendRing(
     )
 }
 
-private fun verdictCacheRing(
-    thresholds: RuleBasedVerdictEngine.Thresholds,
-    totals: InsightDigest.Totals,
-    priorTotals: InsightDigest.Totals?,
-): VerdictRing {
+private fun verdictCacheRing(thresholds: RuleBasedVerdictEngine.Thresholds, totals: InsightDigest.Totals, priorTotals: InsightDigest.Totals?): VerdictRing {
     val cacheRate = verdictCacheHitRate(totals)
     val priorCacheRate = priorTotals?.let { verdictCacheHitRate(it) }
     return VerdictRing(
@@ -70,11 +57,7 @@ private fun verdictCacheRing(
     )
 }
 
-private fun verdictSessionsRing(
-    thresholds: RuleBasedVerdictEngine.Thresholds,
-    totals: InsightDigest.Totals,
-    priorTotals: InsightDigest.Totals?,
-): VerdictRing {
+private fun verdictSessionsRing(thresholds: RuleBasedVerdictEngine.Thresholds, totals: InsightDigest.Totals, priorTotals: InsightDigest.Totals?): VerdictRing {
     val sessionTarget = maxOf((priorTotals?.sessionCount ?: 0) + 1, thresholds.sessionTargetMinimum)
     return VerdictRing(
         identity = VerdictRing.Identity.sessions,
@@ -146,20 +129,15 @@ private fun verdictCoreKeyNumbers(totals: InsightDigest.Totals, priorTotals: Ins
     )
 }
 
-private fun verdictTopModelKeyNumber(top: InsightDigest.ModelSnapshot): VerdictNumber =
-    VerdictNumber(
-        id = "top_model_calls_${top.id}",
-        label = top.id,
-        value = "${top.sessionCount}",
-        rawValue = top.sessionCount.toDouble(),
-        unit = VerdictDelta.Unit.sessions,
-    )
+private fun verdictTopModelKeyNumber(top: InsightDigest.ModelSnapshot): VerdictNumber = VerdictNumber(
+    id = "top_model_calls_${top.id}",
+    label = top.id,
+    value = "${top.sessionCount}",
+    rawValue = top.sessionCount.toDouble(),
+    unit = VerdictDelta.Unit.sessions,
+)
 
-internal fun buildVerdictBullets(
-    thresholds: RuleBasedVerdictEngine.Thresholds,
-    digest: InsightDigest,
-    prior: InsightDigest?,
-): List<VerdictBullet> {
+internal fun buildVerdictBullets(thresholds: RuleBasedVerdictEngine.Thresholds, digest: InsightDigest, prior: InsightDigest?): List<VerdictBullet> {
     val bullets = mutableListOf<VerdictBullet>()
     val priorTotals = prior?.totals
     bullets += verdictSpendComparisonBullets(digest, priorTotals)
@@ -262,11 +240,7 @@ private fun verdictCacheBullets(thresholds: RuleBasedVerdictEngine.Thresholds, d
     return emptyList()
 }
 
-private fun verdictAnomalyBullet(
-    thresholds: RuleBasedVerdictEngine.Thresholds,
-    digest: InsightDigest,
-    currentCount: Int,
-): List<VerdictBullet> {
+private fun verdictAnomalyBullet(thresholds: RuleBasedVerdictEngine.Thresholds, digest: InsightDigest, currentCount: Int): List<VerdictBullet> {
     if (currentCount >= InsightVerdict.MAX_BULLETS) return emptyList()
     val top = digest.anomalies.filter { it.score >= thresholds.anomalyZThreshold }.maxByOrNull { it.score } ?: return emptyList()
     return listOf(

@@ -12,11 +12,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CliAgentChatView(
-    runtime: AssistantRuntimeID,
-    historyStore: AssistantChatHistoryStore,
-    relayChatTransport: CLIAgentRelayChatTransporting,
-) {
+fun CliAgentChatView(runtime: AssistantRuntimeID, historyStore: AssistantChatHistoryStore, relayChatTransport: CLIAgentRelayChatTransporting) {
     val state = rememberCliAgentChatState(runtime, historyStore, relayChatTransport)
     CliAgentChatScreen(state = state)
     CliAgentChatOverlays(state = state)

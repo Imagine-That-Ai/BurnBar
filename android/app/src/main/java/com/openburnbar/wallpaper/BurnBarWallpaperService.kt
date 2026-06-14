@@ -76,7 +76,7 @@ class BurnBarWallpaperService : WallpaperService() {
         }
         private val preferenceListener =
             SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-                if (key == "pace" || key == "shape" || key == BurnBarWallpaperGlyphSettings.key) {
+                if (key == "pace" || key == "shape" || key == BurnBarWallpaperGlyphSettings.KEY) {
                     updateSettings()
                 }
             }
@@ -129,7 +129,8 @@ class BurnBarWallpaperService : WallpaperService() {
             simulation =
                 SwarmSimulation(
                     particleCount = WALLPAPER_PARTICLE_COUNT,
-                    pace = SwarmPace.CINEMATIC, // Default, updated via settings
+                    // Default, updated via settings
+                    pace = SwarmPace.CINEMATIC,
                     context = applicationContext,
                 )
             // Pre-warm every shape's point table off this (main) thread so a
@@ -330,10 +331,7 @@ internal fun applyWallpaperParticleOpacity(argb: Int, opacity: Double): Int {
  * bands, weights normalized over the kept providers, and unknown provider
  * keys dropped. Extracted from the engine so the weighting is unit-testable.
  */
-internal fun wallpaperProviderColorWeights(
-    topProviders: List<String>,
-    topProviderTokens: List<Long>,
-): List<ProviderColorWeight> {
+internal fun wallpaperProviderColorWeights(topProviders: List<String>, topProviderTokens: List<Long>): List<ProviderColorWeight> {
     val providers = topProviders.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
     val tokens = topProviderTokens.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
     val totalTokens = tokens.sum().coerceAtLeast(1)

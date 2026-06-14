@@ -80,18 +80,12 @@ class AndroidSignalSessionManager(
         return frame
     }
 
-    suspend fun receive(
-        stream: IrohRelayStream,
-        remoteAddress: SignalProtocolAddress,
-    ): AndroidSignalSessionReceivedMessage {
+    suspend fun receive(stream: IrohRelayStream, remoteAddress: SignalProtocolAddress): AndroidSignalSessionReceivedMessage {
         val frame = stream.receive() ?: error("Signal session stream closed before a message frame arrived.")
         return decrypt(frame = frame, remoteAddress = remoteAddress)
     }
 
-    fun decrypt(
-        frame: HermesRealtimeRelayFrame,
-        remoteAddress: SignalProtocolAddress,
-    ): AndroidSignalSessionReceivedMessage {
+    fun decrypt(frame: HermesRealtimeRelayFrame, remoteAddress: SignalProtocolAddress): AndroidSignalSessionReceivedMessage {
         require(frame.type == HermesRealtimeRelayFrameType.SIGNAL_SESSION_MESSAGE) {
             "Expected signal.session.message frame, received ${frame.type}."
         }

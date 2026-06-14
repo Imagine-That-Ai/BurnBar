@@ -61,13 +61,7 @@ internal fun AuroraBackdropVignette(isDark: Boolean, modifier: Modifier = Modifi
 }
 
 @Composable
-internal fun AuroraBackdropAnimatedLayers(
-    isDark: Boolean,
-    density: AuroraDensity,
-    reduceMotion: Boolean,
-    phase: () -> Float,
-    ribbonPhase: () -> Float,
-) {
+internal fun AuroraBackdropAnimatedLayers(isDark: Boolean, density: AuroraDensity, reduceMotion: Boolean, phase: () -> Float, ribbonPhase: () -> Float) {
     if (!auroraShowsAnimatedLayers(density)) return
     Box(modifier = Modifier.fillMaxSize()) {
         OrbLayer(
@@ -103,12 +97,11 @@ internal fun AuroraBackdropAnimatedLayers(
 internal val auroraStaticPhase: () -> Float = { 0f }
 
 /** Vignette edge: deep black in dark mode, a faint ink tint on paper. */
-internal fun auroraVignetteEdgeColor(isDark: Boolean): Color =
-    if (isDark) {
-        Color.Black.copy(alpha = 0.32f)
-    } else {
-        Color(0xFF1C2014).copy(alpha = 0.10f)
-    }
+internal fun auroraVignetteEdgeColor(isDark: Boolean): Color = if (isDark) {
+    Color.Black.copy(alpha = 0.32f)
+} else {
+    Color(0xFF1C2014).copy(alpha = 0.10f)
+}
 
 /** MINIMAL renders the flat gradient only — no orbs, ribbon, or particles. */
 internal fun auroraShowsAnimatedLayers(density: AuroraDensity): Boolean = density != AuroraDensity.MINIMAL
@@ -120,9 +113,7 @@ internal fun auroraOrbLayerOpacity(density: AuroraDensity): Float = if (density 
 internal fun auroraRibbonLayerOpacity(density: AuroraDensity): Float = if (density == AuroraDensity.SUBTLE) 0.35f else 0.55f
 
 /** Particles are the most motion-heavy layer: FULL density only, never under Reduce Motion. */
-internal fun auroraShowsParticleLayer(density: AuroraDensity, reduceMotion: Boolean): Boolean =
-    density == AuroraDensity.FULL && !reduceMotion
+internal fun auroraShowsParticleLayer(density: AuroraDensity, reduceMotion: Boolean): Boolean = density == AuroraDensity.FULL && !reduceMotion
 
 /** Reduce Motion pins every drift phase to the same static 0f frame. */
-internal fun auroraResolvedPhase(reduceMotion: Boolean, livePhase: () -> Float): () -> Float =
-    if (reduceMotion) auroraStaticPhase else livePhase
+internal fun auroraResolvedPhase(reduceMotion: Boolean, livePhase: () -> Float): () -> Float = if (reduceMotion) auroraStaticPhase else livePhase

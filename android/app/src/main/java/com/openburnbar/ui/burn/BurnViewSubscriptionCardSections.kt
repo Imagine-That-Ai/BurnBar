@@ -22,11 +22,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.HorizontalDivider
@@ -55,12 +55,12 @@ import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
+import com.openburnbar.data.models.hourlyBucket
+import com.openburnbar.data.models.isDisplayableQuotaSignal
 import com.openburnbar.data.models.isStale
 import com.openburnbar.data.models.nextResetDate
-import com.openburnbar.data.models.hourlyBucket
-import com.openburnbar.data.models.weeklyOrMonthlyBucket
-import com.openburnbar.data.models.isDisplayableQuotaSignal
 import com.openburnbar.data.models.primaryDisplayableBucket
+import com.openburnbar.data.models.weeklyOrMonthlyBucket
 import com.openburnbar.data.stores.QuotaWindowKind
 import com.openburnbar.data.stores.rememberQuotaDefaultWindow
 import com.openburnbar.ui.components.ProviderAvatar
@@ -102,11 +102,7 @@ private data class SubscriptionCardColors(val primary: Color, val accent: Color)
 
 /** Redesigned cards list matching iOS SubscriptionCard. */
 @Composable
-internal fun SubscriptionCard(
-    state: SubscriptionCardState,
-    actions: SubscriptionCardActions,
-    modifier: Modifier = Modifier
-) {
+internal fun SubscriptionCard(state: SubscriptionCardState, actions: SubscriptionCardActions, modifier: Modifier = Modifier) {
     val provider = AgentProvider.fromKey(state.snapshot.provider) ?: return
     val colors = SubscriptionCardColors(primary = Color(provider.brandColor), accent = Color(provider.accentColor))
     val defaultWindow by rememberQuotaDefaultWindow()
@@ -115,8 +111,8 @@ internal fun SubscriptionCard(
 
     Box(modifier = modifier.subscriptionCardContainer(colors)) {
         Column(
-            modifier = Modifier.padding(AuroraSpacing.lg.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+            modifier = Modifier.padding(AuroraSpacing.LG.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         ) {
             SubscriptionCardHeader(state = state, provider = provider, colors = colors)
             SubscriptionCardMain(snapshot = state.snapshot, provider = provider, colors = colors, buckets = buckets)
@@ -126,44 +122,38 @@ internal fun SubscriptionCard(
                 onExpandedChange = { expanded = it },
                 state = state,
                 actions = actions,
-                colors = colors
+                colors = colors,
             )
             SubscriptionCardExpanded(expanded = expanded, buckets = buckets.displayable, provider = provider)
         }
     }
 }
 
-private fun ProviderQuotaSnapshot.subscriptionCardBuckets(defaultWindow: QuotaWindowKind): SubscriptionCardBuckets =
-    SubscriptionCardBuckets(
-        displayable = buckets.filter { it.isDisplayableQuotaSignal() },
-        hourly = hourlyBucket,
-        weeklyOrMonthly = weeklyOrMonthlyBucket,
-        primary = primaryDisplayableBucket(defaultWindow)
+private fun ProviderQuotaSnapshot.subscriptionCardBuckets(defaultWindow: QuotaWindowKind): SubscriptionCardBuckets = SubscriptionCardBuckets(
+    displayable = buckets.filter { it.isDisplayableQuotaSignal() },
+    hourly = hourlyBucket,
+    weeklyOrMonthly = weeklyOrMonthlyBucket,
+    primary = primaryDisplayableBucket(defaultWindow),
+)
+
+@Composable
+private fun Modifier.subscriptionCardContainer(colors: SubscriptionCardColors): Modifier = fillMaxWidth()
+    .shadow(elevation = 6.dp, shape = RoundedCornerShape(AuroraRadius.LG.dp))
+    .clip(RoundedCornerShape(AuroraRadius.LG.dp))
+    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+    .background(Brush.linearGradient(listOf(colors.primary.copy(alpha = 0.10f), colors.accent.copy(alpha = 0.04f), Color.Transparent)))
+    .border(
+        width = 0.8.dp,
+        brush = Brush.linearGradient(listOf(colors.primary.copy(alpha = 0.34f), colors.accent.copy(alpha = 0.14f), colors.primary.copy(alpha = 0.08f))),
+        shape = RoundedCornerShape(AuroraRadius.LG.dp),
     )
 
 @Composable
-private fun Modifier.subscriptionCardContainer(colors: SubscriptionCardColors): Modifier =
-    fillMaxWidth()
-        .shadow(elevation = 6.dp, shape = RoundedCornerShape(AuroraRadius.lg.dp))
-        .clip(RoundedCornerShape(AuroraRadius.lg.dp))
-        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
-        .background(Brush.linearGradient(listOf(colors.primary.copy(alpha = 0.10f), colors.accent.copy(alpha = 0.04f), Color.Transparent)))
-        .border(
-            width = 0.8.dp,
-            brush = Brush.linearGradient(listOf(colors.primary.copy(alpha = 0.34f), colors.accent.copy(alpha = 0.14f), colors.primary.copy(alpha = 0.08f))),
-            shape = RoundedCornerShape(AuroraRadius.lg.dp)
-        )
-
-@Composable
-private fun SubscriptionCardHeader(
-    state: SubscriptionCardState,
-    provider: AgentProvider,
-    colors: SubscriptionCardColors
-) {
+private fun SubscriptionCardHeader(state: SubscriptionCardState, provider: AgentProvider, colors: SubscriptionCardColors) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SubscriptionCardIdentityOrb(provider = provider, primaryColor = colors.primary)
         SubscriptionCardIdentityText(state = state, provider = provider, primaryColor = colors.primary, modifier = Modifier.weight(1f))
@@ -179,7 +169,7 @@ private fun SubscriptionCardIdentityOrb(provider: AgentProvider, primaryColor: C
                 .size(28.dp)
                 .clip(CircleShape)
                 .background(primaryColor.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             ProviderAvatar(providerKey = provider.key, size = 18)
         }
@@ -187,26 +177,21 @@ private fun SubscriptionCardIdentityOrb(provider: AgentProvider, primaryColor: C
             drawCircle(
                 color = primaryColor.copy(alpha = 0.35f),
                 radius = size.minDimension / 2f - 1.dp.toPx(),
-                style = Stroke(width = 1.2.dp.toPx())
+                style = Stroke(width = 1.2.dp.toPx()),
             )
         }
     }
 }
 
 @Composable
-private fun SubscriptionCardIdentityText(
-    state: SubscriptionCardState,
-    provider: AgentProvider,
-    primaryColor: Color,
-    modifier: Modifier = Modifier
-) {
+private fun SubscriptionCardIdentityText(state: SubscriptionCardState, provider: AgentProvider, primaryColor: Color, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Text(
                 text = provider.displayName,
                 fontSize = AuroraTypography.headline.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
             )
             SubscriptionStatusBadge(isEstimated = state.snapshot.buckets.any { it.isEstimated }, primaryColor = primaryColor)
         }
@@ -220,33 +205,33 @@ private fun SubscriptionStatusBadge(isEstimated: Boolean, primaryColor: Color) {
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(primaryColor.copy(alpha = 0.12f))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             text = if (isEstimated) "ESTIMATED" else "ACTIVE",
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
             color = primaryColor,
-            letterSpacing = 0.8.sp
+            letterSpacing = 0.8.sp,
         )
     }
 }
 
 @Composable
 private fun SubscriptionAccountRow(state: SubscriptionCardState) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         Icon(
             imageVector = Icons.Default.AccountCircle,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.size(12.dp)
+            modifier = Modifier.size(12.dp),
         )
         Text(
             text = quotaAccountEmail(state.snapshot, state.accounts, state.signedInEmail) ?: quotaAccountName(state.snapshot, state.accounts),
             fontSize = AuroraTypography.caption.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
         )
         state.snapshot.accountStorageScope?.let { SubscriptionScopeChip(scope = it) }
     }
@@ -258,13 +243,13 @@ private fun SubscriptionScopeChip(scope: String) {
         modifier = Modifier
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             text = scope,
             fontSize = 9.sp,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -276,7 +261,7 @@ private fun SubscriptionCardConfidenceBadge(snapshot: ProviderQuotaSnapshot, pri
             .clip(RoundedCornerShape(8.dp))
             .background(Brush.linearGradient(listOf(primaryColor.copy(alpha = 0.08f), MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))))
             .border(0.5.dp, primaryColor.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             text = "${snapshot.source?.uppercase(Locale.getDefault()) ?: "API"} · ${snapshot.confidence.uppercase(Locale.getDefault())}",
@@ -284,25 +269,20 @@ private fun SubscriptionCardConfidenceBadge(snapshot: ProviderQuotaSnapshot, pri
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 0.5.sp
+            letterSpacing = 0.5.sp,
         )
     }
 }
 
 @Composable
-private fun SubscriptionCardMain(
-    snapshot: ProviderQuotaSnapshot,
-    provider: AgentProvider,
-    colors: SubscriptionCardColors,
-    buckets: SubscriptionCardBuckets
-) {
+private fun SubscriptionCardMain(snapshot: ProviderQuotaSnapshot, provider: AgentProvider, colors: SubscriptionCardColors, buckets: SubscriptionCardBuckets) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         QuotaArcDial(outer = buckets.longWindow, inner = buckets.hourly, provider = provider, diameter = 138.dp)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             MetricRow("clock.fill", "5-hour window", buckets.hourly, "Short-window quota not exposed", provider)
             MetricRow("calendar", buckets.weeklyLabel, buckets.longWindow, "Long-window quota not exposed", provider)
             SubscriptionResetRow(nextResetDate = snapshot.nextResetDate, primaryColor = colors.primary)
@@ -324,7 +304,7 @@ private fun SubscriptionResetRow(nextResetDate: Instant?, primaryColor: Color) {
                 text = "· ${DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).format(nextResetDate.atZone(ZoneId.systemDefault()))}",
                 fontSize = AuroraTypography.tiny.sp,
                 fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
         }
     }
@@ -336,7 +316,7 @@ private fun SubscriptionStaleBadge() {
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(AuroraColors.warning.copy(alpha = 0.12f))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(text = "Stale signal", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = AuroraColors.warning)
     }
@@ -349,52 +329,47 @@ private fun SubscriptionCardFooter(
     onExpandedChange: (Boolean) -> Unit,
     state: SubscriptionCardState,
     actions: SubscriptionCardActions,
-    colors: SubscriptionCardColors
+    colors: SubscriptionCardColors,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         SubscriptionBucketToggle(displayableBuckets = buckets.displayable, expanded = expanded, onExpandedChange = onExpandedChange)
         Spacer(modifier = Modifier.weight(1f))
         SubscriptionPinButton(isPinned = state.isPinned, primaryColor = colors.primary) { actions.onTogglePin(!state.isPinned) }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         SubscriptionRefreshButton(onRefresh = actions.onRefresh)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         if (!state.snapshot.managementUrl.isNullOrEmpty()) SubscriptionManageLink(primaryColor = colors.primary, onOpenDetail = actions.onOpenDetail)
     }
 }
 
 @Composable
-private fun SubscriptionBucketToggle(
-    displayableBuckets: List<QuotaBucket>,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit
-) {
+private fun SubscriptionBucketToggle(displayableBuckets: List<QuotaBucket>, expanded: Boolean, onExpandedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier
             .clickable(enabled = displayableBuckets.isNotEmpty()) { onExpandedChange(!expanded) }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Icon(
             imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(14.dp),
         )
         Text(
             text = subscriptionBucketToggleLabel(displayableBuckets.size, expanded),
             fontSize = AuroraTypography.caption.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
-private fun subscriptionBucketToggleLabel(bucketCount: Int, expanded: Boolean): String =
-    when {
-        bucketCount == 0 -> "No live buckets"
-        expanded -> "Hide buckets"
-        else -> "Show buckets ($bucketCount)"
-    }
+private fun subscriptionBucketToggleLabel(bucketCount: Int, expanded: Boolean): String = when {
+    bucketCount == 0 -> "No live buckets"
+    expanded -> "Hide buckets"
+    else -> "Show buckets ($bucketCount)"
+}
 
 @Composable
 private fun SubscriptionPinButton(isPinned: Boolean, primaryColor: Color, onTogglePin: () -> Unit) {
@@ -403,7 +378,7 @@ private fun SubscriptionPinButton(isPinned: Boolean, primaryColor: Color, onTogg
             imageVector = Icons.Default.PushPin,
             contentDescription = if (isPinned) "Unpin" else "Pin",
             tint = if (isPinned) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(14.dp),
         )
     }
 }
@@ -415,7 +390,7 @@ private fun SubscriptionRefreshButton(onRefresh: () -> Unit) {
             imageVector = Icons.Default.Refresh,
             contentDescription = "Refresh snapshot",
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(14.dp),
         )
     }
 }
@@ -427,7 +402,7 @@ private fun SubscriptionManageLink(primaryColor: Color, onOpenDetail: () -> Unit
             .clickable { onOpenDetail() }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text("Manage", fontSize = AuroraTypography.caption.sp, fontWeight = FontWeight.SemiBold, color = primaryColor)
         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = primaryColor, modifier = Modifier.size(10.dp))
@@ -440,8 +415,8 @@ private fun SubscriptionCardExpanded(expanded: Boolean, buckets: List<QuotaBucke
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = AuroraSpacing.sm.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+                .padding(top = AuroraSpacing.SM.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         ) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             Text(
@@ -450,7 +425,7 @@ private fun SubscriptionCardExpanded(expanded: Boolean, buckets: List<QuotaBucke
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                letterSpacing = 1.0.sp
+                letterSpacing = 1.0.sp,
             )
             buckets.forEach { UnifiedQuotaSignalView(bucket = it, provider = provider, compact = false) }
         }

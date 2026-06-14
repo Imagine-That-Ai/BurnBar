@@ -90,11 +90,11 @@ private fun OrgRollupScaffold(
         modifier
             .fillMaxSize()
             .background(if (state.isDark) AuroraColors.darkBackground else AuroraColors.lightBackground)
-            .padding(horizontal = AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         OrgRollupHeader(isDark = state.isDark)
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         if (!state.enterpriseOrgViewEnabled) {
             OrgRollupLockedGate(
                 sharedPrefs = state.sharedPrefs,
@@ -109,7 +109,7 @@ private fun OrgRollupScaffold(
             onSegmentSelected = onSegmentSelected,
             onPeriodSelected = onPeriodSelected,
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         OrgRollupContentBody(
             isLoading = state.isLoading,
             rollupRows = state.rollupRows,
@@ -117,6 +117,6 @@ private fun OrgRollupScaffold(
             isDark = state.isDark,
             modifier = Modifier.fillMaxWidth().weight(1f),
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
     }
 }

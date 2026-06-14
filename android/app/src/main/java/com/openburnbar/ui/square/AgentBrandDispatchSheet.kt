@@ -75,10 +75,9 @@ internal fun AgentBrandDispatchSheet(identity: AgentIdentity, missionHost: Mobil
 }
 
 @Composable
-private fun rememberDispatchRuntimeToken(identity: AgentIdentity): String? =
-    remember(identity) {
-        identity.runtimeID?.token ?: (identity.dispatchTransport as? AgentDispatchTransport.MacRelay)?.runtime
-    }
+private fun rememberDispatchRuntimeToken(identity: AgentIdentity): String? = remember(identity) {
+    identity.runtimeID?.token ?: (identity.dispatchTransport as? AgentDispatchTransport.MacRelay)?.runtime
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

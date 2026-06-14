@@ -74,11 +74,7 @@ import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraTypography
 
 @Composable
-internal fun SettingsRootContent(
-    router: SettingsRouter,
-    onBack: (() -> Unit)?,
-    onComputerUse: (() -> Unit)?,
-) {
+internal fun SettingsRootContent(router: SettingsRouter, onBack: (() -> Unit)?, onComputerUse: (() -> Unit)?) {
     val isDark = isSystemInDarkTheme()
     var searchMode by rememberSaveable { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
@@ -86,7 +82,9 @@ internal fun SettingsRootContent(
 
     LaunchedEffect(searchMode) {
         if (searchMode) {
-            try { searchFocusRequester.requestFocus() } catch (_: Throwable) {}
+            try {
+                searchFocusRequester.requestFocus()
+            } catch (_: Throwable) {}
         }
     }
 
@@ -99,14 +97,18 @@ internal fun SettingsRootContent(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    if (useWebsiteBackground) Color.Transparent
-                    else if (isDark) AuroraColors.darkBackground
-                    else AuroraColors.lightBackground
+                    if (useWebsiteBackground) {
+                        Color.Transparent
+                    } else if (isDark) {
+                        AuroraColors.darkBackground
+                    } else {
+                        AuroraColors.lightBackground
+                    },
                 )
-                .padding(horizontal = AuroraSpacing.lg.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+                .padding(horizontal = AuroraSpacing.LG.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         ) {
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
 
             SettingsRootTopBar(
                 router = router,
@@ -141,7 +143,7 @@ internal fun SettingsRootTopBar(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                    tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -152,90 +154,88 @@ internal fun SettingsRootTopBar(
                 "Settings",
                 style = AuroraType.displayLarge,
                 color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { onSearchModeChange(true) }) {
                 Icon(
                     Icons.Filled.Search,
                     contentDescription = "Search settings",
-                    tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                    tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
     }
 }
 
-internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (() -> Unit)?): List<RootRow> =
-    listOf(
-            RootRow(
-                anchor = SettingsAnchor.CLOUD_SYNC,
-                icon = Icons.Filled.Cloud,
-                title = "Cloud Sync",
-                subtitle = "Sync usage and conversations to OpenBurnBar Cloud",
-                pageRoute = SettingsPageRoute.ROOT,
-                onTap = {}
-            ),
-            RootRow(
-                anchor = SettingsAnchor.TRANSCRIPT_CACHE,
-                icon = Icons.Filled.Storage,
-                title = "Transcript Cache",
-                subtitle = "Encrypted stream downloads, default 250 MB",
-                pageRoute = SettingsPageRoute.TRANSCRIPT_CACHE,
-                onTap = { router.page = SettingsPageRoute.TRANSCRIPT_CACHE }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.CONNECTED_DEVICES,
-                icon = Icons.Filled.Devices,
-                title = "Connected Devices",
-                subtitle = "Manage which devices can read your data",
-                pageRoute = SettingsPageRoute.ROOT,
-                onTap = {}
-            ),
-            RootRow(
-                anchor = SettingsAnchor.COMPUTER_USE_ROW,
-                icon = Icons.Filled.Computer,
-                title = "Computer Use",
-                subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
-                pageRoute = SettingsPageRoute.ROOT,
-                onTap = { onComputerUse?.invoke() }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.BUDGET_ROW,
-                icon = Icons.Filled.Tune,
-                title = "Budgeting & Rules",
-                subtitle = "Set hard limits and warnings on usage spends",
-                pageRoute = SettingsPageRoute.BUDGET_PREFS,
-                onTap = { router.page = SettingsPageRoute.BUDGET_PREFS }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.TEXT_EXPANSION_ROW,
-                icon = Icons.Filled.Keyboard,
-                title = "Text Expansion",
-                subtitle = "Manage && snippets and the OpenBurnBar snippets keyboard",
-                pageRoute = SettingsPageRoute.TEXT_EXPANSION,
-                onTap = { router.page = SettingsPageRoute.TEXT_EXPANSION },
-            ),
-    )
+internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (() -> Unit)?): List<RootRow> = listOf(
+    RootRow(
+        anchor = SettingsAnchor.CLOUD_SYNC,
+        icon = Icons.Filled.Cloud,
+        title = "Cloud Sync",
+        subtitle = "Sync usage and conversations to OpenBurnBar Cloud",
+        pageRoute = SettingsPageRoute.ROOT,
+        onTap = {},
+    ),
+    RootRow(
+        anchor = SettingsAnchor.TRANSCRIPT_CACHE,
+        icon = Icons.Filled.Storage,
+        title = "Transcript Cache",
+        subtitle = "Encrypted stream downloads, default 250 MB",
+        pageRoute = SettingsPageRoute.TRANSCRIPT_CACHE,
+        onTap = { router.page = SettingsPageRoute.TRANSCRIPT_CACHE },
+    ),
+    RootRow(
+        anchor = SettingsAnchor.CONNECTED_DEVICES,
+        icon = Icons.Filled.Devices,
+        title = "Connected Devices",
+        subtitle = "Manage which devices can read your data",
+        pageRoute = SettingsPageRoute.ROOT,
+        onTap = {},
+    ),
+    RootRow(
+        anchor = SettingsAnchor.COMPUTER_USE_ROW,
+        icon = Icons.Filled.Computer,
+        title = "Computer Use",
+        subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
+        pageRoute = SettingsPageRoute.ROOT,
+        onTap = { onComputerUse?.invoke() },
+    ),
+    RootRow(
+        anchor = SettingsAnchor.BUDGET_ROW,
+        icon = Icons.Filled.Tune,
+        title = "Budgeting & Rules",
+        subtitle = "Set hard limits and warnings on usage spends",
+        pageRoute = SettingsPageRoute.BUDGET_PREFS,
+        onTap = { router.page = SettingsPageRoute.BUDGET_PREFS },
+    ),
+    RootRow(
+        anchor = SettingsAnchor.TEXT_EXPANSION_ROW,
+        icon = Icons.Filled.Keyboard,
+        title = "Text Expansion",
+        subtitle = "Manage && snippets and the OpenBurnBar snippets keyboard",
+        pageRoute = SettingsPageRoute.TEXT_EXPANSION,
+        onTap = { router.page = SettingsPageRoute.TEXT_EXPANSION },
+    ),
+)
 
-internal fun buildSettingsVisualGroup(router: SettingsRouter): List<RootRow> =
-    listOf(
-            RootRow(
-                anchor = SettingsAnchor.THEME_ROW,
-                icon = Icons.Filled.AutoAwesome,
-                title = "Theme & SOTA UX",
-                subtitle = "Customise visual appearance, spring physics, and grid backdrops",
-                pageRoute = SettingsPageRoute.THEME_PREFS,
-                onTap = { router.page = SettingsPageRoute.THEME_PREFS }
-            ),
-            RootRow(
-                anchor = SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
-                icon = Icons.Filled.GridOn,
-                title = "Quota Customisation",
-                subtitle = "Rearrange providers, toggle visible buckets, and format percentage displays",
-                pageRoute = SettingsPageRoute.QUOTA_PREFS,
-                onTap = { router.page = SettingsPageRoute.QUOTA_PREFS },
-            ),
-    )
+internal fun buildSettingsVisualGroup(router: SettingsRouter): List<RootRow> = listOf(
+    RootRow(
+        anchor = SettingsAnchor.THEME_ROW,
+        icon = Icons.Filled.AutoAwesome,
+        title = "Theme & SOTA UX",
+        subtitle = "Customise visual appearance, spring physics, and grid backdrops",
+        pageRoute = SettingsPageRoute.THEME_PREFS,
+        onTap = { router.page = SettingsPageRoute.THEME_PREFS },
+    ),
+    RootRow(
+        anchor = SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
+        icon = Icons.Filled.GridOn,
+        title = "Quota Customisation",
+        subtitle = "Rearrange providers, toggle visible buckets, and format percentage displays",
+        pageRoute = SettingsPageRoute.QUOTA_PREFS,
+        onTap = { router.page = SettingsPageRoute.QUOTA_PREFS },
+    ),
+)
 
 internal fun buildSettingsSmartDisplayRows(
     router: SettingsRouter,
@@ -252,8 +252,8 @@ internal fun buildSettingsSmartDisplayRows(
             pageRoute = SettingsPageRoute.SMART_DISPLAYS,
             isCollapsibleHeader = true,
             isExpanded = smartDisplaysExpanded,
-            onTap = { onSmartDisplaysExpandedChange(!smartDisplaysExpanded) }
-        )
+            onTap = { onSmartDisplaysExpandedChange(!smartDisplaysExpanded) },
+        ),
     )
     if (smartDisplaysExpanded) {
         list.add(
@@ -264,8 +264,8 @@ internal fun buildSettingsSmartDisplayRows(
                 subtitle = "Nest Hub and Pixel Tablet glance",
                 pageRoute = SettingsPageRoute.SMART_DISPLAYS,
                 isNested = true,
-                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
-            )
+                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS },
+            ),
         )
         list.add(
             RootRow(
@@ -275,8 +275,8 @@ internal fun buildSettingsSmartDisplayRows(
                 subtitle = "Pixel Clock cost glance",
                 pageRoute = SettingsPageRoute.SMART_DISPLAYS,
                 isNested = true,
-                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
-            )
+                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS },
+            ),
         )
     }
     return list
@@ -297,8 +297,8 @@ internal fun buildSettingsNotificationRows(
             pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
             isCollapsibleHeader = true,
             isExpanded = notificationsExpanded,
-            onTap = { onNotificationsExpandedChange(!notificationsExpanded) }
-        )
+            onTap = { onNotificationsExpandedChange(!notificationsExpanded) },
+        ),
     )
     if (notificationsExpanded) {
         list.add(
@@ -309,8 +309,8 @@ internal fun buildSettingsNotificationRows(
                 subtitle = "Live cost glance in the notification shade",
                 pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
                 isNested = true,
-                onTap = onOpenMenuBarPrefs
-            )
+                onTap = onOpenMenuBarPrefs,
+            ),
         )
     }
     return list
@@ -325,10 +325,7 @@ internal fun buildSettingsIntegrationsGroup(
 ): List<RootRow> = buildSettingsSmartDisplayRows(router, smartDisplaysExpanded, onSmartDisplaysExpandedChange) +
     buildSettingsNotificationRows(notificationsExpanded, onNotificationsExpandedChange) { router.page = SettingsPageRoute.MENU_BAR_PREFS }
 
-internal fun buildSettingsProvidersGroup(
-    providersExpanded: Boolean,
-    onProvidersExpandedChange: (Boolean) -> Unit,
-): List<RootRow> {
+internal fun buildSettingsProvidersGroup(providersExpanded: Boolean, onProvidersExpandedChange: (Boolean) -> Unit): List<RootRow> {
     val list = mutableListOf<RootRow>()
     list.add(
         RootRow(
@@ -346,7 +343,7 @@ internal fun buildSettingsProvidersGroup(
             isCollapsibleHeader = true,
             isExpanded = providersExpanded,
             onTap = { onProvidersExpandedChange(!providersExpanded) },
-        )
+        ),
     )
     if (providersExpanded) {
         AgentProvider.entries
@@ -362,7 +359,7 @@ internal fun buildSettingsProvidersGroup(
                         logoProviderKeys = listOf(provider.key),
                         isNested = true,
                         onTap = {},
-                    )
+                    ),
                 )
             }
     }
@@ -378,7 +375,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
         pageRoute = SettingsPageRoute.ROOT,
         logoProviderKeys = listOf(AgentProvider.HERMES.key, AgentProvider.CLAUDE_CODE.key, AgentProvider.CODEX.key, AgentProvider.OPEN_CLAW.key),
         isNested = true,
-        onTap = {}
+        onTap = {},
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_MODELS,
@@ -388,7 +385,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
         pageRoute = SettingsPageRoute.ROOT,
         logoProviderKeys = listOf(AgentProvider.HERMES.key, AgentProvider.CLAUDE_CODE.key, AgentProvider.OPEN_AI.key, AgentProvider.GEMINI_CLI.key),
         isNested = true,
-        onTap = {}
+        onTap = {},
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_DISPLAY,
@@ -398,7 +395,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
         pageRoute = SettingsPageRoute.ROOT,
         logoProviderKeys = listOf(AgentProvider.HERMES.key),
         isNested = true,
-        onTap = {}
+        onTap = {},
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_GATEWAY,
@@ -408,7 +405,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
         pageRoute = SettingsPageRoute.ROOT,
         logoProviderKeys = listOf(AgentProvider.HERMES.key),
         isNested = true,
-        onTap = {}
+        onTap = {},
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_STATUS,
@@ -418,14 +415,11 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
         pageRoute = SettingsPageRoute.ROOT,
         logoProviderKeys = listOf(AgentProvider.HERMES.key),
         isNested = true,
-        onTap = {}
+        onTap = {},
     ),
 )
 
-internal fun buildSettingsHermesGroup(
-    hermesExpanded: Boolean,
-    onHermesExpandedChange: (Boolean) -> Unit,
-): List<RootRow> {
+internal fun buildSettingsHermesGroup(hermesExpanded: Boolean, onHermesExpandedChange: (Boolean) -> Unit): List<RootRow> {
     val list = mutableListOf(
         RootRow(
             anchor = "root.hermes_dev_suite",
@@ -436,8 +430,8 @@ internal fun buildSettingsHermesGroup(
             logoProviderKeys = listOf(AgentProvider.HERMES.key),
             isCollapsibleHeader = true,
             isExpanded = hermesExpanded,
-            onTap = { onHermesExpandedChange(!hermesExpanded) }
-        )
+            onTap = { onHermesExpandedChange(!hermesExpanded) },
+        ),
     )
     if (hermesExpanded) list.addAll(buildSettingsHermesExpandedRows())
     return list
@@ -459,8 +453,8 @@ internal fun mergeSettingsRootVisibleRows(
                     row = row,
                     groupTitle = if (index == 0) title else null,
                     itemIndex = index,
-                    groupCount = items.size
-                )
+                    groupCount = items.size,
+                ),
             )
         }
     }
@@ -474,14 +468,11 @@ internal fun mergeSettingsRootVisibleRows(
     return list
 }
 
-internal fun LazyListScope.settingsRootListItems(
-    router: SettingsRouter,
-    visibleRows: List<RowWithGroupInfo>,
-) {
+internal fun LazyListScope.settingsRootListItems(router: SettingsRouter, visibleRows: List<RowWithGroupInfo>) {
     visibleRows.forEach { rowWithInfo ->
         val groupTitle = rowWithInfo.groupTitle
         if (groupTitle != null) {
-            item(key = "header_${groupTitle}") {
+            item(key = "header_$groupTitle") {
                 SettingsSectionHeader(title = groupTitle)
             }
         }
@@ -501,13 +492,13 @@ internal fun LazyListScope.settingsRootListItems(
                 isExpanded = rowWithInfo.row.isExpanded,
                 isNested = rowWithInfo.row.isNested,
                 showDivider = showDivider,
-                onClick = rowWithInfo.row.onTap
+                onClick = rowWithInfo.row.onTap,
             )
         }
     }
 
     item {
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
     }
 }
 
@@ -528,11 +519,7 @@ internal fun settingsRootExpandGroupsForPendingAnchor(
 }
 
 @Composable
-internal fun RowScope.SettingsRootSearchField(
-    router: SettingsRouter,
-    searchFocusRequester: FocusRequester,
-    onSearchModeChange: (Boolean) -> Unit,
-) {
+internal fun RowScope.SettingsRootSearchField(router: SettingsRouter, searchFocusRequester: FocusRequester, onSearchModeChange: (Boolean) -> Unit) {
     OutlinedTextField(
         value = router.query,
         onValueChange = { router.query = it },
@@ -547,15 +534,12 @@ internal fun RowScope.SettingsRootSearchField(
         },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        modifier = Modifier.weight(1f).focusRequester(searchFocusRequester)
+        modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
     )
 }
 
 @Composable
-internal fun SettingsRootList(
-    router: SettingsRouter,
-    onComputerUse: (() -> Unit)?,
-) {
+internal fun SettingsRootList(router: SettingsRouter, onComputerUse: (() -> Unit)?) {
     val listState = rememberLazyListState()
     var providersExpanded by rememberSaveable { mutableStateOf(false) }
     var hermesExpanded by rememberSaveable { mutableStateOf(false) }
@@ -594,8 +578,8 @@ internal fun SettingsRootList(
 
     LazyColumn(
         state = listState,
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
-        modifier = Modifier.fillMaxSize()
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
+        modifier = Modifier.fillMaxSize(),
     ) {
         settingsRootListItems(router = router, visibleRows = visibleRows)
     }
@@ -613,11 +597,7 @@ internal data class SettingsRootExpansionState(
 )
 
 @Composable
-internal fun settingsRootVisibleRows(
-    router: SettingsRouter,
-    onComputerUse: (() -> Unit)?,
-    expansion: SettingsRootExpansionState,
-): List<RowWithGroupInfo> {
+internal fun settingsRootVisibleRows(router: SettingsRouter, onComputerUse: (() -> Unit)?, expansion: SettingsRootExpansionState): List<RowWithGroupInfo> {
     val systemGroup = remember(onComputerUse) { buildSettingsSystemGroup(router, onComputerUse) }
     val visualGroup = remember(router) { buildSettingsVisualGroup(router) }
     val integrationsGroup = remember(expansion.smartDisplaysExpanded, expansion.notificationsExpanded) {
@@ -668,15 +648,15 @@ internal fun SettingsSectionHeader(title: String) {
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-        modifier = Modifier.padding(start = AuroraSpacing.md.dp, top = AuroraSpacing.md.dp, bottom = AuroraSpacing.xs.dp)
+        modifier = Modifier.padding(start = AuroraSpacing.MD.dp, top = AuroraSpacing.MD.dp, bottom = AuroraSpacing.XS.dp),
     )
 }
 
 internal fun getGroupShape(index: Int, count: Int): RoundedCornerShape {
     return when {
-        count == 1 -> RoundedCornerShape(AuroraRadius.lg.dp)
-        index == 0 -> RoundedCornerShape(topStart = AuroraRadius.lg.dp, topEnd = AuroraRadius.lg.dp)
-        index == count - 1 -> RoundedCornerShape(bottomStart = AuroraRadius.lg.dp, bottomEnd = AuroraRadius.lg.dp)
+        count == 1 -> RoundedCornerShape(AuroraRadius.LG.dp)
+        index == 0 -> RoundedCornerShape(topStart = AuroraRadius.LG.dp, topEnd = AuroraRadius.LG.dp)
+        index == count - 1 -> RoundedCornerShape(bottomStart = AuroraRadius.LG.dp, bottomEnd = AuroraRadius.LG.dp)
         else -> RoundedCornerShape(0.dp)
     }
 }
@@ -707,7 +687,7 @@ internal fun SettingsRow(
     title: String,
     subtitle: String,
     highlighted: Boolean,
-    shape: RoundedCornerShape = RoundedCornerShape(AuroraRadius.lg.dp),
+    shape: RoundedCornerShape = RoundedCornerShape(AuroraRadius.LG.dp),
     logoProviderKeys: List<String> = emptyList(),
     isCollapsibleHeader: Boolean = false,
     isExpanded: Boolean = false,
@@ -722,7 +702,7 @@ internal fun SettingsRow(
             Color.Transparent
         },
         animationSpec = tween(durationMillis = 350),
-        label = "settings-row-halo"
+        label = "settings-row-halo",
     )
 
     val contentAlpha = if (isNested) 0.85f else 1f
@@ -733,7 +713,7 @@ internal fun SettingsRow(
             .fillMaxWidth()
             .padding(start = if (isNested) 16.dp else 0.dp),
         shape = shape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = if (isNested) 0.4f else 0.6f)
+        color = MaterialTheme.colorScheme.surface.copy(alpha = if (isNested) 0.4f else 0.6f),
     ) {
         Surface(
             color = haloColor,
@@ -761,62 +741,49 @@ internal fun SettingsRow(
 }
 
 @Composable
-internal fun SettingsRowLeading(
-    icon: ImageVector,
-    logoProviderKeys: List<String>,
-    isNested: Boolean,
-    contentAlpha: Float,
-) {
+internal fun SettingsRowLeading(icon: ImageVector, logoProviderKeys: List<String>, isNested: Boolean, contentAlpha: Float) {
     val logoProviders = logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
     if (logoProviders.isNotEmpty()) {
         SettingsProviderLogoStack(
             providers = logoProviders,
-            maxVisible = if (isNested) 1 else 4
+            maxVisible = if (isNested) 1 else 4,
         )
     } else {
         Icon(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(if (isNested) 20.dp else 24.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
         )
     }
 }
 
 @Composable
-internal fun RowScope.SettingsRowText(
-    title: String,
-    subtitle: String,
-    isNested: Boolean,
-    contentAlpha: Float,
-) {
+internal fun RowScope.SettingsRowText(title: String, subtitle: String, isNested: Boolean, contentAlpha: Float) {
     Column(modifier = Modifier.weight(1f)) {
         Text(
             title,
             fontSize = (if (isNested) AuroraTypography.caption else AuroraTypography.body).sp,
             fontWeight = if (isNested) FontWeight.Medium else FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
         )
         if (subtitle.isNotEmpty()) {
             Text(
                 subtitle,
                 fontSize = (if (isNested) 11 else AuroraTypography.caption).sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha * 0.8f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha * 0.8f),
             )
         }
     }
 }
 
 @Composable
-internal fun SettingsRowTrailing(
-    isCollapsibleHeader: Boolean,
-    isExpanded: Boolean,
-) {
+internal fun SettingsRowTrailing(isCollapsibleHeader: Boolean, isExpanded: Boolean) {
     if (isCollapsibleHeader) {
         val rotation by animateFloatAsState(
             targetValue = if (isExpanded) 180f else 0f,
             animationSpec = tween(durationMillis = 200),
-            label = "chevron-rotation"
+            label = "chevron-rotation",
         )
         Icon(
             imageVector = Icons.Filled.KeyboardArrowDown,
@@ -824,14 +791,14 @@ internal fun SettingsRowTrailing(
             modifier = Modifier
                 .size(24.dp)
                 .graphicsLayer(rotationZ = rotation),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
         )
     } else {
         Icon(
             imageVector = Icons.AutoMirrored.Filled.NavigateNext,
             contentDescription = null,
             modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
         )
     }
 }
@@ -842,13 +809,13 @@ internal fun SettingsRowBody(model: SettingsRowBodyModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = AuroraSpacing.md.dp,
-                vertical = if (model.isNested) AuroraSpacing.sm.dp else AuroraSpacing.md.dp
+                horizontal = AuroraSpacing.MD.dp,
+                vertical = if (model.isNested) AuroraSpacing.SM.dp else AuroraSpacing.MD.dp,
             ),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         SettingsRowLeading(model.icon, model.logoProviderKeys, model.isNested, model.contentAlpha)
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         SettingsRowText(model.title, model.subtitle, model.isNested, model.contentAlpha)
         SettingsRowTrailing(model.isCollapsibleHeader, model.isExpanded)
     }
@@ -871,16 +838,13 @@ internal fun SettingsRowDivider() {
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .padding(horizontal = AuroraSpacing.md.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+            .padding(horizontal = AuroraSpacing.MD.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
     )
 }
 
 @Composable
-internal fun SettingsProviderLogoStack(
-    providers: List<AgentProvider>,
-    maxVisible: Int = 4,
-) {
+internal fun SettingsProviderLogoStack(providers: List<AgentProvider>, maxVisible: Int = 4) {
     Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
         providers.take(maxVisible).forEach { provider ->
             ProviderLogo(provider = provider, size = 28.dp)

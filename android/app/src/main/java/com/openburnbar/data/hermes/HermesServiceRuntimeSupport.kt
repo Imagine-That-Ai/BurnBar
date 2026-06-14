@@ -135,11 +135,7 @@ internal class HermesServiceRuntimeSupport(
         )
     }
 
-    private fun applyOfflineRuntimeState(
-        selected: HermesConnectionRecord,
-        error: String,
-        endpoint: String? = null,
-    ) {
+    private fun applyOfflineRuntimeState(selected: HermesConnectionRecord, error: String, endpoint: String? = null) {
         probeState.runtimeErrorText.value = error
         probeState.isReachable.value = false
         probeState.isConnected.value = false
@@ -149,8 +145,7 @@ internal class HermesServiceRuntimeSupport(
         updateConnectionStatus(selected, HermesConnectionStatus.OFFLINE, error = error)
     }
 
-    private fun runtimeProbeError(error: Throwable): String =
-        error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
+    private fun runtimeProbeError(error: Throwable): String = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
 
     private fun fetchHealth(endpoint: String): Map<String, String> {
         val request = Request.Builder().url("$endpoint/health").get().build()
@@ -226,10 +221,7 @@ internal class HermesServiceRuntimeSupport(
             ?.trimEnd('/')
     }
 
-    private fun mergeModelOptions(
-        primary: List<HermesRuntimeModelOption>,
-        secondary: List<HermesRuntimeModelOption>,
-    ): List<HermesRuntimeModelOption> {
+    private fun mergeModelOptions(primary: List<HermesRuntimeModelOption>, secondary: List<HermesRuntimeModelOption>): List<HermesRuntimeModelOption> {
         val seen = linkedSetOf<String>()
         return (primary + secondary).filter { seen.add(it.modelID.lowercase()) }
     }

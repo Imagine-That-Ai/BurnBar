@@ -53,11 +53,11 @@ fun SettingsSearchResultsScreen(router: SettingsRouter) {
             "${results.size} result${if (results.size == 1) "" else "s"}",
             style = AuroraType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = AuroraSpacing.xs.dp),
+            modifier = Modifier.padding(vertical = AuroraSpacing.XS.dp),
         )
 
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
             items(results) { item ->
@@ -75,20 +75,20 @@ private fun SettingsResultRow(item: SettingsItem, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.lg.dp),
+        shape = RoundedCornerShape(AuroraRadius.LG.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
     ) {
         Row(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.md.dp),
+                .padding(AuroraSpacing.MD.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val logoProviders = item.logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
             if (logoProviders.isNotEmpty()) {
                 SettingsProviderLogoStack(providers = logoProviders)
-                Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -109,7 +109,7 @@ private fun SettingsResultRow(item: SettingsItem, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                 contentDescription = null,
@@ -133,19 +133,19 @@ private fun EmptyState(router: SettingsRouter) {
             modifier = Modifier.size(36.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
         Text(
             "No settings match \u201C${router.query}\u201D",
             fontSize = AuroraTypography.body.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
         Text(
             "Try a broader term, or browse the list.",
             fontSize = AuroraTypography.caption.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         Button(onClick = { router.reset() }) {
             Text("Browse all")
         }

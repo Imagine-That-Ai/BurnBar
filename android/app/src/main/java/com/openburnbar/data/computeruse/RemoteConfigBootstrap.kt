@@ -27,9 +27,9 @@ import com.google.firebase.remoteconfig.remoteConfigSettings
  * and one who sets `false` gets an honored kill switch.
  */
 object RemoteConfigBootstrap {
-    /// Refresh at most hourly: responsive enough for a security kill switch
-    /// without burning Firebase fetch quota. A hard panic also has the
-    /// independent per-session `computer_use_kill_switch`.
+    // / Refresh at most hourly: responsive enough for a security kill switch
+    // / without burning Firebase fetch quota. A hard panic also has the
+    // / independent per-session `computer_use_kill_switch`.
     private const val MINIMUM_FETCH_INTERVAL_SECONDS = 3_600L
 
     fun activate() {

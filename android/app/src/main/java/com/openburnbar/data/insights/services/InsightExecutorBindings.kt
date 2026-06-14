@@ -27,7 +27,9 @@ internal object InsightExecutorBindings {
         val format =
             when (binding.metric) {
                 "totalCost", "avgCostPerSession", "quotaHeadroom" -> ValueFormat.CURRENCY
-                "totalTokens", "inputTokens", "outputTokens", "reasoningTokens", "totalSessions", "modelCount", "providerCount", "projectCount" -> ValueFormat.COUNT
+                "totalTokens", "inputTokens", "outputTokens", "reasoningTokens", "totalSessions",
+                "modelCount", "providerCount", "projectCount",
+                -> ValueFormat.COUNT
                 "cacheHitRate" -> ValueFormat.PERCENT
                 else -> ValueFormat.RAW
             }

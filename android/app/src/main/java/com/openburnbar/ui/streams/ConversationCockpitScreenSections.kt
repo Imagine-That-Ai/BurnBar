@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -24,16 +26,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Numbers
+import androidx.compose.material.icons.filled.Paid
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
@@ -41,14 +50,18 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,20 +86,6 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.util.Formatting
-
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkAdd
-import androidx.compose.material.icons.filled.ChatBubbleOutline
-import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.LockReset
-import androidx.compose.material.icons.filled.Paid
-import androidx.compose.material.icons.filled.SearchOff
-import androidx.compose.material3.InputChip
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 internal data class EntitledCockpitListContext(
     val store: ConversationCockpitStore,
@@ -122,12 +121,7 @@ internal fun cockpitFilterRows(rows: List<CockpitConversationRow>, search: Strin
     }
 }
 
-internal fun cockpitHasActiveFilters(
-    selectedProviders: Set<String>,
-    selectedModel: String?,
-    dateFrom: Long?,
-    dateTo: Long?,
-): Boolean =
+internal fun cockpitHasActiveFilters(selectedProviders: Set<String>, selectedModel: String?, dateFrom: Long?, dateTo: Long?): Boolean =
     selectedProviders.isNotEmpty() ||
         selectedModel != null ||
         dateFrom != null ||
@@ -232,7 +226,7 @@ internal fun EntitledCockpitSearchField(search: String, onSearchChange: (String)
     OutlinedTextField(
         value = search,
         onValueChange = onSearchChange,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = AuroraSpacing.md.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AuroraSpacing.MD.dp),
         placeholder = { Text("Filter loaded conversations…") },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         singleLine = true,
@@ -329,7 +323,14 @@ private fun EntitledCockpitBody(store: ConversationCockpitStore, snapshot: Entit
     EntitledCockpitMainList(
         params =
         EntitledCockpitMainListParams(
-            store, snapshot, listState, search, filteredRows, hasActiveFilters, hasNarrowingInput, modifier,
+            store,
+            snapshot,
+            listState,
+            search,
+            filteredRows,
+            hasActiveFilters,
+            hasNarrowingInput,
+            modifier,
         ),
         callbacks =
         EntitledCockpitMainListCallbacks(
@@ -343,7 +344,11 @@ private fun EntitledCockpitBody(store: ConversationCockpitStore, snapshot: Entit
         store = store,
         sheetState =
         EntitledCockpitOverlaySheetState(
-            selectedRow, showFilters, showSaveQuery, snapshot.dateFrom, snapshot.dateTo,
+            selectedRow,
+            showFilters,
+            showSaveQuery,
+            snapshot.dateFrom,
+            snapshot.dateTo,
         ),
         callbacks =
         EntitledCockpitOverlaySheetCallbacks(
@@ -373,10 +378,7 @@ internal data class EntitledCockpitMainListCallbacks(
 )
 
 @Composable
-private fun EntitledCockpitMainList(
-    params: EntitledCockpitMainListParams,
-    callbacks: EntitledCockpitMainListCallbacks,
-) {
+private fun EntitledCockpitMainList(params: EntitledCockpitMainListParams, callbacks: EntitledCockpitMainListCallbacks) {
     val store = params.store
     val snapshot = params.snapshot
     val listState = params.listState
@@ -390,12 +392,12 @@ private fun EntitledCockpitMainList(
     val onSaveQuery = callbacks.onSaveQuery
     Column(modifier = params.modifier.fillMaxSize()) {
         EntitledCockpitSearchField(search = search, onSearchChange = onSearchChange)
-        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(horizontal = AuroraSpacing.md.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-            contentPadding = PaddingValues(bottom = AuroraSpacing.xxl.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = AuroraSpacing.MD.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+            contentPadding = PaddingValues(bottom = AuroraSpacing.XXL.dp),
         ) {
             entitledCockpitListItems(
                 EntitledCockpitListContext(
@@ -443,7 +445,7 @@ internal fun CockpitKpiHeader(aggregates: ConversationQueryAggregates?, rows: Li
         }
     val maxTokens = providerMix.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
 
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         CockpitKpiTilesRow(conversations = conversations, cost = cost, tokens = tokens)
         if (providerMix.size > 1) {
             CockpitKpiProviderMixCard(providerMix = providerMix, maxTokens = maxTokens)
@@ -453,7 +455,7 @@ internal fun CockpitKpiHeader(aggregates: ConversationQueryAggregates?, rows: Li
 
 @Composable
 private fun CockpitKpiTilesRow(conversations: Int, cost: Double, tokens: Long) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         CockpitKpiTile(
             title = "Conversations",
             value = conversations.toString(),
@@ -479,11 +481,8 @@ private fun CockpitKpiTilesRow(conversations: Int, cost: Double, tokens: Long) {
 }
 
 @Composable
-private fun CockpitKpiProviderMixCard(
-    providerMix: List<Map.Entry<String, Long>>,
-    maxTokens: Long,
-) {
-    AuroraGlassCard(cornerRadius = AuroraRadius.lg) {
+private fun CockpitKpiProviderMixCard(providerMix: List<Map.Entry<String, Long>>, maxTokens: Long) {
+    AuroraGlassCard(cornerRadius = AuroraRadius.LG) {
         Text(
             "TOKEN MIX · LOADED",
             fontSize = 10.sp,
@@ -491,7 +490,7 @@ private fun CockpitKpiProviderMixCard(
             letterSpacing = 1.1.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
         providerMix.forEach { entry ->
             CockpitKpiProviderMixRow(entry = entry, maxTokens = maxTokens)
         }
@@ -539,9 +538,9 @@ private fun CockpitKpiProviderMixRow(entry: Map.Entry<String, Long>, maxTokens: 
 
 @Composable
 internal fun CockpitKpiTile(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, modifier: Modifier = Modifier) {
-    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.lg, contentPadding = AuroraSpacing.md.dp) {
+    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.LG, contentPadding = AuroraSpacing.MD.dp) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
         Text(
             value,
             fontSize = 18.sp,
@@ -580,7 +579,7 @@ internal data class CockpitFacetCallbacks(
 
 @Composable
 internal fun CockpitFacetBar(state: CockpitFacetState, callbacks: CockpitFacetCallbacks) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         CockpitFacetPrimaryRow(state = state, callbacks = callbacks)
         CockpitFacetProviderChips(state = state, callbacks = callbacks)
         CockpitFacetSavedQueries(state = state, callbacks = callbacks)
@@ -591,7 +590,7 @@ internal fun CockpitFacetBar(state: CockpitFacetState, callbacks: CockpitFacetCa
 private fun CockpitFacetPrimaryRow(state: CockpitFacetState, callbacks: CockpitFacetCallbacks) {
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         CockpitSortMenuChip(
             sortField = state.sortField,
@@ -621,7 +620,7 @@ private fun CockpitFacetProviderChips(state: CockpitFacetState, callbacks: Cockp
     if (state.discoveredProviders.isEmpty()) return
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         state.discoveredProviders.forEach { provider ->
             val active = state.selectedProviders.contains(provider)
@@ -658,7 +657,7 @@ private fun CockpitFacetSavedQueries(state: CockpitFacetState, callbacks: Cockpi
     if (state.savedQueries.isEmpty()) return
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         state.savedQueries.forEach { query ->
             InputChip(
@@ -788,9 +787,9 @@ internal fun CockpitFacetChip(
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         modifier =
         Modifier
-            .clip(RoundedCornerShape(AuroraRadius.full.dp))
+            .clip(RoundedCornerShape(AuroraRadius.FULL.dp))
             .background(containerColor)
-            .border(0.75.dp, borderColor, RoundedCornerShape(AuroraRadius.full.dp))
+            .border(0.75.dp, borderColor, RoundedCornerShape(AuroraRadius.FULL.dp))
             .then(if (enabled) Modifier.cockpitClickableNoRipple(onClick) else Modifier)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
@@ -808,13 +807,13 @@ internal fun CockpitFacetChip(
 internal fun CockpitVaultNotice() {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         modifier =
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(AuroraColors.warning.copy(alpha = 0.12f))
-            .border(0.75.dp, AuroraColors.warning.copy(alpha = 0.35f), RoundedCornerShape(AuroraRadius.md.dp))
+            .border(0.75.dp, AuroraColors.warning.copy(alpha = 0.35f), RoundedCornerShape(AuroraRadius.MD.dp))
             .padding(11.dp),
     ) {
         Icon(Icons.Filled.LockReset, contentDescription = null, tint = AuroraColors.warning, modifier = Modifier.size(15.dp))
@@ -830,11 +829,11 @@ internal fun CockpitVaultNotice() {
 
 @Composable
 internal fun CockpitConversationRowView(row: CockpitConversationRow, onClick: () -> Unit) {
-    AuroraGlassCard(cornerRadius = AuroraRadius.lg, interactive = true, onClick = onClick) {
+    AuroraGlassCard(cornerRadius = AuroraRadius.LG, interactive = true, onClick = onClick) {
         CockpitConversationRowHeader(row = row)
         val preview = row.preview
         if (!preview.isNullOrBlank()) {
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
             Text(
                 preview,
                 fontSize = 12.sp,
@@ -849,7 +848,7 @@ internal fun CockpitConversationRowView(row: CockpitConversationRow, onClick: ()
 
 @Composable
 private fun CockpitConversationRowHeader(row: CockpitConversationRow) {
-    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         val provider = row.providerEnum
         if (provider != null) {
             ProviderAvatar(providerKey = provider.key, size = 36)
@@ -898,10 +897,10 @@ private fun CockpitConversationRowHeader(row: CockpitConversationRow) {
 private fun CockpitConversationRowMeta(row: CockpitConversationRow) {
     val tags = row.toolTags.take(3)
     if (row.messageCount <= 0 && row.durationSeconds ?: 0 <= 0 && tags.isEmpty()) return
-    Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (row.messageCount > 0) {
@@ -917,7 +916,7 @@ private fun CockpitConversationRowMeta(row: CockpitConversationRow) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier =
                 Modifier
-                    .clip(RoundedCornerShape(AuroraRadius.full.dp))
+                    .clip(RoundedCornerShape(AuroraRadius.FULL.dp))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
                     .padding(horizontal = 6.dp, vertical = 2.dp),
                 maxLines = 1,

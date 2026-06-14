@@ -1,16 +1,15 @@
-name: Cursor Nightly CI Repair
+name: Codex Nightly CI Repair
 
-# Cloud repair loop for scheduled full-confidence lanes. This does not replace
-# the CI gates; it reacts to red scheduled runs and asks Cursor Cloud Agent to
-# open a repair PR.
+# Remote repair loop for scheduled full-confidence lanes. GitHub Actions is the
+# scheduler/runner; the official OpenAI Codex Action is the cloud worker.
 
 on:
   schedule:
     # 11:15 UTC daily, after the full harness and nightly E2E have time to run.
     - cron: "15 11 * * *"
   workflow_run:
-    # Event-driven repair loop for the Cursor repair PR. The job filters out
-    # non-Cursor PRs before calling Cursor.
+    # Event-driven repair loop for the Codex repair PR. The job filters out
+    # non-Codex PRs before invoking Codex.
     workflows:
       - AGENTS.md Validation
       - Agent Tools CI
@@ -33,31 +32,35 @@ on:
 
 permissions:
   actions: read
-  contents: read
-  pull-requests: read
+  checks: read
+  contents: write
+  pull-requests: write
 
 concurrency:
-  group: cursor-nightly-ci-repair-${{ github.event.workflow_run.head_branch || github.ref_name || github.run_id }}
+  group: codex-nightly-ci-repair-${{ github.event.workflow_run.head_branch || github.ref_name || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   repair-nightly-ci:
-    name: Cursor cloud repair operator
+    name: Codex repair operator
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     env:
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
-      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      REPAIR_BRANCH: codex/nightly-ci-repair
+      REPAIR_MARKER: codex-nightly-ci-repair
+      REPAIR_TITLE: "[codex] OpenBurnBar nightly CI repair"
     steps:
-      - name: Skip until Cursor API key is configured
-        if: env.CURSOR_API_KEY == ''
+      - name: Skip until OpenAI API key is configured
+        if: env.OPENAI_API_KEY == ''
         run: |
-          echo "::notice::CURSOR_API_KEY is not configured. Add it under Settings -> Secrets and variables -> Actions."
+          echo "::notice::OPENAI_API_KEY is not configured. Add it under Settings -> Secrets and variables -> Actions."
           exit 0
 
-      - name: Locate open Cursor repair PR
-        if: env.CURSOR_API_KEY != ''
+      - name: Locate open Codex repair PR
+        if: env.OPENAI_API_KEY != ''
         id: repair_pr
         run: |
           set -euo pipefail
@@ -68,7 +71,7 @@ jobs:
           gh pr list \
             --repo "$GH_REPO" \
             --state open \
-            --search '"cursor-nightly-ci-repair" in:title,body' \
+            --search "\"${REPAIR_MARKER}\" in:title,body" \
             --json number,url,title,headRefName,updatedAt \
             --limit 1 > "$pr_json"
 
@@ -79,6 +82,7 @@ jobs:
               echo "exists=false"
               echo "url="
               echo "number="
+              echo "head_ref="
               echo "failed_checks=0"
               echo "pending_checks=0"
               echo "checks=$pr_checks"
@@ -87,6 +91,7 @@ jobs:
           fi
 
           pr_url="$(jq -r '.[0].url' "$pr_json")"
+          head_ref="$(jq -r '.[0].headRefName' "$pr_json")"
           gh pr view "$pr_number" \
             --repo "$GH_REPO" \
             --json statusCheckRollup,mergeStateStatus,reviewDecision,headRefName,url,title > "$pr_checks"
@@ -98,13 +103,14 @@ jobs:
             echo "exists=true"
             echo "url=${pr_url}"
             echo "number=${pr_number}"
+            echo "head_ref=${head_ref}"
             echo "failed_checks=${failed_checks}"
             echo "pending_checks=${pending_checks}"
             echo "checks=$pr_checks"
           } >> "$GITHUB_OUTPUT"
 
       - name: Classify repair trigger
-        if: env.CURSOR_API_KEY != ''
+        if: env.OPENAI_API_KEY != ''
         id: trigger
         run: |
           set -euo pipefail
@@ -120,9 +126,9 @@ jobs:
             repair_pr_number="${{ steps.repair_pr.outputs.number }}"
             if [[ -n "$repair_pr_number" ]] && jq -e --argjson pr "$repair_pr_number" '.workflow_run.pull_requests[]?.number == $pr' "$GITHUB_EVENT_PATH" > /dev/null; then
               can_continue_existing=true
-              reason="completed CI for Cursor repair PR #${repair_pr_number}"
+              reason="completed CI for Codex repair PR #${repair_pr_number}"
             else
-              reason="completed CI was not for the open Cursor repair PR"
+              reason="completed CI was not for the open Codex repair PR"
             fi
           fi
 
@@ -133,7 +139,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Collect latest scheduled CI failures
-        if: env.CURSOR_API_KEY != '' && (steps.trigger.outputs.can_start_new == 'true' || steps.trigger.outputs.can_continue_existing == 'true')
+        if: env.OPENAI_API_KEY != '' && (steps.trigger.outputs.can_start_new == 'true' || steps.trigger.outputs.can_continue_existing == 'true')
         id: collect
         run: |
           set -euo pipefail
@@ -190,7 +196,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Select repair action
-        if: env.CURSOR_API_KEY != ''
+        if: env.OPENAI_API_KEY != ''
         id: action
         run: |
           set -euo pipefail
@@ -211,16 +217,16 @@ jobs:
           if [[ "$pr_exists" == "true" ]]; then
             if [[ "$pr_failed" != "0" && "$can_continue_existing" == "true" ]]; then
               mode="continue"
-              reason="Cursor repair PR has failed checks"
+              reason="Codex repair PR has failed checks"
             elif [[ "$pr_failed" != "0" ]]; then
               mode="stop"
-              reason="Cursor repair PR is red, but this trigger is not allowed to continue it"
+              reason="Codex repair PR is red, but this trigger is not allowed to continue it"
             elif [[ "$pr_pending" != "0" ]]; then
               mode="wait"
-              reason="Cursor repair PR checks are still pending"
+              reason="Codex repair PR checks are still pending"
             else
               mode="green"
-              reason="Cursor repair PR checks are green"
+              reason="Codex repair PR checks are green"
             fi
           elif [[ "$can_start_new" == "true" && "$scheduled_failed" != "0" ]]; then
             mode="create"
@@ -230,7 +236,7 @@ jobs:
             reason="nightly lanes are green and no repair PR exists"
           else
             mode="stop"
-            reason="no Cursor repair PR for this CI completion"
+            reason="no Codex repair PR for this CI completion"
           fi
 
           {
@@ -239,7 +245,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Stop or wait
-        if: env.CURSOR_API_KEY != '' && steps.action.outputs.mode != 'create' && steps.action.outputs.mode != 'continue'
+        if: env.OPENAI_API_KEY != '' && steps.action.outputs.mode != 'create' && steps.action.outputs.mode != 'continue'
         run: |
           echo "Mode: ${{ steps.action.outputs.mode }}"
           echo "Reason: ${{ steps.action.outputs.reason }}"
@@ -247,14 +253,33 @@ jobs:
             echo "PR: ${{ steps.repair_pr.outputs.url }}"
           fi
 
-      - name: Create Cursor cloud repair agent
-        if: env.CURSOR_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+      - name: Checkout repository
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Prepare repair branch
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
         run: |
           set -euo pipefail
-          prompt_file="$RUNNER_TEMP/nightly-ci/cursor-prompt.md"
-          payload_file="$RUNNER_TEMP/nightly-ci/cursor-agent-payload.json"
-          response_file="$RUNNER_TEMP/nightly-ci/cursor-agent-response.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ "${{ steps.action.outputs.mode }}" == "continue" ]]; then
+            gh pr checkout "${{ steps.repair_pr.outputs.number }}" --repo "$GH_REPO"
+          else
+            git checkout -B "$REPAIR_BRANCH" origin/main
+          fi
+
+      - name: Write Codex prompt
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        id: prompt
+        run: |
+          set -euo pipefail
+          prompt_file="$GITHUB_WORKSPACE/.codex-nightly-ci-repair-prompt.md"
           repair_pr_url="${{ steps.repair_pr.outputs.url }}"
+          echo ".codex-nightly-ci-repair-prompt.md" >> .git/info/exclude
 
           {
             cat <<'PROMPT'
@@ -266,13 +291,11 @@ jobs:
           active repair PR are green.
 
           Rules:
-          - Work in the Cursor cloud environment.
-          - Use Composer 2.5 standard only. Do not use Composer 2.5 Fast.
-          - Use the existing repair PR if one is provided. Otherwise start from
-            main and open a PR if the failure is code-owned.
-          - When opening a PR, title it "[cursor] OpenBurnBar nightly CI repair"
-            and include the marker "cursor-nightly-ci-repair" in the PR body.
-          - Do not merge PRs.
+          - Work in this GitHub Actions checkout.
+          - Use Codex through the official OpenAI Codex GitHub Action.
+          - Use the existing repair PR branch if one is provided. Otherwise
+            make local edits on the prepared codex/nightly-ci-repair branch.
+          - Do not merge pull requests.
           - Do not modify branch protection, required checks, release gates, or
             workflow definitions to make a red run green.
           - Do not skip, delete, downgrade, or mark tests continue-on-error to
@@ -281,10 +304,10 @@ jobs:
             outage, Apple/Xcode runner outage, or missing secrets, report the
             exact operator action needed and do not change code.
           - If the failure is code-owned, make the smallest durable fix.
-          - Run the smallest relevant validation available in the cloud
-            environment.
-          - Put failed workflow/run link, root cause, files changed,
-            validations run, and residual risk in the PR body.
+          - Run the smallest relevant validation available in this checkout.
+          - Leave the workspace with only intentional code-owned changes.
+          - Do not commit, push, or open the PR yourself; the workflow will do
+            that after Codex exits.
 
           Repair loop state:
           PROMPT
@@ -295,7 +318,7 @@ jobs:
               cat "${{ steps.repair_pr.outputs.checks }}"
               echo '```'
             else
-              echo "- No existing repair PR was found. Open one only if the failure is code-owned."
+              echo "- No existing repair PR was found. Edit locally only if the failure is code-owned."
             fi
             cat <<'PROMPT'
 
@@ -312,44 +335,69 @@ jobs:
             fi
           } > "$prompt_file"
 
-          jq -n \
-            --arg repo "https://github.com/${GH_REPO}" \
-            --arg repair_pr "$repair_pr_url" \
-            --arg prompt "$(cat "$prompt_file")" \
-            '{
-              name: "OpenBurnBar nightly CI repair",
-              prompt: { text: $prompt },
-              model: { id: "composer-2.5" },
-              repos: [
-                (if $repair_pr == "" then
-                  {
-                    url: $repo,
-                    startingRef: "main"
-                  }
-                else
-                  {
-                    url: $repo,
-                    prUrl: $repair_pr
-                  }
-                end)
-              ],
-              workOnCurrentBranch: ($repair_pr != ""),
-              autoCreatePR: ($repair_pr == ""),
-              skipReviewerRequest: true,
-              mode: "agent"
-            }' > "$payload_file"
+          echo "path=.codex-nightly-ci-repair-prompt.md" >> "$GITHUB_OUTPUT"
 
-          curl --fail-with-body -sS \
-            --request POST \
-            --url https://api.cursor.com/v1/agents \
-            --header "Authorization: Bearer ${CURSOR_API_KEY}" \
-            --header 'Content-Type: application/json' \
-            --data-binary @"$payload_file" \
-            | tee "$response_file"
+      - name: Run Codex
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        id: run_codex
+        uses: openai/codex-action@a26d2d4d8b78a694338b8e3715c3630254340b2c # v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ steps.prompt.outputs.path }}
+          model: gpt-5.5
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          allow-bots: true
+          output-file: ${{ runner.temp }}/nightly-ci/codex-final-message.md
 
+      - name: Publish repair branch and PR
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        run: |
+          set -euo pipefail
+          rm -f .codex-nightly-ci-repair-prompt.md
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "Codex left no file changes."
+            if [[ "${{ steps.repair_pr.outputs.exists }}" == "true" && -s "$RUNNER_TEMP/nightly-ci/codex-final-message.md" ]]; then
+              gh pr comment "${{ steps.repair_pr.outputs.number }}" \
+                --repo "$GH_REPO" \
+                --body-file "$RUNNER_TEMP/nightly-ci/codex-final-message.md"
+            fi
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "Repair nightly CI failures with Codex"
+          current_branch="$(git branch --show-current)"
+          git push --set-upstream origin "$current_branch"
+
+          body="$RUNNER_TEMP/nightly-ci/pr-body.md"
           {
-            echo "## Cursor Cloud Agent"
+            echo "$REPAIR_MARKER"
             echo
-            echo "- Agent: $(jq -r '.agent.url // "unknown"' "$response_file")"
-            echo "- Run: $(jq -r '.run.id // "unknown"' "$response_file")"
-          } >> "$GITHUB_STEP_SUMMARY"
+            echo "## Summary"
+            echo "- Codex inspected the latest scheduled CI failures and pushed the smallest code-owned repair it could make."
+            echo
+            echo "## Codex final message"
+            if [[ -s "$RUNNER_TEMP/nightly-ci/codex-final-message.md" ]]; then
+              cat "$RUNNER_TEMP/nightly-ci/codex-final-message.md"
+            else
+              echo "No final message was emitted."
+            fi
+            echo
+            echo "## Trigger"
+            echo "- ${{ steps.action.outputs.reason }}"
+          } > "$body"
+
+          if [[ "${{ steps.repair_pr.outputs.exists }}" == "true" ]]; then
+            gh pr edit "${{ steps.repair_pr.outputs.number }}" \
+              --repo "$GH_REPO" \
+              --body-file "$body"
+          else
+            gh pr create \
+              --repo "$GH_REPO" \
+              --base main \
+              --head "$current_branch" \
+              --title "$REPAIR_TITLE" \
+              --body-file "$body"
+          fi

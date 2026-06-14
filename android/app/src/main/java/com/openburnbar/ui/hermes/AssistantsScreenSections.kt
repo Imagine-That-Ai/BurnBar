@@ -101,12 +101,7 @@ internal fun AssistantsScreenInitialRuntimeEffect(
 }
 
 @Composable
-internal fun AssistantsScreenIntentEffect(
-    context: Context,
-    visibleTiles: List<AssistantRuntimeID>,
-    rawRuntime: String,
-    onRuntimeResolved: (String) -> Unit,
-) {
+internal fun AssistantsScreenIntentEffect(context: Context, visibleTiles: List<AssistantRuntimeID>, rawRuntime: String, onRuntimeResolved: (String) -> Unit) {
     val activityIntent = (context as? MainActivity)?.intent
     LaunchedEffect(activityIntent) {
         val hint =
@@ -291,15 +286,14 @@ private class AssistantTileBridgeLocalState(
     var clientThreadID by fields.clientThreadID
     var importSnapshot by fields.importSnapshot
 
-    fun contentState(): AssistantTileBridgeContentState =
-        AssistantTileBridgeContentState(
-            message = message,
-            sending = sending,
-            importing = importing,
-            queued = queued,
-            importStatus = importStatus,
-            error = error,
-        )
+    fun contentState(): AssistantTileBridgeContentState = AssistantTileBridgeContentState(
+        message = message,
+        sending = sending,
+        importing = importing,
+        queued = queued,
+        importStatus = importStatus,
+        error = error,
+    )
 
     fun applyImportSnapshot(snapshot: AgentImportJobSnapshot) {
         importSnapshot = snapshot
@@ -416,11 +410,7 @@ private fun AssistantTileBridgeImportGate(
 }
 
 @Composable
-private fun AssistantTileBridgeImportObserver(
-    importJobID: String?,
-    dispatcher: CLIAgentMissionDispatcher,
-    onSnapshot: (AgentImportJobSnapshot) -> Unit,
-) {
+private fun AssistantTileBridgeImportObserver(importJobID: String?, dispatcher: CLIAgentMissionDispatcher, onSnapshot: (AgentImportJobSnapshot) -> Unit) {
     LaunchedEffect(importJobID) {
         val id = importJobID ?: return@LaunchedEffect
         dispatcher.observeImportJob(id).collect(onSnapshot)
@@ -661,27 +651,26 @@ private fun AgentImportHarnessRow(id: String, label: String, selected: Boolean, 
     }
 }
 
-private fun agentImportHarnesses(): List<Pair<String, String>> =
-    listOf(
-        "codex" to "Codex",
-        "claude" to "Claude Code",
-        "openclaw" to "OpenClaw",
-        "hermes" to "Hermes",
-        "opencode" to "OpenCode",
-        "factory" to "Factory",
-        "cursor" to "Cursor",
-        "aider" to "Aider",
-        "cline" to "Cline",
-        "kilo" to "Kilo Code",
-        "roo" to "Roo Code",
-        "forge" to "Forge",
-        "gemini" to "Gemini CLI",
-        "goose" to "Goose",
-        "windsurf" to "Windsurf",
-        "warp" to "Warp",
-        "kimi" to "Kimi",
-        "ollama" to "Ollama",
-    )
+private fun agentImportHarnesses(): List<Pair<String, String>> = listOf(
+    "codex" to "Codex",
+    "claude" to "Claude Code",
+    "openclaw" to "OpenClaw",
+    "hermes" to "Hermes",
+    "opencode" to "OpenCode",
+    "factory" to "Factory",
+    "cursor" to "Cursor",
+    "aider" to "Aider",
+    "cline" to "Cline",
+    "kilo" to "Kilo Code",
+    "roo" to "Roo Code",
+    "forge" to "Forge",
+    "gemini" to "Gemini CLI",
+    "goose" to "Goose",
+    "windsurf" to "Windsurf",
+    "warp" to "Warp",
+    "kimi" to "Kimi",
+    "ollama" to "Ollama",
+)
 
 private fun bridgeCopy(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.CODEX -> "Codex chat runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."

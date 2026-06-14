@@ -116,7 +116,10 @@ object AgentInsightsBundleAssembler {
 
     private fun providerSnapshot(scope: AgentInsightsScope, digest: InsightDigest?): InsightDigest.ProviderSnapshot? {
         val provider = scope.provider ?: return null
-        return digest?.providers?.firstOrNull { it.id.equals(provider.key, ignoreCase = true) || it.displayName.equals(provider.displayName, ignoreCase = true) }
+        return digest?.providers?.firstOrNull {
+            it.id.equals(provider.key, ignoreCase = true) ||
+                it.displayName.equals(provider.displayName, ignoreCase = true)
+        }
     }
 
     private fun makeHeader(scope: AgentInsightsScope, snapshot: InsightDigest.ProviderSnapshot?): AgentInsightsHeader {

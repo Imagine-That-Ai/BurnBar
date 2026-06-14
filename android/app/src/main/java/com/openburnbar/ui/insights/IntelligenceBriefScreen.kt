@@ -145,9 +145,9 @@ fun IntelligenceBriefScreen(
         modifier =
         modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(top = AuroraSpacing.md.dp, bottom = AuroraSpacing.xl.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xl.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(top = AuroraSpacing.MD.dp, bottom = AuroraSpacing.XL.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XL.dp),
     ) {
         BriefOpeningSections(env = sectionEnv)
         BriefAnalysisSections(env = sectionEnv)
@@ -247,15 +247,14 @@ private fun BriefClosingSections(env: IntelligenceBriefSectionEnv) {
     }
 }
 
-private fun defaultCandidateMissionOptions(mission: com.openburnbar.data.insights.InsightMissionCandidate): MissionLaunchOptions =
-    MissionLaunchOptions(
-        requestedRuntime = MissionRuntimeTarget.AUTO.firestoreValue,
-        targetProject = mission.projectDisplayName ?: mission.projectID,
-        depth = MissionDepth.STANDARD.firestoreValue,
-        approvalMode = MissionApprovalMode.EXISTING.firestoreValue,
-        commandsAllowed = false,
-        fileEditsAllowed = false,
-    )
+private fun defaultCandidateMissionOptions(mission: com.openburnbar.data.insights.InsightMissionCandidate): MissionLaunchOptions = MissionLaunchOptions(
+    requestedRuntime = MissionRuntimeTarget.AUTO.firestoreValue,
+    targetProject = mission.projectDisplayName ?: mission.projectID,
+    depth = MissionDepth.STANDARD.firestoreValue,
+    approvalMode = MissionApprovalMode.EXISTING.firestoreValue,
+    commandsAllowed = false,
+    fileEditsAllowed = false,
+)
 
 @Composable
 private fun rememberSectionVisibility(reduceMotion: Boolean): SnapshotStateList<Boolean> {
@@ -309,7 +308,7 @@ private fun HeroSection(
         Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_HERO),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         HeroEyebrowBlock(result = result)
         HeroSummaryRow(result = result)
@@ -353,14 +352,14 @@ private fun HeroEyebrowBlock(result: InsightAnalysisResult) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
 }
 
 @Composable
 private fun HeroSummaryRow(result: InsightAnalysisResult) {
     Row(
         verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         heroLeadProvider(result)?.let { leadProvider ->
             ProviderLogo(
@@ -399,9 +398,9 @@ private fun AnswerPanel(
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.68f))
             .border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(8.dp))
-            .padding(AuroraSpacing.md.dp)
+            .padding(AuroraSpacing.MD.dp)
             .animateContentSize(),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         Text(
             text = answer.answer,
@@ -425,8 +424,8 @@ private fun AnswerPanel(
 private fun AnswerPanelBullets(bullets: List<String>) {
     if (bullets.isEmpty()) return
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
     ) {
         bullets.take(4).forEach { bullet ->
             Text(
@@ -437,18 +436,14 @@ private fun AnswerPanelBullets(bullets: List<String>) {
                 Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(999.dp))
-                    .padding(horizontal = AuroraSpacing.sm.dp, vertical = 3.dp),
+                    .padding(horizontal = AuroraSpacing.SM.dp, vertical = 3.dp),
             )
         }
     }
 }
 
 @Composable
-private fun AnswerPanelCtas(
-    answer: InsightBriefingAnswer,
-    onConfigureModel: (() -> Unit)?,
-    onUpgradeToPro: (() -> Unit)?,
-) {
+private fun AnswerPanelCtas(answer: InsightBriefingAnswer, onConfigureModel: (() -> Unit)?, onUpgradeToPro: (() -> Unit)?) {
     val showUpgradeToProCTA =
         onUpgradeToPro != null &&
             answer.modelDisplayName == InsightBriefingAnswer.SUBSCRIPTION_REQUIRED_DISPLAY_NAME
@@ -546,7 +541,7 @@ private fun MetaStrip(
         }
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         parts.forEachIndexed { index, label ->

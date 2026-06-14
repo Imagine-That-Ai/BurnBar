@@ -78,10 +78,7 @@ internal data class PulseLiveCostCurveDrawState(
 )
 
 @Composable
-internal fun PulseLiveCostCurveCanvas(
-    args: PulseLiveCostCurveCanvasArgs,
-    modifier: Modifier = Modifier,
-) {
+internal fun PulseLiveCostCurveCanvas(args: PulseLiveCostCurveCanvasArgs, modifier: Modifier = Modifier) {
     val isDark = isSystemInDarkTheme()
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
@@ -165,13 +162,12 @@ internal fun buildPulseLiveCostSamples(
     displayMode: UsageDisplayMode,
     domain: Pair<Long, Long>,
     nowMillis: Long,
-): List<CostSample> =
-    when (scope) {
-        PulseTimelineScope.MINUTE,
-        PulseTimelineScope.HOUR,
-        PulseTimelineScope.DAY,
-        -> buildLiveSamples(usages, scope, domain, displayMode, nowMillis)
-        PulseTimelineScope.WEEK,
-        PulseTimelineScope.MONTH,
-        -> buildAggregateSamples(dailyPoints, domain)
-    }
+): List<CostSample> = when (scope) {
+    PulseTimelineScope.MINUTE,
+    PulseTimelineScope.HOUR,
+    PulseTimelineScope.DAY,
+    -> buildLiveSamples(usages, scope, domain, displayMode, nowMillis)
+    PulseTimelineScope.WEEK,
+    PulseTimelineScope.MONTH,
+    -> buildAggregateSamples(dailyPoints, domain)
+}

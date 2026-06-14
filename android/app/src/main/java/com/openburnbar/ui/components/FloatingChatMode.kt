@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,7 +58,7 @@ fun FloatingChatPill(snippet: String, mode: FloatingChatMode, onTap: () -> Unit,
     Box(
         modifier =
         modifier
-            .padding(AuroraSpacing.md.dp)
+            .padding(AuroraSpacing.MD.dp)
             .graphicsLayer {
                 translationX = offsetX
                 translationY = offsetY
@@ -68,7 +68,7 @@ fun FloatingChatPill(snippet: String, mode: FloatingChatMode, onTap: () -> Unit,
             .heightIn(min = 44.dp)
             .widthIn(min = 180.dp, max = 280.dp)
             .auroraGlass(
-                cornerRadius = AuroraRadius.full.dp,
+                cornerRadius = AuroraRadius.FULL.dp,
                 tintAlpha = 0.85f,
                 shadow = AuroraShadows.cardHover,
             )
@@ -92,7 +92,7 @@ fun FloatingChatPill(snippet: String, mode: FloatingChatMode, onTap: () -> Unit,
                     },
                 )
             }
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.SM.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         FloatingChatPillContent(snippet = snippet, mode = mode, accent = accent)

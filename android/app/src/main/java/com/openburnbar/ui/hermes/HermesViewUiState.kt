@@ -1,6 +1,5 @@
 package com.openburnbar.ui.hermes
 
-import com.openburnbar.data.hermes.loadThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -10,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.openburnbar.data.hermes.HermesAttachment
 import com.openburnbar.data.hermes.HermesService
+import com.openburnbar.data.hermes.loadThread
 import com.openburnbar.ui.navigation.HermesPendingPrompt
 
 internal data class HermesViewUiState(
@@ -32,10 +32,7 @@ internal data class HermesViewUiState(
 )
 
 @Composable
-internal fun rememberHermesViewUiState(
-    hermesService: HermesService,
-    initialThreadId: String?,
-): HermesViewUiState {
+internal fun rememberHermesViewUiState(hermesService: HermesService, initialThreadId: String?): HermesViewUiState {
     val context = LocalContext.current
     var showConversationList by remember { mutableStateOf(true) }
     var showSessionsLibrary by remember { mutableStateOf(false) }
@@ -79,7 +76,11 @@ internal fun rememberHermesViewUiState(
 }
 
 @Composable
-private fun HermesViewBootstrapEffects(hermesService: HermesService, tilePrefs: com.openburnbar.data.hermes.ChatTilePreferences, onShowSetupWizard: () -> Unit) {
+private fun HermesViewBootstrapEffects(
+    hermesService: HermesService,
+    tilePrefs: com.openburnbar.data.hermes.ChatTilePreferences,
+    onShowSetupWizard: () -> Unit,
+) {
     val context = LocalContext.current
     val onboarding = remember(context) { com.openburnbar.data.hermes.HermesOnboardingState(context.applicationContext) }
     val historyStore =
@@ -99,11 +100,7 @@ private fun HermesViewBootstrapEffects(hermesService: HermesService, tilePrefs: 
 }
 
 @Composable
-private fun HermesViewInitialThreadEffects(
-    hermesService: HermesService,
-    initialThreadId: String?,
-    onOpenThread: (String) -> Unit,
-) {
+private fun HermesViewInitialThreadEffects(hermesService: HermesService, initialThreadId: String?, onOpenThread: (String) -> Unit) {
     val context = LocalContext.current
     val historyStore =
         remember(context) {
@@ -135,7 +132,7 @@ private fun HermesViewPendingPromptEffects(showConversationList: Boolean, hermes
         if (!showConversationList) {
             val pending = HermesPendingPrompt.pending
             if (!pending.isNullOrBlank()) {
-                kotlinx.coroutines.delay(HermesPendingPromptDispatchDelayMs)
+                kotlinx.coroutines.delay(HERMES_PENDING_PROMPT_DISPATCH_DELAY_MS)
                 hermesService.sendMessage(pending.trim())
                 HermesPendingPrompt.pending = null
             }
@@ -143,4 +140,4 @@ private fun HermesViewPendingPromptEffects(showConversationList: Boolean, hermes
     }
 }
 
-private const val HermesPendingPromptDispatchDelayMs = 300L
+private const val HERMES_PENDING_PROMPT_DISPATCH_DELAY_MS = 300L

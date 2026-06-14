@@ -40,7 +40,8 @@ data class ChartSpec(
     val series: List<SeriesSpec> = emptyList(),
     val rules: List<RuleSpec> = emptyList(),
     val legend: Boolean = true,
-    val height: Int? = null, // override; default is 260dp in full mode, 165dp in gallery
+    // override; default is 260dp in full mode, 165dp in gallery
+    val height: Int? = null,
 )
 
 enum class ChartKind {
@@ -78,31 +79,39 @@ enum class ChartKind {
 @Serializable
 data class AxisSpec(
     val label: String? = null,
-    val type: String = "linear", // "linear" | "time" | "category"
-    val format: String? = null, // "date" | "currency" | "percent" | "tokens" | null
+    // "linear" | "time" | "category"
+    val type: String = "linear",
+    // "date" | "currency" | "percent" | "tokens" | null
+    val format: String? = null,
     val showGrid: Boolean = true,
-    val ticks: Int? = null, // hint to renderer
+    // hint to renderer
+    val ticks: Int? = null,
 )
 
 @Serializable
 data class SeriesSpec(
     val name: String,
-    val color: String? = null, // hex like "F45B69" — optional override
-    val providerKey: String? = null, // resolves to AgentProvider brand color
+    // hex like "F45B69" — optional override
+    val color: String? = null,
+    // resolves to AgentProvider brand color
+    val providerKey: String? = null,
     val data: List<DataPoint> = emptyList(),
 )
 
 @Serializable
 data class DataPoint(
-    val x: String, // ISO date, category name, or stringified number
+    // ISO date, category name, or stringified number
+    val x: String,
     val y: Double,
     val label: String? = null,
 )
 
 @Serializable
 data class RuleSpec(
-    val orientation: String = "horizontal", // "horizontal" | "vertical"
-    val value: Double, // y for horizontal, x-index for vertical
+    // "horizontal" | "vertical"
+    val orientation: String = "horizontal",
+    // y for horizontal, x-index for vertical
+    val value: Double,
     val color: String? = null,
     val label: String? = null,
     val dashed: Boolean = true,
@@ -115,8 +124,10 @@ data class MermaidSpec(
     val kind: String = "mermaid",
     val title: String? = null,
     val subtitle: String? = null,
-    val source: String, // raw Mermaid DSL
-    val theme: String? = null, // "dark" | "default"
+    // raw Mermaid DSL
+    val source: String,
+    // "dark" | "default"
+    val theme: String? = null,
 )
 
 // ── ASCII (terminal-chrome canvas) ─────────────────────────────────────────
@@ -125,8 +136,10 @@ data class MermaidSpec(
 data class AsciiSpec(
     val kind: String = "ascii",
     val title: String? = null,
-    val variant: String = "scene", // "bar" | "sparkline" | "heatmap" | "banner" | "scene"
-    val body: String, // ASCII art / box-drawing
+    // "bar" | "sparkline" | "heatmap" | "banner" | "scene"
+    val variant: String = "scene",
+    // ASCII art / box-drawing
+    val body: String,
 )
 
 // ── Insight (narrative card) ───────────────────────────────────────────────
@@ -136,8 +149,11 @@ data class InsightSpec(
     val kind: String = "insight",
     val title: String,
     val body: String,
-    val tone: String = "neutral", // "positive" | "neutral" | "warning"
-    val sparkline: List<Double>? = null, // optional inline trend
-    val followUpPrompt: String? = null, // "Show me the chart →" injects this prompt
+    // "positive" | "neutral" | "warning"
+    val tone: String = "neutral",
+    // optional inline trend
+    val sparkline: List<Double>? = null,
+    // "Show me the chart →" injects this prompt
+    val followUpPrompt: String? = null,
     val followUpLabel: String? = null,
 )

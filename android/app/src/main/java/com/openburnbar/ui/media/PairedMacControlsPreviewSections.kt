@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.media
 
-import androidx.compose.material3.Text
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -24,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -169,9 +169,7 @@ private fun BoxScope.MacScreenPreviewCameraBezel(
 }
 
 @Composable
-private fun BoxScope.MacScreenPreviewLiveRadar(
-    infiniteTransition: androidx.compose.animation.core.InfiniteTransition,
-) {
+private fun BoxScope.MacScreenPreviewLiveRadar(infiniteTransition: androidx.compose.animation.core.InfiniteTransition) {
     val waveProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -244,11 +242,7 @@ private fun BoxScope.MacScreenPreviewMirroringBadge() {
 }
 
 @Composable
-private fun BoxScope.MacScreenPreviewTerminalOverlay(
-    phase: MediaControlStreamCoordinator.Phase,
-    recoveringMercury: Boolean,
-    pendingRequestID: String?,
-) {
+private fun BoxScope.MacScreenPreviewTerminalOverlay(phase: MediaControlStreamCoordinator.Phase, recoveringMercury: Boolean, pendingRequestID: String?) {
     Box(
         modifier =
         Modifier
@@ -295,11 +289,7 @@ private fun MacScreenPreviewTerminalTitleBar() {
 }
 
 @Composable
-private fun MacScreenPreviewTerminalBody(
-    phase: MediaControlStreamCoordinator.Phase,
-    recoveringMercury: Boolean,
-    pendingRequestID: String?,
-) {
+private fun MacScreenPreviewTerminalBody(phase: MediaControlStreamCoordinator.Phase, recoveringMercury: Boolean, pendingRequestID: String?) {
     Column(
         modifier =
         Modifier
@@ -365,52 +355,42 @@ private fun BoxScope.MacScreenPreviewBranding() {
     )
 }
 
-private fun pairedMacPreviewIsPulsing(
-    phase: MediaControlStreamCoordinator.Phase,
-    recoveringMercury: Boolean,
-): Boolean =
+private fun pairedMacPreviewIsPulsing(phase: MediaControlStreamCoordinator.Phase, recoveringMercury: Boolean): Boolean =
     phase is MediaControlStreamCoordinator.Phase.Dialing ||
         phase is MediaControlStreamCoordinator.Phase.Reconnecting ||
         recoveringMercury
 
-private fun pairedMacPreviewCameraColor(
-    phase: MediaControlStreamCoordinator.Phase,
-    recoveringMercury: Boolean,
-): Color =
-    when {
-        phase is MediaControlStreamCoordinator.Phase.Live -> AuroraColors.successDark
-        phase is MediaControlStreamCoordinator.Phase.Dialing ||
-            phase is MediaControlStreamCoordinator.Phase.Reconnecting ||
-            recoveringMercury -> AuroraColors.amber
-        phase is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
-        else -> Color(0xFF4B5563)
-    }
+private fun pairedMacPreviewCameraColor(phase: MediaControlStreamCoordinator.Phase, recoveringMercury: Boolean): Color = when {
+    phase is MediaControlStreamCoordinator.Phase.Live -> AuroraColors.successDark
+    phase is MediaControlStreamCoordinator.Phase.Dialing ||
+        phase is MediaControlStreamCoordinator.Phase.Reconnecting ||
+        recoveringMercury -> AuroraColors.amber
+    phase is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
+    else -> Color(0xFF4B5563)
+}
 
-private fun macScreenPreviewWallpaper(): Brush =
-    Brush.linearGradient(
-        colors =
-        listOf(
-            Color(0xFF0B0D19),
-            Color(0xFF14132C),
-            Color(0xFF28183B),
-            Color(0xFF331D2D),
-        ),
-    )
+private fun macScreenPreviewWallpaper(): Brush = Brush.linearGradient(
+    colors =
+    listOf(
+        Color(0xFF0B0D19),
+        Color(0xFF14132C),
+        Color(0xFF28183B),
+        Color(0xFF331D2D),
+    ),
+)
 
-private fun pairedMacTerminalStatusLine(phase: MediaControlStreamCoordinator.Phase): String =
-    when {
-        phase is MediaControlStreamCoordinator.Phase.Idle -> ">> [IDLE] Waiting for connection request..."
-        phase is MediaControlStreamCoordinator.Phase.Dialing -> ">> [DIALING] Initiating Iroh secure tunnel..."
-        phase is MediaControlStreamCoordinator.Phase.Stopped -> ">> [STOPPED] Daemon inactive. Open Mac app to start."
-        phase is MediaControlStreamCoordinator.Phase.Reconnecting -> ">> [RECONNECTING] Attempting peer recovery..."
-        phase is MediaControlStreamCoordinator.Phase.Failed -> ">> [FAILED] Error: ${phase.reason}"
-        else -> ">> [READY] Standby mode."
-    }
+private fun pairedMacTerminalStatusLine(phase: MediaControlStreamCoordinator.Phase): String = when {
+    phase is MediaControlStreamCoordinator.Phase.Idle -> ">> [IDLE] Waiting for connection request..."
+    phase is MediaControlStreamCoordinator.Phase.Dialing -> ">> [DIALING] Initiating Iroh secure tunnel..."
+    phase is MediaControlStreamCoordinator.Phase.Stopped -> ">> [STOPPED] Daemon inactive. Open Mac app to start."
+    phase is MediaControlStreamCoordinator.Phase.Reconnecting -> ">> [RECONNECTING] Attempting peer recovery..."
+    phase is MediaControlStreamCoordinator.Phase.Failed -> ">> [FAILED] Error: ${phase.reason}"
+    else -> ">> [READY] Standby mode."
+}
 
-private fun pairedMacTerminalStatusColor(phase: MediaControlStreamCoordinator.Phase): Color =
-    when {
-        phase is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
-        phase is MediaControlStreamCoordinator.Phase.Dialing ||
-            phase is MediaControlStreamCoordinator.Phase.Reconnecting -> AuroraColors.amber
-        else -> Color.White.copy(0.85f)
-    }
+private fun pairedMacTerminalStatusColor(phase: MediaControlStreamCoordinator.Phase): Color = when {
+    phase is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
+    phase is MediaControlStreamCoordinator.Phase.Dialing ||
+        phase is MediaControlStreamCoordinator.Phase.Reconnecting -> AuroraColors.amber
+    else -> Color.White.copy(0.85f)
+}

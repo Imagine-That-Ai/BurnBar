@@ -149,17 +149,15 @@ class HostedQuotaSubscriptionStore(
         internal fun tierForActiveProduct(active: Boolean, productID: String?): CloudTier =
             if (active) tierForProductID(productID?.trim().orEmpty()) else CloudTier.NONE
 
-        private fun tierForProductID(id: String): CloudTier =
-            STORE_PRODUCT_BY_ID[id]?.role?.subscriptionTier()
-                ?: fallbackTierForProductID(id)
+        private fun tierForProductID(id: String): CloudTier = STORE_PRODUCT_BY_ID[id]?.role?.subscriptionTier()
+            ?: fallbackTierForProductID(id)
 
-        private fun HostedQuotaStoreProductRole.subscriptionTier(): CloudTier? =
-            when (this) {
-                HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> CloudTier.ULTRA
-                HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> CloudTier.PRO
-                HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> CloudTier.CLOUD
-                HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP -> null
-            }
+        private fun HostedQuotaStoreProductRole.subscriptionTier(): CloudTier? = when (this) {
+            HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> CloudTier.ULTRA
+            HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> CloudTier.PRO
+            HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> CloudTier.CLOUD
+            HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP -> null
+        }
 
         private fun fallbackTierForProductID(id: String): CloudTier {
             // Cross-platform fallback: classify by the product-ID substring the
@@ -576,7 +574,7 @@ class HostedQuotaSubscriptionStore(
                         purchase = candidate.purchase,
                         productID = candidate.productID,
                         response = response,
-                )
+                    )
                 if (hostedQuotaSubscriptionIsActive(response)) {
                     if (!candidate.purchase.isAcknowledged && !acknowledge(candidate.purchase)) {
                         _error.value = "Your subscription is active, but Google Play acknowledgement is still pending."
@@ -719,11 +717,7 @@ private fun purchaseProductSummary(purchases: List<Purchase>): List<String> {
     }
 }
 
-private fun hostedQuotaSubscriptionProductPriority(
-    productID: String,
-    productsById: Map<String, HostedQuotaStoreProduct>,
-    fallbackPriority: Int,
-): Int {
+private fun hostedQuotaSubscriptionProductPriority(productID: String, productsById: Map<String, HostedQuotaStoreProduct>, fallbackPriority: Int): Int {
     return when (productsById[productID]?.role) {
         HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> 0
         HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> 1

@@ -19,8 +19,7 @@ internal object GlobalVisualSettingsPersistence {
     val isReady: Boolean get() = BurnBarApplication.isAppContextInitialized
 
     /** Only call when [isReady]; Android caches the instance per prefs file. */
-    fun sharedPrefs(): SharedPreferences =
-        BurnBarApplication.appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun sharedPrefs(): SharedPreferences = BurnBarApplication.appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun persistThemePalette(value: String) {
         persistString("appThemePalette", value)

@@ -71,7 +71,7 @@ fun NativeChart(spec: ChartSpec, modifier: Modifier = Modifier, display: NativeC
     Column(modifier = modifier) {
         if (!spec.title.isNullOrBlank() || !spec.subtitle.isNullOrBlank()) {
             ChartHeader(spec.title, spec.subtitle)
-            Spacer(Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(Modifier.height(AuroraSpacing.SM.dp))
         }
 
         Box(
@@ -87,7 +87,7 @@ fun NativeChart(spec: ChartSpec, modifier: Modifier = Modifier, display: NativeC
         }
 
         if (spec.legend && spec.series.size > 1) {
-            Spacer(Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(Modifier.height(AuroraSpacing.SM.dp))
             LegendChipRail(spec.series)
         }
     }

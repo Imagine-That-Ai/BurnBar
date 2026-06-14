@@ -9,34 +9,31 @@ internal object SystemPermissionTextClassifierMatchers {
         return hasAnchorAndDenial || screencaptureBlocked
     }
 
-    fun matchesAccessibility(body: String): Boolean =
-        listOf(
-            "axisprocesstrusted",
-            "accessibility access",
-            "accessibility permission",
-            "accessibility is required",
-            "not trusted to use accessibility",
-            "kaxerrorpermission",
-            "accessibility api",
-        ).any { body.contains(it) }
+    fun matchesAccessibility(body: String): Boolean = listOf(
+        "axisprocesstrusted",
+        "accessibility access",
+        "accessibility permission",
+        "accessibility is required",
+        "not trusted to use accessibility",
+        "kaxerrorpermission",
+        "accessibility api",
+    ).any { body.contains(it) }
 
-    fun matchesMicrophone(body: String): Boolean =
-        listOf(
-            "microphone permission",
-            "microphone access",
-            "microphone is denied",
-            "no permission to access the microphone",
-            "audio capture is not allowed",
-        ).any { body.contains(it) }
+    fun matchesMicrophone(body: String): Boolean = listOf(
+        "microphone permission",
+        "microphone access",
+        "microphone is denied",
+        "no permission to access the microphone",
+        "audio capture is not allowed",
+    ).any { body.contains(it) }
 
-    fun matchesCamera(body: String): Boolean =
-        listOf(
-            "camera permission",
-            "camera access",
-            "camera is denied",
-            "no permission to access the camera",
-            "video capture is not allowed",
-        ).any { body.contains(it) }
+    fun matchesCamera(body: String): Boolean = listOf(
+        "camera permission",
+        "camera access",
+        "camera is denied",
+        "no permission to access the camera",
+        "video capture is not allowed",
+    ).any { body.contains(it) }
 
     fun matchesFullDiskAccess(body: String): Boolean {
         val pathHints = listOf("~/library/", "/library/safari", "/library/mail", "tcc.db")
@@ -55,15 +52,14 @@ internal object SystemPermissionTextClassifierMatchers {
         return match.value.trim('.', ',', ';', ':', ')', '"')
     }
 
-    fun containsPermissionTrigger(body: String): Boolean =
-        listOf(
-            "permission",
-            "not allowed",
-            "denied",
-            "is required",
-            "requires",
-            "system settings",
-            "privacy & security",
-            "privacy and security",
-        ).any { body.contains(it) }
+    fun containsPermissionTrigger(body: String): Boolean = listOf(
+        "permission",
+        "not allowed",
+        "denied",
+        "is required",
+        "requires",
+        "system settings",
+        "privacy & security",
+        "privacy and security",
+    ).any { body.contains(it) }
 }

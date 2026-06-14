@@ -24,13 +24,7 @@ object AndroidSignalPreKeyGenerator {
         val kyberPreKey: KyberPreKeyRecord,
     )
 
-    fun generatePreKeys(
-        identityKeyPair: IdentityKeyPair,
-        preKeyId: Int,
-        signedPreKeyId: Int,
-        kyberPreKeyId: Int,
-        nowMillis: Long,
-    ): GeneratedPreKeys {
+    fun generatePreKeys(identityKeyPair: IdentityKeyPair, preKeyId: Int, signedPreKeyId: Int, kyberPreKeyId: Int, nowMillis: Long): GeneratedPreKeys {
         val identityPrivate = identityKeyPair.privateKey
 
         val preKey = PreKeyRecord(preKeyId, ECKeyPair.generate())
@@ -53,12 +47,7 @@ object AndroidSignalPreKeyGenerator {
     }
 
     /** Assemble the PUBLIC [PreKeyBundle] a session initiator consumes (X3DH + PQXDH). */
-    fun buildPreKeyBundle(
-        identityKeyPair: IdentityKeyPair,
-        registrationId: Int,
-        deviceId: Int,
-        prekeys: GeneratedPreKeys,
-    ): PreKeyBundle = PreKeyBundle(
+    fun buildPreKeyBundle(identityKeyPair: IdentityKeyPair, registrationId: Int, deviceId: Int, prekeys: GeneratedPreKeys): PreKeyBundle = PreKeyBundle(
         registrationId,
         deviceId,
         prekeys.preKey.id,

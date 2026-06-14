@@ -41,9 +41,9 @@ import com.openburnbar.data.models.IdealPace
 import com.openburnbar.data.models.PaceSeverity
 import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.models.displayRemainingFraction
+import com.openburnbar.data.models.getRemainingText
 import com.openburnbar.data.models.idealPace
 import com.openburnbar.data.models.label
-import com.openburnbar.data.models.getRemainingText
 import com.openburnbar.data.stores.QuotaWindowKind
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -52,13 +52,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
-fun QuotaArcDial(
-    outer: QuotaBucket?,
-    inner: QuotaBucket?,
-    provider: AgentProvider,
-    modifier: Modifier = Modifier,
-    diameter: Dp = 138.dp
-) {
+fun QuotaArcDial(outer: QuotaBucket?, inner: QuotaBucket?, provider: AgentProvider, modifier: Modifier = Modifier, diameter: Dp = 138.dp) {
     val state = quotaDialState(outer = outer, inner = inner, provider = provider)
     Box(contentAlignment = Alignment.Center, modifier = modifier.size(diameter)) {
         QuotaArcDialCanvas(state = state)
@@ -86,33 +80,29 @@ private data class QuotaDialRing(
     val dashPattern: FloatArray,
 )
 
-private fun quotaDialState(
-    outer: QuotaBucket?,
-    inner: QuotaBucket?,
-    provider: AgentProvider
-): QuotaDialState {
+private fun quotaDialState(outer: QuotaBucket?, inner: QuotaBucket?, provider: AgentProvider): QuotaDialState {
     val primaryColor = Color(provider.brandColor)
     val accentColor = Color(provider.accentColor)
     val dominantBucket = outer ?: inner
     return QuotaDialState(
         outer =
-            quotaDialRing(
-                outer,
-                primaryColor,
-                primaryColor.copy(alpha = QUOTA_DIAL_OUTER_EMPTY_ALPHA),
-                QUOTA_DIAL_OUTER_WIDTH_DP.dp,
-                QUOTA_DIAL_OUTER_INSET_DP.dp,
-                floatArrayOf(QUOTA_DIAL_OUTER_DASH_ON, QUOTA_DIAL_OUTER_DASH_OFF),
-            ),
+        quotaDialRing(
+            outer,
+            primaryColor,
+            primaryColor.copy(alpha = QUOTA_DIAL_OUTER_EMPTY_ALPHA),
+            QUOTA_DIAL_OUTER_WIDTH_DP.dp,
+            QUOTA_DIAL_OUTER_INSET_DP.dp,
+            floatArrayOf(QUOTA_DIAL_OUTER_DASH_ON, QUOTA_DIAL_OUTER_DASH_OFF),
+        ),
         inner =
-            quotaDialRing(
-                inner,
-                accentColor,
-                accentColor.copy(alpha = QUOTA_DIAL_INNER_EMPTY_ALPHA),
-                QUOTA_DIAL_INNER_WIDTH_DP.dp,
-                QUOTA_DIAL_INNER_INSET_DP.dp,
-                floatArrayOf(QUOTA_DIAL_INNER_DASH_ON, QUOTA_DIAL_INNER_DASH_OFF),
-            ),
+        quotaDialRing(
+            inner,
+            accentColor,
+            accentColor.copy(alpha = QUOTA_DIAL_INNER_EMPTY_ALPHA),
+            QUOTA_DIAL_INNER_WIDTH_DP.dp,
+            QUOTA_DIAL_INNER_INSET_DP.dp,
+            floatArrayOf(QUOTA_DIAL_INNER_DASH_ON, QUOTA_DIAL_INNER_DASH_OFF),
+        ),
         centerText = dominantBucket?.let { "${((it.displayRemainingFraction ?: 1.0) * 100).roundToInt()}%" } ?: "—",
         centerSubtitle = quotaDialCenterSubtitle(dominantBucket, outer, inner),
         centerColor = primaryColor,
@@ -120,14 +110,7 @@ private fun quotaDialState(
     )
 }
 
-private fun quotaDialRing(
-    bucket: QuotaBucket?,
-    baseColor: Color,
-    emptyColor: Color,
-    lineWidth: Dp,
-    inset: Dp,
-    dashPattern: FloatArray
-): QuotaDialRing {
+private fun quotaDialRing(bucket: QuotaBucket?, baseColor: Color, emptyColor: Color, lineWidth: Dp, inset: Dp, dashPattern: FloatArray): QuotaDialRing {
     val remaining = bucket?.displayRemainingFraction ?: 1.0
     return QuotaDialRing(
         bucket = bucket,
@@ -137,17 +120,16 @@ private fun quotaDialRing(
         emptyColor = emptyColor,
         lineWidth = lineWidth,
         inset = inset,
-        dashPattern = dashPattern
+        dashPattern = dashPattern,
     )
 }
 
-private fun quotaDialFillColor(baseColor: Color, remaining: Double): Color =
-    when {
-        remaining >= QUOTA_REMAINING_HEALTHY -> baseColor
-        remaining >= QUOTA_REMAINING_WATCH -> baseColor.copy(alpha = QUOTA_DIAL_MUTED_ALPHA)
-        remaining >= QUOTA_REMAINING_WARN -> AuroraColors.amber
-        else -> AuroraColors.warning
-    }
+private fun quotaDialFillColor(baseColor: Color, remaining: Double): Color = when {
+    remaining >= QUOTA_REMAINING_HEALTHY -> baseColor
+    remaining >= QUOTA_REMAINING_WATCH -> baseColor.copy(alpha = QUOTA_DIAL_MUTED_ALPHA)
+    remaining >= QUOTA_REMAINING_WARN -> AuroraColors.amber
+    else -> AuroraColors.warning
+}
 
 private fun quotaDialCenterSubtitle(dominantBucket: QuotaBucket?, outer: QuotaBucket?, inner: QuotaBucket?): String {
     if (dominantBucket == null) return "no signal"
@@ -156,14 +138,13 @@ private fun quotaDialCenterSubtitle(dominantBucket: QuotaBucket?, outer: QuotaBu
     return "left in $displayLabel"
 }
 
-private fun quotaDialWindowLabel(bucket: QuotaBucket?): String =
-    when (bucket?.let { QuotaWindowKind.infer(it) }) {
-        QuotaWindowKind.SEVEN_DAY -> "7d"
-        QuotaWindowKind.MONTHLY -> "30d"
-        QuotaWindowKind.DAILY -> "24h"
-        QuotaWindowKind.FIVE_HOUR -> "5h"
-        else -> bucket?.label?.take(QUOTA_DIAL_LABEL_LIMIT) ?: "—"
-    }
+private fun quotaDialWindowLabel(bucket: QuotaBucket?): String = when (bucket?.let { QuotaWindowKind.infer(it) }) {
+    QuotaWindowKind.SEVEN_DAY -> "7d"
+    QuotaWindowKind.MONTHLY -> "30d"
+    QuotaWindowKind.DAILY -> "24h"
+    QuotaWindowKind.FIVE_HOUR -> "5h"
+    else -> bucket?.label?.take(QUOTA_DIAL_LABEL_LIMIT) ?: "—"
+}
 
 private fun quotaDialTrackColor(isDark: Boolean): Color =
     if (isDark) AuroraColors.darkSurfaceElevated.copy(alpha = 0.85f) else AuroraColors.lightSurfaceElevated.copy(alpha = 0.85f)
@@ -192,7 +173,7 @@ private fun DrawScope.drawQuotaDialRing(ring: QuotaDialRing, trackColor: Color) 
             useCenter = false,
             topLeft = topLeft,
             size = arcSize,
-            style = Stroke(width = lineWidth, pathEffect = PathEffect.dashPathEffect(ring.dashPattern))
+            style = Stroke(width = lineWidth, pathEffect = PathEffect.dashPathEffect(ring.dashPattern)),
         )
     } else {
         drawQuotaDialFilledArc(ring = ring, lineWidth = lineWidth, topLeft = topLeft, arcSize = arcSize)
@@ -200,12 +181,7 @@ private fun DrawScope.drawQuotaDialRing(ring: QuotaDialRing, trackColor: Color) 
     }
 }
 
-private fun DrawScope.drawQuotaDialFilledArc(
-    ring: QuotaDialRing,
-    lineWidth: Float,
-    topLeft: Offset,
-    arcSize: Size
-) {
+private fun DrawScope.drawQuotaDialFilledArc(ring: QuotaDialRing, lineWidth: Float, topLeft: Offset, arcSize: Size) {
     drawArc(
         color = ring.fillColor,
         startAngle = -90f,
@@ -213,23 +189,17 @@ private fun DrawScope.drawQuotaDialFilledArc(
         useCenter = false,
         topLeft = topLeft,
         size = arcSize,
-        style = Stroke(width = lineWidth, cap = StrokeCap.Round)
+        style = Stroke(width = lineWidth, cap = StrokeCap.Round),
     )
 }
 
-private fun DrawScope.drawQuotaDialPaceMarker(
-    pace: IdealPace,
-    fillColor: Color,
-    lineWidth: Float,
-    center: Offset,
-    diameter: Float
-) {
+private fun DrawScope.drawQuotaDialPaceMarker(pace: IdealPace, fillColor: Color, lineWidth: Float, center: Offset, diameter: Float) {
     val angle = QUOTA_DIAL_START_ANGLE_DEGREES + QUOTA_DIAL_FULL_CIRCLE_DEGREES * (1.0f - pace.elapsedFraction.toFloat())
     val angleRad = Math.toRadians(angle.toDouble())
     val radius = diameter / QUOTA_DIAL_RADIUS_DIVISOR
     val markerCenter = Offset(
         x = center.x + Math.cos(angleRad).toFloat() * radius,
-        y = center.y + Math.sin(angleRad).toFloat() * radius
+        y = center.y + Math.sin(angleRad).toFloat() * radius,
     )
     drawCircle(color = fillColor.copy(alpha = 0.25f), radius = (lineWidth + 4f) / 2f, center = markerCenter)
     drawCircle(color = Color.White, radius = (lineWidth - 2f) / 2f, center = markerCenter)
@@ -244,30 +214,24 @@ private fun QuotaArcDialCenter(state: QuotaDialState) {
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
-            color = if (state.hasSignal) state.centerColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            color = if (state.hasSignal) state.centerColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         )
         Text(
             text = state.centerSubtitle,
             fontSize = AuroraTypography.tiny.sp,
             fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
         )
     }
 }
 
 @Composable
-fun MetricRow(
-    glyph: String,
-    label: String,
-    bucket: QuotaBucket?,
-    fallback: String,
-    provider: AgentProvider
-) {
+fun MetricRow(glyph: String, label: String, bucket: QuotaBucket?, fallback: String, provider: AgentProvider) {
     val primaryColor = Color(provider.brandColor)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         MetricIcon(glyph = glyph, tint = primaryColor)
 
@@ -277,7 +241,7 @@ fun MetricRow(
                 fontSize = 8.sp,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                letterSpacing = 0.8.sp
+                letterSpacing = 0.8.sp,
             )
 
             MetricBucketContent(bucket = bucket, fallback = fallback)
@@ -296,7 +260,7 @@ private fun MetricIcon(glyph: String, tint: Color) {
             },
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(11.dp)
+            modifier = Modifier.size(11.dp),
         )
     }
 }
@@ -307,7 +271,7 @@ private fun MetricBucketContent(bucket: QuotaBucket?, fallback: String) {
         Text(
             text = fallback,
             fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         )
         return
     }
@@ -317,30 +281,29 @@ private fun MetricBucketContent(bucket: QuotaBucket?, fallback: String) {
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
             text = "·",
             fontSize = AuroraTypography.tiny.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         )
         Text(
             text = quotaUsageText(bucket),
             fontSize = AuroraTypography.tiny.sp,
             fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         val pace = bucket.idealPace()
         if (pace != null && pace.severity != PaceSeverity.ON_PACE) PaceBadge(pace = pace)
     }
 }
 
-private fun QuotaBucket.metricRemainingText(): String =
-    if (meta?.get("unit")?.toString()?.lowercase() == "unlimited") {
-        "Unlimited"
-    } else {
-        getRemainingText("absoluteValues")
-    }
+private fun QuotaBucket.metricRemainingText(): String = if (meta?.get("unit")?.toString()?.lowercase() == "unlimited") {
+    "Unlimited"
+} else {
+    getRemainingText("absoluteValues")
+}
 
 @Composable
 fun PaceBadge(pace: IdealPace) {
@@ -355,13 +318,13 @@ fun PaceBadge(pace: IdealPace) {
             .clip(RoundedCornerShape(8.dp))
             .background(tint.copy(alpha = 0.10f))
             .border(0.5.dp, tint.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             text = pace.humanLabel,
             fontSize = 9.sp,
             fontWeight = FontWeight.SemiBold,
-            color = tint
+            color = tint,
         )
     }
 }

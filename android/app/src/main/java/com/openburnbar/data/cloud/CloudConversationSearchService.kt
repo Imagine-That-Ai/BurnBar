@@ -60,27 +60,27 @@ class CloudConversationSearchService(
                         id = hit.id,
                         documentID = hit.documentID,
                         title =
-                            CloudVaultCrypto.openText(
-                                hit.sealedTitle,
-                                vaultKey,
-                                CloudVaultAADContext(
-                                    uid = uid,
-                                    collection = "cloud_search_documents",
-                                    docID = hit.documentID,
-                                    field = "sealedTitle",
-                                ),
+                        CloudVaultCrypto.openText(
+                            hit.sealedTitle,
+                            vaultKey,
+                            CloudVaultAADContext(
+                                uid = uid,
+                                collection = "cloud_search_documents",
+                                docID = hit.documentID,
+                                field = "sealedTitle",
                             ),
+                        ),
                         snippet =
-                            CloudVaultCrypto.openText(
-                                hit.sealedSnippet,
-                                vaultKey,
-                                CloudVaultAADContext(
-                                    uid = uid,
-                                    collection = "cloud_search_chunks",
-                                    docID = hit.chunkID,
-                                    field = "sealedSnippet",
-                                ),
+                        CloudVaultCrypto.openText(
+                            hit.sealedSnippet,
+                            vaultKey,
+                            CloudVaultAADContext(
+                                uid = uid,
+                                collection = "cloud_search_chunks",
+                                docID = hit.chunkID,
+                                field = "sealedSnippet",
                             ),
+                        ),
                         provider = hit.provider,
                         storagePath = hit.storagePath,
                         bodyHash = hit.bodyHash,
@@ -178,13 +178,7 @@ class CloudConversationSearchService(
         }
     }
 
-    private fun openBodyEnvelope(
-        bytes: ByteArray,
-        bodyHash: String,
-        bodyHashVersion: Int,
-        vaultKey: ByteArray,
-        aadContext: CloudVaultAADContext,
-    ): String {
+    private fun openBodyEnvelope(bytes: ByteArray, bodyHash: String, bodyHashVersion: Int, vaultKey: ByteArray, aadContext: CloudVaultAADContext): String {
         val envelope = parseBlobEnvelope(bytes.toString(Charsets.UTF_8))
         val plaintext = CloudVaultCrypto.openBlob(envelope, vaultKey, aadContext)
         require(CloudVaultCrypto.expectedSessionBodyHash(plaintext, vaultKey, bodyHashVersion) == bodyHash) {

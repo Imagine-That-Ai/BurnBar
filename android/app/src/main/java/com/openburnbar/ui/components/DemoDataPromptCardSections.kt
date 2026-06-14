@@ -33,7 +33,7 @@ internal fun DemoDataPromptHeader() {
             modifier = Modifier.size(20.dp),
             tint = AuroraColors.whimsy,
         )
-        Spacer(modifier = Modifier.size(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.size(AuroraSpacing.SM.dp))
         Text(
             text = "Test without the Mac app",
             fontSize = 15.sp,
@@ -44,16 +44,10 @@ internal fun DemoDataPromptHeader() {
 }
 
 @Composable
-internal fun DemoDataPromptActions(
-    isLoading: Boolean,
-    message: String?,
-    error: String?,
-    onLoadDemoData: () -> Unit,
-    onDismissStatus: () -> Unit,
-) {
+internal fun DemoDataPromptActions(isLoading: Boolean, message: String?, error: String?, onLoadDemoData: () -> Unit, onDismissStatus: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Button(onClick = onLoadDemoData, enabled = !isLoading) {
@@ -63,7 +57,7 @@ internal fun DemoDataPromptActions(
                     strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
-                Spacer(modifier = Modifier.size(AuroraSpacing.xs.dp))
+                Spacer(modifier = Modifier.size(AuroraSpacing.XS.dp))
             }
             Text(if (isLoading) "Loading…" else "Load demo data")
         }
