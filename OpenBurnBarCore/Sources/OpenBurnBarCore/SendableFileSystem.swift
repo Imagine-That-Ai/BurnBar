@@ -80,7 +80,9 @@ public struct DefaultSendableFileSystem: SendableFileSystem {
 
     public var temporaryDirectory: URL { fileManager.temporaryDirectory }
 
-    public var homeDirectoryForCurrentUser: URL { fileManager.homeDirectoryForCurrentUser }
+    public var homeDirectoryForCurrentUser: URL {
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+    }
 
     public func fileExists(atPath path: String) -> Bool {
         fileManager.fileExists(atPath: path)
