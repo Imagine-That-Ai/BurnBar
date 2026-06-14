@@ -438,6 +438,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
     func revoke(deviceID: String) async throws {
         guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
         try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(deviceId: deviceID)
+        NotificationCenter.default.post(name: .openBurnBarDidRevokeDeviceTrust, object: nil)
     }
 
 }
