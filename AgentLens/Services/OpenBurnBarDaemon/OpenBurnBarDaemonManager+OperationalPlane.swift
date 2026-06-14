@@ -64,7 +64,7 @@ extension OpenBurnBarDaemonManager {
                 at: socketURL
             )
         }
-        connectorPlaneSnapshot = try? await daemonRPC {
+        connectorPlaneSnapshot = try? await daemonRPC { // try?-ok(best-effort snapshot refresh)
             try OpenBurnBarDaemonSocketClient.connectorPlane(at: socketURL)
         }
         return response
@@ -96,7 +96,7 @@ extension OpenBurnBarDaemonManager {
         let response = try await daemonRPC {
             try OpenBurnBarDaemonSocketClient.performBrowserAction(request, at: socketURL)
         }
-        browserToolingSnapshot = try? await daemonRPC {
+        browserToolingSnapshot = try? await daemonRPC { // try?-ok(best-effort snapshot refresh)
             try OpenBurnBarDaemonSocketClient.browserTooling(at: socketURL)
         }
         return response

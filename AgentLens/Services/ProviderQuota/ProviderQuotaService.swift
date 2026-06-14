@@ -572,10 +572,10 @@ final class ProviderQuotaService {
     ) {
         automaticRefreshLifecycle.replaceRefreshTask(Task(priority: .utility) { [weak self, weak dataStore] in
             guard let self, let dataStore else { return }
-            try? await Task.sleep(for: initialDelay)
+            try? await Task.sleep(for: initialDelay) // try?-ok(sleep cancellation only)
             while !Task.isCancelled {
                 await self.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
-                try? await Task.sleep(for: interval)
+                try? await Task.sleep(for: interval) // try?-ok(sleep cancellation only)
             }
         })
 

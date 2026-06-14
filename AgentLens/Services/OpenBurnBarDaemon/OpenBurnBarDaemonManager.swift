@@ -569,7 +569,7 @@ final class OpenBurnBarDaemonManager {
     }
 
     func loadRecentDaemonEvents(limit: Int = 6) -> [String] {
-        guard let content = try? String(contentsOf: paths.logURL, encoding: .utf8) else {
+        guard let content = try? String(contentsOf: paths.logURL, encoding: .utf8) else { // try?-ok(diagnostic log tail)
             return []
         }
 
@@ -583,7 +583,7 @@ final class OpenBurnBarDaemonManager {
 
     /// Last portion of the launchd daemon log (stdout/stderr) for install/repair diagnostics.
     func daemonLogTailForDiagnostics(maxCharacters: Int = 2000) -> String? {
-        guard let content = try? String(contentsOf: paths.logURL, encoding: .utf8) else {
+        guard let content = try? String(contentsOf: paths.logURL, encoding: .utf8) else { // try?-ok(diagnostic log tail)
             return nil
         }
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)

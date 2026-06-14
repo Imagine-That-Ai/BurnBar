@@ -181,7 +181,7 @@ enum WarpAPIFetcher {
     /// Parses the GraphQL JSON response into `WarpCredits`.
     /// Package-private for testing.
     static func parseCreditsResponse(_ data: Data) throws -> WarpCredits {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON throws)
             throw QuotaServiceError.invalidResponse("Warp response was not valid JSON.")
         }
 

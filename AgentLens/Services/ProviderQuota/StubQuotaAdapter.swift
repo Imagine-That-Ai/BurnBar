@@ -38,7 +38,7 @@ struct ClineQuotaAdapter: ProviderQuotaAdapter {
         ]
         for base in paths {
             let expanded = (base as NSString).expandingTildeInPath
-            if let contents = try? FileManager.default.contentsOfDirectory(atPath: expanded) {
+            if let contents = try? FileManager.default.contentsOfDirectory(atPath: expanded) { // try?-ok(install-detection dir read)
                 if contents.contains(where: { $0.lowercased().contains(name.lowercased()) }) {
                     return true
                 }
@@ -90,7 +90,7 @@ struct RooCodeQuotaAdapter: ProviderQuotaAdapter {
         ]
         for base in paths {
             let expanded = (base as NSString).expandingTildeInPath
-            if let contents = try? FileManager.default.contentsOfDirectory(atPath: expanded) {
+            if let contents = try? FileManager.default.contentsOfDirectory(atPath: expanded) { // try?-ok(install-detection dir read)
                 if contents.contains(where: { $0.lowercased().contains(name.lowercased()) }) {
                     return true
                 }

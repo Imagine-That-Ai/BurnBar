@@ -50,7 +50,7 @@ struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: tasksDir) else {
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: tasksDir) else { // try?-ok(no tasks, skip)
             return ProviderQuotaSnapshot(
                 provider: .kiloCode,
                 fetchedAt: Date(),
@@ -72,8 +72,8 @@ struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
         for taskID in taskIDs {
             let uiMessagesPath = "\(tasksDir)/\(taskID)/ui_messages.json"
             guard FileManager.default.fileExists(atPath: uiMessagesPath),
-                  let data = try? Data(contentsOf: URL(fileURLWithPath: uiMessagesPath)),
-                  let messages = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: uiMessagesPath)), // try?-ok(sidecar read, skip)
+                  let messages = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed json, skip)
                 continue
             }
 
@@ -84,7 +84,7 @@ struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
                       say == "api_req_started",
                       let text = message["text"] as? String,
                       let jsonData = text.data(using: .utf8),
-                      let apiReq = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+                      let apiReq = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { // try?-ok(malformed json, skip)
                     continue
                 }
 

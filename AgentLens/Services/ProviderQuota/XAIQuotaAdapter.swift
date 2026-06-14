@@ -239,7 +239,7 @@ struct XAIQuotaAdapter: ProviderQuotaAdapter {
                 ]
             ]
         ]
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return [] }
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return [] } // try?-ok(skip usage this cycle)
 
         do {
             var request = URLRequest(url: url)
@@ -437,7 +437,7 @@ struct XAIQuotaAdapter: ProviderQuotaAdapter {
         fileManager: FileManager
     ) -> [SuperGrokEvent] {
         guard fileManager.fileExists(atPath: logURL.path),
-              let data = try? Data(contentsOf: logURL),
+              let data = try? Data(contentsOf: logURL), // try?-ok(sidecar read, skip)
               let text = String(data: data, encoding: .utf8) else {
             return []
         }
@@ -447,7 +447,7 @@ struct XAIQuotaAdapter: ProviderQuotaAdapter {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
                   let lineData = trimmed.data(using: .utf8),
-                  let event = try? decoder.decode(SuperGrokEvent.self, from: lineData) else {
+                  let event = try? decoder.decode(SuperGrokEvent.self, from: lineData) else { // try?-ok(skip malformed line)
                 continue
             }
             events.append(event)

@@ -595,7 +595,7 @@ private func resolveSwitcherCLIQuotaProfiles(
     dataStoreActor: DataStoreActor,
     homeDirectoryURL: URL
 ) -> [SwitcherCLIQuotaProfile] {
-    let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? []
+    let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? [] // try?-ok(skip profile-store read)
 
     return profiles.compactMap { profile in
         guard profile.targetKind == .cli,

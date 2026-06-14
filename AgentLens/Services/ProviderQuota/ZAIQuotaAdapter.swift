@@ -30,13 +30,13 @@ struct ZAIQuotaAdapter: ProviderQuotaAdapter {
                 )
                 guard !buckets.isEmpty else { continue }
 
-                let modelUsageObject = try? await requestJSON(
+                let modelUsageObject = try? await requestJSON( // try?-ok(usage detail skip)
                     url: baseURL.appendingPathComponent("api/monitor/usage/model-usage"),
                     queryItems: queryItems,
                     authorizationValue: "Bearer \(apiKey)",
                     session: context.session
                 )
-                let toolUsageObject = try? await requestJSON(
+                let toolUsageObject = try? await requestJSON( // try?-ok(usage detail skip)
                     url: baseURL.appendingPathComponent("api/monitor/usage/tool-usage"),
                     queryItems: queryItems,
                     authorizationValue: "Bearer \(apiKey)",
