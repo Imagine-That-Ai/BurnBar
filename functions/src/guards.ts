@@ -251,17 +251,20 @@ export function parseEntitlementBindingDoc(raw: unknown): EntitlementBindingDoc 
   if (
     typeof raw.id !== "string" ||
     typeof raw.uid !== "string" ||
-    typeof raw.appAccountToken !== "string" ||
     typeof raw.productID !== "string" ||
     typeof raw.createdAt !== "string" ||
     typeof raw.schemaVersion !== "number"
   ) {
     return undefined;
   }
+  const appAccountToken =
+    typeof raw.appAccountToken === "string" && raw.appAccountToken.trim()
+      ? raw.appAccountToken
+      : raw.id;
   return {
     id: raw.id,
     uid: raw.uid,
-    appAccountToken: raw.appAccountToken,
+    appAccountToken,
     productID: raw.productID,
     createdAt: raw.createdAt,
     schemaVersion: raw.schemaVersion,
@@ -395,19 +398,46 @@ export function parseModelBenchmarkSourceStatusDoc(raw: unknown): ModelBenchmark
   };
 }
 
+function coerceUsageEventDate(value: unknown): Date | undefined {
+  if (value == null) return undefined;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  if (isTimestampWithToDate(value)) {
+    const parsed = value.toDate();
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  if (isTimestampWithToMillis(value)) {
+    const parsed = new Date(value.toMillis());
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  return undefined;
+}
+
+/** Mirrors rollup `eventDate()` precedence so legacy Firestore shapes keep parsing. */
+function synthesizeRecordedAt(raw: Record<string, unknown>): string | undefined {
+  if (typeof raw.recordedAt === "string" && raw.recordedAt.trim()) {
+    return raw.recordedAt;
+  }
+  const date =
+    coerceUsageEventDate(raw.timestamp) ??
+    coerceUsageEventDate(raw.startTime) ??
+    coerceUsageEventDate(raw.endTime) ??
+    coerceUsageEventDate(raw.createdAt) ??
+    coerceUsageEventDate(raw.updatedAt);
+  return date?.toISOString();
+}
+
 export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
   if (!isRecord(raw) || !isProvider(raw.provider)) {
     return undefined;
   }
   const schemaVersion = typeof raw.schemaVersion === "number" ? raw.schemaVersion : 1;
-  const recordedAt =
-    typeof raw.recordedAt === "string"
-      ? raw.recordedAt
-      : typeof raw.timestamp === "string"
-        ? raw.timestamp
-        : typeof raw.createdAt === "string"
-          ? raw.createdAt
-          : undefined;
+  const recordedAt = synthesizeRecordedAt(raw);
   if (!recordedAt) return undefined;
   const doc: UsageEventDoc = {
     provider: raw.provider,

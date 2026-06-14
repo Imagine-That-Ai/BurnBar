@@ -1,6 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
-  "entry": ["src/index.ts", "src/types/generatedParity.ts", "scripts/test-firestore-rules.mjs"],
+  "entry": [
+    "src/index.ts",
+    "src/types/generatedParity.ts",
+    "src/hermesGatewayComplianceSurface.ts",
+    "scripts/test-firestore-rules.mjs"
+  ],
   "project": ["src/**/*.ts"],
   "ignore": [
     "lib/**",
