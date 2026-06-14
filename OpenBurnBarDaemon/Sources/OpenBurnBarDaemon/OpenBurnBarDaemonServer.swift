@@ -208,6 +208,11 @@ public actor BurnBarDaemonServer {
                 configStore: resolvedConfigStore,
                 usageRecorder: resolvedUsageRecorder,
                 proxyRouteLogStore: resolvedProxyRouteLogStore,
+                // remediation(B1): production daemon opts into the short-TTL
+                // live model-catalog cache so `/v1/models` and the routing path
+                // stop fanning out live provider HTTP (and spawning Factory's
+                // `droid exec --help`) on every request.
+                modelCatalogCacheTTL: BurnBarHTTPGatewayServer.defaultModelCatalogCacheTTL,
                 logger: BurnBarDaemonLogger(category: "http-gateway")
             )
         } else {

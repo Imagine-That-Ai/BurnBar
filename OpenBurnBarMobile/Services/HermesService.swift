@@ -738,6 +738,13 @@ final class HermesService {
             text: trimmed,
             attachments: attachments
         )
+        // remediation(chat-cap): apply the transcript window cap on the dominant
+        // relay/local streaming path too — it is the only Hermes send path with
+        // multi-iteration tool loops (fastest array growth) and the one HermesTabView
+        // uses most. Safe point: `!isStreaming` was just guarded at the top of
+        // sendMessage, so there is no active streaming tail to trim. Mirrors the
+        // placement in beginBurnBarGatewayTurn / beginVisibleCLITurn.
+        conversation.capRetainedMessages()
         messages.append(userMessage)
         isStreaming = true
         lastError = nil

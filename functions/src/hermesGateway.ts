@@ -7,6 +7,9 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   SIGNAL_AT_REST_ENCRYPTION,
   SIGNAL_ENVELOPE_FORMAT_VERSION,
+  SIGNAL_MAX_KEY_WRAP_B64,
+  SIGNAL_MAX_MESSAGE_B64,
+  SIGNAL_MAX_RECIPIENT_WRAPS,
   SIGNAL_RELAY_KEY_VERSION,
   SIGNAL_TRANSPORT_ENCRYPTION,
   sanitizeSignalEnvelope,
@@ -140,6 +143,21 @@ export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = SIGNAL_AT_REST_ENCRYPTIO
 export const HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS = new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
 export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>();
 export const HERMES_GATEWAY_SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED";
+// remediation(B3): the always-available, synchronous HARD kill switch for
+// signal-envelope-v4. When set truthy ("1"/"true") this force-disables v4 in
+// productionGatewaySignalEnvelopeVersions() — it overrides EVERYTHING, including
+// gatewaySignalRequiredMode and the Remote Config enable flag. This is the
+// <60s reversibility lever (Invariant #10): a single env export + redeploy
+// guarantees no new client can negotiate or emit v4, with no RC fetch in the
+// path. The drill at scripts/ops/signal-rollback-drill.sh Step 3 rehearses it.
+export const HERMES_GATEWAY_SIGNAL_ENVELOPE_V4_DISABLED_ENV = "SIGNAL_ENVELOPE_V4_DISABLED";
+export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = SIGNAL_MAX_MESSAGE_B64;
+export const HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64 = SIGNAL_MAX_KEY_WRAP_B64;
+export const HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS = SIGNAL_MAX_RECIPIENT_WRAPS;
+// Historical cutoff for the now-closed schema-1 plaintext migration. New writes
+// are sealed-only; reads keep a legacy plaintext fallback so old queued docs can
+// still render while backfills/scrubbers drain them.
+export const HERMES_GATEWAY_GRACE_WINDOW_CUTOFF = "2026-06-03T00:00:00.000Z";
 
 /**
  * The plaintext grace window is closed. Keep the helper for old callers/tests,
@@ -153,7 +171,27 @@ export function gatewaySignalRequiredMode(env: NodeJS.ProcessEnv = process.env):
   return env[HERMES_GATEWAY_SIGNAL_REQUIRED_ENV] === "true";
 }
 
+// remediation(B3): synchronous read of the SIGNAL_ENVELOPE_V4_DISABLED hard kill.
+// Truthy ("1"/"true", case-insensitive) means v4 is force-disabled everywhere.
+// Read the same way as gatewaySignalRequiredMode (process.env, no async), so the
+// kill is available even when Remote Config cannot be reached.
+export function gatewaySignalEnvelopeV4Disabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env[HERMES_GATEWAY_SIGNAL_ENVELOPE_V4_DISABLED_ENV];
+  if (typeof raw !== "string") return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
+
 export function productionGatewaySignalEnvelopeVersions(): Set<number> {
+  // remediation(B3): the ENV hard kill wins over everything. If
+  // SIGNAL_ENVELOPE_V4_DISABLED is truthy we return a set that EXCLUDES the v4
+  // Signal version even in Signal-required mode — fail-closed so no write/cap
+  // path can negotiate or emit v4 while the kill is engaged. This never loosens
+  // the READ-side tolerance (HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS),
+  // which stays {4} so already-stored v4 docs remain readable on rollback.
+  if (gatewaySignalEnvelopeV4Disabled()) {
+    return new Set<number>();
+  }
   return gatewaySignalRequiredMode()
     ? new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL])
     : new Set(HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS);
