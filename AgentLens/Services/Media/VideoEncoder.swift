@@ -4,7 +4,7 @@ import CoreMedia
 import VideoToolbox
 import OpenBurnBarMedia
 
-private final class SendableVideoSampleBuffer: @unchecked Sendable {
+private final class SendableVideoSampleBuffer: Sendable {
     let sampleBuffer: CMSampleBuffer
 
     init(_ sampleBuffer: CMSampleBuffer) {

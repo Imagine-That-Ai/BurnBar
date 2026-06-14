@@ -9,7 +9,7 @@ import os
 /// closes the restart reuse window for the proof itself — belt-and-suspenders behind
 /// the persisted, strictly-monotonic replay counter. Expired entries are pruned on
 /// every load/record so the file stays bounded.
-public final class PhoneControlConsumedProofStore: @unchecked Sendable {
+public final class PhoneControlConsumedProofStore: Sendable {
     private static let logger = Logger(subsystem: "com.openburnbar.app", category: "PhoneControlConsumedProofStore")
 
     private struct SnapshotFile: Codable {

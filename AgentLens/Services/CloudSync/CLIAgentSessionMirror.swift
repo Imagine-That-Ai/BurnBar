@@ -24,7 +24,7 @@ import OSLog
 // toggle so privacy-conscious users can disable transcript mirroring
 // without losing telemetry sync.
 
-final class CLIAgentSessionMirror: @unchecked Sendable {
+final class CLIAgentSessionMirror: Sendable {
 
     @MainActor
     static let shared = CLIAgentSessionMirror(accountManager: AccountManager.shared)

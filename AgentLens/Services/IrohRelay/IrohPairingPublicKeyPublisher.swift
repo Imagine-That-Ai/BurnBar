@@ -16,7 +16,7 @@ protocol IrohPairingPublicKeyPublishing: Sendable {
 /// (`FirestoreIrohPairingPublicKeyProvider`) would never find a key and
 /// every iroh dial would fail closed back to the WSS fallback. Document
 /// schema mirrors `IrohPairingPublicKeyDoc` in `functions/src/types.ts`.
-final class IrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing, @unchecked Sendable {
+final class IrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing, Sendable {
     static let shared = IrohPairingPublicKeyPublisher()
 
     private let roleId: String

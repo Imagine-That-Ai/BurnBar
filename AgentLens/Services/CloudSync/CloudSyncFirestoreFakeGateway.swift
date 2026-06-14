@@ -124,7 +124,7 @@ private final class FakeDocumentStore: @unchecked Sendable {
 
 // MARK: - Fake Collection Gateway
 
-private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, @unchecked Sendable {
+private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, Sendable {
     private let store: FakeDocumentStore
     private let path: String
     private let nextError: @Sendable () -> Error?
@@ -197,7 +197,7 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
 
 // MARK: - Fake Document Gateway
 
-private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway, @unchecked Sendable {
+private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway, Sendable {
     private let store: FakeDocumentStore
     let path: String
     private let nextError: @Sendable () -> Error?
@@ -235,7 +235,7 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway, @unc
 
 // MARK: - Fake Query Gateway
 
-private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, @unchecked Sendable {
+private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
     private let store: FakeDocumentStore
     private let collectionPath: String
     private let predicates: [QueryPredicate]
@@ -321,7 +321,7 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, @unchecked
 
 // MARK: - Fake Query Snapshot
 
-private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGateway, @unchecked Sendable {
+private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGateway, Sendable {
     let documents: [CloudSyncDocumentSnapshotGateway]
 
     init(

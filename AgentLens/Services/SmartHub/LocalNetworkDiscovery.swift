@@ -251,7 +251,7 @@ enum LocalNetworkDiscovery {
 // official discovery path documented by the AWTRIX project — it survives DHCP
 // lease changes, IP renumbering, and per-device address shuffles that would
 // otherwise leave us pointing at a stale host.
-private final class SendableAwtrixNetServiceBox: @unchecked Sendable {
+private final class SendableAwtrixNetServiceBox: Sendable {
     let service: NetService
 
     init(_ service: NetService) {

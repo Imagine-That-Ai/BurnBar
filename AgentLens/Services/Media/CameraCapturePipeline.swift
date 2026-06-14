@@ -94,7 +94,7 @@ extension CameraCapturePipeline: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 }
 
-private struct SendableCameraSampleBuffer: @unchecked Sendable {
+private struct SendableCameraSampleBuffer: Sendable {
     let sampleBuffer: CMSampleBuffer
 
     init(_ sampleBuffer: CMSampleBuffer) {

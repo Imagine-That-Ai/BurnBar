@@ -7,7 +7,7 @@ import OpenBurnBarCore
 ///
 /// Firestore layout: `users/{uid}/conversations/{deviceId}_{conversationId}`
 /// Note: Full transcripts are NOT uploaded here; only metadata for cross-device recall.
-final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
+final class ConversationSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 

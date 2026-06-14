@@ -405,7 +405,7 @@ private enum ComputerUseAuditExportSignerPublisherError: LocalizedError {
     }
 }
 
-private final class ComputerUseAuditExportSignerPublisher: @unchecked Sendable {
+private final class ComputerUseAuditExportSignerPublisher: Sendable {
     static let shared = ComputerUseAuditExportSignerPublisher()
 
     private let firestoreProvider: @Sendable () -> Firestore

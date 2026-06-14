@@ -89,7 +89,7 @@ final class MicrophoneCapturePipeline {
     }
 }
 
-private struct SendableAudioPCMBuffer: @unchecked Sendable {
+private struct SendableAudioPCMBuffer: Sendable {
     let buffer: AVAudioPCMBuffer
 
     init(_ buffer: AVAudioPCMBuffer) {

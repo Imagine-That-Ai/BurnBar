@@ -6,7 +6,7 @@ import Foundation
 /// those high-water marks closes the restart replay window for a captured,
 /// still-fresh authority envelope. Writes merge by max so concurrent validator
 /// instances cannot roll the file back to an older counter.
-public final class PhoneControlReplayCounterStore: @unchecked Sendable {
+public final class PhoneControlReplayCounterStore: Sendable {
     private struct SnapshotFile: Codable {
         var version: Int
         var counters: [String: UInt64]

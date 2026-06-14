@@ -71,7 +71,7 @@ final class RoutedClientWiringSentry {
     private nonisolated(unsafe) var enrollmentObserver: NSObjectProtocol?
     private var isStarted = false
 
-    private final class Watcher: @unchecked Sendable {
+    private final class Watcher: Sendable {
         let descriptor: Int32
         let source: DispatchSourceFileSystemObject
 
