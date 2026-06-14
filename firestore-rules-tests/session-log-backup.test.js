@@ -55,7 +55,6 @@ function validManifest(uid = aliceUid) {
       provider: "Factory",
       sessionId: "8adc9f4f-cfce-4856-9537-6feaa5e8ae8e",
       sourceType: "provider_log",
-      projectName: "~/Documents/Windsurf/ImagineThatAiApp/Imagine/That.Ai/App/2.0",
       inferredTaskTitle: "Encrypted session",
       bodyStorage: "firebase_storage_encrypted",
       storagePath: `users/${uid}/session_logs/${documentID}/bodies/${bodyHash}.json.aesgcm`,
@@ -89,7 +88,6 @@ function validManifest(uid = aliceUid) {
       cacheReadTokens: 0,
       totalTokens: 22,
       costUSD: 0.01,
-      workingDirectory: "~/Documents/Windsurf/ImagineThatAiApp/Imagine/That.Ai/App/2.0",
       durationSeconds: 120,
       toolTags: ["run"],
       startTime: Timestamp.fromMillis(Date.now() - 120_000),
@@ -132,7 +130,6 @@ function validChunk(uid = aliceUid, index = 0) {
       deviceId: manifest.data.deviceId,
       provider: manifest.data.provider,
       model: manifest.data.model,
-      projectName: manifest.data.projectName,
       sealedSnippet: sealedText(),
       tokenHashes: ["a".repeat(32)],
       semanticHashes: ["b".repeat(32)],
@@ -218,14 +215,14 @@ async function main() {
     await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), aliceManifest.data, { merge: true }));
   });
 
-  await step("legacy plaintext chunk must be overwritten, not merged", async () => {
+  await step("session-log chunks are server-owned and reject legacy plaintext merges", async () => {
     const legacy = legacyPlaintextChunk();
     const clean = validChunk();
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), legacy.path), legacy.data);
     });
     await assertFails(setDoc(doc(aliceDB, clean.path), clean.data, { merge: true }));
-    await assertSucceeds(setDoc(doc(aliceDB, clean.path), clean.data));
+    await assertFails(setDoc(doc(aliceDB, clean.path), clean.data));
   });
 
   await step("session-log manifest cannot be written into another user namespace", async () => {
@@ -236,6 +233,21 @@ async function main() {
   await step("session-log manifest rejects plaintext body fields", async () => {
     await assertFails(
       setDoc(doc(aliceDB, aliceManifest.path), { ...aliceManifest.data, body: "plaintext" }, { merge: true })
+    );
+  });
+
+  await step("session-log manifest rejects plaintext project path fields", async () => {
+    await assertFails(
+      setDoc(doc(aliceDB, aliceManifest.path), {
+        ...aliceManifest.data,
+        projectName: "~/Documents/Windsurf/SecretProject",
+      }, { merge: true })
+    );
+    await assertFails(
+      setDoc(doc(aliceDB, aliceManifest.path), {
+        ...aliceManifest.data,
+        workingDirectory: "~/Documents/Windsurf/SecretProject",
+      }, { merge: true })
     );
   });
 

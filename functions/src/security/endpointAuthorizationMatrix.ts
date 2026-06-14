@@ -20,8 +20,10 @@ type EndpointAuthorizationEntry = {
   notes?: string;
 };
 
-type MatrixDefaults = Omit<EndpointAuthorizationEntry, "exportedName" | "objectIdsFromClient"> & {
+type MatrixDefaults = Omit<EndpointAuthorizationEntry, "exportedName" | "objectIdsFromClient" | "highRiskComputerUse" | "actionKind"> & {
   objectIdsFromClient?: string[];
+  highRiskComputerUse?: boolean;
+  actionKind?: string;
 };
 
 function entries(names: string[], defaults: MatrixDefaults): EndpointAuthorizationEntry[] {
@@ -115,7 +117,7 @@ const codePairingCallables = entries(
     tenantSource: "request auth uid and pairing/link session",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "pairing/link session belongs to authenticated uid or one-time secret/code",
-    negativeBolaTest: "pairing-link-replay-and-cross-user-tests",
+    negativeBolaTest: "functions/src/__tests__/phoneControlPairingBinding.test.ts; functions/src/__tests__/hermesGatewayKeyImmutability.test.ts; functions/src/__tests__/irohPairingFreshness.test.ts",
   },
 );
 
@@ -126,7 +128,7 @@ const gatewayHttp = entries(["burnBarHermesGateway"], {
   tenantSource: "token index resolves uid and clientId",
   objectIdsFromClient: ["messageId", "eventId", "attachmentId", "clientId", "destinationId"],
   ownershipCheck: "resolveGatewayGrant checks active client, scope, expiry, PoP, and uid/client namespace",
-  negativeBolaTest: "hermesGatewayPopV2.test.ts and hermesGatewayAttachmentInit.test.ts",
+  negativeBolaTest: "functions/src/__tests__/hermesGatewayPopV2.test.ts; functions/src/__tests__/hermesGatewayAttachmentInit.test.ts",
 });
 
 const authScopedCallables = entries(
@@ -244,7 +246,7 @@ const authScopedCallables = entries(
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "deviceId", "documentID", "providerAccountId", "sourceId", "attachmentId"],
     ownershipCheck: "handler must derive uid from request.auth.uid and validate object path or owner uid before Admin SDK access",
-    negativeBolaTest: "endpoint-specific BOLA tests required; matrix drift is enforced by endpointAuthorizationMatrix.test.ts",
+    negativeBolaTest: "functions/src/__tests__/misc.test.ts; functions/src/__tests__/stripe.test.ts; functions/src/__tests__/hermesGatewayPopV2.test.ts; functions/src/__tests__/hermesGatewayAttachmentInit.test.ts; functions/src/__tests__/projectMemoryDocId.test.ts; functions/src/__tests__/knowledgeMemoryDedupHash.test.ts; functions/src/__tests__/submitAgentNotificationReply.test.ts; functions/src/__tests__/highRiskOwnerActionCallableGuards.test.ts; firestore-rules-tests/computer-use.test.js; firestore-rules-tests/session-log-backup.test.js",
   },
 );
 
@@ -255,7 +257,7 @@ const outboundServiceJobs = entries(["sendVoIPOutbound", "sendFcmOutbound"], {
   tenantSource: "request.auth.uid and registered device token owner",
   objectIdsFromClient: ["deviceId", "notificationId"],
   ownershipCheck: "push target must be owned by authenticated uid or server-generated event",
-  negativeBolaTest: "push-resilience.test.ts and agent notification reply tests",
+  negativeBolaTest: "functions/src/__tests__/voipPushMetadata.test.ts; functions/src/__tests__/submitAgentNotificationReply.test.ts",
 });
 
 const HIGH_RISK_ENDPOINTS: Record<string, string> = {

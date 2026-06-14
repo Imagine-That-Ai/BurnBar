@@ -311,7 +311,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     const fixedNonce = "popv2-future-nonce-00000001";
     const fakeNow = 1700000000000;
     const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(fakeNow);
-    
+
     const futureTime = new Date(fakeNow + 4 * 60 * 1000);
     const popHeadersFuture = (opts: {
       version: 2;

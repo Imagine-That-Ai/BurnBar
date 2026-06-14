@@ -142,7 +142,7 @@ targets:
           set -euo pipefail
           HELPERS_DIR="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers"
           mkdir -p "${HELPERS_DIR}"
-          for NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarVirtualHIDBridge; do
+          for NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarPrivilegedInputKillSwitchWatchdog OpenBurnBarVirtualHIDBridge; do
             SOURCE="${BUILT_PRODUCTS_DIR}/${NAME}"
             if [[ ! -x "${SOURCE}" ]]; then
               echo "warning: ${NAME} helper not built; Remote Unlock setup may be unavailable."
@@ -153,15 +153,20 @@ targets:
           done
         inputFiles:
           - $(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputExecution
+          - $(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputKillSwitchWatchdog
           - $(BUILT_PRODUCTS_DIR)/OpenBurnBarVirtualHIDBridge
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputExecution
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarVirtualHIDBridge
     dependencies:
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
       - target: OpenBurnBarPrivilegedInputExecution
+        link: false
+        embed: false
+      - target: OpenBurnBarPrivilegedInputKillSwitchWatchdog
         link: false
         embed: false
       - target: OpenBurnBarVirtualHIDBridge
@@ -277,6 +282,23 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarComputerUseCore
+
+  OpenBurnBarPrivilegedInputKillSwitchWatchdog:
+    type: tool
+    platform: macOS
+    sources:
+      - path: OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputKillSwitchWatchdog
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarPrivilegedInputKillSwitchWatchdog
+        PRODUCT_MODULE_NAME: OpenBurnBarPrivilegedInputKillSwitchWatchdog
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.privileged-input-killswitch-watchdog
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: true
+    dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
 
