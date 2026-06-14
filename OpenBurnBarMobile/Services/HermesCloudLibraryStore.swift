@@ -102,7 +102,7 @@ final class HermesCloudLibraryStore {
     }
 }
 
-struct MobileICloudHermesLibraryReader: @unchecked Sendable {
+struct MobileICloudHermesLibraryReader: Sendable {
     private let fileManager: FileManager
     private let containerIdentifier = "iCloud.com.openburnbar.app"
 

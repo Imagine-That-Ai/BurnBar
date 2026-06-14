@@ -117,7 +117,7 @@ final class iPadMultiCamCaptureService: NSObject {
     }
 }
 
-private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, Sendable {
     let position: AVCaptureDevice.Position
     weak var owner: iPadMultiCamCaptureService?
 
@@ -139,7 +139,7 @@ private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampl
     }
 }
 
-private struct SendableMultiCamSampleBuffer: @unchecked Sendable {
+private struct SendableMultiCamSampleBuffer: Sendable {
     let value: CMSampleBuffer
 
     init(_ value: CMSampleBuffer) {

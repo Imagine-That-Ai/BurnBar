@@ -5,7 +5,7 @@ import OpenBurnBarCore
 /// Uploads non-secret provider account metadata so iOS/iPad can show the same
 /// account list as macOS. Credentials remain in Keychain or server-private
 /// Secret Manager references; this sync only writes public account state.
-final class ProviderAccountSyncService: @unchecked Sendable {
+final class ProviderAccountSyncService: Sendable {
     private let context: CloudSyncContext
 
     init(context: CloudSyncContext) {
@@ -107,7 +107,7 @@ final class ProviderAccountSyncService: @unchecked Sendable {
 
 /// Uploads desktop quota snapshots to Firestore so iOS can read them.
 /// Desktop writes: users/{uid}/quota_snapshots/{providerID}_{accountID}_{sourceID}
-final class QuotaSnapshotSyncService: @unchecked Sendable {
+final class QuotaSnapshotSyncService: Sendable {
     private let context: CloudSyncContext
 
     init(context: CloudSyncContext) {

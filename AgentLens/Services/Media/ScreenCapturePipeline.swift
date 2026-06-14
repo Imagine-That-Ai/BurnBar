@@ -295,7 +295,7 @@ final class ScreenCapturePipeline: NSObject {
 }
 
 #if canImport(ScreenCaptureKit)
-private struct CapturedSampleBuffer: @unchecked Sendable {
+private struct CapturedSampleBuffer: Sendable {
     // ScreenCaptureKit delivers each sample buffer to this delegate callback
     // for one-way handoff into the main-actor encoder. Keep the unchecked
     // boundary local instead of declaring CMSampleBuffer globally Sendable.

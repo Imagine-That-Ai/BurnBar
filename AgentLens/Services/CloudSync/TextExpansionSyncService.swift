@@ -2,7 +2,7 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 
-final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
+final class TextExpansionSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let vaultKeyStore: any SessionLogVaultKeyProviding
     private let vaultKeyPublisher: any SessionLogVaultKeyPublishing

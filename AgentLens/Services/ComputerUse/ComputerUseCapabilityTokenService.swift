@@ -36,7 +36,7 @@ public final class ComputerUseCapabilityTokenService {
 }
 
 /// Device-only Ed25519 issuer for Computer Use capability tokens (separate from Remote Unlock issuer).
-final class ComputerUseCapabilitySigningKeyStore: @unchecked Sendable {
+final class ComputerUseCapabilitySigningKeyStore: Sendable {
     private let service = "com.openburnbar.computer-use.capability-token-issuer"
     private let account = "default"
     private let queue = DispatchQueue(label: "com.openburnbar.computer-use.capability-issuer")

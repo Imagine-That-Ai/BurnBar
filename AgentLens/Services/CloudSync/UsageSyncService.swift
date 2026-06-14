@@ -11,7 +11,7 @@ import OpenBurnBarCore
 /// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
-final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
+final class UsageSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 

@@ -5,7 +5,7 @@ import Security
 /// Persists the iroh endpoint's 32-byte secret key in the iOS Keychain.
 /// Same trust boundary as `HermesConnectionSecretStore`: this-device-only,
 /// no iCloud sync, and regenerated if the item is missing or malformed.
-final class IrohRelayKeyStore: @unchecked Sendable {
+final class IrohRelayKeyStore: Sendable {
     static let shared = IrohRelayKeyStore()
 
     private let service: String
