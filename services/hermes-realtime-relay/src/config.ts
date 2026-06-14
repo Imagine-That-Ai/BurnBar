@@ -32,7 +32,9 @@ export function loadRelayConfig(env: NodeJS.ProcessEnv = process.env): RelayConf
     redisTLSCA: textEnv(env.REDIS_TLS_CA_PEM) ?? base64TextEnv(env.REDIS_TLS_CA_BASE64),
     redisTLSServername: textEnv(env.REDIS_TLS_SERVERNAME),
     enforceAppCheck: boolEnv(env.ENFORCE_APP_CHECK, true),
-    verifyRevokedIdTokens: boolEnv(env.VERIFY_REVOKED_ID_TOKENS, false),
+    // Default-on: a revoked/disabled-user Firebase ID token must not keep a live
+    // relay socket. Set VERIFY_REVOKED_ID_TOKENS=false only for local development.
+    verifyRevokedIdTokens: boolEnv(env.VERIFY_REVOKED_ID_TOKENS, true),
     hostedRelayProductIDs: listEnv(
       env.HOSTED_RELAY_PRODUCT_IDS ?? env.HOSTED_QUOTA_PRODUCT_ID,
       [

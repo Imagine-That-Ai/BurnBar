@@ -119,6 +119,7 @@ jobs:
           echo "Sentry release ${RELEASE_NAME} created."
 
       - name: Deploy Cloud Functions
+        id: deploy
         if: steps.tag.outputs.dry_run != 'true'
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
@@ -186,6 +187,7 @@ jobs:
         run: echo "dry_run=true — skipping firebase deploy"
 
       - name: Post-deploy health gate
+        id: health_gate
         env:
           FIREBASE_PROJECT: burnbar
           FUNCTIONS_REGION: us-central1
@@ -201,6 +203,27 @@ jobs:
           # shellcheck source=scripts/ops/resolve-functions-base-url.sh
           source scripts/ops/resolve-functions-base-url.sh
           bash scripts/ci/post-deploy-health-gate.sh
+
+      - name: Auto-rollback on failed production deploy
+        # Complete source rollback. If the deploy step or the post-deploy health
+        # gate failed on a REAL (non-dry-run) deploy, revert ALL functions to the
+        # previous good release: scripts/rollback.sh auto-selects the previous
+        # SemVer tag (30-day freshness guard) and redeploys via Firebase, sourcing
+        # the same committed runtime config the deploy lane uses. Fires only on an
+        # actual bad/partial production deploy — never for pre-deploy failures
+        # (build/preflight/auth), since those never shifted production traffic.
+        if: ${{ always() && steps.tag.outputs.dry_run != 'true' && (steps.deploy.outcome == 'failure' || steps.health_gate.outcome == 'failure') }}
+        env:
+          FIREBASE_PROJECT: burnbar
+          # firebase CLI auto-reads FIREBASE_TOKEN; ADC (google-github-actions/auth)
+          # also covers deploy auth on the non-dry-run path.
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          echo "::warning::Production deploy unhealthy (deploy=${{ steps.deploy.outcome }}, health_gate=${{ steps.health_gate.outcome }}) — auto-rolling back to the previous good release."
+          # rollback.sh invokes a bare `firebase`; expose the functions-local CLI
+          # (firebase-tools is a functions devDependency, installed by npm ci).
+          export PATH="${GITHUB_WORKSPACE}/functions/node_modules/.bin:${PATH}"
+          ./scripts/rollback.sh --yes
 
       - name: Upload deploy health artifact
         if: always() && hashFiles('deploy-health.json') != ''
@@ -222,8 +245,9 @@ jobs:
             echo "- Health: scripts/ci/post-deploy-health-gate.sh"
             echo ""
             echo "### On failure — rollback"
-            echo "- FAST (sub-minute, preferred): pin traffic to a previous-good Cloud Run revision, no rebuild:"
+            echo "- AUTOMATED: a failed deploy or post-deploy health gate auto-runs the full source rollback to the previous good release (\`scripts/rollback.sh --yes\`)."
+            echo "- MANUAL FAST (sub-minute): pin traffic to a previous-good Cloud Run revision, no rebuild:"
             echo "  \`./scripts/ops/rollback-revision.sh <cloud-run-service> --yes\`"
-            echo "- SLOW (tens of minutes, fallback): full source rollback (rebuild + redeploy):"
+            echo "- MANUAL SLOW (tens of minutes): full source rollback (rebuild + redeploy):"
             echo "  \`./scripts/rollback.sh --yes\`"
           } >> "$GITHUB_STEP_SUMMARY"
