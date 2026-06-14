@@ -9,6 +9,7 @@ private let resumeSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_typ
 // is not Sendable. Every database operation is serialized onto a dedicated
 // `DispatchQueue`, so the pointer is never touched concurrently; this audited
 // conformance reflects that manual confinement.
+// sendable-allowlist: sqlite-raw-pointer
 final class BurnBarResumeService: @unchecked Sendable {
     private struct ConversationRow {
         let id: String

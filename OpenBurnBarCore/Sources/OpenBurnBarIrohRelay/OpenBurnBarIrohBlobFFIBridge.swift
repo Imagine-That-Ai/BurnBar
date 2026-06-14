@@ -16,6 +16,7 @@ import Foundation
 // blocking FFI calls rule out an actor (it would stall the cooperative pool), so
 // queue confinement plus this audited conformance is the correct model; the node is
 // never touched off `queue`.
+// sendable-allowlist: iroh-ffi-handle
 public final class OpenBurnBarIrohBlobFFIBackend: IrohBlobBackend, @unchecked Sendable {
     private let node: IrohBlobNode
     private let queue: DispatchQueue
