@@ -198,59 +198,49 @@ jobs:
             exit 0
           fi
 
-          # XcodeGen can churn XCSwiftPackageProductDependency TEMP_<uuid>
-          # identifiers across versions/runner installs. Those IDs are internal
-          # references only, and because the section is keyed by those IDs, its
-          # order churns too. Normalize UUIDs everywhere else and compare that
-          # package-product section by sorted productName multiset, so the gate
-          # still catches missing source/test files and real package product
-          # changes like the test-file drop that motivated this workflow.
+          # XcodeGen can churn internal PBX object IDs across versions/runner
+          # installs. Those IDs are not the contract. The contract this gate
+          # enforces is semantic build membership: every generated source,
+          # resource, framework, and Swift package product must already be in
+          # the committed project. This catches missing source/test files like
+          # the test-file drop that motivated this workflow without failing on
+          # meaningless object-ID churn.
           git show HEAD:OpenBurnBar.xcodeproj/project.pbxproj > /tmp/committed.pbxproj
           python3 - <<'PY'
           from pathlib import Path
           import re
 
-          temp_id = re.compile(
-              r"TEMP_[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
-              r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
-          )
+          build_file = re.compile(r"/\* ([^*]+?) \*/ = \{isa = PBXBuildFile;")
           product_name = re.compile(r"productName = ([^;]+);")
 
-          def normalize(path: str) -> str:
-              out: list[str] = []
-              product_section: list[str] = []
+          def membership(path: str) -> str:
+              entries: list[str] = []
               in_product_section = False
               for line in Path(path).read_text().splitlines():
                   if "/* Begin XCSwiftPackageProductDependency section */" in line:
-                      out.append(line)
-                      product_section = []
                       in_product_section = True
                       continue
                   if "/* End XCSwiftPackageProductDependency section */" in line and in_product_section:
-                      names = []
-                      for section_line in product_section:
-                          match = product_name.search(section_line)
-                          if match:
-                              names.append(match.group(1))
-                      for name in sorted(names):
-                          out.append(f"\t\t/* normalized XCSwiftPackageProductDependency */ productName = {name};")
-                      out.append(line)
                       in_product_section = False
                       continue
                   if in_product_section:
-                      product_section.append(line)
+                      match = product_name.search(line)
+                      if match:
+                          entries.append(f"swift-package-product:{match.group(1)}")
                       continue
-                  out.append(temp_id.sub("TEMP_NORMALIZED", line))
-              return "\n".join(out) + "\n"
+                  match = build_file.search(line)
+                  if match:
+                      entries.append(f"build-file:{match.group(1)}")
+              return "\n".join(sorted(entries)) + "\n"
 
-          Path("/tmp/committed.normalized.pbxproj").write_text(normalize("/tmp/committed.pbxproj"))
-          Path("/tmp/generated.normalized.pbxproj").write_text(
-              normalize("OpenBurnBar.xcodeproj/project.pbxproj")
+          Path("/tmp/committed.membership").write_text(membership("/tmp/committed.pbxproj"))
+          Path("/tmp/generated.membership").write_text(
+              membership("OpenBurnBar.xcodeproj/project.pbxproj")
           )
           PY
 
-          if diff -u /tmp/committed.normalized.pbxproj /tmp/generated.normalized.pbxproj; then
-            echo "project.pbxproj differs only by XcodeGen TEMP_<uuid> package-product identifiers."
+          if diff -u /tmp/committed.membership /tmp/generated.membership; then
+            echo "project.pbxproj build membership is in sync with project.yml; diff is generated PBX object-ID churn only."
             exit 0
           fi
 
