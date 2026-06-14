@@ -51,8 +51,7 @@ object AndroidCloudVaultRevocationRotation {
     private val inFlightRotationPickups = ConcurrentHashMap.newKeySet<String>()
 
     /** Callable payload for `listPendingCloudVaultRotationRequirements` (server requires callerDeviceId). */
-    fun listPendingCallablePayload(callerDeviceId: String): Map<String, Any> =
-        mapOf("callerDeviceId" to callerDeviceId.trim())
+    fun listPendingCallablePayload(callerDeviceId: String): Map<String, Any> = mapOf("callerDeviceId" to callerDeviceId.trim())
 
     /**
      * Pure decoder for the `listPendingCloudVaultRotationRequirements` payload. Accepts either
