@@ -190,9 +190,7 @@ class ComputerUseSecurityCallableClient(
      * Lists the user's pending Cloud Vault rotation requirements via the server-only callable, then
      * decodes them with [AndroidCloudVaultRevocationRotation.parsePendingRequirements].
      */
-    suspend fun listPendingCloudVaultRotationRequirements(
-        callerDeviceId: String,
-    ): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
+    suspend fun listPendingCloudVaultRotationRequirements(callerDeviceId: String): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
         val trimmed = callerDeviceId.trim()
         require(trimmed.isNotEmpty()) { "Could not list pending Cloud Vault rotation requirements." }
         requireAuthenticatedUser()
