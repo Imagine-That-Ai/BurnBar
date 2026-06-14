@@ -21,6 +21,20 @@ function dayKeyUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function uidFromComputerUseSessionPath(path: string): string | null {
+  const segments = path.split("/");
+  if (
+    segments.length !== 4 ||
+    segments[0] !== "users" ||
+    !segments[1] ||
+    segments[2] !== "computer_use_sessions" ||
+    !segments[3]
+  ) {
+    return null;
+  }
+  return segments[1];
+}
+
 async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
   const firestore = getFirestore();
   const dayStart = new Date(`${dayKey}T00:00:00Z`);
@@ -87,15 +101,18 @@ export const recomputeComputerUseQuotaUsage = onSchedule(
     const sessions = await firestore
       .collectionGroup("computer_use_sessions")
       .where("startedAt", ">=", Timestamp.fromDate(startOfDay))
-      .select("userId")
       .get();
 
     const seen = new Set<string>();
     for (const doc of sessions.docs) {
-      const userId = stringField(doc.data(), "userId");
+      const userId = uidFromComputerUseSessionPath(doc.ref.path);
       if (!userId || seen.has(userId)) continue;
       seen.add(userId);
       await recomputeForUser(userId, todayKey);
     }
   },
 );
+
+export const __testing__ = {
+  uidFromComputerUseSessionPath,
+};

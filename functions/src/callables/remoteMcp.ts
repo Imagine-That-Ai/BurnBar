@@ -16,7 +16,7 @@ import {
   boundedTrimmedString,
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
-import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
+import { issueRemoteMcpGrantForSignedInUser, assertRemoteMcpIssuerTokenPosture } from "../remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
@@ -48,6 +48,7 @@ export const issueRemoteMcpGrant = onCall(
       await assertActiveBurnBarProEntitlement(uid);
       const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
       const tokenEd25519PrivateKeyBase64PEM = REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64.value();
+      assertRemoteMcpIssuerTokenPosture({ tokenSecret, tokenEd25519PrivateKeyBase64PEM });
       if (!tokenSecret && !tokenEd25519PrivateKeyBase64PEM) {
         throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
       }

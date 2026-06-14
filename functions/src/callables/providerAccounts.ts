@@ -296,10 +296,6 @@ export const connectSelfHostedQuotaAccount = onCall(
         actionKind: "self_hosted_quota_account_connect",
         subjectId: accountID,
       });
-      await enforceHighRiskOwnerAction(request, uid, {
-        actionKind: "self_hosted_quota_account_connect",
-        subjectId: `${provider}:${accountID}`,
-      });
       const label =
         boundedTrimmedString(request.data.label, "label", 80) ?? `${hostedProviderLabel(provider)} self-hosted`;
       const now = nowISO();
@@ -430,10 +426,6 @@ export const deleteHostedQuotaCredentials = onCall(
       await enforceHighRiskOwnerAction(request, uid, {
         actionKind: "hosted_quota_credential_delete",
         subjectId: accountID,
-      });
-      await enforceHighRiskOwnerAction(request, uid, {
-        actionKind: "hosted_quota_credential_delete",
-        subjectId: `${provider}:${accountID}`,
       });
       const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
       const accountSnap = await accountRef.get();

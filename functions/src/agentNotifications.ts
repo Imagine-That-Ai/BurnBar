@@ -115,7 +115,7 @@ export interface AgentNotificationReplyCommand {
   runtime: string;
   sourceKind: AgentNotificationSourceKind;
   contentSealed: true;
-  sealedSchemaVersion: 1;
+  sealedSchemaVersion: 2;
   vaultKeyID: string;
   sealedReplyPayload: CloudVaultSealedPayload;
   deviceId?: string;

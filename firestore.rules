@@ -459,7 +459,10 @@ service cloud.firestore {
         && value.matches("^OpenBurnBar-CloudVault-aad-v2\\|[^|]+\\|[^|]+\\|[^|]+\\|[^|]+\\|[2-9][0-9]*\\|[^|]+$");
     }
 
-    function validCloudSealedText(value) {
+    // Legacy read/migration validator: permits schemaVersion 1 (no AAD) and
+    // schemaVersion >= 2 with any well-formed aad-v2 context. Do NOT use for
+    // new owner writes — those must bind the exact document path.
+    function validLegacyCloudSealedText(value) {
       return value is map
         && value.keys().hasAll([
           "algorithm",
@@ -498,14 +501,9 @@ service cloud.firestore {
         );
     }
 
-    function validCloudSealedTextAt(userId, collection, docID, field, value) {
-      return validCloudSealedText(value)
-        && value.schemaVersion is int
-        && value.schemaVersion >= 2
-        && value.aad == cloudVaultAADContext(userId, collection, docID, field);
-    }
-
-    function validPathBoundCloudSealedText(value, expectedAAD) {
+    // New writes MUST bind the exact collection/doc/field AAD. This rejects
+    // relocated envelopes, legacy no-AAD envelopes, and the global AAD constant.
+    function validCloudSealedText(value, expectedAAD) {
       return value is map
         && value.keys().hasAll([
           "schemaVersion",
@@ -542,6 +540,10 @@ service cloud.firestore {
         && value.tag.size() <= 128
         && value.tag.matches("^[A-Za-z0-9+/=]+$")
         && value.aad == expectedAAD;
+    }
+
+    function validCloudSealedTextAt(userId, collection, docID, field, value) {
+      return validCloudSealedText(value, cloudVaultAADContext(userId, collection, docID, field));
     }
 
     // CloudVaultBlobEnvelopeDoc (sealed binary blob, larger than sealed text).
@@ -3042,11 +3044,53 @@ service cloud.firestore {
         && !("ciphertext" in request.resource.data)
         && !("screenshots" in request.resource.data)
         && !("actionDescriptors" in request.resource.data);
-      // End-of-session updates may set endReason/endedAt/auditHeadHashHex.
-      allow update: if ownsUserNamespace(userId)
+      // End-of-session updates may set the audit tail/counters only. Identity,
+      // mode, trust mode, and manifest binding are immutable after create.
+      allow update: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "endedAt",
+          "endReason",
+          "actionCount",
+          "approvalCount",
+          "rejectionCount",
+          "panicHaltCount",
+          "visionSpendUSD",
+          "auditHeadHashHex",
+          "updatedAt"
+        ])
+        && request.resource.data.sessionId == sessionId
         && request.resource.data.sessionId == resource.data.sessionId
-        && request.resource.data.manifestHashHex == resource.data.manifestHashHex;
+        && request.resource.data.userId == userId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.mode == resource.data.mode
+        && request.resource.data.trustMode == resource.data.trustMode
+        && request.resource.data.startedAt == resource.data.startedAt
+        && request.resource.data.manifestHashHex == resource.data.manifestHashHex
+        && request.resource.data.macAppVersion == resource.data.macAppVersion
+        && request.resource.data.schemaVersion == resource.data.schemaVersion
+        && (!("endedAt" in request.resource.data) || request.resource.data.endedAt is timestamp)
+        && (!("endReason" in request.resource.data) || request.resource.data.endReason in [
+          "completed",
+          "user_halt",
+          "panic_hotkey",
+          "panic_phone_gesture",
+          "panic_mac_lock",
+          "panic_remote_config",
+          "panic_accessibility_revoked",
+          "timeout",
+          "entitlement_lost",
+          "budget_soft_cap",
+          "budget_hard_cap",
+          "error"
+        ])
+        && (!("actionCount" in request.resource.data) || (request.resource.data.actionCount is int && request.resource.data.actionCount >= 0))
+        && (!("approvalCount" in request.resource.data) || (request.resource.data.approvalCount is int && request.resource.data.approvalCount >= 0))
+        && (!("rejectionCount" in request.resource.data) || (request.resource.data.rejectionCount is int && request.resource.data.rejectionCount >= 0))
+        && (!("panicHaltCount" in request.resource.data) || (request.resource.data.panicHaltCount is int && request.resource.data.panicHaltCount >= 0))
+        && (!("visionSpendUSD" in request.resource.data) || (request.resource.data.visionSpendUSD is number && request.resource.data.visionSpendUSD >= 0))
+        && (!("auditHeadHashHex" in request.resource.data) || (request.resource.data.auditHeadHashHex is string && request.resource.data.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
       allow delete: if false;
     }
 

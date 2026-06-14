@@ -1,10 +1,13 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { endpointAuthorizationMatrix, endpointAuthorizationByName } from "../security/endpointAuthorizationMatrix.js";
 
 const CALLABLES_DIR = resolve(__dirname, "../callables");
+const REPO_ROOT = resolve(__dirname, "../../..");
+const GENERIC_NEGATIVE_BOLA_PATTERN = /endpoint-specific|required|matrix drift/i;
+const TEST_FILE_PATTERN = /(?:functions\/src\/__tests__|firestore-rules-tests)\/[A-Za-z0-9_.\/-]+\.(?:test\.)?(?:ts|js)/gu;
 
 function readCallableSource(name: string): string {
   return readFileSync(resolve(CALLABLES_DIR, name), "utf8");
@@ -41,6 +44,10 @@ function exportedFunctionNames(): string[] {
   return names.sort((left, right) => left.localeCompare(right));
 }
 
+function referencedTestFiles(value: string): string[] {
+  return Array.from(value.matchAll(TEST_FILE_PATTERN), (match) => match[0]);
+}
+
 describe("endpoint authorization matrix", () => {
   it("covers every exported Cloud Function from index.ts", () => {
     const exported = exportedFunctionNames();
@@ -67,6 +74,26 @@ describe("endpoint authorization matrix", () => {
       expect(entry.negativeBolaTest.trim(), entry.exportedName).not.toEqual("");
       if (entry.appCheck === "not-required" || entry.trigger === "provider-webhook") {
         expect(entry.publicJustification?.trim(), entry.exportedName).toBeTruthy();
+      }
+    }
+  });
+
+  it("ties client-object endpoints to concrete negative-coverage test files", () => {
+    for (const entry of endpointAuthorizationMatrix) {
+      expect(entry.negativeBolaTest, entry.exportedName).not.toMatch(GENERIC_NEGATIVE_BOLA_PATTERN);
+
+      const platformOnly =
+        entry.trigger === "scheduled" ||
+        entry.trigger === "firestore-trigger" ||
+        entry.negativeBolaTest.startsWith("not-applicable-");
+      if (platformOnly || entry.objectIdsFromClient.length === 0) continue;
+
+      const refs = referencedTestFiles(entry.negativeBolaTest);
+      expect(refs.length, `${entry.exportedName} must reference at least one executable BOLA test file`).toBeGreaterThan(0);
+      for (const ref of refs) {
+        expect(existsSync(resolve(REPO_ROOT, ref)), `${entry.exportedName} references missing test file ${ref}`).toBe(
+          true,
+        );
       }
     }
   });
