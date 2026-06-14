@@ -131,6 +131,7 @@ private struct HNSWNode {
 // AUDIT(@unchecked Sendable): All mutable state (nodes, entryPoint, maxLevel, rng) is
 // written only during single-threaded index building via add(key:vector:). The object
 // is never shared for concurrent access until building completes and save() is called.
+// sendable-allowlist: single-threaded-vector-builder
 private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersistentVectorIndexWritableIndex {
     private let dimensions: Int
     private let metric: BurnBarEmbeddingDistanceMetric

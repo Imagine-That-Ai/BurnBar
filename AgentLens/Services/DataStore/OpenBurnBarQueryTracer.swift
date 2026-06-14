@@ -38,8 +38,8 @@
  */
 
 import Foundation
-import GRDB
 import OpenBurnBarCore
+import GRDB
 import os.log
 
 // MARK: - Query Tracer
@@ -55,7 +55,7 @@ public final class OpenBurnBarQueryTracer: Sendable {
 
     // MARK: - Private state
 
-    private struct State: Sendable {
+    private struct State {
         var isEnabled = false
         var queryLog: [TracedQuery] = []
         var queryThreshold = 10
@@ -72,12 +72,12 @@ public final class OpenBurnBarQueryTracer: Sendable {
     /// Maximum queries to the same table within a traced block before emitting
     /// an N+1 warning. Default: 10 (conservative for existing code).
     public var queryThreshold: Int {
-        get { state.read().queryThreshold }
+        get { state.withLock { $0.queryThreshold } }
         set { state.withLock { $0.queryThreshold = newValue } }
     }
 
     public var isEnabled: Bool {
-        state.read().isEnabled
+        state.withLock { $0.isEnabled }
     }
 
     // MARK: - GRDB Configuration
@@ -120,10 +120,10 @@ public final class OpenBurnBarQueryTracer: Sendable {
 
     private func record(sql: String) {
         let query = TracedQuery(sql: sql.trimmingCharacters(in: .whitespacesAndNewlines))
-        state.withLock {
-            $0.queryLog.append(query)
-            if $0.queryLog.count > Self.maxRetainedQueries {
-                $0.queryLog.removeFirst(Self.maxRetainedQueries / 2)
+        state.withLock { state in
+            state.queryLog.append(query)
+            if state.queryLog.count > Self.maxRetainedQueries {
+                state.queryLog.removeFirst(Self.maxRetainedQueries / 2)
             }
         }
         os_log(.debug, log: log, "[GRDB] %{public}@", query.sql)
@@ -138,12 +138,12 @@ public final class OpenBurnBarQueryTracer: Sendable {
 
     /// All queries recorded since the last `resetLog()`.
     public var queryLog: [TracedQuery] {
-        state.read().queryLog
+        state.withLock { $0.queryLog }
     }
 
     /// Total number of queries recorded since the last `resetLog()`.
     public var queryCount: Int {
-        state.read().queryLog.count
+        state.withLock { $0.queryLog.count }
     }
 
     // MARK: - N+1 Analysis
@@ -151,9 +151,7 @@ public final class OpenBurnBarQueryTracer: Sendable {
     /// Returns tables queried more than `queryThreshold` times —
     /// the classic sign of an N+1 problem.
     public func detectNPlusOne() -> [NPlusOneViolation] {
-        let snapshot = state.read()
-        let queries = snapshot.queryLog
-        let threshold = snapshot.queryThreshold
+        let queries = state.withLock { $0.queryLog }
         var tableCounts: [String: Int] = [:]
 
         for query in queries {
@@ -163,7 +161,7 @@ public final class OpenBurnBarQueryTracer: Sendable {
         }
 
         return tableCounts.compactMap { table, count in
-            count > threshold ? NPlusOneViolation(table: table, queryCount: count) : nil
+            count > queryThreshold ? NPlusOneViolation(table: table, queryCount: count) : nil
         }.sorted { $0.queryCount > $1.queryCount }
     }
 

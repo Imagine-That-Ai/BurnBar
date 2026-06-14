@@ -1,26 +1,32 @@
 import Foundation
+import os
 @preconcurrency import AVFoundation
 import OpenBurnBarMedia
 
-private final class AudioEncoderInputProvider: @unchecked Sendable {
-    private let lock = NSLock()
-    private let buffer: AVAudioPCMBuffer
-    private var didProvideInput = false
+private final class AudioEncoderInputProvider: Sendable {
+    private struct State {
+        let buffer: AVAudioPCMBuffer
+        var didProvideInput = false
+    }
+
+    // AVAudioPCMBuffer is not Sendable, so the one-shot state lives inside an
+    // OSAllocatedUnfairLock (itself Sendable) — the provider is plainly Sendable.
+    private let state: OSAllocatedUnfairLock<State>
 
     init(buffer: AVAudioPCMBuffer) {
-        self.buffer = buffer
+        state = OSAllocatedUnfairLock(uncheckedState: State(buffer: buffer))
     }
 
     func provide(outStatus: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !didProvideInput else {
-            outStatus.pointee = .noDataNow
-            return nil
+        state.withLockUnchecked { state in
+            guard !state.didProvideInput else {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            state.didProvideInput = true
+            outStatus.pointee = .haveData
+            return state.buffer
         }
-        didProvideInput = true
-        outStatus.pointee = .haveData
-        return buffer
     }
 }
 

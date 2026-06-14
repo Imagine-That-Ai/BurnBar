@@ -2557,6 +2557,8 @@ enum RemoteUnlockCredentialSenderReusePolicy {
     }
 }
 
+// AUDIT(@unchecked Sendable): only non-Sendable stored property is UserDefaults
+// (thread-safe, not yet Sendable-annotated). sendable-allowlist: foundation-sdk-shim
 private final class RemoteUnlockSavedCredentialStore: @unchecked Sendable {
     static let shared = RemoteUnlockSavedCredentialStore()
 

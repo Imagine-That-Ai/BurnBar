@@ -2,22 +2,28 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import os
 import OpenBurnBarCore
 
-final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendable {
+@MainActor
+final class TextExpansionRuntimeController: ObservableObject {
     private let dataStore: DataStoreCoordinator
     private let settingsManager: SettingsManager
     private let inputController: MacInputController
     private let accessibilityInspector: MacAccessibilityInspector
-    private let lock = NSLock()
-
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var buffer = ""
-    private var cachedSnippets: [TextExpansionSnippet] = []
-    private var lastSnippetLoad = Date.distantPast
-    private var suppressEventsUntil = Date.distantPast
     private var observers: [NSObjectProtocol] = []
+
+    // State touched by the nonisolated CGEvent tap callback (off the main actor),
+    // confined to an OSAllocatedUnfairLock so the controller stays Sendable.
+    private struct CallbackState {
+        var buffer = ""
+        var cachedSnippets: [TextExpansionSnippet] = []
+        var lastSnippetLoad = Date.distantPast
+        var suppressEventsUntil = Date.distantPast
+    }
+    private let callbackState = OSAllocatedUnfairLock<CallbackState>(uncheckedState: CallbackState())
 
     init(
         dataStore: DataStoreCoordinator,
@@ -112,7 +118,7 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
         }
         eventTap = nil
         runLoopSource = nil
-        buffer = ""
+        callbackState.withLockUnchecked { $0.buffer = "" }
     }
 
     nonisolated private static let eventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
@@ -185,9 +191,7 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
         } catch {
             AppLogger.chat.silentFailure("textExpansion.globalReplace", error: error)
         }
-        lock.lock()
-        buffer = ""
-        lock.unlock()
+        callbackState.withLockUnchecked { $0.buffer = "" }
     }
 
     @MainActor
@@ -201,59 +205,52 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
         accessibilityInspector.denyReason(for: accessibilityInspector.focusedSnapshot()) != nil
     }
 
-    private func appendAndMatch(_ characters: String, bundleIdentifier: String?) -> TextExpansionMatch? {
-        lock.lock()
-        defer { lock.unlock() }
-        buffer.append(contentsOf: characters)
-        if buffer.count > 160 {
-            buffer = String(buffer.suffix(160))
+    nonisolated private func appendAndMatch(_ characters: String, bundleIdentifier: String?) -> TextExpansionMatch? {
+        callbackState.withLockUnchecked { state in
+            state.buffer.append(contentsOf: characters)
+            if state.buffer.count > 160 {
+                state.buffer = String(state.buffer.suffix(160))
+            }
+            let snippets = cachedSnippets(into: &state)
+            return TextExpansionMatcher.match(
+                in: state.buffer,
+                snippets: snippets,
+                surface: .macGlobal,
+                bundleIdentifier: bundleIdentifier
+            )
         }
-        let snippets = cachedSnippetsLocked()
-        return TextExpansionMatcher.match(
-            in: buffer,
-            snippets: snippets,
-            surface: .macGlobal,
-            bundleIdentifier: bundleIdentifier
-        )
     }
 
-    private func cachedSnippetsLocked() -> [TextExpansionSnippet] {
+    nonisolated private func cachedSnippets(into state: inout CallbackState) -> [TextExpansionSnippet] {
         let now = Date()
-        guard now.timeIntervalSince(lastSnippetLoad) > 2 else { return cachedSnippets }
-        lastSnippetLoad = now
+        guard now.timeIntervalSince(state.lastSnippetLoad) > 2 else { return state.cachedSnippets }
+        state.lastSnippetLoad = now
         do {
-            cachedSnippets = try dataStore.fetchEnabledTextExpansionSnippets(surface: .macGlobal)
+            state.cachedSnippets = try dataStore.fetchEnabledTextExpansionSnippets(surface: .macGlobal)
         } catch {
-            cachedSnippets = []
+            state.cachedSnippets = []
         }
-        return cachedSnippets
+        return state.cachedSnippets
     }
 
-    private func resetBuffer() {
-        lock.lock()
-        buffer = ""
-        lock.unlock()
+    nonisolated private func resetBuffer() {
+        callbackState.withLockUnchecked { $0.buffer = "" }
     }
 
-    private func removeLastBufferCharacter() {
-        lock.lock()
-        if !buffer.isEmpty {
-            buffer.removeLast()
+    nonisolated private func removeLastBufferCharacter() {
+        callbackState.withLockUnchecked { state in
+            if !state.buffer.isEmpty {
+                state.buffer.removeLast()
+            }
         }
-        lock.unlock()
     }
 
-    private func setSuppressEvents(for interval: TimeInterval) {
-        lock.lock()
-        suppressEventsUntil = Date().addingTimeInterval(interval)
-        lock.unlock()
+    nonisolated private func setSuppressEvents(for interval: TimeInterval) {
+        callbackState.withLockUnchecked { $0.suppressEventsUntil = Date().addingTimeInterval(interval) }
     }
 
-    private func lockedSuppressEventsUntil() -> Date {
-        lock.lock()
-        let value = suppressEventsUntil
-        lock.unlock()
-        return value
+    nonisolated private func lockedSuppressEventsUntil() -> Date {
+        callbackState.withLockUnchecked { $0.suppressEventsUntil }
     }
 }
 #endif

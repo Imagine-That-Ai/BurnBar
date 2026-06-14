@@ -173,8 +173,11 @@ console.log(total);
 fi
 
 unchecked_sendable_total="n/a"
-if [[ -f "${repo_root}/budgets/unchecked-sendable-baseline.json" ]]; then
-  unchecked_sendable_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${repo_root}/budgets/unchecked-sendable-baseline.json")"
+unchecked_sendable_allowlist="n/a"
+if [[ -x "${repo_root}/tools/concurrency-debt/count-unchecked-sendable.sh" ]]; then
+  unchecked_sendable_json="$(bash "${repo_root}/tools/concurrency-debt/count-unchecked-sendable.sh" --repo-root "${repo_root}" --format json)"
+  unchecked_sendable_total="$(node -e "console.log(JSON.parse(process.argv[1]).total)" "${unchecked_sendable_json}")"
+  unchecked_sendable_allowlist="$(node -e "console.log(JSON.parse(process.argv[1]).allowlist ?? 'n/a')" "${unchecked_sendable_json}")"
 fi
 
 phase1_register="${repo_root}/docs/governance/PHASE1_SECURITY_REGISTER.md"
@@ -247,7 +250,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Unsafe cast assert-zero gate | ${unsafe_cast_total} | 0 | 0 |
 | Knip dead-code budget (\`budgets/knip-baseline.json\`, functions) | ${knip_functions_total} | 0 | 0 |
 | Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
-| \`@unchecked Sendable\` budget (\`budgets/unchecked-sendable-baseline.json\`) | ${unchecked_sendable_total} | ≤ 120 | 0 |
+| \`@unchecked Sendable\` ratchet (assert-zero gate; ${unchecked_sendable_allowlist} documented allowlist exceptions) | ${unchecked_sendable_total} | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | ${top_four_total} | ≤ 5000 | ≤ 3500 |
 | \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
