@@ -275,7 +275,9 @@ impl AcceptSourceRateLimiter {
         // Keep the table bounded: evict the oldest entry before inserting a new
         // source once we hit the cap so a spoofed-source flood cannot grow
         // memory without limit.
-        if !self.last_seen.contains_key(&key) && self.last_seen.len() >= OPENBURNBAR_ACCEPT_SOURCE_TABLE_CAP {
+        if !self.last_seen.contains_key(&key)
+            && self.last_seen.len() >= OPENBURNBAR_ACCEPT_SOURCE_TABLE_CAP
+        {
             if let Some(oldest_key) = self
                 .last_seen
                 .iter()
@@ -787,10 +789,7 @@ mod tests {
         // First contact from a source is always allowed.
         assert!(!limiter.should_throttle("ip:1.2.3.4:5".into(), start));
         // A second attempt inside the cooldown window is dropped.
-        assert!(limiter.should_throttle(
-            "ip:1.2.3.4:5".into(),
-            start + Duration::from_millis(10)
-        ));
+        assert!(limiter.should_throttle("ip:1.2.3.4:5".into(), start + Duration::from_millis(10)));
     }
 
     #[test]
