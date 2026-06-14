@@ -488,7 +488,11 @@ jobs:
         run: cd crates/openburnbar-iroh && cargo fmt --check
 
       - name: cargo clippy deny warnings (openburnbar-iroh)
-        run: cd crates/openburnbar-iroh && cargo clippy --all-targets -- -D warnings
+        run: |
+          cd crates/openburnbar-iroh && cargo clippy --all-targets -- \
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used
 
       - name: Install cargo-deny
         run: |
