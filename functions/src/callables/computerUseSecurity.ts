@@ -1848,28 +1848,48 @@ export const publishPhoneControlAuthority = onCallProduction(
     const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
     const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
 
-    const pairing = await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).get();
-    if (!pairing.exists) {
-      throw new HttpsError("failed-precondition", "Phone-control authority must reference an existing iroh pairing.");
-    }
+    const pairingRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
+    const controllerRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${peerNodeId}`);
+    await db.runTransaction(async (transaction) => {
+      const pairing = await transaction.get(pairingRef);
+      if (!pairing.exists) {
+        throw new HttpsError("failed-precondition", "Phone-control authority must reference an existing iroh pairing.");
+      }
+      const allowlist = normalizedControllerDeviceAllowlist(pairing.get("authorizedControllerDeviceIds"));
+      let nextAllowlist = allowlist;
+      if (allowlist.length === 0) {
+        nextAllowlist = [deviceId];
+      } else if (allowlist.length !== 1 || allowlist[0] !== deviceId) {
+        throw new HttpsError("permission-denied", "Phone-control authority is not authorized for this iroh pairing.");
+      }
 
-    await db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${peerNodeId}`).set(
-      {
-        id: peerNodeId,
-        connectionId,
-        peerNodeId,
-        deviceId,
-        publicKeyBase64,
-        // F2: persist the key custody class. Absent on legacy records ⇒ ed25519.
-        signingKeyKind: keyKind,
-        publishedAtMillis,
-        protocolVersion,
-        publishedByDeviceId: deviceId,
-        schemaVersion: keyKind === "se-p256" ? 3 : 2,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+      transaction.set(
+        pairingRef,
+        {
+          authorizedControllerDeviceIds: nextAllowlist,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      transaction.set(
+        controllerRef,
+        {
+          id: peerNodeId,
+          connectionId,
+          peerNodeId,
+          deviceId,
+          publicKeyBase64,
+          // F2: persist the key custody class. Absent on legacy records ⇒ ed25519.
+          signingKeyKind: keyKind,
+          publishedAtMillis,
+          protocolVersion,
+          publishedByDeviceId: deviceId,
+          schemaVersion: keyKind === "se-p256" ? 3 : 2,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
 
     logInfo({
       event: "callable_info",
