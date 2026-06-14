@@ -48,6 +48,10 @@ uniffi = { version = "0.28", features = ["cli"] }
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }
 
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
 [profile.release]
 opt-level = "z"
 lto = true

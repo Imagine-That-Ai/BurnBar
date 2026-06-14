@@ -13,7 +13,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Quarantined test lines | 0 | shrinking | 0 |
 | Legacy reference suites (ADR, not quarantined) | 2 | stable | — |
 | `@MainActor` on I/O facades (listed set) | 2 | 4 | 0 |
-| Empty `catch {}` blocks (app + daemon) | 14 | 0 | 0 |
+| Empty `catch {}` blocks (app + daemon) | 0 | 0 | 0 |
 | `Task.detached` in `AgentLens/Services/` | 65 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 808 | ≤ 120 | ≤ 50 |
 | Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 0 | 0 | 0 |
@@ -24,6 +24,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | `functions/src/types/legacy.ts` LOC | 3203 | shrinking (TypeSpec migration) | — |
 | `functions/src/index.ts` LOC | 185 | modularize | — |
 | `import SwiftUI` in Services/ + DataStore/ | 20 | ≤ 3 | 0 |
+| Rust `unwrap()`/`expect()` in `crates/{burnbar-remote,openburnbar-iroh}` | 0 | 0 | 0 |
 
 ## Top service files (lines)
 

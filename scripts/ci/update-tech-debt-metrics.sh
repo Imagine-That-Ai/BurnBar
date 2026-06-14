@@ -116,9 +116,6 @@ swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/
 try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 
 empty_catch_blocks="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric empty-catch --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).emptyCatch.total))")"
-if [[ -f "${repo_root}/budgets/empty-catch-baseline.json" ]]; then
-  empty_catch_blocks="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${repo_root}/budgets/empty-catch-baseline.json")"
-fi
 
 main_actor_io_services=0
 for rel in \
@@ -169,6 +166,31 @@ console.log(total);
 " "${repo_root}/tools/schema-sync/manifest.json")"
 fi
 
+rust_panic_debt="$(python3 - "${repo_root}" <<'PY'
+import pathlib
+import re
+import sys
+
+repo = pathlib.Path(sys.argv[1])
+roots = [repo / "crates/burnbar-remote", repo / "crates/openburnbar-iroh"]
+pattern = re.compile(r"\.(unwrap|expect)\(|\.unwrap_err\(|\.expect_err\(")
+total = 0
+for root in roots:
+    if not root.is_dir():
+        continue
+    for path in root.rglob("*.rs"):
+        if "target" in path.parts:
+            continue
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if pattern.search(line):
+                    total += 1
+        except OSError:
+            pass
+print(total)
+PY
+)"
+
 cat > "${metrics_doc}" <<EOF
 # Tech debt metrics snapshot
 
@@ -196,6 +218,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
 | \`functions/src/index.ts\` LOC | ${index_ts_lines} | modularize | — |
 | \`import SwiftUI\` in Services/ + DataStore/ | ${swiftui_services} | ≤ 3 | 0 |
+| Rust \`unwrap()\`/\`expect()\` in \`crates/{burnbar-remote,openburnbar-iroh}\` | ${rust_panic_debt} | 0 | 0 |
 
 ## Top service files (lines)
 
