@@ -778,39 +778,51 @@ final class AgentToolBroker: @unchecked Sendable {
             let stderr = Pipe()
             process.standardOutput = stdout
             process.standardError = stderr
-            final class Box: @unchecked Sendable {
-                private let captureLimit = 200_000
-                let lock = NSLock()
-                var resumed = false
-                var timedOut = false
-                var stdoutData = Data()
-                var stderrData = Data()
+            final class Box: Sendable {
+                private static let captureLimit = 200_000
+
+                private struct State: Sendable {
+                    var resumed = false
+                    var timedOut = false
+                    var stdoutData = Data()
+                    var stderrData = Data()
+                }
+
+                private let state = Locked(State())
 
                 func append(_ data: Data, toStdout: Bool) {
                     guard !data.isEmpty else { return }
-                    lock.lock()
-                    defer { lock.unlock() }
-                    if toStdout {
-                        appendBounded(data, to: &stdoutData)
-                    } else {
-                        appendBounded(data, to: &stderrData)
+                    state.withLock { state in
+                        if toStdout {
+                            Self.appendBounded(data, to: &state.stdoutData)
+                        } else {
+                            Self.appendBounded(data, to: &state.stderrData)
+                        }
                     }
                 }
 
-                private func appendBounded(_ data: Data, to target: inout Data) {
-                    guard target.count < captureLimit else { return }
-                    let remaining = captureLimit - target.count
+                private static func appendBounded(_ data: Data, to target: inout Data) {
+                    guard target.count < Self.captureLimit else { return }
+                    let remaining = Self.captureLimit - target.count
                     target.append(data.prefix(remaining))
                 }
 
                 func markTimedOutIfStillRunning(_ process: Process) -> Bool {
-                    lock.lock()
-                    defer { lock.unlock() }
-                    let shouldTerminate = !resumed && process.isRunning
-                    if shouldTerminate {
-                        timedOut = true
+                    state.withLock { state in
+                        let shouldTerminate = !state.resumed && process.isRunning
+                        if shouldTerminate {
+                            state.timedOut = true
+                        }
+                        return shouldTerminate
                     }
-                    return shouldTerminate
+                }
+
+                func finish() -> (timedOut: Bool, stdoutData: Data, stderrData: Data)? {
+                    state.withLock { state in
+                        guard !state.resumed else { return nil }
+                        state.resumed = true
+                        return (state.timedOut, state.stdoutData, state.stderrData)
+                    }
                 }
             }
             let box = Box()
@@ -825,21 +837,12 @@ final class AgentToolBroker: @unchecked Sendable {
                 stderr.fileHandleForReading.readabilityHandler = nil
                 box.append(stdout.fileHandleForReading.readDataToEndOfFile(), toStdout: true)
                 box.append(stderr.fileHandleForReading.readDataToEndOfFile(), toStdout: false)
-                box.lock.lock()
-                guard !box.resumed else {
-                    box.lock.unlock()
-                    return
-                }
-                box.resumed = true
-                let timedOut = box.timedOut
-                let out = box.stdoutData
-                let err = box.stderrData
-                box.lock.unlock()
+                guard let output = box.finish() else { return }
                 continuation.resume(returning: ProcessResult(
                     exitCode: Int(process.terminationStatus),
-                    stdout: String(decoding: out, as: UTF8.self),
-                    stderr: String(decoding: err, as: UTF8.self),
-                    timedOut: timedOut
+                    stdout: String(decoding: output.stdoutData, as: UTF8.self),
+                    stderr: String(decoding: output.stderrData, as: UTF8.self),
+                    timedOut: output.timedOut
                 ))
             }
             do {
