@@ -1,10 +1,10 @@
 {
-  "total": 142,
-  "agentLens": 101,
-  "core": 7,
-  "daemon": 8,
-  "mobile": 26,
+  "total": 57,
+  "agentLens": 38,
+  "core": 6,
+  "daemon": 5,
+  "mobile": 8,
   "scope": "AgentLens + OpenBurnBarCore/Sources + OpenBurnBarDaemon/Sources + OpenBurnBarMobile production Swift (tests/mocks/fixtures/build products excluded)",
-  "generatedAt": "2026-06-14T05:51:49Z",
+  "generatedAt": "2026-06-14T07:06:46Z",
   "note": "Real @unchecked Sendable conformance annotations in OpenBurnBar production code (comment/AUDIT mentions are not counted). CI fails on increase; ratchet down and regenerate when removed. Prefer real Sendable/actor isolation or a Locked/OSAllocatedUnfairLock box; keep @unchecked only with an AUDIT(...) justification (FFI handles, raw pointers, non-Sendable Foundation types)."
 }

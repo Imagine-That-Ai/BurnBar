@@ -168,7 +168,11 @@ final class VideoEncoder: VideoEncoding {
         ) { [weak self] (status: OSStatus, _: VTEncodeInfoFlags, sampleBuffer: CMSampleBuffer?) in
             guard let self, status == noErr, let sampleBuffer else { return }
             let snapshot = SendableVideoSampleBuffer(sampleBuffer)
-            Task.detached { [weak self, snapshot] in
+            // Fires from VideoToolbox's (nonisolated) callback thread, which has
+            // no enclosing async scope to bind to. A plain `Task` inherits the
+            // callback's priority/task-locals (an unstructured detached task
+            // would discard them) and hops to `handleEncodedSampleBuffer`'s actor.
+            Task { [weak self, snapshot] in
                 await self?.handleEncodedSampleBuffer(snapshot.sampleBuffer)
             }
         }

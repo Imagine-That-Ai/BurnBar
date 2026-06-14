@@ -53,7 +53,7 @@ final class CLIProfileStreamFailoverRunner: Sendable {
         capabilityGrant: AgentCapabilityGrant?
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            let task = Task.detached { [self] in
+            let task = Task { [self] in
                 await runCodexWithFailover(
                     requestedProfile: requestedProfile,
                     prompt: prompt,
@@ -183,7 +183,7 @@ final class CLIProfileStreamFailoverRunner: Sendable {
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let launcher = streamLauncher
-            Task.detached {
+            Task {
                 await launcher(attempt, prompt, model, capabilityGrant, continuation)
             }
         }
