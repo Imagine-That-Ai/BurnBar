@@ -1624,6 +1624,36 @@ final class SwitcherAuthStoreTests: XCTestCase {
     }
 }
 
+// MARK: - KeychainStore credential accessor
+
+@MainActor
+final class KeychainStoreCredentialAccessorTests: XCTestCase {
+    private let service = "com.openburnbar.credential-accessor-tests"
+
+    func test_credentialIfPresent_returnsStoredValue() throws {
+        let backend = SwitcherAuthStoreTestKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        try store.set("sk-live-credential", for: "acct")
+        XCTAssertEqual(store.credentialIfPresent(for: "acct"), "sk-live-credential")
+    }
+
+    func test_credentialIfPresent_returnsNilWhenAbsent() {
+        let backend = SwitcherAuthStoreTestKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        XCTAssertNil(store.credentialIfPresent(for: "missing-account"))
+    }
+
+    func test_credentialIfPresent_returnsNilAndStaysSilentOnKeychainFault() {
+        // The accessor's whole purpose: a genuine keychain fault is surfaced to
+        // the log and read returns nil — never crashing, never propagating, and
+        // never silently indistinguishable from "no credential configured".
+        let backend = SwitcherAuthStoreTestKeychainBackend()
+        backend.readErrors[service] = KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        XCTAssertNil(store.credentialIfPresent(for: "acct"))
+    }
+}
+
 // MARK: - Test Keychain Backend
 
 private final class SwitcherAuthStoreTestKeychainBackend: KeychainStoreBackend {
