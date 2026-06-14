@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 import OSLog
 #if canImport(Darwin)
 import Darwin
@@ -12,11 +13,21 @@ struct AgentToolExecutionPayload {
     let detail: String?
 }
 
-final class AgentToolBroker: @unchecked Sendable {
+final class AgentToolBroker: Sendable {
     let grant: AgentCapabilityGrant
     let workspaceURL: URL
     #if canImport(AppKit) && !DISTRIBUTION_MAS
-    weak var computerUseRuntimeController: ComputerUseRuntimeController?
+    private struct WeakController {
+        weak var value: ComputerUseRuntimeController?
+    }
+
+    // Set-once-at-init weak link to the @MainActor runtime controller; the lock
+    // mediates the (weak) slot so the broker stays plainly Sendable.
+    private let computerUseRuntimeControllerBox = OSAllocatedUnfairLock(uncheckedState: WeakController())
+    var computerUseRuntimeController: ComputerUseRuntimeController? {
+        get { computerUseRuntimeControllerBox.withLockUnchecked { $0.value } }
+        set { computerUseRuntimeControllerBox.withLockUnchecked { $0.value = newValue } }
+    }
     #endif
     private let grantStillActive: (@Sendable () async -> Bool)?
 
@@ -49,7 +60,7 @@ final class AgentToolBroker: @unchecked Sendable {
         return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
-    private var browserSessionID: String?
+    private let browserSessionIDBox = Locked<String?>(nil)
 
     private enum WorkspaceAccessMode {
         case read
@@ -228,8 +239,8 @@ final class AgentToolBroker: @unchecked Sendable {
     private func invokeDaemonBrowserTool(_ invocation: BurnBarToolInvocation) async -> AgentToolExecutionPayload {
         do {
             let sessionID: String
-            if let browserSessionID {
-                sessionID = browserSessionID
+            if let existing = browserSessionIDBox.read() {
+                sessionID = existing
             } else {
                 let response = try await OpenBurnBarDaemonManager.shared.startComputerUseSession(
                     ComputerUseSessionStartRequest(
@@ -243,7 +254,7 @@ final class AgentToolBroker: @unchecked Sendable {
                         runID: invocation.runID
                     )
                 )
-                browserSessionID = response.sessionId
+                browserSessionIDBox.write(response.sessionId)
                 sessionID = response.sessionId
             }
             let response = try await OpenBurnBarDaemonManager.shared.invokeComputerUse(
