@@ -1391,11 +1391,11 @@ final class CursorConnectorManager {
         return nil
     }
 
-    static let isoDateFormatter: ISO8601DateFormatter = {
+    static var isoDateFormatter: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
     static func proxyScript() -> String {
         """

@@ -234,7 +234,7 @@ final class AppCommandRouter {
     // `controlSeal*Provider` seams.
     var linkCliUserIDProvider: () -> String? = { AccountManager.shared.userID }
     var linkCliConfirmationPresenter: (() -> Bool)?
-    var linkCliDeviceOwnerAuthenticator: ((@escaping (LinkCliAuthOutcome) -> Void) -> Void)?
+    var linkCliDeviceOwnerAuthenticator: ((@escaping @MainActor (LinkCliAuthOutcome) -> Void) -> Void)?
     var linkCliAlertPresenter: ((NSAlert.Style, String, String) -> Void)?
     var linkCliVaultKeyLoader: ((String) throws -> Data?)?
     var linkCliKeychainWriter: ((Data) throws -> Void)?
@@ -310,7 +310,7 @@ final class AppCommandRouter {
 
     /// `completion` is always delivered on the main queue (the seam contract
     /// mirrors the production `DispatchQueue.main.async` hop after Touch ID).
-    private func authenticateLinkCliDeviceOwner(completion: @escaping (LinkCliAuthOutcome) -> Void) {
+    private func authenticateLinkCliDeviceOwner(completion: @escaping @MainActor (LinkCliAuthOutcome) -> Void) {
         if let authenticator = linkCliDeviceOwnerAuthenticator {
             authenticator(completion)
             return
@@ -326,7 +326,9 @@ final class AppCommandRouter {
             localizedReason: "Authorize copying your Cloud Vault key to the OpenBurnBar CLI."
         ) { success, _ in
             DispatchQueue.main.async {
-                completion(success ? .authenticated : .denied)
+                MainActor.assumeIsolated {
+                    completion(success ? .authenticated : .denied)
+                }
             }
         }
     }

@@ -398,7 +398,7 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
-    static func queueAgentCapabilityGrantRequest(_ wirePayload: [String: Any]) async throws {
+    static func queueAgentCapabilityGrantRequest(_ wirePayload: sending [String: Any]) async throws {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()

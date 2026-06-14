@@ -139,7 +139,7 @@ final class FirestoreHermesConnectionRepository: HermesConnectionListing {
             data["id"] = documentID
         }
 
-        let sanitized = FirestoreRepository.shared.sanitizeForJSON(data)
+        let sanitized = FirestoreRepository.sanitizeForJSON(data)
         let jsonData = try JSONSerialization.data(withJSONObject: sanitized)
         let record = try JSONDecoder().decode(HermesConnectionRecord.self, from: jsonData)
         return record.status == .revoked ? nil : record

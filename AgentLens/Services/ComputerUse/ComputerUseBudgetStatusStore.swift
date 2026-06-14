@@ -18,11 +18,11 @@ final class ComputerUseBudgetStatusStore {
     var onEnvelopeChanged: ((ComputerUseBudgetEnvelope) -> Void)?
 
     private let documentPath: String
-    private let isSignedInProvider: () -> Bool
+    private let isSignedInProvider: @Sendable () -> Bool
 
     init(
         documentPath: String = "ops/computer_use_budget_status/state/current",
-        isSignedInProvider: @escaping () -> Bool = {
+        isSignedInProvider: @escaping @Sendable () -> Bool = {
             Auth.auth().currentUser != nil
         }
     ) {

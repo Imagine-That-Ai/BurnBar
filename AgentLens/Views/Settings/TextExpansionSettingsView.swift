@@ -1024,7 +1024,7 @@ struct SnippetCardView: View, Equatable {
 
     @State private var isHovered = false
 
-    static func == (lhs: SnippetCardView, rhs: SnippetCardView) -> Bool {
+    nonisolated static func == (lhs: SnippetCardView, rhs: SnippetCardView) -> Bool {
         lhs.snippet == rhs.snippet && lhs.isSelected == rhs.isSelected
     }
 

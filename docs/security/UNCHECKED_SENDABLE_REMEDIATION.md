@@ -85,7 +85,7 @@ whose thread-safety is enforced externally; the reason-id is validated by the ga
 | `single-threaded-vector-builder` | 2 | `BurnBarMappedWritableIndex`, `BurnBarHNSWWritableIndex` | single-threaded index builders, immutable-by-contract after `save()`; never shared during construction |
 | `corehid-backend` | 1 | `VirtualHIDKeyboardEngine` | non-`Sendable` CoreHID/IOHID backend, serialized on a queue + lock (Apple SDK gap) |
 | `process-handle` | 1 | `PTYInteractiveSession` | non-`Sendable` `Process`; mutable state already in `Locked`, output on a serial queue |
-| `firebase-sdk-handle` | 6 | `CloudSync{Collection,Document,Query,WriteBatch}LiveGateway`, `FirebaseSessionLogEncryptedCloudClient`, `FirebaseCallableExecutor` | non-`Sendable` Firebase SDK handles (`CollectionReference`/`DocumentReference`/`Query`/`WriteBatch`/`Functions`/`HTTPSCallable`), internally thread-safe |
+| `firebase-sdk-handle` | 7 | `CloudSync{Collection,Document,Query,WriteBatch}LiveGateway`, `FirebaseSessionLogEncryptedCloudClient`, `FirebaseCallableExecutor`, `@retroactive` `Firestore` (Mobile) | non-`Sendable` Firebase SDK handles (`Firestore`/`CollectionReference`/`DocumentReference`/`Query`/`WriteBatch`/`Functions`/`HTTPSCallable`), internally thread-safe |
 | `firestore-any-payload` | 3 | `ClaimedRelayRequest`, `LiveUsageDocumentChange`, `FirebaseCallablePayload` | immutable carriers of Firestore's untyped `[String: Any]`/`NSDictionary` across one confined hop |
 | `firestore-any-test-fake` | 1 | `QueryPredicate` (CloudSync fake gateway) | test-only enum carrying Firestore's untyped `Any` comparison values |
 | `foundation-sdk-shim` | 5 | `@retroactive` shims for `FileManager`/`UserDefaults`/`NSDictionary`/`KeyPath`; `RemoteUnlockSavedCredentialStore` (stores `UserDefaults`) | thread-safe Foundation types not yet `Sendable`-annotated by Apple |
@@ -101,6 +101,16 @@ tools-version 6.0): OpenBurnBarCore and OpenBurnBarDaemon production targets bui
 clean under v6 (Core verified on both macOS and iOS slices), so data-race safety is
 compiler-enforced for the shared core + daemon TCB. CI already runs Swift jobs on
 macos-26, which supports the flip.
+
+**The application targets are now on Swift 6 as well** (`project.yml` global
+`SWIFT_VERSION: 6.0`, the four XCTest targets pinned to `5.10`): AgentLens (macOS)
+and OpenBurnBarMobile (iOS) both build clean under v6, so the entire shipping
+surface — core, daemon, and both apps — is compiler-enforced data-race-safe. The
+largest single change was decoupling `ProviderQuotaService` (`@MainActor`) from
+`QuotaRefreshActor` (`actor`): plan readers are snapshotted on the main actor into a
+`Sendable` `ProviderQuotaPlanSnapshot`, the codex-scan cache moved into a shared
+`Locked` box, and the bridge-status callback was inlined to the value-type
+`ClaudeQuotaBridgeManager` — removing every cross-actor read of main-actor state.
 
 Pinned to Swift 5 (each with an in-manifest rationale): the generated UniFFI bindings
 target (`OpenBurnBarIrohFFI`, never hand-edited / AAR parity) and all SwiftPM test
