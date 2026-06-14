@@ -15,6 +15,8 @@ import OpenBurnBarCore
 /// consumed on the listener's serial decode queue. The `[String: Any]`
 /// payload comes straight from `QueryDocumentSnapshot.data()` and crosses
 /// exactly one hop onto the confining queue, hence `@unchecked Sendable`.
+// AUDIT(@unchecked Sendable): untyped Firestore [String: Any]? payload across one
+// confined decode hop. sendable-allowlist: firestore-any-payload
 struct LiveUsageDocumentChange: @unchecked Sendable {
     enum Kind: Sendable {
         case upsert
@@ -38,15 +40,15 @@ struct LiveUsageDocumentChange: @unchecked Sendable {
 ///
 /// Not thread-safe by itself — the listener confines all access to its
 /// serial decode queue (`@unchecked Sendable` reflects that confinement).
-final class LiveUsageAccumulator: @unchecked Sendable {
-    private var byDocID: [String: TokenUsage] = [:]
+final class LiveUsageAccumulator: Sendable {
+    private let byDocID = Locked<[String: TokenUsage]>([:])
 
     func upsert(_ usage: TokenUsage, docID: String) {
-        byDocID[docID] = usage
+        byDocID.withLock { $0[docID] = usage }
     }
 
     func remove(docID: String) {
-        byDocID.removeValue(forKey: docID)
+        byDocID.withLock { _ = $0.removeValue(forKey: docID) }
     }
 
     /// The current window contents, ordered exactly like the raw query
@@ -54,14 +56,16 @@ final class LiveUsageAccumulator: @unchecked Sendable {
     /// the descending tiebreaker (Firestore implicitly appends `__name__`
     /// in the sort direction of the last explicit `orderBy`).
     func snapshot() -> [TokenUsage] {
-        byDocID
-            .sorted { lhs, rhs in
-                if lhs.value.endTime != rhs.value.endTime {
-                    return lhs.value.endTime > rhs.value.endTime
+        byDocID.withLock { byDocID in
+            byDocID
+                .sorted { lhs, rhs in
+                    if lhs.value.endTime != rhs.value.endTime {
+                        return lhs.value.endTime > rhs.value.endTime
+                    }
+                    return lhs.key > rhs.key
                 }
-                return lhs.key > rhs.key
-            }
-            .map(\.value)
+                .map(\.value)
+        }
     }
 }
 
@@ -75,25 +79,25 @@ final class LiveUsageAccumulator: @unchecked Sendable {
 /// with no freshness signal a stale name must never be served.
 ///
 /// Not thread-safe by itself — confined to the listener's decode queue.
-final class SealedProjectNameCache: @unchecked Sendable {
+final class SealedProjectNameCache: Sendable {
     private struct Entry {
         let updatedAtMillis: Int64
         let projectName: String?
     }
 
-    private var byDocID: [String: Entry] = [:]
+    private let byDocID = Locked<[String: Entry]>([:])
 
     func openOrCached(docID: String, updatedAtMillis: Int64, open: () -> String?) -> String? {
         guard updatedAtMillis > 0 else { return open() }
-        if let cached = byDocID[docID], cached.updatedAtMillis == updatedAtMillis {
+        if let cached = byDocID.withLock({ $0[docID] }), cached.updatedAtMillis == updatedAtMillis {
             return cached.projectName
         }
         let opened = open()
-        byDocID[docID] = Entry(updatedAtMillis: updatedAtMillis, projectName: opened)
+        byDocID.withLock { $0[docID] = Entry(updatedAtMillis: updatedAtMillis, projectName: opened) }
         return opened
     }
 
     func remove(docID: String) {
-        byDocID.removeValue(forKey: docID)
+        byDocID.withLock { _ = $0.removeValue(forKey: docID) }
     }
 }
