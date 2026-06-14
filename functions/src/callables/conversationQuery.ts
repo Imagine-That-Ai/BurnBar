@@ -19,7 +19,10 @@ export const QUERY_CONVERSATION_SORT_FIELDS = ["updatedAt", "startTime", "endTim
 export type QueryConversationSortField = (typeof QUERY_CONVERSATION_SORT_FIELDS)[number];
 
 function isQueryConversationSortField(value: string): value is QueryConversationSortField {
-  return (QUERY_CONVERSATION_SORT_FIELDS as readonly string[]).includes(value);
+  for (const field of QUERY_CONVERSATION_SORT_FIELDS) {
+    if (field === value) return true;
+  }
+  return false;
 }
 
 /** Normalizes a Firestore Timestamp or stored ISO string to an ISO string for transport. */

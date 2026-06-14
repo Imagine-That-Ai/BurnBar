@@ -69,7 +69,10 @@ function stripeWebhookEventExpireAt(event: Stripe.Event): Timestamp {
 }
 
 function isAllowedChoice<T extends string>(raw: string, allowed: readonly T[]): raw is T {
-  return (allowed as readonly string[]).includes(raw);
+  for (const choice of allowed) {
+    if (choice === raw) return true;
+  }
+  return false;
 }
 
 function optionalChoice<T extends string>(raw: unknown, allowed: readonly T[], fieldName: string): T | undefined {

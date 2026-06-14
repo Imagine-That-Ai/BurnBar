@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-14T03:08:10.183Z",
+  "generatedAt": "2026-06-14T03:41:17.334Z",
   "scanner": {
     "tsMode": "token-fallback",
     "excluded": {
@@ -38,16 +38,16 @@
       ]
     }
   },
-  "total": 132,
+  "total": 127,
   "byLanguage": {
     "kotlin": 27,
-    "typescript": 105
+    "typescript": 100
   },
   "byKind": {
     "kotlin_force_unwrap": 6,
     "kotlin_unsafe_cast": 21,
     "ts_non_null_assertion": 3,
-    "ts_type_assertion": 102
+    "ts_type_assertion": 97
   },
   "violations": [
     {
@@ -448,7 +448,7 @@
     },
     {
       "path": "functions/src/__tests__/dataExport.test.ts",
-      "line": 200,
+      "line": 202,
       "column": 66,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -664,7 +664,7 @@
     },
     {
       "path": "functions/src/__tests__/rollupFullRebuildCircuitBreaker.test.ts",
-      "line": 264,
+      "line": 265,
       "column": 76,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -673,7 +673,7 @@
     },
     {
       "path": "functions/src/__tests__/rollupFullRebuildCircuitBreaker.test.ts",
-      "line": 264,
+      "line": 265,
       "column": 87,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -682,7 +682,7 @@
     },
     {
       "path": "functions/src/__tests__/rollupFullRebuildCircuitBreaker.test.ts",
-      "line": 273,
+      "line": 274,
       "column": 49,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -691,7 +691,7 @@
     },
     {
       "path": "functions/src/__tests__/rollupFullRebuildCircuitBreaker.test.ts",
-      "line": 273,
+      "line": 274,
       "column": 60,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -763,7 +763,7 @@
     },
     {
       "path": "functions/src/__tests__/signalEnvelopeExport.test.ts",
-      "line": 89,
+      "line": 91,
       "column": 58,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -772,7 +772,7 @@
     },
     {
       "path": "functions/src/__tests__/signalEnvelopeExport.test.ts",
-      "line": 97,
+      "line": 99,
       "column": 7,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -781,7 +781,7 @@
     },
     {
       "path": "functions/src/__tests__/signalEnvelopeExport.test.ts",
-      "line": 97,
+      "line": 99,
       "column": 18,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -841,15 +841,6 @@
       "kind": "ts_type_assertion",
       "snippet": "return { id, type: \"customer.subscription.updated\", created: createdSeconds } as unknown as Stripe.Event;",
       "detail": "TypeScript parser unavailable; token: as Stripe"
-    },
-    {
-      "path": "functions/src/callables/conversationQuery.ts",
-      "line": 22,
-      "column": 42,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "return (QUERY_CONVERSATION_SORT_FIELDS as readonly string[]).includes(value);",
-      "detail": "TypeScript parser unavailable; token: as readonly"
     },
     {
       "path": "functions/src/callables/dataExport.ts",
@@ -1042,7 +1033,7 @@
     },
     {
       "path": "functions/src/callables/shared.ts",
-      "line": 1168,
+      "line": 1079,
       "column": 58,
       "language": "typescript",
       "kind": "ts_type_assertion",
@@ -1059,15 +1050,6 @@
       "detail": "TypeScript parser unavailable; token: as string"
     },
     {
-      "path": "functions/src/callables/stripe.ts",
-      "line": 72,
-      "column": 19,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "return (allowed as readonly string[]).includes(raw);",
-      "detail": "TypeScript parser unavailable; token: as readonly"
-    },
-    {
       "path": "functions/src/callables/webAppCheck.ts",
       "line": 64,
       "column": 19,
@@ -1078,48 +1060,39 @@
     },
     {
       "path": "functions/src/sentry.ts",
-      "line": 84,
-      "column": 35,
+      "line": 142,
+      "column": 25,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "const request = event.request as ErrorEvent[\"request\"] & Record<string, unknown>;",
-      "detail": "TypeScript parser unavailable; token: as ErrorEvent"
+      "snippet": "return \"[MaxDepth]\" as T;",
+      "detail": "TypeScript parser unavailable; token: as T"
     },
     {
       "path": "functions/src/sentry.ts",
-      "line": 96,
-      "column": 52,
+      "line": 145,
+      "column": 72,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "event.extra = sanitizeSentryValue(event.extra) as ErrorEvent[\"extra\"];",
-      "detail": "TypeScript parser unavailable; token: as ErrorEvent"
+      "snippet": "return value.map((entry) => sanitizeSentryValue(entry, depth + 1)) as T;",
+      "detail": "TypeScript parser unavailable; token: as T"
     },
     {
       "path": "functions/src/sentry.ts",
-      "line": 99,
-      "column": 58,
+      "line": 148,
+      "column": 74,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "event.contexts = sanitizeSentryValue(event.contexts) as ErrorEvent[\"contexts\"];",
-      "detail": "TypeScript parser unavailable; token: as ErrorEvent"
+      "snippet": "return (typeof value === \"string\" ? redactURLSecrets(value) : value) as T;",
+      "detail": "TypeScript parser unavailable; token: as T"
     },
     {
       "path": "functions/src/sentry.ts",
-      "line": 104,
-      "column": 64,
+      "line": 159,
+      "column": 20,
       "language": "typescript",
       "kind": "ts_type_assertion",
-      "snippet": "breadcrumb.data = sanitizeSentryValue(breadcrumb.data) as Breadcrumb[\"data\"];",
-      "detail": "TypeScript parser unavailable; token: as Breadcrumb"
-    },
-    {
-      "path": "functions/src/signalAtRestWrite.ts",
-      "line": 107,
-      "column": 41,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "return { ok: true, envelope: envelope as SanitizedSignalEnvelope, aad };",
-      "detail": "TypeScript parser unavailable; token: as SanitizedSignalEnvelope"
+      "snippet": "return sanitized as T;",
+      "detail": "TypeScript parser unavailable; token: as T"
     },
     {
       "path": "functions/src/signalEnvelopeExport.ts",
@@ -1129,24 +1102,6 @@
       "kind": "ts_type_assertion",
       "snippet": "sanitizeSignalEnvelopeForExport as sanitizeSharedSignalEnvelopeForExport,",
       "detail": "TypeScript parser unavailable; token: as sanitizeSharedSignalEnvelopeForExport"
-    },
-    {
-      "path": "functions/src/tierCogs.ts",
-      "line": 126,
-      "column": 32,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const bucket = (perFeature as Record<string, unknown>)[feature];",
-      "detail": "TypeScript parser unavailable; token: as Record"
-    },
-    {
-      "path": "functions/src/tierCogs.ts",
-      "line": 128,
-      "column": 40,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "totalBytes += numberField(bucket as Record<string, unknown>, \"totalBytes\") ?? 0;",
-      "detail": "TypeScript parser unavailable; token: as Record"
     },
     {
       "path": "services/hermes-realtime-relay/src/signalEnvelopeContracts.test.ts",

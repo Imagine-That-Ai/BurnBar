@@ -333,6 +333,7 @@ export async function beginBinding(
   const doc: EntitlementBindingDoc = {
     id: token,
     uid,
+    appAccountToken: token,
     productID,
     createdAt: new Date().toISOString(),
     clientPlatform,

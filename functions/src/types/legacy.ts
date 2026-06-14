@@ -394,6 +394,12 @@ export interface ComputerUsePhoneAuthorityDoc {
 
   /** Document schema version for forward compatibility. */
   schemaVersion: number;
+
+  /** ISO 8601 creation timestamp (schema-sync canon). */
+  createdAt: string;
+
+  /** ISO 8601 last-update timestamp (schema-sync canon). */
+  updatedAt: string;
 }
 
 /**
@@ -659,7 +665,7 @@ export interface HermesRelayRequestDoc {
   claimedBy?: string;
   completedAt?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
   expiresAt: string;
   expireAt?: import("firebase-admin/firestore").Timestamp;
   schemaVersion: number;
@@ -668,6 +674,10 @@ export interface HermesRelayRequestDoc {
 export interface HermesRelayChunkDoc {
   id: string;
   requestId: string;
+  /** Schema-sync canon chunk index. */
+  chunkIndex: number;
+  /** Schema-sync canon base64 payload. */
+  payloadBase64: string;
   sequence: number;
   kind: "sse" | "data" | "error";
   data?: string;
@@ -758,7 +768,7 @@ export interface PiAgentConnectionDoc {
   models?: PiAgentRuntimeModelDoc[];
   lastSeenAt?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
   schemaVersion: number;
 }
 
@@ -1377,7 +1387,7 @@ export interface UsageEventDoc {
   cost?: number;
 
   /** ISO 8601 ingestion timestamp (schema-sync canon). */
-  recordedAt?: string;
+  recordedAt: string;
 
   /** Event classification (schema-sync canon). */
   eventKind?: string;
@@ -1666,6 +1676,8 @@ export interface HostedQuotaEntitlementDoc {
 export interface EntitlementBindingDoc {
   id: string;
   uid: string;
+  /** StoreKit 2 app account token minted at purchase time (schema-sync canon). */
+  appAccountToken: string;
   productID: string;
   clientPlatform?: "ios" | "ipados" | "macos";
   consumedAt?: string;

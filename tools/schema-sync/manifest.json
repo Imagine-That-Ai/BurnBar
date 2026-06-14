@@ -33,9 +33,6 @@
             "UsageEventDoc",
             "QuotaSnapshotDoc",
             "QuotaBucket"
-          ],
-          "knownDrift": [
-            "UsageEventDoc.recordedAt#opt"
           ]
         }
       ],
@@ -99,11 +96,6 @@
           "interfaces": [
             "HermesRelayRequestDoc",
             "HermesRelayChunkDoc"
-          ],
-          "knownDrift": [
-            "HermesRelayRequestDoc.updatedAt#opt",
-            "HermesRelayChunkDoc.chunkIndex",
-            "HermesRelayChunkDoc.payloadBase64"
           ]
         }
       ]
@@ -157,9 +149,6 @@
           "path": "functions/src/types/legacy.ts",
           "interfaces": [
             "PiAgentConnectionDoc"
-          ],
-          "knownDrift": [
-            "PiAgentConnectionDoc.updatedAt#opt"
           ]
         }
       ],
@@ -192,10 +181,6 @@
           "path": "functions/src/types/legacy.ts",
           "interfaces": [
             "ComputerUsePhoneAuthorityDoc"
-          ],
-          "knownDrift": [
-            "ComputerUsePhoneAuthorityDoc.createdAt",
-            "ComputerUsePhoneAuthorityDoc.updatedAt"
           ]
         }
       ],
@@ -220,9 +205,6 @@
           "path": "functions/src/types/legacy.ts",
           "interfaces": [
             "EntitlementBindingDoc"
-          ],
-          "knownDrift": [
-            "EntitlementBindingDoc.appAccountToken"
           ]
         }
       ],

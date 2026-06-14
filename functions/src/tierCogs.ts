@@ -5,7 +5,7 @@
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
-import { numberField } from "./guards.js";
+import { isRecord, numberField } from "./guards.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const CLOUD_ENTITLEMENT_ID = "burnbar_pro";
@@ -120,12 +120,12 @@ async function mediaRelayCogsForDay(dayKey: string): Promise<number> {
   const snap = await getFirestore().doc(`ops/media_session_daily_rollups/days/${dayKey}`).get();
   const data = snap.data();
   const perFeature = data?.perFeature;
-  if (!perFeature || typeof perFeature !== "object") return 0;
+  if (!isRecord(perFeature)) return 0;
   let totalBytes = 0;
   for (const feature of ["fileTransfer", "screenShare", "videoCall"]) {
-    const bucket = (perFeature as Record<string, unknown>)[feature];
-    if (bucket && typeof bucket === "object") {
-      totalBytes += numberField(bucket as Record<string, unknown>, "totalBytes") ?? 0;
+    const bucket = perFeature[feature];
+    if (isRecord(bucket)) {
+      totalBytes += numberField(bucket, "totalBytes") ?? 0;
     }
   }
   return (totalBytes / 1_000_000_000) * MEDIA_COST_PER_GB_USD;

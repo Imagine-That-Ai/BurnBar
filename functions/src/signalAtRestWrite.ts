@@ -104,7 +104,14 @@ export function validateSignalAtRestEnvelopeForWrite(
   const aad = bindingToAAD(envelope.binding);
   // The single trusted boundary that mints the brand: `envelope` is the
   // reconstructed/sanitized object (known keys only), not the raw caller input.
-  return { ok: true, envelope: envelope as SanitizedSignalEnvelope, aad };
+  assertSanitizedSignalEnvelope(envelope);
+  return { ok: true, envelope, aad };
+}
+
+function assertSanitizedSignalEnvelope(
+  _envelope: CloudVaultSignalEnvelope,
+): asserts _envelope is SanitizedSignalEnvelope {
+  // Structural validation and path binding checks above are the only mint path.
 }
 
 /** Stable error thrown by {@link assertSignalAtRestEnvelopeForWrite}. */

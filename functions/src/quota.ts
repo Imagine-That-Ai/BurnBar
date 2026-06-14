@@ -68,7 +68,7 @@ function adapterFor(provider: Provider): ProviderAdapter | undefined {
   }
 }
 
-export function providerAccountSecretRefID(uid: string, accountID: string): string {
+function providerAccountSecretRefID(uid: string, accountID: string): string {
   const safeUid = uid.replace(/[^a-zA-Z0-9]/g, "-");
   const safeAccountID = accountID.replace(/[^a-zA-Z0-9_-]/g, "-");
   return `${safeUid}_${safeAccountID}`;
