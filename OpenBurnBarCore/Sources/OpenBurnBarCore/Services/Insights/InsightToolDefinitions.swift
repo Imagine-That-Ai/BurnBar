@@ -9,7 +9,10 @@ import Foundation
 /// construction; no mutating operations are declared.
 public enum InsightToolDefinitions {
 
-    public static let all: [Tool] = [
+    // Immutable JSON-schema literal constants; `Tool` holds `[String: Any]`
+    // parameters that can't be proven Sendable, but these are configured once
+    // and never mutated.
+    nonisolated(unsafe) public static let all: [Tool] = [
         drilldownSearch,
         drilldownSession,
         agentUsage,
@@ -65,7 +68,8 @@ public enum InsightToolDefinitions {
 
     // MARK: - Individual tools
 
-    public static let drilldownSearch = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let drilldownSearch = Tool(
         name: "drilldown_search",
         description: "Search sessions by query string across task titles, tools, and commands.",
         parameters: [
@@ -79,7 +83,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let drilldownSession = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let drilldownSession = Tool(
         name: "drilldown_session",
         description: "Fetch full metadata for a single session by its ID.",
         parameters: [
@@ -92,7 +97,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let agentUsage = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let agentUsage = Tool(
         name: "agent_usage",
         description: "Get a time-series breakdown of cost or tokens for a specific agent/provider.",
         parameters: [
@@ -106,7 +112,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let modelUsage = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let modelUsage = Tool(
         name: "model_usage",
         description: "Get a ranking of projects or dimensions for a specific model.",
         parameters: [
@@ -120,7 +127,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let operatingActions = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let operatingActions = Tool(
         name: "operating_actions",
         description: "List recent operating actions (tool calls, commands) within a window.",
         parameters: [
@@ -133,7 +141,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let quotaSnapshot = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let quotaSnapshot = Tool(
         name: "quota_snapshot",
         description: "Read the current quota state for a provider or all providers.",
         parameters: [
@@ -146,7 +155,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let anomalyDetail = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let anomalyDetail = Tool(
         name: "anomaly_detail",
         description: "Fetch the full detail row for a specific anomaly by its ID.",
         parameters: [
@@ -159,7 +169,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let listFocuses = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let listFocuses = Tool(
         name: "list_focuses",
         description: "Return the controlled vocabulary of task focuses used in this account.",
         parameters: [
@@ -170,7 +181,8 @@ public enum InsightToolDefinitions {
         ]
     )
 
-    public static let listUseCases = Tool(
+    // Immutable JSON-schema literal constant (`[String: Any]` parameters).
+    nonisolated(unsafe) public static let listUseCases = Tool(
         name: "list_use_cases",
         description: "Return the controlled vocabulary of use cases used in this account.",
         parameters: [

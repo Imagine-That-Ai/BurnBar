@@ -125,7 +125,7 @@ public struct UnifiedToolCallDisplay: Identifiable, Equatable {
 /// Per-surface visual identity. Carries the tint used for the icon and the
 /// gradient stroke that frames the card, so Hermes keeps its mercury sheen,
 /// Pi its whimsy, and each CLI agent its own colour.
-public struct UnifiedToolCallAccent {
+public struct UnifiedToolCallAccent: Sendable {
     public let tint: Color
     public let strokeStyle: AnyShapeStyle
 

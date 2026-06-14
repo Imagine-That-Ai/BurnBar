@@ -284,7 +284,7 @@ public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
                 return Date(timeIntervalSince1970: epoch)
             case .string(let raw):
                 let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let date = metadataDateFormatter.date(from: trimmed) {
+                if let date = ThreadSafeISO8601DateFormatter.parseBasic(trimmed) {
                     return date
                 }
             default:
@@ -293,8 +293,6 @@ public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
         }
         return nil
     }
-
-    private static let metadataDateFormatter = ISO8601DateFormatter()
 }
 
 public struct BurnBarMissionResultSnapshot: Codable, Hashable, Identifiable, Sendable {

@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import PackageDescription
@@ -91,6 +91,8 @@ let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
             "openburnbar_iroh.modulemap",
             "openburnbar_irohFFI.h"
         ],
+        // Generated UniFFI bindings (never hand-edited; AAR parity) target Swift 5.
+        swiftSettings: [.swiftLanguageMode(.v5)],
         linkerSettings: [
             .linkedFramework("SystemConfiguration")
         ]
@@ -109,15 +111,7 @@ let signalBinaryTargets: [Target] = hasSignalFfiXCFramework ? [
     )
 ] : []
 
-let package = Package(
-    name: "OpenBurnBarCore",
-    platforms: [.macOS(.v14), .iOS(.v17)],
-    products: packageProducts,
-    dependencies: [
-        .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
-        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
-    ],
-    targets: irohBinaryTargets + signalBinaryTargets + [
+let firstPartyTargets: [Target] = [
         .target(
             name: "OpenBurnBarCore",
             resources: [
@@ -180,18 +174,27 @@ let package = Package(
             ],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarIrohRelayTests",
-            dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore"]
+            dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore"],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarMediaTests",
             dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay"],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarComputerUseCoreTests",
@@ -202,7 +205,10 @@ let package = Package(
             ],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarSignalCoreTests",
@@ -213,7 +219,10 @@ let package = Package(
             ],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarSignalSessionTransportTests",
@@ -223,7 +232,23 @@ let package = Package(
                 "OpenBurnBarIrohRelay",
                 "OpenBurnBarCore",
                 .product(name: "LibSignalClient", package: "LibSignalClient")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
+
+let allTargets: [Target] = irohBinaryTargets + signalBinaryTargets + firstPartyTargets
+
+let package = Package(
+    name: "OpenBurnBarCore",
+    platforms: [.macOS(.v14), .iOS(.v17)],
+    products: packageProducts,
+    dependencies: [
+        .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
+        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+    ],
+    targets: allTargets,
+    swiftLanguageModes: [.v6]
 )
