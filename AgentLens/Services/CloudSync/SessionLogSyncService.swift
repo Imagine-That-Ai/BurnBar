@@ -1677,7 +1677,23 @@ extension CloudSyncService {
         docID: String,
         field: String
     ) -> EncryptedSearchFieldDecode {
-        guard let envelope = decodeSealedText(raw) else { return .absent }
+        guard let envelope = decodeSealedText(raw) else {
+            // Distinguish a genuinely-absent field from a PRESENT-but-undecodable
+            // one. A present sealed field that cannot be parsed into a
+            // CloudVaultSealedText (missing required tag/nonce, wrong types, or a
+            // non-dict value) is a forgery/tamper signal from the untrusted
+            // server — reject the hit (.tampered) rather than surfacing it as a
+            // safe placeholder (.absent). Absence (no value / explicit null) is
+            // legitimate and stays .absent.
+            if Self.sealedFieldIsPresent(raw) {
+                AppLogger.search.error(
+                    "encryptedSearchHit.fieldMalformed",
+                    metadata: ["field": field, "collection": collection]
+                )
+                return .tampered
+            }
+            return .absent
+        }
         do {
             let aadContext = try CloudVaultAADContext(
                 uid: uid,
@@ -1818,12 +1834,24 @@ extension CloudSyncService {
         return nil
     }
 
+    /// Whether the (untrusted, server-supplied) sealed field carries an actual
+    /// value. A missing key or explicit null is a legitimate absence; any other
+    /// present value that fails to decode is treated as tamper by the caller.
+    private static func sealedFieldIsPresent(_ raw: Any?) -> Bool {
+        guard let raw else { return false }
+        return !(raw is NSNull)
+    }
+
+    // Pure parser: returns nil for an absent OR present-but-undecodable field.
+    // The present-vs-absent (and therefore tamper-vs-absent) security decision is
+    // made by `decryptEncryptedSearchField` via `sealedFieldIsPresent`, so these
+    // `try?` reads are genuinely best-effort here.
     private static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
         guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(optional envelope parse)
+              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(parse; caller fails closed)
             return nil
         }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(optional envelope decode)
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(decode; caller fails closed)
     }
 
     // MARK: - Chunking

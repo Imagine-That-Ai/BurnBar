@@ -1,12 +1,37 @@
 # `try?` security-matters findings — Swarm 2 (try? burn-down, security-first)
 
 **Date:** 2026-06-14  
-**Source:** conservative triage of `try?` sites in security-adjacent `AgentLens/Services` during the error-debt burn-down (Swarm 2).  
-**Status:** these sites are deliberately **left untagged** in `budgets/try-optional-baseline.json` — they remain counted as debt. Each one swallows an error that drives a security or correctness decision, so it must be fixed with a *tested* `do/catch` (often **fail-closed**), not tagged `try?-ok` and not laundered through `silently(fallback:)` (which would preserve the fail-open).
+**Source:** conservative triage of `try?` sites in security-adjacent `AgentLens/Services` during the error-debt burn-down (Swarm 2).
 
-Tagging these would hide a real defect; converting them blindly without a test risks shipping an untested security behavior change. They are catalogued here for the security / coverage-first follow-up tranche (plan Phase 1/2).
+> ## ✅ RESOLVED (2026-06-14, PR #381)
+>
+> **All matters-sites below — and the additional ~82 surfaced by the later
+> repo-wide sweep — were converted to tested fail-closed `do/catch` /
+> `AppLogger.silently` / `KeychainStore.credentialIfPresent` handling.** Untagged
+> `try?` in `AgentLens/Services` is now **0** (`budgets/try-optional-baseline.json`
+> `total: 0`, assert-zero gate). None were tagged `try?-ok`, and none were laundered
+> through a `silently(fallback:)` that preserves a fail-open — verified by an
+> adversarial re-audit.
+>
+> Representative resolutions (verified in the committed tree):
+> - **CLIAgentMissionRequestListener** (persona scope): a malformed scope now
+>   returns `.refused` → the mission aborts with a `failed` result instead of
+>   dispatching with default-open permissions.
+> - **HermesRelayHostService** (plaintext-leak probe): on a failed encryption-state
+>   fetch it logs and **does not** write the plaintext error (fail closed); relay
+>   public-key publish + stored-private-key parse are `do/catch`.
+> - **Credential reads** (~16 sites): `KeychainStore.credentialIfPresent` separates
+>   absent-key (nil) from a real keychain fault (logged).
+> - **Computer Use audit-chain** (8 sites): panic/hard-cap/phone-intent entries and
+>   signed-head finalize are `do/catch` + logged; the chain head advances only on a
+>   successful append.
+> - **Approval-request hash**: `PhoneControlAuthorityValidator` rejects an empty
+>   expected hash, closing the request-binding fail-open.
+>
+> This catalog is retained as the **security rationale / decision record** for those
+> conversions. The sections below describe each site as it was *before* the fix.
 
-**Count:** 19 sites across 9 files.
+**Source-state count (pre-fix):** 19 sites across 9 files (this catalog) + ~82 more from the repo-wide sweep — all resolved in PR #381.
 
 | # | Severity | File:Line | Sync/Async | One-line risk |
 |---|----------|-----------|------------|---------------|

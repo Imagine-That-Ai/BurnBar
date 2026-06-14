@@ -613,13 +613,21 @@ public final class SwitcherProfileStore: Sendable {
         let browserType = browserTypeRaw.flatMap { SwitcherBrowserProfileType(rawValue: $0) }
 
         let browserMetadataJSON: String? = row["browserMetadataJSON"]
-        let browserMetadata = browserMetadataJSON.flatMap { decodeJSON($0, as: SwitcherBrowserProfileMetadata.self) }
+        let browser = decodeMetadata(browserMetadataJSON, as: SwitcherBrowserProfileMetadata.self, field: "browserMetadata")
 
         let cliTypeRaw: String? = row["cliType"]
         let cliType = cliTypeRaw.flatMap { SwitcherCLIProfileType(rawValue: $0) }
 
         let cliMetadataJSON: String? = row["cliMetadataJSON"]
-        let cliMetadata = cliMetadataJSON.flatMap { decodeJSON($0, as: SwitcherCLIProfileMetadata.self) }
+        let cli = decodeMetadata(cliMetadataJSON, as: SwitcherCLIProfileMetadata.self, field: "cliMetadata")
+
+        // Fail CLOSED on a present-but-corrupt metadata blob: skip the row instead
+        // of loading it with default metadata. That keeps a user-disabled profile
+        // from silently re-enabling (isDisabled fail-open) and stops the discovery
+        // re-save path from overwriting the stored JSON with defaults.
+        if browser.corrupt || cli.corrupt { return nil }
+        let browserMetadata = browser.value
+        let cliMetadata = cli.value
 
         let sortKey: Int = row["sortKey"] ?? 0
         let createdAt: Date = parseDateValue(row["createdAt"]) ?? Date()
@@ -645,9 +653,36 @@ public final class SwitcherProfileStore: Sendable {
         return String(data: data, encoding: .utf8) ?? "{}"
     }
 
-    private static func decodeJSON<T: Decodable>(_ string: String, as type: T.Type) -> T? {
-        guard let data = string.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(type, from: data) // try?-ok(optional metadata decode)
+    /// Decodes a stored profile-metadata blob, distinguishing a genuinely-absent
+    /// blob (nil JSON → `(nil, corrupt: false)`) from a PRESENT-but-undecodable one
+    /// (`(nil, corrupt: true)`). Backward-compatible legacy metadata with missing
+    /// fields still decodes successfully (via `decodeIfPresent`), so `corrupt` is
+    /// only true for genuinely-malformed JSON.
+    ///
+    /// The caller fails the whole row CLOSED on corruption rather than building a
+    /// record with default metadata, which would (1) flip `isDisabled` from a
+    /// user-disabled profile to enabled (a launch-eligibility fail-open) and
+    /// (2) let the discovery re-save path overwrite the stored JSON with defaults,
+    /// permanently losing serviceIdentities / isDisabled.
+    private static func decodeMetadata<T: Decodable>(
+        _ json: String?,
+        as decodableType: T.Type,
+        field: String
+    ) -> (value: T?, corrupt: Bool) {
+        guard let json else { return (nil, false) }
+        guard let data = json.data(using: .utf8) else {
+            AppLogger.dataStore.error("switcher_profile_metadata_unreadable", metadata: ["field": field])
+            return (nil, true)
+        }
+        do {
+            return (try JSONDecoder().decode(decodableType, from: data), false)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_profile_metadata_corrupt",
+                metadata: ["field": field, "errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return (nil, true)
+        }
     }
 
     private static func parseDateValue(_ value: Any?) -> Date? {
