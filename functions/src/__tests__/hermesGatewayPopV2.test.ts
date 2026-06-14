@@ -392,7 +392,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     };
 
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
-    const dispatch: Function = dispatchHermesGatewayRequest;
+    const dispatch = dispatchHermesGatewayRequest;
     const { res, captured } = makeRes();
     const req = {
       method: "GET",

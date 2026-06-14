@@ -17,8 +17,8 @@ import { enforceHighRiskOwnerAction } from "../callables/highRiskOwnerAction.js"
 
 function request(data: Record<string, unknown>) {
   return {
-    auth: { uid: "u1", token: {} },
-    app: { appId: "app-1", token: {} },
+    auth: { uid: "u1", token: Object.create(null), rawToken: "test-id-token" },
+    app: { appId: "app-1", token: Object.create(null) },
     rawRequest: { headers: {} },
     acceptsStreaming: false,
     data,
