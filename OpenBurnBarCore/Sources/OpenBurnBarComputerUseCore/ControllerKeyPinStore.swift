@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import OpenBurnBarCore
 #if canImport(Security)
 import Security
 #endif
@@ -354,38 +355,42 @@ extension ControllerKeyPinStore {
 #endif
 
 /// In-memory backing for tests and non-Keychain platforms. Thread-safe.
-public final class InMemoryControllerKeyPinBacking: ControllerKeyPinBacking, @unchecked Sendable {
-    private let lock = NSLock()
-    private var store: [String: ControllerPinRecord] = [:]
-    /// When set, every `load` returns `.unreadable(this)` to drive the
-    /// fail-closed Keychain-error branch in tests.
-    private var forcedReadError: Int32?
-    /// When set, every `save` returns this non-success status to drive the
-    /// fail-closed write-failure branch in tests.
-    private var forcedWriteError: Int32?
+public final class InMemoryControllerKeyPinBacking: ControllerKeyPinBacking, Sendable {
+    private struct State {
+        var store: [String: ControllerPinRecord] = [:]
+        /// When set, every `load` returns `.unreadable(this)` to drive the
+        /// fail-closed Keychain-error branch in tests.
+        var forcedReadError: Int32?
+        /// When set, every `save` returns this non-success status to drive the
+        /// fail-closed write-failure branch in tests.
+        var forcedWriteError: Int32?
+    }
+
+    private let state = Locked(State())
 
     public init() {}
 
-    public func failReads(with status: Int32) { lock.lock(); forcedReadError = status; lock.unlock() }
-    public func failWrites(with status: Int32) { lock.lock(); forcedWriteError = status; lock.unlock() }
+    public func failReads(with status: Int32) { state.withLock { $0.forcedReadError = status } }
+    public func failWrites(with status: Int32) { state.withLock { $0.forcedWriteError = status } }
 
     public func load(account: String) -> ControllerKeyPinLoad {
-        lock.lock(); defer { lock.unlock() }
-        if let forcedReadError { return .unreadable(forcedReadError) }
-        if let record = store[account] { return .found(record) }
-        return .absent
+        state.withLock { state in
+            if let forcedReadError = state.forcedReadError { return .unreadable(forcedReadError) }
+            if let record = state.store[account] { return .found(record) }
+            return .absent
+        }
     }
 
     @discardableResult
     public func save(_ record: ControllerPinRecord, account: String) -> Int32 {
-        lock.lock(); defer { lock.unlock() }
-        if let forcedWriteError { return forcedWriteError }
-        store[account] = record
-        return errSecSuccessCompat
+        state.withLock { state in
+            if let forcedWriteError = state.forcedWriteError { return forcedWriteError }
+            state.store[account] = record
+            return errSecSuccessCompat
+        }
     }
 
     public func delete(account: String) {
-        lock.lock(); defer { lock.unlock() }
-        store[account] = nil
+        state.withLock { $0.store[account] = nil }
     }
 }

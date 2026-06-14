@@ -832,7 +832,10 @@ public protocol BurnBarCLIShellShimInstalling: Sendable {
     func installShims(invokedExecutablePath: String) throws -> BurnBarCLIShellShimInstallResult
 }
 
-// FileManager is thread-safe for path operations.
+// AUDIT(@unchecked Sendable): the only non-Sendable stored property is
+// `fileManager: FileManager`, which Foundation does not yet mark Sendable but is
+// documented as thread-safe for the path operations this installer performs. Drop
+// this conformance once Foundation annotates `FileManager: Sendable`.
 public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, @unchecked Sendable {
     public static let defaultInstallDirectory = BurnBarDaemonPaths.supportDirectoryURL
         .appendingPathComponent("bin", isDirectory: true)

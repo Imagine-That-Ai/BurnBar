@@ -49,7 +49,12 @@ count_root() {
     | { grep -vE "${exclude_re}" || true; } \
     | while IFS= read -r rel; do
         [[ -n "${rel}" ]] || continue
-        grep -cE "@unchecked[[:space:]]+Sendable" "${repo_root}/${rel}" 2>/dev/null || true
+        # Count real conformance annotations only. Lines that merely *mention*
+        # `@unchecked Sendable` inside a comment (e.g. `// AUDIT(@unchecked
+        # Sendable): …` justifications, which the budget actively encourages) are
+        # documentation, not debt, so excluding comment lines keeps the count
+        # equal to the number of live escape hatches.
+        awk '/@unchecked[[:space:]]+Sendable/ && $0 !~ /^[[:space:]]*(\/\/|\/\*|\*)/ { count++ } END { print count + 0 }' "${repo_root}/${rel}"
       done \
     | awk '{ sum += $1 } END { print sum + 0 }'
 }
