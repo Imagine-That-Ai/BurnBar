@@ -194,7 +194,7 @@ data class CloudVaultDocumentRewrapResult(
 // the byte-parity constants + AAD/Signal helpers with the Swift `CloudVaultCrypto`, and splitting it
 // would scatter that parity seam. The RR-7a sender-auth + RR-5 wrap/generate additions edge it over
 // the size rule; the grouping is load-bearing, so suppress rather than fragment.
-@Suppress("LargeClass")
+@Suppress("LargeClass") // reason: cohesive crypto facade kept whole for Swift byte-parity (see note above); splitting scatters the AAD/constant parity seam.
 object CloudVaultCrypto {
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_TAG_BYTES = 16
@@ -530,7 +530,7 @@ object CloudVaultCrypto {
      * valid signature over the domain-separated binding+ciphertext+wraps. Throws a
      * [CloudVaultSignalSenderAuthException] (classified by [SignalAtRestFallbackPolicy]) on any failure.
      */
-    @Suppress("ThrowsCount") // each fail-closed branch throws a DISTINCT classified exception the fallback policy needs.
+    @Suppress("ThrowsCount") // reason: each fail-closed branch throws a DISTINCT classified exception the fallback policy needs.
     private fun verifySenderAuth(
         envelope: CloudVaultSignalEnvelope,
         canonicalAAD: String,
