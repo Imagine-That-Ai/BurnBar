@@ -33,15 +33,17 @@ struct SingleProviderResult: Sendable {
 /// Stateless namespace for off-main-thread refresh work.
 ///
 /// `UsageAggregator` snapshots any `@MainActor` state it needs (settings,
-/// API configs) *before* calling into these functions from a `Task.detached`.
-/// The functions run entirely off the main actor and return value types that
-/// the aggregator applies back on `@MainActor` in one step.
+/// API configs) *before* calling into these functions. Because the namespace is
+/// `nonisolated`, awaiting these `async` functions from the main actor runs them
+/// off it (SE-0338); they return value types that the aggregator applies back on
+/// `@MainActor` in one step.
 enum RefreshBackgroundWork {
 
     // MARK: - Full Refresh
 
     /// Runs the full parse → persist → post-persistence pipeline off the
-    /// main thread.  Call from `Task.detached` and `await` the result.
+    /// main thread.  `await` it from the main actor; being `nonisolated` it runs
+    /// off the main actor (SE-0338).
     static func runFullRefresh(
         parsers: [AgentProvider: any LogParser],
         dataStore: DataStore,

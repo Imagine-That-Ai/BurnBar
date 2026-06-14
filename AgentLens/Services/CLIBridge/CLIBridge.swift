@@ -143,7 +143,7 @@ final class CLIBridge: ObservableObject {
         model: String
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -165,7 +165,7 @@ final class CLIBridge: ObservableObject {
         model: String
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -184,7 +184,7 @@ final class CLIBridge: ObservableObject {
     /// Streams assistant text and tool-use events from the CLI (Claude `stream-json`, Codex JSONL text only).
     func chat(systemPrompt: String, userMessage: String) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -238,7 +238,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -267,7 +267,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -291,7 +291,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -320,7 +320,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -345,7 +345,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -377,7 +377,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -395,7 +395,7 @@ final class CLIBridge: ObservableObject {
         fallbackPlanner: (any CLIFallbackPlanning)? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -479,7 +479,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -510,7 +510,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -541,7 +541,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -571,7 +571,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -600,7 +600,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return

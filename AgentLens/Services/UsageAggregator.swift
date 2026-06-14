@@ -8,7 +8,8 @@ import OpenBurnBarCore
 ///
 /// Heavy work (parsing 12+ providers, DB persistence, quota API calls,
 /// conversation indexing, cloud sync) runs off the main thread via
-/// `RefreshBackgroundWork` inside `Task.detached`.  Observable state updates
+/// `RefreshBackgroundWork`, a `nonisolated` namespace that runs off the main
+/// actor when awaited (SE-0338).  Observable state updates
 /// happen on the main actor at apply boundaries.
 @Observable
 @MainActor
@@ -163,15 +164,15 @@ final class UsageAggregator {
         await orchestrator.runRetentionPurgeIfNeeded()
 
         // ── Heavy work runs entirely off the main thread ─────────────
-        let result = await Task.detached(priority: .utility) {
-            await RefreshBackgroundWork.runFullRefresh(
-                parsers: parsers,
-                dataStore: dataStore,
-                orchestrator: orchestrator,
-                existingUsages: existingUsages,
-                settings: settings
-            )
-        }.value
+        // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
+        // from this `@MainActor` method runs it off the main actor (SE-0338).
+        let result = await RefreshBackgroundWork.runFullRefresh(
+            parsers: parsers,
+            dataStore: dataStore,
+            orchestrator: orchestrator,
+            existingUsages: existingUsages,
+            settings: settings
+        )
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth = result.parserHealth
@@ -294,14 +295,14 @@ final class UsageAggregator {
         let refreshStartedAt = Date()
 
         // ── Heavy work runs entirely off the main thread ─────────────
-        let result = await Task.detached(priority: .utility) {
-            await RefreshBackgroundWork.runSingleProviderRefresh(
-                provider: provider,
-                parser: parser,
-                dataStore: dataStore,
-                settings: settings
-            )
-        }.value
+        // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
+        // from this `@MainActor` method runs it off the main actor (SE-0338).
+        let result = await RefreshBackgroundWork.runSingleProviderRefresh(
+            provider: provider,
+            parser: parser,
+            dataStore: dataStore,
+            settings: settings
+        )
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth[provider] = result.health
