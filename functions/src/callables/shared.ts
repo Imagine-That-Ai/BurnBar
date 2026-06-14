@@ -65,7 +65,7 @@ import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 // ---------------------------------------------------------------------------
 // Provider adapter registry
 // ---------------------------------------------------------------------------
-export function backendAdapterFor(provider: Provider) {
+function backendAdapterFor(provider: Provider) {
   switch (provider) {
     case "openai":
       return openaiAdapter;
@@ -88,7 +88,7 @@ export function backendAdapterFor(provider: Provider) {
   }
 }
 
-export const ALLOWED_PROVIDERS = new Set<string>([
+const ALLOWED_PROVIDERS = new Set<string>([
   "openai",
   "minimax",
   "zai",
@@ -103,23 +103,23 @@ export const ALLOWED_PROVIDERS = new Set<string>([
   "kimi",
 ]);
 
-export const CONNECTION_SCHEMA_VERSION = 1;
+const CONNECTION_SCHEMA_VERSION = 1;
 export const ACCOUNT_SCHEMA_VERSION = 2;
 export const HERMES_SCHEMA_VERSION = 1;
 export const HERMES_PAIRING_TTL_MS = 10 * 60 * 1000;
-export const HERMES_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const HERMES_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const HERMES_MAX_FAILED_PAIRING_ATTEMPTS = 5;
 export const PI_AGENT_SCHEMA_VERSION = 1;
 export const PI_AGENT_PAIRING_TTL_MS = 10 * 60 * 1000;
-export const PI_AGENT_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const PI_AGENT_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const PI_AGENT_MAX_FAILED_PAIRING_ATTEMPTS = 5;
-export const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
-export const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode", "antigravity"]);
+const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
+const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode", "antigravity"]);
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 export const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
 export const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
-export const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
-export const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
+const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 export const REMOTE_MCP_TOKEN_HMAC_SECRET = defineSecret("REMOTE_MCP_TOKEN_HMAC_SECRET");
 export const REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 = defineSecret("REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64");
 export const STRIPE_API_SECRETS = [STRIPE_SECRET_KEY];
@@ -128,7 +128,7 @@ export const GOOGLE_PLAY_ACTIVE_STATES = new Set<string>([
   "SUBSCRIPTION_STATE_ACTIVE",
   "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
 ]);
-export const STRIPE_ACTIVE_STATES = new Set<string>(["active", "trialing", "past_due"]);
+const STRIPE_ACTIVE_STATES = new Set<string>(["active", "trialing", "past_due"]);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -173,7 +173,7 @@ export function requiredIdentifier(raw: unknown, fieldName: string): string {
   return safe;
 }
 
-export function optionalTrimmedString(raw: unknown): string | undefined {
+function optionalTrimmedString(raw: unknown): string | undefined {
   if (typeof raw !== "string") {
     return undefined;
   }
@@ -205,39 +205,6 @@ export function boundedTrimmedString(
     throw new HttpsError("invalid-argument", `${fieldName} must be ${maxLength} characters or fewer.`);
   }
   return value;
-}
-
-export function normalizedSearchTerms(raw: string): string[] {
-  const stopwords = new Set([
-    "the",
-    "and",
-    "for",
-    "with",
-    "that",
-    "this",
-    "from",
-    "how",
-    "what",
-    "where",
-    "when",
-    "why",
-    "are",
-    "was",
-  ]);
-  return Array.from(
-    new Set(
-      raw
-        .toLowerCase()
-        .split(/[^a-z0-9]+/u)
-        .map((part) => part.trim())
-        .filter((part) => part.length >= 2 && !stopwords.has(part)),
-    ),
-  ).slice(0, 8);
-}
-
-export function searchScore(text: string, terms: string[]): number {
-  const lower = text.toLowerCase();
-  return terms.reduce((score, term) => score + (lower.includes(term) ? 1 : 0), 0);
 }
 
 export function sha256Hex(text: string): string {
@@ -322,7 +289,7 @@ export function requireOptionalSearchHashes(raw: unknown, fieldName: string): st
   return requireSearchHashes(raw, fieldName, false);
 }
 
-export function requireSearchHashes(raw: unknown, fieldName: string, required: boolean): string[] {
+function requireSearchHashes(raw: unknown, fieldName: string, required: boolean): string[] {
   if (raw == null && !required) return [];
   if (!Array.isArray(raw)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an array.`);
@@ -429,7 +396,7 @@ export function requireSealedText(raw: unknown, fieldName: string, expectedAAD?:
   return stripUndefinedObject(values);
 }
 
-export function requireISODateString(raw: unknown, fieldName: string): string {
+function requireISODateString(raw: unknown, fieldName: string): string {
   const value = boundedTrimmedString(raw, fieldName, 64, true);
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) {
@@ -580,62 +547,6 @@ export function resolveEncryptedSessionBlobByteCount(args: {
     throw new HttpsError("failed-precondition", "Encrypted session body has an invalid content type.");
   }
   return size;
-}
-
-export function callableDate(value: unknown): string | undefined {
-  if (value instanceof Timestamp) {
-    return value.toDate().toISOString();
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  return undefined;
-}
-
-export function serializeUsageForCallable(
-  documentID: string,
-  data: FirebaseFirestore.DocumentData,
-): Record<string, unknown> {
-  const provider = typeof data.provider === "string" ? data.provider : "unknown";
-  const startTime = callableDate(data.startTime) ?? new Date(0).toISOString();
-  const endTime = callableDate(data.endTime) ?? startTime;
-  return stripUndefinedObject({
-    id: typeof data.id === "string" ? data.id : documentID,
-    provider,
-    sessionId: typeof data.sessionId === "string" ? data.sessionId : "",
-    // Project name is private text (privacy-leak-remediation-2026-06-02 §1): the
-    // server NEVER echoes a plaintext `projectName`. Updated clients write a
-    // vault-sealed `sealedProjectName` envelope (opaque to the server) plus an
-    // opaque `projectKeyHash` for client-side group-by; both pass through here
-    // untouched so the owner can decrypt locally.
-    sealedProjectName: isRecord(data.sealedProjectName) ? data.sealedProjectName : undefined,
-    projectKeyHash: typeof data.projectKeyHash === "string" ? data.projectKeyHash : undefined,
-    model: typeof data.model === "string" ? data.model : "unknown",
-    inputTokens: typeof data.inputTokens === "number" ? data.inputTokens : 0,
-    outputTokens: typeof data.outputTokens === "number" ? data.outputTokens : 0,
-    cacheCreationTokens: typeof data.cacheCreationTokens === "number" ? data.cacheCreationTokens : 0,
-    cacheReadTokens: typeof data.cacheReadTokens === "number" ? data.cacheReadTokens : 0,
-    reasoningTokens: typeof data.reasoningTokens === "number" ? data.reasoningTokens : 0,
-    totalTokens: typeof data.totalTokens === "number" ? data.totalTokens : 0,
-    cost: typeof data.cost === "number" ? data.cost : 0,
-    startTime,
-    endTime,
-    createdAt: callableDate(data.createdAt) ?? startTime,
-    usageSource: typeof data.usageSource === "string" ? data.usageSource : "provider_log",
-    sourceDeviceId: typeof data.deviceId === "string" ? data.deviceId : undefined,
-    sourceDeviceName: typeof data.deviceName === "string" ? data.deviceName : undefined,
-    isRemote: true,
-    providerID: typeof data.providerID === "string" ? data.providerID : provider,
-    providerAccountID: typeof data.providerAccountID === "string" ? data.providerAccountID : undefined,
-    providerAccountLabel: typeof data.providerAccountLabel === "string" ? data.providerAccountLabel : undefined,
-    providerAccountSource: typeof data.providerAccountSource === "string" ? data.providerAccountSource : undefined,
-    provenanceMethod: "cloud_sync",
-    provenanceConfidence: "exact",
-    estimatorVersion: "",
-  });
 }
 
 export async function writeHermesAuditEvent(
@@ -846,7 +757,7 @@ export function entitlementExpiryMillis(raw: Record<string, unknown>): number {
   return Number.isFinite(millis) ? millis : 0;
 }
 
-export function burnBarProFeatures(): Record<string, boolean> {
+function burnBarProFeatures(): Record<string, boolean> {
   return {
     hostedQuota: true,
     hostedLLM: true,
@@ -855,7 +766,7 @@ export function burnBarProFeatures(): Record<string, boolean> {
   };
 }
 
-export function burnBarProMaxFeatures(): Record<string, boolean> {
+function burnBarProMaxFeatures(): Record<string, boolean> {
   return {
     ...burnBarProFeatures(),
     floo: true,
@@ -1007,7 +918,7 @@ function sameEntitlementWriteSource(
   return !incoming.externalSubscriptionID && !incoming.purchaseTokenHash;
 }
 
-export function paidEntitlementWriteWouldRewindSourceEvent(
+function paidEntitlementWriteWouldRewindSourceEvent(
   existing: Record<string, unknown> | undefined,
   incoming: {
     source: string;
@@ -1330,7 +1241,7 @@ export async function uidForStripeSubscription(subscription: Stripe.Subscription
   return typeof uid === "string" ? uid : undefined;
 }
 
-export function stripeCustomerID(customer: unknown): string | undefined {
+function stripeCustomerID(customer: unknown): string | undefined {
   if (typeof customer === "string") return customer;
   if (customer && typeof customer === "object" && "id" in customer && typeof customer.id === "string") {
     return customer.id;
@@ -1338,7 +1249,7 @@ export function stripeCustomerID(customer: unknown): string | undefined {
   return undefined;
 }
 
-export function stripeSubscriptionPeriodEndMillis(subscription: Stripe.Subscription): number {
+function stripeSubscriptionPeriodEndMillis(subscription: Stripe.Subscription): number {
   const raw = jsonObject(subscription);
   const direct = raw.current_period_end;
   if (typeof direct === "number") return direct * 1000;
@@ -1366,7 +1277,7 @@ export function normalizeHostedCredential(provider: string, raw: unknown): strin
   }
 }
 
-export function safeSnapshotSourceID(raw: unknown): string {
+function safeSnapshotSourceID(raw: unknown): string {
   return (
     (typeof raw === "string" ? raw : "self-hosted-runner")
       .toLowerCase()
@@ -1452,7 +1363,7 @@ export function sanitizeUploadedQuotaSnapshot(
   return snapshot;
 }
 
-export function isSecretLikeMetadataKey(key: string): boolean {
+function isSecretLikeMetadataKey(key: string): boolean {
   const lower = key.toLowerCase();
   return (
     lower.includes("token") ||

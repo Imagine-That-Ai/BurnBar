@@ -66,9 +66,11 @@
     "@apple/app-store-server-library": "^3.0.0",
     "@openburnbar/entitlements": "file:../packages/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:../packages/signal-envelope-contracts",
+    "@sentry/core": "8.55.2",
     "@sentry/node": "8.55.2",
+    "express": "4.21.2",
     "@simplewebauthn/server": "13.3.0",
-    "ajv-formats": "3.0.1",
+
     "cockatiel": "3.2.1",
     "firebase-admin": "13.10.0",
     "firebase-functions": "^7.2.5",

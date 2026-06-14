@@ -22,11 +22,11 @@ import type {
 
 const PROVIDER_VALUES: ReadonlySet<string> = new Set(SUPPORTED_PROVIDERS);
 
-export type TimestampWithToMillis = {
+type TimestampWithToMillis = {
   toMillis: () => number;
 };
 
-export type TimestampWithToDate = {
+type TimestampWithToDate = {
   toDate: () => Date;
 };
 
@@ -38,11 +38,7 @@ export function recordOrUndefined(value: unknown): Record<string, unknown> | und
   return isRecord(value) ? value : undefined;
 }
 
-export function recordEntries(value: unknown): Array<[string, unknown]> {
-  return isRecord(value) ? Object.entries(value) : [];
-}
-
-export function isProvider(value: unknown): value is Provider {
+function isProvider(value: unknown): value is Provider {
   return typeof value === "string" && PROVIDER_VALUES.has(value);
 }
 
@@ -85,10 +81,6 @@ export function errorMessage(error: unknown): string {
 
 export function jsonObject(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
-}
-
-export function stripUndefinedRecord(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function isCredentialKind(value: unknown): value is ProviderAccountDoc["credentialKind"] {
@@ -259,6 +251,7 @@ export function parseEntitlementBindingDoc(raw: unknown): EntitlementBindingDoc 
   if (
     typeof raw.id !== "string" ||
     typeof raw.uid !== "string" ||
+    typeof raw.appAccountToken !== "string" ||
     typeof raw.productID !== "string" ||
     typeof raw.createdAt !== "string" ||
     typeof raw.schemaVersion !== "number"
@@ -268,6 +261,7 @@ export function parseEntitlementBindingDoc(raw: unknown): EntitlementBindingDoc 
   return {
     id: raw.id,
     uid: raw.uid,
+    appAccountToken: raw.appAccountToken,
     productID: raw.productID,
     createdAt: raw.createdAt,
     schemaVersion: raw.schemaVersion,
@@ -406,8 +400,18 @@ export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
     return undefined;
   }
   const schemaVersion = typeof raw.schemaVersion === "number" ? raw.schemaVersion : 1;
+  const recordedAt =
+    typeof raw.recordedAt === "string"
+      ? raw.recordedAt
+      : typeof raw.timestamp === "string"
+        ? raw.timestamp
+        : typeof raw.createdAt === "string"
+          ? raw.createdAt
+          : undefined;
+  if (!recordedAt) return undefined;
   const doc: UsageEventDoc = {
     provider: raw.provider,
+    recordedAt,
     schemaVersion,
   };
   if (typeof raw.providerID === "string") doc.providerID = raw.providerID;
@@ -481,12 +485,6 @@ export function numberField(raw: unknown, key: string): number | undefined {
 export function stringField(raw: unknown, key: string): string | undefined {
   const value = recordField(raw, key);
   return typeof value === "string" ? value : undefined;
-}
-
-export function recordArrayField(raw: unknown, key: string): Array<Record<string, unknown>> {
-  const value = recordField(raw, key);
-  if (!Array.isArray(value)) return [];
-  return value.filter(isRecord);
 }
 
 export function isStripeSubscription(value: unknown): value is import("stripe").Stripe.Subscription {

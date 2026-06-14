@@ -254,6 +254,7 @@ function usageEvent(sessionId: string, tokens = 10): UsageEventDoc {
     outputTokens: 0,
     totalTokens: tokens,
     cost: 0.001,
+    recordedAt: NOW_ISO,
     startTime: NOW_ISO,
   };
 }

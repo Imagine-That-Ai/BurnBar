@@ -262,16 +262,3 @@ export async function destroyCredential(secretVersionName: string): Promise<void
   await sm.projects.secrets.versions.destroy({ name: secretVersionName });
 }
 
-/**
- * Build the initial secret version name given a uid and provider.
- * Used when we know the version is "1" on first write.
- *
- * @param uid - Firebase Auth UID.
- * @param provider - Provider key.
- * @param accountID - Optional provider account ID for multi-account secrets.
- * @returns Secret version resource name.
- */
-export function initialSecretVersionName(uid: string, provider: string, accountID?: string): string {
-  const { projectId } = getConfig();
-  return `projects/${projectId}/secrets/${secretIdFor(uid, provider, accountID)}/versions/1`;
-}

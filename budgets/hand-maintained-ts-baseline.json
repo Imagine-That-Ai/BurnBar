@@ -1,7 +1,7 @@
 {
-  "loc": 3265,
-  "exportedInterfaces": 372,
+  "loc": 3226,
+  "exportedInterfaces": 348,
   "fileCount": 190,
-  "generatedAt": "2026-06-13T22:10:00.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3232 -> 3265 on 2026-06-13 after Swarm 6 usage-quota legacy mirror field alignment (canon fields added to UsageEventDoc/QuotaSnapshotDoc/QuotaBucket). Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
+  "generatedAt": "2026-06-14T03:41:00.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3265 -> 3226 on 2026-06-14 after Swarm 6 knownDrift zero + dead-code burn. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
 }

@@ -81,33 +81,52 @@ export function sentryStatus(): { enabled: boolean; environment: string } {
 
 export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   if (event.request) {
-    const request = event.request as ErrorEvent["request"] & Record<string, unknown>;
-    request.url = typeof request.url === "string" ? redactURLSecrets(request.url) : request.url;
-    delete request.data;
-    delete request.cookies;
-    delete request.env;
-    delete request.query_string;
-    if (request.headers && isRecord(request.headers)) {
-      request.headers = sanitizeHeaders(request.headers);
-    }
+    scrubSentryRequest(event.request);
   }
 
   if (event.extra) {
-    event.extra = sanitizeSentryValue(event.extra) as ErrorEvent["extra"];
+    event.extra = sanitizeSentryExtra(event.extra);
   }
   if (event.contexts) {
-    event.contexts = sanitizeSentryValue(event.contexts) as ErrorEvent["contexts"];
+    event.contexts = sanitizeSentryContexts(event.contexts);
   }
   if (event.breadcrumbs) {
     event.breadcrumbs = event.breadcrumbs.map((breadcrumb) => {
       if (breadcrumb.data) {
-        breadcrumb.data = sanitizeSentryValue(breadcrumb.data) as Breadcrumb["data"];
+        breadcrumb.data = sanitizeBreadcrumbData(breadcrumb.data);
       }
       return breadcrumb;
     });
   }
 
   return event;
+}
+
+function scrubSentryRequest(request: NonNullable<ErrorEvent["request"]>): void {
+  if (typeof request.url === "string") {
+    request.url = redactURLSecrets(request.url);
+  }
+  delete request.data;
+  delete request.cookies;
+  delete request.env;
+  delete request.query_string;
+  if (request.headers && isRecord(request.headers)) {
+    request.headers = sanitizeHeaders(request.headers);
+  }
+}
+
+function sanitizeSentryExtra(extra: NonNullable<ErrorEvent["extra"]>): ErrorEvent["extra"] {
+  return sanitizeSentryValue(extra);
+}
+
+function sanitizeSentryContexts(
+  contexts: NonNullable<ErrorEvent["contexts"]>,
+): ErrorEvent["contexts"] {
+  return sanitizeSentryValue(contexts);
+}
+
+function sanitizeBreadcrumbData(data: NonNullable<Breadcrumb["data"]>): Breadcrumb["data"] {
+  return sanitizeSentryValue(data);
 }
 
 function sanitizeHeaders(headers: Record<string, unknown>) {
@@ -118,15 +137,15 @@ function sanitizeHeaders(headers: Record<string, unknown>) {
   return sanitized;
 }
 
-function sanitizeSentryValue(value: unknown, depth = 0): unknown {
+function sanitizeSentryValue<T>(value: T, depth = 0): T {
   if (depth > 8) {
-    return "[MaxDepth]";
+    return "[MaxDepth]" as T;
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeSentryValue(entry, depth + 1));
+    return value.map((entry) => sanitizeSentryValue(entry, depth + 1)) as T;
   }
   if (!isRecord(value)) {
-    return typeof value === "string" ? redactURLSecrets(value) : value;
+    return (typeof value === "string" ? redactURLSecrets(value) : value) as T;
   }
 
   const sanitized: Record<string, unknown> = {};
@@ -137,7 +156,7 @@ function sanitizeSentryValue(value: unknown, depth = 0): unknown {
       sanitized[key] = sanitizeSentryValue(child, depth + 1);
     }
   }
-  return sanitized;
+  return sanitized as T;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
