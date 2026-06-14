@@ -100,3 +100,8 @@ GTMMasterPlan.MD
 OpenBurnBar SOTA Remediation Plan.md
 plans/2026-05-30-sota-security-remediation.md
 plans/2026-06-01-sota-10-10-security-remediation.md
+
+# Firebase/GCP security-evidence snapshots — committed by mistake (PR #389 removed from HEAD).
+# IAM policy + owner email + service-account ids + Secret-Manager resource names (recon).
+security/evidence/firebase-security-evidence-latest.json
+security/evidence/firebase-security-evidence-*.json

@@ -36,6 +36,7 @@ export interface OpenBurnBarControllerDependencies {
   client: OpenBurnBarDaemonClientLike;
   repairService: OpenBurnBarRepairServiceLike;
   workspaceClient: OpenBurnBarWorkspaceRpcClientLike;
+  alertDaemonUnreachable?: (socketPath: string) => void;
 }
 
 export interface OpenBurnBarControllerOptions {
@@ -45,7 +46,7 @@ export interface OpenBurnBarControllerOptions {
   supportedProtocolVersions?: number[];
 }
 
-export interface BurnBarStartRunOptions {
+interface BurnBarStartRunOptions {
   prompt: string;
   modelID: string;
   metadata?: Record<string, BurnBarJSONValue>;
@@ -89,6 +90,7 @@ export class OpenBurnBarExtensionController {
   private disposed = false;
   private toolLoopRunning = false;
   private toolLoopRequested = false;
+  private daemonUnreachableAlerted = false;
   private refreshQueue: Promise<void> = Promise.resolve();
   private state: OpenBurnBarState = {
     connectionStatus: 'connecting',
@@ -160,6 +162,7 @@ export class OpenBurnBarExtensionController {
 
     try {
       const health = await this.dependencies.client.health();
+      this.daemonUnreachableAlerted = false;
       let lastError: string | undefined;
       let runError: string | undefined;
       let clientAttached = false;
@@ -238,6 +241,11 @@ export class OpenBurnBarExtensionController {
       await this.refreshSelectedRunDetail();
       this.requestToolLoop();
     } catch (error) {
+      const lastError = error instanceof Error ? error.message : 'Unable to reach the OpenBurnBar daemon.';
+      if (!this.daemonUnreachableAlerted) {
+        this.daemonUnreachableAlerted = true;
+        this.dependencies.alertDaemonUnreachable?.(daemonSocketContext(lastError, this.state.health?.socketPath));
+      }
       this.patchState({
         connectionStatus: 'disconnected',
         clientAttached: false,
@@ -248,7 +256,7 @@ export class OpenBurnBarExtensionController {
         selectedRunDetail: undefined,
         recentUsage: [],
         catalog: undefined,
-        lastError: error instanceof Error ? error.message : 'Unable to reach the OpenBurnBar daemon.',
+        lastError,
         runError: undefined,
         lastUpdatedAt: new Date().toISOString()
       });
@@ -840,6 +848,14 @@ export class OpenBurnBarExtensionController {
     this.state = nextState;
     this.eventEmitter.fire();
   }
+}
+
+function daemonSocketContext(errorMessage: string, currentSocketPath?: string | null): string {
+  if (currentSocketPath) {
+    return currentSocketPath;
+  }
+  const match = /\bon ([^:]+):\s/u.exec(errorMessage);
+  return match?.[1] ?? 'local OpenBurnBar daemon socket';
 }
 
 function toBurnBarTimestamp(date = new Date()): number {

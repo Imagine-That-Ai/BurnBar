@@ -202,15 +202,15 @@ final class OpenBurnBarDaemonUsageSyncService {
             return BurnBarProviderConfigurationSnapshot(providers: [])
         }
 
-        guard let data = try? Data(contentsOf: paths.providerConfigURL) else {
+        guard let data = try? Data(contentsOf: paths.providerConfigURL) else { // try?-ok(best-effort config read)
             return BurnBarProviderConfigurationSnapshot(providers: [])
         }
 
-        if let directSnapshot = try? decoder.decode(BurnBarProviderConfigurationSnapshot.self, from: data) {
+        if let directSnapshot = try? decoder.decode(BurnBarProviderConfigurationSnapshot.self, from: data) { // try?-ok(optional snapshot decode)
             return directSnapshot
         }
 
-        guard let snapshot = try? decoder.decode(StoredProviderConfigurationSnapshot.self, from: data) else {
+        guard let snapshot = try? decoder.decode(StoredProviderConfigurationSnapshot.self, from: data) else { // try?-ok(optional legacy decode)
             return BurnBarProviderConfigurationSnapshot(providers: [])
         }
 
@@ -268,13 +268,14 @@ final class OpenBurnBarDaemonUsageSyncService {
             return []
         }
 
-        guard let fileContents = try? String(contentsOf: paths.usageLedgerURL, encoding: .utf8) else {
+        guard let fileContents = try? String(contentsOf: paths.usageLedgerURL, encoding: .utf8) else { // try?-ok(best-effort ledger read)
             return []
         }
 
         return fileContents
             .split(whereSeparator: \.isNewline)
             .compactMap { line in
+                // try?-ok(optional usage parse)
                 try? decoder.decode(StoredUsageRecord.self, from: Data(line.utf8))
             }
     }

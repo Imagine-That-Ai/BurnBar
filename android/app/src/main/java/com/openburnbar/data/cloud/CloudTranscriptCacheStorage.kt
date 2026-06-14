@@ -13,14 +13,12 @@ internal object CloudTranscriptCacheStorage {
     fun blobFile(context: Context, storagePath: String, bodyHash: String, bodyHashVersion: Int): File =
         File(directory(context), "${cacheKey(storagePath, bodyHash, bodyHashVersion)}.json")
 
-    fun cacheFiles(context: Context): List<File> =
-        directory(context).listFiles()?.filter { it.isFile && it.extension == "json" } ?: emptyList()
+    fun cacheFiles(context: Context): List<File> = directory(context).listFiles()?.filter { it.isFile && it.extension == "json" } ?: emptyList()
 
     fun cacheKey(storagePath: String, bodyHash: String, bodyHashVersion: Int): String =
         sha256Hex("$storagePath\n$bodyHash\n$bodyHashVersion".toByteArray(Charsets.UTF_8))
 
-    fun sha256Hex(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
-            "%02x".format(it.toInt() and BYTE_MASK)
-        }
+    fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+        "%02x".format(it.toInt() and BYTE_MASK)
+    }
 }

@@ -131,13 +131,7 @@ private fun SimpleAuthErrorBanner(authError: com.openburnbar.data.stores.AuthErr
 }
 
 @Composable
-private fun SimpleAuthSignInCard(
-    isDark: Boolean,
-    isSigningIn: Boolean,
-    onGoogleSignIn: () -> Unit,
-    onAppleSignIn: () -> Unit,
-    onAnonymousSignIn: () -> Unit,
-) {
+private fun SimpleAuthSignInCard(isDark: Boolean, isSigningIn: Boolean, onGoogleSignIn: () -> Unit, onAppleSignIn: () -> Unit, onAnonymousSignIn: () -> Unit) {
     val cardColor = if (isDark) Color(0xFF1C1C1E) else Color.White
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -216,9 +210,8 @@ internal fun SocialAuthButton(text: String, icon: String, iconBg: Color, onClick
     }
 }
 
-private fun simpleAuthBackgroundBrush(isDark: Boolean): Brush =
-    if (isDark) {
-        Brush.verticalGradient(listOf(Color(0xFF0D0D0D), Color(0xFF1A1A2E), Color(0xFF16213E)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFFF8F9FA), Color(0xFFE8ECEF), Color(0xFFD5DDE5)))
-    }
+private fun simpleAuthBackgroundBrush(isDark: Boolean): Brush = if (isDark) {
+    Brush.verticalGradient(listOf(Color(0xFF0D0D0D), Color(0xFF1A1A2E), Color(0xFF16213E)))
+} else {
+    Brush.verticalGradient(listOf(Color(0xFFF8F9FA), Color(0xFFE8ECEF), Color(0xFFD5DDE5)))
+}

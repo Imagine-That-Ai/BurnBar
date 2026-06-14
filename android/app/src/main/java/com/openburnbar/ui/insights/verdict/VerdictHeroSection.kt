@@ -148,11 +148,7 @@ private fun VerdictHeroHeadline(verdict: InsightVerdict) {
 }
 
 @Composable
-private fun VerdictHeroBullets(
-    bullets: List<VerdictBullet>,
-    onCitationTap: (InsightCitation) -> Unit,
-    onAcceptAction: (VerdictAcceptAction) -> Unit,
-) {
+private fun VerdictHeroBullets(bullets: List<VerdictBullet>, onCitationTap: (InsightCitation) -> Unit, onAcceptAction: (VerdictAcceptAction) -> Unit) {
     if (bullets.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         bullets.forEach { bullet ->

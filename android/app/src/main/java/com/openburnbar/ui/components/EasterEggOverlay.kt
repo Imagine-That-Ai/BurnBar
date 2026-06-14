@@ -105,6 +105,7 @@ class EasterEggController internal constructor() {
     // the guard let boundaries clobber an in-flight summon a frame later).
     internal var boundaryEpoch by mutableStateOf(0)
         private set
+
     @Volatile internal var queuedBoundarySide: EdgeSide = EdgeSide.TOP
 
     // Direction-reversal ring: timestamps (ms) of recent scroll-direction flips.
@@ -116,6 +117,7 @@ class EasterEggController internal constructor() {
     // Appearance + reduce-motion are pushed in from composition each frame so the
     // scroll-thread callback can pick the right egg without reading composition.
     @Volatile internal var isDark = true
+
     @Volatile internal var reduceMotion = false
 
     internal val nestedScrollConnection: NestedScrollConnection =
@@ -131,8 +133,9 @@ class EasterEggController internal constructor() {
                 // Positive leftover = pulled past the TOP, negative = past the BOTTOM —
                 // the Android analog of the web's atTop()/atBottom() + push-further test.
                 if (source == NestedScrollSource.UserInput && available.y != 0f) {
-                    if (available.y > BOUNDARY_THRESHOLD) requestBoundary(EdgeSide.TOP)
-                    else if (available.y < -BOUNDARY_THRESHOLD) requestBoundary(EdgeSide.BOTTOM)
+                    if (available.y > BOUNDARY_THRESHOLD) {
+                        requestBoundary(EdgeSide.TOP)
+                    } else if (available.y < -BOUNDARY_THRESHOLD) requestBoundary(EdgeSide.BOTTOM)
                 }
                 return Offset.Zero
             }
@@ -306,8 +309,12 @@ private class EggAssets(private val context: Context) {
         if (logoIds.size <= crestIds.size + 1) {
             // No providers enabled — still give the storm brand variety.
             listOf(
-                R.drawable.logo_anthropic, R.drawable.logo_open_ai, R.drawable.logo_gemini_cli,
-                R.drawable.logo_claude_code, R.drawable.logo_codex, R.drawable.logo_deep_seek,
+                R.drawable.logo_anthropic,
+                R.drawable.logo_open_ai,
+                R.drawable.logo_gemini_cli,
+                R.drawable.logo_claude_code,
+                R.drawable.logo_codex,
+                R.drawable.logo_deep_seek,
             ).forEach { logoIds.add(it) }
         }
         val logos =
@@ -318,13 +325,12 @@ private class EggAssets(private val context: Context) {
         return bundle
     }
 
-    private fun decode(@DrawableRes id: Int): ImageBitmap? =
-        try {
-            val opts = BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888 }
-            BitmapFactory.decodeResource(context.resources, id, opts)?.asImageBitmap()
-        } catch (_: Throwable) {
-            null
-        }
+    private fun decode(@DrawableRes id: Int): ImageBitmap? = try {
+        val opts = BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888 }
+        BitmapFactory.decodeResource(context.resources, id, opts)?.asImageBitmap()
+    } catch (_: Throwable) {
+        null
+    }
 
     private companion object {
         const val PROVIDER_CAP = 14 // spec: ~14 provider glyphs alongside the 2 crests → ≈16
@@ -395,31 +401,45 @@ private class FxEngine {
     // ── particles ────────────────────────────────────────────────────────────
     private class Spark(
         var li: Int = 0,
-        var x: Double = 0.0, var y: Double = 0.0,
-        var vx: Double = 0.0, var vy: Double = 0.0,
+        var x: Double = 0.0,
+        var y: Double = 0.0,
+        var vx: Double = 0.0,
+        var vy: Double = 0.0,
         var size: Double = 0.0,
-        var rot: Double = 0.0, var vr: Double = 0.0,
+        var rot: Double = 0.0,
+        var vr: Double = 0.0,
         var tw: Double = 0.0,
-        var hasTarget: Boolean = false, var tx: Double = 0.0, var ty: Double = 0.0,
+        var hasTarget: Boolean = false,
+        var tx: Double = 0.0,
+        var ty: Double = 0.0,
     )
 
     private class Cloud(
-        var x: Double = 0.0, var y: Double = 0.0,
-        var wid: Double = 0.0, var vx: Double = 0.0,
-        var crest: Int = 0, var seed: Double = 0.0,
+        var x: Double = 0.0,
+        var y: Double = 0.0,
+        var wid: Double = 0.0,
+        var vx: Double = 0.0,
+        var crest: Int = 0,
+        var seed: Double = 0.0,
     )
 
     /** A coin used by BOTH the rain and the boundary pop (shared edge-flip rendering). */
     private class Token(
-        var x: Double = 0.0, var y: Double = 0.0,
-        var vx: Double = 0.0, var vy: Double = 0.0,
+        var x: Double = 0.0,
+        var y: Double = 0.0,
+        var vx: Double = 0.0,
+        var vy: Double = 0.0,
         var r: Double = 0.0,
         var gold: Boolean = true,
-        var flip: Double = 0.0, var vflip: Double = 0.0,
-        var tilt: Double = 0.0, var vtilt: Double = 0.0,
+        var flip: Double = 0.0,
+        var vflip: Double = 0.0,
+        var tilt: Double = 0.0,
+        var vtilt: Double = 0.0,
         var rest: Int = 0,
         // Boundary-pop only:
-        var g: Double = 0.0, var t: Double = 0.0, var ballistic: Boolean = false,
+        var g: Double = 0.0,
+        var t: Double = 0.0,
+        var ballistic: Boolean = false,
     )
 
     // ── lifecycle entry points (called from composition) ─────────────────────
@@ -462,7 +482,10 @@ private class FxEngine {
         if (nowMs == 0.0) nowMs = System.nanoTime() / 1_000_000.0
 
         // Drain a queued boundary pop now that w/h are known.
-        pendingPop?.let { side -> spawnBoundary(side); pendingPop = null }
+        pendingPop?.let { side ->
+            spawnBoundary(side)
+            pendingPop = null
+        }
 
         when (mode) {
             FxMode.STORM -> updateStorm(scope)
@@ -485,9 +508,11 @@ private class FxEngine {
             sparks.add(
                 Spark(
                     li = (stormRng.nextDouble() * logos.size).toInt().coerceIn(0, logos.size - 1),
-                    x = rand(stormRng, 0.0, w), y = rand(stormRng, 0.0, h),
+                    x = rand(stormRng, 0.0, w),
+                    y = rand(stormRng, 0.0, h),
                     size = rand(stormRng, 22.0, 48.0),
-                    rot = rand(stormRng, -0.5, 0.5), vr = rand(stormRng, -2.0, 2.0),
+                    rot = rand(stormRng, -0.5, 0.5),
+                    vr = rand(stormRng, -2.0, 2.0),
                     tw = rand(stormRng, 0.0, 6.28),
                 ),
             )
@@ -515,7 +540,10 @@ private class FxEngine {
 
     private fun toShape(text: String) {
         val pts = samplePoints(text)
-        if (pts.isEmpty()) { burstAll(); return }
+        if (pts.isEmpty()) {
+            burstAll()
+            return
+        }
         val n = sparks.size
         val use: List<DoubleArray> =
             if (pts.size > n) {
@@ -686,8 +714,16 @@ private class FxEngine {
             t.flip += t.vflip * dt
             t.tilt += t.vtilt * dt
             // Side walls.
-            if (t.x < t.r) { t.x = t.r; t.vx = kotlin.math.abs(t.vx) * 0.5; t.vflip *= 0.85 }
-            if (t.x > w - t.r) { t.x = w - t.r; t.vx = -kotlin.math.abs(t.vx) * 0.5; t.vflip *= 0.85 }
+            if (t.x < t.r) {
+                t.x = t.r
+                t.vx = kotlin.math.abs(t.vx) * 0.5
+                t.vflip *= 0.85
+            }
+            if (t.x > w - t.r) {
+                t.x = w - t.r
+                t.vx = -kotlin.math.abs(t.vx) * 0.5
+                t.vflip *= 0.85
+            }
             // Ledges (top band only, while falling).
             if (t.vy > 0.0) {
                 for (R in ledges) {
@@ -734,7 +770,8 @@ private class FxEngine {
                     x = ((k + 0.5) / 10.0) * w + rand(popRng, -14.0, 14.0),
                     y = y0,
                     vy = dir * rand(popRng, 280.0, 460.0),
-                    g = -dir * 1150.0, // reverse gravity: arcs out, returns to its edge
+                    // reverse gravity: arcs out, returns to its edge
+                    g = -dir * 1150.0,
                     r = rand(popRng, 5.0, 9.0),
                     gold = popRng.nextDouble() < 0.5,
                     flip = rand(popRng, 0.0, 6.28),
@@ -767,6 +804,7 @@ private class FxEngine {
     private companion object {
         const val SPARK_COUNT = 96
         const val CLOUD_COUNT = 7
+
         // Phase timeline offsets (ms) from fxStart and whether each is a burst.
         val PHASE_AT = doubleArrayOf(0.0, 1050.0, 2250.0, 3050.0, 4200.0)
         val PHASE_IS_BURST = booleanArrayOf(true, false, true, false, true)
@@ -840,8 +878,10 @@ private fun puffPath(x: Double, y: Double, w: Double, h: Double): androidx.compo
     fun lobe(ox: Double, oy: Double, r: Double) {
         path.addOval(
             androidx.compose.ui.geometry.Rect(
-                (x + ox - r).toFloat(), (y + oy - r).toFloat(),
-                (x + ox + r).toFloat(), (y + oy + r).toFloat(),
+                (x + ox - r).toFloat(),
+                (y + oy - r).toFloat(),
+                (x + ox + r).toFloat(),
+                (y + oy + r).toFloat(),
             ),
         )
     }
@@ -851,8 +891,10 @@ private fun puffPath(x: Double, y: Double, w: Double, h: Double): androidx.compo
     lobe(0.34 * w, 0.02 * h, 0.54 * h)
     path.addRect(
         androidx.compose.ui.geometry.Rect(
-            (x - 0.46 * w).toFloat(), (y - 2.0).toFloat(),
-            (x - 0.46 * w + 0.92 * w).toFloat(), (y - 2.0 + 0.56 * h).toFloat(),
+            (x - 0.46 * w).toFloat(),
+            (y - 2.0).toFloat(),
+            (x - 0.46 * w + 0.92 * w).toFloat(),
+            (y - 2.0 + 0.56 * h).toFloat(),
         ),
     )
     return path

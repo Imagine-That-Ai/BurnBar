@@ -61,7 +61,7 @@ struct ClaudeCodeOAuthCredentialImporter {
 
         if let configDirectory {
             for url in credentialFileCandidates(configDirectory: configDirectory) {
-                guard let data = try? Data(contentsOf: url) else { continue }
+                guard let data = try? Data(contentsOf: url) else { continue } // try?-ok(skip missing sidecar)
                 guard let credentials = ClaudeCredentialsReader.decode(data) else {
                     sawMalformedPayload = true
                     continue

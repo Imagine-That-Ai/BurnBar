@@ -6,6 +6,8 @@ import FirebaseCore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
 
+// AUDIT(@unchecked Sendable): immutable bridged NSDictionary of untyped callable
+// data. sendable-allowlist: firestore-any-payload
 /// Internal (not `private`) since the per-domain API splits of
 /// `FunctionsRepository` (tech-debt finding-67) call it from their own files.
 struct FirebaseCallablePayload: @unchecked Sendable {
@@ -73,13 +75,15 @@ enum ParsePrimitives {
     /// Reused across every gateway-date parse. `ISO8601DateFormatter` is
     /// thread-safe for `date(from:)`, so a single shared instance is safe even
     /// though this file spans `@MainActor` and `Sendable` types.
-    private static let fractionalISO8601: ISO8601DateFormatter = {
+    private static var fractionalISO8601: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
-    private static let plainISO8601 = ISO8601DateFormatter()
+    // Computed (not stored) so there is no shared mutable `ISO8601DateFormatter`
+    // state; a fresh instance per call is race-free (matches `fractionalISO8601`).
+    private static var plainISO8601: ISO8601DateFormatter { ISO8601DateFormatter() }
 
     /// Coerce a JSON-bridged value into a non-empty `String`, tolerating the
     /// `NSString`/`NSNumber` forms that Firebase callable payloads surface.
@@ -104,6 +108,8 @@ enum ParsePrimitives {
     }
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase HTTPSCallable; the SDK
+// is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 /// Internal (not `private`) since the per-domain API splits of
 /// `FunctionsRepository` (tech-debt finding-67) call it from their own files.
 final class FirebaseCallableExecutor: @unchecked Sendable {
@@ -157,7 +163,7 @@ final class FirebaseCallableExecutor: @unchecked Sendable {
     /// context (rather than swallowing it) when the cloud response is malformed.
     static func decodeResponse<Res: Decodable>(_ type: Res.Type, from raw: Any?) throws -> Res {
         guard let object = raw as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(object) as? [String: Any] else {
+              let sanitized = FirestoreRepository.sanitizeForJSON(object) as? [String: Any] else {
             throw FunctionsError.responseDecodingFailed(
                 "Cloud response for \(Res.self) was not a JSON object."
             )

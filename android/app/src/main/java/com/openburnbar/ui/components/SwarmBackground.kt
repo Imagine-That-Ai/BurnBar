@@ -1,12 +1,12 @@
 // generated-by: scripts/generate-swarm-background (bitmap coordinate tables)
 
 package com.openburnbar.ui.components
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.PowerManager
-import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -1022,14 +1022,22 @@ internal class SwarmSimulation(
         if (uiMode == UIMode.COOKING) {
             val fruityColors =
                 listOf(
-                    Color(0xFFFF2A6D), // Dragonfruit Pink
-                    Color(0xFFFF5E3A), // Tangerine Orange
-                    Color(0xFFFFD700), // Honey Mango Yellow
-                    Color(0xFF2ECC71), // Mint Basil Green
-                    Color(0xFF00F5FF), // Electric Blueberry Blue
-                    Color(0xFF9B59B6), // Fig Plum Purple
-                    Color(0xFFFF1493), // Strawberry Pink
-                    Color(0xFF7FFF00), // Lime Kiwi Green
+                    // Dragonfruit Pink
+                    Color(0xFFFF2A6D),
+                    // Tangerine Orange
+                    Color(0xFFFF5E3A),
+                    // Honey Mango Yellow
+                    Color(0xFFFFD700),
+                    // Mint Basil Green
+                    Color(0xFF2ECC71),
+                    // Electric Blueberry Blue
+                    Color(0xFF00F5FF),
+                    // Fig Plum Purple
+                    Color(0xFF9B59B6),
+                    // Strawberry Pink
+                    Color(0xFFFF1493),
+                    // Lime Kiwi Green
+                    Color(0xFF7FFF00),
                 )
             val idx = (p.colorIndex * fruityColors.size).toInt().coerceIn(0, fruityColors.size - 1)
             val baseColor = fruityColors[idx]
@@ -2032,6 +2040,9 @@ internal class SwarmSimulation(
         return pts
     }
 
+    // Embedded Ollama-logo coordinate table (rest of this file stays enforced).
+    // reason: a single long numeric data row that cannot be meaningfully line-wrapped.
+    @Suppress("ktlint:standard:max-line-length")
     private fun generateOllamaLogoPoints(): List<ShapePoint> {
         val coords =
             doubleArrayOf(

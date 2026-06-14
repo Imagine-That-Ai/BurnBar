@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import OpenBurnBarCore
 
 // MARK: - SettingsManagerProtocol
@@ -23,9 +22,6 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
 
     /// Current appearance mode (system, light, dark).
     var appearanceMode: AppearanceMode { get set }
-
-    /// Derived SwiftUI color scheme from appearance mode.
-    var preferredSwiftUIColorScheme: ColorScheme? { get }
 
     /// Provider glyphs enabled in the desktop swarm wallpaper logo cycle.
     var desktopWallpaperProviderGlyphs: [AgentProvider] { get set }
@@ -380,4 +376,7 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
 
 // MARK: - SettingsManager Extension
 
-extension SettingsManager: SettingsManagerProtocol, @unchecked Sendable {}
+// `SettingsManager` is `@MainActor @Observable`, so it is already `Sendable` by
+// main-actor isolation — no `@unchecked` escape hatch is needed for the protocol
+// conformance.
+extension SettingsManager: SettingsManagerProtocol {}

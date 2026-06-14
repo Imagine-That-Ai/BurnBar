@@ -151,20 +151,19 @@ internal fun TokenUsage.pulseEventTimeMillis(): Long {
     return 0L
 }
 
-internal fun domainFor(scope: PulseTimelineScope, nowMillis: Long): Pair<Long, Long> =
-    when (scope) {
-        PulseTimelineScope.MINUTE -> nowMillis - 60_000L to nowMillis
-        PulseTimelineScope.HOUR -> nowMillis - 3_600_000L to nowMillis
-        PulseTimelineScope.DAY -> nowMillis - 86_400_000L to nowMillis
-        PulseTimelineScope.WEEK -> {
-            val start = startOfLocalPulseDayMillis(nowMillis) - 6L * 86_400_000L
-            start to nowMillis
-        }
-        PulseTimelineScope.MONTH -> {
-            val start = startOfLocalPulseDayMillis(nowMillis) - 29L * 86_400_000L
-            start to nowMillis
-        }
+internal fun domainFor(scope: PulseTimelineScope, nowMillis: Long): Pair<Long, Long> = when (scope) {
+    PulseTimelineScope.MINUTE -> nowMillis - 60_000L to nowMillis
+    PulseTimelineScope.HOUR -> nowMillis - 3_600_000L to nowMillis
+    PulseTimelineScope.DAY -> nowMillis - 86_400_000L to nowMillis
+    PulseTimelineScope.WEEK -> {
+        val start = startOfLocalPulseDayMillis(nowMillis) - 6L * 86_400_000L
+        start to nowMillis
     }
+    PulseTimelineScope.MONTH -> {
+        val start = startOfLocalPulseDayMillis(nowMillis) - 29L * 86_400_000L
+        start to nowMillis
+    }
+}
 
 internal fun buildLiveSamples(
     usages: List<com.openburnbar.data.models.TokenUsage>,
@@ -231,11 +230,10 @@ internal fun buildAggregateSamples(dailyPoints: Map<String, Double>, domain: Pai
     return out
 }
 
-internal fun emptyMessage(scope: PulseTimelineScope): String =
-    when (scope) {
-        PulseTimelineScope.MINUTE -> "AWAITING THIS MINUTE'S BURN"
-        PulseTimelineScope.HOUR -> "AWAITING THIS HOUR'S BURN"
-        PulseTimelineScope.DAY -> "NO BURN IN LAST 24H"
-        PulseTimelineScope.WEEK -> "NO DATA THIS WEEK YET"
-        PulseTimelineScope.MONTH -> "NO DATA THIS MONTH YET"
-    }
+internal fun emptyMessage(scope: PulseTimelineScope): String = when (scope) {
+    PulseTimelineScope.MINUTE -> "AWAITING THIS MINUTE'S BURN"
+    PulseTimelineScope.HOUR -> "AWAITING THIS HOUR'S BURN"
+    PulseTimelineScope.DAY -> "NO BURN IN LAST 24H"
+    PulseTimelineScope.WEEK -> "NO DATA THIS WEEK YET"
+    PulseTimelineScope.MONTH -> "NO DATA THIS MONTH YET"
+}

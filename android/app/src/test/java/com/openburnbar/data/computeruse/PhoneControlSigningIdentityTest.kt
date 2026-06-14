@@ -39,7 +39,7 @@ class PhoneControlSigningIdentityTest {
         val generator = KeyPairGenerator.getInstance("EC")
         generator.initialize(ECGenParameterSpec("secp256r1"))
         val pair = generator.generateKeyPair()
-        return PhoneControlSigningIdentity.SecureEnclaveP256(pair.private, pair.public as ECPublicKey)
+        return PhoneControlSigningIdentity.SecureEnclaveP256(pair.private, pair.public as? ECPublicKey ?: error("expected EC public key"))
     }
 
     private fun tapIntent() = PhoneControlIntent(

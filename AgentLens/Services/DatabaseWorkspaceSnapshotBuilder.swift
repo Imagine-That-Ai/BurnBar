@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 // MARK: - Database Workspace Types
 

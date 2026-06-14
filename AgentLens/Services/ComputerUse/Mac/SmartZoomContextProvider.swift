@@ -296,7 +296,7 @@ public struct SystemSmartZoomClock: SmartZoomClock {
     public init() {}
     public func sleep(for seconds: TimeInterval) async {
         let nanoseconds = UInt64(max(0, seconds) * 1_000_000_000)
-        try? await Task.sleep(nanoseconds: nanoseconds)
+        try? await Task.sleep(nanoseconds: nanoseconds) // try?-ok(sleep cancellation only)
     }
 }
 

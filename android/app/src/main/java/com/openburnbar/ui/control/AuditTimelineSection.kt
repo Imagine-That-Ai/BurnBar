@@ -55,7 +55,7 @@ internal fun AuditTimelineSection(
     modifier: Modifier = Modifier,
 ) {
     AuroraGlassCard(modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Access audit",
@@ -97,7 +97,7 @@ internal fun AuditTimelineSection(
                     Modifier
                         .fillMaxWidth()
                         .clickable(enabled = !loading) { onLoadMore() }
-                        .padding(vertical = AuroraSpacing.sm.dp),
+                        .padding(vertical = AuroraSpacing.SM.dp),
                 )
             }
         }
@@ -120,13 +120,13 @@ private fun VerificationBanner(verification: AuditVerification) {
         modifier =
         Modifier
             .fillMaxWidth()
-            .background(color.copy(alpha = 0.10f), RoundedCornerShape(AuroraRadius.md.dp))
-            .border(0.75.dp, color.copy(alpha = 0.4f), RoundedCornerShape(AuroraRadius.md.dp))
-            .padding(AuroraSpacing.md.dp),
+            .background(color.copy(alpha = 0.10f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .border(0.75.dp, color.copy(alpha = 0.4f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .padding(AuroraSpacing.MD.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = color)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(text, style = AuroraType.caption, color = color)
     }
 }
@@ -138,14 +138,14 @@ private fun AuditRow(event: AuditEvent) {
             Box(modifier = Modifier.size(8.dp).background(PensieveControlTokens.mercuryDeep, CircleShape))
             Box(modifier = Modifier.width(1.dp).height(28.dp).background(PensieveControlTokens.glassLine))
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 "${event.actor} · ${event.action}",
                 style = AuroraType.body.copy(fontWeight = FontWeight.Medium),
                 color = PensieveControlTokens.mercuryBright,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
                 Text(event.domainTitle, style = AuroraType.tiny, color = PensieveControlTokens.textMute)
                 event.ts?.let { Text(formatTimestamp(it), style = AuroraType.tiny, color = PensieveControlTokens.textDim) }
             }
@@ -160,5 +160,4 @@ private fun AuditRow(event: AuditEvent) {
     }
 }
 
-private fun formatTimestamp(ms: Long): String =
-    SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(ms))
+private fun formatTimestamp(ms: Long): String = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(ms))

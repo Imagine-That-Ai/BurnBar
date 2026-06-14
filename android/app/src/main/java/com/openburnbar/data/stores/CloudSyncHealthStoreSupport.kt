@@ -11,9 +11,7 @@ internal data class MacSyncDeviceContext(
     val macDeviceDoc: DocumentSnapshot?,
 )
 
-internal fun resolveMacSyncDeviceContext(
-    macDevice: DocumentSnapshot?,
-): MacSyncDeviceContext? {
+internal fun resolveMacSyncDeviceContext(macDevice: DocumentSnapshot?): MacSyncDeviceContext? {
     val macDeviceId =
         macDevice?.data?.get("deviceId") as? String
             ?: macDevice?.id
@@ -22,19 +20,13 @@ internal fun resolveMacSyncDeviceContext(
     return MacSyncDeviceContext(macDeviceId = macDeviceId, macName = macName, macDeviceDoc = macDevice)
 }
 
-internal fun macDeviceLastActiveMillis(doc: DocumentSnapshot): Long =
-    (
-        (doc.data?.get("lastActiveAt") as? Timestamp)?.toDate()
-            ?: doc.data?.get("lastActiveAt") as? Date
-        )
-        ?.time ?: 0L
+internal fun macDeviceLastActiveMillis(doc: DocumentSnapshot): Long = (
+    (doc.data?.get("lastActiveAt") as? Timestamp)?.toDate()
+        ?: doc.data?.get("lastActiveAt") as? Date
+    )
+    ?.time ?: 0L
 
-internal fun applySyncStatusDocument(
-    data: Map<String, Any?>,
-    macName: String,
-    staleThresholdMs: Long,
-    now: Date = Date(),
-): CloudSyncHealthSnapshot {
+internal fun applySyncStatusDocument(data: Map<String, Any?>, macName: String, staleThresholdMs: Long, now: Date = Date()): CloudSyncHealthSnapshot {
     val publishedAt =
         cloudSyncDateValue(data["lastSyncAt"])
             ?: cloudSyncDateValue(data["lastPublishedAt"])

@@ -55,6 +55,40 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     /// in-process tests and unsigned builds so the socket round-trip still works.
     public static let disabled = BurnBarDaemonPeerAuthenticator(enforced: false)
 
+    /// T-DMN-05: pure, build-mode-aware decision for whether the launch
+    /// environment may disable the first-party code-signature gate.
+    ///
+    /// The peer-codesig-disable env opt-out is a DEBUG-only convenience for
+    /// unsigned developer builds. In release/distribution builds an attacker who
+    /// controls the daemon's launch environment must NOT be able to strip the
+    /// gate, so `resolveEnforcement` ignores the env entirely and always enforces.
+    ///
+    /// `isDebugBuild` is injected so the test target can prove both arms of the
+    /// policy without recompiling under a different configuration. Production
+    /// callers pass the real compile-time value via ``resolveEnforcementForCurrentBuild(environment:)``.
+    public static func resolveEnforcement(
+        environment: [String: String],
+        isDebugBuild: Bool
+    ) -> Bool {
+        guard isDebugBuild else {
+            // Release/distribution: the env opt-out is compiled out — always enforce.
+            return true
+        }
+        let disabled = environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
+            || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
+        return !disabled
+    }
+
+    /// Convenience that binds ``resolveEnforcement(environment:isDebugBuild:)`` to
+    /// this build's compile-time `DEBUG` flag.
+    public static func resolveEnforcementForCurrentBuild(environment: [String: String]) -> Bool {
+        #if DEBUG
+        return resolveEnforcement(environment: environment, isDebugBuild: true)
+        #else
+        return resolveEnforcement(environment: environment, isDebugBuild: false)
+        #endif
+    }
+
     /// Validate the accepted client socket. When enforcement is off this is a
     /// no-op. When on, the peer's audit token must satisfy the first-party
     /// designated requirement; any failure (token unreadable, signature invalid,

@@ -33,6 +33,7 @@ struct MercuryChromeRoot: View {
                     IncomingCallSheet(
                         pairedDeviceName: request.requesterName,
                         initial: String(request.requesterName.prefix(1)).uppercased(),
+                        avatarURL: AccountManager.shared.avatarURL,
                         subtitle: request.requestsAgentTerminal
                             ? "Screen mirror + terminal request"
                             : "Screen mirror request",
@@ -61,6 +62,7 @@ struct MercuryChromeRoot: View {
                     IncomingCallSheet(
                         pairedDeviceName: request.requesterName,
                         initial: String(request.requesterName.prefix(1)).uppercased(),
+                        avatarURL: AccountManager.shared.avatarURL,
                         subtitle: "Mercury call invite",
                         actionNoun: "call invite",
                         onAccept: {

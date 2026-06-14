@@ -25,8 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.openburnbar.MainActivity
 import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
-import com.openburnbar.ui.components.AuroraBadgeTone
 import com.openburnbar.ui.components.AuroraBadge
+import com.openburnbar.ui.components.AuroraBadgeTone
 import com.openburnbar.ui.components.AuroraBottomSheet
 import com.openburnbar.ui.components.AuroraButton
 import com.openburnbar.ui.components.AuroraSparkline
@@ -76,8 +76,8 @@ private fun QuickGlanceContent(onClose: () -> Unit, onOpenDashboard: () -> Unit)
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.lg.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+                .padding(AuroraSpacing.LG.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -115,7 +115,7 @@ private fun QuickGlanceContent(onClose: () -> Unit, onOpenDashboard: () -> Unit)
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                     modifier = Modifier.heightIn(max = RECENT_PROVIDERS_LIST_MAX_HEIGHT_DP.dp),
                 ) {
                     items(snap.recentProviders.take(MAX_RECENT_PROVIDERS_SHOWN)) { provider ->

@@ -99,14 +99,13 @@ private fun List<TrendDataDigest.HourBucket>.toHourlyCompactJsonArray(): JSONArr
     return arr
 }
 
-private fun TrendDataDigest.CacheAggregate.toCompactJsonObject(): JSONObject =
-    JSONObject().apply {
-        put("totalCacheReadTokens", totalCacheReadTokens)
-        put("totalCacheCreationTokens", totalCacheCreationTokens)
-        put("totalInputTokens", totalInputTokens)
-        put("cacheHitRate", round(cacheHitRate, 3))
-        put("estSavingsUsd", round(estSavingsUsd, 3))
-    }
+private fun TrendDataDigest.CacheAggregate.toCompactJsonObject(): JSONObject = JSONObject().apply {
+    put("totalCacheReadTokens", totalCacheReadTokens)
+    put("totalCacheCreationTokens", totalCacheCreationTokens)
+    put("totalInputTokens", totalInputTokens)
+    put("cacheHitRate", round(cacheHitRate, 3))
+    put("estSavingsUsd", round(estSavingsUsd, 3))
+}
 
 internal fun round(v: Double, places: Int): Double {
     val mult = Math.pow(10.0, places.toDouble())

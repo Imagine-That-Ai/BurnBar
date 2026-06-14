@@ -57,7 +57,7 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
  * fleet to re-seal legacy docs; native clients that recorded a lower epoch will
  * re-seal on next sync. Keep in lockstep with the client watermark check.
  */
-export const PRIVACY_RESEAL_EPOCH = 2;
+const PRIVACY_RESEAL_EPOCH = 2;
 const BACKFILL_PAGE_SIZE = 1000;
 
 interface BackfillProgressEvent {
@@ -259,7 +259,7 @@ const ROLLBACK_SNAPSHOT_FIELDS: readonly GatedField[] = [
  * than a constant `true` so the sealed and legacy branches are both test-visible
  * and a future schema change can re-tighten one branch without touching callers.
  */
-export function gatewayRelayedPlaintextStrippable(data: Record<string, unknown>): boolean {
+function gatewayRelayedPlaintextStrippable(data: Record<string, unknown>): boolean {
   const hasRelayEnvelope = Object.prototype.hasOwnProperty.call(data, "relayEnvelope");
   const schemaVersion = typeof data.schemaVersion === "number" ? data.schemaVersion : NaN;
   const isSealed = hasRelayEnvelope || schemaVersion >= HERMES_GATEWAY_SCHEMA_VERSION;
@@ -272,7 +272,7 @@ export function gatewayRelayedPlaintextStrippable(data: Record<string, unknown>)
  * (the sealed gate is satisfied and the field is present). Exported for tests so
  * the safe-by-construction property is asserted without a live Firestore.
  */
-export function gatedDeletions(data: Record<string, unknown>, fields: readonly GatedField[]): string[] {
+function gatedDeletions(data: Record<string, unknown>, fields: readonly GatedField[]): string[] {
   const deletions: string[] = [];
   for (const { field, requires, gatewayRelayed } of fields) {
     if (!Object.prototype.hasOwnProperty.call(data, field)) continue;
@@ -317,7 +317,7 @@ async function sweepCollection(
   fields: readonly GatedField[],
   stats: BackfillStats,
 ): Promise<void> {
-  if (typeof (ref as unknown as { orderBy?: unknown }).orderBy === "function") {
+  if ("orderBy" in ref && typeof ref.orderBy === "function") {
     await sweepCollectionPaginated(ref, fields, stats);
     return;
   }
@@ -420,7 +420,7 @@ async function bumpResealWatermark(firestore: Firestore, uid: string, stats: Bac
 }
 
 /** Run the full idempotent backfill for a single user. */
-export async function backfillUserPrivacy(
+async function backfillUserPrivacy(
   firestore: Firestore,
   uid: string,
   progress?: BackfillProgress,

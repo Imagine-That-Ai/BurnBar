@@ -26,8 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Wallpaper
@@ -74,7 +74,7 @@ internal fun ThemePrefsDivider() {
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     )
 }
 
@@ -93,16 +93,13 @@ internal data class ThemePrefsHaloToggleCallbacks(
 )
 
 @Composable
-internal fun ThemePrefsHaloToggle(
-    model: ThemePrefsHaloToggleModel,
-    callbacks: ThemePrefsHaloToggleCallbacks,
-) {
+internal fun ThemePrefsHaloToggle(model: ThemePrefsHaloToggleModel, callbacks: ThemePrefsHaloToggleCallbacks) {
     val haloColor by animateColorAsState(
         targetValue = if (model.highlighted) Color(0xFFFFA800).copy(alpha = 0.18f) else Color.Transparent,
         animationSpec = tween(durationMillis = 350),
-        label = "theme-prefs-halo"
+        label = "theme-prefs-halo",
     )
-    Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.md.dp)) {
+    Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.MD.dp)) {
         AuroraSettingsToggle(
             icon = model.icon,
             label = model.label,
@@ -124,14 +121,14 @@ internal fun ThemePrefsTopBar(onBack: () -> Unit, useWebsiteBackground: Boolean)
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
             )
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             text = "Theme & SOTA UX",
             style = AuroraType.displayLarge,
-            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -219,18 +216,13 @@ private val backgroundStyleOptions =
  * derived from the chosen style so every other screen keeps working unchanged.
  */
 @Composable
-internal fun ThemePrefsBackgroundStyleSelector(
-    highlighted: Boolean,
-    useWebsiteBackground: Boolean,
-    backgroundStyle: BackgroundStyle,
-    haptic: HapticFeedback,
-) {
+internal fun ThemePrefsBackgroundStyleSelector(highlighted: Boolean, useWebsiteBackground: Boolean, backgroundStyle: BackgroundStyle, haptic: HapticFeedback) {
     val haloColor by animateColorAsState(
         targetValue = if (highlighted) Color(0xFFFFA800).copy(alpha = 0.18f) else Color.Transparent,
         animationSpec = tween(durationMillis = 350),
-        label = "background-style-halo"
+        label = "background-style-halo",
     )
-    Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.md.dp)) {
+    Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.MD.dp)) {
         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Filled.Wallpaper, contentDescription = null, modifier = Modifier.size(22.dp), tint = AuroraColors.hermesMercury)
@@ -253,27 +245,22 @@ internal fun ThemePrefsBackgroundStyleSelector(
 }
 
 @Composable
-private fun ThemePrefsBackgroundStyleCard(
-    option: BackgroundStyleOption,
-    selected: Boolean,
-    useWebsiteBackground: Boolean,
-    haptic: HapticFeedback,
-) {
+private fun ThemePrefsBackgroundStyleCard(option: BackgroundStyleOption, selected: Boolean, useWebsiteBackground: Boolean, haptic: HapticFeedback) {
     val primaryColor = MaterialTheme.colorScheme.primary
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = if (selected) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
         border =
-            if (selected) {
-                androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
-            } else {
-                androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-            },
+        if (selected) {
+            androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
+        } else {
+            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        },
         onClick = {
             GlobalVisualSettings.setBackgroundStyle(option.style)
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
+        },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -307,13 +294,13 @@ internal fun ThemePrefsWallpaperRow(router: SettingsRouter, useWebsiteBackground
     ThemePrefsDivider()
     Surface(
         onClick = { router.page = SettingsPageRoute.WALLPAPER_GENERATOR },
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
-        color = Color.Transparent
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
+        color = Color.Transparent,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Surface(shape = RoundedCornerShape(12.dp), color = AuroraColors.ember.copy(alpha = 0.15f)) {
                 Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
@@ -325,13 +312,13 @@ internal fun ThemePrefsWallpaperRow(router: SettingsRouter, useWebsiteBackground
                 Text(
                     "Create a swarm wallpaper colored by your AI usage",
                     fontSize = 13.sp,
-                    color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(
                 Icons.AutoMirrored.Filled.NavigateNext,
                 contentDescription = "Open",
-                tint = if (useWebsiteBackground) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                tint = if (useWebsiteBackground) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
         }
     }
@@ -345,7 +332,7 @@ internal fun ThemePrefsUIModeSelector(useWebsiteBackground: Boolean, haptic: Hap
         Text(
             text = "UI Mode",
             fontWeight = FontWeight.Bold,
-            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             UIMode.entries.forEach { mode ->
@@ -356,47 +343,62 @@ internal fun ThemePrefsUIModeSelector(useWebsiteBackground: Boolean, haptic: Hap
 }
 
 @Composable
-internal fun RowScope.ThemePrefsUIModeCard(
-    mode: UIMode,
-    activeUiMode: UIMode,
-    useWebsiteBackground: Boolean,
-    haptic: HapticFeedback,
-) {
+internal fun RowScope.ThemePrefsUIModeCard(mode: UIMode, activeUiMode: UIMode, useWebsiteBackground: Boolean, haptic: HapticFeedback) {
     val isSelected = activeUiMode == mode
     val primaryColor = MaterialTheme.colorScheme.primary
     Surface(
         modifier = Modifier.weight(1f).height(115.dp),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = if (isSelected) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
         border =
-            if (isSelected) {
-                androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
-            } else {
-                androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                )
-            },
+        if (isSelected) {
+            androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
+        } else {
+            androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            )
+        },
         onClick = {
             GlobalVisualSettingsUIMode.setUIMode(mode)
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
+        },
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 if (mode == UIMode.COOKING) {
-                    Icon(painter = painterResource(id = R.drawable.ic_cooking_skillet), contentDescription = null, modifier = Modifier.size(24.dp), tint = Color.Unspecified)
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_cooking_skillet),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.Unspecified,
+                    )
                 } else {
-                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(20.dp), tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (isSelected) {
                     Surface(modifier = Modifier.size(8.dp), shape = CircleShape, color = primaryColor) {}
                 }
             }
             Column {
-                Text(text = mode.displayName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
+                Text(
+                    text = mode.displayName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+                )
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(text = mode.description, fontSize = 11.sp, lineHeight = 13.sp, color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = mode.description,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -410,7 +412,7 @@ internal fun ThemePrefsAppearanceSelector(useWebsiteBackground: Boolean, haptic:
         Text(
             text = "App Skin",
             fontWeight = FontWeight.Bold,
-            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             AppAppearance.entries.forEach { appearance ->
@@ -431,21 +433,21 @@ internal fun RowScope.ThemePrefsAppearanceCard(
     val primaryColor = MaterialTheme.colorScheme.primary
     Surface(
         modifier = Modifier.weight(1f).height(115.dp),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = if (isSelected) primaryColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
         border =
-            if (isSelected) {
-                androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
-            } else {
-                androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                )
-            },
+        if (isSelected) {
+            androidx.compose.foundation.BorderStroke(2.dp, primaryColor)
+        } else {
+            androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            )
+        },
         onClick = {
             GlobalVisualSettingsAppearance.setAppearance(appearance)
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
+        },
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -494,12 +496,12 @@ internal fun ThemePrefsColorPaletteSection(useWebsiteBackground: Boolean) {
                 Surface(
                     color = if (isSelected) AuroraColors.amber.copy(alpha = 0.3f) else Color.Transparent,
                     shape = RoundedCornerShape(16.dp),
-                    onClick = { GlobalVisualSettingsPalette.setThemePalette(palette.name) }
+                    onClick = { GlobalVisualSettingsPalette.setThemePalette(palette.name) },
                 ) {
                     Text(
                         text = palette.displayName,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                        color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -537,18 +539,18 @@ private fun ThemePrefsProviderGlyphsExpandHeader(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.lg.dp),
+        shape = RoundedCornerShape(AuroraRadius.LG.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.42f else 0.76f),
-        onClick = { onCustomizeProviderGlyphsChange(!customizeProviderGlyphs) }
+        onClick = { onCustomizeProviderGlyphsChange(!customizeProviderGlyphs) },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             SettingsProviderLogoStack(
                 providers = providerGlyphsPreview(providerGlyphs),
-                maxVisible = 4
+                maxVisible = 4,
             )
             ThemePrefsProviderGlyphsHeaderText(useWebsiteBackground, providerGlyphs)
             ThemePrefsProviderGlyphsExpandChevron(customizeProviderGlyphs, useWebsiteBackground)
@@ -557,39 +559,33 @@ private fun ThemePrefsProviderGlyphsExpandHeader(
 }
 
 @Composable
-private fun RowScope.ThemePrefsProviderGlyphsHeaderText(
-    useWebsiteBackground: Boolean,
-    providerGlyphs: Set<AgentProvider>,
-) {
+private fun RowScope.ThemePrefsProviderGlyphsHeaderText(useWebsiteBackground: Boolean, providerGlyphs: Set<AgentProvider>) {
     Column(modifier = Modifier.weight(1f)) {
         Text(
             "Provider glyphs",
             fontWeight = FontWeight.SemiBold,
-            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
         )
         Text(
             providerGlyphSummary(providerGlyphs),
             fontSize = 12.sp,
-            color = if (useWebsiteBackground) Color.White.copy(alpha = 0.68f) else MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (useWebsiteBackground) Color.White.copy(alpha = 0.68f) else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
-private fun ThemePrefsProviderGlyphsExpandChevron(
-    customizeProviderGlyphs: Boolean,
-    useWebsiteBackground: Boolean,
-) {
+private fun ThemePrefsProviderGlyphsExpandChevron(customizeProviderGlyphs: Boolean, useWebsiteBackground: Boolean) {
     val rotation by animateFloatAsState(
         targetValue = if (customizeProviderGlyphs) 180f else 0f,
         animationSpec = tween(durationMillis = 200),
-        label = "provider-glyph-chevron"
+        label = "provider-glyph-chevron",
     )
     Icon(
         imageVector = Icons.Filled.KeyboardArrowDown,
         contentDescription = if (customizeProviderGlyphs) "Collapse" else "Expand",
         modifier = Modifier.size(22.dp).graphicsLayer(rotationZ = rotation),
-        tint = if (useWebsiteBackground) Color.White.copy(alpha = 0.74f) else MaterialTheme.colorScheme.onSurfaceVariant
+        tint = if (useWebsiteBackground) Color.White.copy(alpha = 0.74f) else MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -599,12 +595,12 @@ internal fun ThemePrefsProviderGlyphCustomizer(useWebsiteBackground: Boolean, pr
         ProviderGlyphQuickAction(
             title = "All",
             active = providerGlyphs.size == AgentProvider.swarmGlyphProviders.size,
-            onClick = { GlobalVisualSettings.setProviderGlyphs(AgentProvider.swarmGlyphProviders.toSet()) }
+            onClick = { GlobalVisualSettings.setProviderGlyphs(AgentProvider.swarmGlyphProviders.toSet()) },
         )
         ProviderGlyphQuickAction(
             title = "None",
             active = providerGlyphs.isEmpty(),
-            onClick = { GlobalVisualSettings.setProviderGlyphs(emptySet()) }
+            onClick = { GlobalVisualSettings.setProviderGlyphs(emptySet()) },
         )
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -630,7 +626,7 @@ internal fun ThemePrefsTabLayoutNote(useWebsiteBackground: Boolean) {
         Text(
             "Android Tab arrangement customized via DataStore.",
             fontSize = 12.sp,
-            color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -665,11 +661,7 @@ internal data class ThemePrefsScreenState(
 )
 
 @Composable
-internal fun ThemePrefsScreenBody(
-    router: SettingsRouter,
-    onBack: () -> Unit,
-    state: ThemePrefsScreenState,
-) {
+internal fun ThemePrefsScreenBody(router: SettingsRouter, onBack: () -> Unit, state: ThemePrefsScreenState) {
     val useWebsiteBackground = state.useWebsiteBackground
     val isDark = state.isDark
     Column(
@@ -677,22 +669,26 @@ internal fun ThemePrefsScreenBody(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .background(
-                if (useWebsiteBackground) Color.Transparent
-                else if (isDark) AuroraColors.darkBackground
-                else AuroraColors.lightBackground
+                if (useWebsiteBackground) {
+                    Color.Transparent
+                } else if (isDark) {
+                    AuroraColors.darkBackground
+                } else {
+                    AuroraColors.lightBackground
+                },
             )
-            .padding(horizontal = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+            .padding(horizontal = AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         ThemePrefsTopBar(onBack = onBack, useWebsiteBackground = useWebsiteBackground)
-        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(AuroraRadius.lg.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.35f else 0.6f)
+            shape = RoundedCornerShape(AuroraRadius.LG.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.35f else 0.6f),
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.md.dp), verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.MD.dp), verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
                 ThemePrefsToggleSection(
                     router,
                     state.haptic,
@@ -719,10 +715,7 @@ internal fun ThemePrefsScreenBody(
 }
 
 @Composable
-fun ThemePrefsScreen(
-    router: SettingsRouter,
-    onBack: () -> Unit
-) {
+fun ThemePrefsScreen(router: SettingsRouter, onBack: () -> Unit) {
     val isDark = isSystemInDarkTheme()
     val haptic = LocalHapticFeedback.current
     val useWebsiteBackground by rememberWebsiteBackground()
@@ -773,11 +766,7 @@ internal fun providerGlyphsPreview(providerGlyphs: Set<AgentProvider>): List<Age
     }
 
 @Composable
-internal fun ProviderGlyphQuickAction(
-    title: String,
-    active: Boolean,
-    onClick: () -> Unit,
-) {
+internal fun ProviderGlyphQuickAction(title: String, active: Boolean, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = if (active) AuroraColors.ember else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
@@ -794,12 +783,7 @@ internal fun ProviderGlyphQuickAction(
 }
 
 @Composable
-internal fun ProviderGlyphSelectionRow(
-    provider: AgentProvider,
-    selected: Boolean,
-    highContrastText: Boolean,
-    onClick: () -> Unit,
-) {
+internal fun ProviderGlyphSelectionRow(provider: AgentProvider, selected: Boolean, highContrastText: Boolean, onClick: () -> Unit) {
     val providerColor = Color(provider.brandColor)
     Surface(
         modifier = Modifier.fillMaxWidth(),

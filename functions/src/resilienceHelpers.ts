@@ -7,13 +7,12 @@ import {
   externalApiPolicy,
   firestorePolicy,
   pushPolicy,
-  quotaPolicy,
   stripePolicy,
   withResilience,
 } from "./resilience.js";
 import { assertOutboundFetchTarget } from "./ssrfGuard.js";
 
-export interface ResilientFetchOptions {
+interface ResilientFetchOptions {
   /** Permit private/link-local/metadata hosts (e.g. the GCP metadata identity fetch). */
   allowPrivateHosts?: boolean;
 }
@@ -32,10 +31,6 @@ export async function firestoreWithResilience<T>(label: string, fn: () => Promis
 
 export async function externalApiWithResilience<T>(label: string, fn: () => Promise<T>): Promise<T> {
   return withResilience(externalApiPolicy, `external:${label}`, fn);
-}
-
-export async function quotaWithResilience<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  return withResilience(quotaPolicy, `quota:${label}`, fn);
 }
 
 /** Outbound HTTP from Functions (quota runner, insights, benchmarks). */

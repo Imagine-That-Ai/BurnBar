@@ -23,6 +23,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { createHash, createPublicKey } from "node:crypto";
 
 import { getConfig } from "../config.js";
+import { isRecord } from "../guards.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
@@ -58,10 +59,10 @@ function base64UrlDecode(raw: unknown, fieldName: string): Buffer {
  * as base64 plus the same base64 SHA-256 fingerprint native devices publish.
  */
 function parsePublicKeyJwk(raw: unknown): ParsedJwk {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", "publicKeyJwk must be a JWK object.");
   }
-  const jwk = raw as Record<string, unknown>;
+  const jwk = raw;
   const kty = typeof jwk.kty === "string" ? jwk.kty : "";
   const crv = typeof jwk.crv === "string" ? jwk.crv : "";
   if (kty !== "EC" || crv !== "P-256") {

@@ -156,7 +156,7 @@ enum OllamaCloudScraper {
     }
 
     private static func firstCapture(in text: String, pattern: String, options: NSRegularExpression.Options) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil } // try?-ok(literal regex pattern)
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard let match = regex.firstMatch(in: text, options: [], range: range),
               match.numberOfRanges > 1,

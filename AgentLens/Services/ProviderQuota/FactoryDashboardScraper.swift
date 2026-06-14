@@ -83,6 +83,7 @@ enum FactoryDashboardScraper {
         req.setValue("https://app.factory.ai/", forHTTPHeaderField: "Referer")
         req.timeoutInterval = 15
 
+        // try?-ok(quota fetch, skip cycle)
         guard let (data, response) = try? await session.data(for: req),
               let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
@@ -115,6 +116,7 @@ enum FactoryDashboardScraper {
 
         guard !jsonStr.isEmpty,
               let jsonData = jsonStr.data(using: .utf8),
+              // try?-ok(optional SSR decode)
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
             return nil
         }
@@ -246,7 +248,7 @@ enum FactoryDashboardScraper {
     // MARK: - Regex Helpers
 
     private static func firstCapture(in text: String, pattern: String, options: NSRegularExpression.Options) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil } // try?-ok(literal pattern compile)
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard let match = regex.firstMatch(in: text, options: [], range: range),
               match.numberOfRanges > 1,
@@ -273,9 +275,11 @@ enum FactoryDashboardScraper {
         req.setValue("https://app.factory.ai/", forHTTPHeaderField: "Referer")
         req.timeoutInterval = 10
 
+        // try?-ok(quota fetch, skip cycle)
         guard let (data, resp) = try? await session.data(for: req),
               let http = resp as? HTTPURLResponse,
               http.statusCode == 200,
+              // try?-ok(optional usage decode)
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
@@ -302,9 +306,11 @@ enum FactoryDashboardScraper {
         req.setValue("https://app.factory.ai/", forHTTPHeaderField: "Referer")
         req.timeoutInterval = 10
 
+        // try?-ok(quota fetch, skip cycle)
         guard let (data, resp) = try? await session.data(for: req),
               let http = resp as? HTTPURLResponse,
               http.statusCode == 200,
+              // try?-ok(optional usage decode)
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }

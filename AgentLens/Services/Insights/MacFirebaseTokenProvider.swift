@@ -10,7 +10,7 @@ import FirebaseCore
 /// Hosted-fallback callable expects an App Check header; the user
 /// auth token is optional (anonymous callable allowed when the user
 /// hasn't signed into iCloud / Sign-in-with-Apple yet).
-final class MacFirebaseTokenProvider: @unchecked Sendable {
+final class MacFirebaseTokenProvider: Sendable {
     static let shared: MacFirebaseTokenProvider? = {
         guard FirebaseApp.app() != nil else { return nil }
         return MacFirebaseTokenProvider()

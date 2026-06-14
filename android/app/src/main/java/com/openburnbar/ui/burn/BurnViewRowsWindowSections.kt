@@ -40,14 +40,14 @@ import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.models.displayRemainingFraction
+import com.openburnbar.data.models.getRemainingText
+import com.openburnbar.data.models.hourlyBucket
 import com.openburnbar.data.models.idealPace
 import com.openburnbar.data.models.label
-import com.openburnbar.data.models.getRemainingText
-import com.openburnbar.data.models.pressure
 import com.openburnbar.data.models.nextResetDate
-import com.openburnbar.data.models.hourlyBucket
-import com.openburnbar.data.models.weeklyOrMonthlyBucket
+import com.openburnbar.data.models.pressure
 import com.openburnbar.data.models.primaryDisplayableBucket
+import com.openburnbar.data.models.weeklyOrMonthlyBucket
 import com.openburnbar.data.stores.QuotaWindowKind
 import com.openburnbar.ui.components.ProviderAvatar
 import com.openburnbar.ui.theme.AuroraColors
@@ -60,23 +60,19 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
-fun SubscriptionListRow(
-    snapshot: ProviderQuotaSnapshot,
-    accounts: List<ProviderAccount>,
-    modifier: Modifier = Modifier
-) {
+fun SubscriptionListRow(snapshot: ProviderQuotaSnapshot, accounts: List<ProviderAccount>, modifier: Modifier = Modifier) {
     val provider = AgentProvider.fromKey(snapshot.provider) ?: return
     val primaryColor = Color(provider.brandColor)
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-            .border(0.75.dp, primaryColor.copy(alpha = 0.16f), RoundedCornerShape(AuroraRadius.md.dp))
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+            .border(0.75.dp, primaryColor.copy(alpha = 0.16f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SubscriptionRowAvatar(provider = provider, primaryColor = primaryColor)
         SubscriptionRowIdentity(snapshot = snapshot, provider = provider, accounts = accounts, primaryColor = primaryColor)
@@ -87,7 +83,7 @@ fun SubscriptionListRow(
             fallbackBucket = snapshot.primaryDisplayableBucket(),
             provider = provider,
             isActive = false,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
 
         val remainingPct = ((1.0 - snapshot.pressure) * 100).roundToInt()
@@ -98,7 +94,7 @@ fun SubscriptionListRow(
             fontFamily = FontFamily.Monospace,
             color = primaryColor,
             modifier = Modifier.width(60.dp),
-            maxLines = 1
+            maxLines = 1,
         )
     }
 }
@@ -111,7 +107,7 @@ private fun SubscriptionRowAvatar(provider: AgentProvider, primaryColor: Color) 
                 .size(24.dp)
                 .clip(CircleShape)
                 .background(primaryColor.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             ProviderAvatar(providerKey = provider.key, size = 16)
         }
@@ -119,26 +115,21 @@ private fun SubscriptionRowAvatar(provider: AgentProvider, primaryColor: Color) 
             drawCircle(
                 color = primaryColor.copy(alpha = 0.35f),
                 radius = size.minDimension / 2f - 1.dp.toPx(),
-                style = Stroke(width = 1.dp.toPx())
+                style = Stroke(width = 1.dp.toPx()),
             )
         }
     }
 }
 
 @Composable
-private fun SubscriptionRowIdentity(
-    snapshot: ProviderQuotaSnapshot,
-    provider: AgentProvider,
-    accounts: List<ProviderAccount>,
-    primaryColor: Color
-) {
+private fun SubscriptionRowIdentity(snapshot: ProviderQuotaSnapshot, provider: AgentProvider, accounts: List<ProviderAccount>, primaryColor: Color) {
     Column(modifier = Modifier.width(180.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Text(
                 text = provider.displayName,
                 fontSize = AuroraTypography.caption.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
             )
             val badgeText = if (snapshot.buckets.any { it.isEstimated }) "Estimated" else "Active"
             Text(
@@ -146,7 +137,7 @@ private fun SubscriptionRowIdentity(
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
                 color = primaryColor,
-                letterSpacing = 0.8.sp
+                letterSpacing = 0.8.sp,
             )
         }
         val accountEmail = quotaAccountEmail(snapshot, accounts) ?: quotaAccountName(snapshot, accounts)
@@ -155,7 +146,7 @@ private fun SubscriptionRowIdentity(
             fontSize = AuroraTypography.tiny.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -167,7 +158,7 @@ fun QuotaDualWindowStrip(
     fallbackBucket: QuotaBucket?,
     provider: AgentProvider,
     isActive: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val primaryColor = Color(provider.brandColor)
     val isDark = isSystemInDarkTheme()
@@ -178,11 +169,11 @@ fun QuotaDualWindowStrip(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
-            .border(1.dp, primaryColor.copy(alpha = 0.14f), RoundedCornerShape(AuroraRadius.md.dp))
-            .padding(AuroraSpacing.sm.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+            .border(1.dp, primaryColor.copy(alpha = 0.14f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .padding(AuroraSpacing.SM.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         if (shortSlot != null) {
             val label = when (QuotaWindowKind.infer(shortSlot)) {
@@ -209,20 +200,14 @@ fun QuotaDualWindowStrip(
 }
 
 @Composable
-fun WindowBar(
-    bucket: QuotaBucket,
-    label: String,
-    icon: String,
-    provider: AgentProvider,
-    trackBgColor: Color
-) {
+fun WindowBar(bucket: QuotaBucket, label: String, icon: String, provider: AgentProvider, trackBgColor: Color) {
     val remainingFraction = bucket.displayRemainingFraction ?: 1.0
     val colors = windowBarColors(provider = provider, remainingFraction = remainingFraction)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         WindowBarLabel(icon = icon, label = label, tint = colors.fill)
         WindowBarTrack(
@@ -230,7 +215,7 @@ fun WindowBar(
             remainingFraction = remainingFraction,
             colors = colors,
             trackBgColor = trackBgColor,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
         WindowBarValue(text = bucket.getRemainingText("absoluteValues"), fill = colors.fill)
     }
@@ -250,12 +235,15 @@ private fun windowBarColors(provider: AgentProvider, remainingFraction: Double):
                     listOf(
                         primaryColor.copy(alpha = QUOTA_BAR_MEDIUM_ALPHA),
                         accentColor.copy(alpha = QUOTA_BAR_MEDIUM_ACCENT_ALPHA),
-                    )
-                )
+                    ),
+                ),
             )
         remainingFraction >= QUOTA_REMAINING_WARN ->
             WindowBarColors(AuroraColors.amber, Brush.horizontalGradient(listOf(primaryColor.copy(alpha = QUOTA_BAR_WARNING_ALPHA), AuroraColors.amber)))
-        else -> WindowBarColors(AuroraColors.warning, Brush.horizontalGradient(listOf(AuroraColors.warning, AuroraColors.warning.copy(alpha = QUOTA_BAR_EMPTY_ALPHA))))
+        else -> WindowBarColors(
+            AuroraColors.warning,
+            Brush.horizontalGradient(listOf(AuroraColors.warning, AuroraColors.warning.copy(alpha = QUOTA_BAR_EMPTY_ALPHA))),
+        )
     }
 }
 
@@ -264,46 +252,40 @@ private fun WindowBarLabel(icon: String, label: String, tint: Color) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
-        modifier = Modifier.width(34.dp)
+        modifier = Modifier.width(34.dp),
     ) {
         Box(modifier = Modifier.width(12.dp), contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = quotaWindowIcon(icon),
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.size(9.dp)
+                modifier = Modifier.size(9.dp),
             )
         }
         Text(
             text = label,
             fontSize = AuroraTypography.tiny.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
-private fun WindowBarTrack(
-    bucket: QuotaBucket,
-    remainingFraction: Double,
-    colors: WindowBarColors,
-    trackBgColor: Color,
-    modifier: Modifier = Modifier
-) {
+private fun WindowBarTrack(bucket: QuotaBucket, remainingFraction: Double, colors: WindowBarColors, trackBgColor: Color, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .height(10.dp)
             .clip(RoundedCornerShape(3.dp))
             .background(trackBgColor)
-            .border(1.dp, colors.fill.copy(alpha = 0.18f), RoundedCornerShape(3.dp))
+            .border(1.dp, colors.fill.copy(alpha = 0.18f), RoundedCornerShape(3.dp)),
     ) {
         if (remainingFraction > 0) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(remainingFraction.toFloat())
                     .fillMaxSize()
-                    .background(colors.brush)
+                    .background(colors.brush),
             )
         }
         WindowBarPaceTick(pace = bucket.idealPace())
@@ -317,13 +299,13 @@ private fun WindowBarPaceTick(pace: IdealPace?) {
         modifier = Modifier
             .fillMaxWidth((1.0f - pace.elapsedFraction.toFloat()).coerceIn(0f, 1f))
             .fillMaxSize(),
-        contentAlignment = Alignment.CenterEnd
+        contentAlignment = Alignment.CenterEnd,
     ) {
         Box(
             modifier = Modifier
                 .width(1.5.dp)
                 .fillMaxSize()
-                .background(Color.White)
+                .background(Color.White),
         )
     }
 }
@@ -337,40 +319,33 @@ private fun WindowBarValue(text: String, fill: Color) {
         color = fill,
         modifier = Modifier.width(36.dp),
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis
+        overflow = TextOverflow.Ellipsis,
     )
 }
 
-private fun quotaWindowIcon(icon: String) =
-    when (icon) {
-        "clock.fill", "clock" -> Icons.Default.Schedule
-        "calendar" -> Icons.Default.DateRange
-        else -> Icons.Default.DateRange
-    }
+private fun quotaWindowIcon(icon: String) = when (icon) {
+    "clock.fill", "clock" -> Icons.Default.Schedule
+    "calendar" -> Icons.Default.DateRange
+    else -> Icons.Default.DateRange
+}
 
 @Composable
-fun WindowBarPlaceholder(
-    label: String,
-    icon: String,
-    provider: AgentProvider,
-    trackBgColor: Color,
-    isActive: Boolean
-) {
+fun WindowBarPlaceholder(label: String, icon: String, provider: AgentProvider, trackBgColor: Color, isActive: Boolean) {
     val primaryColor = Color(provider.brandColor)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = Modifier.width(34.dp)
+            modifier = Modifier.width(34.dp),
         ) {
             Box(
                 modifier = Modifier.width(12.dp),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = when (icon) {
@@ -380,10 +355,15 @@ fun WindowBarPlaceholder(
                     },
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(9.dp)
+                    modifier = Modifier.size(9.dp),
                 )
             }
-            Text(text = label, fontSize = AuroraTypography.tiny.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+            Text(
+                text = label,
+                fontSize = AuroraTypography.tiny.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+            )
         }
 
         Box(
@@ -394,8 +374,8 @@ fun WindowBarPlaceholder(
                 .background(trackBgColor)
                 .border(
                     width = 1.dp,
-                    color = primaryColor.copy(alpha = if (isActive) 0.18f else 0.08f)
-                )
+                    color = primaryColor.copy(alpha = if (isActive) 0.18f else 0.08f),
+                ),
         )
 
         Text(
@@ -403,7 +383,7 @@ fun WindowBarPlaceholder(
             fontSize = AuroraTypography.tiny.sp,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-            modifier = Modifier.width(36.dp)
+            modifier = Modifier.width(36.dp),
         )
     }
 }
@@ -421,7 +401,7 @@ fun ResetCell(snapshot: ProviderQuotaSnapshot, zone: ZoneId) {
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Box(
             modifier = Modifier
@@ -431,12 +411,12 @@ fun ResetCell(snapshot: ProviderQuotaSnapshot, zone: ZoneId) {
                     Brush.linearGradient(
                         colors = listOf(
                             primaryColor.copy(alpha = 0.22f),
-                            accentColor.copy(alpha = 0.10f)
-                        )
-                    )
+                            accentColor.copy(alpha = 0.10f),
+                        ),
+                    ),
                 )
                 .border(0.75.dp, primaryColor.copy(alpha = 0.34f), CircleShape),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             ProviderAvatar(providerKey = provider.key, size = 14)
         }
@@ -446,7 +426,7 @@ fun ResetCell(snapshot: ProviderQuotaSnapshot, zone: ZoneId) {
             fontSize = 8.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

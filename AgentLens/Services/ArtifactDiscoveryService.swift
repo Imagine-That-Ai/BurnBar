@@ -125,13 +125,13 @@ actor ArtifactDiscoveryService {
     private let dataStoreActor: DataStoreActor
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let fileManager: FileManager
-    private let nowProvider: () -> Date
+    private let nowProvider: @Sendable () -> Date
 
     init(
         dataStoreActor: DataStoreActor,
         settingsProvider: any ArtifactDiscoverySettingsProviding,
         fileManager: FileManager = .default,
-        nowProvider: @escaping () -> Date = Date.init
+        nowProvider: @escaping @Sendable () -> Date = Date.init
     ) {
         self.dataStoreActor = dataStoreActor
         self.settingsProvider = settingsProvider
@@ -231,7 +231,7 @@ actor ArtifactDiscoveryService {
                     continue
                 }
 
-                let resourceValues = try? candidateURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
+                let resourceValues = try? candidateURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]) // try?-ok(metadata read, guard skips)
                 guard resourceValues?.isRegularFile == true else { continue }
 
                 let relativePath = relativePath(from: canonicalCandidatePath, rootPath: rootPath)

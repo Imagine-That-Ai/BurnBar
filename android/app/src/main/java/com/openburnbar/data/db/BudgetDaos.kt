@@ -12,7 +12,8 @@ interface BudgetRuleDao {
     fun getAllEnabledRules(): List<BudgetRuleEntity>
 
     @Query(
-        "SELECT * FROM budget_rules WHERE scope = 'credential' AND providerID = :providerID AND (accountID IS NULL OR accountID = '' OR accountID = :accountID) AND isEnabled = 1",
+        "SELECT * FROM budget_rules WHERE scope = 'credential' AND providerID = :providerID " +
+            "AND (accountID IS NULL OR accountID = '' OR accountID = :accountID) AND isEnabled = 1",
     )
     fun getCredentialRules(providerID: String, accountID: String?): List<BudgetRuleEntity>
 
@@ -44,7 +45,8 @@ interface BudgetEventDao {
 @Dao
 interface BudgetSpendDao {
     @Query(
-        "SELECT COALESCE(SUM(CASE WHEN costUsd > 0.0 THEN costUsd ELSE cost END), 0.0) FROM token_usage WHERE startTime >= :windowStart AND startTime <= :reference",
+        "SELECT COALESCE(SUM(CASE WHEN costUsd > 0.0 THEN costUsd ELSE cost END), 0.0) FROM token_usage " +
+            "WHERE startTime >= :windowStart AND startTime <= :reference",
     )
     fun getGlobalSpend(windowStart: Long, reference: Long): Double
 
@@ -60,7 +62,8 @@ interface BudgetSpendDao {
     fun getCredentialSpend(windowStart: Long, reference: Long, providerID: String, accountID: String): Double
 
     @Query(
-        "SELECT COALESCE(SUM(CASE WHEN costUsd > 0.0 THEN costUsd ELSE cost END), 0.0) FROM token_usage WHERE startTime >= :windowStart AND startTime <= :reference AND projectName = :projectName",
+        "SELECT COALESCE(SUM(CASE WHEN costUsd > 0.0 THEN costUsd ELSE cost END), 0.0) FROM token_usage " +
+            "WHERE startTime >= :windowStart AND startTime <= :reference AND projectName = :projectName",
     )
     fun getProjectSpend(windowStart: Long, reference: Long, projectName: String): Double
 
@@ -163,8 +166,7 @@ class BudgetDatabaseAccess(
 ) {
     fun getAllEnabledRules(): List<BudgetRuleEntity> = ruleDao.getAllEnabledRules()
 
-    fun getCredentialRules(providerID: String, accountID: String?): List<BudgetRuleEntity> =
-        ruleDao.getCredentialRules(providerID, accountID)
+    fun getCredentialRules(providerID: String, accountID: String?): List<BudgetRuleEntity> = ruleDao.getCredentialRules(providerID, accountID)
 
     fun getProjectRules(projectName: String): List<BudgetRuleEntity> = ruleDao.getProjectRules(projectName)
 
@@ -176,8 +178,7 @@ class BudgetDatabaseAccess(
 
     fun insertEvent(event: BudgetEventEntity) = eventDao.insertEvent(event)
 
-    fun getEventsForRule(ruleID: String, limit: Int = 100): List<BudgetEventEntity> =
-        eventDao.getEventsForRule(ruleID, limit)
+    fun getEventsForRule(ruleID: String, limit: Int = 100): List<BudgetEventEntity> = eventDao.getEventsForRule(ruleID, limit)
 
     fun getRecentEvents(limit: Int = 100): List<BudgetEventEntity> = eventDao.getRecentEvents(limit)
 
@@ -186,23 +187,17 @@ class BudgetDatabaseAccess(
     fun getCredentialSpend(windowStart: Long, reference: Long, providerID: String, accountID: String): Double =
         spendDao.getCredentialSpend(windowStart, reference, providerID, accountID)
 
-    fun getProjectSpend(windowStart: Long, reference: Long, projectName: String): Double =
-        spendDao.getProjectSpend(windowStart, reference, projectName)
+    fun getProjectSpend(windowStart: Long, reference: Long, projectName: String): Double = spendDao.getProjectSpend(windowStart, reference, projectName)
 
-    fun getOrganizationSpend(windowStart: Long, reference: Long, identifier: String): Double =
-        spendDao.getOrganizationSpend(windowStart, reference, identifier)
+    fun getOrganizationSpend(windowStart: Long, reference: Long, identifier: String): Double = spendDao.getOrganizationSpend(windowStart, reference, identifier)
 
-    fun orgRollupByUser(windowStart: Long, limit: Int): List<OrgRollupRow> =
-        orgRollupDao.orgRollupByUser(windowStart, limit)
+    fun orgRollupByUser(windowStart: Long, limit: Int): List<OrgRollupRow> = orgRollupDao.orgRollupByUser(windowStart, limit)
 
-    fun orgRollupByProject(windowStart: Long, limit: Int): List<OrgRollupRow> =
-        orgRollupDao.orgRollupByProject(windowStart, limit)
+    fun orgRollupByProject(windowStart: Long, limit: Int): List<OrgRollupRow> = orgRollupDao.orgRollupByProject(windowStart, limit)
 
-    fun orgRollupByCredential(windowStart: Long, limit: Int): List<OrgRollupRow> =
-        orgRollupDao.orgRollupByCredential(windowStart, limit)
+    fun orgRollupByCredential(windowStart: Long, limit: Int): List<OrgRollupRow> = orgRollupDao.orgRollupByCredential(windowStart, limit)
 
-    fun orgRollupByProvider(windowStart: Long, limit: Int): List<OrgRollupRow> =
-        orgRollupDao.orgRollupByProvider(windowStart, limit)
+    fun orgRollupByProvider(windowStart: Long, limit: Int): List<OrgRollupRow> = orgRollupDao.orgRollupByProvider(windowStart, limit)
 
     fun insertTokenUsage(usage: TokenUsageEntity) = tokenUsageWriteDao.insertTokenUsage(usage)
 

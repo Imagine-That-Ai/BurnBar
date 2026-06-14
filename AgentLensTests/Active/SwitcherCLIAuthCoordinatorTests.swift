@@ -1146,6 +1146,34 @@ final class SwitcherAuthStoreTests: XCTestCase {
         try store.deleteCredentials(forProfileID: "nonexistent-profile")
     }
 
+    // MARK: - Keychain Error Handling (try? -> logged do/catch conversion)
+
+    func test_apiKey_returnsNilAndStaysSilentOnUnexpectedKeychainError() {
+        // An unexpected keychain fault (not item-not-found) must not surface as
+        // a crash or thrown error to callers — it is logged and read returns nil.
+        testBackend.readErrors["com.openburnbar.switcher-auth"] =
+            KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = makeStore()
+        XCTAssertNil(store.apiKey(forProfileID: "profile-1", cliType: .codex))
+    }
+
+    func test_oauthToken_returnsNilAndStaysSilentOnUnexpectedKeychainError() {
+        testBackend.readErrors["com.openburnbar.switcher-auth"] =
+            KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = makeStore()
+        XCTAssertNil(store.oauthToken(forProfileID: "profile-1", provider: "google"))
+    }
+
+    func test_deleteCredentials_toleratesDeleteFailuresWithoutThrowing() {
+        // A failing delete leaves a live credential, so it is logged — but the
+        // failure is swallowed so one stuck account never aborts the sweep of
+        // the remaining api-key and oauth-token accounts.
+        testBackend.deleteErrors["com.openburnbar.switcher-auth"] =
+            KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = makeStore()
+        XCTAssertNoThrow(try store.deleteCredentials(forProfileID: "profile-x"))
+    }
+
     // MARK: - Claude Code OAuth Import Tests
 
     func test_claudeCodeOAuthImporter_readsClaudeCodeKeychainPayload() throws {
@@ -1596,11 +1624,42 @@ final class SwitcherAuthStoreTests: XCTestCase {
     }
 }
 
+// MARK: - KeychainStore credential accessor
+
+@MainActor
+final class KeychainStoreCredentialAccessorTests: XCTestCase {
+    private let service = "com.openburnbar.credential-accessor-tests"
+
+    func test_credentialIfPresent_returnsStoredValue() throws {
+        let backend = SwitcherAuthStoreTestKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        try store.set("sk-live-credential", for: "acct")
+        XCTAssertEqual(store.credentialIfPresent(for: "acct"), "sk-live-credential")
+    }
+
+    func test_credentialIfPresent_returnsNilWhenAbsent() {
+        let backend = SwitcherAuthStoreTestKeychainBackend()
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        XCTAssertNil(store.credentialIfPresent(for: "missing-account"))
+    }
+
+    func test_credentialIfPresent_returnsNilAndStaysSilentOnKeychainFault() {
+        // The accessor's whole purpose: a genuine keychain fault is surfaced to
+        // the log and read returns nil — never crashing, never propagating, and
+        // never silently indistinguishable from "no credential configured".
+        let backend = SwitcherAuthStoreTestKeychainBackend()
+        backend.readErrors[service] = KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = KeychainStore(service: service, legacyServices: [], backend: backend)
+        XCTAssertNil(store.credentialIfPresent(for: "acct"))
+    }
+}
+
 // MARK: - Test Keychain Backend
 
 private final class SwitcherAuthStoreTestKeychainBackend: KeychainStoreBackend {
     var storage: [String: [String: Data]] = [:]
     var readErrors: [String: Error] = [:]
+    var deleteErrors: [String: Error] = [:]
 
     func set(_ value: Data, service: String, account: String) throws {
         storage[service, default: [:]][account] = value
@@ -1614,6 +1673,9 @@ private final class SwitcherAuthStoreTestKeychainBackend: KeychainStoreBackend {
     }
 
     func delete(service: String, account: String) throws {
+        if let error = deleteErrors[service] {
+            throw error
+        }
         storage[service]?[account] = nil
     }
 }

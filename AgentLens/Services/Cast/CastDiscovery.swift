@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 import Network
 import os.log
 
@@ -97,7 +98,7 @@ final class CastDiscovery {
             })
             scanner.start()
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000)) // try?-ok(sleep cancellation only)
                 scanner.stop()
                 continuation.resume(returning: collected)
             }
@@ -294,19 +295,23 @@ private struct PendingCastServiceResolution: Sendable {
     let supportsDisplay: Bool
 }
 
-private final class ContinuationResumeGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var didResume = false
+private final class ContinuationResumeGate: Sendable {
+    private let didResume = Locked(false)
 
     func resume(_ continuation: CheckedContinuation<Void, Never>) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !didResume else { return }
-        didResume = true
-        continuation.resume()
+        let shouldResume = didResume.withLock { didResume -> Bool in
+            guard !didResume else { return false }
+            didResume = true
+            return true
+        }
+        if shouldResume { continuation.resume() }
     }
 }
 
+// AUDIT(@unchecked Sendable): ferries a non-Sendable Foundation `NetService` from
+// the NetServiceBrowser delegate callback to the @MainActor discovery; the box owns
+// the handle for a single hand-off and never shares it concurrently.
+// sendable-allowlist: foundation-sdk-shim
 private final class SendableNetServiceBox: @unchecked Sendable {
     let service: NetService
 
@@ -330,7 +335,7 @@ private final class CastNetServiceDiscovery: NSObject, NetServiceBrowserDelegate
             browser.searchForServices(ofType: "_googlecast._tcp.", inDomain: "local.")
 
             timeoutTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) // try?-ok(sleep cancellation only)
                 self?.finish()
             }
         }

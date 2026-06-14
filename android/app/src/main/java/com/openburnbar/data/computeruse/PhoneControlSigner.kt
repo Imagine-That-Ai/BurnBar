@@ -30,11 +30,9 @@ object PhoneControlSigner {
 
     fun canonicalIntentHashHex(intent: PhoneControlIntent): String = PhoneControlSignerCanonical.intentHashHex(intent)
 
-    fun canonicalAgentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest): String =
-        PhoneControlSignerCanonical.agentGrantRequestHashHex(request)
+    fun canonicalAgentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest): String = PhoneControlSignerCanonical.agentGrantRequestHashHex(request)
 
-    fun canonicalClipboardRequestHashHex(request: PhoneControlClipboardRequest): String =
-        PhoneControlSignerCanonical.clipboardRequestHashHex(request)
+    fun canonicalClipboardRequestHashHex(request: PhoneControlClipboardRequest): String = PhoneControlSignerCanonical.clipboardRequestHashHex(request)
 
     fun canonicalRemoteUnlockSessionHashHex(session: HermesRealtimeRelayRemoteUnlockSession): String =
         PhoneControlSignerCanonical.remoteUnlockSessionHashHex(session)
@@ -42,8 +40,7 @@ object PhoneControlSigner {
     fun canonicalRemoteUnlockCredentialHashHex(credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope): String =
         PhoneControlSignerCanonical.remoteUnlockCredentialHashHex(credential)
 
-    fun canonicalAgentContextTargetHashHex(target: PhoneControlAgentContextTarget): String =
-        PhoneControlSignerCanonical.agentContextTargetHashHex(target)
+    fun canonicalAgentContextTargetHashHex(target: PhoneControlAgentContextTarget): String = PhoneControlSignerCanonical.agentContextTargetHashHex(target)
 
     fun canonicalSystemPermissionRequestHashHex(request: PhoneControlSystemPermissionRequest): String =
         PhoneControlSignerCanonical.systemPermissionRequestHashHex(request)

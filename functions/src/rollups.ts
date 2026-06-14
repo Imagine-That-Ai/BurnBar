@@ -17,10 +17,9 @@ import type {
   DeviceSummary,
 } from "./types.js";
 import {
+  coerceFirestoreDate,
   errorMessage,
   isRecord,
-  isTimestampWithToDate,
-  isTimestampWithToMillis,
   isProviderAccountStorageScope,
   parseProvider,
   parseRollupJobDoc,
@@ -88,43 +87,13 @@ type CounterWriter = {
   ): unknown;
 };
 
-function coerceDate(value: unknown): Date | undefined {
-  if (value == null) return undefined;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? undefined : value;
-  }
-  if (typeof value === "string" || typeof value === "number") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? undefined : d;
-  }
-
-  if (isTimestampWithToDate(value)) {
-    const d = value.toDate();
-    return Number.isNaN(d.getTime()) ? undefined : d;
-  }
-  if (isTimestampWithToMillis(value)) {
-    const d = new Date(value.toMillis());
-    return Number.isNaN(d.getTime()) ? undefined : d;
-  }
-  if (isRecord(value)) {
-    const seconds = typeof value.seconds === "number" ? value.seconds : value._seconds;
-    const nanos = typeof value.nanoseconds === "number" ? value.nanoseconds : (value._nanoseconds ?? 0);
-    if (typeof seconds === "number") {
-      const d = new Date(seconds * 1000 + Math.floor(Number(nanos) / 1_000_000));
-      return Number.isNaN(d.getTime()) ? undefined : d;
-    }
-  }
-
-  return undefined;
-}
-
 function eventDate(ev: UsageEventDoc): Date | undefined {
   return (
-    coerceDate(ev.timestamp) ??
-    coerceDate(ev.startTime) ??
-    coerceDate(ev.endTime) ??
-    coerceDate(ev.createdAt) ??
-    coerceDate(ev.updatedAt)
+    coerceFirestoreDate(ev.timestamp) ??
+    coerceFirestoreDate(ev.startTime) ??
+    coerceFirestoreDate(ev.endTime) ??
+    coerceFirestoreDate(ev.createdAt) ??
+    coerceFirestoreDate(ev.updatedAt)
   );
 }
 
@@ -221,10 +190,10 @@ function modelRank(model: string | undefined): number {
 
 function eventUpdatedMillis(ev: UsageEventDoc): number {
   return (
-    coerceDate(ev.updatedAt)?.getTime() ??
-    coerceDate(ev.createdAt)?.getTime() ??
-    coerceDate(ev.endTime)?.getTime() ??
-    coerceDate(ev.startTime)?.getTime() ??
+    coerceFirestoreDate(ev.updatedAt)?.getTime() ??
+    coerceFirestoreDate(ev.createdAt)?.getTime() ??
+    coerceFirestoreDate(ev.endTime)?.getTime() ??
+    coerceFirestoreDate(ev.startTime)?.getTime() ??
     0
   );
 }
@@ -701,13 +670,13 @@ export async function enqueueUsageCounterDelta(
   return true;
 }
 
-export type PendingDeltaKeyWrite = {
+type PendingDeltaKeyWrite = {
   logicalKey: string;
   candidates: Record<string, UsageCounterCandidate>;
   winner?: UsageCounterCandidate;
 };
 
-export type PendingDeltaDrainPlan = {
+type PendingDeltaDrainPlan = {
   /** Final candidates/winner state per touched logical key. */
   keyWrites: PendingDeltaKeyWrite[];
   /** Merged signed increments: apply each once with direction +1. */
@@ -831,7 +800,7 @@ const PENDING_DELTA_DRAIN_PAGE_SIZE = 100;
  */
 const DEFAULT_PENDING_DELTA_DRAIN_MAX_PAGES = 20;
 
-export type DrainPendingCounterDeltasResult = {
+type DrainPendingCounterDeltasResult = {
   drainedDocs: number;
   pages: number;
   /** True when the page cap stopped the drain with queue docs likely remaining. */
@@ -1239,7 +1208,7 @@ export async function computeUserRollupsFromCounters(
   return requireWindowRollups(results);
 }
 
-export type RebuildUserRollupCountersResult = {
+type RebuildUserRollupCountersResult = {
   usageDocsScanned: number;
   pages: number;
   winnersWritten: number;
@@ -1379,7 +1348,7 @@ export const FULL_REBUILD_ATTEMPT_STALE_MS = 12 * 60 * 1000;
  * marked untrusted and route the next pass through the repair path. */
 const FULL_REBUILD_KILLED_ERROR_CODE = "full_rebuild_attempt_killed";
 
-export type FullRebuildGateOptions = {
+type FullRebuildGateOptions = {
   maxConsecutiveFullRebuildFailures: number;
   circuitBreakerMinutes: number;
   /** Defaults to {@link FULL_REBUILD_ATTEMPT_STALE_MS}. */
@@ -1388,7 +1357,7 @@ export type FullRebuildGateOptions = {
   forceMinIntervalMillis?: number;
 };
 
-export type FullRebuildAttemptGate =
+type FullRebuildAttemptGate =
   | { status: "started"; countedStaleAttempt: boolean }
   | { status: "circuit_open"; openUntil: string }
   | { status: "in_flight"; attemptStartedAt: string }
@@ -1562,7 +1531,7 @@ function fullRebuildGateOptionsFromConfig(): FullRebuildGateOptions {
   };
 }
 
-export type RefreshUserRollupsResult = {
+type RefreshUserRollupsResult = {
   rollups: Record<WindowKey, UsageRollupDoc>;
   rebuiltCounters: boolean;
 };

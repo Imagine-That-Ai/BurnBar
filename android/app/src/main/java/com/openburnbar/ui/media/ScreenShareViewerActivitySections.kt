@@ -40,69 +40,48 @@ private fun ScreenShareViewerActivityFocusContextEffect(ui: ScreenShareViewerAct
 }
 
 @Composable
-private fun ScreenShareViewerActivityMirrorAckEffect(
-    activity: ScreenShareViewerActivity,
-    ui: ScreenShareViewerActivityUiState,
-) {
+private fun ScreenShareViewerActivityMirrorAckEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
     LaunchedEffect(ui.lastMirrorAck) {
         ui.lastMirrorAck?.let { ack -> activity.applyMirrorAck(ack, ui.selectedDisplayId) }
     }
 }
 
 @Composable
-private fun ScreenShareViewerActivityControlDeniedEffect(
-    activity: ScreenShareViewerActivity,
-    ui: ScreenShareViewerActivityUiState,
-) {
+private fun ScreenShareViewerActivityControlDeniedEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
     LaunchedEffect(ui.lastControlDenied) {
         ui.lastControlDenied?.let { denied -> activity.applyControlDenied(denied) }
     }
 }
 
 @Composable
-private fun ScreenShareViewerActivityClipboardEffect(
-    activity: ScreenShareViewerActivity,
-    ui: ScreenShareViewerActivityUiState,
-) {
+private fun ScreenShareViewerActivityClipboardEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
     LaunchedEffect(ui.lastClipboardResponse) {
         ui.lastClipboardResponse?.let { response -> activity.handleClipboardResponse(response) }
     }
 }
 
 @Composable
-private fun ScreenShareViewerActivityRemoteUnlockResultEffect(
-    activity: ScreenShareViewerActivity,
-    ui: ScreenShareViewerActivityUiState,
-) {
+private fun ScreenShareViewerActivityRemoteUnlockResultEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
     LaunchedEffect(ui.lastRemoteUnlockResult) {
         ui.lastRemoteUnlockResult?.let { result -> activity.applyRemoteUnlockResult(result) }
     }
 }
 
 @Composable
-private fun ScreenShareViewerActivityRoundTripEffect(
-    activity: ScreenShareViewerActivity,
-    ui: ScreenShareViewerActivityUiState,
-) {
+private fun ScreenShareViewerActivityRoundTripEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
     LaunchedEffect(ui.lastRoundTripMillis) {
         ui.lastRoundTripMillis?.let { activity.pipeline.updateRoundTripMillis(it) }
     }
 }
 
 @Composable
-private fun ScreenShareViewerActivitySavedCredentialEffect(
-    activity: ScreenShareViewerActivity,
-    ui: ScreenShareViewerActivityUiState,
-) {
+private fun ScreenShareViewerActivitySavedCredentialEffect(activity: ScreenShareViewerActivity, ui: ScreenShareViewerActivityUiState) {
     LaunchedEffect(ui.activeRemoteUnlockState?.capabilities?.credentialRecipientKeyId) {
         activity.refreshSavedRemoteUnlockAvailability(ui)
     }
 }
 
-internal fun ScreenShareViewerActivity.applyMirrorAck(
-    ack: HermesRealtimeRelayMirrorAck,
-    selectedDisplayId: androidx.compose.runtime.MutableState<String?>,
-) {
+internal fun ScreenShareViewerActivity.applyMirrorAck(ack: HermesRealtimeRelayMirrorAck, selectedDisplayId: androidx.compose.runtime.MutableState<String?>) {
     mirrorSessionID = ack.sessionId ?: mirrorSessionID
     mirrorViewerRole = ack.viewerRole ?: mirrorViewerRole
     ack.selectedDisplayId?.let { selectedDisplayId.value = it }

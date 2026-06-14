@@ -51,11 +51,10 @@ internal object CredentialTransferCrypto {
             .joinToString("")
     }
 
-    fun normalizeTransferCode(code: String): String =
-        code.trim()
-            .uppercase(Locale.US)
-            .replace("-", "")
-            .replace(" ", "")
+    fun normalizeTransferCode(code: String): String = code.trim()
+        .uppercase(Locale.US)
+        .replace("-", "")
+        .replace(" ", "")
 
     fun isValidTransferCode(code: String): Boolean = codeRegex.matches(code)
 
@@ -119,11 +118,9 @@ internal object CredentialTransferCrypto {
         return bytes
     }
 
-    private fun encodeBase64Url(bytes: ByteArray): String =
-        Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    private fun encodeBase64Url(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
 
-    private fun decodeBase64Url(value: String): ByteArray =
-        Base64.getUrlDecoder().decode(value)
+    private fun decodeBase64Url(value: String): ByteArray = Base64.getUrlDecoder().decode(value)
 }
 
 enum class TransferStatus { IDLE, EXPORTING, IMPORTING, SUCCESS, ERROR }

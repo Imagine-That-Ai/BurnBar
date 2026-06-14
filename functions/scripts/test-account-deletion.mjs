@@ -69,9 +69,13 @@ class FakeFirestore {
   }
 
   collection(path) {
-    // eraseUserCloudData queries provider_account_secret_refs plus the root
-    // push-queue collections (voip_outbound / fcm_outbound). Return an empty
-    // collection for anything unregistered so an absent queue is a no-op.
+    // eraseUserCloudData reads provider_account_secret_refs plus the root push
+    // queues (voip_outbound / fcm_outbound) — T-PRV-02. Return a registered
+    // collection if present, otherwise an empty one so the walk is a no-op.
+    assert.ok(
+      ["provider_account_secret_refs", "voip_outbound", "fcm_outbound"].includes(path),
+      `unexpected root collection read: ${path}`,
+    );
     return this.rootCollections.get(path) ?? new FakeCollection(path);
   }
 
@@ -159,6 +163,21 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   const workspace = doc("workspaces/workspace-alice", {}, [team]);
   db.addRootCollection(collection("workspaces", [workspace]));
 
+  // T-PRV-02: the root push queues carry per-doc `uid` ownership and must be
+  // erased by owner (GDPR Art.17) — alice's are deleted, bob's are left intact.
+  db.addRootCollection(
+    collection("voip_outbound", [
+      doc("voip_outbound/v-alice-1", { uid: "alice" }),
+      doc("voip_outbound/v-bob-1", { uid: "bob" }),
+    ]),
+  );
+  db.addRootCollection(
+    collection("fcm_outbound", [
+      doc("fcm_outbound/f-alice-1", { uid: "alice" }),
+      doc("fcm_outbound/f-bob-1", { uid: "bob" }),
+    ]),
+  );
+
   const destroyedSecrets = [];
   const summary = await eraseUserCloudData(db, "alice", {
     deleteStorageObjects: async () => {},
@@ -178,11 +197,11 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.ok(db.deletedPaths.includes("workspaces/workspace-alice/teams/team-default/artifacts/a1/versions/v1"));
   assert.ok(db.deletedPaths.includes("workspaces/workspace-alice"));
   assert.ok(!db.deletedPaths.includes("provider_account_secret_refs/bob_codex"));
-  // F-RR09-001: alice's push-queue docs erased; bob's left untouched.
-  assert.ok(db.deletedPaths.includes("voip_outbound/voip-alice-1"));
-  assert.ok(db.deletedPaths.includes("fcm_outbound/fcm-alice-1"));
-  assert.ok(!db.deletedPaths.includes("voip_outbound/voip-bob-1"));
-  assert.ok(!db.deletedPaths.includes("fcm_outbound/fcm-bob-1"));
+  // T-PRV-02: alice's push-queue docs erased; bob's untouched.
+  assert.ok(db.deletedPaths.includes("voip_outbound/v-alice-1"));
+  assert.ok(db.deletedPaths.includes("fcm_outbound/f-alice-1"));
+  assert.ok(!db.deletedPaths.includes("voip_outbound/v-bob-1"));
+  assert.ok(!db.deletedPaths.includes("fcm_outbound/f-bob-1"));
 }
 
 {

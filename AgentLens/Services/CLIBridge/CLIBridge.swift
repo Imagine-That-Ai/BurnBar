@@ -85,15 +85,35 @@ final class CLIBridge: ObservableObject {
         }
     }
 
-    func cancelAndWait() async {
-        await streamRuntime.cancelAll()
+    /// T-TOOL-03: terminate any in-flight spawned external CLI process without
+    /// disturbing the HTTP gateway stream. Called when a desktop-control grant is
+    /// revoked mid-run so an agent operating under the just-revoked capabilities
+    /// is killed immediately rather than allowed to finish the current command.
+    func terminateRunningCLIProcess() {
+        Task {
+            await streamRuntime.terminateRunningProcess()
+        }
     }
 
-    #if DEBUG
-    func testing_registerRunningProcess(_ process: Process) async -> UInt64 {
-        await streamRuntime.registerRunningProcess(process)
+    /// T-TOOL-03: builds the mid-run grant poll for a spawned CLI lane. The
+    /// returned closure (run periodically by `CLIProcessStreamRunner`) reports
+    /// whether the grant is STILL active in the live store — catching both expiry
+    /// and explicit revocation — so the process is terminated the moment the
+    /// operator pulls the grant. Returns `nil` for ungranted (read-only) runs.
+    nonisolated static func spawnedCLIGrantPoll(
+        for grant: AgentCapabilityGrant?
+    ) -> (@Sendable () async -> Bool)? {
+        guard let grant else { return nil }
+        let grantID = grant.grantID
+        let runtimeID = grant.runtimeID
+        let threadID = grant.threadID
+        return {
+            await MainActor.run {
+                AgentCapabilityGrantStore.shared
+                    .activeGrant(runtimeID: runtimeID, threadID: threadID)?.grantID == grantID
+            }
+        }
     }
-    #endif
 
     func generateTextWithClaude(
         model: String,
@@ -153,7 +173,7 @@ final class CLIBridge: ObservableObject {
         model: String
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -175,7 +195,7 @@ final class CLIBridge: ObservableObject {
         model: String
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -194,12 +214,15 @@ final class CLIBridge: ObservableObject {
     /// Streams assistant text and tool-use events from the CLI (Claude `stream-json`, Codex JSONL text only).
     func chat(systemPrompt: String, userMessage: String) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
                 }
-                let backend = await MainActor.run { self.detectedBackend }
+                // This `Task` inherits `CLIBridge`'s `@MainActor` isolation, so
+                // `detectedBackend` is read directly here; the heavy streaming
+                // below hops off the main actor via the nonisolated runner.
+                let backend = self.detectedBackend
                 guard let backend else {
                     continuation.finish(throwing: CLIBridgeError.noCLI)
                     return
@@ -248,7 +271,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -277,7 +300,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -301,7 +324,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -330,7 +353,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -355,7 +378,7 @@ final class CLIBridge: ObservableObject {
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
             }
-            let task = Task.detached { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -387,7 +410,7 @@ final class CLIBridge: ObservableObject {
                     await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
                 }
             }
-            Task.detached { [streamRuntime] in
+            Task { [streamRuntime] in
                 let streamID = await streamIDTask.value
                 await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
             }
@@ -405,7 +428,7 @@ final class CLIBridge: ObservableObject {
         fallbackPlanner: (any CLIFallbackPlanning)? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -446,6 +469,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -489,7 +513,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -505,6 +529,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -520,7 +545,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -536,6 +561,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -551,7 +577,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -567,6 +593,7 @@ final class CLIBridge: ObservableObject {
                     model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -581,7 +608,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -596,6 +623,7 @@ final class CLIBridge: ObservableObject {
                     prompt: fullPrompt,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }
@@ -610,7 +638,7 @@ final class CLIBridge: ObservableObject {
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            Task.detached { [weak self] in
+            Task { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
@@ -625,6 +653,7 @@ final class CLIBridge: ObservableObject {
                     prompt: fullPrompt,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
                     continuation: continuation
                 )
             }

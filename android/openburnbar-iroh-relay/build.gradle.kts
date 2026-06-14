@@ -71,3 +71,8 @@ dependencies {
     testImplementation("net.i2p.crypto:eddsa:0.3.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
+
+// Lint the Android Kotlin sources with ktlint. AGP 9 built-in Kotlin leaves
+// `kotlin.sourceSets` empty, so ktlint-gradle only covers `.kts`; this shim
+// restores enforcement over `src/**/*.kt`. See the script header for details.
+apply(from = rootProject.file("gradle/ktlint-android-sources.gradle.kts"))

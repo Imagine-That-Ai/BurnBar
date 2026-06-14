@@ -70,7 +70,7 @@ final class GooseParser: LogParser, Sendable {
 
         for sessionsPath in sessionDirectories where fm.fileExists(atPath: sessionsPath) {
             let sessionsURL = URL(fileURLWithPath: sessionsPath)
-            let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter {
+            let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter { // try?-ok(dir read, empty fallback)
                 $0.pathExtension == "jsonl"
             } ?? []
 
@@ -291,7 +291,7 @@ final class GooseParser: LogParser, Sendable {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
         if raw.hasPrefix("[") || raw.hasPrefix("{"),
            let data = raw.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) {
+           let json = try? JSONSerialization.jsonObject(with: data) { // try?-ok(log JSON, raw fallback)
             if let blocks = json as? [[String: Any]] {
                 let parts = blocks.compactMap { block -> String? in
                     let type = (block["type"] as? String ?? "text").lowercased()
@@ -393,7 +393,7 @@ final class GooseParser: LogParser, Sendable {
 
         if let configJSON = stringValue(row, column: "model_config_json"),
            let data = configJSON.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(config JSON, model fallback)
             let candidates = [
                 json["model_name"],
                 json["model"],
@@ -468,10 +468,10 @@ final class GooseParser: LogParser, Sendable {
         file: URL,
         sessionId: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(file open, guard nil)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime read, nil ok)
 
         var inputTokens = 0
         var outputTokens = 0
@@ -492,7 +492,7 @@ final class GooseParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(log line JSON, skip)
                 continue
             }
 

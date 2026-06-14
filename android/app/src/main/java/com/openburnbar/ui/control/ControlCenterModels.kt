@@ -128,12 +128,11 @@ internal fun formatBytes(bytes: Long): String {
 }
 
 /** Compact count formatter (1.2k, 3.4M). */
-internal fun formatCount(count: Long): String =
-    when {
-        count < THOUSAND -> count.toString()
-        count < MILLION -> String.format(Locale.US, "%.1fk", count / THOUSAND_D)
-        else -> String.format(Locale.US, "%.1fM", count / MILLION_D)
-    }
+internal fun formatCount(count: Long): String = when {
+    count < THOUSAND -> count.toString()
+    count < MILLION -> String.format(Locale.US, "%.1fk", count / THOUSAND_D)
+    else -> String.format(Locale.US, "%.1fM", count / MILLION_D)
+}
 
 // ── Feature-gating bridge (spec §5) ──
 //
@@ -147,29 +146,26 @@ internal fun formatCount(count: Long): String =
 //   session_logs / conversations_chat → Cloud search / backup (Cloud)
 
 /** Bridge the control surface's [DataTier] onto the unified [CloudTier] ladder. */
-internal fun DataTier.toCloudTier(): CloudTier =
-    when (this) {
-        DataTier.ULTRA -> CloudTier.ULTRA
-        DataTier.PRO -> CloudTier.PRO
-        DataTier.FREE -> CloudTier.NONE
-    }
+internal fun DataTier.toCloudTier(): CloudTier = when (this) {
+    DataTier.ULTRA -> CloudTier.ULTRA
+    DataTier.PRO -> CloudTier.PRO
+    DataTier.FREE -> CloudTier.NONE
+}
 
 /**
  * The [GatedFeature] that fronts a data domain's upsell, or null when the domain
  * isn't a marquee gated feature (no evocative unlock surface). Drives the
  * resting [com.openburnbar.ui.pro.TierLockBadge] + the unlock sheet copy.
  */
-internal fun gatedFeatureForDomain(domainId: String): GatedFeature? =
-    when (domainId) {
-        "pensieve" -> GatedFeatureCatalog.feature(GatedFeatureID.DATA_VAULT)
-        "computer_use" -> GatedFeatureCatalog.feature(GatedFeatureID.AGENT_CONTROL)
-        "media" -> GatedFeatureCatalog.feature(GatedFeatureID.FLOO)
-        "external_mcp" -> GatedFeatureCatalog.feature(GatedFeatureID.HOSTED_MCP)
-        "session_logs" -> GatedFeatureCatalog.feature(GatedFeatureID.CLOUD_SEARCH)
-        "conversations_chat" -> GatedFeatureCatalog.feature(GatedFeatureID.CLOUD_BACKUP)
-        else -> null
-    }
+internal fun gatedFeatureForDomain(domainId: String): GatedFeature? = when (domainId) {
+    "pensieve" -> GatedFeatureCatalog.feature(GatedFeatureID.DATA_VAULT)
+    "computer_use" -> GatedFeatureCatalog.feature(GatedFeatureID.AGENT_CONTROL)
+    "media" -> GatedFeatureCatalog.feature(GatedFeatureID.FLOO)
+    "external_mcp" -> GatedFeatureCatalog.feature(GatedFeatureID.HOSTED_MCP)
+    "session_logs" -> GatedFeatureCatalog.feature(GatedFeatureID.CLOUD_SEARCH)
+    "conversations_chat" -> GatedFeatureCatalog.feature(GatedFeatureID.CLOUD_BACKUP)
+    else -> null
+}
 
 /** The required tier for a gated domain row, derived from its [GatedFeature]. */
-internal fun requiredCloudTierForDomain(domainId: String): CloudTier =
-    gatedFeatureForDomain(domainId)?.requiredTier ?: CloudTier.NONE
+internal fun requiredCloudTierForDomain(domainId: String): CloudTier = gatedFeatureForDomain(domainId)?.requiredTier ?: CloudTier.NONE

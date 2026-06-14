@@ -425,11 +425,7 @@ private fun ThreadInboxAccentBar(labelColorHex: String?) {
 }
 
 @Composable
-private fun ThreadInboxRowMain(
-    modifier: Modifier,
-    item: ThreadInboxItem,
-    registry: AgentIdentityRegistry,
-) {
+private fun ThreadInboxRowMain(modifier: Modifier, item: ThreadInboxItem, registry: AgentIdentityRegistry) {
     val identity = registry.identity(item.agentURI)
     Row(
         verticalAlignment = Alignment.Top,

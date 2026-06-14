@@ -24,7 +24,7 @@ import OSLog
 // toggle so privacy-conscious users can disable transcript mirroring
 // without losing telemetry sync.
 
-final class CLIAgentSessionMirror: @unchecked Sendable {
+final class CLIAgentSessionMirror: Sendable {
 
     @MainActor
     static let shared = CLIAgentSessionMirror(accountManager: AccountManager.shared)
@@ -35,14 +35,14 @@ final class CLIAgentSessionMirror: @unchecked Sendable {
     /// it to `false` in Settings → Privacy.
     static let preferenceKey = "chat.cliAgentMirror.enabled"
 
-    private let firestoreProvider: () -> Firestore
+    private let firestoreProvider: @Sendable () -> Firestore
     private let accountManager: AccountManager
     private let defaults: UserDefaults
     private let logger: Logger
 
     init(
         accountManager: AccountManager,
-        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
         defaults: UserDefaults = .standard,
         logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.openburnbar.app", category: "CLIAgentSessionMirror")
     ) {

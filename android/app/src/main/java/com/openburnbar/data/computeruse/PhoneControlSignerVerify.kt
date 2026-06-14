@@ -96,11 +96,10 @@ object PhoneControlSignerVerify {
      * X9.63 (`0x04‖X‖Y`) or compact 64-byte raw (`X‖Y`) for SE-P256 —
      * mirroring the Swift `PhoneControlVerifyingKey` normalization.
      */
-    private fun isValidPublicKeySize(publicKey: ByteArray, keyKind: PhoneControlSigningKeyKind): Boolean =
-        when (keyKind) {
-            PhoneControlSigningKeyKind.ED25519 -> publicKey.size == ED25519_PUBLIC_KEY_BYTES
-            PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> publicKey.size == P256_X963_PUBLIC_KEY_BYTES || publicKey.size == P256_RAW_XY_PUBLIC_KEY_BYTES
-        }
+    private fun isValidPublicKeySize(publicKey: ByteArray, keyKind: PhoneControlSigningKeyKind): Boolean = when (keyKind) {
+        PhoneControlSigningKeyKind.ED25519 -> publicKey.size == ED25519_PUBLIC_KEY_BYTES
+        PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> publicKey.size == P256_X963_PUBLIC_KEY_BYTES || publicKey.size == P256_RAW_XY_PUBLIC_KEY_BYTES
+    }
 
     private fun validateAuthoritySignatureOrError(
         publicKey: ByteArray,
@@ -121,27 +120,22 @@ object PhoneControlSignerVerify {
         }
     }
 
-    private fun decodeAuthoritySignature(encoded: String): ByteArray? =
-        runCatching { java.util.Base64.getDecoder().decode(encoded) }.getOrNull()
+    private fun decodeAuthoritySignature(encoded: String): ByteArray? = runCatching { java.util.Base64.getDecoder().decode(encoded) }.getOrNull()
 
-    private fun verifyAuthoritySignature(
-        publicKey: ByteArray,
-        signature: ByteArray,
-        payload: ByteArray,
-        keyKind: PhoneControlSigningKeyKind,
-    ): Boolean = when (keyKind) {
-        PhoneControlSigningKeyKind.ED25519 ->
-            runCatching {
-                com.google.crypto.tink.subtle.Ed25519Verify(publicKey).verify(signature, payload)
-                true
-            }.getOrDefault(false)
-        PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> {
-            // F2 — raw `r‖s` 64-byte ECDSA-over-SHA256 (Swift
-            // `ECDSASignature.rawRepresentation`, Node `'ieee-p1363'`).
-            val key = PhoneControlP256.publicKeyFromRepresentation(publicKey)
-            key != null && PhoneControlP256.verifySignature(key, signature, payload)
+    private fun verifyAuthoritySignature(publicKey: ByteArray, signature: ByteArray, payload: ByteArray, keyKind: PhoneControlSigningKeyKind): Boolean =
+        when (keyKind) {
+            PhoneControlSigningKeyKind.ED25519 ->
+                runCatching {
+                    com.google.crypto.tink.subtle.Ed25519Verify(publicKey).verify(signature, payload)
+                    true
+                }.getOrDefault(false)
+            PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> {
+                // F2 — raw `r‖s` 64-byte ECDSA-over-SHA256 (Swift
+                // `ECDSASignature.rawRepresentation`, Node `'ieee-p1363'`).
+                val key = PhoneControlP256.publicKeyFromRepresentation(publicKey)
+                key != null && PhoneControlP256.verifySignature(key, signature, payload)
+            }
         }
-    }
 }
 
 private const val ED25519_PUBLIC_KEY_BYTES = 32

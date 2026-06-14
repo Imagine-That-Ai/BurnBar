@@ -13,6 +13,14 @@ public actor BurnBarHTTPGatewayServer {
     private static let maxHeaderBytes = 16 * 1024
     private static let maxBodyBytes = 64 * 1024 * 1024
 
+    /// remediation(B1): default short-TTL for the live model-catalog cache used
+    /// by the production daemon wiring. The catalog `snapshot()` fan-out hits
+    /// live HTTP on every credentialed provider (and spawns `droid exec --help`
+    /// for Factory), so an uncached snapshot per request — on BOTH `/v1/models`
+    /// and the routing path — was the cost the finding flagged. 45s keeps the
+    /// catalog fresh while collapsing repeated fan-outs.
+    public static let defaultModelCatalogCacheTTL: TimeInterval = 45
+
     private let configuration: BurnBarGatewayConfiguration
     private let configStore: BurnBarConfigStore
     private let usageRecorder: BurnBarUsageRecorder?
@@ -35,7 +43,25 @@ public actor BurnBarHTTPGatewayServer {
     private let modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning
     private let logger: BurnBarDaemonLogger
     private let rateLimiter: BurnBarRateLimiter?
+    /// remediation(loopback-c): a dedicated, stricter rate limiter that bounds
+    /// tokenless callers SPECIFICALLY while the unauthenticated-loopback escape
+    /// hatch is live (no enforced auth token). It is consulted only when auth is
+    /// off, so it can never tighten the limit for authenticated callers. Non-nil
+    /// only when the escape hatch is live (see `effectiveUnauthenticatedLoopbackRateLimit`),
+    /// which keeps the fail-closed bound on by default whenever the hatch is used
+    /// — even in production, where no general gateway `rateLimiter` is wired.
+    private let unauthenticatedLoopbackRateLimiter: BurnBarRateLimiter?
     private var listener: NWListener?
+    /// remediation(B1): TTL for `cachedModelCatalog`. `0` disables the cache and
+    /// reproduces the original uncached-per-call behavior byte-for-byte, which
+    /// is the default so existing call sites and tests are unaffected; the
+    /// production daemon wiring opts into `defaultModelCatalogCacheTTL`.
+    private let modelCatalogCacheTTL: TimeInterval
+    /// remediation(B1): last cached live model-catalog snapshot, keyed by the
+    /// config-snapshot identity so a provider config/credential change (which
+    /// mutates the snapshot) invalidates it immediately. Actor-isolated state,
+    /// so no external locking is required.
+    private var cachedModelCatalog: CachedModelCatalogSnapshot?
 
     public init(
         configuration: BurnBarGatewayConfiguration,
@@ -50,6 +76,7 @@ public actor BurnBarHTTPGatewayServer {
         modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogSession: URLSession = .shared,
         modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
+        modelCatalogCacheTTL: TimeInterval = 0,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
@@ -65,10 +92,20 @@ public actor BurnBarHTTPGatewayServer {
         self.modelHealthStore = modelHealthStore
         self.modelCatalogSession = modelCatalogSession
         self.modelCatalogDroidProcessRunner = modelCatalogDroidProcessRunner
+        self.modelCatalogCacheTTL = max(0, modelCatalogCacheTTL)
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
         }
+        // remediation(loopback-c): bound the tokenless-loopback escape hatch with
+        // its own tight limiter. `effectiveUnauthenticatedLoopbackRateLimit` is
+        // non-nil only when the gateway is serving with no enforced auth token,
+        // so authenticated callers never touch this path. This is independent of
+        // the optional general `rateLimiter`, so the bound holds even where (as
+        // in the production daemon wiring) no general gateway limiter exists.
+        self.unauthenticatedLoopbackRateLimiter = configuration
+            .effectiveUnauthenticatedLoopbackRateLimit
+            .map { BurnBarRateLimiter(configuration: $0) }
     }
 
     public func start() throws {
@@ -106,11 +143,33 @@ public actor BurnBarHTTPGatewayServer {
             switch state {
             case .ready:
                 BurnBarDaemonMetricsCounters.recordGatewayListenerReady()
+                // Match the request-path enforcement: a whitespace-only token is
+                // treated as no token at all (see `handleRequest`), so auth is
+                // only "on" when a non-empty token is present.
+                let authEnforced = self.configuration.authToken?
+                    .trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty != nil
                 self.logger.notice("gateway_started", metadata: [
                     "host": host,
                     "port": "\(boundPort)",
-                    "auth_required": "\(self.configuration.authToken != nil)"
+                    "auth_required": "\(authEnforced)"
                 ])
+                // remediation(loopback hardening): when the gateway is reachable
+                // with NO bearer check, any same-host process can drive the
+                // credential-spending proxy. The bind is already constrained to
+                // loopback (validationError rejects non-loopback + wildcard
+                // binds without a token), but this state must never be silent —
+                // emit a loud, explicit startup WARNING so an operator can see
+                // that the unauthenticated escape hatch is live.
+                if !authEnforced {
+                    self.logger.warning("gateway_auth_disabled_loopback", metadata: [
+                        "host": host,
+                        "port": "\(boundPort)",
+                        "is_loopback": "\(self.configuration.isLoopback)",
+                        "allow_unauthenticated_loopback": "\(self.configuration.allowUnauthenticatedLoopback)",
+                        "reason": "Gateway is serving the credential-spending proxy with NO auth token; any local "
+                            + "process can spend the user's provider credits. Set an auth token to fail closed."
+                    ])
+                }
                 if !self.configuration.isLoopback {
                     self.logger.warning("gateway_non_loopback_bind", metadata: [
                         "host": host,
@@ -333,15 +392,35 @@ public actor BurnBarHTTPGatewayServer {
                         "retry_after": "\(retryAfter)"
                     ]
                 )
-                var rateLimitHeaders: [String: String] = [
-                    "Content-Type": "application/json",
-                    "Retry-After": "\(Int(ceil(retryAfter)))"
-                ]
-                for (key, value) in corsHeaders(for: request) {
-                    rateLimitHeaders[key] = value
-                }
-                await writeResponse(on: connection, status: 429, headers: rateLimitHeaders, body: errorBody("rate limit exceeded"))
-                connection.cancel()
+                await writeRateLimitResponse(on: connection, retryAfter: retryAfter, request: request)
+                return
+            }
+        }
+
+        // remediation(loopback-c): apply the stricter tokenless-loopback ceiling
+        // on top of (and after) any general limit. This limiter is non-nil only
+        // while the unauthenticated-loopback escape hatch is live, so it bounds
+        // an abusive same-host process from spending unlimited provider credits
+        // without touching the authenticated path.
+        if let unauthenticatedLoopbackRateLimiter {
+            // remediation(loopback-c): collapse ALL callers into one constant bucket
+            // for this limiter. `rateLimitClientKey` derives a per-credential bucket
+            // from a presented bearer token, but in unauthenticated-loopback mode
+            // tokens are NOT validated — so keying on them would let a local caller
+            // mint fresh buckets with arbitrary tokens and evade the ceiling. A single
+            // shared bucket makes the tokenless provider-credit-spend cap actually bind.
+            let clientKey = "unauthenticated-loopback"
+            let limitResult = await unauthenticatedLoopbackRateLimiter.checkLimit(clientKey: clientKey)
+            if case .throttled(let retryAfter) = limitResult {
+                logger.warning(
+                    "gateway_unauthenticated_loopback_rate_limit_exceeded",
+                    metadata: [
+                        "client_key": clientKey,
+                        "retry_after": "\(retryAfter)",
+                        "reason": "tokenless-loopback escape hatch ceiling bounds provider-credit spend"
+                    ]
+                )
+                await writeRateLimitResponse(on: connection, retryAfter: retryAfter, request: request)
                 return
             }
         }
@@ -402,6 +481,40 @@ public actor BurnBarHTTPGatewayServer {
 
     // MARK: - /v1/models
 
+    /// remediation(B1): single, shared accessor for the expensive live
+    /// model-catalog snapshot used by BOTH `handleModels` (`/v1/models`) and the
+    /// routing path (`advertisedRouteKeysByFamily`). When `modelCatalogCacheTTL`
+    /// is positive, a snapshot is reused while it is fresh AND the config
+    /// snapshot is unchanged; otherwise it falls through to an uncached build
+    /// that is byte-identical to the previous per-call behavior. Runs inside the
+    /// actor's isolation, so the cache read/refresh is race-free.
+    private func liveModelCatalogSnapshot() async throws -> BurnBarLiveModelCatalogSnapshot {
+        // The config snapshot is cheap (config store memoizes it) and changes
+        // whenever provider config/credentials change, so its identity is the
+        // natural cache key — a config edit invalidates the cache immediately.
+        let configHash = (try? await configStore.snapshot())?.hashValue
+        if modelCatalogCacheTTL > 0,
+           let cached = cachedModelCatalog,
+           let configHash,
+           cached.configHash == configHash,
+           Date().timeIntervalSince(cached.storedAt) < modelCatalogCacheTTL {
+            return cached.snapshot
+        }
+        let snapshot = try await BurnBarLiveModelCatalog(
+            configStore: configStore,
+            session: modelCatalogSession,
+            droidProcessRunner: modelCatalogDroidProcessRunner
+        ).snapshot()
+        if modelCatalogCacheTTL > 0, let configHash {
+            cachedModelCatalog = CachedModelCatalogSnapshot(
+                configHash: configHash,
+                storedAt: Date(),
+                snapshot: snapshot
+            )
+        }
+        return snapshot
+    }
+
     private func handleModels(includeUnadvertised: Bool = false) async -> GatewayHTTPResponse {
         do {
             let catalog = configStore.catalogSupport.catalog
@@ -409,11 +522,7 @@ public actor BurnBarHTTPGatewayServer {
             let suppressedBaseIDs = includeUnadvertised
                 ? Set<String>()
                 : suppressedBaseModelIDs(from: configSnapshot)
-            let snapshot = try await BurnBarLiveModelCatalog(
-                configStore: configStore,
-                session: modelCatalogSession,
-                droidProcessRunner: modelCatalogDroidProcessRunner
-            ).snapshot()
+            let snapshot = try await liveModelCatalogSnapshot()
             var entries: [GatewayModelCatalogEntry] = []
             for model in snapshot.models {
                 if !includeUnadvertised,
@@ -605,10 +714,11 @@ public actor BurnBarHTTPGatewayServer {
         guard normalizedModelID.isEmpty == false else { return [:] }
 
         let catalog = configStore.catalogSupport.catalog
-        let snapshot = try await BurnBarLiveModelCatalog(
-            configStore: configStore,
-            session: modelCatalogSession
-        ).snapshot()
+        // remediation(B1): route through the shared, optionally-cached accessor
+        // instead of building a throwaway catalog per call. Now also passes the
+        // injected droid process runner (was previously defaulted here), which
+        // matches `/v1/models` and is a no-op in production.
+        let snapshot = try await liveModelCatalogSnapshot()
 
         var routeKeysByFamily: [BurnBarProviderFormatFamily: Set<String>] = [:]
         for model in snapshot.models where model.routeEligible && model.advertisementEnabled {
@@ -1202,39 +1312,59 @@ public actor BurnBarHTTPGatewayServer {
         let priorAttempts: [BurnBarProxyRouteAttempt]
     }
 
-    /// Shared routing pipeline behind the three model-serving endpoints:
-    /// validate and decode the body, resolve model overrides and advertised
-    /// routes, then walk format families and ranked routes attempting the
-    /// request (verbatim-stream first when eligible, buffered otherwise),
-    /// failing over between accounts on quota/credential errors, recording
-    /// usage, and writing exactly one proxy route-log entry per request.
-    private func routeModelRequest(
+    // remediation(gateway split): mechanically-extracted sub-steps of
+    // `routeModelRequest`. Each helper is a contiguous block lifted verbatim
+    // from the former ~412-line method onto the SAME actor — no routing, auth,
+    // rate-limit, or degrade semantics change. The locals the block consumed are
+    // now parameters; the values it produced are returned (or mutated `inout`).
+
+    /// Result of validating/decoding the request body and resolving any proxy
+    /// model override. `.rejected` carries the exact early-return response the
+    /// original inline guards produced; `.resolved` carries the initial routing
+    /// state the rest of the pipeline reads/mutates.
+    private struct GatewayResolvedModelRequest {
+        let bodyData: Data
+        let modelID: String
+        let wantsStream: Bool
+        let requestSignature: String
+        let requestedModel: GatewayRequestedModel
+        let advertisedRequestedModel: GatewayRequestedModel
+        let resolvedVariant: BurnBarModelVariant?
+        let logContext: GatewayRequestContext
+    }
+
+    private enum GatewayModelRequestParse {
+        case rejected(GatewayRouteOutcome)
+        case resolved(GatewayResolvedModelRequest)
+    }
+
+    /// remediation(gateway split): request parsing + model-override resolution
+    /// step (formerly the head of `routeModelRequest`). Preserves the exact 400
+    /// rejections and the alias/thinking-variant rewrite bookkeeping.
+    private func parseModelRequest(
         body: String?,
-        connection: NWConnection?,
-        corsHeaders: [String: String],
-        descriptor: GatewayEndpointDescriptor
-    ) async -> GatewayRouteOutcome {
+        descriptor: GatewayEndpointDescriptor,
+        routeLogStartedAt: Date
+    ) async -> GatewayModelRequestParse {
         guard let body, !body.isEmpty else {
-            return .buffered(jsonResponse(status: 400, body: errorBody("request body required")))
+            return .rejected(.buffered(jsonResponse(status: 400, body: errorBody("request body required"))))
         }
 
         guard let bodyData = body.data(using: .utf8) else {
-            return .buffered(jsonResponse(status: 400, body: errorBody("request body must be valid UTF-8")))
+            return .rejected(.buffered(jsonResponse(status: 400, body: errorBody("request body must be valid UTF-8"))))
         }
 
         let decoded: GatewayDecodedModelRequest
         do {
             decoded = try descriptor.decodeRequest(bodyData)
         } catch {
-            return .buffered(jsonResponse(status: 400, body: errorBody("invalid JSON request body")))
+            return .rejected(.buffered(jsonResponse(status: 400, body: errorBody("invalid JSON request body"))))
         }
 
         let modelID = decoded.model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard modelID.isEmpty == false else {
-            return .buffered(jsonResponse(status: 400, body: errorBody("model field required")))
+            return .rejected(.buffered(jsonResponse(status: 400, body: errorBody("model field required"))))
         }
-        let routeLogStartedAt = Date()
-        var routeLogAttempts = RouteAttemptRecorder()
         let wantsStream = decoded.wantsStream
         let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
@@ -1260,6 +1390,236 @@ public actor BurnBarHTTPGatewayServer {
             logContext.routingModelSlug = requestedModel.modelID
             logContext.routingModelDisplayName = requestedModel.modelID
         }
+
+        return .resolved(GatewayResolvedModelRequest(
+            bodyData: bodyData,
+            modelID: modelID,
+            wantsStream: wantsStream,
+            requestSignature: requestSignature,
+            requestedModel: requestedModel,
+            advertisedRequestedModel: advertisedRequestedModel,
+            resolvedVariant: resolvedVariant,
+            logContext: logContext
+        ))
+    }
+
+    /// remediation(gateway split): the request-stable inputs shared by every
+    /// route attempt in one `routeModelRequest` call. Bundling them keeps
+    /// `attemptSingleRoute` to a readable parameter count (the per-attempt and
+    /// `inout` accumulators stay explicit). These never change across the
+    /// route/format-family loops, so passing them as one value is equivalent to
+    /// the former inline closure captures.
+    private struct GatewayRoutePipeline {
+        let descriptor: GatewayEndpointDescriptor
+        let connection: NWConnection?
+        let corsHeaders: [String: String]
+        let bodyData: Data
+        let wantsStream: Bool
+        let resolvedVariant: BurnBarModelVariant?
+        let requestSignature: String
+        let requestedModel: GatewayRequestedModel
+        let logContext: GatewayRequestContext
+    }
+
+    /// Control-flow signal returned by `attemptSingleRoute` so the caller's loop
+    /// can reproduce the original `return` / `continue` / `break` behavior.
+    private enum GatewaySingleRouteOutcome {
+        /// The attempt produced a final response; return it from the pipeline.
+        case completed(GatewayRouteOutcome)
+        /// The attempt failed; the loop should move on to the next candidate.
+        case failedTryNext
+        /// The attempt failed terminally; the loop should stop trying candidates.
+        case failedStop
+    }
+
+    /// remediation(gateway split): one ranked-route attempt (formerly the inner
+    /// `do/catch` of the route loop). Tries the verbatim SSE relay when the
+    /// endpoint's stream plan allows it, otherwise the buffered proxy; records
+    /// health, usage, the per-attempt log line, and the single proxy route-log
+    /// entry on success. On failure it records the failed attempt, updates
+    /// `lastError`/`lastFailedRoute`, and signals whether the loop should try the
+    /// next candidate — identical to the original inline logic.
+    private func attemptSingleRoute(
+        route: BurnBarProviderRoute,
+        hasMoreCandidates: Bool,
+        formatFamily: BurnBarProviderFormatFamily,
+        requiredCanonicalModelID: String,
+        router: BurnBarProviderRouter,
+        pipeline: GatewayRoutePipeline,
+        routeLogAttempts: inout RouteAttemptRecorder,
+        lastError: inout Error?,
+        lastFailedRoute: inout BurnBarProviderRoute?
+    ) async -> GatewaySingleRouteOutcome {
+        let descriptor = pipeline.descriptor
+        let connection = pipeline.connection
+        let corsHeaders = pipeline.corsHeaders
+        let requestedModel = pipeline.requestedModel
+        let logContext = pipeline.logContext
+        if let slotID = route.credentialSlotID {
+            try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+        }
+        let idempotencyKey = usageIdempotencyKey(requestSignature: pipeline.requestSignature, route: route)
+        let attemptStartedAt = Date()
+        let attemptContext = GatewayRouteAttemptContext(
+            bodyData: pipeline.bodyData,
+            route: route,
+            formatFamily: formatFamily,
+            wantsStream: pipeline.wantsStream,
+            variant: pipeline.resolvedVariant
+        )
+
+        do {
+            // Verbatim SSE passthrough when the endpoint's stream
+            // plan allows it for this attempt. Falls back to the
+            // buffered path when the upstream cannot stream.
+            if let connection, let streamPlan = descriptor.streamAttempt(attemptContext) {
+                do {
+                    let relay = try await relayProxyStream(
+                        on: connection,
+                        corsHeaders: corsHeaders,
+                        usageFormat: streamPlan.usageFormat,
+                        route: route,
+                        idempotencyKey: idempotencyKey,
+                        openStream: streamPlan.openStream
+                    )
+                    await router.markRouteSuccess(route)
+                    await modelHealthStore.recordSuccess(
+                        modelID: requestedModel.originalID,
+                        formatFamily: formatFamily,
+                        route: route
+                    )
+                    let attemptStatus: BurnBarProxyRouteFinalStatus = relay.interrupted ? .interrupted : .exact
+                    routeLogAttempts.append(routeAttempt(
+                        sequence: routeLogAttempts.nextSequence,
+                        startedAt: attemptStartedAt,
+                        completedAt: Date(),
+                        route: route,
+                        status: attemptStatus,
+                        httpStatus: relay.httpStatus
+                    ))
+                    let finalStatus = relay.interrupted
+                        ? BurnBarProxyRouteFinalStatus.interrupted
+                        : routeFinalStatus(
+                            route: route,
+                            requestedCanonicalModelID: requiredCanonicalModelID,
+                            attempts: routeLogAttempts.attempts
+                        )
+                    await recordProxyRouteLogEntry(
+                        context: logContext,
+                        requestedCanonicalModelID: requiredCanonicalModelID,
+                        route: route,
+                        finalStatus: finalStatus,
+                        streamed: true,
+                        streamInterrupted: relay.interrupted,
+                        httpStatus: relay.httpStatus,
+                        attempts: routeLogAttempts.attempts,
+                        usage: relay.usage
+                    )
+                    return .completed(relay.outcome)
+                } catch is BurnBarProxyStreamingUnsupported {
+                    // Upstream cannot stream verbatim (e.g. Ollama
+                    // native API) — fall back to buffered below.
+                }
+            }
+
+            let response = try await descriptor.proxyBuffered(attemptContext)
+            await router.markRouteSuccess(route)
+            await modelHealthStore.recordSuccess(
+                modelID: requestedModel.originalID,
+                formatFamily: formatFamily,
+                route: route
+            )
+            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+            routeLogAttempts.append(routeAttempt(
+                sequence: routeLogAttempts.nextSequence,
+                startedAt: attemptStartedAt,
+                completedAt: Date(),
+                route: route,
+                status: .exact,
+                httpStatus: response.statusCode
+            ))
+            await recordProxyRouteLogEntry(
+                context: logContext,
+                requestedCanonicalModelID: requiredCanonicalModelID,
+                route: route,
+                providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
+                finalStatus: routeFinalStatus(
+                    route: route,
+                    requestedCanonicalModelID: requiredCanonicalModelID,
+                    attempts: routeLogAttempts.attempts
+                ),
+                httpStatus: response.statusCode,
+                attempts: routeLogAttempts.attempts,
+                usage: response.usage
+            )
+            return .completed(.buffered(GatewayHTTPResponse(
+                status: response.statusCode,
+                headers: ["Content-Type": response.contentType],
+                body: response.body
+            )))
+        } catch {
+            lastError = error
+            lastFailedRoute = route
+            routeLogAttempts.append(routeAttempt(
+                sequence: routeLogAttempts.nextSequence,
+                startedAt: attemptStartedAt,
+                completedAt: Date(),
+                route: route,
+                status: .failed,
+                httpStatus: Self.httpStatus(from: error),
+                failureMessage: error.localizedDescription
+            ))
+            await modelHealthStore.recordFailure(
+                modelID: requestedModel.originalID,
+                formatFamily: formatFamily,
+                route: route,
+                error: error
+            )
+            await router.markRouteFailure(route, error: error)
+            if shouldFailOverProviderError(error), hasMoreCandidates {
+                return .failedTryNext
+            }
+            return .failedStop
+        }
+    }
+
+    /// Shared routing pipeline behind the three model-serving endpoints:
+    /// validate and decode the body, resolve model overrides and advertised
+    /// routes, then walk format families and ranked routes attempting the
+    /// request (verbatim-stream first when eligible, buffered otherwise),
+    /// failing over between accounts on quota/credential errors, recording
+    /// usage, and writing exactly one proxy route-log entry per request.
+    private func routeModelRequest(
+        body: String?,
+        connection: NWConnection?,
+        corsHeaders: [String: String],
+        descriptor: GatewayEndpointDescriptor
+    ) async -> GatewayRouteOutcome {
+        // remediation(gateway split): body validation + model-override resolution
+        // moved to `parseModelRequest`; it returns the exact early-return
+        // rejections the inline guards produced, or the initial routing state.
+        let routeLogStartedAt = Date()
+        let resolved: GatewayResolvedModelRequest
+        switch await parseModelRequest(
+            body: body,
+            descriptor: descriptor,
+            routeLogStartedAt: routeLogStartedAt
+        ) {
+        case .rejected(let outcome):
+            return outcome
+        case .resolved(let value):
+            resolved = value
+        }
+
+        let bodyData = resolved.bodyData
+        let modelID = resolved.modelID
+        let wantsStream = resolved.wantsStream
+        let requestSignature = resolved.requestSignature
+        var routeLogAttempts = RouteAttemptRecorder()
+        var requestedModel = resolved.requestedModel
+        var advertisedRequestedModel = resolved.advertisedRequestedModel
+        let resolvedVariant = resolved.resolvedVariant
+        var logContext = resolved.logContext
 
         // Snapshot of the pipeline state for the cross-vendor degrade hook.
         // Reads the routing locals at call time, after any reassignment.
@@ -1394,133 +1754,41 @@ public actor BurnBarHTTPGatewayServer {
 
                 let routes = rankedRoutes.filter { $0.canonicalModelID == requiredCanonicalModelID }
 
-                for (index, route) in routes.enumerated() {
-                    if let slotID = route.credentialSlotID {
-                        try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
-                    }
-                    let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
-                    let attemptStartedAt = Date()
-                    let attemptContext = GatewayRouteAttemptContext(
-                        bodyData: bodyData,
+                // remediation(gateway split): labeled loop so a `.failedStop`
+                // signal breaks the ROUTE loop (matching the original bare
+                // `break`), not just the `switch`.
+                routeLoop: for (index, route) in routes.enumerated() {
+                    // remediation(gateway split): one ranked-route attempt lifted
+                    // into `attemptSingleRoute`; the returned signal reproduces
+                    // the original return / continue / break control flow.
+                    let attemptOutcome = await attemptSingleRoute(
                         route: route,
+                        hasMoreCandidates: index < routes.count - 1,
                         formatFamily: formatFamily,
-                        wantsStream: wantsStream,
-                        variant: resolvedVariant
+                        requiredCanonicalModelID: requiredCanonicalModelID,
+                        router: router,
+                        pipeline: GatewayRoutePipeline(
+                            descriptor: descriptor,
+                            connection: connection,
+                            corsHeaders: corsHeaders,
+                            bodyData: bodyData,
+                            wantsStream: wantsStream,
+                            resolvedVariant: resolvedVariant,
+                            requestSignature: requestSignature,
+                            requestedModel: requestedModel,
+                            logContext: logContext
+                        ),
+                        routeLogAttempts: &routeLogAttempts,
+                        lastError: &lastError,
+                        lastFailedRoute: &lastFailedRoute
                     )
-
-                    do {
-                        // Verbatim SSE passthrough when the endpoint's stream
-                        // plan allows it for this attempt. Falls back to the
-                        // buffered path when the upstream cannot stream.
-                        if let connection, let streamPlan = descriptor.streamAttempt(attemptContext) {
-                            do {
-                                let relay = try await relayProxyStream(
-                                    on: connection,
-                                    corsHeaders: corsHeaders,
-                                    usageFormat: streamPlan.usageFormat,
-                                    route: route,
-                                    idempotencyKey: idempotencyKey,
-                                    openStream: streamPlan.openStream
-                                )
-                                await router.markRouteSuccess(route)
-                                await modelHealthStore.recordSuccess(
-                                    modelID: requestedModel.originalID,
-                                    formatFamily: formatFamily,
-                                    route: route
-                                )
-                                let attemptStatus: BurnBarProxyRouteFinalStatus = relay.interrupted ? .interrupted : .exact
-                                routeLogAttempts.append(routeAttempt(
-                                    sequence: routeLogAttempts.nextSequence,
-                                    startedAt: attemptStartedAt,
-                                    completedAt: Date(),
-                                    route: route,
-                                    status: attemptStatus,
-                                    httpStatus: relay.httpStatus
-                                ))
-                                let finalStatus = relay.interrupted
-                                    ? BurnBarProxyRouteFinalStatus.interrupted
-                                    : routeFinalStatus(
-                                        route: route,
-                                        requestedCanonicalModelID: requiredCanonicalModelID,
-                                        attempts: routeLogAttempts.attempts
-                                    )
-                                await recordProxyRouteLogEntry(
-                                    context: logContext,
-                                    requestedCanonicalModelID: requiredCanonicalModelID,
-                                    route: route,
-                                    finalStatus: finalStatus,
-                                    streamed: true,
-                                    streamInterrupted: relay.interrupted,
-                                    httpStatus: relay.httpStatus,
-                                    attempts: routeLogAttempts.attempts,
-                                    usage: relay.usage
-                                )
-                                return relay.outcome
-                            } catch is BurnBarProxyStreamingUnsupported {
-                                // Upstream cannot stream verbatim (e.g. Ollama
-                                // native API) — fall back to buffered below.
-                            }
-                        }
-
-                        let response = try await descriptor.proxyBuffered(attemptContext)
-                        await router.markRouteSuccess(route)
-                        await modelHealthStore.recordSuccess(
-                            modelID: requestedModel.originalID,
-                            formatFamily: formatFamily,
-                            route: route
-                        )
-                        await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
-                        routeLogAttempts.append(routeAttempt(
-                            sequence: routeLogAttempts.nextSequence,
-                            startedAt: attemptStartedAt,
-                            completedAt: Date(),
-                            route: route,
-                            status: .exact,
-                            httpStatus: response.statusCode
-                        ))
-                        await recordProxyRouteLogEntry(
-                            context: logContext,
-                            requestedCanonicalModelID: requiredCanonicalModelID,
-                            route: route,
-                            providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
-                            finalStatus: routeFinalStatus(
-                                route: route,
-                                requestedCanonicalModelID: requiredCanonicalModelID,
-                                attempts: routeLogAttempts.attempts
-                            ),
-                            httpStatus: response.statusCode,
-                            attempts: routeLogAttempts.attempts,
-                            usage: response.usage
-                        )
-                        return .buffered(GatewayHTTPResponse(
-                            status: response.statusCode,
-                            headers: ["Content-Type": response.contentType],
-                            body: response.body
-                        ))
-                    } catch {
-                        lastError = error
-                        lastFailedRoute = route
-                        routeLogAttempts.append(routeAttempt(
-                            sequence: routeLogAttempts.nextSequence,
-                            startedAt: attemptStartedAt,
-                            completedAt: Date(),
-                            route: route,
-                            status: .failed,
-                            httpStatus: Self.httpStatus(from: error),
-                            failureMessage: error.localizedDescription
-                        ))
-                        await modelHealthStore.recordFailure(
-                            modelID: requestedModel.originalID,
-                            formatFamily: formatFamily,
-                            route: route,
-                            error: error
-                        )
-                        await router.markRouteFailure(route, error: error)
-                        let hasMoreCandidates = index < routes.count - 1
-                        if shouldFailOverProviderError(error), hasMoreCandidates {
-                            continue
-                        }
-                        break
+                    switch attemptOutcome {
+                    case .completed(let outcome):
+                        return outcome
+                    case .failedTryNext:
+                        continue routeLoop
+                    case .failedStop:
+                        break routeLoop
                     }
                 }
 
@@ -2010,64 +2278,98 @@ public actor BurnBarHTTPGatewayServer {
         )
         var attempts: [BurnBarProxyRouteAttempt] = []
         for ranked in degradeRoutes {
-            let route = ranked.route
-            let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
-            let attemptStartedAt = Date()
-            do {
-                logger.notice(
-                    "cross_vendor_degrade",
-                    metadata: [
-                        "requested_model": requestedModelID,
-                        "degrade_provider_id": route.providerID,
-                        "degrade_model_id": route.resolvedModelID
-                    ]
-                )
-                let response = try await proxyChatCompletions(
-                    body: bodyData,
-                    route: route,
-                    formatFamily: .openaiCompat,
-                    variant: nil
-                )
-                await router.markRouteSuccess(route)
-                await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
-                attempts.append(routeAttempt(
-                    sequence: priorAttempts.count + attempts.count + 1,
-                    startedAt: attemptStartedAt,
-                    completedAt: Date(),
-                    route: route,
-                    status: .crossVendorFallback,
-                    httpStatus: response.statusCode
-                ))
-                await recordProxyRouteLogEntry(
-                    context: logContext,
-                    requestedCanonicalModelID: requestedCanonicalModelID,
-                    route: route,
-                    providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
-                    finalStatus: .crossVendorFallback,
-                    httpStatus: response.statusCode,
-                    attempts: priorAttempts + attempts,
-                    usage: response.usage
-                )
-                return GatewayDegradeAttemptResult(outcome: .buffered(GatewayHTTPResponse(
-                    status: response.statusCode,
-                    headers: ["Content-Type": response.contentType],
-                    body: response.body
-                )), attempts: attempts)
-            } catch {
-                attempts.append(routeAttempt(
-                    sequence: priorAttempts.count + attempts.count + 1,
-                    startedAt: attemptStartedAt,
-                    completedAt: Date(),
-                    route: route,
-                    status: .failed,
-                    httpStatus: Self.httpStatus(from: error),
-                    failureMessage: error.localizedDescription
-                ))
-                await router.markRouteFailure(route, error: error)
-                continue
+            // remediation(gateway split): one degrade-route attempt lifted into
+            // `attemptCrossVendorDegradeRoute`; a non-nil result is the served
+            // fallback response, nil means try the next degrade candidate —
+            // identical to the original inline return/continue logic.
+            if let served = await attemptCrossVendorDegradeRoute(
+                route: ranked.route,
+                router: router,
+                requestedModelID: requestedModelID,
+                requestedCanonicalModelID: requestedCanonicalModelID,
+                bodyData: bodyData,
+                requestSignature: requestSignature,
+                logContext: logContext,
+                priorAttempts: priorAttempts,
+                attempts: &attempts
+            ) {
+                return served
             }
         }
         return GatewayDegradeAttemptResult(outcome: nil, attempts: attempts)
+    }
+
+    /// remediation(gateway split): one cross-vendor degrade attempt (formerly the
+    /// inner body of the `for ranked in degradeRoutes` loop). Returns the served
+    /// `GatewayDegradeAttemptResult` on success, or nil on failure after
+    /// recording the failed attempt and marking the route — letting the caller
+    /// fall through to the next degrade candidate exactly as before.
+    private func attemptCrossVendorDegradeRoute(
+        route: BurnBarProviderRoute,
+        router: BurnBarProviderRouter,
+        requestedModelID: String,
+        requestedCanonicalModelID: String?,
+        bodyData: Data,
+        requestSignature: String,
+        logContext: GatewayRequestContext,
+        priorAttempts: [BurnBarProxyRouteAttempt],
+        attempts: inout [BurnBarProxyRouteAttempt]
+    ) async -> GatewayDegradeAttemptResult? {
+        let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
+        let attemptStartedAt = Date()
+        do {
+            logger.notice(
+                "cross_vendor_degrade",
+                metadata: [
+                    "requested_model": requestedModelID,
+                    "degrade_provider_id": route.providerID,
+                    "degrade_model_id": route.resolvedModelID
+                ]
+            )
+            let response = try await proxyChatCompletions(
+                body: bodyData,
+                route: route,
+                formatFamily: .openaiCompat,
+                variant: nil
+            )
+            await router.markRouteSuccess(route)
+            await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+            attempts.append(routeAttempt(
+                sequence: priorAttempts.count + attempts.count + 1,
+                startedAt: attemptStartedAt,
+                completedAt: Date(),
+                route: route,
+                status: .crossVendorFallback,
+                httpStatus: response.statusCode
+            ))
+            await recordProxyRouteLogEntry(
+                context: logContext,
+                requestedCanonicalModelID: requestedCanonicalModelID,
+                route: route,
+                providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
+                finalStatus: .crossVendorFallback,
+                httpStatus: response.statusCode,
+                attempts: priorAttempts + attempts,
+                usage: response.usage
+            )
+            return GatewayDegradeAttemptResult(outcome: .buffered(GatewayHTTPResponse(
+                status: response.statusCode,
+                headers: ["Content-Type": response.contentType],
+                body: response.body
+            )), attempts: attempts)
+        } catch {
+            attempts.append(routeAttempt(
+                sequence: priorAttempts.count + attempts.count + 1,
+                startedAt: attemptStartedAt,
+                completedAt: Date(),
+                route: route,
+                status: .failed,
+                httpStatus: Self.httpStatus(from: error),
+                failureMessage: error.localizedDescription
+            ))
+            await router.markRouteFailure(route, error: error)
+            return nil
+        }
     }
 
     private func proxyChatCompletions(
@@ -2421,6 +2723,25 @@ public actor BurnBarHTTPGatewayServer {
         return "anonymous"
     }
 
+    /// remediation(loopback-c): shared 429 writer so the general limiter and the
+    /// stricter tokenless-loopback ceiling emit byte-identical throttle responses
+    /// (CORS headers + `Retry-After`), then close the connection.
+    private func writeRateLimitResponse(
+        on connection: NWConnection,
+        retryAfter: Double,
+        request: HTTPRequest
+    ) async {
+        var rateLimitHeaders: [String: String] = [
+            "Content-Type": "application/json",
+            "Retry-After": "\(Int(ceil(retryAfter)))"
+        ]
+        for (key, value) in corsHeaders(for: request) {
+            rateLimitHeaders[key] = value
+        }
+        await writeResponse(on: connection, status: 429, headers: rateLimitHeaders, body: errorBody("rate limit exceeded"))
+        connection.cancel()
+    }
+
     private static func stableDigest(_ value: String) -> String {
         let digest = SHA256.hash(data: Data(value.utf8))
         return digest.prefix(12).map { String(format: "%02x", $0) }.joined()
@@ -2504,104 +2825,18 @@ public actor BurnBarHTTPGatewayServer {
         let attempts: [BurnBarProxyRouteAttempt]
     }
 
-    /// Selects how the streaming usage accumulator parses SSE events.
-    private enum GatewayStreamUsageFormat {
-        case openAI
-        case anthropic
-    }
+    // remediation(gateway decomposition): `GatewayStreamUsageFormat` and
+    // `GatewayStreamingUsageAccumulator` moved verbatim to
+    // GatewayStreamingUsageAccumulator.swift (same directory, module-internal).
+    // No behavior change.
 
-    /// Parses token usage out of an SSE stream as it is relayed, so streamed
-    /// responses record real usage instead of `nil` (A4). Used entirely within
-    /// the gateway actor's isolation, so a plain reference type is safe.
-    private final class GatewayStreamingUsageAccumulator {
-        private let format: GatewayStreamUsageFormat
-        private var inputTokens = 0
-        private var outputTokens = 0
-        private var cacheCreationTokens = 0
-        private var cacheReadTokens = 0
-        private var reasoningTokens = 0
-        private var sawUsage = false
-
-        init(format: GatewayStreamUsageFormat) {
-            self.format = format
-        }
-
-        func consume(_ chunk: Data) {
-            guard let text = String(data: chunk, encoding: .utf8) else { return }
-            for rawLine in text.split(separator: "\n", omittingEmptySubsequences: true) {
-                let line = rawLine.trimmingCharacters(in: .whitespaces)
-                guard line.hasPrefix("data:") else { continue }
-                let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
-                guard payload != "[DONE]",
-                      let data = payload.data(using: .utf8),
-                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    continue
-                }
-                switch format {
-                case .openAI:
-                    consumeOpenAI(object)
-                case .anthropic:
-                    consumeAnthropic(object)
-                }
-            }
-        }
-
-        func finalize() -> BurnBarProviderProxyUsage? {
-            guard sawUsage else { return nil }
-            return BurnBarProviderProxyUsage(
-                inputTokens: inputTokens,
-                outputTokens: outputTokens,
-                cacheCreationTokens: cacheCreationTokens,
-                cacheReadTokens: cacheReadTokens,
-                reasoningTokens: reasoningTokens,
-                confidence: .exact
-            )
-        }
-
-        private func consumeOpenAI(_ object: [String: Any]) {
-            guard let usage = object["usage"] as? [String: Any] else { return }
-            let prompt = Self.intValue(usage["prompt_tokens"])
-            let completion = Self.intValue(usage["completion_tokens"])
-            guard prompt != nil || completion != nil else { return }
-            sawUsage = true
-            let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
-            let cached = Self.intValue(promptDetails?["cached_tokens"]) ?? 0
-            let completionDetails = usage["completion_tokens_details"] as? [String: Any]
-            let reasoning = Self.intValue(completionDetails?["reasoning_tokens"]) ?? 0
-            // The final usage chunk is authoritative — overwrite rather than sum.
-            inputTokens = max((prompt ?? 0) - cached, 0)
-            outputTokens = completion ?? 0
-            cacheReadTokens = cached
-            reasoningTokens = reasoning
-        }
-
-        private func consumeAnthropic(_ object: [String: Any]) {
-            let type = object["type"] as? String
-            if type == "message_start",
-               let message = object["message"] as? [String: Any],
-               let usage = message["usage"] as? [String: Any] {
-                sawUsage = true
-                inputTokens = Self.intValue(usage["input_tokens"]) ?? inputTokens
-                cacheCreationTokens = Self.intValue(usage["cache_creation_input_tokens"]) ?? cacheCreationTokens
-                cacheReadTokens = Self.intValue(usage["cache_read_input_tokens"]) ?? cacheReadTokens
-                outputTokens = Self.intValue(usage["output_tokens"]) ?? outputTokens
-            } else if type == "message_delta",
-                      let usage = object["usage"] as? [String: Any] {
-                sawUsage = true
-                // output_tokens in message_delta is cumulative for the message.
-                outputTokens = Self.intValue(usage["output_tokens"]) ?? outputTokens
-                if let input = Self.intValue(usage["input_tokens"]) {
-                    inputTokens = input
-                }
-            }
-        }
-
-        private static func intValue(_ value: Any?) -> Int? {
-            if let int = value as? Int { return int }
-            if let double = value as? Double { return Int(double) }
-            if let string = value as? String { return Int(string) }
-            return nil
-        }
+    /// remediation(B1): a single cached live model-catalog snapshot plus the
+    /// config-snapshot identity and timestamp it was captured under. Held only
+    /// inside the actor, so a plain value type without synchronization is safe.
+    private struct CachedModelCatalogSnapshot {
+        let configHash: Int
+        let storedAt: Date
+        let snapshot: BurnBarLiveModelCatalogSnapshot
     }
 
     private struct HealthResponse: Encodable {
@@ -3047,19 +3282,6 @@ public actor BurnBarHTTPGatewayServer {
 
 }
 
-public enum BurnBarHTTPGatewayError: Error, LocalizedError {
-    case invalidConfiguration(String)
-    case listenerCreationFailed(error: Error)
-    case invalidHost(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidConfiguration(let msg):
-            return "Gateway configuration error: \(msg)"
-        case .listenerCreationFailed(let error):
-            return "Failed to create gateway listener: \(error.localizedDescription)"
-        case .invalidHost(let host):
-            return "Invalid gateway host address: \(host)"
-        }
-    }
-}
+// remediation(gateway decomposition): `BurnBarHTTPGatewayError` moved verbatim
+// to OpenBurnBarHTTPGatewayError.swift (same directory, auto-included by the
+// XcodeGen/SwiftPM source glob). No behavior change.

@@ -40,6 +40,7 @@ final class CLIProfileStreamFailoverRunner: Sendable {
                 workspaceDirectory: attempt.workingDirectory,
                 capabilityGrant: capabilityGrant,
                 environmentOverrides: attempt.environmentOverrides,
+                grantStillActive: CLIBridge.spawnedCLIGrantPoll(for: capabilityGrant),
                 continuation: continuation
             )
         }
@@ -53,7 +54,7 @@ final class CLIProfileStreamFailoverRunner: Sendable {
         capabilityGrant: AgentCapabilityGrant?
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            let task = Task.detached { [self] in
+            let task = Task { [self] in
                 await runCodexWithFailover(
                     requestedProfile: requestedProfile,
                     prompt: prompt,
@@ -183,7 +184,7 @@ final class CLIProfileStreamFailoverRunner: Sendable {
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let launcher = streamLauncher
-            Task.detached {
+            Task {
                 await launcher(attempt, prompt, model, capabilityGrant, continuation)
             }
         }
@@ -337,30 +338,87 @@ final class ProductionSwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, 
     }
 
     func fetchProfile(id: String) -> SwitcherProfileRecord? {
-        try? store.fetchProfile(id: id)
+        // A swallowed DB fault is indistinguishable from "profile does not exist",
+        // which silently changes failover candidate selection. Keep the optional
+        // (the protocol is non-throwing) but make the fault observable.
+        AppLogger.dataStore.silently(
+            "switcher_failover_fetch_profile",
+            try store.fetchProfile(id: id) as SwitcherProfileRecord?,
+            fallback: nil
+        )
     }
 
     func fetchAllProfiles() -> [SwitcherProfileRecord] {
-        (try? store.fetchAllProfiles()) ?? []
+        // A swallowed DB fault collapses to an empty candidate set, silently
+        // removing ALL failover targets. Log the fault so an empty list caused
+        // by a DB error is not mistaken for a legitimately empty store.
+        AppLogger.dataStore.silently(
+            "switcher_failover_fetch_all_profiles",
+            try store.fetchAllProfiles(),
+            fallback: []
+        )
     }
 
     func fetchActiveProfileID() -> String? {
-        try? store.fetchActiveProfileState().activeProfileID
+        // The global active-profile pointer drives which account is treated as
+        // current; a swallowed fault becomes nil and can select the wrong/no
+        // profile. Keep the optional but surface the fault.
+        AppLogger.dataStore.silently(
+            "switcher_failover_fetch_active_profile_state",
+            try store.fetchActiveProfileState().activeProfileID as String?,
+            fallback: nil
+        )
     }
 
     func fetchActiveProfileID(for providerID: ProviderID) -> String? {
-        try? store.fetchActiveProfileID(for: providerID)
+        // The per-provider drain target routes the CLI launch path; a swallowed
+        // fault -> nil can route a launch to the wrong account. Log the fault.
+        AppLogger.dataStore.silently(
+            "switcher_failover_fetch_active_profile_id_for_provider",
+            try store.fetchActiveProfileID(for: providerID),
+            fallback: nil
+        )
     }
 
     func setActiveProfileID(_ profileID: String?) {
-        try? store.setActiveProfile(profileID)
+        // DB WRITE of the global active_profile pointer. A silently dropped write
+        // leaves the pointer stale, so a later launch drains the wrong account.
+        // Surface the failure instead of swallowing it.
+        do {
+            try store.setActiveProfile(profileID)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_failover_set_active_profile_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     func setActiveProfileID(_ profileID: String?, for providerID: ProviderID) {
-        try? store.setActiveProfile(profileID, for: providerID)
+        // DB WRITE of the per-provider active/drain pointer, persisted after a
+        // successful failover. If silently lost, the failover never "sticks" and
+        // the next launch re-drains the exhausted account. Surface the failure.
+        do {
+            try store.setActiveProfile(profileID, for: providerID)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_failover_set_active_profile_for_provider_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {
-        _ = try? store.update(profile)
+        // DB WRITE persisting quota-exhaustion / exhaustion-clear state. A lost
+        // write means the runner re-attempts an exhausted account or fails to
+        // clear exhaustion. Surface the failure instead of swallowing it.
+        do {
+            _ = try store.update(profile)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_failover_update_profile_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 }

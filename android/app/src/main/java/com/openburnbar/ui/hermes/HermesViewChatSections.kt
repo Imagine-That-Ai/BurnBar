@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.hermes
 
-import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -20,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.openburnbar.data.hermes.HermesMessage
 import com.openburnbar.ui.theme.AuroraSpacing
 
@@ -96,18 +96,14 @@ private fun HermesChatBody(
 }
 
 @Composable
-private fun ColumnScope.HermesChatMessagePane(
-    content: HermesChatContent,
-    actions: HermesChatActions,
-    local: HermesChatViewLocalState,
-) {
+private fun ColumnScope.HermesChatMessagePane(content: HermesChatContent, actions: HermesChatActions, local: HermesChatViewLocalState) {
     if (local.chatViewMode == ChatViewMode.CLI) {
         InlineAgentMirrorView(
             runtime = "hermes",
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)
+                .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
         )
     } else {
         // Collected once for the whole transcript (not per bubble) so an inbox change only
@@ -121,8 +117,8 @@ private fun ColumnScope.HermesChatMessagePane(
         LazyColumn(
             modifier = Modifier.weight(1f),
             state = local.listState,
-            contentPadding = PaddingValues(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            contentPadding = PaddingValues(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         ) {
             item {
                 WelcomeBlock(

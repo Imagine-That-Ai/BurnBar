@@ -11,7 +11,7 @@ import { getConfig } from "./config.js";
 
 type SecretParam = ReturnType<typeof defineSecret>;
 
-export const HOSTED_QUOTA_RUNNER_TOKEN: SecretParam = defineSecret("HOSTED_QUOTA_RUNNER_TOKEN");
+const HOSTED_QUOTA_RUNNER_TOKEN: SecretParam = defineSecret("HOSTED_QUOTA_RUNNER_TOKEN");
 
 export const HOSTED_RUNNER_SECRETS: SecretParam[] = [HOSTED_QUOTA_RUNNER_TOKEN];
 

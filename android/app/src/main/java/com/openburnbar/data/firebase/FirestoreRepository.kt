@@ -438,10 +438,7 @@ private fun DocumentSnapshot.toModelBenchmarkSummary(): InsightDigest.ModelBench
 
 // ── Document parsers ──
 
-private fun DocumentSnapshot.toTokenUsage(
-    vaultKey: ByteArray? = null,
-    projectNameCache: SealedProjectNameCache? = null,
-): TokenUsage? {
+private fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null, projectNameCache: SealedProjectNameCache? = null): TokenUsage? {
     val data = data ?: return null
     val startMillis = FirestoreValueParsers.millis(data["startTime"])
     val endMillis = FirestoreValueParsers.millis(data["endTime"])
@@ -477,7 +474,7 @@ private fun DocumentSnapshot.toTokenUsage(
         // the sealed field is absent. The live listener passes a per-listener
         // (docId, updatedAt) memo so unchanged docs skip the AES-GCM open.
         projectName =
-            openSealedProjectName(id, data, vaultKey, updatedMillis, projectNameCache),
+        openSealedProjectName(id, data, vaultKey, updatedMillis, projectNameCache),
         timestamp = timestampMillis,
         startTime = startMillis,
         endTime = endMillis,
@@ -616,10 +613,7 @@ private fun DocumentSnapshot.toProjectSummary(): ProjectSummary? {
  * vault key is available. firestore.rules enforces the same invariant (no
  * plaintext `projectName`/`label` on create).
  */
-suspend fun BudgetRule.toMap(
-    firestore: FirebaseFirestore = Firebase.firestore,
-    uid: String? = null,
-): Map<String, Any?> {
+suspend fun BudgetRule.toMap(firestore: FirebaseFirestore = Firebase.firestore, uid: String? = null): Map<String, Any?> {
     val resolvedUid = uid ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
     val resolvedKey =
         resolvedUid?.let {
@@ -682,9 +676,9 @@ fun DocumentSnapshot.toBudgetRule(vaultKey: ByteArray? = null): BudgetRule? {
         // Sealed-present means decrypt-or-nil; legacy plaintext is used only when
         // the sealed field is absent.
         projectName =
-            CloudVaultSealedTextCodec.openOrLegacy(data["sealedProjectName"], vaultKey, data["projectName"] as? String),
+        CloudVaultSealedTextCodec.openOrLegacy(data["sealedProjectName"], vaultKey, data["projectName"] as? String),
         label =
-            CloudVaultSealedTextCodec.openOrLegacy(data["sealedLabel"], vaultKey, data["label"] as? String),
+        CloudVaultSealedTextCodec.openOrLegacy(data["sealedLabel"], vaultKey, data["label"] as? String),
         amountUSD = (data["amountUSD"] as? Number)?.toDouble() ?: 0.0,
         period = data["period"] as? String ?: "",
         behavior = data["behavior"] as? String ?: "",
@@ -706,14 +700,13 @@ fun DocumentSnapshot.toBudgetRule(vaultKey: ByteArray? = null): BudgetRule? {
  * envelope so callers cleanly fall back to legacy plaintext.
  */
 internal object CloudVaultSealedTextCodec {
-    fun toMap(envelope: CloudVaultSealedText): Map<String, Any> =
-        mapOf(
-            "algorithm" to envelope.algorithm,
-            "keyVersion" to envelope.keyVersion,
-            "nonce" to envelope.nonce,
-            "ciphertext" to envelope.ciphertext,
-            "tag" to envelope.tag,
-        )
+    fun toMap(envelope: CloudVaultSealedText): Map<String, Any> = mapOf(
+        "algorithm" to envelope.algorithm,
+        "keyVersion" to envelope.keyVersion,
+        "nonce" to envelope.nonce,
+        "ciphertext" to envelope.ciphertext,
+        "tag" to envelope.tag,
+    )
 
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     fun fromMap(raw: Map<*, *>?): CloudVaultSealedText? {

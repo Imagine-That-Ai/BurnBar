@@ -35,7 +35,7 @@ class PhoneControlP256Test {
 
     @Test
     fun `x963 representation is 65 bytes with the 0x04 uncompressed prefix`() {
-        val publicKey = newKeyPair().public as ECPublicKey
+        val publicKey = newKeyPair().public as? ECPublicKey ?: error("expected EC public key")
         val x963 = PhoneControlP256.x963Representation(publicKey)
         assertEquals(65, x963.size)
         assertEquals(0x04.toByte(), x963[0])
@@ -43,7 +43,7 @@ class PhoneControlP256Test {
 
     @Test
     fun `x963 bytes round trip through publicKeyFromRepresentation`() {
-        val publicKey = newKeyPair().public as ECPublicKey
+        val publicKey = newKeyPair().public as? ECPublicKey ?: error("expected EC public key")
         val x963 = PhoneControlP256.x963Representation(publicKey)
         val rebuilt = PhoneControlP256.publicKeyFromRepresentation(x963)
         assertEquals(publicKey.w, requireNotNull(rebuilt).w)
@@ -52,7 +52,7 @@ class PhoneControlP256Test {
 
     @Test
     fun `compact 64 byte raw XY form also rebuilds the same point`() {
-        val publicKey = newKeyPair().public as ECPublicKey
+        val publicKey = newKeyPair().public as? ECPublicKey ?: error("expected EC public key")
         val x963 = PhoneControlP256.x963Representation(publicKey)
         val compact = x963.copyOfRange(1, 65)
         val rebuilt = PhoneControlP256.publicKeyFromRepresentation(compact)
@@ -120,7 +120,7 @@ class PhoneControlP256Test {
     @Test
     fun `verifySignature accepts both the raw wire form and strict der`() {
         val keyPair = newKeyPair()
-        val publicKey = keyPair.public as ECPublicKey
+        val publicKey = keyPair.public as? ECPublicKey ?: error("expected EC public key")
         val payload = "intent-hash|counter|timestamp".toByteArray(Charsets.UTF_8)
         val der = derSign(payload, keyPair)
         val raw = PhoneControlP256.derToRawSignature(der)
@@ -132,12 +132,12 @@ class PhoneControlP256Test {
     @Test
     fun `verifySignature rejects tampered payloads keys and signatures`() {
         val keyPair = newKeyPair()
-        val publicKey = keyPair.public as ECPublicKey
+        val publicKey = keyPair.public as? ECPublicKey ?: error("expected EC public key")
         val payload = "intent-hash|counter|timestamp".toByteArray(Charsets.UTF_8)
         val raw = PhoneControlP256.derToRawSignature(derSign(payload, keyPair))
 
         assertFalse(PhoneControlP256.verifySignature(publicKey, raw, payload + 0x01))
-        val otherKey = newKeyPair().public as ECPublicKey
+        val otherKey = newKeyPair().public as? ECPublicKey ?: error("expected EC public key")
         assertFalse(PhoneControlP256.verifySignature(otherKey, raw, payload))
         val flipped = raw.copyOf().also { it[10] = (it[10].toInt() xor 0xFF).toByte() }
         assertFalse(PhoneControlP256.verifySignature(publicKey, flipped, payload))

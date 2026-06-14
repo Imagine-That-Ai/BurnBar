@@ -168,10 +168,17 @@ struct ScreenShareViewerView: View {
         onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
     ) {
+        let resolvedControlInputEnabled = controlInputEnabled ?? controlStatus.isLive
+
         self.coordinator = coordinator
         self.resetToken = resetToken
         self.controlStatus = controlStatus
-        self.controlInputEnabled = controlInputEnabled ?? controlStatus.isLive
+        self.controlInputEnabled = resolvedControlInputEnabled
+        self._interactionMode = State(
+            initialValue: ScreenShareInteractionModePolicy.defaultMode(
+                controlInputEnabled: resolvedControlInputEnabled
+            )
+        )
         self.controlRoundTripMillis = controlRoundTripMillis
         self.displays = displays
         self.selectedDisplayId = selectedDisplayId
@@ -211,6 +218,17 @@ struct ScreenShareViewerView: View {
             stats.roundTripMillis = controlRoundTripMillis
         }
         return stats
+    }
+
+    // remediation(1080p-hardcode): forward the selected display's real size from
+    // the mirror handshake into the coordinator so the decoder's raw-payload
+    // fallback no longer silently assumes 1080p. No-op when no descriptor matches.
+    private func forwardSelectedDisplayDimensions() {
+        let descriptor = displays.first { $0.id == selectedDisplayId }
+            ?? displays.first { $0.isPrimary }
+            ?? displays.first
+        guard let descriptor, descriptor.width > 0, descriptor.height > 0 else { return }
+        coordinator.setExpectedSourceDimensions(width: descriptor.width, height: descriptor.height)
     }
 
     private var activeRemoteUnlockState: HermesRealtimeRelayRemoteUnlockState? {
@@ -257,6 +275,15 @@ struct ScreenShareViewerView: View {
                     .onAppear {
                         viewport.reclamp(in: proxy.size)
                         lastLayoutSize = proxy.size
+                        // remediation(1080p-hardcode): seed the decoder fallback
+                        // dimensions from the handshake's selected display.
+                        forwardSelectedDisplayDimensions()
+                    }
+                    .onChange(of: selectedDisplayId) { _, _ in
+                        forwardSelectedDisplayDimensions()
+                    }
+                    .onChange(of: displays) { _, _ in
+                        forwardSelectedDisplayDimensions()
                     }
                     .onChange(of: proxy.size) { _, newSize in
                         viewport.reclamp(in: newSize)
@@ -537,7 +564,9 @@ struct ScreenShareViewerView: View {
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
-                interactionMode = .view
+                interactionMode = ScreenShareInteractionModePolicy.defaultMode(
+                    controlInputEnabled: standardControlInputEnabled
+                )
                 isTyping = false
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
@@ -1757,6 +1786,14 @@ enum ScreenShareInteractionMode: Equatable {
     case control
     case trackpad
     case coPilot
+}
+
+enum ScreenShareInteractionModePolicy {
+    /// Controller viewers should enter control mode immediately so direct taps
+    /// become signed Mac input intents. Watchers stay in view mode for pan/zoom.
+    static func defaultMode(controlInputEnabled: Bool) -> ScreenShareInteractionMode {
+        controlInputEnabled ? .control : .view
+    }
 }
 
 /// Orientation of the floating mirror-control tray: a vertical (upward) stack
@@ -4201,7 +4238,7 @@ enum ScreenShareStreamStateOverlayPolicy {
 }
 
 private struct VolumeButtonScrollBridge: UIViewRepresentable {
-    let onVolumeStep: @MainActor (Double) -> Void
+    let onVolumeStep: @MainActor @Sendable (Double) -> Void
 
     func makeUIView(context: Context) -> MPVolumeView {
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -4219,40 +4256,26 @@ private struct VolumeButtonScrollBridge: UIViewRepresentable {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, @unchecked Sendable {
-        var onVolumeStep: (@MainActor (Double) -> Void)?
+    @MainActor
+    final class Coordinator: NSObject {
+        var onVolumeStep: (@MainActor @Sendable (Double) -> Void)?
         private var observation: NSKeyValueObservation?
         private var lastVolume: Float = AVAudioSession.sharedInstance().outputVolume
 
-        func start(onVolumeStep: @escaping @MainActor (Double) -> Void) {
+        func start(onVolumeStep: @escaping @MainActor @Sendable (Double) -> Void) {
             self.onVolumeStep = onVolumeStep
             lastVolume = AVAudioSession.sharedInstance().outputVolume
             observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
-                guard let self, let newValue = change.newValue else { return }
-                let delta = newValue - self.lastVolume
-                self.lastVolume = newValue
-                guard abs(delta) > 0.001 else { return }
-                let callback = SendableVolumeStepCallback(self.onVolumeStep)
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        callback.call(delta > 0 ? -0.28 : 0.28)
-                    }
+                guard let newValue = change.newValue else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let delta = newValue - self.lastVolume
+                    self.lastVolume = newValue
+                    guard abs(delta) > 0.001 else { return }
+                    self.onVolumeStep?(delta > 0 ? -0.28 : 0.28)
                 }
             }
         }
-    }
-}
-
-private struct SendableVolumeStepCallback: @unchecked Sendable {
-    private let callback: (@MainActor (Double) -> Void)?
-
-    init(_ callback: (@MainActor (Double) -> Void)?) {
-        self.callback = callback
-    }
-
-    @MainActor
-    func call(_ value: Double) {
-        callback?(value)
     }
 }
 
@@ -4281,236 +4304,5 @@ private extension View {
                         .stroke(.white.opacity(0.18), lineWidth: 1)
                 )
         }
-    }
-}
-
-struct ScreenShareViewerPerformanceStats: Equatable, Sendable {
-    var resolution: String = ""
-    var codec: String = ""
-    var bitsPerSecond: Int = 0
-    var roundTripMillis: Int = 0
-}
-
-struct ScreenShareViewerStatsMeter: Sendable {
-    private var windowStartedAt: Date?
-    private var bytesInWindow: Int = 0
-    private var lastStats = ScreenShareViewerPerformanceStats()
-    private let minimumSampleInterval: TimeInterval
-
-    init(minimumSampleInterval: TimeInterval = 0.5) {
-        self.minimumSampleInterval = minimumSampleInterval
-    }
-
-    mutating func recordFrame(
-        byteCount: Int,
-        now: Date = Date(),
-        codec: String? = nil,
-        resolution: String? = nil
-    ) -> ScreenShareViewerPerformanceStats {
-        if windowStartedAt == nil {
-            windowStartedAt = now
-        }
-        bytesInWindow += max(byteCount, 0)
-
-        var next = lastStats
-        if let codec, !codec.isEmpty {
-            next.codec = codec
-        }
-        if let resolution, !resolution.isEmpty {
-            next.resolution = resolution
-        }
-
-        let elapsed = max(0, now.timeIntervalSince(windowStartedAt ?? now))
-        if elapsed >= minimumSampleInterval {
-            next.bitsPerSecond = Int((Double(bytesInWindow) * 8.0 / elapsed).rounded())
-            windowStartedAt = now
-            bytesInWindow = 0
-        }
-
-        lastStats = next
-        return next
-    }
-
-    mutating func updateRoundTripMillis(_ roundTripMillis: Int) -> ScreenShareViewerPerformanceStats {
-        lastStats.roundTripMillis = max(0, roundTripMillis)
-        return lastStats
-    }
-}
-
-@MainActor
-final class ScreenShareViewerCoordinator: ObservableObject {
-    typealias Stats = ScreenShareViewerPerformanceStats
-
-    let displayLayer: AVSampleBufferDisplayLayer
-    @Published var lastStats = Stats()
-    @Published var displayAspectRatio: CGFloat?
-    @Published var latestFocusContext: ScreenShareSmartZoomContext?
-    var longTermReferenceTokenHandler: ((MercuryLTRToken) async -> Void)?
-    private var pipeline: VideoReceivePipeline?
-    private var statsMeter = ScreenShareViewerStatsMeter()
-
-    func ingest(focusContext: HermesRealtimeRelayFocusContext) {
-        guard let context = ScreenShareSmartZoomContext.from(focusContext) else { return }
-        latestFocusContext = context
-    }
-
-    init() {
-        let layer = AVSampleBufferDisplayLayer()
-        layer.videoGravity = .resizeAspect
-        self.displayLayer = layer
-        self.pipeline = makePipeline()
-    }
-
-    func resetForNewMirror() {
-        displayLayer.flushAndRemoveImage()
-        lastStats = Stats()
-        displayAspectRatio = nil
-        latestFocusContext = nil
-        statsMeter = ScreenShareViewerStatsMeter()
-        pipeline = makePipeline()
-    }
-
-    private func makePipeline() -> VideoReceivePipeline {
-        VideoReceivePipeline { [weak self] sampleBuffer in
-            await MainActor.run {
-                self?.enqueue(sampleBuffer: sampleBuffer)
-            }
-        } onLongTermReferenceTokenDecoded: { [weak self] token in
-            await self?.longTermReferenceTokenHandler?(token)
-        }
-    }
-
-    func enqueue(sampleBuffer: CMSampleBuffer) {
-        var resolution: String?
-        if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
-            let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
-            let width = CGFloat(dimensions.width)
-            let height = CGFloat(dimensions.height)
-            if width > 0, height > 0 {
-                resolution = "\(Int(width))x\(Int(height))"
-                let aspectRatio = width / height
-                if displayAspectRatio.map({ abs($0 - aspectRatio) > 0.0001 }) ?? true {
-                    displayAspectRatio = aspectRatio
-                }
-            }
-        }
-        if let resolution, lastStats.resolution != resolution {
-            var stats = lastStats
-            stats.resolution = resolution
-            lastStats = stats
-        }
-        if displayLayer.isReadyForMoreMediaData {
-            displayLayer.enqueue(sampleBuffer)
-        }
-    }
-
-    func ingest(frame: MediaFrame) async {
-        recordIncomingFrame(byteCount: Self.estimatedWireByteCount(for: frame), codec: "HEVC")
-        do {
-            try await pipeline?.ingest(frame: frame)
-        } catch {
-            displayLayer.flush()
-        }
-    }
-
-    func ingest(frameV2: MediaFrameV2) async {
-        recordIncomingFrame(
-            byteCount: Self.estimatedWireByteCount(for: frameV2),
-            codec: Self.codecLabel(for: frameV2)
-        )
-        do {
-            try await pipeline?.ingest(frameV2: frameV2)
-        } catch {
-            displayLayer.flush()
-        }
-    }
-
-    func update(stats: Stats) {
-        lastStats = stats
-    }
-
-    func update(roundTripMillis: Int) {
-        lastStats = statsMeter.updateRoundTripMillis(roundTripMillis)
-    }
-
-    private func recordIncomingFrame(byteCount: Int, codec: String?) {
-        lastStats = statsMeter.recordFrame(
-            byteCount: byteCount,
-            codec: codec,
-            resolution: lastStats.resolution
-        )
-    }
-
-    private static func estimatedWireByteCount(for frame: MediaFrame) -> Int {
-        MediaFrame.headerByteCount
-            + (frame.flags.contains(.hasCursorMetadata) ? MediaFrame.cursorMetadataByteCount : 0)
-            + frame.payload.count
-    }
-
-    private static func estimatedWireByteCount(for frame: MediaFrameV2) -> Int {
-        MediaFrameV2Codec.fixedHeaderByteCount + frame.metadata.count + frame.payload.count
-    }
-
-    private static func codecLabel(for frame: MediaFrameV2) -> String? {
-        guard let metadata = try? MediaFrameV2Metadata.decode(frame.metadata),
-              let codec = metadata.codec
-        else { return nil }
-
-        switch codec {
-        case .hevc: return "HEVC"
-        case .h264: return "H.264"
-        case .av1: return "AV1"
-        }
-    }
-}
-
-private struct DisplayLayerHost: UIViewRepresentable {
-    @ObservedObject var coordinator: ScreenShareViewerCoordinator
-
-    func makeUIView(context: Context) -> DisplayLayerView {
-        let view = DisplayLayerView()
-        view.attach(layer: coordinator.displayLayer)
-        return view
-    }
-
-    func updateUIView(_ uiView: DisplayLayerView, context: Context) {
-        // Layer reattachment handled internally; nothing to do per update.
-    }
-}
-
-private final class DisplayLayerView: UIView {
-    private weak var hostedLayer: AVSampleBufferDisplayLayer?
-
-    func attach(layer: AVSampleBufferDisplayLayer) {
-        if let existing = hostedLayer {
-            existing.removeFromSuperlayer()
-        }
-        layer.frame = bounds
-        layer.videoGravity = .resizeAspect
-        self.layer.addSublayer(layer)
-        hostedLayer = layer
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        hostedLayer?.frame = bounds
-    }
-}
-
-private struct StatsOverlay: View {
-    let stats: ScreenShareViewerCoordinator.Stats
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text(stats.resolution).font(.system(size: 13, weight: .medium, design: .monospaced))
-            Text("\(stats.codec) · \(formattedBitrate)").font(.system(size: 13, weight: .medium, design: .monospaced))
-            Text("RTT \(stats.roundTripMillis) ms").font(.system(size: 13, weight: .medium, design: .monospaced))
-        }
-        .foregroundStyle(.primary.opacity(0.85))
-    }
-
-    private var formattedBitrate: String {
-        let mbps = Double(stats.bitsPerSecond) / 1_000_000.0
-        return String(format: "%.2f Mbps", mbps)
     }
 }

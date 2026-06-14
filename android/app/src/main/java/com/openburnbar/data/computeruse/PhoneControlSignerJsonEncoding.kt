@@ -18,10 +18,9 @@ private const val UNICODE_ESCAPE_HEX_DIGITS = 4
 private const val APPLE_REFERENCE_DATE_EPOCH_SECONDS = 978_307_200.0
 
 internal object PhoneControlSignerJsonEncoding {
-    fun sortedJson(fields: LinkedHashMap<String, String>): String =
-        fields.entries
-            .sortedBy { it.key }
-            .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) -> "${quote(key)}:$value" }
+    fun sortedJson(fields: LinkedHashMap<String, String>): String = fields.entries
+        .sortedBy { it.key }
+        .joinToString(separator = ",", prefix = "{", postfix = "}") { (key, value) -> "${quote(key)}:$value" }
 
     fun number(value: Double): String {
         require(value.isFinite()) { "intent coordinates must be finite" }

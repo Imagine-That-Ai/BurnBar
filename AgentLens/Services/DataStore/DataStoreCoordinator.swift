@@ -1,6 +1,6 @@
 import Foundation
 import GRDB
-import SwiftUI
+import Observation
 import OpenBurnBarCore
 
 // MARK: - DataStoreCoordinator
@@ -75,9 +75,6 @@ final class DataStoreCoordinator {
 
     /// Use `usageViewModel.moodLabel` instead.
     var moodLabel: String { usageViewModel.moodLabel }
-
-    /// Use `usageViewModel.moodColor` instead.
-    var moodColor: Color { usageViewModel.moodColor }
 
     /// Use `usageViewModel.totalCostToday` instead.
     var totalCostToday: Double { usageViewModel.totalCostToday }

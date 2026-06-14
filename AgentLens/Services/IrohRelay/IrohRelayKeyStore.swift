@@ -14,7 +14,7 @@ import Security
 /// the pairing key never rotates (its public half is the iOS verifier root),
 /// while the iroh secret key can be regenerated to roll the NodeId without
 /// invalidating verifiers.
-final class IrohRelayKeyStore: @unchecked Sendable {
+final class IrohRelayKeyStore: Sendable {
     static let shared = IrohRelayKeyStore()
 
     private let service: String

@@ -39,7 +39,7 @@ import {
  * not the raw value" hole that was previously enforced only by this doc comment.
  */
 declare const SANITIZED_SIGNAL_ENVELOPE_BRAND: unique symbol;
-export type SanitizedSignalEnvelope = CloudVaultSignalEnvelope & {
+type SanitizedSignalEnvelope = CloudVaultSignalEnvelope & {
   readonly [SANITIZED_SIGNAL_ENVELOPE_BRAND]: true;
 };
 
@@ -51,7 +51,7 @@ export interface SignalAtRestExpectedBinding {
   field: string;
 }
 
-export type SignalAtRestWriteRejectReason =
+type SignalAtRestWriteRejectReason =
   | "not-an-object"
   | "invalid-envelope-shape"
   | "binding-uid-mismatch"
@@ -59,7 +59,7 @@ export type SignalAtRestWriteRejectReason =
   | "binding-docid-mismatch"
   | "binding-field-mismatch";
 
-export type SignalAtRestWriteValidation =
+type SignalAtRestWriteValidation =
   | { ok: true; envelope: SanitizedSignalEnvelope; aad: string }
   | { ok: false; reason: SignalAtRestWriteRejectReason };
 
@@ -104,7 +104,14 @@ export function validateSignalAtRestEnvelopeForWrite(
   const aad = bindingToAAD(envelope.binding);
   // The single trusted boundary that mints the brand: `envelope` is the
   // reconstructed/sanitized object (known keys only), not the raw caller input.
-  return { ok: true, envelope: envelope as SanitizedSignalEnvelope, aad };
+  assertSanitizedSignalEnvelope(envelope);
+  return { ok: true, envelope, aad };
+}
+
+function assertSanitizedSignalEnvelope(
+  _envelope: CloudVaultSignalEnvelope,
+): asserts _envelope is SanitizedSignalEnvelope {
+  // Structural validation and path binding checks above are the only mint path.
 }
 
 /** Stable error thrown by {@link assertSignalAtRestEnvelopeForWrite}. */

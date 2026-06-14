@@ -69,9 +69,9 @@ object InsightsColors {
 }
 
 object InsightsSpacing {
-    val widgetPadding = AuroraSpacing.sm // 8dp
-    val widgetGap = AuroraSpacing.md // 12dp
-    const val cardRadius = 8 // dp
-    const val chartHeight = 128 // dp
-    const val sparklineHeight = 22 // dp
+    val widgetPadding = AuroraSpacing.SM // 8dp
+    val widgetGap = AuroraSpacing.MD // 12dp
+    const val CARD_RADIUS = 8 // dp
+    const val CHART_HEIGHT = 128 // dp
+    const val SPARKLINE_HEIGHT = 22 // dp
 }

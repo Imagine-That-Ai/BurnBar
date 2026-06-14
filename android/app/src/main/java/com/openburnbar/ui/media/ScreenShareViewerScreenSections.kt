@@ -259,7 +259,6 @@ private fun TrackpadSurfaceLabel(modifier: Modifier = Modifier) {
     )
 }
 
-
 @Composable
 private fun TrackpadTouchHistoryCanvas(touchHistory: List<Offset>) {
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -300,17 +299,16 @@ private fun rememberMirrorDockTooltip(): Pair<String?, (String) -> Unit> {
     return tooltip to showTip
 }
 
-private fun mirrorToolsDockSheenBrush(): Brush =
-    Brush.linearGradient(
-        colors =
-        listOf(
-            screenShareControlGradientColors.first().copy(alpha = 0.16f),
-            Color.White.copy(alpha = 0.05f),
-            screenShareControlGradientColors.last().copy(alpha = 0.14f),
-        ),
-        start = Offset.Zero,
-        end = Offset(900f, 380f),
-    )
+private fun mirrorToolsDockSheenBrush(): Brush = Brush.linearGradient(
+    colors =
+    listOf(
+        screenShareControlGradientColors.first().copy(alpha = 0.16f),
+        Color.White.copy(alpha = 0.05f),
+        screenShareControlGradientColors.last().copy(alpha = 0.14f),
+    ),
+    start = Offset.Zero,
+    end = Offset(900f, 380f),
+)
 
 @Composable
 internal fun ScreenMirrorToolsDock(modifier: Modifier = Modifier, state: MirrorDockUiState, actions: MirrorDockActions) {
@@ -322,11 +320,7 @@ internal fun ScreenMirrorToolsDock(modifier: Modifier = Modifier, state: MirrorD
 }
 
 @Composable
-private fun ScreenMirrorToolsDockCollapsed(
-    modifier: Modifier,
-    state: MirrorDockUiState,
-    actions: MirrorDockActions,
-) {
+private fun ScreenMirrorToolsDockCollapsed(modifier: Modifier, state: MirrorDockUiState, actions: MirrorDockActions) {
     val statsVisible = state.statsVisible
     Box(
         modifier =
@@ -374,11 +368,7 @@ private fun ScreenMirrorToolsDockCollapsed(
 }
 
 @Composable
-private fun ScreenMirrorToolsDockExpanded(
-    modifier: Modifier,
-    state: MirrorDockUiState,
-    actions: MirrorDockActions,
-) {
+private fun ScreenMirrorToolsDockExpanded(modifier: Modifier, state: MirrorDockUiState, actions: MirrorDockActions) {
     val (tooltip, showTip) = rememberMirrorDockTooltip()
     val dockShape = RoundedCornerShape(24.dp)
     val mercuryBrush = Brush.linearGradient(screenShareControlGradientColors)
@@ -427,56 +417,51 @@ private fun mirrorControlShelfParams(
     state: MirrorDockUiState,
     actions: MirrorDockActions,
     showTip: (String) -> Unit,
-): MirrorControlShelfParams =
-    MirrorControlShelfParams(
-        group = group,
-        controlMode = state.controlMode,
-        typingOpen = state.typingOpen,
-        statsVisible = state.statsVisible,
-        autoKeyboardOnTextFocus = state.autoKeyboardOnTextFocus,
-        smartZoomMode = state.smartZoomMode,
-        smartZoomAutoFollowing = state.smartZoomAutoFollowing,
-        fit = state.fit,
-        trayScale = state.trayScale,
-        availableDisplays = state.availableDisplays,
-        activeDisplayId = state.activeDisplayId,
-        isZoomed = state.isZoomed,
-        onSelectControlMode = { mode ->
-            actions.onSelectControlMode(mode)
-            actions.onSelectGroup(null)
-        },
-        onTrustControlDevice = {
-            actions.onTrustControlDevice()
-            actions.onSelectGroup(null)
-        },
-        onPanic = actions.onPanic,
-        onCycleFit = actions.onCycleFit,
-        onSelectSmartZoomMode = actions.onSelectSmartZoomMode,
-        onScrollUp = actions.onScrollUp,
-        onScrollDown = actions.onScrollDown,
-        onToggleTyping = actions.onToggleTyping,
-        onAutoKeyboardOnTextFocusChange = actions.onAutoKeyboardOnTextFocusChange,
-        onPasteClipboardToMac = actions.onPasteClipboardToMac,
-        onGrabClipboardFromMac = actions.onGrabClipboardFromMac,
-        onEscape = actions.onEscape,
-        onCommandTab = actions.onCommandTab,
-        onSelectDisplay = actions.onSelectDisplay,
-        onToggleStats = actions.onToggleStats,
-        onReconnect = actions.onReconnect,
-        onEnterPictureInPicture = actions.onEnterPictureInPicture,
-        onTrayScaleChange = actions.onTrayScaleChange,
-        showTooltip = showTip,
-        onZoomIn = actions.onZoomIn,
-        onZoomOut = actions.onZoomOut,
-        onResetZoom = actions.onResetZoom,
-    )
+): MirrorControlShelfParams = MirrorControlShelfParams(
+    group = group,
+    controlMode = state.controlMode,
+    typingOpen = state.typingOpen,
+    statsVisible = state.statsVisible,
+    autoKeyboardOnTextFocus = state.autoKeyboardOnTextFocus,
+    smartZoomMode = state.smartZoomMode,
+    smartZoomAutoFollowing = state.smartZoomAutoFollowing,
+    fit = state.fit,
+    trayScale = state.trayScale,
+    availableDisplays = state.availableDisplays,
+    activeDisplayId = state.activeDisplayId,
+    isZoomed = state.isZoomed,
+    onSelectControlMode = { mode ->
+        actions.onSelectControlMode(mode)
+        actions.onSelectGroup(null)
+    },
+    onTrustControlDevice = {
+        actions.onTrustControlDevice()
+        actions.onSelectGroup(null)
+    },
+    onPanic = actions.onPanic,
+    onCycleFit = actions.onCycleFit,
+    onSelectSmartZoomMode = actions.onSelectSmartZoomMode,
+    onScrollUp = actions.onScrollUp,
+    onScrollDown = actions.onScrollDown,
+    onToggleTyping = actions.onToggleTyping,
+    onAutoKeyboardOnTextFocusChange = actions.onAutoKeyboardOnTextFocusChange,
+    onPasteClipboardToMac = actions.onPasteClipboardToMac,
+    onGrabClipboardFromMac = actions.onGrabClipboardFromMac,
+    onEscape = actions.onEscape,
+    onCommandTab = actions.onCommandTab,
+    onSelectDisplay = actions.onSelectDisplay,
+    onToggleStats = actions.onToggleStats,
+    onReconnect = actions.onReconnect,
+    onEnterPictureInPicture = actions.onEnterPictureInPicture,
+    onTrayScaleChange = actions.onTrayScaleChange,
+    showTooltip = showTip,
+    onZoomIn = actions.onZoomIn,
+    onZoomOut = actions.onZoomOut,
+    onResetZoom = actions.onResetZoom,
+)
 
 @Composable
-private fun ScreenMirrorToolsDockPrimaryRow(
-    state: MirrorDockUiState,
-    actions: MirrorDockActions,
-    showTip: (String) -> Unit,
-) {
+private fun ScreenMirrorToolsDockPrimaryRow(state: MirrorDockUiState, actions: MirrorDockActions, showTip: (String) -> Unit) {
     val openGroup = state.openGroup
     val controlMode = state.controlMode
     val smartZoomMode = state.smartZoomMode
@@ -984,52 +969,49 @@ internal fun Modifier.mirrorKeycapChrome(selected: Boolean, shape: Shape = Round
     return keycap.clip(shape).background(fill, shape).border(if (selected) 1.5.dp else 1.dp, stroke, shape)
 }
 
-private fun mirrorKeycapFillBrush(selected: Boolean): Brush =
-    if (selected) {
-        Brush.linearGradient(
-            colors =
-            listOf(
-                screenShareControlGradientColors.first().copy(alpha = 0.30f),
-                screenShareControlGradientColors.last().copy(alpha = 0.22f),
-            ),
-            start = Offset.Zero,
-            end = Offset(220f, 220f),
-        )
-    } else {
-        Brush.verticalGradient(
-            colors = listOf(Color.White.copy(alpha = 0.11f), Color.White.copy(alpha = 0.045f)),
-        )
-    }
+private fun mirrorKeycapFillBrush(selected: Boolean): Brush = if (selected) {
+    Brush.linearGradient(
+        colors =
+        listOf(
+            screenShareControlGradientColors.first().copy(alpha = 0.30f),
+            screenShareControlGradientColors.last().copy(alpha = 0.22f),
+        ),
+        start = Offset.Zero,
+        end = Offset(220f, 220f),
+    )
+} else {
+    Brush.verticalGradient(
+        colors = listOf(Color.White.copy(alpha = 0.11f), Color.White.copy(alpha = 0.045f)),
+    )
+}
 
-private fun mirrorKeycapStrokeBrush(selected: Boolean): Brush =
-    if (selected) {
-        Brush.linearGradient(colors = screenShareControlGradientColors, start = Offset.Zero, end = Offset(160f, 160f))
-    } else {
-        Brush.linearGradient(
-            colors = listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.055f)),
-            start = Offset.Zero,
-            end = Offset(120f, 120f),
-        )
-    }
+private fun mirrorKeycapStrokeBrush(selected: Boolean): Brush = if (selected) {
+    Brush.linearGradient(colors = screenShareControlGradientColors, start = Offset.Zero, end = Offset(160f, 160f))
+} else {
+    Brush.linearGradient(
+        colors = listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.055f)),
+        start = Offset.Zero,
+        end = Offset(120f, 120f),
+    )
+}
 
-private fun Modifier.mirrorKeycapShadowLayer(selected: Boolean, shape: Shape): Modifier =
-    if (selected) {
-        shadow(
-            elevation = 7.dp,
-            shape = shape,
-            clip = false,
-            spotColor = screenShareControlGradientColors.first().copy(alpha = 0.42f),
-            ambientColor = screenShareControlGradientColors.last().copy(alpha = 0.22f),
-        )
-    } else {
-        shadow(
-            elevation = 2.dp,
-            shape = shape,
-            clip = false,
-            spotColor = Color.Black.copy(alpha = 0.18f),
-            ambientColor = Color.Black.copy(alpha = 0.12f),
-        )
-    }
+private fun Modifier.mirrorKeycapShadowLayer(selected: Boolean, shape: Shape): Modifier = if (selected) {
+    shadow(
+        elevation = 7.dp,
+        shape = shape,
+        clip = false,
+        spotColor = screenShareControlGradientColors.first().copy(alpha = 0.42f),
+        ambientColor = screenShareControlGradientColors.last().copy(alpha = 0.22f),
+    )
+} else {
+    shadow(
+        elevation = 2.dp,
+        shape = shape,
+        clip = false,
+        spotColor = Color.Black.copy(alpha = 0.18f),
+        ambientColor = Color.Black.copy(alpha = 0.12f),
+    )
+}
 
 @Composable
 internal fun ControlModeKeycap(mode: ScreenMirrorControlMode, selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
@@ -1160,12 +1142,7 @@ private fun SmartZoomAutoFollowBadge(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SmartZoomModeDropdownMenu(
-    expanded: Boolean,
-    selectedMode: SmartZoomMode,
-    onDismiss: () -> Unit,
-    onSelectMode: (SmartZoomMode) -> Unit,
-) {
+private fun SmartZoomModeDropdownMenu(expanded: Boolean, selectedMode: SmartZoomMode, onDismiss: () -> Unit, onSelectMode: (SmartZoomMode) -> Unit) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         SmartZoomMode.entries.forEach { entry ->
             DropdownMenuItem(
@@ -1190,14 +1167,13 @@ private fun SmartZoomModeDropdownMenu(
     }
 }
 
-private fun smartZoomModeIcon(mode: SmartZoomMode): ImageVector =
-    when (mode) {
-        SmartZoomMode.OFF -> Icons.Filled.CropFree
-        SmartZoomMode.SMART -> Icons.Filled.AutoAwesome
-        SmartZoomMode.TEXT -> Icons.Filled.TextFields
-        SmartZoomMode.WINDOW -> Icons.Filled.HighlightAlt
-        SmartZoomMode.CURSOR -> Icons.Filled.NorthWest
-    }
+private fun smartZoomModeIcon(mode: SmartZoomMode): ImageVector = when (mode) {
+    SmartZoomMode.OFF -> Icons.Filled.CropFree
+    SmartZoomMode.SMART -> Icons.Filled.AutoAwesome
+    SmartZoomMode.TEXT -> Icons.Filled.TextFields
+    SmartZoomMode.WINDOW -> Icons.Filled.HighlightAlt
+    SmartZoomMode.CURSOR -> Icons.Filled.NorthWest
+}
 
 @Composable
 internal fun CoPilotTargetOverlay(
@@ -1304,12 +1280,7 @@ private fun CoPilotRuntimeSelector(selectedRuntime: String, onRuntimeChange: (St
 }
 
 @Composable
-private fun CoPilotInstructionField(
-    inputInstruction: String,
-    onInputChange: (String) -> Unit,
-    focusRequester: FocusRequester,
-    onSubmit: () -> Unit,
-) {
+private fun CoPilotInstructionField(inputInstruction: String, onInputChange: (String) -> Unit, focusRequester: FocusRequester, onSubmit: () -> Unit) {
     Row(
         modifier =
         Modifier
@@ -1396,41 +1367,35 @@ internal fun RemoteUnlockStatusPanel(
     }
 }
 
-private fun remoteUnlockTitle(state: HermesRealtimeRelayRemoteUnlockState): String =
-    when (state.lockState) {
-        HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
-        HermesRealtimeRelayMacLockState.REBOOT_LOGIN_WINDOW,
-        -> "Mac Login Window"
-        HermesRealtimeRelayMacLockState.SECURITY_AGENT -> "Mac Authentication Prompt"
-        HermesRealtimeRelayMacLockState.SCREEN_SAVER,
-        HermesRealtimeRelayMacLockState.SCREEN_LOCKED,
-        -> "Mac Locked"
-        HermesRealtimeRelayMacLockState.DISPLAY_SLEEPING -> "Mac Display Sleeping"
-        HermesRealtimeRelayMacLockState.FAST_USER_SWITCHING -> "Fast User Switching"
-        HermesRealtimeRelayMacLockState.FILEVAULT_PREBOOT -> "FileVault Preboot"
-        HermesRealtimeRelayMacLockState.REMOTE_DESKTOP_CURTAIN -> "Remote Desktop Curtain"
-        HermesRealtimeRelayMacLockState.UNKNOWN -> "Mac Lock State Unknown"
-        HermesRealtimeRelayMacLockState.UNLOCKED -> "Mac Unlocked"
-    }
+private fun remoteUnlockTitle(state: HermesRealtimeRelayRemoteUnlockState): String = when (state.lockState) {
+    HermesRealtimeRelayMacLockState.LOGIN_WINDOW,
+    HermesRealtimeRelayMacLockState.REBOOT_LOGIN_WINDOW,
+    -> "Mac Login Window"
+    HermesRealtimeRelayMacLockState.SECURITY_AGENT -> "Mac Authentication Prompt"
+    HermesRealtimeRelayMacLockState.SCREEN_SAVER,
+    HermesRealtimeRelayMacLockState.SCREEN_LOCKED,
+    -> "Mac Locked"
+    HermesRealtimeRelayMacLockState.DISPLAY_SLEEPING -> "Mac Display Sleeping"
+    HermesRealtimeRelayMacLockState.FAST_USER_SWITCHING -> "Fast User Switching"
+    HermesRealtimeRelayMacLockState.FILEVAULT_PREBOOT -> "FileVault Preboot"
+    HermesRealtimeRelayMacLockState.REMOTE_DESKTOP_CURTAIN -> "Remote Desktop Curtain"
+    HermesRealtimeRelayMacLockState.UNKNOWN -> "Mac Lock State Unknown"
+    HermesRealtimeRelayMacLockState.UNLOCKED -> "Mac Unlocked"
+}
 
-private fun remoteUnlockDetailText(state: HermesRealtimeRelayRemoteUnlockState, ready: Boolean): String =
-    if (ready) {
-        if (state.capabilities.certificationStatus.name == "CERTIFIED") {
-            "Remote Unlock is certified on this Mac. Normal Mac control is paused while locked."
-        } else {
-            "Remote Unlock is ready on this Mac. The first successful locked unlock records hardware certification."
-        }
+private fun remoteUnlockDetailText(state: HermesRealtimeRelayRemoteUnlockState, ready: Boolean): String = if (ready) {
+    if (state.capabilities.certificationStatus.name == "CERTIFIED") {
+        "Remote Unlock is certified on this Mac. Normal Mac control is paused while locked."
     } else {
-        val blocker = state.capabilities.blockers.firstOrNull() ?: "remote_unlock_not_certified"
-        "Remote Unlock is unavailable on this Mac: $blocker. Normal Mac control is paused while locked."
+        "Remote Unlock is ready on this Mac. The first successful locked unlock records hardware certification."
     }
+} else {
+    val blocker = state.capabilities.blockers.firstOrNull() ?: "remote_unlock_not_certified"
+    "Remote Unlock is unavailable on this Mac: $blocker. Normal Mac control is paused while locked."
+}
 
 @Composable
-private fun RemoteUnlockStatusHeader(
-    state: HermesRealtimeRelayRemoteUnlockState,
-    ready: Boolean,
-    callbacks: RemoteUnlockCallbacks,
-) {
+private fun RemoteUnlockStatusHeader(state: HermesRealtimeRelayRemoteUnlockState, ready: Boolean, callbacks: RemoteUnlockCallbacks) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = Icons.Filled.VerifiedUser,
@@ -1497,11 +1462,7 @@ private fun RemoteUnlockSavedCredentialRow(visible: Boolean, callbacks: RemoteUn
 }
 
 @Composable
-private fun RemoteUnlockPasswordRow(
-    password: String,
-    onPasswordChange: (String) -> Unit,
-    onSendPassword: (String) -> Unit,
-) {
+private fun RemoteUnlockPasswordRow(password: String, onPasswordChange: (String) -> Unit, onSendPassword: (String) -> Unit) {
     var sending by remember { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
@@ -1552,11 +1513,7 @@ private fun RemoteUnlockPasswordRow(
 }
 
 @Composable
-private fun RemoteUnlockSaveCredentialButton(
-    visible: Boolean,
-    password: String,
-    onSavePassword: (String) -> Unit,
-) {
+private fun RemoteUnlockSaveCredentialButton(visible: Boolean, password: String, onSavePassword: (String) -> Unit) {
     if (!visible) return
     var saving by remember { mutableStateOf(false) }
     Button(
@@ -1707,10 +1664,7 @@ internal data class TrackpadPointerMutableState(
     val writeTravelDistance: (Float) -> Unit,
 )
 
-private suspend fun PointerInputScope.trackpadPointerLoop(
-    hooks: TrackpadPointerLoopHooks,
-    mutableState: TrackpadPointerMutableState,
-) {
+private suspend fun PointerInputScope.trackpadPointerLoop(hooks: TrackpadPointerLoopHooks, mutableState: TrackpadPointerMutableState) {
     awaitPointerEventScope {
         while (true) {
             val event = awaitPointerEvent()

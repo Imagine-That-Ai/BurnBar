@@ -126,8 +126,9 @@ extension OpenBurnBarDaemonManager {
             var settings = snapshot.providers[index]
             settings.setModelsAdvertisement(modelIDs: modelIDs, isEnabled: isEnabled)
             snapshot.providers[index] = settings
+            let updatedSnapshot = snapshot
             _ = try await daemonRPC {
-                try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+                try OpenBurnBarDaemonSocketClient.updateConfig(updatedSnapshot, at: socketURL)
             }
         }
     }
@@ -262,7 +263,14 @@ extension OpenBurnBarDaemonManager {
             if let apiKey {
                 let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !normalizedKey.isEmpty {
-                    try? Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
+                    // Fail closed: a real keychain fault means we cannot prove the
+                    // previous app-side plaintext key is purged, so we must reject
+                    // the rotation rather than write the new credential on top of a
+                    // still-readable stale secret.
+                    try Self.purgeProviderSlotSecretFailClosed(
+                        account: slotSecretAccount(providerID: providerID, slotID: slotID),
+                        from: Self.providerRuntimeSecrets
+                    )
                     _ = try await daemonRPC {
                         try OpenBurnBarDaemonSocketClient.upsertProviderCredentialSlot(
                             BurnBarProviderCredentialSlotUpsertRequest(
@@ -348,7 +356,15 @@ extension OpenBurnBarDaemonManager {
                         continue
                     }
 
-                    try? Self.providerRuntimeSecrets.delete(account: account)
+                    // Observable cleanup: ownership migrates to the daemon via the
+                    // upsert below regardless, but a real keychain fault leaves an
+                    // orphaned app-side plaintext copy. Log it (instead of the old
+                    // diagnostic-free `try?`) so the leak is detectable, and keep
+                    // repairing the remaining slots.
+                    Self.purgeProviderSlotSecretObservable(
+                        account: account,
+                        from: Self.providerRuntimeSecrets
+                    )
                     _ = try await daemonRPC {
                         try OpenBurnBarDaemonSocketClient.upsertProviderCredentialSlot(
                             BurnBarProviderCredentialSlotUpsertRequest(
@@ -391,7 +407,15 @@ extension OpenBurnBarDaemonManager {
                     at: socketURL
                 )
             }
-            try? Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
+            // Observable cleanup: the daemon-side slot is already removed above, so
+            // re-throwing here would falsely report the removal as failed. But a
+            // real keychain fault leaves an orphaned plaintext API key behind after
+            // the user asked to remove the credential — log it (instead of the old
+            // diagnostic-free `try?`) so that leaked secret is detectable.
+            Self.purgeProviderSlotSecretObservable(
+                account: slotSecretAccount(providerID: providerID, slotID: slotID),
+                from: Self.providerRuntimeSecrets
+            )
         }
     }
 
@@ -809,6 +833,77 @@ extension OpenBurnBarDaemonManager {
 
     func slotSecretAccount(providerID: String, slotID: String) -> String {
         "provider.\(providerID).slot.\(slotID).apiKey"
+    }
+
+    /// Purges a stale app-side plaintext API key from the keychain, **failing
+    /// closed** if the keychain cannot confirm the secret is gone.
+    ///
+    /// This is used before rotating a *new* credential in for a slot. The app no
+    /// longer owns provider slot secrets — the daemon does — so the only reason
+    /// to delete here is to guarantee the previous app-side plaintext copy is
+    /// purged before a new key is written. A genuinely absent item is success
+    /// (the `KeychainStore.delete` backend already maps `errSecItemNotFound` to a
+    /// no-op). But a *real* keychain fault — a locked keychain, an ACL denial, an
+    /// unhandled `OSStatus` — means we cannot prove the stale plaintext is gone.
+    ///
+    /// In that case we must NOT proceed to write the new credential, which would
+    /// leave a stale, still-readable plaintext API key lingering in the keychain
+    /// alongside the rotated one (a credential-continuity leak). We rethrow so the
+    /// rotation is rejected and surfaced to the user instead of silently
+    /// completing on top of an un-purged secret.
+    ///
+    /// Exposed at file-internal `static` visibility so the fault path is
+    /// exercisable with an injected `KeychainStore` backend in tests.
+    static func purgeProviderSlotSecretFailClosed(
+        account: String,
+        from secrets: KeychainStore,
+        event: String = "provider_slot_secret_purge_failed"
+    ) throws {
+        do {
+            try secrets.delete(account: account)
+        } catch {
+            AppLogger.daemon.error(
+                event,
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            throw error
+        }
+    }
+
+    /// Deletes a stale/orphaned app-side plaintext API key from the keychain,
+    /// **logging but tolerating** a failure.
+    ///
+    /// This is used for cleanup *after* the authoritative state change has already
+    /// happened: the daemon-side slot has been removed, or ownership of the secret
+    /// has already migrated to the daemon via an upsert. The app-side copy is now
+    /// strictly leftover plaintext. We still want it gone, but the load-bearing
+    /// operation has already committed, and re-throwing here would either abort a
+    /// best-effort multi-slot repair loop or mislead the user into believing a
+    /// completed removal failed.
+    ///
+    /// A genuinely absent item is success. A *real* keychain fault leaves an
+    /// orphaned plaintext credential behind, which historically was swallowed by
+    /// `try?` with zero diagnostic. We now log it via `AppLogger` so the leaked
+    /// secret is detectable, while preserving the original skip/continue behavior.
+    ///
+    /// Exposed at file-internal `static` visibility so the fault path is
+    /// exercisable with an injected `KeychainStore` backend in tests.
+    @discardableResult
+    static func purgeProviderSlotSecretObservable(
+        account: String,
+        from secrets: KeychainStore,
+        event: String = "provider_slot_secret_orphan_cleanup_failed"
+    ) -> Bool {
+        do {
+            try secrets.delete(account: account)
+            return true
+        } catch {
+            AppLogger.daemon.error(
+                event,
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return false
+        }
     }
 
     func quotaCapableProvider(for providerID: String) -> AgentProvider? {

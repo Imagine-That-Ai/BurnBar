@@ -83,14 +83,14 @@ fun HermesSetupWizard(onComplete: () -> Unit, onOpenConnections: () -> Unit, onD
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(AuroraSpacing.lg.dp),
+            .padding(AuroraSpacing.LG.dp),
     ) {
         HermesSetupWizardToolbar(onDismiss = onDismiss)
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         HermesSetupWizardHeader()
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         HermesSetupWizardSteps()
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         HermesSetupWizardActions(onComplete = onComplete, onOpenConnections = onOpenConnections)
     }
 }
@@ -115,7 +115,7 @@ private fun HermesSetupWizardToolbar(onDismiss: () -> Unit) {
 
 @Composable
 private fun HermesSetupWizardHeader() {
-    AuroraGlassCard(cornerRadius = AuroraRadius.xl) {
+    AuroraGlassCard(cornerRadius = AuroraRadius.XL) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -124,7 +124,7 @@ private fun HermesSetupWizardHeader() {
                     fontWeight = FontWeight.Bold,
                     color = AuroraColors.hermesAureate,
                 )
-                Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
                 Column {
                     Text(
                         text = "Hermes in 1-2-3",
@@ -139,7 +139,7 @@ private fun HermesSetupWizardHeader() {
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
             Text(
                 text = "For Android, Hermes works by talking to your Mac's local runtime directly on LAN/VPN or through your private Remote Relay.",
                 fontSize = AuroraTypography.body.sp,
@@ -165,10 +165,10 @@ private fun HermesSetupWizardActions(onComplete: () -> Unit, onOpenConnections: 
     ) {
         Text("Start Chatting", fontWeight = FontWeight.SemiBold)
     }
-    Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
     TextButton(onClick = onOpenConnections, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Filled.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text("Open Connections", color = AuroraColors.hermesAureate)
     }
 }
@@ -199,7 +199,7 @@ private fun SetupStepRow(step: SetupStep) {
                 color = Color.White,
             )
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

@@ -24,10 +24,7 @@ import com.openburnbar.data.square.MercuryPairedMacTilePreference
  * Compose port of iOS `MediaSettingsView.swift` + `PerPartnerSavePreferencesView.swift`.
  */
 @Composable
-fun MediaSettingsView(
-    capabilityGate: AndroidMediaCapabilityGate = remember { AndroidMediaCapabilityGate() },
-    modifier: Modifier = Modifier,
-) {
+fun MediaSettingsView(capabilityGate: AndroidMediaCapabilityGate = remember { AndroidMediaCapabilityGate() }, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val store = remember { MediaPartnerSavePreferenceStore(context) }
     val partners by store.storedPartnersFlow().collectAsState(initial = emptyList())

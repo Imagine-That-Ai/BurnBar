@@ -211,13 +211,7 @@ internal class PiServiceChatStreamSupport(
         }
     }
 
-    private fun mergeToolCallForAssistant(
-        assistantId: String,
-        id: String,
-        index: Int,
-        nameFragment: String?,
-        argumentsDelta: String,
-    ) {
+    private fun mergeToolCallForAssistant(assistantId: String, id: String, index: Int, nameFragment: String?, argumentsDelta: String) {
         messages.value =
             messages.value.map { existing ->
                 if (existing.id != assistantId) return@map existing

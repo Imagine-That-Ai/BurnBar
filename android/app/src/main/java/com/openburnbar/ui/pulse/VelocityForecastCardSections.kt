@@ -65,9 +65,9 @@ internal fun VelocityForecastCardHeader(aheadOfPace: Boolean) {
         style = AuroraType.body,
         color = MaterialTheme.colorScheme.onSurface,
     )
-    Spacer(Modifier.height(AuroraSpacing.sm.dp))
+    Spacer(Modifier.height(AuroraSpacing.SM.dp))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-    Spacer(Modifier.height(AuroraSpacing.md.dp))
+    Spacer(Modifier.height(AuroraSpacing.MD.dp))
 }
 
 @Composable
@@ -106,7 +106,7 @@ internal fun VelocityForecastCardBody(state: VelocityForecastState) {
     VelocityForecastCardHeader(aheadOfPace = state.aheadOfPace)
     Row(verticalAlignment = Alignment.CenterVertically) {
         VelocityForecastProjectedColumn(projected = state.projected, aheadOfPace = state.aheadOfPace)
-        Spacer(Modifier.width(AuroraSpacing.md.dp))
+        Spacer(Modifier.width(AuroraSpacing.MD.dp))
         MiniRing(
             progress = state.dayFraction.toFloat(),
             accent = AuroraColors.amber,

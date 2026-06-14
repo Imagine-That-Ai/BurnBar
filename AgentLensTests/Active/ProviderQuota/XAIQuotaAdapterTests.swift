@@ -134,6 +134,89 @@ final class XAIQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(bucket.remainingValue ?? -1, 400, accuracy: 0.0001)
     }
 
+    // MARK: - Credential read: fault is observable, absent stays nil
+
+    /// A genuinely broken Keychain (locked / unavailable) must NOT be
+    /// silently misread as "no management key configured" by a swallowing
+    /// `try?`. The fault path now routes through
+    /// `KeychainStore.credentialIfPresent`, which logs via `AppLogger` and
+    /// returns nil — so the read reaches the backend, the fault is caught,
+    /// and the adapter degrades to the "add a key" unavailable snapshot
+    /// without throwing or crashing.
+    func testCursorConnectorKeyRead_keychainFault_isCaughtAndDegradesGracefully() async throws {
+        let backend = FaultInjectingXAIKeychainBackend(
+            behavior: .fault(KeychainStoreError.unhandled(errSecNotAvailable))
+        )
+        let keychain = KeychainStore(backend: backend)
+        let adapter = XAIQuotaAdapter(keychain: keychain)
+        // No resolved key, no env override → the Cursor-connector Keychain
+        // fallback is the only source the adapter can read.
+        let context = try makeContext(plan: .grokBuild, mgmtKey: nil)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        // The read actually reached the faulting backend (it was not skipped
+        // or short-circuited): observability of the fault path.
+        XCTAssertGreaterThanOrEqual(
+            backend.dataCallCount,
+            1,
+            "Expected the management-key Keychain read to reach the backend"
+        )
+        // The fault was caught (returned nil), not swallowed into a usable
+        // key, so the adapter reports the actionable unavailable snapshot
+        // instead of throwing.
+        XCTAssertEqual(snapshot.provider, .xAI)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.statusMessage.contains("Management Key"))
+    }
+
+    /// When the credential is genuinely absent (backend returns nil, no
+    /// fault), the read must still resolve to nil — the absent contract is
+    /// identical to the prior `try?` behavior.
+    func testCursorConnectorKeyRead_absentCredential_resolvesToNil() async throws {
+        let backend = FaultInjectingXAIKeychainBackend(behavior: .absent)
+        let keychain = KeychainStore(backend: backend)
+        let adapter = XAIQuotaAdapter(keychain: keychain)
+        let context = try makeContext(plan: .grokBuild, mgmtKey: nil)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertGreaterThanOrEqual(
+            backend.dataCallCount,
+            1,
+            "Expected the management-key Keychain read to reach the backend"
+        )
+        XCTAssertEqual(snapshot.provider, .xAI)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.statusMessage.contains("Management Key"))
+    }
+
+    /// Direct proof at the accessor seam: a faulting backend yields nil
+    /// (caught + logged) without propagating the error. Uses an isolated
+    /// service with no legacy fallbacks so the read path is deterministic.
+    func testCredentialIfPresent_faultReturnsNilWithoutThrowing() {
+        let backend = FaultInjectingXAIKeychainBackend(
+            behavior: .fault(KeychainStoreError.unhandled(errSecNotAvailable))
+        )
+        let keychain = KeychainStore(
+            service: "com.openburnbar.xai-quota-credential-read-tests",
+            legacyServices: [],
+            backend: backend
+        )
+
+        var value: String?
+        XCTAssertNoThrow(
+            value = keychain.credentialIfPresent(
+                for: "provider.xai.managementKey",
+                allowUserInteraction: false,
+                event: "xai_quota_management_key_read_failed"
+            )
+        )
+
+        XCTAssertNil(value)
+        XCTAssertGreaterThanOrEqual(backend.dataCallCount, 1)
+    }
+
     // MARK: - Branch 1: HTTP error → unavailable
 
     func testFetch_grokBuildPlan_returnsUnavailableWhenTeamsEndpointRejects() async throws {
@@ -186,16 +269,14 @@ final class XAIQuotaAdapterTests: XCTestCase {
                 fileManager: fileManager,
                 snapshotStore: snapshotStore
             ),
-            miniMaxModeProvider: { .tokenPlan },
-            factoryPlanProvider: { .unknown },
-            xaiPlanProvider: { plan },
-            mimoTokenPlanRegionProvider: { .sgp },
-            mimoTokenPlanTierProvider: { nil },
-            mimoTokenPlanBillingCycleProvider: { .monthly },
-            claudeBridgeStatus: ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil),
+            miniMaxMode: .tokenPlan,
+            factoryPlan: .unknown,
+            xaiPlan: plan,
+            mimoTokenPlanRegion: .sgp,
+            mimoTokenPlanTier: nil,
+            mimoTokenPlanBillingCycle: .monthly,
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
-            refreshClaudeBridgeStatus: { ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil) },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
             resolvedAPIKeys: resolvedKeys
         )
@@ -233,6 +314,48 @@ final class XAIQuotaAdapterTests: XCTestCase {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.string(from: date)
     }
+}
+
+/// A `KeychainStoreBackend` used to drive the management-key read down either
+/// the genuine-fault path (throws) or the genuinely-absent path (returns nil),
+/// while counting reads so tests can prove the read actually reached the
+/// backend.
+private final class FaultInjectingXAIKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
+    enum Behavior {
+        case fault(Error)
+        case absent
+    }
+
+    private let behavior: Behavior
+    private let lock = NSLock()
+    private var _dataCallCount = 0
+
+    var dataCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _dataCallCount
+    }
+
+    init(behavior: Behavior) {
+        self.behavior = behavior
+    }
+
+    func set(_ value: Data, service: String, account: String) throws {
+        throw KeychainStoreError.unhandled(errSecNotAvailable)
+    }
+
+    func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data? {
+        lock.lock()
+        _dataCallCount += 1
+        lock.unlock()
+        switch behavior {
+        case .fault(let error):
+            throw error
+        case .absent:
+            return nil
+        }
+    }
+
+    func delete(service: String, account: String) throws {}
 }
 
 private final class XAIMockURLProtocol: URLProtocol, @unchecked Sendable {

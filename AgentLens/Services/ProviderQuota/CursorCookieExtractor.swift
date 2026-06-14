@@ -166,7 +166,7 @@ enum CursorCookieExtractor {
             .replacingOccurrences(of: "_", with: "/")
 
         guard let payloadData = Data(base64Encoded: encoded),
-              let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+              let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any], // try?-ok(optional jwt payload parse)
               let sub = payload["sub"] as? String else {
             return ""
         }

@@ -8,20 +8,18 @@ import OpenBurnBarSignalCore
 /// Serializes Pensieve knowledge syncs across the process so a folder-watch
 /// burst and a manual "Sync now" can't run two commits at once. Mirrors
 /// `SessionLogSyncProcessGate` in SessionLogSyncService.swift.
-private final class KnowledgeSyncProcessGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var running = false
+private final class KnowledgeSyncProcessGate: Sendable {
+    private let running = Locked(false)
 
     func tryEnter() -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        guard !running else { return false }
-        running = true
-        return true
+        running.withLock { running in
+            guard !running else { return false }
+            running = true
+            return true
+        }
     }
 
-    func leave() {
-        lock.lock(); running = false; lock.unlock()
-    }
+    func leave() { running.write(false) }
 }
 
 public enum KnowledgeSyncError: LocalizedError {
@@ -156,7 +154,7 @@ public struct FirebaseKnowledgeSyncCallable: KnowledgeSyncCallable {
 /// vault-key store seam, callable seam) so it slots into the existing sync
 /// coordinator. The actual chunk/embed/cloak/seal logic is the shared
 /// `PensieveKnowledgeChunker` (byte-identical to the TS shim).
-public final class KnowledgeSyncService: @unchecked Sendable {
+public final class KnowledgeSyncService: Sendable {
     private static let processGate = KnowledgeSyncProcessGate()
 
     private let callable: KnowledgeSyncCallable
@@ -168,7 +166,8 @@ public final class KnowledgeSyncService: @unchecked Sendable {
     public var isSyncing: Bool { state.read().isSyncing }
     public var lastSyncError: String? { state.read().lastSyncError }
     public var lastSyncDate: Date? { state.read().lastSyncDate }
-    public private(set) var lastWritten = 0
+    private let lastWrittenBox = Locked(0)
+    public var lastWritten: Int { lastWrittenBox.read() }
 
     public init(
         callable: KnowledgeSyncCallable = FirebaseKnowledgeSyncCallable(),
@@ -260,7 +259,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
             throw error
         }
 
-        lastWritten = totalWritten
+        lastWrittenBox.write(totalWritten)
         state.withLock { $0.lastSyncDate = Date() }
         return KnowledgeCommitResult(
             written: totalWritten,
@@ -298,7 +297,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
             throw error
         }
 
-        lastWritten = totalWritten
+        lastWrittenBox.write(totalWritten)
         state.withLock { $0.lastSyncDate = Date() }
         return KnowledgeCommitResult(
             written: totalWritten,

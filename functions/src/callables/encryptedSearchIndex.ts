@@ -1,6 +1,6 @@
-export type CloudSearchPostingKind = "token" | "semantic";
+type CloudSearchPostingKind = "token" | "semantic";
 
-export interface CloudSearchPostingSource {
+interface CloudSearchPostingSource {
   uid: string;
   chunkID: string;
   documentID: string;
@@ -17,7 +17,7 @@ export interface CloudSearchPostingSource {
   updatedAt: unknown;
 }
 
-export interface CloudSearchPostingEdge {
+interface CloudSearchPostingEdge {
   edgeID: string;
   data: Record<string, unknown>;
 }

@@ -121,10 +121,9 @@ internal fun LaneRowStats(lane: Lane) {
     }
 }
 
-internal fun formatLaneTokens(n: Long): String =
-    when {
-        n >= 1_000_000_000 -> "%.1fB".format(n / 1_000_000_000.0)
-        n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
-        n >= 1_000 -> "%.1fK".format(n / 1_000.0)
-        else -> n.toString()
-    }
+internal fun formatLaneTokens(n: Long): String = when {
+    n >= 1_000_000_000 -> "%.1fB".format(n / 1_000_000_000.0)
+    n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
+    n >= 1_000 -> "%.1fK".format(n / 1_000.0)
+    else -> n.toString()
+}

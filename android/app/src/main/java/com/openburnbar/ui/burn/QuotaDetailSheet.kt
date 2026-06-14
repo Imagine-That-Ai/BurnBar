@@ -31,8 +31,8 @@ fun QuotaDetailSheet(providerKey: String, snapshots: List<ProviderQuotaSnapshot>
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = AuroraSpacing.lg.dp)
-                .padding(bottom = AuroraSpacing.xxl.dp)
+                .padding(horizontal = AuroraSpacing.LG.dp)
+                .padding(bottom = AuroraSpacing.XXL.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
             QuotaDetailSheetHero(
@@ -41,16 +41,16 @@ fun QuotaDetailSheet(providerKey: String, snapshots: List<ProviderQuotaSnapshot>
                 accountCount = snapshots.size,
                 themeColor = themeColor,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
             QuotaDetailStatsRow(snapshots = snapshots)
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
             snapshots.forEach { snapshot ->
                 AccountQuotaCard(
                     snapshot = snapshot,
                     themeColor = themeColor,
                     provider = provider,
                 )
-                Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             }
         }
     }

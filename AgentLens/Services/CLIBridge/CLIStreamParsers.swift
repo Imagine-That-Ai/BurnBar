@@ -5,7 +5,7 @@ enum ClaudeCodeStreamJSONParser {
     /// Emits ordered `.text` / `.toolUse` events for one NDJSON line from Claude Code `stream-json`.
     static func events(fromLine line: String) -> [CLIChatStreamEvent] {
         guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
             return []
         }
 
@@ -118,7 +118,7 @@ struct CodexExecJSONLParser {
 
     mutating func events(fromLine line: String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) {
         guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
             return ([], nil)
         }
 
@@ -272,7 +272,7 @@ struct GenericCLIJSONOrTextParser {
         guard !trimmed.isEmpty else { return [] }
 
         guard let data = trimmed.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(falls back to raw text)
             return [.text(line + "\n")]
         }
 
@@ -456,7 +456,7 @@ struct OpenAICompatibleSSEParser {
         if let payload = Self.payload(fromSSELine: line),
            payload != "[DONE]",
            let data = payload.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(usage skipped if unparsable)
            let usage = OpenAICompatibleUsageParser.usage(from: obj) {
             events.append(.usage(usage))
         }
@@ -495,7 +495,7 @@ struct OpenAICompatibleSSEParser {
         guard !trimmed.isEmpty else { return nil }
 
         // Try JSON parse for known key extraction.
-        if let obj = try? JSONSerialization.jsonObject(with: trimmed.data(using: .utf8) ?? Data()) as? [String: Any] {
+        if let obj = try? JSONSerialization.jsonObject(with: trimmed.data(using: .utf8) ?? Data()) as? [String: Any] { // try?-ok(falls back to preview)
             for key in ["path", "file_path", "command", "pattern", "query", "url"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(200))
@@ -516,7 +516,7 @@ struct OpenAICompatibleSSEParser {
 
 enum OpenAICompatibleModelListParser {
     static func modelName(from data: Data) -> String? {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil } // try?-ok(unparsable model list)
         if let models = obj["data"] as? [[String: Any]],
            let first = models.first,
            let id = first["id"] as? String, !id.isEmpty {
@@ -543,7 +543,7 @@ enum OpenAICompatibleModelListParser {
     }
 
     static func advertisedModels(from data: Data) -> [OpenAICompatibleAdvertisedModel] {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(unparsable model list)
               let models = obj["data"] as? [[String: Any]] else { return [] }
         var seen = Set<String>()
         return models.compactMap { raw in
@@ -581,12 +581,12 @@ enum OpenAICompatibleModelListParser {
     private static func modelCapabilities(from value: Any?) -> ModelIOCapabilities? {
         guard let value,
               JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value) else {
+              let data = try? JSONSerialization.data(withJSONObject: value) else { // try?-ok(capabilities optional)
             return nil
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(ModelIOCapabilities.self, from: data)
+        return try? decoder.decode(ModelIOCapabilities.self, from: data) // try?-ok(capabilities optional)
     }
 
     private static func hermesFamily(

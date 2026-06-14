@@ -11,7 +11,7 @@
  * Firestore double, with only the Pro/entitlement predicates stubbed true.
  */
 import { EventEmitter } from "node:events";
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("firebase-functions/logger", () => ({
@@ -109,13 +109,17 @@ const UID = "userA";
 const CLIENT_ID = "hgw_runtime_client";
 const TOKEN = `obb_hgw_${"A".repeat(20)}`;
 const { publicKey: AGENT_SIGNING_PUBLIC_KEY, privateKey: AGENT_SIGNING_PRIVATE_KEY } = generateKeyPairSync("ed25519");
-const AGENT_SIGNING_PUBLIC_KEY_BASE64 = Buffer.from(
-  AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" }) as Buffer,
-)
-  .subarray(-32)
-  .toString("base64");
+const AGENT_SIGNING_PUBLIC_KEY_BASE64 = exportedSpkiDer(AGENT_SIGNING_PUBLIC_KEY).subarray(-32).toString("base64");
 const AGENT_SIGNING_KEY_ID = createHash("sha256").update(AGENT_SIGNING_PUBLIC_KEY_BASE64).digest("hex").slice(0, 32);
 let popNonceCounter = 0;
+
+function exportedSpkiDer(key: KeyObject): Buffer {
+  const exported = key.export({ format: "der", type: "spki" });
+  if (typeof exported === "string") {
+    throw new TypeError("Expected DER public key export to be bytes");
+  }
+  return exported;
+}
 
 // An Express/Node-response double sufficient for the firebase-functions onRequest
 // wrapper: the cors middleware (cors:true) reads/sets headers and the wrapper
@@ -156,16 +160,19 @@ function fakeRes(): FakeRes {
 }
 
 function postRequest(path: string, body: Record<string, unknown>, headers: Record<string, string> = {}) {
+  // T-GW-02: PoP-signed write routes require an application/json content type
+  // (a real signing client always sets it). Default it here; callers can override.
+  const mergedHeaders: Record<string, string> = { "content-type": "application/json", ...headers };
   return {
     method: "POST",
     path,
     url: path,
     body,
     query: {},
-    headers,
+    headers: mergedHeaders,
     socket: { remoteAddress: "127.0.0.1" },
     get(name: string) {
-      return headers[name.toLowerCase()];
+      return mergedHeaders[name.toLowerCase()];
     },
   };
 }

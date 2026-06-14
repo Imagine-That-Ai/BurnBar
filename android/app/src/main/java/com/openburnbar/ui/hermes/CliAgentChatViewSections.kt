@@ -29,24 +29,24 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -195,7 +195,7 @@ internal fun ColumnScope.CliAgentChatMessagePane(state: CliAgentChatState) {
                 runtime = state.runtime.token,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             )
         } else if (state.activeThread.messages.isEmpty()) {
             EmptyStateHero(
@@ -423,12 +423,7 @@ internal fun ComposerBar(state: ComposerBarState, callbacks: ComposerBarCallback
 }
 
 @Composable
-private fun ComposerToolbarRow(
-    state: ComposerBarState,
-    callbacks: ComposerBarCallbacks,
-    accent: Color,
-    toolbarBrush: Brush,
-) {
+private fun ComposerToolbarRow(state: ComposerBarState, callbacks: ComposerBarCallbacks, accent: Color, toolbarBrush: Brush) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         ToolbarIconButton(
             icon = Icons.Outlined.Image,
@@ -471,10 +466,7 @@ internal data class ComposerInputRowCallbacks(
 )
 
 @Composable
-internal fun ComposerInputRow(
-    state: ComposerInputRowState,
-    callbacks: ComposerInputRowCallbacks,
-) {
+internal fun ComposerInputRow(state: ComposerInputRowState, callbacks: ComposerInputRowCallbacks) {
     val draft = state.draft
     val provider = state.provider
     val accent = state.accent
@@ -493,44 +485,44 @@ internal fun ComposerInputRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
         ) {
-                androidx.compose.foundation.text.BasicTextField(
-                    value = draft,
-                    onValueChange = onDraftChange,
-                    enabled = !isSending,
-                    textStyle =
-                    LocalTextStyle.current.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 15.sp,
-                    ),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(accent),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onSend() }),
-                    modifier =
-                    Modifier
-                        .weight(1f)
-                        .padding(vertical = 12.dp),
-                    decorationBox = { innerTextField ->
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            if (draft.isEmpty()) {
-                                Text(
-                                    text = "Ask ${provider.displayName}…",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    fontSize = 15.sp,
-                                )
-                            }
-                            innerTextField()
+            androidx.compose.foundation.text.BasicTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                enabled = !isSending,
+                textStyle =
+                LocalTextStyle.current.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 15.sp,
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { onSend() }),
+                modifier =
+                Modifier
+                    .weight(1f)
+                    .padding(vertical = 12.dp),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (draft.isEmpty()) {
+                            Text(
+                                text = "Ask ${provider.displayName}…",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                fontSize = 15.sp,
+                            )
                         }
-                    },
-                )
-                SendButton(
-                    enabled = draft.isNotBlank() && !isSending,
-                    accent = accent,
-                    isSending = isSending,
-                    onClick = onSend,
-                )
-            }
+                        innerTextField()
+                    }
+                },
+            )
+            SendButton(
+                enabled = draft.isNotBlank() && !isSending,
+                accent = accent,
+                isSending = isSending,
+                onClick = onSend,
+            )
         }
     }
+}
 
 @Composable
 private fun PresentationModeToggleOption(
@@ -582,12 +574,7 @@ private fun PresentationModeToggleOption(
 }
 
 @Composable
-internal fun PresentationModeToggle(
-    selected: CLIAgentChatPresentationMode,
-    brush: Brush,
-    enabled: Boolean,
-    onSelect: (CLIAgentChatPresentationMode) -> Unit,
-) {
+internal fun PresentationModeToggle(selected: CLIAgentChatPresentationMode, brush: Brush, enabled: Boolean, onSelect: (CLIAgentChatPresentationMode) -> Unit) {
     val shape = RoundedCornerShape(percent = 50)
     Box(
         modifier =

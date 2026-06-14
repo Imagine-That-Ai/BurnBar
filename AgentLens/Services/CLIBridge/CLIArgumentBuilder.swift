@@ -29,7 +29,8 @@ enum CLIArgumentBuilder {
     static func claudeArguments(
         prompt: String,
         model: String = "",
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         var arguments = [
             "-p",
@@ -49,7 +50,14 @@ enum CLIArgumentBuilder {
             if !allowed.isEmpty {
                 arguments.append(contentsOf: ["--allowedTools", allowed.joined(separator: ",")])
             }
-            if capabilityGrant.capabilities.contains(.workspaceWrite) {
+            // T-TOOL-02(a): the dangerous-autonomy flag is gated behind the
+            // distribution-build check + a fresh local-auth proof. When gated off
+            // in a distribution build we fall back to the same bounded mode a
+            // workspace-write grant uses, never the unrestricted skip.
+            if isYOLOGrant(capabilityGrant),
+               AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
+                arguments.append("--dangerously-skip-permissions")
+            } else if capabilityGrant.capabilities.contains(.workspaceWrite) {
                 arguments.append(contentsOf: ["--permission-mode", "acceptEdits"])
             }
         } else {
@@ -66,7 +74,8 @@ enum CLIArgumentBuilder {
     static func codexArguments(
         prompt: String,
         model: String = "",
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         var arguments = [
             "exec",
@@ -82,7 +91,13 @@ enum CLIArgumentBuilder {
             arguments.insert(contentsOf: ["-m", normalizedModel], at: 4)
         }
         if let capabilityGrant, capabilityGrant.isActive() {
-            if capabilityGrant.capabilities.contains(.workspaceWrite) ||
+            // T-TOOL-02(a): bypass-approvals-and-sandbox is gated behind the
+            // distribution-build check + a fresh local-auth proof; otherwise the
+            // grant runs in the bounded workspace-write sandbox.
+            if isYOLOGrant(capabilityGrant),
+               AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
+                arguments.insert("--dangerously-bypass-approvals-and-sandbox", at: arguments.count - 1)
+            } else if capabilityGrant.capabilities.contains(.workspaceWrite) ||
                 capabilityGrant.capabilities.contains(.shell) {
                 arguments.insert(contentsOf: ["--sandbox", "workspace-write"], at: arguments.count - 1)
             } else if capabilityGrant.capabilities.contains(.workspaceRead) {
@@ -155,13 +170,21 @@ enum CLIArgumentBuilder {
     static func antigravityArguments(
         prompt: String,
         workspaceDirectory: URL? = nil,
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         var arguments: [String] = []
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
-        arguments.append("--sandbox")
+        // T-TOOL-02(a): the dangerous flag is distribution-gated + fresh-auth gated;
+        // otherwise antigravity runs sandboxed.
+        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant),
+           AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
+            arguments.append("--dangerously-skip-permissions")
+        } else {
+            arguments.append("--sandbox")
+        }
         arguments.append(contentsOf: [
             "--print",
             sanitizedPrompt(prompt)
@@ -172,13 +195,21 @@ enum CLIArgumentBuilder {
     static func cursorAgentArguments(
         prompt: String,
         workspaceDirectory: URL? = nil,
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         var arguments: [String] = []
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
-        arguments.append("--sandbox")
+        // T-TOOL-02(a): the dangerous flag is distribution-gated + fresh-auth gated;
+        // otherwise cursor-agent runs sandboxed.
+        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant),
+           AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
+            arguments.append("--dangerously-skip-permissions")
+        } else {
+            arguments.append("--sandbox")
+        }
         arguments.append(contentsOf: [
             "--print",
             sanitizedPrompt(prompt)
@@ -256,9 +287,15 @@ extension CLIBridge {
     nonisolated static func claudeArguments(
         prompt: String,
         model: String = "",
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
-        CLIArgumentBuilder.claudeArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
+        CLIArgumentBuilder.claudeArguments(
+            prompt: prompt,
+            model: model,
+            capabilityGrant: capabilityGrant,
+            hasFreshLocalAuthProof: hasFreshLocalAuthProof
+        )
     }
 
     nonisolated static var codexChatModelIDs: [String] {
@@ -272,9 +309,15 @@ extension CLIBridge {
     nonisolated static func codexArguments(
         prompt: String,
         model: String = "",
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
-        CLIArgumentBuilder.codexArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
+        CLIArgumentBuilder.codexArguments(
+            prompt: prompt,
+            model: model,
+            capabilityGrant: capabilityGrant,
+            hasFreshLocalAuthProof: hasFreshLocalAuthProof
+        )
     }
 
     nonisolated static func droidArguments(
@@ -308,24 +351,28 @@ extension CLIBridge {
     nonisolated static func antigravityArguments(
         prompt: String,
         workspaceDirectory: URL? = nil,
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         CLIArgumentBuilder.antigravityArguments(
             prompt: prompt,
             workspaceDirectory: workspaceDirectory,
-            capabilityGrant: capabilityGrant
+            capabilityGrant: capabilityGrant,
+            hasFreshLocalAuthProof: hasFreshLocalAuthProof
         )
     }
 
     nonisolated static func cursorAgentArguments(
         prompt: String,
         workspaceDirectory: URL? = nil,
-        capabilityGrant: AgentCapabilityGrant? = nil
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         CLIArgumentBuilder.cursorAgentArguments(
             prompt: prompt,
             workspaceDirectory: workspaceDirectory,
-            capabilityGrant: capabilityGrant
+            capabilityGrant: capabilityGrant,
+            hasFreshLocalAuthProof: hasFreshLocalAuthProof
         )
     }
 }

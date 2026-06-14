@@ -98,45 +98,41 @@ internal class HermesServiceRelayActions(
         path: String,
         body: ByteArray,
         sessionID: String,
-    ): HermesRelayPayload =
-        HermesRelayPayload(
-            operation = operation,
-            method = "POST",
-            path = path,
-            body = body,
-            sessionID = sessionID,
-            connectionID = descriptor.id,
-            relayPublicKey = descriptor.relayPublicKey,
-            relayEncryption = descriptor.relayEncryption,
-            relayKeyVersion = descriptor.relayKeyVersion,
-        )
+    ): HermesRelayPayload = HermesRelayPayload(
+        operation = operation,
+        method = "POST",
+        path = path,
+        body = body,
+        sessionID = sessionID,
+        connectionID = descriptor.id,
+        relayPublicKey = descriptor.relayPublicKey,
+        relayEncryption = descriptor.relayEncryption,
+        relayKeyVersion = descriptor.relayKeyVersion,
+    )
 
-    private suspend fun resolveCLIAgentChatRelayConnection(): HermesConnectionRecord =
-        resolveRelayConnection(
-            predicate = { it.isCLIAgentChatRelay() },
-            onlineError =
-            "Your Mac relay is online but does not advertise CLI agent chat yet. Update or restart OpenBurnBar on the Mac.",
-            missingError =
-            "No paired Mac relay is available for CLI agent chat. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay.",
-        )
+    private suspend fun resolveCLIAgentChatRelayConnection(): HermesConnectionRecord = resolveRelayConnection(
+        predicate = { it.isCLIAgentChatRelay() },
+        onlineError =
+        "Your Mac relay is online but does not advertise CLI agent chat yet. Update or restart OpenBurnBar on the Mac.",
+        missingError =
+        "No paired Mac relay is available for CLI agent chat. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay.",
+    )
 
-    private suspend fun resolveCLIAgentModelCatalogRelayConnection(): HermesConnectionRecord =
-        resolveRelayConnection(
-            predicate = { it.isCLIAgentModelCatalogRelay() },
-            onlineError =
-            "Your Mac relay is online but does not advertise live CLI model discovery yet. Update or restart OpenBurnBar on the Mac.",
-            missingError =
-            "No paired Mac relay is available for CLI model discovery. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay.",
-        )
+    private suspend fun resolveCLIAgentModelCatalogRelayConnection(): HermesConnectionRecord = resolveRelayConnection(
+        predicate = { it.isCLIAgentModelCatalogRelay() },
+        onlineError =
+        "Your Mac relay is online but does not advertise live CLI model discovery yet. Update or restart OpenBurnBar on the Mac.",
+        missingError =
+        "No paired Mac relay is available for CLI model discovery. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay.",
+    )
 
-    private suspend fun resolveCLIAgentSessionActionRelayConnection(): HermesConnectionRecord =
-        resolveRelayConnection(
-            predicate = { it.isCLIAgentSessionActionRelay() },
-            onlineError =
-            "Your Mac relay is online but does not advertise CLI session restart yet. Update or restart OpenBurnBar on the Mac.",
-            missingError =
-            "No paired Mac relay is available for CLI session restart. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay.",
-        )
+    private suspend fun resolveCLIAgentSessionActionRelayConnection(): HermesConnectionRecord = resolveRelayConnection(
+        predicate = { it.isCLIAgentSessionActionRelay() },
+        onlineError =
+        "Your Mac relay is online but does not advertise CLI session restart yet. Update or restart OpenBurnBar on the Mac.",
+        missingError =
+        "No paired Mac relay is available for CLI session restart. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay.",
+    )
 
     private suspend fun resolveRelayConnection(
         predicate: (HermesConnectionRecord) -> Boolean,
@@ -167,24 +163,21 @@ internal class HermesServiceRelayActions(
     private fun descriptorFor(connection: HermesConnectionRecord): HermesRelayConnectionDescriptor? =
         HermesServiceRelayDescriptorSupport.descriptorFor(connection)
 
-    private fun HermesConnectionRecord.isCLIAgentChatRelay(): Boolean =
-        mode == HermesConnectionMode.RELAY_LINK &&
-            !relayPublicKey.isNullOrBlank() &&
-            capabilities.any { it == "cli_agent_chat" || it == HermesRelayOperationName.CLI_AGENT_CHAT }
+    private fun HermesConnectionRecord.isCLIAgentChatRelay(): Boolean = mode == HermesConnectionMode.RELAY_LINK &&
+        !relayPublicKey.isNullOrBlank() &&
+        capabilities.any { it == "cli_agent_chat" || it == HermesRelayOperationName.CLI_AGENT_CHAT }
 
-    private fun HermesConnectionRecord.isCLIAgentModelCatalogRelay(): Boolean =
-        mode == HermesConnectionMode.RELAY_LINK &&
-            !relayPublicKey.isNullOrBlank() &&
-            capabilities.any {
-                it == "cli_agent_model_catalog" || it == HermesRelayOperationName.CLI_AGENT_MODEL_CATALOG
-            }
+    private fun HermesConnectionRecord.isCLIAgentModelCatalogRelay(): Boolean = mode == HermesConnectionMode.RELAY_LINK &&
+        !relayPublicKey.isNullOrBlank() &&
+        capabilities.any {
+            it == "cli_agent_model_catalog" || it == HermesRelayOperationName.CLI_AGENT_MODEL_CATALOG
+        }
 
-    private fun HermesConnectionRecord.isCLIAgentSessionActionRelay(): Boolean =
-        mode == HermesConnectionMode.RELAY_LINK &&
-            !relayPublicKey.isNullOrBlank() &&
-            capabilities.any {
-                it == "cli_agent_session_action" || it == HermesRelayOperationName.CLI_AGENT_SESSION_ACTION
-            }
+    private fun HermesConnectionRecord.isCLIAgentSessionActionRelay(): Boolean = mode == HermesConnectionMode.RELAY_LINK &&
+        !relayPublicKey.isNullOrBlank() &&
+        capabilities.any {
+            it == "cli_agent_session_action" || it == HermesRelayOperationName.CLI_AGENT_SESSION_ACTION
+        }
 }
 
 internal fun HermesService.relayTransportOrThrow(): HermesRelayTransporting =

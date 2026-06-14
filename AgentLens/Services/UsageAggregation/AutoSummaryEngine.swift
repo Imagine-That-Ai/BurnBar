@@ -119,12 +119,13 @@ final class AutoSummaryEngine {
                     let remaining = deadline.timeIntervalSinceNow
                     self?.summaryTimeRemaining = max(remaining, 0)
                     if remaining <= 0 { break }
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // try?-ok(ticker cancellation)
                 }
             }
         }
 
         // Get total count without loading full transcript payloads.
+        // try?-ok(progress count fallback)
         summaryProgressTotal = (try? dataStore.countConversationsNeedingSummary(
             now: Date(),
             retryCooldown: Self.summaryFailureRetryCooldown,
@@ -141,6 +142,7 @@ final class AutoSummaryEngine {
             // Respect time limit
             if let deadline, Date() >= deadline { break }
 
+            // try?-ok(skip cycle on fetch fail)
             guard var candidates = try? dataStore.fetchConversationsNeedingSummary(
                 limit: batchLimit,
                 now: Date(),

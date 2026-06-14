@@ -2,15 +2,13 @@
 
 package com.openburnbar.ui.hermes
 
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.components.BreathingDot
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -68,11 +68,11 @@ private fun HermesChatModelPickerRow(model: String, selected: Boolean, onSelect:
         onClick = onSelect,
         modifier = Modifier.fillMaxWidth(),
         color = if (selected) AuroraColors.hermesMercury.copy(alpha = 0.15f) else Color.Transparent,
-        shape = RoundedCornerShape(AuroraRadius.sm.dp),
+        shape = RoundedCornerShape(AuroraRadius.SM.dp),
     ) {
-        Row(modifier = Modifier.padding(AuroraSpacing.sm.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.padding(AuroraSpacing.SM.dp), verticalAlignment = Alignment.CenterVertically) {
             com.openburnbar.ui.components.ModelLogo(modelKey = model, size = 24.dp)
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text(model, fontSize = AuroraTypography.body.sp, modifier = Modifier.weight(1f))
             if (selected) {
                 androidx.compose.material3.Icon(
@@ -87,11 +87,7 @@ private fun HermesChatModelPickerRow(model: String, selected: Boolean, onSelect:
 }
 
 @Composable
-internal fun HermesChatConnectionDialog(
-    isConnected: Boolean,
-    runtimeInfo: Map<String, String>,
-    onDismiss: () -> Unit,
-) {
+internal fun HermesChatConnectionDialog(isConnected: Boolean, runtimeInfo: Map<String, String>, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Connection") },
@@ -99,7 +95,7 @@ internal fun HermesChatConnectionDialog(
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     BreathingDot(color = if (isConnected) AuroraColors.success else AuroraColors.error, size = 8)
-                    Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                    Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                     Text(
                         text = if (isConnected) "Connected" else "Disconnected",
                         fontSize = AuroraTypography.body.sp,
@@ -107,7 +103,7 @@ internal fun HermesChatConnectionDialog(
                     )
                 }
                 runtimeInfo.forEach { (key, value) ->
-                    Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+                    Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(key, fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(value.take(40), fontSize = AuroraTypography.caption.sp, fontWeight = FontWeight.Medium)

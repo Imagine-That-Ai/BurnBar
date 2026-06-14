@@ -2,20 +2,33 @@ import AppKit
 import CryptoKit
 import Foundation
 import Network
+import os
 import SQLite3
 
 #if canImport(OpenBurnBarCore)
 import OpenBurnBarCore
 #endif
 
-private final class CursorConnectorSecretBroker: @unchecked Sendable {
+private final class CursorConnectorSecretBroker: Sendable {
+    // `NWListener` is a Network-framework reference type bound to a queue and is
+    // not `Sendable`, so the listener and its derived port live behind an unfair
+    // lock with `withLockUnchecked`. Every other stored property is an immutable
+    // `let`, giving the type genuine `Sendable` conformance without `@unchecked`.
+    private struct BrokerState {
+        var listener: NWListener?
+        var port: UInt16 = 0
+    }
+
     private let keychain: KeychainStore
     private let routeAccounts: [String: String]
     private let queue = DispatchQueue(label: "openburnbar.cursor.secret-broker")
-    private var listener: NWListener?
+    private let brokerState = OSAllocatedUnfairLock<BrokerState>(uncheckedState: BrokerState())
 
     let bearerToken: String
-    private(set) var port: UInt16 = 0
+
+    var port: UInt16 {
+        brokerState.withLockUnchecked { $0.port }
+    }
 
     var baseURLString: String {
         "http://127.0.0.1:\(port)"
@@ -73,8 +86,10 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
                     )
                     continue
                 }
-                self.listener = listener
-                self.port = candidate
+                brokerState.withLockUnchecked { state in
+                    state.listener = listener
+                    state.port = candidate
+                }
                 return
             } catch {
                 lastError = error
@@ -88,9 +103,11 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
     }
 
     func stop() {
-        listener?.cancel()
-        listener = nil
-        port = 0
+        brokerState.withLockUnchecked { state in
+            state.listener?.cancel()
+            state.listener = nil
+            state.port = 0
+        }
     }
 
     private func handle(_ connection: NWConnection) {
@@ -137,7 +154,11 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
             return http(status: 404, body: ["error": "unknown_route"])
         }
 
-        guard let secret = try? keychain.string(for: account, allowUserInteraction: false),
+        guard let secret = keychain.credentialIfPresent(
+                for: account,
+                allowUserInteraction: false,
+                event: "cursor_secret_broker_key_read_failed"
+              ),
               let normalized = quotaNonEmpty(secret) else {
             return http(status: 424, body: ["error": "secret_unavailable"])
         }
@@ -146,7 +167,7 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
     }
 
     private func http(status: Int, body: [String: String]) -> Data {
-        let payload = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data("{}".utf8)
+        let payload = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data("{}".utf8) // try?-ok(fallback empty body)
         let reason: String
         switch status {
         case 200: reason = "OK"
@@ -214,14 +235,14 @@ final class CursorConnectorManager {
     init(settingsManager: SettingsManager = .shared) {
         self.settingsManager = settingsManager
         OpenBurnBarMigration.migrateUserDefaults()
-        self.supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory()) ?? OpenBurnBarAppPaths.live().supportDirectory
+        self.supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory()) ?? OpenBurnBarAppPaths.live().supportDirectory // try?-ok(fallback live path)
         self.proxyScriptURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.py")
         self.proxyConfigURL = supportDirectory.appendingPathComponent("cursor_connector_proxy_config.json")
         self.proxyLogURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.log")
         self.usageLogURL = supportDirectory.appendingPathComponent("cursor_connector_usage.jsonl")
 
         if let data = UserDefaults.standard.data(forKey: CursorConnectorConfig.defaultsKey),
-           let loaded = try? JSONDecoder().decode(CursorConnectorConfig.self, from: data) {
+           let loaded = try? JSONDecoder().decode(CursorConnectorConfig.self, from: data) { // try?-ok(else fresh config)
             self.config = Self.normalizedConfig(loaded)
         } else {
             self.config = CursorConnectorConfig()
@@ -251,10 +272,11 @@ final class CursorConnectorManager {
     }
 
     func apiKey(for provider: ConnectorProvider, allowUserInteraction: Bool = false) -> String {
-        (try? keychain.string(
+        keychain.credentialIfPresent(
             for: keychainAccount(for: provider),
-            allowUserInteraction: allowUserInteraction
-        )) ?? ""
+            allowUserInteraction: allowUserInteraction,
+            event: "cursor_provider_api_key_read_failed"
+        ) ?? ""
     }
 
     func setAPIKey(_ apiKey: String, for provider: ConnectorProvider) {
@@ -272,8 +294,8 @@ final class CursorConnectorManager {
     func importFromFactorySettings() {
         let factoryURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".factory/settings.json")
-        guard let data = try? Data(contentsOf: factoryURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let data = try? Data(contentsOf: factoryURL), // try?-ok(missing file guard-return)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed guard-return)
               let customModels = json["customModels"] as? [[String: Any]] else {
             lastError = "Factory settings were not found."
             return
@@ -339,10 +361,25 @@ final class CursorConnectorManager {
             stopSecretBroker()
             stopTunnel()
             stopProxy()
-            try? restoreCursorSettings()
-            config.statusMessage = "Connection failed"
+            // Roll the user's Cursor editor settings back to their pre-connect
+            // snapshot. If this restore fails we must NOT swallow it: Cursor would
+            // be left pointing at the now-dead tunnel/proxy endpoint — a broken
+            // (potentially stale-URL) editor config the user can't see. We cannot
+            // rethrow from this cleanup path, so surface the failure via the log
+            // and the user-facing error instead of silently continuing.
+            do {
+                try restoreCursorSettings()
+                config.statusMessage = "Connection failed"
+                lastError = error.localizedDescription
+            } catch let restoreError {
+                AppLogger.daemon.error(
+                    "cursor_connector_restore_settings_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: restoreError)))"]
+                )
+                config.statusMessage = "Connection failed (Cursor settings may need a manual reset)"
+                lastError = "\(error.localizedDescription) — and Cursor settings could not be rolled back: \(restoreError.localizedDescription)"
+            }
             saveConfig()
-            lastError = error.localizedDescription
         }
     }
 
@@ -439,13 +476,17 @@ final class CursorConnectorManager {
         }
     }
 
+    /// `nonisolated` probe runs the blocking executable lookups off the main
+    /// actor (SE-0338); results are applied back on the main actor by the caller.
+    private nonisolated static func probeSystemHealth() async -> (cloudflaredInstalled: Bool, homebrewInstalled: Bool) {
+        (
+            cloudflaredInstalled: findExecutable(named: "cloudflared") != nil,
+            homebrewInstalled: findHomebrew() != nil
+        )
+    }
+
     func refreshSystemHealth() async {
-        let snapshot = await Task.detached(priority: .utility) {
-            (
-                cloudflaredInstalled: Self.findExecutable(named: "cloudflared") != nil,
-                homebrewInstalled: Self.findHomebrew() != nil
-            )
-        }.value
+        let snapshot = await Self.probeSystemHealth()
         health.cloudflaredInstalled = snapshot.cloudflaredInstalled
         health.homebrewInstalled = snapshot.homebrewInstalled
         health.routerListening = false
@@ -519,8 +560,26 @@ final class CursorConnectorManager {
     }
 
     private func saveConfig() {
-        if let data = try? encoder.encode(config) {
-            defaults.set(data, forKey: CursorConnectorConfig.defaultsKey)
+        // Encoding the connector config should never fail, but if it does we must
+        // not silently drop the write — a swallowed failure leaves the persisted
+        // config stale (e.g. `isEnabled`/tunnel state out of sync with reality).
+        // Log the fault and skip the write; we keep the in-memory state intact.
+        guard let data = Self.encodedConfig(config, using: encoder) else { return }
+        defaults.set(data, forKey: CursorConnectorConfig.defaultsKey)
+    }
+
+    /// Encodes the connector config, logging (rather than swallowing) any encode
+    /// failure and returning `nil` so callers skip persisting a half-written blob.
+    /// Extracted as a `nonisolated static` seam so the failure path is unit-testable.
+    nonisolated static func encodedConfig(_ config: CursorConnectorConfig, using encoder: JSONEncoder) -> Data? {
+        do {
+            return try encoder.encode(config)
+        } catch {
+            AppLogger.daemon.error(
+                "cursor_connector_config_encode_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return nil
         }
     }
 
@@ -618,7 +677,28 @@ final class CursorConnectorManager {
         proxyProcess = nil
         sessionToken = ""
         health.routerListening = false
-        try? FileManager.default.removeItem(at: proxyConfigURL)
+        // SECURITY: the proxy config file holds the secret-broker bearer token and
+        // session token at 0o600. Failing to delete it leaves those secrets on
+        // disk after the proxy stops. We can't throw from this sync stop path, but
+        // a real removal failure must be observable — never swallowed.
+        Self.removeProxyConfigFile(at: proxyConfigURL, fileManager: .default)
+    }
+
+    /// Removes the on-disk proxy config (which carries broker/session secrets),
+    /// treating an already-absent file as success and logging any *real* removal
+    /// failure instead of swallowing it. Extracted as a `nonisolated static` seam
+    /// so the security-cleanup failure path is unit-testable.
+    nonisolated static func removeProxyConfigFile(at url: URL, fileManager: FileManager) {
+        do {
+            try fileManager.removeItem(at: url)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
+            // Already gone — nothing to clean up, not a fault.
+        } catch {
+            AppLogger.daemon.error(
+                "cursor_connector_proxy_config_delete_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     private func startSecretBroker() throws {
@@ -796,7 +876,7 @@ final class CursorConnectorManager {
                     } catch {
                         self.lastError = "Could not read usage log: \(error.localizedDescription)"
                     }
-                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    try? await Task.sleep(nanoseconds: 1_200_000_000) // try?-ok(cancellation only)
                 }
             }
         }
@@ -810,7 +890,7 @@ final class CursorConnectorManager {
                     } catch {
                         self.lastError = "Could not read proxy log: \(error.localizedDescription)"
                     }
-                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    try? await Task.sleep(nanoseconds: 1_200_000_000) // try?-ok(cancellation only)
                 }
             }
         }
@@ -822,7 +902,7 @@ final class CursorConnectorManager {
         var insertedAny = false
         for line in lines {
             guard let payload = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any], // try?-ok(skip malformed log line)
                   let requestID = json["request_id"] as? String,
                   let providerRaw = json["provider"] as? String,
                   let provider = ConnectorProvider(rawValue: providerRaw),
@@ -1311,11 +1391,11 @@ final class CursorConnectorManager {
         return nil
     }
 
-    static let isoDateFormatter: ISO8601DateFormatter = {
+    static var isoDateFormatter: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
     static func proxyScript() -> String {
         """

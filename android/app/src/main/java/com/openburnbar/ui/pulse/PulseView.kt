@@ -100,11 +100,7 @@ fun PulseView(
 }
 
 @Composable
-private fun collectPulseViewUiState(
-    dashboardStore: DashboardStore,
-    demoDataStore: DemoDataStore,
-    userStore: UserStore,
-): PulseViewUiState {
+private fun collectPulseViewUiState(dashboardStore: DashboardStore, demoDataStore: DemoDataStore, userStore: UserStore): PulseViewUiState {
     val rollups by dashboardStore.rollups.collectAsState()
     val isLoading by dashboardStore.isLoading.collectAsState()
     val error by dashboardStore.error.collectAsState()
@@ -154,12 +150,11 @@ private data class PulseViewUiState(
  * the plain bubble). Extracted from [UserAvatarBubble] so the fallback is
  * unit-testable without a composition.
  */
-internal fun avatarInitials(displayName: String?): String? =
-    displayName?.split(" ", "-")
-        ?.mapNotNull { it.firstOrNull()?.uppercaseChar() }
-        ?.take(2)
-        ?.joinToString("")
-        ?.takeIf { it.isNotBlank() }
+internal fun avatarInitials(displayName: String?): String? = displayName?.split(" ", "-")
+    ?.mapNotNull { it.firstOrNull()?.uppercaseChar() }
+    ?.take(2)
+    ?.joinToString("")
+    ?.takeIf { it.isNotBlank() }
 
 @Composable
 fun UserAvatarBubble(photoUrl: String?, displayName: String?, size: Dp = 36.dp) {

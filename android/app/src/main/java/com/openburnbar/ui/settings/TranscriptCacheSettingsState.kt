@@ -97,26 +97,23 @@ internal fun rememberTranscriptCacheSettingsState(): TranscriptCacheSettingsStat
 }
 
 @Composable
-internal fun TranscriptCacheSettingsTopBar(
-    onBack: () -> Unit,
-    useWebsiteBackground: Boolean,
-) {
+internal fun TranscriptCacheSettingsTopBar(onBack: () -> Unit, useWebsiteBackground: Boolean) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
     ) {
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+                tint = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
             )
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             text = "Transcript Cache",
             style = AuroraType.displayLarge,
-            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface
+            color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -124,7 +121,7 @@ internal fun TranscriptCacheSettingsTopBar(
 internal fun cacheLimitLabel(limitMegabytes: Int): String {
     if (limitMegabytes <= 0) return "Off"
     return CloudTranscriptCacheSettings.formatBytes(
-        limitMegabytes.toLong() * CloudTranscriptCacheSettings.BYTES_PER_MEGABYTE
+        limitMegabytes.toLong() * CloudTranscriptCacheSettings.BYTES_PER_MEGABYTE,
     )
 }
 
@@ -141,20 +138,20 @@ internal fun TranscriptCacheLimitHeader(limitMegabytes: Int) {
             imageVector = Icons.Filled.Storage,
             contentDescription = null,
             tint = AuroraColors.blaze,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp),
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Cache limit",
                 fontSize = AuroraTypography.body.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = cacheLimitLabel(limitMegabytes),
                 fontSize = AuroraTypography.caption.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -169,7 +166,7 @@ internal fun TranscriptCacheLimitSlider(state: TranscriptCacheSettingsState) {
                 .coerceIn(0, CloudTranscriptCacheSettings.MAXIMUM_MEGABYTES)
             if (rounded != state.limitMegabytes) state.setLimit(rounded)
         },
-        valueRange = 0f..CloudTranscriptCacheSettings.MAXIMUM_MEGABYTES.toFloat()
+        valueRange = 0f..CloudTranscriptCacheSettings.MAXIMUM_MEGABYTES.toFloat(),
     )
 }
 
@@ -179,26 +176,26 @@ internal fun TranscriptCacheUsageRow(snapshot: CloudTranscriptCacheSnapshot) {
         Text(
             text = "Used",
             fontSize = AuroraTypography.caption.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.weight(1f))
         Text(
             text = cacheUsageLabel(snapshot),
             fontSize = AuroraTypography.caption.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
 internal fun TranscriptCacheActionButtons(state: TranscriptCacheSettingsState) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         TextButton(onClick = state.clearCache, enabled = state.snapshot.usageBytes > 0L) {
             Text("Clear cache")
         }
         TextButton(
             onClick = state.resetToDefault,
-            enabled = state.limitMegabytes != CloudTranscriptCacheSettings.DEFAULT_MAX_MEGABYTES
+            enabled = state.limitMegabytes != CloudTranscriptCacheSettings.DEFAULT_MAX_MEGABYTES,
         ) {
             Text("Use 250 MB")
         }
@@ -206,22 +203,18 @@ internal fun TranscriptCacheActionButtons(state: TranscriptCacheSettingsState) {
 }
 
 @Composable
-internal fun TranscriptCacheSettingsCard(
-    state: TranscriptCacheSettingsState,
-    haloColor: Color,
-    useWebsiteBackground: Boolean,
-) {
+internal fun TranscriptCacheSettingsCard(state: TranscriptCacheSettingsState, haloColor: Color, useWebsiteBackground: Boolean) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.lg.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.35f else 0.6f)
+        shape = RoundedCornerShape(AuroraRadius.LG.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = if (useWebsiteBackground) 0.35f else 0.6f),
     ) {
-        Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.lg.dp)) {
+        Surface(color = haloColor, shape = RoundedCornerShape(AuroraRadius.LG.dp)) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(AuroraSpacing.md.dp),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+                    .padding(AuroraSpacing.MD.dp),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
             ) {
                 TranscriptCacheLimitHeader(state.limitMegabytes)
                 TranscriptCacheLimitSlider(state)
@@ -231,13 +224,13 @@ internal fun TranscriptCacheSettingsCard(
                     Text(
                         text = it,
                         fontSize = AuroraTypography.caption.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(
                     text = "Encrypted on this device. Off downloads transcripts only when opened.",
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                 )
             }
         }
@@ -245,10 +238,7 @@ internal fun TranscriptCacheSettingsCard(
 }
 
 @Composable
-internal fun TranscriptCacheSettingsScreen(
-    router: SettingsRouter,
-    onBack: () -> Unit,
-) {
+internal fun TranscriptCacheSettingsScreen(router: SettingsRouter, onBack: () -> Unit) {
     val isDark = isSystemInDarkTheme()
     val useWebsiteBackground by rememberWebsiteBackground()
     val state = rememberTranscriptCacheSettingsState()
@@ -269,7 +259,7 @@ internal fun TranscriptCacheSettingsScreen(
             Color.Transparent
         },
         animationSpec = tween(durationMillis = 350),
-        label = "transcript-cache-halo"
+        label = "transcript-cache-halo",
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -282,17 +272,21 @@ internal fun TranscriptCacheSettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .background(
-                    if (useWebsiteBackground) Color.Transparent
-                    else if (isDark) AuroraColors.darkBackground
-                    else AuroraColors.lightBackground
+                    if (useWebsiteBackground) {
+                        Color.Transparent
+                    } else if (isDark) {
+                        AuroraColors.darkBackground
+                    } else {
+                        AuroraColors.lightBackground
+                    },
                 )
-                .padding(horizontal = AuroraSpacing.lg.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+                .padding(horizontal = AuroraSpacing.LG.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         ) {
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
             TranscriptCacheSettingsTopBar(onBack = onBack, useWebsiteBackground = useWebsiteBackground)
             TranscriptCacheSettingsCard(state, haloColor, useWebsiteBackground)
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         }
     }
 }

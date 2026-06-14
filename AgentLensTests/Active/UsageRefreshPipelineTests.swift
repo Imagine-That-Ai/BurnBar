@@ -58,7 +58,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
             )
         )
 
-        let parsed = await pipeline.parse(from: pipeline.discover())
+        let parsed = try await pipeline.parse(from: pipeline.discover())
         XCTAssertEqual(parsed.errors[.factory], "simulated parser failure")
         XCTAssertEqual(parsed.parserHealth[.factory]?.statusLabel, "failed")
     }
@@ -84,9 +84,38 @@ final class UsageRefreshPipelineTests: XCTestCase {
             )
         )
 
-        let parsed = await pipeline.parse(from: pipeline.discover())
+        let parsed = try await pipeline.parse(from: pipeline.discover())
         let typed = OpenBurnBarError.parse("simulated", message: "simulated parser failure")
         XCTAssertEqual(parsed.errors[.factory], typed.message)
+    }
+
+    func test_parseStagePropagatesCancellation() async throws {
+        let store = try makeInMemoryDataStore()
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.factory: CancellingParser()],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        do {
+            _ = try await pipeline.parse(from: pipeline.discover())
+            XCTFail("Expected CancellationError to propagate")
+        } catch is CancellationError {
+            // Expected: cancellation must not be swallowed as a parser failure.
+        }
     }
 
     private func makeInMemoryDataStore() throws -> DataStore {
@@ -108,5 +137,13 @@ private struct FailingParser: LogParser {
 
     func parse() async throws -> ParseResult {
         throw OpenBurnBarError.parse("simulated", message: "simulated parser failure")
+    }
+}
+
+private struct CancellingParser: LogParser {
+    let provider: AgentProvider = .factory
+
+    func parse() async throws -> ParseResult {
+        throw CancellationError()
     }
 }

@@ -158,11 +158,7 @@ object HermesRatchetCrypto {
         )
     }
 
-    fun encrypt(
-        plaintext: ByteArray,
-        state: HermesRatchetSessionState,
-        associatedData: ByteArray = ByteArray(0),
-    ): HermesRatchetEnvelope {
+    fun encrypt(plaintext: ByteArray, state: HermesRatchetSessionState, associatedData: ByteArray = ByteArray(0)): HermesRatchetEnvelope {
         val sendingChainKeyBase64 =
             state.sendingChainKeyBase64
                 ?: throw HermesRatchetException(HermesRatchetError.MISSING_SENDING_CHAIN, "missing sending chain")
@@ -174,9 +170,9 @@ object HermesRatchetCrypto {
                 senderDeviceID = state.localDeviceID,
                 receiverDeviceID = state.remoteDeviceID,
                 ratchetPublicKeyBase64 =
-                    HermesRelayCryptoSupport.base64NoWrap(
-                        HermesRelayCryptoEc.publicKeyX963FromPrivateKey(privateKey),
-                    ),
+                HermesRelayCryptoSupport.base64NoWrap(
+                    HermesRelayCryptoEc.publicKeyX963FromPrivateKey(privateKey),
+                ),
                 previousChainLength = state.previousSendingChainLength,
                 messageNumber = state.sendMessageNumber,
                 epoch = state.epoch,
@@ -187,11 +183,7 @@ object HermesRatchetCrypto {
         return HermesRatchetEnvelope(header, HermesRelayCryptoSupport.base64NoWrap(ciphertext))
     }
 
-    fun decrypt(
-        envelope: HermesRatchetEnvelope,
-        state: HermesRatchetSessionState,
-        associatedData: ByteArray = ByteArray(0),
-    ): ByteArray {
+    fun decrypt(envelope: HermesRatchetEnvelope, state: HermesRatchetSessionState, associatedData: ByteArray = ByteArray(0)): ByteArray {
         validateHeader(envelope.header, state)
         val skippedKeyID = skippedKeyID(envelope.header.ratchetPublicKeyBase64, envelope.header.messageNumber)
         state.skippedMessageKeys.remove(skippedKeyID)?.let { keyBase64 ->
@@ -216,20 +208,19 @@ object HermesRatchetCrypto {
         return plaintext
     }
 
-    internal fun envelopeAAD(header: HermesRatchetHeader, associatedData: ByteArray): ByteArray =
-        ByteArrayOutputStream().apply {
-            write(AAD_DOMAIN.toByteArray(Charsets.UTF_8))
-            appendPart(associatedData)
-            appendPart(header.algorithm.toByteArray(Charsets.UTF_8))
-            appendPart(header.sessionID.toByteArray(Charsets.UTF_8))
-            appendPart(header.senderDeviceID.toByteArray(Charsets.UTF_8))
-            appendPart(header.receiverDeviceID.toByteArray(Charsets.UTF_8))
-            appendPart(header.ratchetPublicKeyBase64.toByteArray(Charsets.UTF_8))
-            appendUInt64(header.version)
-            appendUInt64(header.previousChainLength)
-            appendUInt64(header.messageNumber)
-            appendUInt64(header.epoch)
-        }.toByteArray()
+    internal fun envelopeAAD(header: HermesRatchetHeader, associatedData: ByteArray): ByteArray = ByteArrayOutputStream().apply {
+        write(AAD_DOMAIN.toByteArray(Charsets.UTF_8))
+        appendPart(associatedData)
+        appendPart(header.algorithm.toByteArray(Charsets.UTF_8))
+        appendPart(header.sessionID.toByteArray(Charsets.UTF_8))
+        appendPart(header.senderDeviceID.toByteArray(Charsets.UTF_8))
+        appendPart(header.receiverDeviceID.toByteArray(Charsets.UTF_8))
+        appendPart(header.ratchetPublicKeyBase64.toByteArray(Charsets.UTF_8))
+        appendUInt64(header.version)
+        appendUInt64(header.previousChainLength)
+        appendUInt64(header.messageNumber)
+        appendUInt64(header.epoch)
+    }.toByteArray()
 
     private fun dhRatchet(remoteRatchetPublicKeyBase64: String, state: HermesRatchetSessionState) {
         val currentPrivateKey = privateKeyFromBase64(state.sendingRatchetPrivateKeyBase64)
@@ -249,11 +240,7 @@ object HermesRatchetCrypto {
         state.sendingRatchetPrivateKeyBase64 = HermesRelayCryptoSupport.base64NoWrap(encodeRawPrivateKey(nextPair.private))
     }
 
-    private fun skipMessageKeys(
-        untilMessageNumber: Int,
-        remoteRatchetPublicKeyBase64: String,
-        state: HermesRatchetSessionState,
-    ) {
+    private fun skipMessageKeys(untilMessageNumber: Int, remoteRatchetPublicKeyBase64: String, state: HermesRatchetSessionState) {
         if (untilMessageNumber < state.receiveMessageNumber) return
         validateSkipWindow(untilMessageNumber, state)
         var receivingChainKey = receivingChainKeyForSkip(untilMessageNumber, state) ?: return
@@ -278,8 +265,7 @@ object HermesRatchetCrypto {
         state.receivingChainKeyBase64?.let { symmetricKeyData(it, "receivingChainKey") }
             ?: if (untilMessageNumber == state.receiveMessageNumber) null else missingReceivingChain()
 
-    private fun missingReceivingChain(): Nothing =
-        throw HermesRatchetException(HermesRatchetError.MISSING_RECEIVING_CHAIN, "missing receiving chain")
+    private fun missingReceivingChain(): Nothing = throw HermesRatchetException(HermesRatchetError.MISSING_RECEIVING_CHAIN, "missing receiving chain")
 
     private fun validateSkippedKeyCapacity(state: HermesRatchetSessionState) {
         if (state.skippedMessageKeys.size >= state.maxSkip) {
@@ -356,15 +342,13 @@ object HermesRatchetCrypto {
         return nonce + cipher.doFinal(plaintext)
     }
 
-    private fun privateKeyFromBase64(base64: String): java.security.PrivateKey =
-        mapInvalidPrivateKey {
-            decodeRawPrivateKey(decodedKeyBytes(base64, "privateKey", P256_PRIVATE_BYTES))
-        }
+    private fun privateKeyFromBase64(base64: String): java.security.PrivateKey = mapInvalidPrivateKey {
+        decodeRawPrivateKey(decodedKeyBytes(base64, "privateKey", P256_PRIVATE_BYTES))
+    }
 
-    private fun publicKeyFromBase64(base64: String): java.security.PublicKey =
-        mapInvalidPublicKey {
-            HermesRelayCryptoEc.decodeUncompressedPublicKey(decodedKeyBytes(base64, "publicKey", P256_PUBLIC_BYTES))
-        }
+    private fun publicKeyFromBase64(base64: String): java.security.PublicKey = mapInvalidPublicKey {
+        HermesRelayCryptoEc.decodeUncompressedPublicKey(decodedKeyBytes(base64, "publicKey", P256_PUBLIC_BYTES))
+    }
 
     private fun decodedKeyBytes(base64: String, label: String, expectedBytes: Int): ByteArray {
         val raw = decodeBase64(base64, label)
@@ -374,29 +358,26 @@ object HermesRatchetCrypto {
         return raw
     }
 
-    private inline fun <T> mapInvalidPrivateKey(block: () -> T): T =
-        try {
-            block()
-        } catch (error: IllegalArgumentException) {
-            invalidPrivateKey(error)
-        } catch (error: GeneralSecurityException) {
-            invalidPrivateKey(error)
-        }
+    private inline fun <T> mapInvalidPrivateKey(block: () -> T): T = try {
+        block()
+    } catch (error: IllegalArgumentException) {
+        invalidPrivateKey(error)
+    } catch (error: GeneralSecurityException) {
+        invalidPrivateKey(error)
+    }
 
-    private inline fun <T> mapInvalidPublicKey(block: () -> T): T =
-        try {
-            block()
-        } catch (error: IllegalArgumentException) {
-            invalidPublicKey(error)
-        } catch (error: GeneralSecurityException) {
-            invalidPublicKey(error)
-        }
+    private inline fun <T> mapInvalidPublicKey(block: () -> T): T = try {
+        block()
+    } catch (error: IllegalArgumentException) {
+        invalidPublicKey(error)
+    } catch (error: GeneralSecurityException) {
+        invalidPublicKey(error)
+    }
 
     private fun invalidPrivateKey(error: Throwable): Nothing =
         throw HermesRatchetException(HermesRatchetError.INVALID_PRIVATE_KEY, "invalid private key", error)
 
-    private fun invalidPublicKey(error: Throwable): Nothing =
-        throw HermesRatchetException(HermesRatchetError.INVALID_PUBLIC_KEY, "invalid public key", error)
+    private fun invalidPublicKey(error: Throwable): Nothing = throw HermesRatchetException(HermesRatchetError.INVALID_PUBLIC_KEY, "invalid public key", error)
 
     private fun encodeRawPrivateKey(privateKey: java.security.PrivateKey): ByteArray {
         val ecPrivate =
@@ -419,8 +400,7 @@ object HermesRatchetCrypto {
         return parameters.getParameterSpec(ECParameterSpec::class.java)
     }
 
-    private fun symmetricKeyData(base64: String, label: String): ByteArray =
-        decodeBase64(base64, label).also { validateSymmetricKey(it, label) }
+    private fun symmetricKeyData(base64: String, label: String): ByteArray = decodeBase64(base64, label).also { validateSymmetricKey(it, label) }
 
     private fun validateSymmetricKey(data: ByteArray, label: String) {
         if (data.size != AES_KEY_BYTES) {
@@ -428,15 +408,13 @@ object HermesRatchetCrypto {
         }
     }
 
-    private fun decodeBase64(base64: String, label: String): ByteArray =
-        try {
-            HermesRelayCryptoSupport.base64Decode(base64)
-        } catch (error: IllegalArgumentException) {
-            throw HermesRatchetException(HermesRatchetError.INVALID_BASE64, "invalid base64: $label", error)
-        }
+    private fun decodeBase64(base64: String, label: String): ByteArray = try {
+        HermesRelayCryptoSupport.base64Decode(base64)
+    } catch (error: IllegalArgumentException) {
+        throw HermesRatchetException(HermesRatchetError.INVALID_BASE64, "invalid base64: $label", error)
+    }
 
-    private fun skippedKeyID(ratchetPublicKeyBase64: String, messageNumber: Int): String =
-        "$ratchetPublicKeyBase64:$messageNumber"
+    private fun skippedKeyID(ratchetPublicKeyBase64: String, messageNumber: Int): String = "$ratchetPublicKeyBase64:$messageNumber"
 
     private fun ByteArrayOutputStream.appendPart(part: ByteArray) {
         appendUInt64(part.size)

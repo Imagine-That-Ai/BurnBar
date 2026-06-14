@@ -38,7 +38,8 @@ data class BudgetRuleEntity(
     val period: String,
     val behavior: String,
     val fallbackCredentialIDsJSON: String? = null,
-    val pausedUntil: Long? = null, // epoch millis
+    // epoch millis
+    val pausedUntil: Long? = null,
     val createdAt: Long,
     val updatedAt: Long,
     val syncedAt: Long? = null,
@@ -251,7 +252,8 @@ interface TextExpansionDao {
     fun markSynced(ids: List<String>, syncedAt: Long = System.currentTimeMillis())
 
     @Query(
-        "UPDATE text_expansion_snippets SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :deletedAtMillis, syncedAtMillis = NULL, isEnabled = 0, revision = revision + 1 WHERE id = :id",
+        "UPDATE text_expansion_snippets SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :deletedAtMillis, " +
+            "syncedAtMillis = NULL, isEnabled = 0, revision = revision + 1 WHERE id = :id",
     )
     fun softDelete(id: String, deletedAtMillis: Long = System.currentTimeMillis())
 }
@@ -277,24 +279,23 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun tokenUsageWriteDao(): TokenUsageWriteDao
 
-    fun budgetDatabaseAccess(): BudgetDatabaseAccess =
-        BudgetDatabaseAccess(
-            ruleDao = budgetRuleDao(),
-            eventDao = budgetEventDao(),
-            spendDao = budgetSpendDao(),
-            orgRollupDao = budgetOrgRollupDao(),
-            tokenUsageWriteDao = tokenUsageWriteDao(),
-        )
+    fun budgetDatabaseAccess(): BudgetDatabaseAccess = BudgetDatabaseAccess(
+        ruleDao = budgetRuleDao(),
+        eventDao = budgetEventDao(),
+        spendDao = budgetSpendDao(),
+        orgRollupDao = budgetOrgRollupDao(),
+        tokenUsageWriteDao = tokenUsageWriteDao(),
+    )
 
     abstract fun textExpansionDao(): TextExpansionDao
 
     companion object {
         @Volatile
-        private var INSTANCE: AppDatabase? = null
+        private var instance: AppDatabase? = null
 
         fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance =
+            return instance ?: synchronized(this) {
+                val created =
                     Room.databaseBuilder(
                         context.applicationContext,
                         AppDatabase::class.java,
@@ -303,8 +304,8 @@ abstract class AppDatabase : RoomDatabase() {
                         .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                         .fallbackToDestructiveMigration(dropAllTables = true)
                         .build()
-                INSTANCE = instance
-                instance
+                instance = created
+                created
             }
         }
 
@@ -332,7 +333,8 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     db.execSQL("CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_trigger ON text_expansion_snippets(trigger)")
                     db.execSQL(
-                        "CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_isEnabled_deletedAtMillis ON text_expansion_snippets(isEnabled, deletedAtMillis)",
+                        "CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_isEnabled_deletedAtMillis " +
+                            "ON text_expansion_snippets(isEnabled, deletedAtMillis)",
                     )
                     db.execSQL("CREATE INDEX IF NOT EXISTS index_text_expansion_snippets_syncedAtMillis ON text_expansion_snippets(syncedAtMillis)")
                 }

@@ -27,6 +27,9 @@ in-flight changes. The agent-sandbox work is on branch
 | **M-9** | Fix the broken privileged-peer code-sign requirement | `OpenBurnBarDaemon/.../OpenBurnBarSigningIdentity.swift`, `PrivilegedPeerAuthenticator.swift` | 6 `swift test` (requirement now compiles; was -67052) | `01e55d3ae` |
 | **L-3** | Fail closed if production runs with App Check disabled | `functions/src/config.ts` | 4 tests | `cba61a7f4` |
 | **L-4** | Refuse to publish a Homebrew cask with placeholder sha256 | `scripts/update-homebrew.sh` | `bash -n` + guards | `0c458732c` |
+| **C-2** | Client-verifiable escrow trust chain before CloudVault key wrap | `CloudVaultTrustedDeviceChainVerifier.swift`, mobile/Android verifiers, `computerUseSecurity.ts` fingerprint backstop | `approveEscrowDeviceTrustHandler.test.ts`, `escrowDeviceTrustFingerprint.test.ts`, `CloudVaultDeviceTrustChainTests.swift`, `CloudVaultDeviceTrustChainTest.kt` | main @ 2026-06-13 |
+| **C-3** | Revocation rotates + re-wraps the CloudVault key | `cloudVaultRotation.ts`, `ComputerUseSecurityCallableClient.swift`, `CloudVaultRotationRewrapWorker.swift`, Android rotation path | `cloudVaultRotationNonRevokerSurvivor.test.ts`, `cloudVaultRotationResilience.test.ts`, `CloudVaultRotationPickupTests.swift`, `AndroidCloudVaultRevocationRotationTest.kt` | main @ 2026-06-13 |
+| **H-4** | Harden + audit Cloudflare tunnel auth (code path) | `CursorConnectorManager.swift` (loopback broker, session token, fail-closed probe), C-5 gateway pin | `verify-vendored-agent-source.sh`; residual quick-tunnel risk accepted as AR-006 | main @ 2026-06-13 |
 
 ### Notes on the bigger-than-scoped fixes
 
@@ -85,7 +88,12 @@ deep-link entry, gateway rate-limit) directly implements:
 
 ---
 
-## 📐 Implementation-ready designs (entangled — hand to the escrow/runtime owner)
+## ✅ Implemented after this doc (ledger: `docs/governance/PHASE1_SECURITY_REGISTER.md`)
+
+C-2, C-3, and H-4 shipped on `main` with the proof commands listed in the Phase 1
+register. The design notes below are kept for audit history.
+
+## 📐 Implementation-ready designs (historical — implemented 2026-06-13)
 
 ### C-2 — Stop malicious-server escrow trusted-device injection (CloudVault key)
 
@@ -187,13 +195,11 @@ the gateway router (pinned via C-5).
 ## Pre-beta checklist (blocking)
 
 1. **C-1** authenticated+pinned relay (other agent) — the cardinal privacy fix.
-2. **C-2 / C-3** — implement the designs above (escrow/vault owner).
-3. **C-4 → C-5 pin.** Merge `security/agent-sandbox-hardening` into
-   `ajnunezg/burnbar-gateway-e2ee`, re-vendor, update
-   `third_party/hermes-agent/manifest.json` `pinnedCommit` +
-   `vendoredSourceTreeSha256`, clear `pendingHardening.blocking`, and make
-   `verify-vendored-agent-source.sh` blocking in CI.
-4. **H-4** tunnel auth (after C-5 publishes the router source).
+2. ~~**C-2 / C-3**~~ — **closed 2026-06-13** (see Phase 1 register).
+3. ~~**C-4 → C-5 pin**~~ — **closed 2026-06-13** (`pendingHardening.blocking: false`,
+   `verify-vendored-agent-source.sh` blocking in ops readiness).
+4. ~~**H-4** tunnel auth (code path)~~ — **closed 2026-06-13**; quick-tunnel
+   residual accepted as AR-006.
 5. Remove the local `~/.hermes/config.yaml` `tirith_fail_open: true` override now
    that the product default is fail-closed.
 6. Land **H-2/H-3/H-5/M-1–M-4/L-1** via the trust-root work.

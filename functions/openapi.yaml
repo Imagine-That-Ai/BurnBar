@@ -9,9 +9,7 @@ info:
 
 servers:
   - url: http://localhost:5001/openburnbar-dev/us-central1
-    description: Firebase Functions Emulator (local development)
-  - url: https://us-central1-openburnbar.cloudfunctions.net
-    description: Firebase Functions production (us-central1)
+    description: Firebase Functions Emulator (nightly DAST scan target)
 
 paths:
   /healthLive:

@@ -20,7 +20,7 @@ import OpenBurnBarComputerUseCore
 /// + virtual-key map + modifier parsing live in
 /// `OpenBurnBarComputerUseCore.MacInputCore` so they can be
 /// unit-tested in isolation; this file is the AppKit-only glue layer.
-public final class MacInputController: @unchecked Sendable {
+public final class MacInputController: Sendable {
     public enum InputError: Error, Equatable, Sendable {
         case accessibilityNotTrusted
         case displayBoundsViolation(Int, Int)

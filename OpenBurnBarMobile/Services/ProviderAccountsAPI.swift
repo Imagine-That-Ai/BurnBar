@@ -147,7 +147,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         }
         let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
             throw FunctionsError.decodingFailed
@@ -182,7 +182,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
             throw FunctionsError.decodingFailed
@@ -213,7 +213,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
             throw FunctionsError.decodingFailed
@@ -266,7 +266,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let deviceDisplayName, deviceDisplayName.isEmpty == false { payload["deviceDisplayName"] = deviceDisplayName }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
             throw FunctionsError.decodingFailed
@@ -287,7 +287,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let disabled { payload["disabled"] = disabled }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
             throw FunctionsError.decodingFailed
@@ -318,7 +318,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let responseData = try? JSONSerialization.data(withJSONObject: sanitized),
               let snap = try? JSONDecoder().decode(ProviderQuotaSnapshot.self, from: responseData) else {
             throw FunctionsError.decodingFailed

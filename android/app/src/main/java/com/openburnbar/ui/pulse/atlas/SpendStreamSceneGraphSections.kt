@@ -9,23 +9,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import com.openburnbar.data.derived.TrendDataDigest
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.theme.AuroraColors
 
 @Composable
-internal fun StreamGraphCanvas(
-    series: List<TrendDataDigest.DailySeries>,
-    sweepProgress: Float,
-    selectedIndex: Int?,
-    onSelect: (Int?) -> Unit,
-) {
+internal fun StreamGraphCanvas(series: List<TrendDataDigest.DailySeries>, sweepProgress: Float, selectedIndex: Int?, onSelect: (Int?) -> Unit) {
     val providers =
         remember(series) {
             series.flatMap { it.perProvider.entries }
@@ -88,12 +83,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStreamGraphStac
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStreamGraphGuides(
-    seriesSize: Int,
-    stepX: Float,
-    height: Float,
-    selectedIndex: Int?,
-) {
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStreamGraphGuides(seriesSize: Int, stepX: Float, height: Float, selectedIndex: Int?) {
     if (seriesSize > 0) {
         val todayX = (seriesSize - 1) * stepX
         drawLine(

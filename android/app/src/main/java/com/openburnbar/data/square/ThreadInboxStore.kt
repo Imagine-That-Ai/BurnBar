@@ -234,11 +234,7 @@ class ThreadInboxStore private constructor(
      * survives the rename losslessly.
      */
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
-    private suspend fun resealSessionWithCustomTitle(
-        uid: String,
-        docRef: com.google.firebase.firestore.DocumentReference,
-        customTitle: String,
-    ): Boolean {
+    private suspend fun resealSessionWithCustomTitle(uid: String, docRef: com.google.firebase.firestore.DocumentReference, customTitle: String): Boolean {
         val snapshot = docRef.get().await()
         val data = snapshot.data ?: return false
         val isSealed = data["contentSealed"] == true || data["sealedPayload"] != null
@@ -302,11 +298,7 @@ class ThreadInboxStore private constructor(
 
     fun cliSessionFor(item: ThreadInboxItem): CLIAgentSessionRecord? = cliSessionsByItemID[item.id]
 
-    private fun parseCLISession(
-        data: Map<String, Any>,
-        documentID: String,
-        vaultKey: ByteArray? = null,
-    ): CLIAgentSessionRecord? {
+    private fun parseCLISession(data: Map<String, Any>, documentID: String, vaultKey: ByteArray? = null): CLIAgentSessionRecord? {
         // Sealed branch (current Mac/iOS writers): the whole record — transcript,
         // customTitle, workspace label — lives inside `sealedPayload`. Top-level
         // fields carry only non-private routing/sort metadata. Mirror the iOS
@@ -356,11 +348,7 @@ class ThreadInboxStore private constructor(
      * fail-soft contract the plaintext branch and the iOS reader use.
      */
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
-    private fun parseSealedCLISession(
-        data: Map<String, Any>,
-        documentID: String,
-        vaultKey: ByteArray?,
-    ): CLIAgentSessionRecord? {
+    private fun parseSealedCLISession(data: Map<String, Any>, documentID: String, vaultKey: ByteArray?): CLIAgentSessionRecord? {
         val key = vaultKey ?: return null
         val envelope = CloudVaultCrypto.sealedPayloadFromMap(data["sealedPayload"] as? Map<*, *>) ?: return null
         val payload =
@@ -408,27 +396,25 @@ class ThreadInboxStore private constructor(
         )
     }
 
-    private fun sealedMessageToRecord(message: CLIAgentSealedMessage): CLIAgentMessage =
-        CLIAgentMessage(
-            id = message.id.ifBlank { java.util.UUID.randomUUID().toString() },
-            role = message.role.ifBlank { "assistant" },
-            text = message.text,
-            timestampEpoch = message.timestamp?.let(::epochMillisFromIso),
-            isError = message.isError,
-            toolUses =
-                message.toolUses.map { tool ->
-                    CLIAgentToolUse(
-                        id = tool.id.ifBlank { java.util.UUID.randomUUID().toString() },
-                        name = tool.name.ifBlank { "tool" },
-                        status = tool.status,
-                        detail = tool.detail?.ifBlank { null },
-                        startedAtEpoch = tool.startedAt?.let(::epochMillisFromIso),
-                    )
-                },
-        )
+    private fun sealedMessageToRecord(message: CLIAgentSealedMessage): CLIAgentMessage = CLIAgentMessage(
+        id = message.id.ifBlank { java.util.UUID.randomUUID().toString() },
+        role = message.role.ifBlank { "assistant" },
+        text = message.text,
+        timestampEpoch = message.timestamp?.let(::epochMillisFromIso),
+        isError = message.isError,
+        toolUses =
+        message.toolUses.map { tool ->
+            CLIAgentToolUse(
+                id = tool.id.ifBlank { java.util.UUID.randomUUID().toString() },
+                name = tool.name.ifBlank { "tool" },
+                status = tool.status,
+                detail = tool.detail?.ifBlank { null },
+                startedAtEpoch = tool.startedAt?.let(::epochMillisFromIso),
+            )
+        },
+    )
 
-    private fun epochMillisFromIso(raw: String): Long? =
-        runCatching { java.time.Instant.parse(raw.trim()).toEpochMilli() }.getOrNull()
+    private fun epochMillisFromIso(raw: String): Long? = runCatching { java.time.Instant.parse(raw.trim()).toEpochMilli() }.getOrNull()
 
     private fun parseMessages(raw: Any?): List<CLIAgentMessage> = (raw as? List<*>)?.mapNotNull { entry ->
         val map = entry as? Map<*, *> ?: return@mapNotNull null

@@ -4,9 +4,9 @@ import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.theme.AppAppearance
@@ -33,6 +33,7 @@ object GlobalVisualSettings {
     // Underlying Compose mutable states to trigger reactive updates globally.
     private val _usePremiumSOTAUX = mutableStateOf(false)
     private val _backgroundStyle = mutableStateOf(BackgroundStyle.AURORA)
+
     // Derived flag kept for back-compat: callers across the app read this to know a
     // custom dark backdrop is active (so they flip text to white / drop solid fills).
     // Both swarm and constellation styles paint a dark, content-behind backdrop.

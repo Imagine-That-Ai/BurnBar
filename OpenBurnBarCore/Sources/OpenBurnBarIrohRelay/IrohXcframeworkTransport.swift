@@ -6,7 +6,7 @@ import OpenBurnBarCore
 /// at runtime, a fake during tests), and wraps each backend stream in an
 /// `IrohRelayStream` that re-uses the same `IrohRelayFrameCodec` the
 /// loopback transport ships.
-public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Sendable {
+public final class IrohXcframeworkTransport: IrohRelayTransport, Sendable {
     private let backend: IrohEndpointBackend
     private let codec: IrohRelayFrameCodec
     private let secretProvider: @Sendable () throws -> IrohSecretKeyMaterial
@@ -150,7 +150,7 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
 /// contract by feeding raw envelopes through `IrohRelayFrameCodec`. The
 /// length prefix is decoded by the backend itself, so on this side we
 /// already have one whole envelope per `recvFrame` call.
-public final class IrohBackendStreamAdapter: IrohRelayStream, @unchecked Sendable {
+public final class IrohBackendStreamAdapter: IrohRelayStream, Sendable {
     private let stream: IrohBackendStream
     private let codec: IrohRelayFrameCodec
 

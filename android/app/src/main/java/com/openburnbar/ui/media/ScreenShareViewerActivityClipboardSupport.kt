@@ -41,18 +41,17 @@ internal fun ScreenShareViewerActivity.sendClipboardRequest(action: HermesRealti
 private fun ScreenShareViewerActivity.buildPhoneControlClipboardRequest(
     action: HermesRealtimeRelayClipboardAction,
     requestId: String,
-): PhoneControlClipboardRequest? =
-    when (action) {
-        HermesRealtimeRelayClipboardAction.PASTE_TO_MAC -> buildPasteToMacClipboardRequest(requestId)
-        HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC ->
-            PhoneControlClipboardRequest(
-                requestId = requestId,
-                action = PhoneControlClipboardAction.GRAB_FROM_MAC,
-                contentType = ScreenShareViewerActivity.REMOTE_CLIPBOARD_CONTENT_TYPE,
-                text = null,
-                maxBytes = ScreenShareViewerActivity.REMOTE_CLIPBOARD_MAX_BYTES,
-            )
-    }
+): PhoneControlClipboardRequest? = when (action) {
+    HermesRealtimeRelayClipboardAction.PASTE_TO_MAC -> buildPasteToMacClipboardRequest(requestId)
+    HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC ->
+        PhoneControlClipboardRequest(
+            requestId = requestId,
+            action = PhoneControlClipboardAction.GRAB_FROM_MAC,
+            contentType = ScreenShareViewerActivity.REMOTE_CLIPBOARD_CONTENT_TYPE,
+            text = null,
+            maxBytes = ScreenShareViewerActivity.REMOTE_CLIPBOARD_MAX_BYTES,
+        )
+}
 
 private fun ScreenShareViewerActivity.buildPasteToMacClipboardRequest(requestId: String): PhoneControlClipboardRequest? {
     val text = readLocalClipboardText()?.takeIf { it.isNotEmpty() }
@@ -123,19 +122,18 @@ internal fun ScreenShareViewerActivity.handleClipboardResponse(response: HermesR
     controlStatus.value = clipboardStatusMessage(response)
 }
 
-internal fun ScreenShareViewerActivity.clipboardStatusMessage(response: HermesRealtimeRelayClipboardResponse): String =
-    when (response.status) {
-        HermesRealtimeRelayClipboardStatus.ACCEPTED ->
-            when (response.action) {
-                HermesRealtimeRelayClipboardAction.PASTE_TO_MAC -> "Pasted to Mac"
-                HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC -> "Mac clipboard copied"
-            }
-        HermesRealtimeRelayClipboardStatus.EMPTY -> "Clipboard empty"
-        HermesRealtimeRelayClipboardStatus.DENIED -> "Mac denied clipboard"
-        HermesRealtimeRelayClipboardStatus.TOO_LARGE -> "Clipboard too large"
-        HermesRealtimeRelayClipboardStatus.UNSUPPORTED -> "Mac denied clipboard"
-        HermesRealtimeRelayClipboardStatus.ERROR -> "Mac denied clipboard"
-    }
+internal fun ScreenShareViewerActivity.clipboardStatusMessage(response: HermesRealtimeRelayClipboardResponse): String = when (response.status) {
+    HermesRealtimeRelayClipboardStatus.ACCEPTED ->
+        when (response.action) {
+            HermesRealtimeRelayClipboardAction.PASTE_TO_MAC -> "Pasted to Mac"
+            HermesRealtimeRelayClipboardAction.GRAB_FROM_MAC -> "Mac clipboard copied"
+        }
+    HermesRealtimeRelayClipboardStatus.EMPTY -> "Clipboard empty"
+    HermesRealtimeRelayClipboardStatus.DENIED -> "Mac denied clipboard"
+    HermesRealtimeRelayClipboardStatus.TOO_LARGE -> "Clipboard too large"
+    HermesRealtimeRelayClipboardStatus.UNSUPPORTED -> "Mac denied clipboard"
+    HermesRealtimeRelayClipboardStatus.ERROR -> "Mac denied clipboard"
+}
 
 internal fun ScreenShareViewerActivity.readLocalClipboardText(): String? {
     val clipboard =

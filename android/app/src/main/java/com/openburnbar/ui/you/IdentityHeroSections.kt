@@ -104,12 +104,7 @@ private fun IdentityHeroAvatarPhoto(displayName: String, photoUrl: String?) {
 }
 
 @Composable
-internal fun IdentityHeroIdentityBlock(
-    displayName: String,
-    email: String?,
-    syncHealth: CloudSyncHealth,
-    connectionsCount: Int,
-) {
+internal fun IdentityHeroIdentityBlock(displayName: String, email: String?, syncHealth: CloudSyncHealth, connectionsCount: Int) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = displayName,
@@ -124,7 +119,7 @@ internal fun IdentityHeroIdentityBlock(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
         IdentityHeroStatusPill(syncHealth = syncHealth, connectionsCount = connectionsCount)
     }
 }
@@ -237,7 +232,7 @@ internal fun IdentityHeroCardContent(
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         IdentityHeroAvatarWithHalo(displayName = displayName, photoUrl = photoUrl, haloRotation = haloRotation)
         IdentityHeroIdentityBlock(

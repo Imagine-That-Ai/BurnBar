@@ -32,8 +32,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,10 +77,10 @@ import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
 import com.openburnbar.data.insights.verdict.InsightVerdict
 import com.openburnbar.ui.components.liquidGlassSurface
+import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
-import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.ui.theme.AuroraType
 
 internal data class InsightsScreenScaffoldState(
@@ -189,26 +189,25 @@ private fun collectInsightsScreenViewSnapshot(viewModel: InsightsViewModel): Ins
     )
 }
 
-private fun insightsBriefTabActions(viewModel: InsightsViewModel): InsightsBriefTabActions =
-    InsightsBriefTabActions(
-        onRefresh = { viewModel.refresh() },
-        onAsk = { viewModel.ask(it) },
-        onLaunchMission = { action, options ->
-            viewModel.launchMission(
-                action.title,
-                action.followUpQuestion().question,
-                action.tone.firestoreValue(),
-                options.requestedRuntime,
-                options.targetProject,
-                options.depth,
-                options.approvalMode,
-                options.commandsAllowed,
-                options.fileEditsAllowed,
-            )
-        },
-        onDismissMissionStatus = { viewModel.dismissMissionStatus() },
-        onSelectWidget = { viewModel.selectWidget(it) },
-    )
+private fun insightsBriefTabActions(viewModel: InsightsViewModel): InsightsBriefTabActions = InsightsBriefTabActions(
+    onRefresh = { viewModel.refresh() },
+    onAsk = { viewModel.ask(it) },
+    onLaunchMission = { action, options ->
+        viewModel.launchMission(
+            action.title,
+            action.followUpQuestion().question,
+            action.tone.firestoreValue(),
+            options.requestedRuntime,
+            options.targetProject,
+            options.depth,
+            options.approvalMode,
+            options.commandsAllowed,
+            options.fileEditsAllowed,
+        )
+    },
+    onDismissMissionStatus = { viewModel.dismissMissionStatus() },
+    onSelectWidget = { viewModel.selectWidget(it) },
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -271,10 +270,7 @@ internal fun InsightsScreenRoot(modifier: Modifier, viewModel: InsightsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun InsightsScreenScaffold(
-    state: InsightsScreenScaffoldState,
-    activeTabContent: @Composable (PaddingValues) -> Unit,
-) {
+internal fun InsightsScreenScaffold(state: InsightsScreenScaffoldState, activeTabContent: @Composable (PaddingValues) -> Unit) {
     Scaffold(
         modifier = Modifier.then(state.modifier).fillMaxSize(),
         containerColor = if (state.useWebsiteBackground) Color.Transparent else MaterialTheme.colorScheme.background,
@@ -308,12 +304,7 @@ internal fun InsightsScreenOverlays(state: InsightsScreenOverlaysState) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InsightsScreenTopBar(
-    canvasTitle: String,
-    isLoading: Boolean,
-    onRefresh: () -> Unit,
-    onShowInspector: () -> Unit,
-) {
+private fun InsightsScreenTopBar(canvasTitle: String, isLoading: Boolean, onRefresh: () -> Unit, onShowInspector: () -> Unit) {
     CenterAlignedTopAppBar(
         title = {
             Text(
@@ -378,7 +369,7 @@ private fun InsightsScreenTabRow(activeTab: String, onActiveTabChange: (String) 
         selectedTabIndex = if (activeTab == "brief") 0 else 1,
         containerColor = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.xs.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.XS.dp),
     ) {
         Tab(
             selected = activeTab == "brief",
@@ -394,15 +385,11 @@ private fun InsightsScreenTabRow(activeTab: String, onActiveTabChange: (String) 
 }
 
 @Composable
-internal fun InsightsBriefTabContent(
-    model: InsightsBriefTabModel,
-    actions: InsightsBriefTabActions,
-    onMissionOpen: () -> Unit,
-) {
+internal fun InsightsBriefTabContent(model: InsightsBriefTabModel, actions: InsightsBriefTabActions, onMissionOpen: () -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        contentPadding = PaddingValues(bottom = AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         insightsBriefVerdictItem(model, actions)
         insightsBriefAnalysisItem(model, actions)
@@ -417,7 +404,7 @@ internal fun InsightsBriefTabContent(
 private fun LazyListScope.insightsBriefVerdictItem(model: InsightsBriefTabModel, actions: InsightsBriefTabActions) {
     model.verdict?.let { v ->
         item {
-            Box(modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)) {
+            Box(modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp)) {
                 com.openburnbar.ui.insights.verdict.VerdictHeroSection(
                     verdict = v,
                     isStale = false,
@@ -454,14 +441,10 @@ private fun LazyListScope.insightsBriefAnalysisItem(model: InsightsBriefTabModel
     }
 }
 
-private fun LazyListScope.insightsBriefMissionBannerItem(
-    model: InsightsBriefTabModel,
-    actions: InsightsBriefTabActions,
-    onMissionOpen: () -> Unit,
-) {
+private fun LazyListScope.insightsBriefMissionBannerItem(model: InsightsBriefTabModel, actions: InsightsBriefTabActions, onMissionOpen: () -> Unit) {
     if (model.missionStatus !is InsightsViewModel.MissionStatus.Idle) {
         item {
-            Box(modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)) {
+            Box(modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp)) {
                 MissionStatusBanner(
                     status = model.missionStatus,
                     onDismiss = actions.onDismissMissionStatus,
@@ -478,7 +461,7 @@ private fun LazyListScope.insightsBriefErrorItem(message: String) {
             text = message,
             style = AuroraType.caption,
             color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp, vertical = 4.dp),
         )
     }
 }
@@ -492,7 +475,7 @@ private fun InsightsBriefLoadingState(visible: Boolean) {
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = AuroraColors.ember)
-                Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
                 Text(
                     text = "Building your canvas…",
                     style = AuroraType.body,
@@ -511,7 +494,7 @@ private fun InsightsBriefCanvasGrid(model: InsightsBriefTabModel, actions: Insig
         exit = fadeOut(),
     ) {
         model.canvas?.let { canvas ->
-            Column(modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)) {
+            Column(modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp)) {
                 InsightsCanvasGrid(
                     canvas = canvas,
                     selectedWidgetId = model.selectedWidgetId,
@@ -531,7 +514,7 @@ private fun InsightsBriefEmptyState(model: InsightsBriefTabModel) {
             Modifier
                 .fillMaxWidth()
                 .height(240.dp)
-                .padding(horizontal = AuroraSpacing.lg.dp),
+                .padding(horizontal = AuroraSpacing.LG.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -543,7 +526,6 @@ private fun InsightsBriefEmptyState(model: InsightsBriefTabModel) {
         }
     }
 }
-
 
 internal fun citationPrompt(citation: InsightCitation): String = when (val kind = citation.kind) {
     is InsightCitation.Kind.Session ->
@@ -582,11 +564,11 @@ internal fun BriefOptionsSheet(state: BriefOptionsState, callbacks: BriefOptions
             Modifier
                 .fillMaxWidth()
                 .padding(
-                    start = AuroraSpacing.lg.dp,
-                    end = AuroraSpacing.lg.dp,
-                    bottom = AuroraSpacing.xl.dp,
+                    start = AuroraSpacing.LG.dp,
+                    end = AuroraSpacing.LG.dp,
+                    bottom = AuroraSpacing.XL.dp,
                 ),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
         ) {
             Text(
                 text = "Brief options",
@@ -601,7 +583,7 @@ internal fun BriefOptionsSheet(state: BriefOptionsState, callbacks: BriefOptions
 
 @Composable
 private fun BriefOptionsModelPrivacySection(state: BriefOptionsState, callbacks: BriefOptionsCallbacks) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         SheetSectionHeader(text = "MODEL & PRIVACY")
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -651,7 +633,7 @@ private fun BriefOptionsModelPrivacySection(state: BriefOptionsState, callbacks:
 
 @Composable
 private fun BriefOptionsThemeSection(state: BriefOptionsState, callbacks: BriefOptionsCallbacks) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         SheetSectionHeader(text = "THEME")
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(InsightTheme.entries.toList()) { theme ->
@@ -713,23 +695,17 @@ internal fun InsightsComposerBar(isLoading: Boolean, onAsk: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InsightsComposerInputRow(
-    prompt: String,
-    isLoading: Boolean,
-    ember: Color,
-    onPromptChange: (String) -> Unit,
-    onSubmit: () -> Unit,
-) {
+private fun InsightsComposerInputRow(prompt: String, isLoading: Boolean, ember: Color, onPromptChange: (String) -> Unit, onSubmit: () -> Unit) {
     Row(
         modifier =
         Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = AuroraSpacing.md.dp,
-                vertical = AuroraSpacing.sm.dp,
+                horizontal = AuroraSpacing.MD.dp,
+                vertical = AuroraSpacing.SM.dp,
             )
             .padding(bottom = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         InsightsComposerTextField(
@@ -748,11 +724,7 @@ private fun InsightsComposerInputRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RowScope.InsightsComposerTextField(
-    prompt: String,
-    ember: Color,
-    onPromptChange: (String) -> Unit,
-) {
+private fun RowScope.InsightsComposerTextField(prompt: String, ember: Color, onPromptChange: (String) -> Unit) {
     OutlinedTextField(
         value = prompt,
         onValueChange = onPromptChange,
@@ -761,7 +733,7 @@ private fun RowScope.InsightsComposerTextField(
             .weight(1f)
             .border(
                 BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                RoundedCornerShape(AuroraRadius.md.dp),
+                RoundedCornerShape(AuroraRadius.MD.dp),
             ),
         singleLine = true,
         placeholder = {
@@ -772,7 +744,7 @@ private fun RowScope.InsightsComposerTextField(
             )
         },
         textStyle = AuroraType.body.copy(color = MaterialTheme.colorScheme.onSurface),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         colors =
         TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -788,12 +760,7 @@ private fun RowScope.InsightsComposerTextField(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InsightsComposerSendButton(
-    enabled: Boolean,
-    isLoading: Boolean,
-    ember: Color,
-    onSubmit: () -> Unit,
-) {
+private fun InsightsComposerSendButton(enabled: Boolean, isLoading: Boolean, ember: Color, onSubmit: () -> Unit) {
     FilledIconButton(
         enabled = enabled,
         onClick = onSubmit,
@@ -804,7 +771,7 @@ private fun InsightsComposerSendButton(
             disabledContainerColor = ember.copy(alpha = 0.35f),
             disabledContentColor = Color.White.copy(alpha = 0.7f),
         ),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
     ) {
         if (isLoading) {
             CircularProgressIndicator(

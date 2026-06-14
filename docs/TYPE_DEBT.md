@@ -1,8 +1,8 @@
 # Type Debt Budget
 
 OpenBurnBar tracks unsafe type shortcuts with `tools/type-debt/audit-unsafe-casts.mjs`.
-The scanner is a ratchet: current debt is allowed while remediation is underway, but new
-unsafe casts must not raise `budgets/unsafe-cast-baseline.json`.
+The scanner is now an assert-zero gate: unsafe casts, force unwraps, force casts, and
+force tries are not budgeted debt anymore. Any reintroduction fails CI.
 
 ## What Is Counted
 
@@ -47,18 +47,11 @@ Run the scanner:
 node tools/type-debt/audit-unsafe-casts.mjs --format text
 ```
 
-Run the budget gate:
+Run the assert-zero gate:
 
 ```bash
 ./scripts/debt/check-unsafe-cast-budget.sh
 ```
 
-Regenerate the baseline only after an intentional burn-down:
-
-```bash
-./scripts/debt/update-unsafe-cast-baseline.sh
-```
-
-The CI gate passes when `live.total <= budgets/unsafe-cast-baseline.json.total`.
-If a cleanup lowers the live total, update the baseline in the same change so the
-lower number becomes the new ceiling.
+The CI gate passes only when `live.total == 0`. If it fails, remove the reported
+violation or replace it with a typed boundary before merging.

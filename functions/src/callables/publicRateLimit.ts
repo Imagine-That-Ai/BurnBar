@@ -9,11 +9,11 @@ import { Timestamp } from "firebase-admin/firestore";
 
 import { db } from "../adminRuntime.js";
 
-export type PublicHttpRateLimitAction = "cli_link_start" | "hermes_gateway_device_start";
+type PublicHttpRateLimitAction = "cli_link_start" | "hermes_gateway_device_start";
 
-export type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_gateway_approve_fail";
+type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_gateway_approve_fail";
 
-export type HermesGatewayBearerRateLimitAction =
+type HermesGatewayBearerRateLimitAction =
   | "hermes_gateway_message_send"
   | "hermes_gateway_attachment_init"
   // L3: owner-authenticated event enqueue (phone -> paired agent). Scoped per

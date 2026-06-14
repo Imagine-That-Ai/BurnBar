@@ -1,5 +1,6 @@
 import Foundation
 import FirebaseAuth
+@preconcurrency import FirebaseFunctions
 import FirebaseStorage
 import UIKit
 import OSLog
@@ -21,6 +22,7 @@ final class ProfileAvatarService {
         case compressionFailed
         case uploadFailed(Error)
         case downloadURLFailed(Error)
+        case malformedSignedURLResponse
         case profileUpdateFailed(Error)
 
         var errorDescription: String? {
@@ -29,6 +31,7 @@ final class ProfileAvatarService {
             case .compressionFailed:       return "Could not compress the selected image."
             case .uploadFailed(let e):     return "Upload failed: \(e.localizedDescription)"
             case .downloadURLFailed(let e): return "Could not get download URL: \(e.localizedDescription)"
+            case .malformedSignedURLResponse: return "Could not parse avatar download URL."
             case .profileUpdateFailed(let e): return "Could not update profile: \(e.localizedDescription)"
             }
         }
@@ -56,7 +59,15 @@ final class ProfileAvatarService {
 
         let downloadURL: URL
         do {
-            downloadURL = try await ref.downloadURL()
+            let result = try await Functions.functions(region: "us-central1")
+                .httpsCallable("getProfileAvatarDownloadUrl")
+                .call([:])
+            guard let dict = result.data as? [String: Any],
+                  let rawDownloadURL = dict["downloadURL"] as? String,
+                  let signedURL = URL(string: rawDownloadURL) else {
+                throw AvatarError.malformedSignedURLResponse
+            }
+            downloadURL = signedURL
         } catch {
             throw AvatarError.downloadURLFailed(error)
         }

@@ -145,16 +145,11 @@ type StaleRotationOutcome = "flagged" | "nudged" | "skipped";
  * messaging outage does not strand the nudge. Data-only (no `notification`
  * block) so the OS wakes the app to run rotation silently.
  */
-// F-RR09-001: same 7-day TTL safety net as the VoIP/FCM call writers — bound
-// retention of this fcm_outbound vault-rotation nudge (uid + fcmToken).
-const PUSH_QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
 async function enqueueRotationNudge(
   firestore: FirebaseFirestore.Firestore,
   args: { uid: string; deviceId: string; fcmToken: string; requirementId: string; currentVaultKeyID: string },
 ): Promise<boolean> {
-  const nowMillis = Date.now();
-  const docId = `cvrotnudge_${nowMillis}_${randomBytes(6).toString("hex")}`;
+  const docId = `cvrotnudge_${Date.now()}_${randomBytes(6).toString("hex")}`;
   try {
     await firestore
       .collection("fcm_outbound")
@@ -171,8 +166,7 @@ async function enqueueRotationNudge(
         },
         uid: args.uid,
         targetDeviceId: args.deviceId,
-        createdAt: Timestamp.fromMillis(nowMillis),
-        expireAt: Timestamp.fromMillis(nowMillis + PUSH_QUEUE_TTL_MS),
+        createdAt: Timestamp.now(),
       });
     return true;
   } catch {

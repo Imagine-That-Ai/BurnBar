@@ -13,7 +13,7 @@ import Security
 /// Same Keychain trust model as the chat key: generic password,
 /// `WhenUnlockedThisDeviceOnly`, no iCloud sync, deleting the app removes
 /// the entry.
-final class IrohBlobKeyStore: @unchecked Sendable {
+final class IrohBlobKeyStore: Sendable {
     static let shared = IrohBlobKeyStore()
 
     private let service: String

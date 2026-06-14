@@ -30,7 +30,7 @@ import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 @Composable
 fun MercuryFoilCard(
     modifier: Modifier = Modifier,
-    cornerRadiusDp: Dp = ProLayout.cardRadiusDp.dp,
+    cornerRadiusDp: Dp = ProLayout.CARD_RADIUS_DP.dp,
     tone: MercuryFoilTone = MercuryFoilTone.Obsidian,
     enableSpecular: Boolean = true,
     enableShimmer: Boolean = true,
@@ -46,7 +46,7 @@ fun MercuryFoilCard(
                 targetValue = 1f,
                 animationSpec =
                 infiniteRepeatable(
-                    animation = tween(ProMotion.mercuryShimmerDurationMs.toInt(), easing = LinearEasing),
+                    animation = tween(ProMotion.MERCURY_SHIMMER_DURATION_MS.toInt(), easing = LinearEasing),
                     repeatMode = RepeatMode.Restart,
                 ),
                 label = "mercuryFoilShimmerPhase",
@@ -57,7 +57,7 @@ fun MercuryFoilCard(
 
     val specularAnimated by animateFloatAsState(
         targetValue = if (enableSpecular && !reduceMotion) 1.4f else -1.4f,
-        animationSpec = tween(ProMotion.specularDurationMs, delayMillis = 150, easing = LinearEasing),
+        animationSpec = tween(ProMotion.SPECULAR_DURATION_MS, delayMillis = 150, easing = LinearEasing),
         label = "specularSweep",
     )
 
@@ -85,7 +85,7 @@ fun MercuryFoilCard(
                 }
             }
             .border(
-                width = ProLayout.foilStrokeDp.dp,
+                width = ProLayout.FOIL_STROKE_DP.dp,
                 brush = Brush.linearGradient(ProPalette.aureateStrokeStops),
                 shape = shape,
             ),

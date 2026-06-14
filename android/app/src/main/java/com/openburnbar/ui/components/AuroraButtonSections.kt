@@ -86,7 +86,7 @@ internal fun AuroraGradientButtonSurface(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                     content = content,
                 )
             }

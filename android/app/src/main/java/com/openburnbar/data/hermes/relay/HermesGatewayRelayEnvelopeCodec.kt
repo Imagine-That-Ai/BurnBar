@@ -20,15 +20,14 @@ object HermesGatewayRelayEnvelopeCodec {
         recipientPublicKeyX963: ByteArray,
         senderPrivateKey: PrivateKey,
         preferredRelayKeyVersion: Int = HermesRelayCrypto.KEY_VERSION_V3,
-    ): HermesGatewayRelayEnvelopeWire =
-        sealPayload(
-            plaintext = plaintext,
-            payloadAAD = HermesRelayCrypto.gatewayEventAAD(uid, clientId, eventId),
-            keyAAD = HermesRelayCrypto.gatewayEventKeyAAD(uid, clientId, eventId),
-            recipientPublicKeyX963 = recipientPublicKeyX963,
-            senderPrivateKey = senderPrivateKey,
-            preferredRelayKeyVersion = preferredRelayKeyVersion,
-        )
+    ): HermesGatewayRelayEnvelopeWire = sealPayload(
+        plaintext = plaintext,
+        payloadAAD = HermesRelayCrypto.gatewayEventAAD(uid, clientId, eventId),
+        keyAAD = HermesRelayCrypto.gatewayEventKeyAAD(uid, clientId, eventId),
+        recipientPublicKeyX963 = recipientPublicKeyX963,
+        senderPrivateKey = senderPrivateKey,
+        preferredRelayKeyVersion = preferredRelayKeyVersion,
+    )
 
     fun openEventPayload(
         envelope: HermesGatewayRelayEnvelopeWire,
@@ -37,14 +36,13 @@ object HermesGatewayRelayEnvelopeCodec {
         eventId: String,
         recipientPrivateKey: PrivateKey,
         pinnedSenderPublicKeyX963: ByteArray,
-    ): ByteArray =
-        openPayload(
-            envelope = envelope,
-            payloadAAD = HermesRelayCrypto.gatewayEventAAD(uid, clientId, eventId),
-            keyAAD = HermesRelayCrypto.gatewayEventKeyAAD(uid, clientId, eventId),
-            recipientPrivateKey = recipientPrivateKey,
-            pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
-        )
+    ): ByteArray = openPayload(
+        envelope = envelope,
+        payloadAAD = HermesRelayCrypto.gatewayEventAAD(uid, clientId, eventId),
+        keyAAD = HermesRelayCrypto.gatewayEventKeyAAD(uid, clientId, eventId),
+        recipientPrivateKey = recipientPrivateKey,
+        pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
+    )
 
     fun sealMessagePayload(
         plaintext: ByteArray,
@@ -54,15 +52,14 @@ object HermesGatewayRelayEnvelopeCodec {
         recipientPublicKeyX963: ByteArray,
         senderPrivateKey: PrivateKey,
         preferredRelayKeyVersion: Int = HermesRelayCrypto.KEY_VERSION_V3,
-    ): HermesGatewayRelayEnvelopeWire =
-        sealPayload(
-            plaintext = plaintext,
-            payloadAAD = HermesRelayCrypto.gatewayMessageAAD(uid, clientId, messageId),
-            keyAAD = HermesRelayCrypto.gatewayMessageKeyAAD(uid, clientId, messageId),
-            recipientPublicKeyX963 = recipientPublicKeyX963,
-            senderPrivateKey = senderPrivateKey,
-            preferredRelayKeyVersion = preferredRelayKeyVersion,
-        )
+    ): HermesGatewayRelayEnvelopeWire = sealPayload(
+        plaintext = plaintext,
+        payloadAAD = HermesRelayCrypto.gatewayMessageAAD(uid, clientId, messageId),
+        keyAAD = HermesRelayCrypto.gatewayMessageKeyAAD(uid, clientId, messageId),
+        recipientPublicKeyX963 = recipientPublicKeyX963,
+        senderPrivateKey = senderPrivateKey,
+        preferredRelayKeyVersion = preferredRelayKeyVersion,
+    )
 
     fun openMessagePayload(
         envelope: HermesGatewayRelayEnvelopeWire,
@@ -71,14 +68,13 @@ object HermesGatewayRelayEnvelopeCodec {
         messageId: String,
         recipientPrivateKey: PrivateKey,
         pinnedSenderPublicKeyX963: ByteArray,
-    ): ByteArray =
-        openPayload(
-            envelope = envelope,
-            payloadAAD = HermesRelayCrypto.gatewayMessageAAD(uid, clientId, messageId),
-            keyAAD = HermesRelayCrypto.gatewayMessageKeyAAD(uid, clientId, messageId),
-            recipientPrivateKey = recipientPrivateKey,
-            pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
-        )
+    ): ByteArray = openPayload(
+        envelope = envelope,
+        payloadAAD = HermesRelayCrypto.gatewayMessageAAD(uid, clientId, messageId),
+        keyAAD = HermesRelayCrypto.gatewayMessageKeyAAD(uid, clientId, messageId),
+        recipientPrivateKey = recipientPrivateKey,
+        pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
+    )
 
     fun sealAttachmentManifestPayload(
         plaintext: ByteArray,
@@ -88,15 +84,14 @@ object HermesGatewayRelayEnvelopeCodec {
         recipientPublicKeyX963: ByteArray,
         senderPrivateKey: PrivateKey,
         preferredRelayKeyVersion: Int = HermesRelayCrypto.KEY_VERSION_V3,
-    ): HermesGatewayRelayEnvelopeWire =
-        sealPayload(
-            plaintext = plaintext,
-            payloadAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(uid, clientId, attachmentId),
-            keyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(uid, clientId, attachmentId),
-            recipientPublicKeyX963 = recipientPublicKeyX963,
-            senderPrivateKey = senderPrivateKey,
-            preferredRelayKeyVersion = preferredRelayKeyVersion,
-        )
+    ): HermesGatewayRelayEnvelopeWire = sealPayload(
+        plaintext = plaintext,
+        payloadAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(uid, clientId, attachmentId),
+        keyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(uid, clientId, attachmentId),
+        recipientPublicKeyX963 = recipientPublicKeyX963,
+        senderPrivateKey = senderPrivateKey,
+        preferredRelayKeyVersion = preferredRelayKeyVersion,
+    )
 
     fun openAttachmentManifestPayload(
         envelope: HermesGatewayRelayEnvelopeWire,
@@ -105,14 +100,13 @@ object HermesGatewayRelayEnvelopeCodec {
         attachmentId: String,
         recipientPrivateKey: PrivateKey,
         pinnedSenderPublicKeyX963: ByteArray,
-    ): ByteArray =
-        openPayload(
-            envelope = envelope,
-            payloadAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(uid, clientId, attachmentId),
-            keyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(uid, clientId, attachmentId),
-            recipientPrivateKey = recipientPrivateKey,
-            pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
-        )
+    ): ByteArray = openPayload(
+        envelope = envelope,
+        payloadAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(uid, clientId, attachmentId),
+        keyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(uid, clientId, attachmentId),
+        recipientPrivateKey = recipientPrivateKey,
+        pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
+    )
 
     fun sealPayload(
         plaintext: ByteArray,
@@ -125,7 +119,7 @@ object HermesGatewayRelayEnvelopeCodec {
         val contentKey = HermesRelayCrypto.generateSymmetricKey()
         val payloadCiphertext = HermesRelayCrypto.sealToBase64(plaintext, contentKey, payloadAAD)
         val senderPublicKey = HermesRelayCryptoSupport.base64NoWrap(
-            HermesRelayCryptoEc.publicKeyX963FromPrivateKey(senderPrivateKey)
+            HermesRelayCryptoEc.publicKeyX963FromPrivateKey(senderPrivateKey),
         )
         return if (preferredRelayKeyVersion == HermesRelayCrypto.KEY_VERSION_V3) {
             val wrap = HermesRelayCrypto.wrapSymmetricKeyV3(

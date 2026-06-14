@@ -26,8 +26,7 @@ internal enum class ToolCallVisualKind(val accessibilityLabel: String) {
     SYSTEM("System"),
 }
 
-internal fun toolCallVisualKind(name: String): ToolCallVisualKind =
-    toolCallVisualKindFromCatalog(name) ?: toolCallVisualKindFromHeuristics(name)
+internal fun toolCallVisualKind(name: String): ToolCallVisualKind = toolCallVisualKindFromCatalog(name) ?: toolCallVisualKindFromHeuristics(name)
 
 internal fun toolCallIcon(kind: ToolCallVisualKind): ImageVector = when (kind) {
     ToolCallVisualKind.OPEN -> Icons.AutoMirrored.Filled.OpenInNew

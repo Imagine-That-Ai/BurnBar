@@ -44,9 +44,9 @@ fun AuroraSettingsToggle(
         modifier =
         modifier
             .fillMaxWidth()
-            .padding(vertical = AuroraSpacing.sm.dp),
+            .padding(vertical = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         Box(
             modifier =

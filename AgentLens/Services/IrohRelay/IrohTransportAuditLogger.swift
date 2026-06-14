@@ -4,15 +4,17 @@ import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
-final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Sendable {
+final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
     static let shared = FirestoreIrohAuditLogger()
 
     private let firestoreProvider: @Sendable () -> Firestore
-    private let isoFormatter: ISO8601DateFormatter = {
+    // Fresh per access: ISO8601DateFormatter is not Sendable/thread-safe; audit
+    // logging is low-frequency so a shared static would be a needless data race.
+    private var isoFormatter: ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
-    }()
+    }
     private let auditTTLSeconds: TimeInterval
 
     init(

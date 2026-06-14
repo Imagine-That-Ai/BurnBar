@@ -6,17 +6,3 @@
  */
 
 export * from "./types/legacy.js";
-
-export type {
-  GeneratedProviderAccountDoc,
-  GeneratedProviderAccountConnectContext,
-  GeneratedProviderAccountDeviceLinkDoc,
-  GeneratedModelBenchmarkSnapshotDoc,
-  GeneratedModelBenchmarkSourceStatusDoc,
-  GeneratedHermesGatewayAttachmentManifestDoc,
-  GeneratedHermesGatewayClientDoc,
-  GeneratedHermesGatewayDestinationDoc,
-  GeneratedHermesGatewayEventDoc,
-  GeneratedHermesGatewayMessageDoc,
-  GeneratedHermesGatewayModelOptionDoc,
-} from "./types/generated/index.js";

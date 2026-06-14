@@ -100,9 +100,11 @@ private enum PixelClockExternalAgentActivityScanner {
     }
 
     fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus] {
-        let lines = await Task.detached(priority: .utility) {
-            processLines()
-        }.value
+        // `processLines()` (blocking `/bin/ps`) runs off the main actor here:
+        // `scanRunningStatuses` is `nonisolated` `async`, so awaiting it leaves
+        // the caller's actor onto the generic executor (SE-0338). See the
+        // off-main warning on `runningStatuses()` above.
+        let lines = processLines()
         return PixelClockAgentProcessDetector.statuses(fromProcessLines: lines)
     }
 
@@ -162,29 +164,28 @@ private actor PixelClockExternalAgentActivityScanCache {
 }
 
 enum PixelClockAgentProcessDetector {
+    /// Blocking `/bin/ps` work runs off the main actor (`nonisolated` `async`, SE-0338).
     static func runningStatuses() async -> [String: PixelClockAgentStatus] {
-        await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/ps")
-            process.arguments = ["-axo", "comm,args"]
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-axo", "comm,args"]
 
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
 
-            do {
-                try process.run()
-            } catch {
-                AppLogger.network.error("pixel_clock_mdns_resolve_failed", metadata: ["error": error.localizedDescription])
-                return [:]
-            }
+        do {
+            try process.run()
+        } catch {
+            AppLogger.network.error("pixel_clock_mdns_resolve_failed", metadata: ["error": error.localizedDescription])
+            return [:]
+        }
 
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return [:] }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return [:] }
-            return statuses(fromPSOutput: output)
-        }.value
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return [:] }
+        return statuses(fromPSOutput: output)
     }
 
     static func statuses(fromPSOutput output: String) -> [String: PixelClockAgentStatus] {
@@ -317,7 +318,7 @@ final class PixelClockController {
             await self?.pushIfNeeded(force: true)
         }
         let returnToBurnBar: @MainActor (PixelClockConfig) async -> Void = { config in
-            try? await client.switchToApp(name: "\(PixelClockQuotaRenderer.appName)0", config: config)
+            try? await client.switchToApp(name: "\(PixelClockQuotaRenderer.appName)0", config: config) // try?-ok(device display switch)
         }
         inputController = PixelClockInputController(
             settingsManager: settingsManager,
@@ -332,7 +333,7 @@ final class PixelClockController {
             while !Task.isCancelled {
                 guard let self else { return }
                 guard self.settingsManager.pixelClockConfig.enabled else {
-                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    try? await Task.sleep(nanoseconds: 60_000_000_000) // try?-ok(sleep cancellation)
                     forceNextPush = true
                     continue
                 }
@@ -348,7 +349,7 @@ final class PixelClockController {
                 // genuinely gone.
                 let working = await self.hasWorkingActivity()
                 let sleep = self.heartbeatSleepNanoseconds(working: working)
-                try? await Task.sleep(nanoseconds: sleep)
+                try? await Task.sleep(nanoseconds: sleep) // try?-ok(sleep cancellation)
             }
         }
 
@@ -362,11 +363,11 @@ final class PixelClockController {
                 guard let self else { return }
                 let config = self.settingsManager.pixelClockConfig
                 guard config.enabled else {
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // try?-ok(sleep cancellation)
                     continue
                 }
                 if self.shouldBackOffInputPolling(for: config) {
-                    try? await Task.sleep(nanoseconds: self.offlineInputPollNanoseconds())
+                    try? await Task.sleep(nanoseconds: self.offlineInputPollNanoseconds()) // try?-ok(sleep cancellation)
                     continue
                 }
                 let appName = await self.client.currentAppName(
@@ -378,7 +379,7 @@ final class PixelClockController {
                 }
                 await self.inputController?.ingest(currentAppName: appName, config: config)
                 let sleep = appName == nil ? 1_000_000_000 : 400_000_000
-                try? await Task.sleep(nanoseconds: UInt64(sleep))
+                try? await Task.sleep(nanoseconds: UInt64(sleep)) // try?-ok(sleep cancellation)
             }
         }
 
@@ -679,7 +680,7 @@ final class PixelClockController {
         // preflight is intentionally brightness-only; native app disablement
         // still happens after a successful frame lands so the hardware never
         // goes blank because a settings write failed.
-        try? await client.applyBrightnessIfNeeded(config: config)
+        try? await client.applyBrightnessIfNeeded(config: config) // try?-ok(best-effort brightness preflight)
 
         do {
             try await client.pushCustomApp(body: activePayloadBody, config: config)
@@ -723,7 +724,7 @@ final class PixelClockController {
         lastPushedConfig = config
         lastPushedPayloadSignature = payloadSignature
         await publishSentinelAppsIfNeeded(config: config, now: now)
-        try? await client.switchToApp(name: "\(PixelClockQuotaRenderer.appName)0", config: config)
+        try? await client.switchToApp(name: "\(PixelClockQuotaRenderer.appName)0", config: config) // try?-ok(device display switch)
         let runningProviderTokens = statuses
             .filter { $0.value == .running }
             .keys
@@ -805,7 +806,7 @@ final class PixelClockController {
         }
 
         guard discovery.probe.status == .awtrixReady else { return }
-        try? await client.testNotify(
+        try? await client.testNotify( // try?-ok(fire-and-forget notification)
             page: page,
             config: config,
             sound: current.completionClockSoundEnabled
@@ -964,7 +965,7 @@ final class PixelClockController {
             if stockSimulator.connectedClientCount > 0 {
                 return true
             }
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000) // try?-ok(sleep cancellation)
         }
         return false
     }
@@ -1023,8 +1024,8 @@ final class PixelClockController {
         // AWTRIX settings can transiently return HTTP 500 while custom app
         // pushes still work. Treat settings as best-effort so the clock never
         // stays blank just because brightness/native-app cleanup failed.
-        try? await client.applyBrightnessIfNeeded(config: config)
-        try? await client.disableAwtrixNativeApps(config: config)
+        try? await client.applyBrightnessIfNeeded(config: config) // try?-ok(best-effort device settings)
+        try? await client.disableAwtrixNativeApps(config: config) // try?-ok(best-effort device settings)
         lastAppliedDeviceSettingsSignature = signature
         lastAppliedDeviceSettingsAt = now
     }
@@ -1269,7 +1270,7 @@ final class PixelClockStockSimulatorServer {
                 let delay = self.latestPageDurations.indices.contains(self.currentPageIndex)
                     ? self.latestPageDurations[self.currentPageIndex]
                     : 5
-                try? await Task.sleep(nanoseconds: UInt64(max(delay, 1) * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(max(delay, 1) * 1_000_000_000)) // try?-ok(sleep cancellation)
                 guard !Task.isCancelled else { return }
                 self.currentPageIndex = (self.currentPageIndex + 1) % max(self.latestFrameCommandSets.count, 1)
                 self.publishLatestFrame()

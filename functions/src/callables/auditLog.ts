@@ -45,7 +45,7 @@ import { sha256Hex, requireBoundedNumber, boundedTrimmedString } from "./shared.
 import { runOtsStamp } from "../computerUseOpenTimestamps.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-export const AUDIT_LOG_SCHEMA_VERSION = 1;
+const AUDIT_LOG_SCHEMA_VERSION = 1;
 const AUDIT_LOG_COLLECTION = "unified_audit_log";
 /** Per-user collection holding the single `head` doc that pins the chain length. */
 const AUDIT_META_COLLECTION = "audit_meta";
@@ -70,7 +70,7 @@ export interface AuditEventCore {
   prevHash: string;
 }
 
-export interface AuditEvent extends AuditEventCore {
+interface AuditEvent extends AuditEventCore {
   hash: string;
 }
 
@@ -223,7 +223,7 @@ export const getAuditLog = onCall(
 );
 
 /** Outcome of {@link verifyAuditChain}: a broken link, a truncated tail, or valid. */
-export type AuditVerifyResult =
+type AuditVerifyResult =
   | { valid: false; brokenAt: number; reason: "link" }
   | { valid: false; brokenAt: number; reason: "truncated"; expectedMaxSeq: number }
   | { valid: true; verifiedMaxSeq: number };
@@ -365,7 +365,7 @@ export function auditActorLabel(request: CallableRequest): string {
 }
 
 /** Outcome of anchoring one user's head (logged by the daily sweep). */
-export type AuditAnchorOutcome =
+type AuditAnchorOutcome =
   | "anchored"
   | "already_anchored"
   | "no_head"
@@ -384,7 +384,7 @@ export type AuditAnchorOutcome =
  * `ots_stamper_unavailable` and advances nothing — the head pointer alone still
  * detects truncation; the OTS anchor hardens it against a colluding server.
  */
-export async function anchorAuditHead(uid: string): Promise<AuditAnchorOutcome> {
+async function anchorAuditHead(uid: string): Promise<AuditAnchorOutcome> {
   const head = await readAuditHead(uid);
   if (!head || head.maxSeq < 0 || !head.headHash) return "no_head";
   if (head.anchoredSeq === head.maxSeq && head.anchoredHash === head.headHash) return "already_anchored";

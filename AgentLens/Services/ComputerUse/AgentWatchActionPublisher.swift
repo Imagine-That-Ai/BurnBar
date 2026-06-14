@@ -28,8 +28,12 @@ public final class AgentWatchActionPublisher {
     }
 
     public func publish(_ event: BurnBarRunJournalEvent) async throws {
-        guard let entry = entry(from: event) else { return }
-        try await publish(entry)
+        // Every journal event maps to exactly one action-log entry; `entry(from:)`
+        // is total, so there is no silent-drop path here. Keeping it total (vs an
+        // optional return + `guard ... else { return }`) prevents a future enum
+        // case from quietly dropping a security-audit event off the Agent Watch
+        // stream — a fail-open the receiver would never observe.
+        try await publish(entry(from: event))
     }
 
     public func publish(_ entry: HermesRealtimeRelayActionLogEntry) async throws {
@@ -46,7 +50,7 @@ public final class AgentWatchActionPublisher {
         try await sink(frame)
     }
 
-    private func entry(from event: BurnBarRunJournalEvent) -> HermesRealtimeRelayActionLogEntry? {
+    private func entry(from event: BurnBarRunJournalEvent) -> HermesRealtimeRelayActionLogEntry {
         let status: HermesRealtimeRelayActionLogEntry.Status
         switch event.kind {
         case .approvalRequested:

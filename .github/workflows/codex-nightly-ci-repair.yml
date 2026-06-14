@@ -1,0 +1,403 @@
+name: Codex Nightly CI Repair
+
+# Remote repair loop for scheduled full-confidence lanes. GitHub Actions is the
+# scheduler/runner; the official OpenAI Codex Action is the cloud worker.
+
+on:
+  schedule:
+    # 11:15 UTC daily, after the full harness and nightly E2E have time to run.
+    - cron: "15 11 * * *"
+  workflow_run:
+    # Event-driven repair loop for the Codex repair PR. The job filters out
+    # non-Codex PRs before invoking Codex.
+    workflows:
+      - AGENTS.md Validation
+      - Agent Tools CI
+      - Code Quality Checks
+      - CodeQL PR (JS+Python)
+      - computer-use-loopback-test
+      - Confidentiality Guard
+      - Fast Feedback (<5 min)
+      - License Posture
+      - OpenBurnBar Functional QA
+      - OpenBurnBarIroh xcframework
+      - openburnbar-iroh AAR (Android)
+      - PR Security Gate
+      - Rust Remote Engine
+      - Rust SAST
+      - Website CI
+      - Workflow Lint
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: codex-nightly-ci-repair-${{ github.event.workflow_run.head_branch || github.ref_name || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  repair-nightly-ci:
+    name: Codex repair operator
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      REPAIR_BRANCH: codex/nightly-ci-repair
+      REPAIR_MARKER: codex-nightly-ci-repair
+      REPAIR_TITLE: "[codex] OpenBurnBar nightly CI repair"
+    steps:
+      - name: Skip until OpenAI API key is configured
+        if: env.OPENAI_API_KEY == ''
+        run: |
+          echo "::notice::OPENAI_API_KEY is not configured. Add it under Settings -> Secrets and variables -> Actions."
+          exit 0
+
+      - name: Locate open Codex repair PR
+        if: env.OPENAI_API_KEY != ''
+        id: repair_pr
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nightly-ci"
+          pr_json="$RUNNER_TEMP/nightly-ci/repair-pr.json"
+          pr_checks="$RUNNER_TEMP/nightly-ci/repair-pr-checks.json"
+
+          gh pr list \
+            --repo "$GH_REPO" \
+            --state open \
+            --search "\"${REPAIR_MARKER}\" in:title,body" \
+            --json number,url,title,headRefName,updatedAt \
+            --limit 1 > "$pr_json"
+
+          pr_number="$(jq -r '.[0].number // empty' "$pr_json")"
+          if [[ -z "$pr_number" ]]; then
+            echo '[]' > "$pr_checks"
+            {
+              echo "exists=false"
+              echo "url="
+              echo "number="
+              echo "head_ref="
+              echo "failed_checks=0"
+              echo "pending_checks=0"
+              echo "checks=$pr_checks"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pr_url="$(jq -r '.[0].url' "$pr_json")"
+          head_ref="$(jq -r '.[0].headRefName' "$pr_json")"
+          gh pr view "$pr_number" \
+            --repo "$GH_REPO" \
+            --json statusCheckRollup,mergeStateStatus,reviewDecision,headRefName,url,title > "$pr_checks"
+
+          failed_checks="$(jq '[.statusCheckRollup[] | select(.status == "COMPLETED" and (.conclusion != "SUCCESS" and .conclusion != "SKIPPED" and .conclusion != "NEUTRAL"))] | length' "$pr_checks")"
+          pending_checks="$(jq '[.statusCheckRollup[] | select(.status != "COMPLETED")] | length' "$pr_checks")"
+
+          {
+            echo "exists=true"
+            echo "url=${pr_url}"
+            echo "number=${pr_number}"
+            echo "head_ref=${head_ref}"
+            echo "failed_checks=${failed_checks}"
+            echo "pending_checks=${pending_checks}"
+            echo "checks=$pr_checks"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify repair trigger
+        if: env.OPENAI_API_KEY != ''
+        id: trigger
+        run: |
+          set -euo pipefail
+
+          can_start_new=false
+          can_continue_existing=false
+          reason="${GITHUB_EVENT_NAME}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            can_start_new=true
+            can_continue_existing=true
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            repair_pr_number="${{ steps.repair_pr.outputs.number }}"
+            if [[ -n "$repair_pr_number" ]] && jq -e --argjson pr "$repair_pr_number" '.workflow_run.pull_requests[]?.number == $pr' "$GITHUB_EVENT_PATH" > /dev/null; then
+              can_continue_existing=true
+              reason="completed CI for Codex repair PR #${repair_pr_number}"
+            else
+              reason="completed CI was not for the open Codex repair PR"
+            fi
+          fi
+
+          {
+            echo "can_start_new=${can_start_new}"
+            echo "can_continue_existing=${can_continue_existing}"
+            echo "reason=${reason}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect latest scheduled CI failures
+        if: env.OPENAI_API_KEY != '' && (steps.trigger.outputs.can_start_new == 'true' || steps.trigger.outputs.can_continue_existing == 'true')
+        id: collect
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nightly-ci"
+          summary="$RUNNER_TEMP/nightly-ci/summary.md"
+          logs="$RUNNER_TEMP/nightly-ci/failed-logs.txt"
+          : > "$summary"
+          : > "$logs"
+
+          workflows=(
+            "openburnbar-pr-harness.yml"
+            "nightly-e2e.yml"
+            "codeql.yml"
+            "ops-confidence.yml"
+            "ops-plane-verify.yml"
+          )
+
+          failed_count=0
+          for workflow in "${workflows[@]}"; do
+            run_json="$(gh run list \
+              --workflow "$workflow" \
+              --branch main \
+              --limit 1 \
+              --json databaseId,conclusion,createdAt,event,headSha,name,status,url)"
+
+            {
+              echo "## ${workflow}"
+              echo
+              echo '```json'
+              echo "$run_json"
+              echo '```'
+              echo
+            } >> "$summary"
+
+            status="$(echo "$run_json" | jq -r '.[0].status // "none"')"
+            conclusion="$(echo "$run_json" | jq -r '.[0].conclusion // "none"')"
+            run_id="$(echo "$run_json" | jq -r '.[0].databaseId // empty')"
+            run_url="$(echo "$run_json" | jq -r '.[0].url // empty')"
+            if [[ "$status" == "completed" && "$conclusion" != "success" && "$conclusion" != "skipped" && "$conclusion" != "none" && -n "$run_id" ]]; then
+              failed_count=$((failed_count + 1))
+              {
+                echo
+                echo "===== ${workflow} run ${run_id} ====="
+                echo "URL: ${run_url}"
+                gh run view "$run_id" --log-failed || true
+              } >> "$logs"
+            fi
+          done
+
+          {
+            echo "failed_count=${failed_count}"
+            echo "summary=${summary}"
+            echo "logs=${logs}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Select repair action
+        if: env.OPENAI_API_KEY != ''
+        id: action
+        run: |
+          set -euo pipefail
+
+          mode="stop"
+          reason="${{ steps.trigger.outputs.reason }}"
+          scheduled_failed="${{ steps.collect.outputs.failed_count }}"
+          pr_exists="${{ steps.repair_pr.outputs.exists }}"
+          pr_failed="${{ steps.repair_pr.outputs.failed_checks }}"
+          pr_pending="${{ steps.repair_pr.outputs.pending_checks }}"
+          can_start_new="${{ steps.trigger.outputs.can_start_new }}"
+          can_continue_existing="${{ steps.trigger.outputs.can_continue_existing }}"
+
+          if [[ -z "$scheduled_failed" ]]; then scheduled_failed=0; fi
+          if [[ -z "$pr_failed" ]]; then pr_failed=0; fi
+          if [[ -z "$pr_pending" ]]; then pr_pending=0; fi
+
+          if [[ "$pr_exists" == "true" ]]; then
+            if [[ "$pr_failed" != "0" && "$can_continue_existing" == "true" ]]; then
+              mode="continue"
+              reason="Codex repair PR has failed checks"
+            elif [[ "$pr_failed" != "0" ]]; then
+              mode="stop"
+              reason="Codex repair PR is red, but this trigger is not allowed to continue it"
+            elif [[ "$pr_pending" != "0" ]]; then
+              mode="wait"
+              reason="Codex repair PR checks are still pending"
+            else
+              mode="green"
+              reason="Codex repair PR checks are green"
+            fi
+          elif [[ "$can_start_new" == "true" && "$scheduled_failed" != "0" ]]; then
+            mode="create"
+            reason="nightly lanes are red and no repair PR exists"
+          elif [[ "$can_start_new" == "true" ]]; then
+            mode="green"
+            reason="nightly lanes are green and no repair PR exists"
+          else
+            mode="stop"
+            reason="no Codex repair PR for this CI completion"
+          fi
+
+          {
+            echo "mode=${mode}"
+            echo "reason=${reason}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Stop or wait
+        if: env.OPENAI_API_KEY != '' && steps.action.outputs.mode != 'create' && steps.action.outputs.mode != 'continue'
+        run: |
+          echo "Mode: ${{ steps.action.outputs.mode }}"
+          echo "Reason: ${{ steps.action.outputs.reason }}"
+          if [[ "${{ steps.repair_pr.outputs.exists }}" == "true" ]]; then
+            echo "PR: ${{ steps.repair_pr.outputs.url }}"
+          fi
+
+      - name: Checkout repository
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Prepare repair branch
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ "${{ steps.action.outputs.mode }}" == "continue" ]]; then
+            gh pr checkout "${{ steps.repair_pr.outputs.number }}" --repo "$GH_REPO"
+          else
+            git checkout -B "$REPAIR_BRANCH" origin/main
+          fi
+
+      - name: Write Codex prompt
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        id: prompt
+        run: |
+          set -euo pipefail
+          prompt_file="$GITHUB_WORKSPACE/.codex-nightly-ci-repair-prompt.md"
+          repair_pr_url="${{ steps.repair_pr.outputs.url }}"
+          echo ".codex-nightly-ci-repair-prompt.md" >> .git/info/exclude
+
+          {
+            cat <<'PROMPT'
+          You are the OpenBurnBar nightly CI repair operator.
+
+          Goal:
+          Keep scheduled full-confidence CI lanes green without slowing daily
+          PR development. Continue repairing until the monitored lanes or the
+          active repair PR are green.
+
+          Rules:
+          - Work in this GitHub Actions checkout.
+          - Use Codex through the official OpenAI Codex GitHub Action.
+          - Use the existing repair PR branch if one is provided. Otherwise
+            make local edits on the prepared codex/nightly-ci-repair branch.
+          - Do not merge pull requests.
+          - Do not modify branch protection, required checks, release gates, or
+            workflow definitions to make a red run green.
+          - Do not skip, delete, downgrade, or mark tests continue-on-error to
+            hide a failure.
+          - If the failure is external infrastructure, credentials, GitHub
+            outage, Apple/Xcode runner outage, or missing secrets, report the
+            exact operator action needed and do not change code.
+          - If the failure is code-owned, make the smallest durable fix.
+          - Run the smallest relevant validation available in this checkout.
+          - Leave the workspace with only intentional code-owned changes.
+          - Do not commit, push, or open the PR yourself; the workflow will do
+            that after Codex exits.
+
+          Repair loop state:
+          PROMPT
+            if [[ -n "$repair_pr_url" ]]; then
+              echo "- Continue existing repair PR: ${repair_pr_url}"
+              echo "- Current repair PR checks:"
+              echo '```json'
+              cat "${{ steps.repair_pr.outputs.checks }}"
+              echo '```'
+            else
+              echo "- No existing repair PR was found. Edit locally only if the failure is code-owned."
+            fi
+            cat <<'PROMPT'
+
+          Latest scheduled CI summary:
+          PROMPT
+            cat "${{ steps.collect.outputs.summary }}"
+            echo
+            echo "Failed log excerpt, capped to the last 120000 bytes:"
+            echo
+            if [[ -s "${{ steps.collect.outputs.logs }}" ]]; then
+              tail -c 120000 "${{ steps.collect.outputs.logs }}"
+            else
+              echo "No failed logs were available."
+            fi
+          } > "$prompt_file"
+
+          echo "path=.codex-nightly-ci-repair-prompt.md" >> "$GITHUB_OUTPUT"
+
+      - name: Run Codex
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        id: run_codex
+        uses: openai/codex-action@a26d2d4d8b78a694338b8e3715c3630254340b2c # v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ steps.prompt.outputs.path }}
+          model: gpt-5.5
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          allow-bots: true
+          output-file: ${{ runner.temp }}/nightly-ci/codex-final-message.md
+
+      - name: Publish repair branch and PR
+        if: env.OPENAI_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
+        run: |
+          set -euo pipefail
+          rm -f .codex-nightly-ci-repair-prompt.md
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "Codex left no file changes."
+            if [[ "${{ steps.repair_pr.outputs.exists }}" == "true" && -s "$RUNNER_TEMP/nightly-ci/codex-final-message.md" ]]; then
+              gh pr comment "${{ steps.repair_pr.outputs.number }}" \
+                --repo "$GH_REPO" \
+                --body-file "$RUNNER_TEMP/nightly-ci/codex-final-message.md"
+            fi
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "Repair nightly CI failures with Codex"
+          current_branch="$(git branch --show-current)"
+          git push --set-upstream origin "$current_branch"
+
+          body="$RUNNER_TEMP/nightly-ci/pr-body.md"
+          {
+            echo "$REPAIR_MARKER"
+            echo
+            echo "## Summary"
+            echo "- Codex inspected the latest scheduled CI failures and pushed the smallest code-owned repair it could make."
+            echo
+            echo "## Codex final message"
+            if [[ -s "$RUNNER_TEMP/nightly-ci/codex-final-message.md" ]]; then
+              cat "$RUNNER_TEMP/nightly-ci/codex-final-message.md"
+            else
+              echo "No final message was emitted."
+            fi
+            echo
+            echo "## Trigger"
+            echo "- ${{ steps.action.outputs.reason }}"
+          } > "$body"
+
+          if [[ "${{ steps.repair_pr.outputs.exists }}" == "true" ]]; then
+            gh pr edit "${{ steps.repair_pr.outputs.number }}" \
+              --repo "$GH_REPO" \
+              --body-file "$body"
+          else
+            gh pr create \
+              --repo "$GH_REPO" \
+              --base main \
+              --head "$current_branch" \
+              --title "$REPAIR_TITLE" \
+              --body-file "$body"
+          fi

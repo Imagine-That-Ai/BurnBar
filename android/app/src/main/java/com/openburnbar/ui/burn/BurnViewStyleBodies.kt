@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -64,9 +64,9 @@ import kotlin.math.sin
  *  arranged on a y-squashed circle. Tap a ring to drill into a provider. */
 @Composable
 fun BurnConstellationBody(items: List<QuotaRingItem>, onProviderClick: (String) -> Unit, modifier: Modifier = Modifier) {
-    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.xl) {
+    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.XL) {
         BurnSectionLabel("Quota constellation", "Tap a ring to drill into a provider")
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
         if (items.isEmpty()) {
             BurnEmptyHint("Link a provider to populate the constellation.")
         } else {
@@ -102,18 +102,18 @@ fun BurnConstellationBody(items: List<QuotaRingItem>, onProviderClick: (String) 
 /** Dense grid of compact provider gauge tiles — most pressured first. */
 @Composable
 fun BurnGaugeGridBody(items: List<QuotaRingItem>, onProviderClick: (String) -> Unit, modifier: Modifier = Modifier) {
-    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.xl) {
+    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.XL) {
         BurnSectionLabel("Quota gauges", "Most pressured first")
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
         if (items.isEmpty()) {
             BurnEmptyHint("Link a provider to populate the grid.")
         } else {
             val columns = 3
-            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
                 items.chunked(columns).forEach { rowItems ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                     ) {
                         rowItems.forEach { item ->
                             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -170,16 +170,16 @@ fun BurnLeaderboardBody(
         (ranked.maxOfOrNull { BurnLeaderboardMath.value(it, displayMode) } ?: 1.0)
             .coerceAtLeast(0.0001)
 
-    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.xl) {
+    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.XL) {
         BurnSectionLabel(
             "Spend leaderboard",
             "Top providers · by ${if (displayMode == UsageDisplayMode.CURRENCY) "cost" else "tokens"}",
         )
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
         if (ranked.isEmpty()) {
             BurnEmptyHint("No spend recorded yet.")
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
                 ranked.forEachIndexed { index, p ->
                     val value = BurnLeaderboardMath.value(p, displayMode)
                     val provider = AgentProvider.fromKey(p.provider)
@@ -232,12 +232,12 @@ private fun LeaderRow(model: LeaderRowModel, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(18.dp),
         )
-        Spacer(Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(Modifier.width(AuroraSpacing.SM.dp))
         ProviderAvatar(providerKey = model.providerKey, size = 24)
-        Spacer(Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(Modifier.width(AuroraSpacing.SM.dp))
         LeaderRowBody(model = model, barColor = barColor)
         if (model.quotaPct != null) {
-            Spacer(Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(Modifier.width(AuroraSpacing.SM.dp))
             Text(
                 text = "${model.quotaPct}%",
                 fontSize = AuroraTypography.tiny.sp,
@@ -304,13 +304,13 @@ private fun LeaderRowProgressBar(fraction: Float, barColor: Color) {
 @Composable
 fun BurnTimelineBody(digest: TrendDataDigest, displayMode: UsageDisplayMode, onProviderClick: (String) -> Unit, modifier: Modifier = Modifier) {
     val rows = digest.providers.filter { it.costUsd > 0 || it.tokens > 0 }
-    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.xl) {
+    AuroraGlassCard(modifier = modifier, cornerRadius = AuroraRadius.XL) {
         BurnSectionLabel("Burn trends", "${digest.windowDescription} · per provider")
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
         if (rows.isEmpty() || digest.daily.size < 2) {
             BurnEmptyHint("Daily burn trends appear once there are at least two days of usage.")
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
                 rows.forEach { slice ->
                     val series = digest.daily.map { it.perProvider[slice.providerKey] ?: 0.0 }
                     TimelineRow(
@@ -339,7 +339,7 @@ private fun TimelineRow(slice: TrendDataDigest.ProviderSlice, series: List<Doubl
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ProviderAvatar(providerKey = slice.providerKey, size = 26)
-        Spacer(Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(Modifier.width(AuroraSpacing.SM.dp))
         Column(modifier = Modifier.width(96.dp)) {
             Text(
                 text = provider?.displayName ?: slice.provider,
@@ -355,7 +355,7 @@ private fun TimelineRow(slice: TrendDataDigest.ProviderSlice, series: List<Doubl
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(Modifier.width(AuroraSpacing.SM.dp))
         Sparkline(values = series, accent = accent, modifier = Modifier.weight(1f).height(38.dp))
     }
 }
@@ -420,7 +420,7 @@ private fun BurnEmptyHint(message: String) {
         text = message,
         fontSize = AuroraTypography.caption.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(vertical = AuroraSpacing.lg.dp),
+        modifier = Modifier.padding(vertical = AuroraSpacing.LG.dp),
     )
 }
 

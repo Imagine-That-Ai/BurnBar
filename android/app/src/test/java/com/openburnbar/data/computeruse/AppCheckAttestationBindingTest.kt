@@ -41,7 +41,7 @@ class AppCheckAttestationBindingTest {
                     mapOf("obb_app_check" to mapOf("appId" to appId, "boundAtMillis" to boundAt)),
                 )
             assertEquals(appId, claim?.appId)
-            assertEquals((boundAt as Number).toLong(), claim?.boundAtMillis)
+            assertEquals((boundAt as? Number)?.toLong(), claim?.boundAtMillis)
         }
     }
 

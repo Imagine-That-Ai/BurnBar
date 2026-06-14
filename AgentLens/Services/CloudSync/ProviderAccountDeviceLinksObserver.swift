@@ -50,7 +50,7 @@ final class ProviderAccountDeviceLinksObserver: ObservableObject {
             pollTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     self?.attachIfPossible()
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    try? await Task.sleep(nanoseconds: 5_000_000_000) // try?-ok(cancellation only)
                 }
             }
         }

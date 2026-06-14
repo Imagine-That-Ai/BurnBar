@@ -5,11 +5,11 @@ package com.openburnbar.ui.hermes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import com.openburnbar.data.hermes.AssistantRuntimeID
@@ -19,10 +19,7 @@ import com.openburnbar.ui.text.expandStaticTextSnippetDraft
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun rememberHermesChatViewLocalState(
-    content: HermesChatContent,
-    actions: HermesChatActions,
-): HermesChatViewLocalState {
+internal fun rememberHermesChatViewLocalState(content: HermesChatContent, actions: HermesChatActions): HermesChatViewLocalState {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
     var selectedModel by remember(content.tilePreferences.selectedHermesModelOverride) {
@@ -130,8 +127,7 @@ internal fun filterVisibleHermesModels(
     }
 }
 
-internal fun expandChatDraft(text: String, content: HermesChatContent): String =
-    expandStaticTextSnippetDraft(text, content.textExpansionSnippets)
+internal fun expandChatDraft(text: String, content: HermesChatContent): String = expandStaticTextSnippetDraft(text, content.textExpansionSnippets)
 
 internal fun applyModelSelection(
     model: String,

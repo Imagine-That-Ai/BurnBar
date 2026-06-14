@@ -41,8 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
-import com.openburnbar.data.models.pressure
 import com.openburnbar.data.models.nextResetDate
+import com.openburnbar.data.models.pressure
 import com.openburnbar.ui.components.ProviderAvatar
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -54,12 +54,7 @@ import kotlin.math.roundToInt
 
 /** focused banner matching iOS layout. */
 @Composable
-fun ProviderFocusBanner(
-    provider: AgentProvider,
-    accountCount: Int,
-    totalProviderCount: Int,
-    onClearSelection: () -> Unit
-) {
+fun ProviderFocusBanner(provider: AgentProvider, accountCount: Int, totalProviderCount: Int, onClearSelection: () -> Unit) {
     val primaryColor = Color(provider.brandColor)
     val accountWord = if (accountCount == 1) "account" else "accounts"
     val otherCount = maxOf(0, totalProviderCount - 1)
@@ -67,21 +62,21 @@ fun ProviderFocusBanner(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(primaryColor.copy(alpha = 0.07f))
-            .border(0.75.dp, primaryColor.copy(alpha = 0.30f), RoundedCornerShape(AuroraRadius.md.dp))
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .border(0.75.dp, primaryColor.copy(alpha = 0.30f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         ProviderAvatar(providerKey = provider.key, size = 14)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Column(modifier = Modifier.weight(1f)) {
             ProviderFocusTitle(provider = provider, primaryColor = primaryColor)
             Text(
                 text = "$accountCount $accountWord · $otherCount other provider${if (otherCount == 1) "" else "s"} hidden",
                 fontSize = AuroraTypography.tiny.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         ProviderFocusClearButton(onClearSelection = onClearSelection)
@@ -92,7 +87,7 @@ fun ProviderFocusBanner(
 private fun ProviderFocusTitle(provider: AgentProvider, primaryColor: Color) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
             text = "FOCUSED",
@@ -100,18 +95,18 @@ private fun ProviderFocusTitle(provider: AgentProvider, primaryColor: Color) {
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
             color = primaryColor,
-            letterSpacing = 0.9.sp
+            letterSpacing = 0.9.sp,
         )
         Text(
             text = "·",
             fontSize = AuroraTypography.tiny.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         )
         Text(
             text = provider.displayName,
             fontSize = AuroraTypography.caption.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -124,32 +119,26 @@ private fun ProviderFocusClearButton(onClearSelection: () -> Unit) {
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
             .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
             .clickable { onClearSelection() }
-            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(9.dp)
+                modifier = Modifier.size(9.dp),
             )
             Text(
                 text = "Show all",
                 fontSize = AuroraTypography.caption.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
 
 @Composable
-fun SubscriptionOrb(
-    provider: AgentProvider,
-    snapshot: ProviderQuotaSnapshot,
-    isSelected: Boolean,
-    isDimmed: Boolean,
-    onTap: () -> Unit
-) {
+fun SubscriptionOrb(provider: AgentProvider, snapshot: ProviderQuotaSnapshot, isSelected: Boolean, isDimmed: Boolean, onTap: () -> Unit) {
     val primaryColor = Color(provider.brandColor)
     val remainingFraction = 1.0 - snapshot.pressure
     val ringColor = when {
@@ -166,14 +155,14 @@ fun SubscriptionOrb(
         modifier = Modifier
             .width(64.dp)
             .clickable { onTap() }
-            .graphicsLayer { this.alpha = alpha }
+            .graphicsLayer { this.alpha = alpha },
     ) {
         SubscriptionOrbBody(
             provider = provider,
             primaryColor = primaryColor,
             ringColor = ringColor,
             remainingFraction = remainingFraction,
-            isSelected = isSelected
+            isSelected = isSelected,
         )
         Spacer(modifier = Modifier.height(4.dp))
         val pct = (remainingFraction * 100).roundToInt()
@@ -181,26 +170,20 @@ fun SubscriptionOrb(
             text = "$pct%",
             fontSize = AuroraTypography.tiny.sp,
             fontWeight = FontWeight.SemiBold,
-            color = ringColor
+            color = ringColor,
         )
     }
 }
 
 @Composable
-private fun SubscriptionOrbBody(
-    provider: AgentProvider,
-    primaryColor: Color,
-    ringColor: Color,
-    remainingFraction: Double,
-    isSelected: Boolean
-) {
+private fun SubscriptionOrbBody(provider: AgentProvider, primaryColor: Color, ringColor: Color, remainingFraction: Double, isSelected: Boolean) {
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(64.dp)) {
         if (isSelected) {
             Canvas(modifier = Modifier.size(64.dp)) {
                 drawCircle(
                     color = ringColor.copy(alpha = 0.4f),
                     radius = size.minDimension / 2f - 1.dp.toPx(),
-                    style = Stroke(width = 1.5.dp.toPx())
+                    style = Stroke(width = 1.5.dp.toPx()),
                 )
             }
         }
@@ -209,7 +192,7 @@ private fun SubscriptionOrbBody(
                 .size(46.dp)
                 .clip(CircleShape)
                 .background(primaryColor.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             ProviderAvatar(providerKey = provider.key, size = 28)
         }
@@ -227,7 +210,7 @@ private fun SubscriptionOrbRing(ringColor: Color, remainingFraction: Double) {
         drawCircle(
             color = surfaceVariant.copy(alpha = 0.7f),
             radius = diameter / 2f,
-            style = Stroke(width = strokeWidth)
+            style = Stroke(width = strokeWidth),
         )
         drawArc(
             color = ringColor,
@@ -236,7 +219,7 @@ private fun SubscriptionOrbRing(ringColor: Color, remainingFraction: Double) {
             useCenter = false,
             topLeft = topLeft,
             size = Size(diameter, diameter),
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
         )
     }
 }
@@ -247,15 +230,15 @@ fun SubscriptionConstellationHero(
     selectedProvider: AgentProvider?,
     onOrbTap: (AgentProvider) -> Unit,
     onClearSelection: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val summary = remember(snapshots, selectedProvider) { subscriptionHeroSummary(snapshots, selectedProvider) }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.md.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+            .padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.MD.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SubscriptionHeroHeader(summary = summary, selectedProvider = selectedProvider, onClearSelection = onClearSelection)
         Text(summary.headlineText, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
@@ -264,7 +247,7 @@ fun SubscriptionConstellationHero(
         SubscriptionHeroOrbRow(
             orbEntries = summary.orbEntries,
             selectedProvider = selectedProvider,
-            onOrbTap = onOrbTap
+            onOrbTap = onOrbTap,
         )
     }
 }
@@ -280,10 +263,7 @@ private data class SubscriptionHeroSummary(
     val orbEntries: List<Pair<AgentProvider, ProviderQuotaSnapshot>>,
 )
 
-private fun subscriptionHeroSummary(
-    snapshots: List<ProviderQuotaSnapshot>,
-    selectedProvider: AgentProvider?
-): SubscriptionHeroSummary {
+private fun subscriptionHeroSummary(snapshots: List<ProviderQuotaSnapshot>, selectedProvider: AgentProvider?): SubscriptionHeroSummary {
     val counts = subscriptionHeroPressureCounts(snapshots)
     val activeCount = snapshots.size
     return SubscriptionHeroSummary(
@@ -292,7 +272,7 @@ private fun subscriptionHeroSummary(
         eyebrowText = subscriptionHeroEyebrow(selectedProvider, activeCount),
         headlineText = subscriptionHeroHeadline(selectedProvider, activeCount, counts),
         metaItems = subscriptionHeroMetaItems(snapshots, activeCount, counts.nearEdge),
-        orbEntries = subscriptionHeroOrbEntries(snapshots)
+        orbEntries = subscriptionHeroOrbEntries(snapshots),
     )
 }
 
@@ -310,25 +290,19 @@ private fun subscriptionHeroPressureCounts(snapshots: List<ProviderQuotaSnapshot
     return SubscriptionHeroPressureCounts(wideOpen = wideOpen, narrowing = narrowing, nearEdge = nearEdge)
 }
 
-private fun subscriptionHeroEyebrow(selectedProvider: AgentProvider?, activeCount: Int): String =
-    if (selectedProvider != null) {
-        "FOCUSED · ${selectedProvider.displayName.uppercase(Locale.getDefault())} · $activeCount ACTIVE ACCOUNT${if (activeCount == 1) "" else "S"}"
-    } else {
-        "SUBSCRIPTION VAULT · $activeCount ACTIVE PLAN" + (if (activeCount == 1) "" else "s").uppercase(Locale.getDefault())
-    }
+private fun subscriptionHeroEyebrow(selectedProvider: AgentProvider?, activeCount: Int): String = if (selectedProvider != null) {
+    "FOCUSED · ${selectedProvider.displayName.uppercase(Locale.getDefault())} · $activeCount ACTIVE ACCOUNT${if (activeCount == 1) "" else "S"}"
+} else {
+    "SUBSCRIPTION VAULT · $activeCount ACTIVE PLAN" + (if (activeCount == 1) "" else "s").uppercase(Locale.getDefault())
+}
 
-private fun subscriptionHeroHeadline(
-    selectedProvider: AgentProvider?,
-    activeCount: Int,
-    counts: SubscriptionHeroPressureCounts
-): String =
-    when {
-        activeCount == 0 -> "Connect a plan to start tracking quota"
-        selectedProvider != null -> subscriptionHeroFocusedHeadline(selectedProvider, activeCount, counts.nearEdge)
-        counts.nearEdge > 0 -> "$activeCount plan${if (activeCount == 1) "" else "s"} tracked · ${counts.nearEdge} near the edge"
-        counts.narrowing > 0 -> "${counts.wideOpen} of $activeCount plans wide open · ${counts.narrowing} narrowing"
-        else -> "All $activeCount plan" + (if (activeCount == 1) "" else "s") + " have headroom"
-    }
+private fun subscriptionHeroHeadline(selectedProvider: AgentProvider?, activeCount: Int, counts: SubscriptionHeroPressureCounts): String = when {
+    activeCount == 0 -> "Connect a plan to start tracking quota"
+    selectedProvider != null -> subscriptionHeroFocusedHeadline(selectedProvider, activeCount, counts.nearEdge)
+    counts.nearEdge > 0 -> "$activeCount plan${if (activeCount == 1) "" else "s"} tracked · ${counts.nearEdge} near the edge"
+    counts.narrowing > 0 -> "${counts.wideOpen} of $activeCount plans wide open · ${counts.narrowing} narrowing"
+    else -> "All $activeCount plan" + (if (activeCount == 1) "" else "s") + " have headroom"
+}
 
 private fun subscriptionHeroFocusedHeadline(provider: AgentProvider, activeCount: Int, nearEdgeCount: Int): String {
     val accountWord = if (activeCount == 1) "account" else "accounts"
@@ -339,17 +313,12 @@ private fun subscriptionHeroFocusedHeadline(provider: AgentProvider, activeCount
     }
 }
 
-private fun subscriptionHeroMetaItems(
-    snapshots: List<ProviderQuotaSnapshot>,
-    activeCount: Int,
-    nearEdgeCount: Int
-): List<String> =
-    buildList {
-        add("$activeCount ACTIVE")
-        subscriptionHeroNextResetMeta(snapshots)?.let(::add)
-        subscriptionHeroLastSyncMeta(snapshots)?.let(::add)
-        if (nearEdgeCount > 0) add("$nearEdgeCount NEAR EDGE")
-    }
+private fun subscriptionHeroMetaItems(snapshots: List<ProviderQuotaSnapshot>, activeCount: Int, nearEdgeCount: Int): List<String> = buildList {
+    add("$activeCount ACTIVE")
+    subscriptionHeroNextResetMeta(snapshots)?.let(::add)
+    subscriptionHeroLastSyncMeta(snapshots)?.let(::add)
+    if (nearEdgeCount > 0) add("$nearEdgeCount NEAR EDGE")
+}
 
 private fun subscriptionHeroNextResetMeta(snapshots: List<ProviderQuotaSnapshot>): String? {
     val (snapshot, nextResetDate) =
@@ -374,19 +343,15 @@ private fun subscriptionHeroOrbEntries(snapshots: List<ProviderQuotaSnapshot>): 
     }.sortedWith(compareByDescending<Pair<AgentProvider, ProviderQuotaSnapshot>> { it.second.pressure }.thenBy { it.first.displayName.lowercase() })
 
 @Composable
-private fun SubscriptionHeroHeader(
-    summary: SubscriptionHeroSummary,
-    selectedProvider: AgentProvider?,
-    onClearSelection: () -> Unit
-) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+private fun SubscriptionHeroHeader(summary: SubscriptionHeroSummary, selectedProvider: AgentProvider?, onClearSelection: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         Text(
             text = summary.eyebrowText,
             fontSize = AuroraTypography.tiny.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
             color = if (selectedProvider != null) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            letterSpacing = 1.2.sp
+            letterSpacing = 1.2.sp,
         )
         if (selectedProvider != null) SubscriptionHeroClearButton(onClearSelection)
     }
@@ -400,7 +365,7 @@ private fun SubscriptionHeroClearButton(onClearSelection: () -> Unit) {
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
             .clickable { onClearSelection() }
-            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             Icon(Icons.Default.Close, contentDescription = "Clear selection", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(10.dp))
@@ -410,7 +375,7 @@ private fun SubscriptionHeroClearButton(onClearSelection: () -> Unit) {
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurface,
-                letterSpacing = 0.8.sp
+                letterSpacing = 0.8.sp,
             )
         }
     }
@@ -422,7 +387,7 @@ private fun SubscriptionHeroMetaRow(metaItems: List<String>) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         metaItems.forEachIndexed { index, item ->
             if (index > 0) SubscriptionHeroMetaSeparator()
@@ -431,7 +396,7 @@ private fun SubscriptionHeroMetaRow(metaItems: List<String>) {
                 fontSize = AuroraTypography.tiny.sp,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                letterSpacing = 0.8.sp
+                letterSpacing = 0.8.sp,
             )
         }
     }
@@ -443,7 +408,7 @@ private fun SubscriptionHeroMetaSeparator() {
         text = "·",
         fontSize = AuroraTypography.tiny.sp,
         fontFamily = FontFamily.Monospace,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
     )
 }
 
@@ -460,10 +425,10 @@ private fun SubscriptionHeroDivider() {
                         AuroraColors.hermesMercury.copy(alpha = 0.5f),
                         AuroraColors.hermesAureate.copy(alpha = 0.65f),
                         AuroraColors.hermesMercury.copy(alpha = 0.5f),
-                        Color.Transparent
-                    )
-                )
-            )
+                        Color.Transparent,
+                    ),
+                ),
+            ),
     )
 }
 
@@ -471,12 +436,12 @@ private fun SubscriptionHeroDivider() {
 private fun SubscriptionHeroOrbRow(
     orbEntries: List<Pair<AgentProvider, ProviderQuotaSnapshot>>,
     selectedProvider: AgentProvider?,
-    onOrbTap: (AgentProvider) -> Unit
+    onOrbTap: (AgentProvider) -> Unit,
 ) {
     if (orbEntries.isEmpty()) return
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
-        modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp)
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
+        modifier = Modifier.padding(vertical = AuroraSpacing.SM.dp),
     ) {
         items(orbEntries) { (provider, snapshot) ->
             SubscriptionOrb(
@@ -484,7 +449,7 @@ private fun SubscriptionHeroOrbRow(
                 snapshot = snapshot,
                 isSelected = selectedProvider == provider,
                 isDimmed = selectedProvider != null && selectedProvider != provider,
-                onTap = { onOrbTap(provider) }
+                onTap = { onOrbTap(provider) },
             )
         }
     }

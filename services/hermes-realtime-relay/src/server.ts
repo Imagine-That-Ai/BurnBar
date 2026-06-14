@@ -10,6 +10,7 @@ import { logError, logEvent, logWarning, uidHash } from "./logging.js";
 import { RedisRelayQuotaStore } from "./quota.js";
 import { createRedisClient } from "./redisClient.js";
 import { RedisRelayHub } from "./redisHub.js";
+import { verifyRedisAtStartup } from "./startup.js";
 import { HermesRealtimeRelaySession } from "./relay.js";
 import { sourceMetadata } from "./sourceMetadata.js";
 
@@ -119,6 +120,9 @@ server.listen(config.port, () => {
     port: config.port,
     maxFrameBytes: config.limits.maxFrameBytes,
   });
+  // Fail loud on the core dependency: a relay that is "listening" while Redis is
+  // unreachable serves nothing but 503s on /readyz. Surface that at boot.
+  void verifyRedisAtStartup(relayHub);
 });
 
 process.on("SIGTERM", () => {

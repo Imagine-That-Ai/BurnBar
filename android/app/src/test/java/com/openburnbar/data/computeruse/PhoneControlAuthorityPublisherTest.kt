@@ -119,7 +119,7 @@ class PhoneControlAuthorityPublisherTest {
         val pair = generator.generateKeyPair()
         return PhoneControlSigningIdentity.SecureEnclaveP256(
             pair.private,
-            pair.public as java.security.interfaces.ECPublicKey,
+            pair.public as? java.security.interfaces.ECPublicKey ?: error("expected EC public key"),
         )
     }
 }

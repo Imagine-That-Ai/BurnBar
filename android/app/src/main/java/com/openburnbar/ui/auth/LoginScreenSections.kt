@@ -1,23 +1,23 @@
 package com.openburnbar.ui.auth
 
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import android.app.Activity
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -34,22 +34,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.WarningAmber
@@ -73,13 +73,13 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -158,18 +158,25 @@ private val GOOGLE_GLYPH_BLUE = Color(0xFF4285F4)
 // so the login screen adapts to system appearance like iOS does.
 internal object LoginAdaptiveTokens {
     @Composable fun ember(): Color = if (isSystemInDarkTheme()) AuroraColors.emberDark else AuroraColors.ember
+
     @Composable fun amber(): Color = if (isSystemInDarkTheme()) AuroraColors.amberDark else AuroraColors.amber
+
     @Composable fun blaze(): Color = AuroraColors.blaze
+
     @Composable fun background(): Color = if (isSystemInDarkTheme()) AuroraColors.darkBackground else AuroraColors.lightBackground
+
     @Composable fun surface(): Color = if (isSystemInDarkTheme()) AuroraColors.darkSurface else AuroraColors.lightSurface
+
     @Composable fun surfaceElevated(): Color = if (isSystemInDarkTheme()) AuroraColors.darkSurfaceElevated else AuroraColors.lightSurfaceElevated
+
     @Composable fun border(): Color = if (isSystemInDarkTheme()) AuroraColors.darkBorder else AuroraColors.lightBorder
+
     @Composable fun textPrimary(): Color = if (isSystemInDarkTheme()) AuroraColors.darkTextPrimary else AuroraColors.lightTextPrimary
+
     @Composable fun errorColor(): Color = if (isSystemInDarkTheme()) LOGIN_ERROR_DARK_COLOR else LOGIN_ERROR_LIGHT_COLOR
 }
 
-private fun loginFlameWave(time: Double, frequency: Double, phase: Double = 0.0): Double =
-    sin(time * LOGIN_FLAME_FULL_WAVE * PI * frequency + phase)
+private fun loginFlameWave(time: Double, frequency: Double, phase: Double = 0.0): Double = sin(time * LOGIN_FLAME_FULL_WAVE * PI * frequency + phase)
 
 internal object LoginAdaptiveGradientTokens {
     // iOS: primaryGradient = LinearGradient(ember → amber → blaze)
@@ -180,6 +187,7 @@ internal object LoginAdaptiveGradientTokens {
 
 internal object LoginAdaptiveTextTokens {
     @Composable fun secondary(): Color = if (isSystemInDarkTheme()) AuroraColors.darkTextSecondary else AuroraColors.lightTextSecondary
+
     @Composable fun muted(): Color = if (isSystemInDarkTheme()) AuroraColors.darkTextMuted else AuroraColors.lightTextMuted
 }
 
@@ -203,10 +211,7 @@ internal data class LoginScreenContentCallbacks(
 )
 
 @Composable
-internal fun LoginScreenGoogleAuthEffects(
-    isSigningIn: Boolean,
-    onInFlightProviderChange: (LoginProvider?) -> Unit,
-) {
+internal fun LoginScreenGoogleAuthEffects(isSigningIn: Boolean, onInFlightProviderChange: (LoginProvider?) -> Unit) {
     LaunchedEffect(isSigningIn) {
         if (!isSigningIn) onInFlightProviderChange(null)
     }
@@ -364,12 +369,7 @@ internal fun EmberLogo(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EmberLogoHalo(
-    ember: Color,
-    amber: Color,
-    haloScale: Float,
-    haloOpacity: Float,
-) {
+private fun EmberLogoHalo(ember: Color, amber: Color, haloScale: Float, haloOpacity: Float) {
     Box(
         modifier = Modifier
             .size(220.dp)
@@ -390,11 +390,7 @@ private fun EmberLogoHalo(
 }
 
 @Composable
-private fun EmberLogoImage(
-    squeezeX: Float,
-    stretchY: Float,
-    leanDegrees: Float,
-) {
+private fun EmberLogoImage(squeezeX: Float, stretchY: Float, leanDegrees: Float) {
     Box(
         modifier = Modifier
             .size(132.dp)
@@ -666,12 +662,7 @@ internal object LoginBrandTokens {
 }
 
 @Composable
-internal fun LoginScreenRoot(
-    userStore: UserStore,
-    isSigningIn: Boolean,
-    authError: AuthError?,
-    onDismissError: () -> Unit,
-) {
+internal fun LoginScreenRoot(userStore: UserStore, isSigningIn: Boolean, authError: AuthError?, onDismissError: () -> Unit) {
     val focus = LocalFocusManager.current
     val context = LocalContext.current
     var emailExpanded by remember { mutableStateOf(false) }
@@ -766,11 +757,7 @@ private fun rememberLoginEntranceMotion(appeared: Boolean): LoginEntranceMotion 
 }
 
 @Composable
-internal fun LoginScreenScrollContent(
-    userStore: UserStore,
-    state: LoginScreenContentState,
-    callbacks: LoginScreenContentCallbacks,
-) {
+internal fun LoginScreenScrollContent(userStore: UserStore, state: LoginScreenContentState, callbacks: LoginScreenContentCallbacks) {
     val context = LocalContext.current
     Column(
         modifier =
@@ -863,11 +850,7 @@ private fun LoginProviderButtons(
 }
 
 @Composable
-private fun LoginEmailSection(
-    state: LoginScreenContentState,
-    callbacks: LoginScreenContentCallbacks,
-    userStore: UserStore,
-) {
+private fun LoginEmailSection(state: LoginScreenContentState, callbacks: LoginScreenContentCallbacks, userStore: UserStore) {
     AnimatedVisibility(visible = !state.emailExpanded, enter = fadeIn(), exit = fadeOut()) {
         EmailDiscloseLink(
             enabled = state.inFlightProvider == null,
@@ -1054,6 +1037,7 @@ private fun GitHubButton(isLoading: Boolean, enabled: Boolean, onClick: () -> Un
         Text(text = "Continue with GitHub", color = textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     }
 }
+
 @Composable
 private fun GoogleButton(isLoading: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val isDark = isSystemInDarkTheme()

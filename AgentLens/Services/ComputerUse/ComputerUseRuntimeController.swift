@@ -5,7 +5,6 @@ import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
-import SwiftUI
 
 /// Production app owner for the Mac-side Computer Use coordinator.
 ///
@@ -15,7 +14,7 @@ import SwiftUI
 /// model Settings renders. Without this owner the coordinator can compile but
 /// never receives phone-control frames in the running app.
 @MainActor
-final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable {
+final class ComputerUseRuntimeController: ObservableObject {
     static let computerUseProductId = "com.openburnbar.hostedComputerUseSync.monthly"
 
     @Published private(set) var coordinator: ComputerUseSessionCoordinator
@@ -168,7 +167,7 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         var record = fields
         record["timestamp"] = ISO8601DateFormatter().string(from: Date())
         record["timestampMillis"] = String(Int(Date().timeIntervalSince1970 * 1000))
-        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), // try?-ok(best-effort proof encode)
               let line = String(data: data, encoding: .utf8)
         else { return }
         print("OpenBurnBar ComputerUseE2E \(line)")
@@ -180,10 +179,10 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         if !FileManager.default.fileExists(atPath: url.path) {
             FileManager.default.createFile(atPath: url.path, contents: nil)
         }
-        if let handle = try? FileHandle(forWritingTo: url) {
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: lineData)
-            try? handle.close()
+        if let handle = try? FileHandle(forWritingTo: url) { // try?-ok(best-effort proof sidecar)
+            _ = try? handle.seekToEnd() // try?-ok(best-effort append seek)
+            try? handle.write(contentsOf: lineData) // try?-ok(best-effort proof write)
+            try? handle.close() // try?-ok(file handle teardown)
         }
     }
     #endif
@@ -382,49 +381,6 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         )
     }
 
-    private static func presentApproval(
-        _ request: HermesRealtimeRelayApprovalRequest,
-        screenshot: Data?
-    ) async -> HermesRealtimeRelayApprovalResponse {
-        await withCheckedContinuation { continuation in
-            let root = ComputerUseApprovalSheet(
-                request: request,
-                beforeScreenshotPNG: screenshot,
-                liveTrustMode: request.trustMode.flatMap(ComputerUseTrustMode.init(rawValue:)) ?? .manual,
-                onDecision: { outcome in
-                    let decision: HermesRealtimeRelayApprovalResponse.Decision
-                    switch outcome.decision {
-                    case .approve: decision = .approve
-                    case .reject: decision = .reject
-                    case .rejectAndHalt: decision = .rejectAndHalt
-                    }
-                    continuation.resume(returning: HermesRealtimeRelayApprovalResponse(
-                        approvalId: request.approvalId,
-                        decision: decision,
-                        respondedBy: "mac",
-                        respondedAt: Date(),
-                        note: outcome.approveBurst ? "Step-mode burst approved from Mac" : nil
-                    ))
-                }
-            )
-            let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
-            panel.title = "Computer Use Approval"
-            panel.level = .floating
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            panel.hidesOnDeactivate = false
-            panel.isReleasedWhenClosed = true
-            panel.contentView = NSHostingView(rootView: root)
-            panel.center()
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            panel.makeKeyAndOrderFront(nil)
-        }
-    }
-
     private static func todayKey(now: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -449,7 +405,7 @@ private enum ComputerUseAuditExportSignerPublisherError: LocalizedError {
     }
 }
 
-private final class ComputerUseAuditExportSignerPublisher: @unchecked Sendable {
+private final class ComputerUseAuditExportSignerPublisher: Sendable {
     static let shared = ComputerUseAuditExportSignerPublisher()
 
     private let firestoreProvider: @Sendable () -> Firestore

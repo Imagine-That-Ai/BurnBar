@@ -2,9 +2,6 @@
 
 package com.openburnbar.ui.computeruse
 
-import com.openburnbar.data.hermes.selectConnection
-
-import com.openburnbar.data.hermes.refreshRelayConnections
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Composable
@@ -23,6 +20,8 @@ import com.openburnbar.data.computeruse.PhoneControlSender
 import com.openburnbar.data.hermes.HermesConnectionMode
 import com.openburnbar.data.hermes.HermesConnectionRecord
 import com.openburnbar.data.hermes.HermesService
+import com.openburnbar.data.hermes.refreshRelayConnections
+import com.openburnbar.data.hermes.selectConnection
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import kotlinx.coroutines.launch
@@ -91,10 +90,7 @@ fun ComputerUseAgentWatchScreen(
             )
         }
     }
-    fun sendSignedApproval(
-        response: ComputerUseApprovalResponse?,
-        wireRequest: HermesRealtimeRelayApprovalRequest?,
-    ) {
+    fun sendSignedApproval(response: ComputerUseApprovalResponse?, wireRequest: HermesRealtimeRelayApprovalRequest?) {
         wireRequest ?: return
         val sender = effectiveSender ?: return
         val relayResponse = response?.toRelayApprovalResponse(respondedBy = respondedBy) ?: return
@@ -148,9 +144,7 @@ fun ComputerUseAgentWatchScreen(
  * [com.openburnbar.BurnBarApplication.activePhoneControlSender] when a stream is live; the watch
  * surface reuses it so a phone-side approval is signed + transmitted over the same connection.
  */
-private fun phoneControlSenderFor(
-    activePair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair?,
-): PhoneControlSender? {
+private fun phoneControlSenderFor(activePair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair?): PhoneControlSender? {
     activePair ?: return null
     return com.openburnbar.BurnBarApplication.activePhoneControlSender
 }

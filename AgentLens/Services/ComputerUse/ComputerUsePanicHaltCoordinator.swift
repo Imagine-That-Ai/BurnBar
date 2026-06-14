@@ -8,22 +8,34 @@ import OpenBurnBarComputerUseCore
 /// single `panicHalt(source:)` callback so the calling
 /// `ComputerUseSessionCoordinator` can tear down without caring how the
 /// panic was triggered (Decision 7).
-public final class ComputerUsePanicHaltCoordinator: NSObject, @unchecked Sendable {
+@MainActor
+public final class ComputerUsePanicHaltCoordinator: NSObject {
     public typealias HaltHandler = @Sendable (ComputerUsePanicSource) -> Void
 
     public private(set) var isInstalled: Bool = false
     public let halt: HaltHandler
 
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
-    private var workspaceObservers: [NSObjectProtocol] = []
+    // nonisolated(unsafe): installed/removed on the main actor; the nonisolated
+    // deinit reads them exclusively at dealloc to remove the monitors (NSEvent /
+    // NotificationCenter removal is thread-safe).
+    private nonisolated(unsafe) var globalMonitor: Any?
+    private nonisolated(unsafe) var localMonitor: Any?
+    private nonisolated(unsafe) var workspaceObservers: [NSObjectProtocol] = []
 
     public init(halt: @escaping HaltHandler) {
         self.halt = halt
         super.init()
     }
 
-    deinit { uninstall() }
+    deinit {
+        // Monitor/observer removal is thread-safe; inline it so the nonisolated
+        // deinit need not hop to the main actor to call `uninstall()`.
+        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+        for observer in workspaceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+    }
 
     /// Wire up all three kill paths. Idempotent.
     public func install() {
@@ -103,24 +115,31 @@ public final class ComputerUsePanicHaltCoordinator: NSObject, @unchecked Sendabl
                 object: nil,
                 queue: .main
             ) { [weak self] note in
-                self?.handleWorkspaceNotification(note)
+                // `note` (a non-`Sendable` `Notification`) must not cross the
+                // isolation hop, so pull the `Sendable` fields out first.
+                let name = note.name
+                let activatedBundleID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                    .bundleIdentifier
+                // Delivered on `.main` (queue: .main), so assume main-actor isolation.
+                MainActor.assumeIsolated {
+                    self?.handleWorkspaceNotification(name: name, activatedBundleID: activatedBundleID)
+                }
             }
             workspaceObservers.append(observer)
         }
     }
 
-    private func handleWorkspaceNotification(_ note: Notification) {
-        switch note.name {
+    private func handleWorkspaceNotification(name: Notification.Name, activatedBundleID: String?) {
+        switch name {
         case NSWorkspace.screensDidSleepNotification,
              NSWorkspace.sessionDidResignActiveNotification:
             halt(.macLock)
         case NSWorkspace.didActivateApplicationNotification:
             // If loginwindow / SecurityAgent activates we treat that
-            // as a lock-equivalent. The user-info dictionary carries
-            // the NSRunningApplication that just became frontmost.
-            if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-               let bundle = app.bundleIdentifier,
-               bundle == "com.apple.loginwindow" || bundle == "com.apple.SecurityAgent" {
+            // as a lock-equivalent. `activatedBundleID` is the bundle id of
+            // the `NSRunningApplication` that just became frontmost.
+            if let activatedBundleID,
+               activatedBundleID == "com.apple.loginwindow" || activatedBundleID == "com.apple.SecurityAgent" {
                 halt(.macLock)
             }
         default:

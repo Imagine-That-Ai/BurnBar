@@ -25,7 +25,7 @@ import OpenBurnBarCore
 /// fresh window; the script `cd`s to the working directory and `exec`s an
 /// interactive `claude` (no `-p`). Reading the prompt/system text from sidecar
 /// files avoids all shell-quoting hazards.
-public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
+public final class ClaudeInteractiveHandoffService: Sendable {
 
     public enum TerminalApp: String, Codable, Sendable, CaseIterable {
         case terminal
@@ -105,7 +105,7 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
 
     private let storeURL: URL
     private let launcherDirectory: URL
-    private let fileManager: FileManager
+    private let fileSystem: any SendableFileSystem
     private let claudeExecutableURL: URL?
     private let openExecutableURL: URL
     private let lock = NSLock()
@@ -116,7 +116,7 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
         launcherDirectory: URL? = nil,
         claudeExecutableURL: URL? = nil,
         openExecutableURL: URL = URL(fileURLWithPath: "/usr/bin/open"),
-        fileManager: FileManager = .default,
+        fileSystem: any SendableFileSystem = DefaultSendableFileSystem(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "claude-handoff")
     ) {
         self.storeURL = storeURL
@@ -124,7 +124,7 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
             ?? storeURL.deletingLastPathComponent().appendingPathComponent("claude-handoff-launchers", isDirectory: true)
         self.claudeExecutableURL = claudeExecutableURL
         self.openExecutableURL = openExecutableURL
-        self.fileManager = fileManager
+        self.fileSystem = fileSystem
         self.logger = logger
     }
 
@@ -209,13 +209,13 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
         briefing: String,
         request: Request
     ) throws -> URL {
-        try fileManager.createDirectory(
+        try fileSystem.createDirectory(
             at: launcherDirectory,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
         let sessionDirectory = launcherDirectory.appendingPathComponent(sessionID, isDirectory: true)
-        try fileManager.createDirectory(
+        try fileSystem.createDirectory(
             at: sessionDirectory,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
@@ -225,12 +225,12 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
         let systemURL = sessionDirectory.appendingPathComponent("system.txt", isDirectory: false)
         try briefing.write(to: promptURL, atomically: true, encoding: .utf8)
         try Self.systemPrompt.write(to: systemURL, atomically: true, encoding: .utf8)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: promptURL.path)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: systemURL.path)
+        try fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: promptURL.path)
+        try fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: systemURL.path)
 
         let workingDirectory = request.workingDirectory.flatMap { dir -> String? in
             var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: dir, isDirectory: &isDirectory), isDirectory.boolValue else {
+            guard fileSystem.fileExists(atPath: dir, isDirectory: &isDirectory), isDirectory.boolValue else {
                 return nil
             }
             return dir
@@ -260,7 +260,7 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
 
         let launcherURL = sessionDirectory.appendingPathComponent("launch.command", isDirectory: false)
         try script.write(to: launcherURL, atomically: true, encoding: .utf8)
-        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launcherURL.path)
+        try fileSystem.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launcherURL.path)
         return launcherURL
     }
 
@@ -352,7 +352,7 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
 
     private func saveSessions(_ sessions: [CompanionSession]) {
         lock.lock(); defer { lock.unlock() }
-        try? fileManager.createDirectory(
+        try? fileSystem.createDirectory(
             at: storeURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
@@ -361,7 +361,7 @@ public final class ClaudeInteractiveHandoffService: @unchecked Sendable {
         encoder.dateEncodingStrategy = .iso8601
         if let data = try? encoder.encode(sessions) {
             try? data.write(to: storeURL, options: [.atomic])
-            try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
+            try? fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
         }
     }
 

@@ -66,13 +66,13 @@ function inferFeature(streamClass: string | undefined): MediaFeature | undefined
   return undefined;
 }
 
-export interface RecomputeOptions {
+interface RecomputeOptions {
   uid: string;
   dateUTC: Date;
   firestore?: Firestore;
 }
 
-export async function recomputeQuotaUsageForUid(options: RecomputeOptions): Promise<MediaQuotaUsageDoc> {
+async function recomputeQuotaUsageForUid(options: RecomputeOptions): Promise<MediaQuotaUsageDoc> {
   const firestore = options.firestore ?? getFirestore();
   const window = utcDayWindow(options.dateUTC);
 

@@ -35,6 +35,11 @@ final class AccountManager {
     private(set) var isCloudSyncEnabled = true
     private(set) var isFirebaseAvailable = false
 
+    /// The signed-in account's profile photo. Surfaced to UI (e.g. the Mercury
+    /// incoming-mirror sheet) without leaking FirebaseAuth's `User` type to
+    /// callers. `nil` when anonymous or when the provider supplied no photo.
+    var avatarURL: URL? { currentUser?.photoURL }
+
     /// Stable device identifier stored in Keychain.
     let deviceId: String
 
@@ -924,11 +929,64 @@ final class AccountManager {
         serviceName: String,
         appName: String
     )? {
-        guard let url = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist"),
-              let data = try? Data(contentsOf: url),
-              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
-              let values = plist as? [String: Any],
-              let apiKey = values["API_KEY"] as? String,
+        guard let url = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") else {
+            // The bundled GoogleService-Info.plist is a static shipped resource.
+            // A missing bundle URL means the build is broken, not a runtime
+            // recoverable condition — surface it so the keychain-recovery path
+            // is not silently skipped (see `clearFirebaseAuthKeychainState`).
+            logAuthKeychainFailure(AccountError.missingFirebaseConfigResource)
+            return nil
+        }
+        guard let values = loadFirebaseConfigPlist(at: url) else {
+            return nil
+        }
+        return firebaseAuthKeychainIdentifiers(
+            from: values,
+            appName: FirebaseApp.app()?.name ?? "__FIRAPP_DEFAULT"
+        )
+    }
+
+    /// Reads and decodes the bundled `GoogleService-Info.plist`. Unlike the prior
+    /// `try?`-swallowing version, an unreadable or corrupt bundled plist is a
+    /// build/packaging fault — not a recoverable runtime state — so its failure
+    /// is logged via `logAuthKeychainFailure(_:)` instead of being silenced.
+    /// Returns `nil` (skipping the dangerous keychain deletes) so the caller
+    /// fails closed rather than constructing queries from garbage identifiers.
+    static func loadFirebaseConfigPlist(at url: URL) -> [String: Any]? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            logAuthKeychainFailure(error)
+            return nil
+        }
+        let plist: Any
+        do {
+            plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        } catch {
+            logAuthKeychainFailure(error)
+            return nil
+        }
+        guard let values = plist as? [String: Any] else {
+            logAuthKeychainFailure(AccountError.malformedFirebaseConfigResource)
+            return nil
+        }
+        return values
+    }
+
+    /// Pure extraction of the keychain identifiers from a decoded plist dict.
+    /// Factored out so the failure-logging and identifier-shape paths are unit
+    /// testable without `Bundle.main`.
+    static func firebaseAuthKeychainIdentifiers(
+        from values: [String: Any],
+        appName: String
+    ) -> (
+        apiKey: String,
+        googleAppID: String,
+        serviceName: String,
+        appName: String
+    )? {
+        guard let apiKey = values["API_KEY"] as? String,
               let googleAppID = values["GOOGLE_APP_ID"] as? String else {
             return nil
         }
@@ -936,13 +994,24 @@ final class AccountManager {
             apiKey: apiKey,
             googleAppID: googleAppID,
             serviceName: "firebase_auth_\(googleAppID)",
-            appName: FirebaseApp.app()?.name ?? "__FIRAPP_DEFAULT"
+            appName: appName
         )
     }
 
     private static func logAuthKeychainFailure(_ error: Error) {
+        #if DEBUG
+        authKeychainFailureObserverForTesting?(error)
+        #endif
         logAuthFailure("Firebase Auth keychain recovery", error)
     }
+
+    #if DEBUG
+    /// Test-only hook fired whenever an auth-keychain failure is surfaced.
+    /// Lets `AccountManagerMattersTests` prove that an unreadable / corrupt
+    /// bundled `GoogleService-Info.plist` is *observed* (not swallowed) before
+    /// the keychain-recovery deletes are skipped (fail-closed).
+    nonisolated(unsafe) static var authKeychainFailureObserverForTesting: ((Error) -> Void)?
+    #endif
 
     private static func logAuthFailure(_ label: String, _ error: Error) {
         let nsError = error as NSError
@@ -1054,6 +1123,8 @@ final class AccountManager {
 enum AccountError: LocalizedError {
     case firebaseNotConfigured
     case invalidCredential
+    case missingFirebaseConfigResource
+    case malformedFirebaseConfigResource
 
     var errorDescription: String? {
         switch self {
@@ -1061,6 +1132,10 @@ enum AccountError: LocalizedError {
             return "Firebase is not configured. Add GoogleService-Info.plist to the app bundle."
         case .invalidCredential:
             return "Sign in failed: invalid credential received from the provider."
+        case .missingFirebaseConfigResource:
+            return "GoogleService-Info.plist is missing from the app bundle."
+        case .malformedFirebaseConfigResource:
+            return "GoogleService-Info.plist did not decode to a property-list dictionary."
         }
     }
 }

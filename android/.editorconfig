@@ -20,6 +20,9 @@ max_line_length = 160
 ktlint_standard_no-wildcard-imports = disabled
 # Firestore/schema enum entries mirror remote payload casing (PascalCase and camelCase)
 ktlint_standard_enum-entry-name-case = disabled
+# Jetpack Compose @Composable functions are PascalCase by Google convention;
+# @Preview helpers and JUnit @Test methods likewise opt out of camelCase naming.
+ktlint_function_naming_ignore_when_annotated_with = Composable, Preview, Test
 
 [*.kts]
 ij_kotlin_allow_trailing_comma = true
@@ -38,8 +41,24 @@ indent_size = 2
 [*.md]
 trim_trailing_whitespace = false
 
-# The legacy Android app source tree is not yet ktlint-normalized. Keep ktlint
-# active for Kotlin scripts and other Android source sets while avoiding broad
-# launch-blocking formatter churn in app/src/main/java.
-[app/src/main/java/**/*.kt]
+# Generated sources are emitted by their codegen tools and never hand-edited.
+# ktlint scope excludes them so the generator stays the single source of truth —
+# the fix for any violation belongs in the emitter, never in a checked-in
+# baseline of generated output.
+#   data/models/generated/** — tools/schema-sync/emit/generate.mjs
+#   data/domains/DataDomains.kt — packages/data-domains/codegen.mjs
+#   ui/tokens/PensieveTokens.kt — packages/design-tokens (Style Dictionary)
+[app/src/main/java/com/openburnbar/data/models/generated/**/*.kt]
 ktlint = disabled
+
+[app/src/main/java/com/openburnbar/data/domains/DataDomains.kt]
+ktlint = disabled
+
+[app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt]
+ktlint = disabled
+
+# Embedded coordinate tables — long numeric `doubleArrayOf` data rows that cannot
+# be meaningfully line-wrapped. Only `max-line-length` is relaxed; every other
+# ktlint rule stays enforced on the (tiny) surrounding dispatch logic.
+[app/src/main/java/com/openburnbar/ui/components/SwarmTextCoordinates.kt]
+max_line_length = off

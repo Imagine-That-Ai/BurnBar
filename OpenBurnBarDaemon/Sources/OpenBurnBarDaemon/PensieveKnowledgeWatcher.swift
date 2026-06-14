@@ -1,4 +1,5 @@
 import Foundation
+import os
 import OpenBurnBarCore
 
 /// Default device commit-queue directory the daemon writes prepared Pensieve
@@ -49,11 +50,16 @@ public struct PensieveWatchRoot: Sendable {
 /// Serializes the daemon's prepare/enqueue work so a folder-change burst can't
 /// run two ingests at once. Mirrors the lightweight process gates in the
 /// CloudSync services.
-private final class PensieveWatcherGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var running = false
-    func tryEnter() -> Bool { lock.lock(); defer { lock.unlock() }; guard !running else { return false }; running = true; return true }
-    func leave() { lock.lock(); running = false; lock.unlock() }
+private final class PensieveWatcherGate: Sendable {
+    private let running = Locked(false)
+    func tryEnter() -> Bool {
+        running.withLock { running in
+            guard !running else { return false }
+            running = true
+            return true
+        }
+    }
+    func leave() { running.write(false) }
 }
 
 /// FSEvents-style folder watcher for Pensieve. Debounces directory-change events
@@ -65,27 +71,38 @@ private final class PensieveWatcherGate: @unchecked Sendable {
 /// Reuses `BurnBarDaemonHeartbeat` cadence as the periodic backstop so a missed
 /// FS event still gets reconciled (the daemon already runs that heartbeat loop;
 /// this watcher piggybacks on the same support directory + atomic-write pattern).
-public final class PensieveKnowledgeWatcher: @unchecked Sendable {
+///
+public final class PensieveKnowledgeWatcher: Sendable {
     private let roots: [PensieveWatchRoot]
     private let queueDirectoryURL: URL
     private let vaultKeyProvider: @Sendable () -> Data?
     private let debounceInterval: TimeInterval
     private let backstopInterval: TimeInterval
-    private let fileManager: FileManager
+    private let fileSystem: any SendableFileSystem
 
     private let gate = PensieveWatcherGate()
     private let workQueue = DispatchQueue(label: "com.openburnbar.daemon.pensieve.watch", qos: .utility)
-    private var sources: [DispatchSourceFileSystemObject] = []
-    private var descriptors: [Int32] = []
-    private var debounceWorkItem: DispatchWorkItem?
-    private var backstopTimer: DispatchSourceTimer?
-    /// vectorId set already enqueued this process run — avoids re-writing
-    /// unchanged chunks (the server is idempotent too, but this trims IO).
-    private var enqueuedVectorIDs = Set<String>()
+    // All mutable state is confined to `workQueue`; an OSAllocatedUnfairLock makes
+    // that confinement compiler-verified (and closes the off-queue read race on the
+    // public status vars), so the watcher is plainly Sendable.
+    private struct State {
+        var sources: [DispatchSourceFileSystemObject] = []
+        var descriptors: [Int32] = []
+        var debounceWorkItem: DispatchWorkItem?
+        var backstopTimer: DispatchSourceTimer?
+        /// vectorId set already enqueued this process run — avoids re-writing
+        /// unchanged chunks (the server is idempotent too, but this trims IO).
+        var enqueuedVectorIDs = Set<String>()
+        var lastEnqueueDate: Date?
+        var lastEnqueuedCount = 0
+        var lastError: String?
+    }
 
-    public private(set) var lastEnqueueDate: Date?
-    public private(set) var lastEnqueuedCount = 0
-    public private(set) var lastError: String?
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
+
+    public var lastEnqueueDate: Date? { state.withLockUnchecked { $0.lastEnqueueDate } }
+    public var lastEnqueuedCount: Int { state.withLockUnchecked { $0.lastEnqueuedCount } }
+    public var lastError: String? { state.withLockUnchecked { $0.lastError } }
 
     public init(
         roots: [PensieveWatchRoot],
@@ -93,14 +110,14 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         vaultKeyProvider: @escaping @Sendable () -> Data?,
         debounceInterval: TimeInterval = 2.0,
         backstopInterval: TimeInterval = 15 * 60,
-        fileManager: FileManager = .default
+        fileSystem: any SendableFileSystem = DefaultSendableFileSystem()
     ) {
         self.roots = roots
         self.queueDirectoryURL = queueDirectoryURL
         self.vaultKeyProvider = vaultKeyProvider
         self.debounceInterval = debounceInterval
         self.backstopInterval = backstopInterval
-        self.fileManager = fileManager
+        self.fileSystem = fileSystem
     }
 
     /// Convenience: watch the standard repo-docs / notes / Claude-session roots.
@@ -134,13 +151,15 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     public func stop() {
         workQueue.async { [weak self] in
             guard let self else { return }
-            self.debounceWorkItem?.cancel()
-            self.backstopTimer?.cancel()
-            self.backstopTimer = nil
-            for source in self.sources { source.cancel() }
-            self.sources.removeAll()
-            for fd in self.descriptors where fd >= 0 { close(fd) }
-            self.descriptors.removeAll()
+            self.state.withLockUnchecked { state in
+                state.debounceWorkItem?.cancel()
+                state.backstopTimer?.cancel()
+                state.backstopTimer = nil
+                for source in state.sources { source.cancel() }
+                state.sources.removeAll()
+                for fd in state.descriptors where fd >= 0 { close(fd) }
+                state.descriptors.removeAll()
+            }
         }
     }
 
@@ -150,7 +169,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
 
     private func installSources() {
         for root in roots {
-            try? fileManager.createDirectory(at: root.url, withIntermediateDirectories: true)
+            try? fileSystem.createDirectory(at: root.url, withIntermediateDirectories: true)
             let fd = open(root.url.path, O_EVTONLY)
             guard fd >= 0 else { continue }
             let source = DispatchSource.makeFileSystemObjectSource(
@@ -161,8 +180,10 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             source.setEventHandler { [weak self] in self?.scheduleScan() }
             source.setCancelHandler { close(fd) }
             source.resume()
-            sources.append(source)
-            descriptors.append(fd)
+            state.withLockUnchecked { state in
+                state.sources.append(source)
+                state.descriptors.append(fd)
+            }
         }
     }
 
@@ -171,14 +192,16 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         timer.schedule(deadline: .now() + backstopInterval, repeating: backstopInterval)
         timer.setEventHandler { [weak self] in self?.scheduleScan() }
         timer.resume()
-        backstopTimer = timer
+        state.withLockUnchecked { $0.backstopTimer = timer }
     }
 
     /// Debounce a burst of FS events into one scan.
     private func scheduleScan() {
-        debounceWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.runScan() }
-        debounceWorkItem = work
+        state.withLockUnchecked { state in
+            state.debounceWorkItem?.cancel()
+            state.debounceWorkItem = work
+        }
         workQueue.asyncAfter(deadline: .now() + debounceInterval, execute: work)
     }
 
@@ -188,7 +211,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         guard gate.tryEnter() else { return }
         defer { gate.leave() }
         guard let vaultKey = vaultKeyProvider(), vaultKey.count == 32 else {
-            lastError = "Pensieve vault key unavailable; deferring knowledge ingest."
+            state.withLockUnchecked { $0.lastError = "Pensieve vault key unavailable; deferring knowledge ingest." }
             return
         }
 
@@ -205,9 +228,11 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         }
 
         if enqueued > 0 {
-            lastEnqueuedCount = enqueued
-            lastEnqueueDate = Date()
-            lastError = nil
+            state.withLockUnchecked { state in
+                state.lastEnqueuedCount = enqueued
+                state.lastEnqueueDate = Date()
+                state.lastError = nil
+            }
         }
     }
 
@@ -231,9 +256,13 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             ) else { continue }
 
             // Skip if every chunk in this file was already enqueued this run.
-            let novelVectors = batch.vectors.filter { !enqueuedVectorIDs.contains($0.vectorId) }
+            let novelVectors = state.withLockUnchecked { state in
+                batch.vectors.filter { !state.enqueuedVectorIDs.contains($0.vectorId) }
+            }
             guard !novelVectors.isEmpty else { continue }
-            for vector in novelVectors { enqueuedVectorIDs.insert(vector.vectorId) }
+            state.withLockUnchecked { state in
+                for vector in novelVectors { state.enqueuedVectorIDs.insert(vector.vectorId) }
+            }
 
             let trimmedBatch = PensieveKnowledgeBatch(
                 sourceSlug: batch.sourceSlug,
@@ -252,17 +281,17 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     private func signalSessionEnds(in root: PensieveWatchRoot) -> Int {
         guard let files = eligibleFiles(in: root) else { return 0 }
         let sentinelDir = queueDirectoryURL.appendingPathComponent("session-end-signals", isDirectory: true)
-        try? fileManager.createDirectory(at: sentinelDir, withIntermediateDirectories: true)
+        try? fileSystem.createDirectory(at: sentinelDir, withIntermediateDirectories: true)
         var signalled = 0
         for fileURL in files {
-            guard let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
+            guard let attrs = try? fileSystem.attributesOfItem(atPath: fileURL.path),
                   let modified = attrs[.modificationDate] as? Date else { continue }
             // Only consider sessions that have settled (no write in the last
             // debounce window) — a still-active session keeps getting touched.
             guard Date().timeIntervalSince(modified) >= debounceInterval else { continue }
             let key = PensieveKnowledgeChunker.sha256Hex(fileURL.path + "@" + ISO8601DateFormatter().string(from: modified))
             let sentinelURL = sentinelDir.appendingPathComponent("\(key).json", isDirectory: false)
-            guard !fileManager.fileExists(atPath: sentinelURL.path) else { continue }
+            guard !fileSystem.fileExists(atPath: sentinelURL.path) else { continue }
             let payload: [String: Any] = [
                 "sessionPath": fileURL.path,
                 "modifiedAt": ISO8601DateFormatter().string(from: modified),
@@ -271,7 +300,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             ]
             if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) {
                 try? data.write(to: sentinelURL, options: .atomic)
-                try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sentinelURL.path)
+                try? fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sentinelURL.path)
                 signalled += 1
             }
         }
@@ -281,7 +310,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     /// Atomically write one prepared batch into the commit queue with 0600 perms,
     /// matching the TS `defaultCommitQueue` filename scheme.
     private func writeBatch(_ batch: PensieveKnowledgeBatch) -> Bool {
-        try? fileManager.createDirectory(at: queueDirectoryURL, withIntermediateDirectories: true)
+        try? fileSystem.createDirectory(at: queueDirectoryURL, withIntermediateDirectories: true)
         let idsHash = PensieveKnowledgeChunker.sha256Hex(batch.vectors.map(\.vectorId).joined(separator: ","))
         let fileURL = queueDirectoryURL.appendingPathComponent("\(batch.sourceSlug)-\(idsHash).json", isDirectory: false)
         guard let data = try? JSONSerialization.data(
@@ -290,10 +319,10 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         ) else { return false }
         do {
             try data.write(to: fileURL, options: .atomic)
-            try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            try? fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
             return true
         } catch {
-            lastError = error.localizedDescription
+            state.withLockUnchecked { $0.lastError = error.localizedDescription }
             return false
         }
     }
@@ -301,7 +330,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     // MARK: - File enumeration
 
     private func eligibleFiles(in root: PensieveWatchRoot) -> [URL]? {
-        guard let enumerator = fileManager.enumerator(
+        guard let enumerator = fileSystem.enumerator(
             at: root.url,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]

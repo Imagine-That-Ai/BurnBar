@@ -97,7 +97,7 @@ export function isHermesConnectionDoc(doc: unknown): doc is HermesConnectionDoc 
   );
 }
 
-export function parseHermesPairingDoc(raw: unknown): HermesPairingDoc | undefined {
+function parseHermesPairingDoc(raw: unknown): HermesPairingDoc | undefined {
   const record = recordOrUndefined(raw);
   if (!record) return undefined;
   if (

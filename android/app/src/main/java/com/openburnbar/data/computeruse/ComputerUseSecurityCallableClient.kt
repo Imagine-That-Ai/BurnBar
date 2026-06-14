@@ -90,11 +90,7 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Escrow device registration failed.")
     }
 
-    suspend fun approveEscrowDeviceTrust(
-        deviceId: String,
-        approverDeviceId: String? = null,
-        trustChain: Map<String, Any>? = null,
-    ) {
+    suspend fun approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = null, trustChain: Map<String, Any>? = null) {
         requireAuthenticatedUser()
         val nonce = issueHighRiskActionNonce()
         val payload = mutableMapOf<String, Any>("deviceId" to deviceId, "nonce" to nonce)
@@ -141,7 +137,7 @@ class ComputerUseSecurityCallableClient(
         if (requirementId.isNullOrEmpty() || rotatingDeviceId.isNullOrEmpty()) {
             return revocation.copy(
                 cloudVaultRotationFailureMessage =
-                    "Cloud Vault rotation is required, but this device's trusted device identity is unavailable.",
+                "Cloud Vault rotation is required, but this device's trusted device identity is unavailable.",
             )
         }
         return runCatching {
@@ -179,7 +175,7 @@ class ComputerUseSecurityCallableClient(
         val uid = requireAuthenticatedUser()
         val trimmed = rotatingDeviceId.trim()
         if (trimmed.isEmpty()) return AndroidCloudVaultRevocationRotation.PickupResult()
-        val pending = listPendingCloudVaultRotationRequirements()
+        val pending = listPendingCloudVaultRotationRequirements(trimmed)
         return AndroidCloudVaultRevocationRotation.runPickup(
             uid = uid,
             rotatingDeviceId = trimmed,
@@ -194,11 +190,13 @@ class ComputerUseSecurityCallableClient(
      * Lists the user's pending Cloud Vault rotation requirements via the server-only callable, then
      * decodes them with [AndroidCloudVaultRevocationRotation.parsePendingRequirements].
      */
-    suspend fun listPendingCloudVaultRotationRequirements(): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
+    suspend fun listPendingCloudVaultRotationRequirements(callerDeviceId: String): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
+        val trimmed = callerDeviceId.trim()
+        require(trimmed.isNotEmpty()) { "Could not list pending Cloud Vault rotation requirements." }
         requireAuthenticatedUser()
         val result =
             functions.getHttpsCallable("listPendingCloudVaultRotationRequirements")
-                .call(emptyMap<String, Any>())
+                .call(AndroidCloudVaultRevocationRotation.listPendingCallablePayload(trimmed))
                 .await()
         val data = result.getData() as? Map<*, *> ?: error("Could not list pending Cloud Vault rotation requirements.")
         val rawRequirements = data["requirements"] as? List<*> ?: error("Could not list pending Cloud Vault rotation requirements.")
@@ -254,12 +252,7 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Relay sender-key publication failed.")
     }
 
-    suspend fun publishAgentGrantAuthority(
-        deviceId: String,
-        peerNodeId: String,
-        publicKeyBase64: String,
-        keyKind: String? = null,
-    ) {
+    suspend fun publishAgentGrantAuthority(deviceId: String, peerNodeId: String, publicKeyBase64: String, keyKind: String? = null) {
         requireAuthenticatedUser()
         bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()

@@ -209,10 +209,7 @@ internal fun rememberWallpaperGeneratorState(): WallpaperGeneratorState {
 }
 
 @Composable
-private fun rememberSaveStillHandler(
-    state: WallpaperGeneratorState,
-    onVersionBump: () -> Unit,
-): () -> Unit {
+private fun rememberSaveStillHandler(state: WallpaperGeneratorState, onVersionBump: () -> Unit): () -> Unit {
     val scope = state.scope
     return {
         if (!state.isSavingStill) {
@@ -229,10 +226,7 @@ private fun rememberSaveStillHandler(
 }
 
 @Composable
-internal fun WallpaperGeneratorScreenContent(
-    onBack: () -> Unit,
-    state: WallpaperGeneratorState,
-) {
+internal fun WallpaperGeneratorScreenContent(onBack: () -> Unit, state: WallpaperGeneratorState) {
     var pointer by remember { mutableStateOf<Offset?>(null) }
     var isHolding by remember { mutableStateOf(false) }
     var isRewinding by remember { mutableStateOf(false) }
@@ -303,12 +297,7 @@ internal data class WallpaperSwarmPointerArgs(
 )
 
 @Composable
-private fun WallpaperSwarmCanvasSection(
-    selectedStyle: WallpaperStyle,
-    simulation: SwarmSimulation,
-    version: Int,
-    pointerArgs: WallpaperSwarmPointerArgs,
-) {
+private fun WallpaperSwarmCanvasSection(selectedStyle: WallpaperStyle, simulation: SwarmSimulation, version: Int, pointerArgs: WallpaperSwarmPointerArgs) {
     Box(
         modifier =
         Modifier
@@ -326,18 +315,15 @@ private fun WallpaperSwarmCanvasSection(
     }
 }
 
-private fun Modifier.wallpaperSwarmPointerInput(args: WallpaperSwarmPointerArgs): Modifier =
-    pointerInput(Unit) {
-        awaitPointerEventScope {
-            while (true) {
-                wallpaperSwarmHandlePointerDown(args)
-            }
+private fun Modifier.wallpaperSwarmPointerInput(args: WallpaperSwarmPointerArgs): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            wallpaperSwarmHandlePointerDown(args)
         }
     }
+}
 
-private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.wallpaperSwarmHandlePointerDown(
-    args: WallpaperSwarmPointerArgs,
-) {
+private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.wallpaperSwarmHandlePointerDown(args: WallpaperSwarmPointerArgs) {
     val down = awaitFirstDown(requireUnconsumed = false)
     val isLeft = down.position.x < size.width / 2
     args.onPointerChange(down.position)
@@ -381,9 +367,7 @@ internal data class WallpaperSwarmTrackContext(
     var isTap: Boolean,
 )
 
-private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.wallpaperSwarmTrackPointerEvents(
-    context: WallpaperSwarmTrackContext,
-) {
+private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.wallpaperSwarmTrackPointerEvents(context: WallpaperSwarmTrackContext) {
     while (true) {
         val event = awaitPointerEvent()
         val anyActive = event.changes.any { it.pressed }
@@ -409,11 +393,7 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.wal
 }
 
 @Composable
-private fun WallpaperSwarmParticleCanvas(
-    simulation: SwarmSimulation,
-    selectedStyle: WallpaperStyle,
-    version: Int,
-) {
+private fun WallpaperSwarmParticleCanvas(simulation: SwarmSimulation, selectedStyle: WallpaperStyle, version: Int) {
     key(version) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             simulation.ensureBounds(size)
@@ -461,11 +441,7 @@ private fun WallpaperSwarmVignette(backgroundColor: Color) {
 }
 
 @Composable
-private fun WallpaperGeneratorTopBar(
-    selectedStyle: WallpaperStyle,
-    onBack: () -> Unit,
-    onOpenCustomizer: () -> Unit,
-) {
+private fun WallpaperGeneratorTopBar(selectedStyle: WallpaperStyle, onBack: () -> Unit, onOpenCustomizer: () -> Unit) {
     Row(
         modifier =
         Modifier
@@ -512,12 +488,7 @@ private fun WallpaperGeneratorTopBar(
 }
 
 @Composable
-private fun WallpaperGeneratorBottomControls(
-    state: WallpaperGeneratorState,
-    onSaveStill: () -> Unit,
-    onSetLive: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun WallpaperGeneratorBottomControls(state: WallpaperGeneratorState, onSaveStill: () -> Unit, onSetLive: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier =
         modifier
@@ -560,10 +531,7 @@ private fun WallpaperGeneratorBottomControls(
 }
 
 @Composable
-private fun WallpaperTapHintChip(
-    selectedStyle: WallpaperStyle,
-    animatedHintAlpha: Float,
-) {
+private fun WallpaperTapHintChip(selectedStyle: WallpaperStyle, animatedHintAlpha: Float) {
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = Color.Transparent,
@@ -628,11 +596,7 @@ private fun WallpaperGlyphCustomizerToggle(
 }
 
 @Composable
-private fun WallpaperSaveStillButton(
-    selectedStyle: WallpaperStyle,
-    isSavingStill: Boolean,
-    onClick: () -> Unit,
-) {
+private fun WallpaperSaveStillButton(selectedStyle: WallpaperStyle, isSavingStill: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(999.dp),
@@ -767,11 +731,7 @@ private fun WallpaperSettingsSheetHeader(isDark: Boolean, onDismiss: () -> Unit)
 }
 
 @Composable
-private fun WallpaperStylePickerSection(
-    selectedStyle: WallpaperStyle,
-    isDark: Boolean,
-    onStyleSelected: (WallpaperStyle) -> Unit,
-) {
+private fun WallpaperStylePickerSection(selectedStyle: WallpaperStyle, isDark: Boolean, onStyleSelected: (WallpaperStyle) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = "Background Style",
@@ -797,13 +757,7 @@ private fun WallpaperStylePickerSection(
 }
 
 @Composable
-private fun WallpaperStyleChip(
-    style: WallpaperStyle,
-    isSelected: Boolean,
-    isDark: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun WallpaperStyleChip(style: WallpaperStyle, isSelected: Boolean, isDark: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -881,10 +835,7 @@ private fun WallpaperSettingsDivider(isDark: Boolean) {
 }
 
 @Composable
-private fun WallpaperProviderGlyphsSection(
-    isDark: Boolean,
-    providerGlyphs: Set<AgentProvider>,
-) {
+private fun WallpaperProviderGlyphsSection(isDark: Boolean, providerGlyphs: Set<AgentProvider>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         WallpaperProviderGlyphsHeader(isDark = isDark, providerGlyphs = providerGlyphs)
         WallpaperProviderGlyphsFlow(isDark = isDark, providerGlyphs = providerGlyphs)
@@ -892,10 +843,7 @@ private fun WallpaperProviderGlyphsSection(
 }
 
 @Composable
-private fun WallpaperProviderGlyphsHeader(
-    isDark: Boolean,
-    providerGlyphs: Set<AgentProvider>,
-) {
+private fun WallpaperProviderGlyphsHeader(isDark: Boolean, providerGlyphs: Set<AgentProvider>) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -940,12 +888,7 @@ private fun WallpaperProviderGlyphsHeader(
 }
 
 @Composable
-private fun WallpaperProviderGlyphsBulkButton(
-    label: String,
-    isActive: Boolean,
-    isDark: Boolean,
-    onClick: () -> Unit,
-) {
+private fun WallpaperProviderGlyphsBulkButton(label: String, isActive: Boolean, isDark: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(999.dp),
@@ -976,10 +919,7 @@ private fun WallpaperProviderGlyphsBulkButton(
 }
 
 @Composable
-private fun WallpaperProviderGlyphsFlow(
-    isDark: Boolean,
-    providerGlyphs: Set<AgentProvider>,
-) {
+private fun WallpaperProviderGlyphsFlow(isDark: Boolean, providerGlyphs: Set<AgentProvider>) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1003,12 +943,7 @@ private fun WallpaperProviderGlyphsFlow(
 }
 
 @Composable
-private fun WallpaperProviderGlyphChip(
-    provider: AgentProvider,
-    isSelected: Boolean,
-    isDark: Boolean,
-    onClick: () -> Unit,
-) {
+private fun WallpaperProviderGlyphChip(provider: AgentProvider, isSelected: Boolean, isDark: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(999.dp),

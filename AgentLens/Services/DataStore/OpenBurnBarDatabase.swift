@@ -1,6 +1,5 @@
 import Foundation
 import GRDB
-import SwiftUI
 import OpenBurnBarCore
 
 // MARK: - Shared Database Spine
@@ -213,6 +212,7 @@ final class OpenBurnBarDatabase: Sendable {
 
     private func pruneOldBackups(in directory: URL, keeping max: Int) {
         let fileManager = FileManager.default
+        // try?-ok(skip prune on read fail)
         guard let contents = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey],
@@ -222,7 +222,7 @@ final class OpenBurnBarDatabase: Sendable {
         let backups = contents
             .filter { $0.lastPathComponent.contains(".backup.") }
             .compactMap { url -> (url: URL, date: Date)? in
-                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]), // try?-ok(skip undated backup)
                       let date = values.contentModificationDate else { return nil }
                 return (url, date)
             }
@@ -1757,14 +1757,21 @@ final class OpenBurnBarDatabase: Sendable {
 
     static func decodeJSONStringArray(_ string: String?) -> [String] {
         guard let string, !string.isEmpty, let data = string.data(using: .utf8),
-              let arr = try? JSONDecoder().decode([String].self, from: data) else {
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { // try?-ok(decode fallback empty)
             return []
         }
         return arr
     }
 
-    static func encodeJSONStringArray(_ array: [String]) -> String {
-        (try? JSONEncoder().encode(array)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    /// Encode a `[String]` to a JSON column value.
+    ///
+    /// This is throwing on purpose: a silent `try?` here would yield `"[]"` on
+    /// encode failure, which — when written to a `keyFiles`/`keyCommands`/`keyTools`
+    /// column — would overwrite a real array with an empty list (silent data loss).
+    /// Callers persist this inside throwing `dbQueue.write` blocks, so propagating
+    /// fails the whole insert closed instead of committing a lossy empty value.
+    static func encodeJSONStringArray(_ array: [String]) throws -> String {
+        try encodeJSON(array)
     }
 
     static func encodeTranscriptPieces(_ value: [ChatTranscriptPiece]) throws -> String {
@@ -1773,7 +1780,7 @@ final class OpenBurnBarDatabase: Sendable {
 
     static func decodeTranscriptPieces(_ string: String?) -> [ChatTranscriptPiece]? {
         guard let string, !string.isEmpty, let data = string.data(using: .utf8),
-              let arr = try? JSONDecoder().decode([ChatTranscriptPiece].self, from: data) else {
+              let arr = try? JSONDecoder().decode([ChatTranscriptPiece].self, from: data) else { // try?-ok(decode fallback nil)
             return nil
         }
         return arr
@@ -1787,7 +1794,7 @@ final class OpenBurnBarDatabase: Sendable {
         guard let string, !string.isEmpty, let data = string.data(using: .utf8) else {
             return nil
         }
-        return try? JSONDecoder().decode([HermesAttachment].self, from: data)
+        return try? JSONDecoder().decode([HermesAttachment].self, from: data) // try?-ok(decode fallback nil)
     }
 }
 
@@ -1801,42 +1808,68 @@ struct WorkingDirectoryBackfillService {
     }
 
     func runIfNeeded(database: OpenBurnBarDatabase) async {
-        let hasColumn = (try? await database.dbQueue.read { db in
-            try Row.fetchAll(db, sql: "PRAGMA table_info(conversations)")
-                .compactMap { $0["name"] as? String }
-                .contains("workingDirectory")
-        }) ?? false
+        // Distinguish "column genuinely absent" from "transient read failed": a
+        // bare `try?` would collapse both into `false` and silently abort the
+        // backfill on a flaky read. Treat a read error as "cannot determine yet"
+        // (log + skip this run; the service re-runs next cycle), and only a
+        // successful query returning `false` as a true schema absence.
+        let hasColumn: Bool
+        do {
+            hasColumn = try await database.dbQueue.read { db in
+                try Row.fetchAll(db, sql: "PRAGMA table_info(conversations)")
+                    .compactMap { $0["name"] as? String }
+                    .contains("workingDirectory")
+            }
+        } catch {
+            AppLogger.dataStore.silentFailure(
+                "Working-directory backfill: column probe read failed",
+                error: error
+            )
+            return
+        }
         guard hasColumn else { return }
 
         while !Task.isCancelled {
             let limit = self.batchSize
-            let batch = (try? await database.dbQueue.read { db in
-                try Row.fetchAll(
-                    db,
-                    sql: """
-                    SELECT id, keyFiles
-                    FROM conversations
-                    WHERE workingDirectory IS NULL
-                      AND deletedAt IS NULL
-                      AND keyFiles IS NOT NULL
-                      AND keyFiles != ''
-                      AND keyFiles != '[]'
-                      AND (
-                          keyFiles LIKE '["/%'
-                          OR keyFiles LIKE '["~/%'
-                          OR keyFiles LIKE '["\\/%'
-                      )
-                    LIMIT ?
-                    """,
-                    arguments: [limit]
-                ).compactMap { row -> (String, String)? in
-                    guard let id = row["id"] as? String,
-                          let keyFiles = row["keyFiles"] as? String else {
-                        return nil
+            let batch: [(String, String)]
+            do {
+                batch = try await database.dbQueue.read { db in
+                    try Row.fetchAll(
+                        db,
+                        sql: """
+                        SELECT id, keyFiles
+                        FROM conversations
+                        WHERE workingDirectory IS NULL
+                          AND deletedAt IS NULL
+                          AND keyFiles IS NOT NULL
+                          AND keyFiles != ''
+                          AND keyFiles != '[]'
+                          AND (
+                              keyFiles LIKE '["/%'
+                              OR keyFiles LIKE '["~/%'
+                              OR keyFiles LIKE '["\\/%'
+                          )
+                        LIMIT ?
+                        """,
+                        arguments: [limit]
+                    ).compactMap { row -> (String, String)? in
+                        guard let id = row["id"] as? String,
+                              let keyFiles = row["keyFiles"] as? String else {
+                            return nil
+                        }
+                        return (id, keyFiles)
                     }
-                    return (id, keyFiles)
                 }
-            }) ?? []
+            } catch {
+                // A read error is NOT "no more rows": collapsing it to `[]` would
+                // silently end the backfill as if every row were processed. Log
+                // and end this run so the next cycle retries from the top.
+                AppLogger.dataStore.silentFailure(
+                    "Working-directory backfill: batch read failed",
+                    error: error
+                )
+                return
+            }
             guard !batch.isEmpty else { return }
 
             let updates = batch.compactMap { id, keyFilesJSON -> (id: String, workingDirectory: String)? in
@@ -1847,21 +1880,33 @@ struct WorkingDirectoryBackfillService {
             }
             guard !updates.isEmpty else { return }
 
-            try? await database.dbQueue.write { db in
-                for update in updates {
-                    try db.execute(
-                        sql: "UPDATE conversations SET workingDirectory = ? WHERE id = ? AND workingDirectory IS NULL",
-                        arguments: [update.workingDirectory, update.id]
-                    )
+            do {
+                try await database.dbQueue.write { db in
+                    for update in updates {
+                        try db.execute(
+                            sql: "UPDATE conversations SET workingDirectory = ? WHERE id = ? AND workingDirectory IS NULL",
+                            arguments: [update.workingDirectory, update.id]
+                        )
+                    }
                 }
+            } catch {
+                // Losing this write drops the computed backfill for this batch.
+                // It is idempotent (re-runs next cycle), but the failure must be
+                // observable rather than silently swallowed. End this run so we
+                // do not spin the loop re-reading the same unwritten rows.
+                AppLogger.dataStore.silentFailure(
+                    "Working-directory backfill write failed",
+                    error: error
+                )
+                return
             }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            try? await Task.sleep(nanoseconds: 50_000_000) // try?-ok(cancellation only)
         }
     }
 
     static func inferWorkingDirectory(fromKeyFilesJSON json: String) -> String? {
         guard let data = json.data(using: .utf8),
-              let paths = try? JSONDecoder().decode([String].self, from: data),
+              let paths = try? JSONDecoder().decode([String].self, from: data), // try?-ok(decode fallback nil)
               let first = paths.first?.trimmingCharacters(in: .whitespacesAndNewlines),
               !first.isEmpty else {
             return nil

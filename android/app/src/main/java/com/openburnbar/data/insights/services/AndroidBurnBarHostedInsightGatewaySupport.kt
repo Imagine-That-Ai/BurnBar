@@ -66,51 +66,39 @@ internal suspend fun invokeHostedInsightCallable(
     )
 }
 
-private fun hostedCallable(
-    functionsProvider: () -> FirebaseFunctions,
-    callableName: String,
-): HttpsCallableReference =
-    try {
-        functionsProvider().getHttpsCallable(callableName)
-    } catch (t: BurnBarProSubscriptionRequiredException) {
-        throw IllegalStateException(
-            "BurnBar Hosted callable unavailable: Firebase Functions not initialized (${t.message ?: t.javaClass.simpleName}).",
-            t,
-        )
-    }
+private fun hostedCallable(functionsProvider: () -> FirebaseFunctions, callableName: String): HttpsCallableReference = try {
+    functionsProvider().getHttpsCallable(callableName)
+} catch (t: BurnBarProSubscriptionRequiredException) {
+    throw IllegalStateException(
+        "BurnBar Hosted callable unavailable: Firebase Functions not initialized (${t.message ?: t.javaClass.simpleName}).",
+        t,
+    )
+}
 
-private suspend fun callHostedInsight(
-    callable: HttpsCallableReference,
-    payload: Map<String, Any?>,
-): HttpsCallableResult =
-    try {
-        callable.call(payload).await()
-    } catch (t: BurnBarProSubscriptionRequiredException) {
-        if (AndroidBurnBarHostedInsightGateway.isSubscriptionRequired(t)) {
-            throw BurnBarProSubscriptionRequiredException(
-                productID = AndroidBurnBarHostedInsightGateway.extractProductID(t),
-                cause = t,
-            )
-        }
-        throw IllegalStateException(
-            "BurnBar Hosted callable failed: ${t.message ?: t.javaClass.simpleName}",
-            t,
+private suspend fun callHostedInsight(callable: HttpsCallableReference, payload: Map<String, Any?>): HttpsCallableResult = try {
+    callable.call(payload).await()
+} catch (t: BurnBarProSubscriptionRequiredException) {
+    if (AndroidBurnBarHostedInsightGateway.isSubscriptionRequired(t)) {
+        throw BurnBarProSubscriptionRequiredException(
+            productID = AndroidBurnBarHostedInsightGateway.extractProductID(t),
+            cause = t,
         )
     }
+    throw IllegalStateException(
+        "BurnBar Hosted callable failed: ${t.message ?: t.javaClass.simpleName}",
+        t,
+    )
+}
 
 private fun hostedResultMap(httpsResult: HttpsCallableResult): Map<*, *> {
     val rawData = httpsResult.getData() ?: error("BurnBar Hosted callable returned an empty payload.")
     return rawData as? Map<*, *> ?: error("BurnBar Hosted callable returned a non-object payload.")
 }
 
-private fun hostedEnvelope(resultMap: Map<*, *>): String =
-    (resultMap["envelope"] as? String)?.takeIf { it.isNotBlank() }
-        ?: error("BurnBar Hosted callable response missing or empty 'envelope'.")
+private fun hostedEnvelope(resultMap: Map<*, *>): String = (resultMap["envelope"] as? String)?.takeIf { it.isNotBlank() }
+    ?: error("BurnBar Hosted callable response missing or empty 'envelope'.")
 
-internal fun hydrateHostedInsightResult(
-    request: InsightAnalysisRequest,
-    response: HostedCallableResponse,
-): InsightAnalysisResult {
+internal fun hydrateHostedInsightResult(request: InsightAnalysisRequest, response: HostedCallableResponse): InsightAnalysisResult {
     val hostedTag =
         InsightModelTag(
             providerKey = response.resolvedProviderKey,

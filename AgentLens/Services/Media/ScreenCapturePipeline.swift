@@ -176,7 +176,7 @@ final class ScreenCapturePipeline: NSObject {
     func stop() async {
         #if canImport(ScreenCaptureKit)
         if let stream {
-            try? await stream.stopCapture()
+            try? await stream.stopCapture() // try?-ok(stream teardown)
         }
         stream = nil
         #endif
@@ -295,6 +295,9 @@ final class ScreenCapturePipeline: NSObject {
 }
 
 #if canImport(ScreenCaptureKit)
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
+// shared concurrently. sendable-allowlist: apple-media-buffer
 private struct CapturedSampleBuffer: @unchecked Sendable {
     // ScreenCaptureKit delivers each sample buffer to this delegate callback
     // for one-way handoff into the main-actor encoder. Keep the unchecked

@@ -81,33 +81,59 @@ export function sentryStatus(): { enabled: boolean; environment: string } {
 
 export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   if (event.request) {
-    const request = event.request as ErrorEvent["request"] & Record<string, unknown>;
-    request.url = typeof request.url === "string" ? redactURLSecrets(request.url) : request.url;
-    delete request.data;
-    delete request.cookies;
-    delete request.env;
-    delete request.query_string;
-    if (request.headers && isRecord(request.headers)) {
-      request.headers = sanitizeHeaders(request.headers);
-    }
+    scrubSentryRequest(event.request);
   }
 
   if (event.extra) {
-    event.extra = sanitizeSentryValue(event.extra) as ErrorEvent["extra"];
+    event.extra = sanitizeSentryExtra(event.extra);
   }
   if (event.contexts) {
-    event.contexts = sanitizeSentryValue(event.contexts) as ErrorEvent["contexts"];
+    event.contexts = sanitizeSentryContexts(event.contexts);
   }
   if (event.breadcrumbs) {
     event.breadcrumbs = event.breadcrumbs.map((breadcrumb) => {
       if (breadcrumb.data) {
-        breadcrumb.data = sanitizeSentryValue(breadcrumb.data) as Breadcrumb["data"];
+        breadcrumb.data = sanitizeBreadcrumbData(breadcrumb.data);
       }
       return breadcrumb;
     });
   }
 
   return event;
+}
+
+function scrubSentryRequest(request: NonNullable<ErrorEvent["request"]>): void {
+  if (typeof request.url === "string") {
+    request.url = redactURLSecrets(request.url);
+  }
+  delete request.data;
+  delete request.cookies;
+  delete request.env;
+  delete request.query_string;
+  if (request.headers && isRecord(request.headers)) {
+    request.headers = sanitizeHeaders(request.headers);
+  }
+}
+
+function sanitizeSentryExtra(extra: NonNullable<ErrorEvent["extra"]>): ErrorEvent["extra"] {
+  const sanitized = sanitizeSentryValue(extra);
+  return isRecord(sanitized) ? sanitized : extra;
+}
+
+function sanitizeSentryContexts(
+  contexts: NonNullable<ErrorEvent["contexts"]>,
+): ErrorEvent["contexts"] {
+  for (const key of Object.keys(contexts)) {
+    if (SENSITIVE_KEY_PATTERN.test(key) || REQUEST_BODY_KEY_PATTERN.test(key)) {
+      delete contexts[key];
+    }
+  }
+  return contexts;
+}
+
+function sanitizeBreadcrumbData(data: NonNullable<Breadcrumb["data"]>): Breadcrumb["data"] {
+  const sanitized = sanitizeSentryValue(data);
+  return isRecord(sanitized) ? sanitized : data;
 }
 
 function sanitizeHeaders(headers: Record<string, unknown>) {
@@ -180,18 +206,4 @@ export function setSentryUser(uid: string): void {
 export function sentryUserIdForUID(uid: string): string {
   const digest = createHash("sha256").update(uid, "utf8").digest("hex").slice(0, 16);
   return `uid:${digest}`;
-}
-
-/**
- * Wraps an async function with Sentry error capture.
- * Useful for Cloud Function handlers where errors should be captured
- * even if the calling code swallows them.
- */
-export async function withSentry<T>(fn: () => Promise<T>, context?: Record<string, unknown>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    captureException(err, context);
-    throw err;
-  }
 }

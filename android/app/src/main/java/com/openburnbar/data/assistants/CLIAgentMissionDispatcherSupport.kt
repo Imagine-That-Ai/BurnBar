@@ -40,11 +40,7 @@ internal data class FanOutChildWriteRequest(
     val signalRecipients: List<CloudVaultSignalRecipient> = emptyList(),
 )
 
-internal fun planFanOutDispatch(
-    title: String,
-    prompt: String,
-    runtimeTokens: List<String>,
-): FanOutDispatchPlan {
+internal fun planFanOutDispatch(title: String, prompt: String, runtimeTokens: List<String>): FanOutDispatchPlan {
     val trimmedPrompt = prompt.trim()
     val trimmedTitle = title.trim().ifBlank { "Fan-out mission" }
     return FanOutDispatchPlan(
@@ -119,15 +115,15 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
                 input = payloadInput,
                 key = request.key,
                 signal =
-                    request.signalIdentity?.let { identity ->
-                        CLISignalSealContext(
-                            uid = request.uid,
-                            collection = "cli_agent_mission_requests",
-                            docId = missionID,
-                            localIdentity = identity,
-                            otherRecipients = request.signalRecipients,
-                        )
-                    },
+                request.signalIdentity?.let { identity ->
+                    CLISignalSealContext(
+                        uid = request.uid,
+                        collection = "cli_agent_mission_requests",
+                        docId = missionID,
+                        localIdentity = identity,
+                        otherRecipients = request.signalRecipients,
+                    )
+                },
             ).toMutableMap().apply {
                 put("groupID", request.plan.groupID)
                 put("siblingIndex", index)

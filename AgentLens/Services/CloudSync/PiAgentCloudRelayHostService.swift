@@ -130,7 +130,15 @@ final class PiAgentCloudRelayHostService {
                 "updatedAt": now,
                 "schemaVersion": 2
             ]
-            if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
+            // Recoverable, observable read: a missing public key still publishes
+            // a valid offline doc without the relay-key fields, but a *broken*
+            // keychain / corrupt cached fallback must surface in the log instead
+            // of being silently indistinguishable from "no key yet".
+            if let publicKey = AppLogger.network.silently(
+                "pi_agent_relay_offline_public_key_unavailable",
+                try relayKeyStore.existingPublicKeyBase64() as String?,
+                fallback: nil
+            ) {
                 data["relayPublicKey"] = publicKey
                 data["relayKeyVersion"] = PiAgentRelayCrypto.keyVersion
                 data["relayEncryption"] = PiAgentRelayCrypto.algorithm
@@ -316,7 +324,7 @@ final class PiAgentCloudRelayHostService {
                 try await forwardUnaryRequest(reference: reference, context: prepared.context, operation: operation, data: prepared.data)
             }
         } catch {
-            try? await failRelayRequest(reference: reference, message: error.localizedDescription, context: context)
+            try? await failRelayRequest(reference: reference, message: error.localizedDescription, context: context) // try?-ok(best-effort failure report)
         }
     }
 
@@ -585,14 +593,26 @@ final class PiAgentCloudRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            _ = try? await writeRelayChunk(
-                reference: reference,
-                context: context,
-                sequence: 0,
-                kind: .error,
-                error: String(message.prefix(2_000))
-            )
-            statusUpdate["chunkCount"] = 1
+            // Only declare chunkCount=1 if the error chunk actually persisted.
+            // The client's ChunkReassemblyValidator treats a missing chunk in
+            // 0..<chunkCount as a dropped/withheld-chunk (relay tamper) signal, so
+            // a benign host-side write failure must NOT be recorded as that
+            // integrity violation — leave chunkCount unset and surface the failure.
+            do {
+                try await writeRelayChunk(
+                    reference: reference,
+                    context: context,
+                    sequence: 0,
+                    kind: .error,
+                    error: String(message.prefix(2_000))
+                )
+                statusUpdate["chunkCount"] = 1
+            } catch {
+                AppLogger.network.error(
+                    "piagent_relay_error_chunk_write_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
         }
         try await reference.setData(statusUpdate, merge: true)
     }
@@ -638,11 +658,11 @@ final class PiAgentCloudRelayHostService {
         return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-")).isEmpty ? "mac" : collapsed
     }
 
-    private static let iso8601: ISO8601DateFormatter = {
+    private static var iso8601: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
     private static let iso8601NoFraction = ISO8601DateFormatter()
 }
@@ -702,9 +722,23 @@ struct PiAgentRelayKeyStore {
     func privateKey() throws -> PiAgentRelayPrivateKey {
         do {
             if let stored = try keychain.string(for: account),
-               let data = Data(base64Encoded: stored),
-               let key = try? PiAgentRelayPrivateKey(rawRepresentation: data) {
-                return key
+               let data = Data(base64Encoded: stored) {
+                // The Keychain holds bytes for this account. Parsing them as a
+                // P-256 key is the ONLY branch where a swallowed failure would
+                // silently regenerate AND overwrite the relay identity below —
+                // rotating the key the phone has PINNED in the two-key safety
+                // code and breaking sender authentication with no diagnostic.
+                // Make that corruption observable; only then fall through to a
+                // fresh key. (Genuine first-run absence skips this block and is
+                // not an anomaly worth flagging.)
+                do {
+                    return try PiAgentRelayPrivateKey(rawRepresentation: data)
+                } catch {
+                    AppLogger.network.error(
+                        "pi_agent_relay_stored_private_key_corrupt_regenerating",
+                        metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                    )
+                }
             }
             let key = PiAgentRelayCrypto.generatePrivateKey()
             do {

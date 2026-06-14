@@ -112,15 +112,17 @@ tools/burnbar-mcp/.venv/
 # Files here stay on disk / in the private mirror but never enter the public tree.
 internal/
 
-# Local security-review work product. These files intentionally contain
-# vulnerability evidence, model-run disagreement, and remediation notes; keep
-# them available locally but outside normal publishable/stageable inventory.
+# Confidential security audit + threat-model corpora (CONFIDENTIAL — share out-of-band,
+# never publish to this public repo). Same policy as internal/ above: local/private-mirror
+# only. The multi-model audit output, the Cure53 threat-model package, and the MDASH scan
+# describe unfixed vulnerabilities; committing them here would publish the full attack map.
+# See docs/security/CONFIDENTIALITY_POLICY.md and docs/security/PUBLIC_REPO_HISTORY_PURGE_RUNBOOK.md.
+# (The sanitized, intentionally-public doc is docs/security/BurnBar-threat-model.md, not these.)
 security-audit/
-.agent/runs/
-docs/security/*SECURITY_SCAN*.md
-docs/security/SCAN_RUN-*.md
-docs/security/OPENBURNBAR_REPO_THREAT_MODEL_*.md
-docs/security/SECURITY_AUDIT_RELEASE_HANDOFF_*.md
+security/threat-model/
+security/threat-model.bak-*/
+security/mdash-*.md
+security/evidence/*.json
 
 # Generated validation logs (keep JSON reports, skip raw test logs)
 .factory/validation/**/user-testing/*.log
@@ -215,3 +217,6 @@ fix_silently.py
 functions/coverage/
 .build-verify/
 .build-verify-mac/
+
+# Local-only Firebase security-evidence snapshots (contain IAM/PII recon — never commit)
+security/evidence/firebase-security-evidence-*.json

@@ -13,11 +13,7 @@ import java.util.Base64
 import kotlinx.coroutines.isActive
 
 /** Inbound Mercury control bi-stream read loop and frame dispatch (extracted for detekt size limits). */
-internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(
-    stream: IrohRelayStream,
-    uid: String,
-    connectionID: String,
-) {
+internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(stream: IrohRelayStream, uid: String, connectionID: String) {
     val ackSender = AndroidFileTransferService.AdvertiseSender { outbound -> stream.send(outbound) }
     try {
         while (true) {
@@ -101,11 +97,7 @@ private fun MediaControlStreamCoordinator.applyMercuryPresenceHeartbeat(frame: H
     inboundLastPeerCapabilities.value = frame.media?.presence?.capabilities.orEmpty().toSet()
 }
 
-internal suspend fun MediaControlStreamCoordinator.runMercuryPresenceHeartbeatLoop(
-    stream: IrohRelayStream,
-    uid: String,
-    connectionID: String,
-) {
+internal suspend fun MediaControlStreamCoordinator.runMercuryPresenceHeartbeatLoop(stream: IrohRelayStream, uid: String, connectionID: String) {
     while (inboundScope.isActive && inboundSupervisorJob?.isActive == true) {
         val sentAtMillis = System.currentTimeMillis()
         stream.send(makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
@@ -114,40 +106,34 @@ internal suspend fun MediaControlStreamCoordinator.runMercuryPresenceHeartbeatLo
     }
 }
 
-internal fun MediaControlStreamCoordinator.makeMercuryPresenceHeartbeat(
-    uid: String,
-    connectionID: String,
-): HermesRealtimeRelayFrame =
-    HermesRealtimeRelayFrame(
-        type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
-        uid = uid,
-        connectionId = connectionID,
-        media = HermesRealtimeRelayMediaPayload(
-            presence = HermesRealtimeRelayPresenceHeartbeat(
-                peerDeviceId = inboundPeerDeviceIdProvider().ifBlank { "android" },
-                displayName = inboundDisplayNameProvider().ifBlank { "Android" },
-                deviceDisplayName = inboundDisplayNameProvider().ifBlank { "Android" },
-                capabilities = listOf(
-                    "media.control",
-                    "media.mirror.request",
-                    "media.call.invite",
-                    "media.blob.transfer",
-                ),
-                streamingCapabilities = AndroidMediaCodecCapabilityProbe.snapshot(
-                    mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
-                ).toWire(),
-                sentAt = Instant.now().toString(),
+internal fun MediaControlStreamCoordinator.makeMercuryPresenceHeartbeat(uid: String, connectionID: String): HermesRealtimeRelayFrame = HermesRealtimeRelayFrame(
+    type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
+    uid = uid,
+    connectionId = connectionID,
+    media = HermesRealtimeRelayMediaPayload(
+        presence = HermesRealtimeRelayPresenceHeartbeat(
+            peerDeviceId = inboundPeerDeviceIdProvider().ifBlank { "android" },
+            displayName = inboundDisplayNameProvider().ifBlank { "Android" },
+            deviceDisplayName = inboundDisplayNameProvider().ifBlank { "Android" },
+            capabilities = listOf(
+                "media.control",
+                "media.mirror.request",
+                "media.call.invite",
+                "media.blob.transfer",
             ),
+            streamingCapabilities = AndroidMediaCodecCapabilityProbe.snapshot(
+                mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,
+            ).toWire(),
+            sentAt = Instant.now().toString(),
         ),
-    )
+    ),
+)
 
 internal suspend fun MediaControlStreamCoordinator.handleMercuryStreamFrame(frame: HermesRealtimeRelayFrame) {
     mercuryStreamFrameDelivery(frame)?.let { delivery -> runCatching { delivery() } }
 }
 
-private suspend fun MediaControlStreamCoordinator.mercuryStreamFrameDelivery(
-    frame: HermesRealtimeRelayFrame,
-): (suspend () -> Unit)? {
+private suspend fun MediaControlStreamCoordinator.mercuryStreamFrameDelivery(frame: HermesRealtimeRelayFrame): (suspend () -> Unit)? {
     val media = frame.media
     val encoded = media?.encodedFrameBase64
     if (
@@ -189,10 +175,7 @@ private suspend fun MediaControlStreamCoordinator.mercuryStreamFrameDelivery(
  * the frame's cleartext stream position into the AAD. Any failure returns
  * null and the caller MUST drop the frame (never decode sealed bytes).
  */
-internal fun MediaControlStreamCoordinator.openSealedMercuryMediaFrame(
-    envelope: ByteArray,
-    media: HermesRealtimeRelayMediaPayload,
-): ByteArray? {
+internal fun MediaControlStreamCoordinator.openSealedMercuryMediaFrame(envelope: ByteArray, media: HermesRealtimeRelayMediaPayload): ByteArray? {
     val key = mediaFrameSealKey ?: return null
     val position = media.sealedFramePosition ?: return null
     return runCatching {

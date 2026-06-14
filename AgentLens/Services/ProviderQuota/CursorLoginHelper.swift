@@ -44,7 +44,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate {
     /// Compatibility wrapper for quota code that treats cancelled login as
     /// missing credentials.
     static func runLoginFlow() async -> String? {
-        try? await login().cookieHeader
+        try? await login().cookieHeader // try?-ok(cancel means no creds)
     }
 
     // MARK: - Private
@@ -111,7 +111,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate {
 
         // Give cookies a moment to settle, then capture them
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms // try?-ok(cancellation only)
             await self?.captureCookies()
         }
     }

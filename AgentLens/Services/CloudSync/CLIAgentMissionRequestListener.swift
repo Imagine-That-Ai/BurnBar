@@ -125,6 +125,37 @@ protocol CLIAgentMissionDeviceTrustChecking: AnyObject {
     func prepareAndValidateTrustedExecutor(uid: String, deviceID: String) async -> CLIAgentMissionDeviceTrustResult
 }
 
+// MARK: - Persona Scope Resolution (fail-closed)
+//
+// Hermes Square §6.5 — the phone attaches a `personaScopeJSON` envelope that
+// the Mac applies to the spawned CLI subprocess (tool allow-list, file globs,
+// shell prefixes, permit-shell / permit-file-edits gates). When the envelope
+// is PRESENT but malformed, `CLIAgentMissionPersonaScopeApplier.overrides`
+// deliberately throws — because falling back to `.empty` would dispatch the
+// mission with NO persona scoping at all (full shell + unrestricted file
+// edits), silently widening the sandbox the operator asked to narrow.
+//
+// This resolver makes that decision explicit and testable: a missing scope
+// resolves to `.empty` (the legitimate "no scope" path), but a malformed
+// present scope is REFUSED so the listener fails the mission with a clear
+// error instead of fail-open dispatching with default permissions.
+enum CLIAgentMissionPersonaScopeResolution: Equatable {
+    case resolved(CLIAgentMissionPersonaScopeApplier.RuntimeOverrides)
+    case refused(String)
+
+    static func resolve(from data: [String: Any]) -> CLIAgentMissionPersonaScopeResolution {
+        do {
+            return .resolved(try CLIAgentMissionPersonaScopeApplier.overrides(from: data))
+        } catch {
+            return .refused(
+                "The persona scope attached to this mission could not be read, "
+                    + "so it was rejected instead of running with broader permissions. "
+                    + "Re-send the mission from your device."
+            )
+        }
+    }
+}
+
 struct CLIAgentMissionBackend: Equatable, Sendable {
     let rawValue: String
     let displayName: String
@@ -620,7 +651,23 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
         guard trustState == EscrowDeviceTrustState.trusted.rawValue else {
             if !preparedDeviceIDs.contains(deviceID) {
                 Task { @MainActor in
-                    try? await self.registerPendingMac(deviceRef: snapshot.reference, deviceID: deviceID, mergeOnly: true)
+                    // Best-effort metadata refresh (deviceName/appVersion/updatedAt)
+                    // for an already-untrusted device. The trust verdict is fixed
+                    // (untrusted) above regardless of this write — so failing here
+                    // does not flip a security decision — but losing the write
+                    // silently would hide Firestore faults from operators, so log.
+                    do {
+                        try await self.registerPendingMac(
+                            deviceRef: snapshot.reference,
+                            deviceID: deviceID,
+                            mergeOnly: true
+                        )
+                    } catch {
+                        AppLogger.sync.error(
+                            "mission_pending_mac_refresh_failed",
+                            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                        )
+                    }
                 }
             }
             return .untrusted("This Mac is not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
@@ -667,15 +714,10 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
 // used by the desktop chat surface, and the existing CLIAgentSessionMirror writes
 // Codex / Claude / OpenClaw transcripts back to `cli_sessions` for mobile viewing.
 
-final class MissionCancellationTracker: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _isCancelled = false
-    var isCancelled: Bool {
-        lock.lock(); defer { lock.unlock() }; return _isCancelled
-    }
-    func cancel() {
-        lock.lock(); defer { lock.unlock() }; _isCancelled = true
-    }
+final class MissionCancellationTracker: Sendable {
+    private let _isCancelled = Locked(false)
+    var isCancelled: Bool { _isCancelled.read() }
+    func cancel() { _isCancelled.write(true) }
 }
 
 @MainActor
@@ -711,7 +753,7 @@ final class CLIAgentMissionRequestListener {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     self?.attachIfPossible()
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: 3_000_000_000) // try?-ok(cancellation only)
                 }
             }
         }
@@ -1193,7 +1235,7 @@ final class CLIAgentMissionRequestListener {
                     backend: backend
                 )
             }
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
         }
 
         if cancellationTracker.isCancelled {
@@ -1577,10 +1619,27 @@ final class CLIAgentMissionRequestListener {
     ) async -> DirectCLIMissionResult? {
         let workingDirectoryURL = workingDirectoryURL(from: data)
         // Hermes Square §6.5 — merge any persona-scope env namespace the
-        // phone attached. Decoded once; nil-safe so missions without a
-        // scope keep using the plan's env verbatim.
-        let personaOverrides = (try? CLIAgentMissionPersonaScopeApplier.overrides(from: data))
-            ?? .empty
+        // phone attached. A missing scope resolves to `.empty` (missions
+        // without a scope keep using the plan's env verbatim); a PRESENT but
+        // malformed scope is FAIL-CLOSED — refuse the mission rather than
+        // dispatch the spawned CLI with no persona sandbox (full shell +
+        // unrestricted file edits). See CLIAgentMissionPersonaScopeResolution.
+        let personaOverrides: CLIAgentMissionPersonaScopeApplier.RuntimeOverrides
+        switch CLIAgentMissionPersonaScopeResolution.resolve(from: data) {
+        case .resolved(let overrides):
+            personaOverrides = overrides
+        case .refused(let message):
+            AppLogger.sync.error(
+                "mission_persona_scope_rejected",
+                metadata: ["requestID": requestID]
+            )
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: message,
+                sessionID: "persona-scope-rejected-\(backend.rawValue)-\(UUID().uuidString)"
+            )
+        }
         if CLIAgentMissionRuntimePlanner.presentationMode(from: data) == .macVisibleCLI {
             guard let plan = CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
                 title: title,
@@ -1649,34 +1708,34 @@ final class CLIAgentMissionRequestListener {
         return URL(fileURLWithPath: expandedPath, isDirectory: true)
     }
 
-    private func gitChangedFiles(in workingDirectoryURL: URL?) async -> Set<String> {
+    /// `nonisolated` so the blocking `git status` runs off the main actor
+    /// (SE-0338); it touches no main-actor state, so it needs no detached task.
+    private nonisolated func gitChangedFiles(in workingDirectoryURL: URL?) async -> Set<String> {
         let directoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let gitPath = "/usr/bin/git"
         guard FileManager.default.fileExists(atPath: gitPath) else { return [] }
 
-        return await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: gitPath)
-            process.arguments = ["-C", directoryURL.path, "status", "--porcelain=v1"]
-            let stdout = Pipe()
-            process.standardOutput = stdout
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                process.waitUntilExit()
-                guard process.terminationStatus == 0 else { return Set<String>() }
-                let data = stdout.fileHandleForReading.readDataToEndOfFile()
-                let text = String(data: data, encoding: .utf8) ?? ""
-                return Set(text
-                    .split(separator: "\n")
-                    .compactMap { line -> String? in
-                        guard line.count >= 4 else { return nil }
-                        return String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                    })
-            } catch {
-                return []
-            }
-        }.value
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: gitPath)
+        process.arguments = ["-C", directoryURL.path, "status", "--porcelain=v1"]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return Set<String>() }
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8) ?? ""
+            return Set(text
+                .split(separator: "\n")
+                .compactMap { line -> String? in
+                    guard line.count >= 4 else { return nil }
+                    return String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                })
+        } catch {
+            return []
+        }
     }
 
     private func recordChangedFileEvents(
@@ -1823,7 +1882,7 @@ final class CLIAgentMissionRequestListener {
         }
     }
 
-    private func runVisibleTerminalProcess(
+    private nonisolated func runVisibleTerminalProcess(
         sessionID: String,
         executable: String,
         executableName: String,
@@ -1835,123 +1894,131 @@ final class CLIAgentMissionRequestListener {
         cancellationTracker: MissionCancellationTracker,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let fileManager = FileManager.default
-            let rootURL = fileManager.temporaryDirectory
-                .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
-            let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
-            try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
+        let fileManager = FileManager.default
+        let rootURL = fileManager.temporaryDirectory
+            .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
+        let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
+        try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
 
-            let scriptURL = sessionURL.appendingPathComponent("run.command")
-            let logURL = sessionURL.appendingPathComponent("terminal.log")
-            let exitURL = sessionURL.appendingPathComponent("exit.status")
-            let pidURL = sessionURL.appendingPathComponent("terminal.pid")
-            let command = ([executable] + arguments)
-                .map(Self.shellQuoted)
-                .joined(separator: " ")
+        let scriptURL = sessionURL.appendingPathComponent("run.command")
+        let logURL = sessionURL.appendingPathComponent("terminal.log")
+        let exitURL = sessionURL.appendingPathComponent("exit.status")
+        let pidURL = sessionURL.appendingPathComponent("terminal.pid")
+        let command = ([executable] + arguments)
+            .map(Self.shellQuoted)
+            .joined(separator: " ")
 
-            var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
-            scriptEnvironment.merge(extraEnvironment) { _, new in new }
-            let exportLines = scriptEnvironment
-                .filter { Self.isValidEnvironmentKey($0.key) }
-                .sorted { $0.key < $1.key }
-                .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
-                .joined(separator: "\n")
-            let cdLine = workingDirectoryURL.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
-            let script = """
-            #!/bin/zsh
-            set +e
-            setopt pipefail
-            echo $$ > \(Self.shellQuoted(pidURL.path))
-            \(exportLines)
-            \(cdLine)
-            echo "OpenBurnBar visible CLI session"
-            echo "Runtime: \(backendDisplayName)"
-            echo "Executable: \(executableName)"
-            echo ""
-            ( \(command) ) 2>&1 | tee \(Self.shellQuoted(logURL.path))
-            status=${pipestatus[1]}
-            echo "$status" > \(Self.shellQuoted(exitURL.path))
-            echo ""
-            echo "OpenBurnBar visible CLI session finished with exit $status"
-            exit "$status"
-            """
-            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
+        scriptEnvironment.merge(extraEnvironment) { _, new in new }
+        let exportLines = scriptEnvironment
+            .filter { Self.isValidEnvironmentKey($0.key) }
+            .sorted { $0.key < $1.key }
+            .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
+            .joined(separator: "\n")
+        let cdLine = workingDirectoryURL.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
+        let script = """
+        #!/bin/zsh
+        set +e
+        setopt pipefail
+        echo $$ > \(Self.shellQuoted(pidURL.path))
+        \(exportLines)
+        \(cdLine)
+        echo "OpenBurnBar visible CLI session"
+        echo "Runtime: \(backendDisplayName)"
+        echo "Executable: \(executableName)"
+        echo ""
+        ( \(command) ) 2>&1 | tee \(Self.shellQuoted(logURL.path))
+        status=${pipestatus[1]}
+        echo "$status" > \(Self.shellQuoted(exitURL.path))
+        echo ""
+        echo "OpenBurnBar visible CLI session finished with exit $status"
+        exit "$status"
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
 
-            let opener = Process()
-            opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            opener.arguments = ["-a", "Terminal", scriptURL.path]
-            try opener.run()
-            opener.waitUntilExit()
-            guard opener.terminationStatus == 0 else {
+        let opener = Process()
+        opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        opener.arguments = ["-a", "Terminal", scriptURL.path]
+        try opener.run()
+        opener.waitUntilExit()
+        guard opener.terminationStatus == 0 else {
+            throw NSError(
+                domain: "OpenBurnBar.VisibleTerminalMission",
+                code: Int(opener.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: "macOS could not open Terminal for the visible CLI session."]
+            )
+        }
+
+        eventSink(.toolCall("Terminal opened a visible \(backendDisplayName) CLI session.", title: "Terminal session", toolName: "Terminal"))
+
+        let streamMirror = DirectCLIStreamMirror()
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        var offset: UInt64 = 0
+        var output = ""
+        var lastEventAt = Date.distantPast
+
+        while Date() < deadline {
+            if cancellationTracker.isCancelled {
+                Self.killVisibleTerminalSession(pidURL: pidURL)
                 throw NSError(
                     domain: "OpenBurnBar.VisibleTerminalMission",
-                    code: Int(opener.terminationStatus),
-                    userInfo: [NSLocalizedDescriptionKey: "macOS could not open Terminal for the visible CLI session."]
+                    code: 299,
+                    userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
                 )
             }
 
-            eventSink(.toolCall("Terminal opened a visible \(backendDisplayName) CLI session.", title: "Terminal session", toolName: "Terminal"))
-
-            let streamMirror = DirectCLIStreamMirror()
-            let deadline = Date().addingTimeInterval(timeoutSeconds)
-            var offset: UInt64 = 0
-            var output = ""
-            var lastEventAt = Date.distantPast
-
-            while Date() < deadline {
-                if cancellationTracker.isCancelled {
-                    Self.killVisibleTerminalSession(pidURL: pidURL)
-                    throw NSError(
-                        domain: "OpenBurnBar.VisibleTerminalMission",
-                        code: 299,
-                        userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
-                    )
+            let chunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
+            if !chunk.isEmpty {
+                output += chunk
+                let emittedStructuredEvents = streamMirror.consumeStdout(chunk, eventSink: eventSink)
+                if !emittedStructuredEvents,
+                   Date().timeIntervalSince(lastEventAt) >= 1,
+                   let message = chunk.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                    lastEventAt = Date()
+                    eventSink(.assistant(message, title: "Terminal output"))
                 }
-
-                let chunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
-                if !chunk.isEmpty {
-                    output += chunk
-                    let emittedStructuredEvents = streamMirror.consumeStdout(chunk, eventSink: eventSink)
-                    if !emittedStructuredEvents,
-                       Date().timeIntervalSince(lastEventAt) >= 1,
-                       let message = chunk.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                        lastEventAt = Date()
-                        eventSink(.assistant(message, title: "Terminal output"))
-                    }
-                }
-
-                if fileManager.fileExists(atPath: exitURL.path) {
-                    let finalChunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
-                    if !finalChunk.isEmpty {
-                        output += finalChunk
-                        _ = streamMirror.consumeStdout(finalChunk, eventSink: eventSink)
-                    }
-                    let rawStatus = (try? String(contentsOf: exitURL, encoding: .utf8))
-                        ?? "1"
-                    let status = Int(rawStatus.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
-                    let finalOutput = streamMirror.finalOutputSnapshot(fallback: output.nilIfEmpty ?? rawStatus)
-                    guard status == 0 else {
-                        throw NSError(
-                            domain: "OpenBurnBar.VisibleTerminalMission",
-                            code: status,
-                            userInfo: [NSLocalizedDescriptionKey: finalOutput.nilIfEmpty ?? "Visible \(backendDisplayName) CLI session failed with exit \(status)."]
-                        )
-                    }
-                    return finalOutput
-                }
-
-                try await Task.sleep(nanoseconds: 250_000_000)
             }
 
-            Self.killVisibleTerminalSession(pidURL: pidURL)
-            throw NSError(
-                domain: "OpenBurnBar.VisibleTerminalMission",
-                code: 124,
-                userInfo: [NSLocalizedDescriptionKey: "Visible \(backendDisplayName) CLI session timed out after \(Int(timeoutSeconds)) seconds."]
-            )
-        }.value
+            if fileManager.fileExists(atPath: exitURL.path) {
+                let finalChunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
+                if !finalChunk.isEmpty {
+                    output += finalChunk
+                    _ = streamMirror.consumeStdout(finalChunk, eventSink: eventSink)
+                }
+                // try?-ok(sidecar read fallback)
+                let rawStatus = (try? String(contentsOf: exitURL, encoding: .utf8))
+                    ?? "1"
+                let status = Int(rawStatus.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+                let finalOutput = streamMirror.finalOutputSnapshot(fallback: output.nilIfEmpty ?? rawStatus)
+                guard status == 0 else {
+                    throw NSError(
+                        domain: "OpenBurnBar.VisibleTerminalMission",
+                        code: status,
+                        userInfo: [NSLocalizedDescriptionKey: finalOutput.nilIfEmpty ?? "Visible \(backendDisplayName) CLI session failed with exit \(status)."]
+                    )
+                }
+                return finalOutput
+            }
+
+            do {
+                try await Task.sleep(nanoseconds: 250_000_000)
+            } catch is CancellationError {
+                // Task cancellation throws here and would skip the tracker/timeout
+                // teardown below, so tear down the visible Terminal session now —
+                // matching the former detached task, which reaped it via its
+                // orphan running on to the deadline.
+                Self.killVisibleTerminalSession(pidURL: pidURL)
+                throw CancellationError()
+            }
+        }
+
+        Self.killVisibleTerminalSession(pidURL: pidURL)
+        throw NSError(
+            domain: "OpenBurnBar.VisibleTerminalMission",
+            code: 124,
+            userInfo: [NSLocalizedDescriptionKey: "Visible \(backendDisplayName) CLI session timed out after \(Int(timeoutSeconds)) seconds."]
+        )
     }
 
     private func runDirectCLIMission(
@@ -2022,7 +2089,7 @@ final class CLIAgentMissionRequestListener {
         }
     }
 
-    private func runProcess(
+    private nonisolated func runProcess(
         executable: String,
         arguments: [String],
         timeoutSeconds: TimeInterval,
@@ -2031,89 +2098,71 @@ final class CLIAgentMissionRequestListener {
         cancellationTracker: MissionCancellationTracker,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            environment.merge(extraEnvironment) { _, new in new }
-            process.environment = environment
-            process.currentDirectoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            process.standardInput = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        environment.merge(extraEnvironment) { _, new in new }
+        process.environment = environment
+        process.currentDirectoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        process.standardInput = FileHandle.nullDevice
 
-            let stdout = Pipe()
-            let stderr = Pipe()
-            let output = LockedProcessOutput()
-            let streamMirror = DirectCLIStreamMirror()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            stdout.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                guard !data.isEmpty,
-                      let text = String(data: data, encoding: .utf8)
-                else { return }
-                output.appendStdout(text)
-                let emittedStructuredEvents = streamMirror.consumeStdout(text, eventSink: eventSink)
-                if !emittedStructuredEvents,
-                   let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                    eventSink(.assistant(chunk))
-                }
+        let stdout = Pipe()
+        let stderr = Pipe()
+        let output = LockedProcessOutput()
+        let streamMirror = DirectCLIStreamMirror()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        stdout.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8)
+            else { return }
+            output.appendStdout(text)
+            let emittedStructuredEvents = streamMirror.consumeStdout(text, eventSink: eventSink)
+            if !emittedStructuredEvents,
+               let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                eventSink(.assistant(chunk))
             }
-            stderr.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                guard !data.isEmpty,
-                      let text = String(data: data, encoding: .utf8)
-                else { return }
-                output.appendStderr(text)
-                let emittedStructuredEvents = streamMirror.consumeStderr(text, eventSink: eventSink)
-                if !emittedStructuredEvents,
-                   let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                    eventSink(.toolResult(chunk, title: "Process stderr", isError: true))
-                }
+        }
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8)
+            else { return }
+            output.appendStderr(text)
+            let emittedStructuredEvents = streamMirror.consumeStderr(text, eventSink: eventSink)
+            if !emittedStructuredEvents,
+               let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                eventSink(.toolResult(chunk, title: "Process stderr", isError: true))
             }
+        }
 
+        if cancellationTracker.isCancelled {
+            throw NSError(
+                domain: "OpenBurnBar.DirectCLIMission",
+                code: 299,
+                userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
+            )
+        }
+
+        try process.run()
+
+        // Safety net for the task-cancellation path: a `CancellationError` thrown
+        // from `Task.sleep` below skips the tracker/timeout cleanup, so reap the
+        // process and detach the stream handlers on every exit here. (The former
+        // detached task was cancellation-immune and reaped via its orphan.)
+        // No-op on the normal return path, where the process has already exited
+        // and the handlers were already cleared.
+        defer {
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+            if process.isRunning { process.terminate() }
+        }
+
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while process.isRunning && Date() < deadline {
             if cancellationTracker.isCancelled {
-                throw NSError(
-                    domain: "OpenBurnBar.DirectCLIMission",
-                    code: 299,
-                    userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
-                )
-            }
-
-            try process.run()
-
-            let deadline = Date().addingTimeInterval(timeoutSeconds)
-            while process.isRunning && Date() < deadline {
-                if cancellationTracker.isCancelled {
-                    let pid = process.processIdentifier
-                    let killScript = """
-                    kill_tree() {
-                        local _pid=$1
-                        for _child in $(pgrep -P $_pid); do
-                            kill_tree $_child
-                        done
-                        kill -TERM $_pid 2>/dev/null
-                    }
-                    kill_tree \(pid)
-                    """
-                    let killTask = Process()
-                    killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                    killTask.arguments = ["-c", killScript]
-                    try? killTask.run()
-                    killTask.waitUntilExit()
-
-                    process.terminate()
-                    stdout.fileHandleForReading.readabilityHandler = nil
-                    stderr.fileHandleForReading.readabilityHandler = nil
-                    throw NSError(
-                        domain: "OpenBurnBar.DirectCLIMission",
-                        code: 299,
-                        userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
-                    )
-                }
-                try await Task.sleep(nanoseconds: 100_000_000)
-            }
-            if process.isRunning {
                 let pid = process.processIdentifier
                 let killScript = """
                 kill_tree() {
@@ -2128,7 +2177,7 @@ final class CLIAgentMissionRequestListener {
                 let killTask = Process()
                 killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
                 killTask.arguments = ["-c", killScript]
-                try? killTask.run()
+                try? killTask.run() // try?-ok(fire-and-forget kill)
                 killTask.waitUntilExit()
 
                 process.terminate()
@@ -2136,30 +2185,58 @@ final class CLIAgentMissionRequestListener {
                 stderr.fileHandleForReading.readabilityHandler = nil
                 throw NSError(
                     domain: "OpenBurnBar.DirectCLIMission",
-                    code: 124,
-                    userInfo: [NSLocalizedDescriptionKey: "Direct \(URL(fileURLWithPath: executable).lastPathComponent) mission timed out after \(Int(timeoutSeconds)) seconds."]
+                    code: 299,
+                    userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
                 )
             }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        if process.isRunning {
+            let pid = process.processIdentifier
+            let killScript = """
+            kill_tree() {
+                local _pid=$1
+                for _child in $(pgrep -P $_pid); do
+                    kill_tree $_child
+                done
+                kill -TERM $_pid 2>/dev/null
+            }
+            kill_tree \(pid)
+            """
+            let killTask = Process()
+            killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            killTask.arguments = ["-c", killScript]
+            try? killTask.run() // try?-ok(fire-and-forget kill)
+            killTask.waitUntilExit()
 
+            process.terminate()
             stdout.fileHandleForReading.readabilityHandler = nil
             stderr.fileHandleForReading.readabilityHandler = nil
-            let captured = output.snapshot()
-            let stdoutText = captured.stdout
-            let stderrText = captured.stderr
-            let finalOutput = streamMirror.finalOutputSnapshot(fallback: stdoutText.nilIfEmpty ?? stderrText)
-            guard process.terminationStatus == 0 else {
-                let message = [stdoutText, stderrText]
-                    .joined(separator: "\n")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                throw NSError(
-                    domain: "OpenBurnBar.DirectCLIMission",
-                    code: Int(process.terminationStatus),
-                    userInfo: [NSLocalizedDescriptionKey: message.nilIfEmpty ?? "Direct CLI mission failed with exit \(process.terminationStatus)."]
-                )
-            }
+            throw NSError(
+                domain: "OpenBurnBar.DirectCLIMission",
+                code: 124,
+                userInfo: [NSLocalizedDescriptionKey: "Direct \(URL(fileURLWithPath: executable).lastPathComponent) mission timed out after \(Int(timeoutSeconds)) seconds."]
+            )
+        }
 
-            return finalOutput
-        }.value
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        let captured = output.snapshot()
+        let stdoutText = captured.stdout
+        let stderrText = captured.stderr
+        let finalOutput = streamMirror.finalOutputSnapshot(fallback: stdoutText.nilIfEmpty ?? stderrText)
+        guard process.terminationStatus == 0 else {
+            let message = [stdoutText, stderrText]
+                .joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(
+                domain: "OpenBurnBar.DirectCLIMission",
+                code: Int(process.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: message.nilIfEmpty ?? "Direct CLI mission failed with exit \(process.terminationStatus)."]
+            )
+        }
+
+        return finalOutput
     }
 
     private func recordEvent(
@@ -2240,9 +2317,10 @@ final class CLIAgentMissionRequestListener {
         offset: inout UInt64
     ) -> String {
         guard FileManager.default.fileExists(atPath: logURL.path),
+              // try?-ok(sidecar log read)
               let handle = try? FileHandle(forReadingFrom: logURL)
         else { return "" }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
         do {
             try handle.seek(toOffset: offset)
             let data = try handle.readToEnd() ?? Data()
@@ -2254,6 +2332,7 @@ final class CLIAgentMissionRequestListener {
     }
 
     private nonisolated static func killVisibleTerminalSession(pidURL: URL) {
+        // try?-ok(sidecar pid read)
         guard let rawPID = try? String(contentsOf: pidURL, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines),
               let pid = Int32(rawPID),
@@ -2272,7 +2351,7 @@ final class CLIAgentMissionRequestListener {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", killScript]
-        try? process.run()
+        try? process.run() // try?-ok(fire-and-forget kill)
         process.waitUntilExit()
     }
 
@@ -2407,15 +2486,18 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-private final class DirectCLIStreamMirror: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stdoutBuffer = ""
-    private var stderrBuffer = ""
-    private var assistantDeltaBuffer = ""
-    private var assistantDeltaTranscript = ""
-    private var latestAssistantMessage = ""
-    private var latestResultText = ""
-    private var lastReasoningEventCount = 0
+private final class DirectCLIStreamMirror: Sendable {
+    private struct State {
+        var stdoutBuffer = ""
+        var stderrBuffer = ""
+        var assistantDeltaBuffer = ""
+        var assistantDeltaTranscript = ""
+        var latestAssistantMessage = ""
+        var latestResultText = ""
+        var lastReasoningEventCount = 0
+    }
+
+    private let state = Locked(State())
     private let assistantDeltaFlushThreshold = 480
     private let reasoningEventStep = 500
 
@@ -2423,29 +2505,29 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
         _ text: String,
         eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
     ) -> Bool {
-        consume(text, buffer: &stdoutBuffer, eventSink: eventSink)
+        consume(text, buffer: \.stdoutBuffer, eventSink: eventSink)
     }
 
     func consumeStderr(
         _ text: String,
         eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
     ) -> Bool {
-        consume(text, buffer: &stderrBuffer, eventSink: eventSink)
+        consume(text, buffer: \.stderrBuffer, eventSink: eventSink)
     }
 
     private func consume(
         _ text: String,
-        buffer: inout String,
+        buffer: WritableKeyPath<State, String>,
         eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
     ) -> Bool {
         let incomingLooksStructured = text.trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
-        lock.lock()
-        buffer += text
-        let lines = buffer.components(separatedBy: .newlines)
-        buffer = lines.last ?? ""
-        let bufferedLooksStructured = buffer.trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
-        let completeLines = lines.dropLast()
-        lock.unlock()
+        let (bufferedLooksStructured, completeLines) = state.withLock { state -> (Bool, [String]) in
+            state[keyPath: buffer] += text
+            let lines = state[keyPath: buffer].components(separatedBy: .newlines)
+            state[keyPath: buffer] = lines.last ?? ""
+            let bufferedLooksStructured = state[keyPath: buffer].trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
+            return (bufferedLooksStructured, Array(lines.dropLast()))
+        }
 
         var emitted = incomingLooksStructured || bufferedLooksStructured
         for rawLine in completeLines {
@@ -2466,6 +2548,7 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
     private func parseJSONLine(_ line: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
         guard line.first == "{",
               let data = line.data(using: .utf8),
+              // try?-ok(optional jsonline parse)
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = object["type"] as? String
         else { return nil }
@@ -2582,18 +2665,20 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
                     .joined(separator: "\n")
                     .count ?? 0
                 if updateType == "thinking_start" {
-                    lastReasoningEventCount = 0
+                    state.withLock { $0.lastReasoningEventCount = 0 }
                     return .toolResult("Reasoning stream started.", title: "Reasoning")
                 }
                 if updateType == "thinking_end" {
-                    lastReasoningEventCount = count
+                    state.withLock { $0.lastReasoningEventCount = count }
                     return .toolResult("Reasoning stream completed (\(count) chars available from runtime).", title: "Reasoning")
                 }
-                guard count >= lastReasoningEventCount + reasoningEventStep else {
-                    return nil
+                return state.withLock { state -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? in
+                    guard count >= state.lastReasoningEventCount + reasoningEventStep else {
+                        return nil
+                    }
+                    state.lastReasoningEventCount = count
+                    return .toolResult("Reasoning stream updated (\(count) chars available from runtime).", title: "Reasoning")
                 }
-                lastReasoningEventCount = count
-                return .toolResult("Reasoning stream updated (\(count) chars available from runtime).", title: "Reasoning")
             }
         }
 
@@ -2625,19 +2710,25 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
     }
 
     private func appendAssistantDelta(_ text: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
-        assistantDeltaTranscript += text
-        assistantDeltaBuffer += text
-        let shouldFlush = assistantDeltaBuffer.count >= assistantDeltaFlushThreshold
-            || text.contains("\n")
-            || text.contains(". ")
-            || text.contains(": ")
-        guard shouldFlush else { return nil }
-        return flushAssistantDelta()
+        state.withLock { state in
+            state.assistantDeltaTranscript += text
+            state.assistantDeltaBuffer += text
+            let shouldFlush = state.assistantDeltaBuffer.count >= assistantDeltaFlushThreshold
+                || text.contains("\n")
+                || text.contains(". ")
+                || text.contains(": ")
+            guard shouldFlush else { return nil }
+            return Self.flushAssistantDelta(&state)
+        }
     }
 
     private func flushAssistantDelta() -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
-        let text = assistantDeltaBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
-        assistantDeltaBuffer = ""
+        state.withLock { Self.flushAssistantDelta(&$0) }
+    }
+
+    private static func flushAssistantDelta(_ state: inout State) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        let text = state.assistantDeltaBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        state.assistantDeltaBuffer = ""
         return text.nilIfEmpty.map { .assistant($0, title: "Assistant delta") }
     }
 
@@ -2681,48 +2772,41 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
     }
 
     private func storeAssistantMessage(_ text: String) {
-        latestAssistantMessage = text
+        state.withLock { $0.latestAssistantMessage = text }
     }
 
     private func storeResultText(_ text: String) {
-        latestResultText = text
+        state.withLock { $0.latestResultText = text }
     }
 
     func finalOutputSnapshot(fallback: String?) -> String {
         _ = flushAssistantDelta()
-        let candidates = [
-            latestResultText,
-            latestAssistantMessage,
-            assistantDeltaTranscript,
-            fallback ?? ""
-        ]
+        let candidates = state.withLock { state in
+            [
+                state.latestResultText,
+                state.latestAssistantMessage,
+                state.assistantDeltaTranscript,
+                fallback ?? ""
+            ]
+        }
         return candidates
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty }) ?? ""
     }
 }
 
-private final class LockedProcessOutput: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stdoutStorage = ""
-    private var stderrStorage = ""
-
-    func appendStdout(_ text: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        stdoutStorage += text
+private final class LockedProcessOutput: Sendable {
+    private struct State {
+        var stdout = ""
+        var stderr = ""
     }
 
-    func appendStderr(_ text: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        stderrStorage += text
-    }
+    private let state = Locked(State())
 
+    func appendStdout(_ text: String) { state.withLock { $0.stdout += text } }
+    func appendStderr(_ text: String) { state.withLock { $0.stderr += text } }
     func snapshot() -> (stdout: String, stderr: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        return (stdoutStorage, stderrStorage)
+        state.withLock { ($0.stdout, $0.stderr) }
     }
 }
 
@@ -2741,8 +2825,8 @@ final class AgentHarnessImportJobListener {
     private let dataStore: DataStore
     private let cloudSyncService: CloudSyncService?
     private let deviceTrustChecker: CLIAgentMissionDeviceTrustChecking
-    private let firestoreProvider: () -> Firestore
-    private let parserFactory: (AgentProvider) -> (any LogParser)?
+    private let firestoreProvider: @Sendable () -> Firestore
+    private let parserFactory: @Sendable (AgentProvider) -> (any LogParser)?
     private let logger = Logger(subsystem: "com.openburnbar.app", category: "AgentHarnessImportJobListener")
 
     private var listener: ListenerRegistration?
@@ -2756,8 +2840,8 @@ final class AgentHarnessImportJobListener {
         dataStore: DataStore,
         cloudSyncService: CloudSyncService?,
         deviceTrustChecker: CLIAgentMissionDeviceTrustChecking = LiveCLIAgentMissionDeviceTrustChecker(),
-        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
-        parserFactory: @escaping (AgentProvider) -> (any LogParser)? = { ParserRegistry.defaultParsers()[$0] }
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        parserFactory: @escaping @Sendable (AgentProvider) -> (any LogParser)? = { ParserRegistry.defaultParsers()[$0] }
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
@@ -2773,7 +2857,7 @@ final class AgentHarnessImportJobListener {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     self?.attachIfPossible()
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: 3_000_000_000) // try?-ok(cancellation only)
                 }
             }
         }

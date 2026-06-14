@@ -47,7 +47,7 @@ final class RoutedClientWiringSettings {
         }
         if let raw = persistence.optionalString(forKey: Self.enrolledTargetsKey),
            let data = raw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+           let decoded = try? JSONDecoder().decode([String].self, from: data) { // try?-ok(malformed->empty fallback)
             self.enrolledTargets = Set(decoded)
         } else {
             self.enrolledTargets = []
@@ -91,7 +91,7 @@ final class RoutedClientWiringSettings {
 
     private func persistEnrolledTargets() {
         let sorted = enrolledTargets.sorted()
-        if let data = try? JSONEncoder().encode(sorted),
+        if let data = try? JSONEncoder().encode(sorted), // try?-ok(encode fail removes key)
            let text = String(data: data, encoding: .utf8) {
             persistence.set(text, forKey: Self.enrolledTargetsKey)
         } else {

@@ -169,7 +169,7 @@ function parseSealedPayload(raw: unknown): AgentNotificationReplyCommand["sealed
   if (
     typeof schemaVersion !== "number" ||
     typeof keyVersion !== "number" ||
-    schemaVersion !== 2 ||
+    ![1, 2].includes(schemaVersion) ||
     algorithm !== "AES-256-GCM" ||
     keyVersion !== 1 ||
     !vaultKeyID ||

@@ -55,7 +55,7 @@ private extension EmbeddingDistanceMetric {
 // AUDIT(@unchecked Sendable): all mutable index snapshot state is updated by
 // this provider's serialized refresh/search flow. The conformance is required
 // because `SemanticCandidateProviding` can be held by async search services.
-final class VectorSemanticCandidateProvider: SemanticCandidateProviding, @unchecked Sendable {
+actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private struct ActiveEmbeddingSelection {
         let model: EmbeddingModelRecord
         let version: EmbeddingVersionRecord
@@ -525,7 +525,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding, @unchec
         try dataStore.upsertVectorIndexSnapshot(buildingRecord)
 
         let fileManager = FileManager.default
-        try? fileManager.removeItem(at: tempFiles.directoryURL)
+        try? fileManager.removeItem(at: tempFiles.directoryURL) // try?-ok(clear stale temp dir)
         try fileManager.createDirectory(at: tempFiles.directoryURL, withIntermediateDirectories: true, attributes: nil)
 
         do {
@@ -578,7 +578,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding, @unchec
                 withIntermediateDirectories: true,
                 attributes: nil
             )
-            try? fileManager.removeItem(at: finalFiles.directoryURL)
+            try? fileManager.removeItem(at: finalFiles.directoryURL) // try?-ok(clear stale before move)
             try fileManager.moveItem(at: tempFiles.directoryURL, to: finalFiles.directoryURL)
 
             let readyRecord = VectorIndexSnapshotRecord(
@@ -601,12 +601,12 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding, @unchec
             try dataStore.upsertVectorIndexSnapshot(readyRecord)
 
             if let previousPath = existingRecord?.storageRelativePath, previousPath != finalRelativePath {
-                try? fileManager.removeItem(at: storageRootURL.appendingPathComponent(previousPath, isDirectory: true))
+                try? fileManager.removeItem(at: storageRootURL.appendingPathComponent(previousPath, isDirectory: true)) // try?-ok(reclaim old snapshot dir)
             }
 
             return readyRecord
         } catch {
-            try? fileManager.removeItem(at: tempFiles.directoryURL)
+            try? fileManager.removeItem(at: tempFiles.directoryURL) // try?-ok(cleanup failed temp dir)
             let failedRecord = VectorIndexSnapshotRecord(
                 embeddingVersionID: selection.version.id,
                 backendID: snapshotBackend.backendID,

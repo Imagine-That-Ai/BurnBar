@@ -64,9 +64,9 @@ import {
 // Constants mirrored from firestore.rules / the L41 design doc.
 // ---------------------------------------------------------------------------
 
-export const SIGNED_PREKEY_ALGORITHM = "signal-pqxdh-signed-prekey-v1";
-export const ONE_TIME_PREKEY_ALGORITHM = "signal-pqxdh-one-time-prekey-v1";
-export const KYBER_PREKEY_ALGORITHM = "signal-pqxdh-kyber-prekey-v1";
+const SIGNED_PREKEY_ALGORITHM = "signal-pqxdh-signed-prekey-v1";
+const ONE_TIME_PREKEY_ALGORITHM = "signal-pqxdh-one-time-prekey-v1";
+const KYBER_PREKEY_ALGORITHM = "signal-pqxdh-kyber-prekey-v1";
 
 const TRUSTED_DEVICE_STATES = new Set(["pending", "trusted"]);
 // Fail-closed to the documented scope: only same-user multi-device sessions are
@@ -129,7 +129,7 @@ interface DirectoryContext {
 }
 
 /** Mirror firestore.rules validSignalBase64(value, maxLen). */
-export function parseSignalBase64(raw: unknown, fieldName: string, maxLen: number): string {
+function parseSignalBase64(raw: unknown, fieldName: string, maxLen: number): string {
   if (typeof raw !== "string") {
     throw new HttpsError("invalid-argument", `${fieldName} must be a base64 string.`);
   }
@@ -140,7 +140,7 @@ export function parseSignalBase64(raw: unknown, fieldName: string, maxLen: numbe
 }
 
 /** Reject any payload carrying a secret/private/session-state field. */
-export function assertNoForbiddenFields(raw: Record<string, unknown>, fieldName: string): void {
+function assertNoForbiddenFields(raw: Record<string, unknown>, fieldName: string): void {
   for (const forbidden of FORBIDDEN_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(raw, forbidden)) {
       throw new HttpsError("invalid-argument", `${fieldName} must not contain private or secret field "${forbidden}".`);
@@ -149,7 +149,7 @@ export function assertNoForbiddenFields(raw: Record<string, unknown>, fieldName:
 }
 
 /** Convert a client epoch-ms expiry into a future-bounded Timestamp. */
-export function parseFutureExpiry(
+function parseFutureExpiry(
   raw: unknown,
   fieldName: string,
   nowMs: number,
@@ -180,7 +180,7 @@ function requireFutureExpiry(raw: unknown, fieldName: string, nowMs: number): Ti
 }
 
 /** Build the persisted signed-prekey doc body (minus server createdAt/updatedAt). */
-export function buildSignedPreKeyDoc(
+function buildSignedPreKeyDoc(
   raw: Record<string, unknown>,
   ctx: DirectoryContext,
   nowMs: number,
@@ -210,7 +210,7 @@ export function buildSignedPreKeyDoc(
 }
 
 /** Build a one-time-prekey doc body (expiresAt REQUIRED, status available). */
-export function buildOneTimePreKeyDoc(
+function buildOneTimePreKeyDoc(
   raw: Record<string, unknown>,
   ctx: DirectoryContext,
   nowMs: number,
@@ -241,7 +241,7 @@ export function buildOneTimePreKeyDoc(
 }
 
 /** Build a Kyber-prekey doc body (mandatory for PQXDH; larger base64 bounds). */
-export function buildKyberPreKeyDoc(
+function buildKyberPreKeyDoc(
   raw: Record<string, unknown>,
   ctx: DirectoryContext,
   nowMs: number,
@@ -273,7 +273,7 @@ export function buildKyberPreKeyDoc(
 }
 
 /** Build a session-directory metadata doc (never serialized session state). */
-export function buildSessionDoc(
+function buildSessionDoc(
   raw: Record<string, unknown>,
   ctx: DirectoryContext,
   ownerUid: string,
@@ -314,7 +314,7 @@ export function buildSessionDoc(
 }
 
 /** Build a rotation-event doc (append-only; status planned). */
-export function buildRotationEventDoc(
+function buildRotationEventDoc(
   raw: Record<string, unknown>,
   ctx: DirectoryContext,
   rewrapJobId: string | undefined,
@@ -359,7 +359,7 @@ export function buildRotationEventDoc(
  * single-claim selection is unit-testable independent of the transaction. Picks
  * the lowest numericId for deterministic, gap-free consumption.
  */
-export function selectPrekeyToClaim<T extends { numericId: number; id: string }>(candidates: T[]): T | undefined {
+function selectPrekeyToClaim<T extends { numericId: number; id: string }>(candidates: T[]): T | undefined {
   if (candidates.length === 0) return undefined;
   return [...candidates].sort((a, b) => a.numericId - b.numericId || a.id.localeCompare(b.id))[0];
 }
@@ -768,11 +768,11 @@ export const recordSignalRotation = onCall(
 
 // Below these counts the device should publish more prekeys (one-time prekeys are
 // consumed one-per-inbound-session; Kyber is mandatory for PQXDH).
-export const MIN_AVAILABLE_ONE_TIME_PREKEYS = 10;
-export const MIN_AVAILABLE_KYBER_PREKEYS = 3;
+const MIN_AVAILABLE_ONE_TIME_PREKEYS = 10;
+const MIN_AVAILABLE_KYBER_PREKEYS = 3;
 
 /** Pure low-watermark decision so a recipient device knows when to replenish. */
-export function prekeyReplenishStatus(
+function prekeyReplenishStatus(
   availableOneTime: number,
   availableKyber: number,
 ): { needsReplenish: boolean; lowOneTime: boolean; lowKyber: boolean } {

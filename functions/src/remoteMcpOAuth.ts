@@ -1,4 +1,4 @@
-import { createHash, createHmac, createPrivateKey, randomBytes, sign as signDetached } from "node:crypto";
+import { createHmac, createPrivateKey, randomBytes, sign as signDetached } from "node:crypto";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
@@ -9,7 +9,7 @@ import {
   upsertRemoteMcpClient,
 } from "./remoteMcpGrant.js";
 
-export interface RemoteMcpAccessClaims {
+interface RemoteMcpAccessClaims {
   sub: string;
   aud: string;
   client_id: string;
@@ -24,7 +24,7 @@ function privateKeyFromBase64PEM(value: string) {
   return createPrivateKey(Buffer.from(value, "base64").toString("utf8"));
 }
 
-export function signRemoteMcpAccessToken(
+function signRemoteMcpAccessToken(
   claims: RemoteMcpAccessClaims,
   secret?: string,
   ed25519PrivateKeyBase64PEM?: string,
@@ -39,13 +39,6 @@ export function signRemoteMcpAccessToken(
   }
   const sig = createHmac("sha256", secret).update(body).digest("base64url");
   return { token: `${body}.${sig}`, algorithm: "hmac-sha256" };
-}
-
-export function assertPkce(verifier: string, challenge: string): void {
-  const actual = Buffer.from(createHash("sha256").update(verifier).digest()).toString("base64url");
-  if (actual !== challenge) {
-    throw new HttpsError("permission-denied", "PKCE challenge verification failed.");
-  }
 }
 
 export async function issueRemoteMcpGrantForSignedInUser(

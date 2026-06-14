@@ -45,7 +45,10 @@ actor QuotaRefreshActor {
     let adapters: [AgentProvider: any ProviderQuotaAdapter]
     let refreshProviders: [AgentProvider]
 
-    private var codexRolloutScanCache: CodexRolloutScanCache
+    /// Codex rollout-scan cache held in a `Locked` box so the `@Sendable`
+    /// write-back passed to off-actor adapters can update it without crossing the
+    /// actor boundary on every scan.
+    private let codexRolloutScanCacheBox: Locked<CodexRolloutScanCache>
 
     init(
         settingsManager: SettingsManager,
@@ -98,7 +101,7 @@ actor QuotaRefreshActor {
         case .failed, .missing:
             break
         }
-        self.codexRolloutScanCache = initialCache
+        self.codexRolloutScanCacheBox = Locked(initialCache)
     }
 
     func fetchSnapshot(
@@ -162,15 +165,19 @@ actor QuotaRefreshActor {
             fileManager: fileManager,
             snapshotStore: snapshotStore
         )
-        let claudeBridgeStatus = bridgeManager.refreshClaudeBridgeStatus()
 
         let keyStore = self.keyStore
         let runtimeKeyStore = self.providerRuntimeKeyStore
-        let resolvedKeys = await MainActor.run {
-            resolveAllAPIKeys(keyStore: keyStore, providerRuntimeKeyStore: runtimeKeyStore)
+        let planReaders = self.planReaders
+        // Resolve every main-actor input (API keys + the user's plan selection)
+        // in a single hop so adapters run off the main actor on `Sendable` values.
+        let resolved = await MainActor.run { () -> (keys: [String: String?], plan: ProviderQuotaPlanSnapshot) in
+            let keys = resolveAllAPIKeys(keyStore: keyStore, providerRuntimeKeyStore: runtimeKeyStore)
+            return (keys, planReaders.resolvedSnapshot())
         }
+        let plan = resolved.plan
 
-        let currentCache = self.codexRolloutScanCache
+        let codexCacheBox = self.codexRolloutScanCacheBox
         let context = ProviderQuotaAdapterContext(
             appPaths: appPaths,
             fileManager: fileManager,
@@ -180,23 +187,21 @@ actor QuotaRefreshActor {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: planReaders.miniMaxModeProvider,
-            factoryPlanProvider: planReaders.factoryPlanProvider,
-            xaiPlanProvider: planReaders.xaiPlanProvider,
-            mimoTokenPlanRegionProvider: planReaders.mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: planReaders.mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: planReaders.mimoTokenPlanBillingCycleProvider,
-            claudeBridgeStatus: claudeBridgeStatus,
-            codexRolloutScanCache: currentCache,
-            updateCodexRolloutScanCache: { [self] cache, didChange in
-                self.codexRolloutScanCache = cache
+            miniMaxMode: plan.miniMaxMode,
+            factoryPlan: plan.factoryPlan,
+            xaiPlan: plan.xaiPlan,
+            mimoTokenPlanRegion: plan.mimoTokenPlanRegion,
+            mimoTokenPlanTier: plan.mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: plan.mimoTokenPlanBillingCycle,
+            codexRolloutScanCache: codexCacheBox.read(),
+            updateCodexRolloutScanCache: { [codexCacheBox, snapshotStore] cache, didChange in
+                codexCacheBox.write(cache)
                 if didChange {
                     snapshotStore.persistCodexRolloutScanCache(cache)
                 }
             },
-            refreshClaudeBridgeStatus: { claudeBridgeStatus },
             claudeCredentialsReader: claudeCredentialsReader,
-            resolvedAPIKeys: resolvedKeys
+            resolvedAPIKeys: resolved.keys
         )
         return context
     }
@@ -523,7 +528,11 @@ private func resolveDaemonPlanAPIKey(
 
     for slot in orderedSlots {
         let account = "provider.\(providerID).slot.\(slot.slotID).apiKey"
-        if let key = try? providerRuntimeKeyStore.string(for: account, allowUserInteraction: false),
+        if let key = providerRuntimeKeyStore.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "daemon_plan_api_key_read_failed"
+        ),
            let normalized = quotaNonEmpty(key) {
             return normalized
         }
@@ -570,7 +579,11 @@ private func resolveDaemonAccountCredentials(
 
         for slot in configuration.credentialSlots where slot.isEnabled {
             let secretAccount = "provider.\(configuration.providerID).slot.\(slot.slotID).apiKey"
-            guard let key = try? providerRuntimeKeyStore.string(for: secretAccount, allowUserInteraction: false),
+            guard let key = providerRuntimeKeyStore.credentialIfPresent(
+                for: secretAccount,
+                allowUserInteraction: false,
+                event: "daemon_account_api_key_read_failed"
+            ),
                   let normalizedKey = quotaNonEmpty(key) else {
                 continue
             }
@@ -595,7 +608,7 @@ private func resolveSwitcherCLIQuotaProfiles(
     dataStoreActor: DataStoreActor,
     homeDirectoryURL: URL
 ) -> [SwitcherCLIQuotaProfile] {
-    let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? []
+    let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? [] // try?-ok(skip profile-store read)
 
     return profiles.compactMap { profile in
         guard profile.targetKind == .cli,
@@ -825,10 +838,41 @@ private func claudeOAuthCredentials(fromStoredRouteCredential rawValue: String) 
 }
 
 private func claudeOAuthCredentials(fromSwitcherProfileConfigDirectory configDirectory: String) -> ClaudeOAuthCredentials? {
-    try? ClaudeCodeOAuthCredentialImporter(
-        configDirectory: configDirectory,
-        allowDefaultKeychainFallback: false
-    ).load(allowUserInteraction: false)
+    // The importer's `load()` distinguishes *why* a profile-scoped Claude Code
+    // credential could not be used: `.missing` (no signed-in session for this
+    // switcher profile — the common, benign case), `.malformed` (a credential
+    // file/keychain item exists but its shape is unreadable), and `.expired`
+    // (a token past its usable window). A bare `try?` collapsed all three —
+    // plus any unexpected fault — into the same silent `nil`, so a corrupt or
+    // expired profile credential looked identical to "no Claude Code session"
+    // and the switcher snapshot quietly fell back to the credential-less CLI
+    // (reporting `.unavailable`) with no diagnostic. That masks a correctness
+    // signal in a security/quota product.
+    //
+    // The graceful-degradation contract is preserved exactly: any failure still
+    // yields `nil`, so the caller's `if let` skips credential injection and runs
+    // the CLI unchanged. The only difference is that the *meaningful* failures
+    // (malformed / expired / unexpected) are now observable via `AppLogger`,
+    // while the benign `.missing` path stays quiet to avoid log noise for every
+    // non-Claude profile.
+    do {
+        return try ClaudeCodeOAuthCredentialImporter(
+            configDirectory: configDirectory,
+            allowDefaultKeychainFallback: false
+        ).load(allowUserInteraction: false)
+    } catch ClaudeCodeOAuthCredentialImportError.missing {
+        AppLogger.network.debug(
+            "claude_switcher_profile_credential_absent",
+            metadata: ["errorClass": "ClaudeCodeOAuthCredentialImportError.missing"]
+        )
+        return nil
+    } catch {
+        AppLogger.network.error(
+            "claude_switcher_profile_credential_unusable",
+            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+        )
+        return nil
+    }
 }
 
 private extension String {

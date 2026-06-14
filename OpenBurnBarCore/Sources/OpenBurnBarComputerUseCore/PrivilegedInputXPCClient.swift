@@ -3,7 +3,7 @@ import Foundation
 import os
 
 /// XPC client for the privileged input-execution Mach service (preferred over legacy Unix socket).
-public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
+public final class PrivilegedInputXPCClient: NSObject, Sendable {
     public enum ClientError: Error, Sendable {
         case connectionUnavailable
         case remoteProxyUnavailable
@@ -22,8 +22,10 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
     private let machServiceName: String
     private let requestTimeout: DispatchTimeInterval
     private let socketClient: PrivilegedInputSocketClient?
-    private let lock = NSLock()
-    private var cachedConnections: [ConnectionMode: NSXPCConnection] = [:]
+    /// `NSXPCConnection` is not Sendable, so the cache lives inside an
+    /// `OSAllocatedUnfairLock` (itself Sendable) that mediates every access —
+    /// making the whole client plainly `Sendable` without an escape hatch.
+    private let cachedConnections = OSAllocatedUnfairLock<[ConnectionMode: NSXPCConnection]>(uncheckedState: [:])
 
     public init(
         machServiceName: String = PrivilegedInputXPCConstants.machServiceName,
@@ -116,13 +118,10 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
 
     private func connection(mode: ConnectionMode) throws -> NSXPCConnection {
 #if os(macOS)
-        lock.lock()
-        defer { lock.unlock() }
-
-        let connection: NSXPCConnection
-        if let cached = cachedConnections[mode] {
-            connection = cached
-        } else {
+        return cachedConnections.withLockUnchecked { connections in
+            if let cached = connections[mode] {
+                return cached
+            }
             let created = NSXPCConnection(
                 machServiceName: machServiceName,
                 options: mode.options
@@ -133,20 +132,16 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
             }
             created.interruptionHandler = created.invalidationHandler
             created.resume()
-            cachedConnections[mode] = created
-            connection = created
+            connections[mode] = created
+            return created
         }
-
-        return connection
 #else
         throw ClientError.connectionUnavailable
 #endif
     }
 
     private func invalidateConnection(for mode: ConnectionMode) {
-        lock.lock()
-        let connection = cachedConnections.removeValue(forKey: mode)
-        lock.unlock()
+        let connection = cachedConnections.withLockUnchecked { $0.removeValue(forKey: mode) }
         connection?.invalidate()
     }
 
@@ -184,7 +179,7 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
     }
 }
 
-public final class PrivilegedInputSocketClient: @unchecked Sendable {
+public final class PrivilegedInputSocketClient: Sendable {
     public typealias ServerCodeSignatureValidator = @Sendable (audit_token_t) throws -> Void
 
     private let socketPath: String

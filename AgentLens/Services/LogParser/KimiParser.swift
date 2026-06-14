@@ -27,13 +27,13 @@ final class KimiParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let workspaceDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(skip non-directory entries)
 
         for workspaceDir in workspaceDirs {
             let workspaceId = workspaceDir.lastPathComponent
 
             let sessionDirs = try fileManager.contentsOfDirectory(at: workspaceDir, includingPropertiesForKeys: [.isDirectoryKey])
-                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(skip non-directory entries)
 
             for sessionDir in sessionDirs {
                 let sessionId = sessionDir.lastPathComponent
@@ -65,7 +65,7 @@ final class KimiParser: LogParser, Sendable {
         wireFile: URL?,
         projectName: String
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: contextFile.path)[.modificationDate]) as? Date
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: contextFile.path)[.modificationDate]) as? Date // try?-ok(optional mtime, has fallback)
 
         // Try wire.jsonl first for exact token counts
         var wireTokens: WireTokenData?
@@ -74,10 +74,10 @@ final class KimiParser: LogParser, Sendable {
         }
 
         // Always parse context.jsonl for conversation data and fallback estimation
-        guard let handle = try? FileHandle(forReadingFrom: contextFile) else {
+        guard let handle = try? FileHandle(forReadingFrom: contextFile) else { // try?-ok(skip unreadable session)
             return nil
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(file handle teardown)
 
         var assistantChars = 0
         var userChars = 0
@@ -95,7 +95,7 @@ final class KimiParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(skip malformed log line)
                 continue
             }
 
@@ -226,15 +226,15 @@ final class KimiParser: LogParser, Sendable {
 
     /// Parse wire.jsonl for exact token counts from StatusUpdate messages.
     private func parseWireFile(_ file: URL) -> WireTokenData? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(skip unreadable wire file)
+        defer { try? handle.close() } // try?-ok(file handle teardown)
 
         var result = WireTokenData()
         var messageUsages: [String: WireTokenData] = [:]
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(skip malformed log line)
                 continue
             }
 

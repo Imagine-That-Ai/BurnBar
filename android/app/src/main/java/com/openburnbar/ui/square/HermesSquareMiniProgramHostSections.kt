@@ -94,8 +94,7 @@ internal fun MiniProgramWebView(
     )
 }
 
-private fun miniProgramHostHtml(sandboxURL: String, csp: String): String =
-    """
+private fun miniProgramHostHtml(sandboxURL: String, csp: String): String = """
     <html><head>
       <meta http-equiv="Content-Security-Policy" content="$csp">
     </head><body>
@@ -116,7 +115,7 @@ private fun miniProgramHostHtml(sandboxURL: String, csp: String): String =
               sandbox="allow-scripts allow-same-origin"
               style="width:100%;height:100%;border:0"></iframe>
     </body></html>
-    """.trimIndent()
+""".trimIndent()
 
 private const val MAX_CALL_PAYLOAD_BYTES = 16_384
 

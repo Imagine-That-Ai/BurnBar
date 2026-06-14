@@ -33,7 +33,7 @@ protocol PhoneControlAuthorityPublishing: Sendable {
     ) async throws
 }
 
-final class PhoneControlAuthorityPublisher: PhoneControlAuthorityPublishing, @unchecked Sendable {
+final class PhoneControlAuthorityPublisher: PhoneControlAuthorityPublishing, Sendable {
     static let shared = PhoneControlAuthorityPublisher()
 
     init() {}

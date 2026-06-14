@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarCore
-import SwiftUI
+import Observation
 
 /// Observable façade over `BudgetRulesStore`. The macOS Settings UI binds to this;
 /// `BudgetGate` reads through it (Phase 4); Hermes / MCP write through it (Phase 7).
@@ -97,7 +97,7 @@ final class BudgetSettings {
         guard var rule = rules.first(where: { $0.id == id }) else { return }
         rule.pausedUntil = resumeAt
         upsertRule(rule, source: source)
-        try? store.recordEvent(BudgetEvent(
+        try? store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
             ruleID: id,
             kind: .pause,
             source: source,
@@ -111,7 +111,7 @@ final class BudgetSettings {
         guard var rule = rules.first(where: { $0.id == id }) else { return }
         rule.pausedUntil = nil
         upsertRule(rule, source: source)
-        try? store.recordEvent(BudgetEvent(
+        try? store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
             ruleID: id,
             kind: .resume,
             source: source,
@@ -153,7 +153,7 @@ final class BudgetSettings {
 
     /// Recent audit events. Wraps the store so views don't need to know about GRDB.
     func recentEvents(forRule ruleID: String? = nil, limit: Int = 100) -> [BudgetEvent] {
-        (try? store.recentEvents(forRule: ruleID, limit: limit)) ?? []
+        (try? store.recentEvents(forRule: ruleID, limit: limit)) ?? [] // try?-ok(read with [] fallback)
     }
 
     // MARK: - Legacy migration
@@ -185,7 +185,7 @@ final class BudgetSettings {
     // MARK: - Helpers
 
     private func encodeDetail(_ detail: [String: String]) -> String? {
-        guard let data = try? JSONEncoder().encode(detail) else { return nil }
+        guard let data = try? JSONEncoder().encode(detail) else { return nil } // try?-ok(JSON encode guard-nil)
         return String(data: data, encoding: .utf8)
     }
 }

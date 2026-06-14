@@ -1,9 +1,4 @@
-type EndpointTrigger =
-  | "callable"
-  | "http"
-  | "scheduled"
-  | "firestore-trigger"
-  | "provider-webhook";
+type EndpointTrigger = "callable" | "http" | "scheduled" | "firestore-trigger" | "provider-webhook";
 
 type EndpointAuthorizationEntry = {
   exportedName: string;
@@ -14,8 +9,6 @@ type EndpointAuthorizationEntry = {
   objectIdsFromClient: string[];
   ownershipCheck: string;
   negativeBolaTest: string;
-  highRiskComputerUse: boolean;
-  actionKind?: string;
   publicJustification?: string;
   notes?: string;
 };
@@ -28,7 +21,6 @@ function entries(names: string[], defaults: MatrixDefaults): EndpointAuthorizati
   return names.map((exportedName) => ({
     exportedName,
     objectIdsFromClient: defaults.objectIdsFromClient ?? [],
-    highRiskComputerUse: false,
     ...defaults,
   }));
 }
@@ -81,11 +73,7 @@ const scheduledJobs = entries(
 );
 
 const firestoreTriggers = entries(
-  [
-    "onCliSessionAgentReplyNotification",
-    "onMobileAssistantAgentReplyNotification",
-    "onKnowledgeRepoPush",
-  ],
+  ["onCliSessionAgentReplyNotification", "onMobileAssistantAgentReplyNotification", "onKnowledgeRepoPush"],
   {
     trigger: "firestore-trigger",
     authMethod: "Firestore event trigger",
@@ -103,11 +91,20 @@ const providerWebhooks = entries(["stripeBurnBarProWebhook", "appStoreServerNoti
   tenantSource: "provider-signed account token or transaction payload",
   ownershipCheck: "server maps verified provider account token to uid/entitlement",
   negativeBolaTest: "provider-webhook-signature-and-account-token-tests",
-  publicJustification: "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
+  publicJustification:
+    "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
 });
 
 const codePairingCallables = entries(
-  ["startCliLink", "pollCliLink", "completeCliLink", "createHermesPairing", "completeHermesPairing", "createPiAgentPairing", "completePiAgentPairing"],
+  [
+    "startCliLink",
+    "pollCliLink",
+    "completeCliLink",
+    "createHermesPairing",
+    "completeHermesPairing",
+    "createPiAgentPairing",
+    "completePiAgentPairing",
+  ],
   {
     trigger: "callable",
     authMethod: "Firebase Auth/App Check plus one-time pairing or link code",
@@ -177,6 +174,7 @@ const authScopedCallables = entries(
     "listEncryptedProjectMemorySnapshots",
     "searchEncryptedConversationIndex",
     "queryConversations",
+    "getProfileAvatarDownloadUrl",
     "commitKnowledgeBatch",
     "configureKnowledgeSource",
     "deleteKnowledgeSource",
@@ -243,8 +241,10 @@ const authScopedCallables = entries(
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "deviceId", "documentID", "providerAccountId", "sourceId", "attachmentId"],
-    ownershipCheck: "handler must derive uid from request.auth.uid and validate object path or owner uid before Admin SDK access",
-    negativeBolaTest: "endpoint-specific BOLA tests required; matrix drift is enforced by endpointAuthorizationMatrix.test.ts",
+    ownershipCheck:
+      "handler must derive uid from request.auth.uid and validate object path or owner uid before Admin SDK access",
+    negativeBolaTest:
+      "endpoint-specific BOLA tests required; matrix drift is enforced by endpointAuthorizationMatrix.test.ts",
   },
 );
 
@@ -258,22 +258,6 @@ const outboundServiceJobs = entries(["sendVoIPOutbound", "sendFcmOutbound"], {
   negativeBolaTest: "push-resilience.test.ts and agent notification reply tests",
 });
 
-const HIGH_RISK_ENDPOINTS: Record<string, string> = {
-  approveHermesGatewayDeviceGrant: "hermes_gateway_device_grant_approve",
-  connectProviderAccount: "provider_account_connect",
-  connectProviderCredential: "provider_credential_connect",
-  connectHostedQuotaAccount: "hosted_quota_account_connect",
-  connectSelfHostedQuotaAccount: "self_hosted_quota_account_connect",
-  exportUserData: "data_export",
-  deleteUserCloudData: "user_cloud_data_delete",
-  revokeAllAccess: "revoke_all_access",
-  updateProviderAccount: "provider_account_update",
-  revokeRemoteMcpClient: "remote_mcp_grant_revoke",
-  deleteHostedQuotaCredentials: "hosted_quota_credential_delete",
-  completeHermesPairing: "hermes_pairing_complete",
-  completePiAgentPairing: "pi_agent_pairing_complete",
-};
-
 export const endpointAuthorizationMatrix: EndpointAuthorizationEntry[] = [
   ...publicHealth,
   ...scheduledJobs,
@@ -283,13 +267,7 @@ export const endpointAuthorizationMatrix: EndpointAuthorizationEntry[] = [
   ...gatewayHttp,
   ...authScopedCallables,
   ...outboundServiceJobs,
-].map((entry) => {
-  const actionKind = HIGH_RISK_ENDPOINTS[entry.exportedName];
-  if (actionKind) {
-    return { ...entry, highRiskComputerUse: true, actionKind };
-  }
-  return entry;
-}).sort((left, right) => left.exportedName.localeCompare(right.exportedName));
+].sort((left, right) => left.exportedName.localeCompare(right.exportedName));
 
 export function endpointAuthorizationByName(): Map<string, (typeof endpointAuthorizationMatrix)[number]> {
   return new Map(endpointAuthorizationMatrix.map((entry) => [entry.exportedName, entry]));

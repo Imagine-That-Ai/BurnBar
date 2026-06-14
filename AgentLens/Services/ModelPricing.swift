@@ -103,7 +103,7 @@ private struct OpenBurnBarCatalogLookup {
 
     private init() {
         #if canImport(OpenBurnBarCore)
-        self.catalog = try? BurnBarCatalogLoader.loadBundledCatalog()
+        self.catalog = try? BurnBarCatalogLoader.loadBundledCatalog() // try?-ok(catalog load has fallback)
         #endif
     }
 

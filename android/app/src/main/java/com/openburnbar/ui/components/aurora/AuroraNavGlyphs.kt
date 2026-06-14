@@ -69,8 +69,10 @@ fun PulseGlyph(size: Dp, isSelected: Boolean, modifier: Modifier = Modifier) {
                 Offset(padX, midY),
                 Offset(w * 0.22f, midY),
                 Offset(w * 0.32f, midY * 0.85f),
-                Offset(w * 0.38f, h * 0.12f), // sharp peak
-                Offset(w * 0.46f, h * 0.88f), // deep trough
+                // sharp peak
+                Offset(w * 0.38f, h * 0.12f),
+                // deep trough
+                Offset(w * 0.46f, h * 0.88f),
                 Offset(w * 0.55f, midY * 0.95f),
                 Offset(w * 0.68f, midY),
                 Offset(w - padX, midY),
@@ -787,7 +789,7 @@ fun InsightsGlyph(size: Dp, isSelected: Boolean, isPressed: Boolean = false) {
                 Brush.linearGradient(
                     colors = listOf(AuroraColors.darkTextSecondary, AuroraColors.darkTextSecondary),
                 )
-        }
+            }
 
         // 4-point star (sparkle) — central
         val starSize = half * 0.7f * pressScale

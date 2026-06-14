@@ -23,8 +23,8 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -93,8 +93,8 @@ internal fun AddProviderConnectionSheet(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.lg.dp)
-                .padding(bottom = AuroraSpacing.xxxl.dp),
+                .padding(AuroraSpacing.LG.dp)
+                .padding(bottom = AuroraSpacing.XXXL.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -109,7 +109,7 @@ internal fun AddProviderConnectionSheet(
                     Icon(Icons.Filled.Close, null)
                 }
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
             AddProviderConnectionForm(
                 selectedProvider = selectedProvider,
                 state = state,
@@ -121,11 +121,7 @@ internal fun AddProviderConnectionSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AddProviderConnectionForm(
-    selectedProvider: AgentProvider,
-    state: AddProviderConnectionState,
-    callbacks: AddProviderConnectionCallbacks,
-) {
+internal fun AddProviderConnectionForm(selectedProvider: AgentProvider, state: AddProviderConnectionState, callbacks: AddProviderConnectionCallbacks) {
     val trimmedKey = state.apiKey.trim().lowercase()
     val isMimoTokenPlan = selectedProvider == AgentProvider.MIMO && trimmedKey.startsWith("tp-")
     val isMimoPayg = selectedProvider == AgentProvider.MIMO && trimmedKey.startsWith("sk-")
@@ -142,7 +138,7 @@ internal fun AddProviderConnectionForm(
             (selectedProvider != AgentProvider.MIMO || mimoAuthMethod != null)
 
     AuroraGlassCard {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             AddProviderHeader(selectedProvider = selectedProvider)
             AddProviderCredentialFields(
                 label = state.label,
@@ -177,7 +173,7 @@ internal fun AddProviderConnectionForm(
 private fun AddProviderHeader(selectedProvider: AgentProvider) {
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         ProviderAvatar(providerKey = selectedProvider.key, size = 48)
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         Text(
             selectedProvider.displayName,
             fontWeight = FontWeight.SemiBold,
@@ -187,12 +183,7 @@ private fun AddProviderHeader(selectedProvider: AgentProvider) {
 }
 
 @Composable
-private fun AddProviderCredentialFields(
-    label: String,
-    apiKey: String,
-    onLabelChange: (String) -> Unit,
-    onApiKeyChange: (String) -> Unit,
-) {
+private fun AddProviderCredentialFields(label: String, apiKey: String, onLabelChange: (String) -> Unit, onApiKeyChange: (String) -> Unit) {
     OutlinedTextField(
         value = label,
         onValueChange = onLabelChange,
@@ -314,10 +305,7 @@ private fun AddProviderConnectButton(isLoading: Boolean, enabled: Boolean, onCli
     }
 }
 
-internal fun buildAddProviderConnectPayload(
-    selectedProvider: AgentProvider,
-    state: AddProviderConnectionState,
-): AddProviderConnectPayload {
+internal fun buildAddProviderConnectPayload(selectedProvider: AgentProvider, state: AddProviderConnectionState): AddProviderConnectPayload {
     val trimmedKey = state.apiKey.trim().lowercase()
     val isMimoTokenPlan = selectedProvider == AgentProvider.MIMO && trimmedKey.startsWith("tp-")
     val isMimoPayg = selectedProvider == AgentProvider.MIMO && trimmedKey.startsWith("sk-")

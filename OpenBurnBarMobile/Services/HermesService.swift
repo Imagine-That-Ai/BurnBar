@@ -139,7 +139,7 @@ final class FirestoreHermesConnectionRepository: HermesConnectionListing {
             data["id"] = documentID
         }
 
-        let sanitized = FirestoreRepository.shared.sanitizeForJSON(data)
+        let sanitized = FirestoreRepository.sanitizeForJSON(data)
         let jsonData = try JSONSerialization.data(withJSONObject: sanitized)
         let record = try JSONDecoder().decode(HermesConnectionRecord.self, from: jsonData)
         return record.status == .revoked ? nil : record
@@ -738,6 +738,13 @@ final class HermesService {
             text: trimmed,
             attachments: attachments
         )
+        // remediation(chat-cap): apply the transcript window cap on the dominant
+        // relay/local streaming path too — it is the only Hermes send path with
+        // multi-iteration tool loops (fastest array growth) and the one HermesTabView
+        // uses most. Safe point: `!isStreaming` was just guarded at the top of
+        // sendMessage, so there is no active streaming tail to trim. Mirrors the
+        // placement in beginBurnBarGatewayTurn / beginVisibleCLITurn.
+        conversation.capRetainedMessages()
         messages.append(userMessage)
         isStreaming = true
         lastError = nil

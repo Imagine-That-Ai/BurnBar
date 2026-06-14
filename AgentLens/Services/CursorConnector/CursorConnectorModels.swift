@@ -273,8 +273,8 @@ struct RoutedClientConfigSyncService {
 
     func isFactoryGatewayConfigPresent() -> Bool {
         let urls = factoryGatewayConfigURLs()
-        let settingsRoot = (try? loadJSONObject(at: urls.settings)) ?? [:]
-        let configRoot = (try? loadJSONObject(at: urls.config)) ?? [:]
+        let settingsRoot = (try? loadJSONObject(at: urls.settings)) ?? [:] // try?-ok(presence check fallback)
+        let configRoot = (try? loadJSONObject(at: urls.config)) ?? [:] // try?-ok(presence check fallback)
         let settingsModels = settingsRoot["customModels"] as? [[String: Any]] ?? []
         let configModels = configRoot["custom_models"] as? [[String: Any]] ?? []
         return settingsModels.contains(where: isOpenBurnBarFactoryEntry)
@@ -549,7 +549,7 @@ struct OpenBurnBarConnectorCatalogLookup: Sendable {
 
     private init() {
         #if canImport(OpenBurnBarCore)
-        let loadedCatalog = try? BurnBarCatalogLoader.loadBundledCatalog()
+        let loadedCatalog = try? BurnBarCatalogLoader.loadBundledCatalog() // try?-ok(nil-guarded catalog fallback)
         self.catalog = loadedCatalog
         if let loadedCatalog {
             let connectorProviders = loadedCatalog.providers.filter { provider in

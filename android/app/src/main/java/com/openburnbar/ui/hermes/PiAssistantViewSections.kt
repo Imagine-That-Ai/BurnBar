@@ -69,11 +69,7 @@ import kotlinx.coroutines.delay
 // MARK: - Lifecycle
 
 @Composable
-internal fun PiAssistantLifecycleEffects(
-    piService: PiService,
-    context: Context,
-    currentThreadID: String?,
-) {
+internal fun PiAssistantLifecycleEffects(piService: PiService, context: Context, currentThreadID: String?) {
     LaunchedEffect(Unit) { piService.refreshRuntime() }
 
     DisposableEffect(currentThreadID) {
@@ -123,10 +119,7 @@ internal data class PiAssistantScreenCallbacks(
 )
 
 @Composable
-internal fun PiAssistantScreen(
-    state: PiAssistantScreenState,
-    callbacks: PiAssistantScreenCallbacks,
-) {
+internal fun PiAssistantScreen(state: PiAssistantScreenState, callbacks: PiAssistantScreenCallbacks) {
     Column(modifier = Modifier.fillMaxSize()) {
         PiAssistantHeader(onShowPermissions = callbacks.onShowPermissions)
         if (!state.isReachable) {
@@ -358,12 +351,7 @@ private fun PiToolCallPill(tool: PiToolCall) {
 }
 
 @Composable
-private fun PiToolCallPillBody(
-    tool: PiToolCall,
-    accent: Color,
-    isDone: Boolean,
-    statusColor: Color,
-) {
+private fun PiToolCallPillBody(tool: PiToolCall, accent: Color, isDone: Boolean, statusColor: Color) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -467,13 +455,7 @@ internal fun PiComposer(value: String, isStreaming: Boolean, onChange: (String) 
 }
 
 @Composable
-private fun RowScope.PiComposerInputField(
-    value: String,
-    isStreaming: Boolean,
-    accent: Color,
-    onChange: (String) -> Unit,
-    onSend: () -> Unit,
-) {
+private fun RowScope.PiComposerInputField(value: String, isStreaming: Boolean, accent: Color, onChange: (String) -> Unit, onSend: () -> Unit) {
     androidx.compose.foundation.text.BasicTextField(
         value = value,
         onValueChange = onChange,
@@ -506,12 +488,7 @@ private fun RowScope.PiComposerInputField(
 }
 
 @Composable
-private fun PiComposerSendButton(
-    value: String,
-    isStreaming: Boolean,
-    accent: Color,
-    onSend: () -> Unit,
-) {
+private fun PiComposerSendButton(value: String, isStreaming: Boolean, accent: Color, onSend: () -> Unit) {
     val canSend = value.isNotBlank() && !isStreaming
     val sendBg =
         when {

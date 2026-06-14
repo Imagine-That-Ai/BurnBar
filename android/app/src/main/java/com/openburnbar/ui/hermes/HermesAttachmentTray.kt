@@ -82,7 +82,7 @@ fun HermesAttachmentTray(
 
     Column(modifier = modifier.fillMaxWidth()) {
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             items(attachments) { attachment ->
@@ -93,10 +93,10 @@ fun HermesAttachmentTray(
             }
         }
 
-        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             AttachmentActionChip(
@@ -153,12 +153,12 @@ private fun AttachmentChipBody(attachment: HermesAttachment) {
         modifier =
         Modifier
             .width(80.dp)
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
-            .padding(AuroraSpacing.sm.dp),
+            .padding(AuroraSpacing.SM.dp),
     ) {
         AttachmentChipPreview(isImage = isImage, thumbnail = thumbnail)
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
         Text(
             text = attachment.fileName,
             fontSize = AuroraTypography.tiny.sp,
@@ -179,7 +179,7 @@ private fun AttachmentChipPreview(isImage: Boolean, thumbnail: androidx.compose.
             modifier =
             Modifier
                 .size(48.dp)
-                .clip(RoundedCornerShape(AuroraRadius.sm.dp)),
+                .clip(RoundedCornerShape(AuroraRadius.SM.dp)),
         )
     } else {
         Icon(
@@ -212,28 +212,26 @@ internal fun attachmentThumbnailSampleSize(width: Int, height: Int): Int {
     return sampleSize
 }
 
-private suspend fun loadAttachmentThumbnail(
-    context: android.content.Context,
-    uriString: String,
-): androidx.compose.ui.graphics.ImageBitmap? = withContext(Dispatchers.IO) {
-    try {
-        val uri = Uri.parse(uriString)
-        // Two-pass decode: read bounds only, then re-open the stream (content
-        // streams are not rewindable) and decode at the sampled size.
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, bounds)
+private suspend fun loadAttachmentThumbnail(context: android.content.Context, uriString: String): androidx.compose.ui.graphics.ImageBitmap? =
+    withContext(Dispatchers.IO) {
+        try {
+            val uri = Uri.parse(uriString)
+            // Two-pass decode: read bounds only, then re-open the stream (content
+            // streams are not rewindable) and decode at the sampled size.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, bounds)
+            }
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = attachmentThumbnailSampleSize(bounds.outWidth, bounds.outHeight)
+            }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
+            }
+        } catch (_: Exception) {
+            null
         }
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = attachmentThumbnailSampleSize(bounds.outWidth, bounds.outHeight)
-        }
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
-        }
-    } catch (_: Exception) {
-        null
     }
-}
 
 @Composable
 private fun AttachmentActionChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -241,10 +239,10 @@ private fun AttachmentActionChip(icon: androidx.compose.ui.graphics.vector.Image
         verticalAlignment = Alignment.CenterVertically,
         modifier =
         modifier
-            .clip(RoundedCornerShape(AuroraRadius.full.dp))
+            .clip(RoundedCornerShape(AuroraRadius.FULL.dp))
             .clickable(onClick = onClick)
             .background(AuroraColors.hermesMercury.copy(alpha = 0.12f))
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
     ) {
         Icon(
             imageVector = icon,
@@ -252,7 +250,7 @@ private fun AttachmentActionChip(icon: androidx.compose.ui.graphics.vector.Image
             modifier = Modifier.size(16.dp),
             tint = AuroraColors.hermesAureate,
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         Text(
             text = label,
             fontSize = AuroraTypography.caption.sp,

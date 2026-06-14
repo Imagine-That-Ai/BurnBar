@@ -57,13 +57,12 @@ internal fun decodePixelClock(data: Map<String, Any?>?): PixelClockConfig {
     )
 }
 
-internal fun decodePublishedAtMs(value: Any?): Long =
-    when (value) {
-        is Timestamp -> value.seconds * 1000L + value.nanoseconds / 1_000_000L
-        is String -> runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)
-        is Number -> value.toLong()
-        else -> 0L
-    }
+internal fun decodePublishedAtMs(value: Any?): Long = when (value) {
+    is Timestamp -> value.seconds * 1000L + value.nanoseconds / 1_000_000L
+    is String -> runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)
+    is Number -> value.toLong()
+    else -> 0L
+}
 
 internal fun Any?.asStringAnyNullableMap(): Map<String, Any?>? {
     val raw = this as? Map<*, *> ?: return null

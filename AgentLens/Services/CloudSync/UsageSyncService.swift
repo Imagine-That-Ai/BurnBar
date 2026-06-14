@@ -11,7 +11,7 @@ import OpenBurnBarCore
 /// sealed with the per-user Cloud Vault key (`sealedProjectName`) instead of
 /// being written in plaintext. An opaque keyed `projectKeyHash` is also written
 /// so on-device readers can group usage by project without decrypting every row.
-final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
+final class UsageSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -153,8 +153,11 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
         let sealedProjectName = try CloudVaultCrypto.sealText(usage.projectName, keyData: vaultKey)
         data["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(sealedProjectName)
         // Opaque keyed group-by trapdoor so readers can bucket usage by project
-        // without decrypting every row. Absent for empty/blank names.
-        if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: usage.projectName, keyData: vaultKey) {
+        // without decrypting every row. Absent for empty/blank names. A real
+        // crypto/derivation failure here is NOT coalesced into the "blank name"
+        // nil: it throws so the row stays unsynced and is retried, instead of
+        // silently uploading a usage doc missing its group-by key.
+        if let projectKeyHash = try CloudVaultCrypto.projectKeyHashOrThrow(for: usage.projectName, keyData: vaultKey) {
             data["projectKeyHash"] = projectKeyHash
         }
         // Strip any legacy plaintext now that the sealed copy is written. The
@@ -179,10 +182,32 @@ extension CloudVaultCrypto {
     /// ONE cross-platform group-by bucket. (A previous `normalizedTokens().joined()`
     /// pre-step dropped stopwords/short tokens and diverged from Android — e.g.
     /// "The API v2" hashed `apiv2` here but `theapiv2` on Android.)
-    static func projectKeyHash(for projectName: String, keyData: Data) -> String? {
+    ///
+    /// This is the throwing primitive: it returns `nil` ONLY for the expected
+    /// "too short to normalize" case; any crypto/derivation fault (e.g. a bad key
+    /// length surfacing from `searchKey`) propagates so the caller can fail closed.
+    /// Use this on write paths (usage upload) where a missing group-by trapdoor
+    /// must NOT be papered over by silently omitting the field.
+    static func projectKeyHashOrThrow(for projectName: String, keyData: Data) throws -> String? {
         let normalized = projectName.lowercased().filter { ("a"..."z").contains($0) || ("0"..."9").contains($0) }
         guard normalized.count >= 2 else { return nil }
-        return try? tokenHashes(for: normalized, keyData: keyData, limit: 1).first
+        return try tokenHashes(for: normalized, keyData: keyData, limit: 1).first
+    }
+
+    /// Non-throwing convenience preserved for cross-surface callers (budget /
+    /// approval-policy sealing) that bucket on a best-effort basis. A crypto fault
+    /// is no longer swallowed silently: it is logged (and the field omitted) so the
+    /// loss is observable, while the <2-char case still returns `nil` quietly.
+    static func projectKeyHash(for projectName: String, keyData: Data) -> String? {
+        do {
+            return try projectKeyHashOrThrow(for: projectName, keyData: keyData)
+        } catch {
+            AppLogger.sync.error(
+                "projectKeyHash.derivationFailed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return nil
+        }
     }
 
     /// Opens a sealed project name from a Firestore document, falling back to the
@@ -196,11 +221,33 @@ extension CloudVaultCrypto {
     ) -> String? {
         if let raw = data[sealedField],
            let envelope = decodeSealedText(from: raw) {
-            if let keyData, let plaintext = try? openText(envelope, keyData: keyData) {
-                return plaintext
+            guard let keyData else {
+                // No vault key on this device — sealed text stays opaque. Never
+                // fall through to a legacy plaintext value.
+                return nil
             }
-            // Sealed but unreadable on this device — do not leak a legacy value.
-            return nil
+            do {
+                return try openText(envelope, keyData: keyData)
+            } catch let error as CloudVaultCryptoError {
+                // A structural fault (malformed envelope / non-UTF8 plaintext)
+                // means the stored ciphertext is corrupt or schema-broken — surface
+                // it so silent corruption is observable, then fail closed.
+                AppLogger.sync.error(
+                    "openSealedProjectName.envelopeInvalid",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+                return nil
+            } catch {
+                // AEAD open failure: either this device holds the wrong vault key
+                // (expected on a not-yet-keyed device) or the ciphertext/tag was
+                // tampered with. Both are indistinguishable in the AEAD, so log at
+                // notice and fail closed without ever leaking a legacy value.
+                AppLogger.sync.notice(
+                    "openSealedProjectName.unreadable",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+                return nil
+            }
         }
         return data[legacyField] as? String
     }

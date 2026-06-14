@@ -1,7 +1,7 @@
 package com.openburnbar.data.computeruse
 
-import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantLocalAuthProof
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import java.util.UUID

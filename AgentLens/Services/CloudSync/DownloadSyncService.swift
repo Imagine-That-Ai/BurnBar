@@ -7,7 +7,7 @@ import OpenBurnBarCore
 ///
 /// Handles cross-device replication with durable, per-account, per-collection watermark tracking.
 /// Layout: `users/{uid}/usage`, `users/{uid}/conversations`, `users/{uid}/session_logs`
-final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
+final class DownloadSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext
     private let conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding
 
@@ -16,7 +16,8 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
     var isSyncing: Bool { state.read().isSyncing }
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
-    private(set) var cloudTotalCost: Double?
+    private let cloudTotalCostBox = Locked<Double?>(nil)
+    var cloudTotalCost: Double? { cloudTotalCostBox.read() }
 
     init(
         context: CloudSyncContext,
@@ -75,9 +76,9 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
                     .getDocuments()
             }
 
-            cloudTotalCost = snapshot.documents.compactMap { doc -> Double? in
+            cloudTotalCostBox.write(snapshot.documents.compactMap { doc -> Double? in
                 doc.data()["cost"] as? Double
-            }.reduce(0, +)
+            }.reduce(0, +))
         } catch {
             AppLogger.sync.error("download_sync_aggregate_failed", metadata: ["error": error.localizedDescription])
         }
@@ -88,7 +89,23 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
         let gate = await context.syncGate()
         guard gate.account.isFirebaseAvailable, let uid = gate.account.uid else { return }
         let devicesRef = context.firestoreGateway.collection("users").document(uid).collection("devices")
-        try? await devicesRef.document(gate.account.deviceId).setData(["deviceName": name], merge: true)
+        do {
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.deviceName.write"
+            ) {
+                try await devicesRef.document(gate.account.deviceId).setData(["deviceName": name], merge: true)
+            }
+        } catch {
+            // Non-fatal: the local device name is display-only metadata and is
+            // re-asserted by `syncDeviceRegistry` on the next sync. We still log
+            // so a remote write that silently never lands is observable.
+            AppLogger.sync.error(
+                "download_device_name_write_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     // MARK: - Device Registry
@@ -327,7 +344,24 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             // Peer usage rows seal the project name (`sealedProjectName`); resolve the
             // read vault key once so we can open it. Legacy plaintext rows fall back
             // inside `openSealedProjectName`; an un-approved device returns "".
-            let usageVaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
+            //
+            // `keyForReading` returns nil for the EXPECTED un-approved-device case
+            // (no local key + no key wrapper). It THROWS for a real provider fault —
+            // most importantly `CloudVaultAccessError.vaultKeyMismatch`, which signals
+            // vault-key rotation / state corruption. A bare `try?` would collapse that
+            // security-relevant condition into the same silent nil, so a mismatch would
+            // invisibly degrade every peer row to a plaintext/empty project name. Keep
+            // the nil-on-no-key behavior, but make a real fault observable.
+            var usageVaultKey: CloudVaultResolvedKey?
+            do {
+                usageVaultKey = try await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
+            } catch {
+                usageVaultKey = nil
+                AppLogger.sync.error(
+                    "download_usage_vault_key_unavailable",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
 
             for doc in snapshot.documents {
                 let data = doc.data()
@@ -434,6 +468,9 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
             var vaultKey: CloudVaultResolvedKey?
+            // Resolved at most once per cycle (even on failure) so a persistent provider
+            // fault logs a single time instead of once per peer document.
+            var vaultKeyResolved = false
             // Resolved once per cycle: the PINNED trusted-sender public keys so a conversation
             // written by ANOTHER trusted device verifies its sender signature cross-device
             // (without this, only self-authored docs verify and peer docs fall back to legacy).
@@ -449,8 +486,26 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
                       data["sealedPayload"] != nil else {
                     continue
                 }
-                if vaultKey == nil {
-                    vaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
+                if !vaultKeyResolved {
+                    vaultKeyResolved = true
+                    // `keyForReading` returns nil for the EXPECTED un-approved-device case;
+                    // it THROWS for a real provider fault (e.g. `vaultKeyMismatch` on vault-key
+                    // rotation / state corruption, or a Signal-identity resolution failure). The
+                    // resolved key carries both the AES vault key AND `signalIdentity`, which the
+                    // open path below uses to derive `trustedSenders` for CROSS-DEVICE sender-
+                    // signature verification. A bare `try?` would silently turn a key/identity-
+                    // resolution failure into "no key" — disabling sender-auth and degrading every
+                    // peer doc to the unverified legacy fallback without a trace. Keep nil-on-no-key,
+                    // but make a real fault observable.
+                    do {
+                        vaultKey = try await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
+                    } catch {
+                        vaultKey = nil
+                        AppLogger.sync.error(
+                            "download_conversation_vault_key_unavailable",
+                            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                        )
+                    }
                 }
                 if !trustedSendersResolved, let identity = vaultKey?.signalIdentity {
                     trustedSenders = await MacCloudVaultSignalPayloads.trustedSenderPublicKeys(

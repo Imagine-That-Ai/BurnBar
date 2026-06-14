@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 /// Asynchronous, non-blocking line reader for `Pipe` stdout/stderr.
 ///
@@ -55,7 +56,7 @@ final class AsyncPipeLineReader: Sendable {
             source.setCancelHandler { [state, pipe] in
                 // Flush remaining buffer as final line if non-empty.
                 state.flushRemaining(into: continuation)
-                try? pipe.fileHandleForReading.close()
+                try? pipe.fileHandleForReading.close() // try?-ok(handle teardown)
                 continuation.finish()
             }
 
@@ -71,45 +72,55 @@ final class AsyncPipeLineReader: Sendable {
 // MARK: - Thread-safe buffer state
 
 private final class ReaderState: Sendable {
-    private let lock = NSLock()
-    private var buffer = Data()
-    /// Tracks the search start offset so we don't re-scan bytes we've
-    /// already confirmed don't contain a newline.
-    private var searchOffset = 0
+    /// Mutable buffer state held in a `Sendable` lock box. This is the genuine
+    /// `Sendable` conformance (no `@unchecked`): the buffer is only ever touched
+    /// under `Locked`, which the compiler can verify.
+    private struct BufferState: Sendable {
+        var buffer = Data()
+    }
+
+    private let state = Locked(BufferState())
 
     /// Appends raw bytes and yields all complete lines found in the buffer.
-    /// Called exclusively from the GCD dispatch source event handler, which
-    /// runs serially on the source's queue — no concurrent access.
+    /// Called serially from the GCD dispatch source event handler. Lines are
+    /// extracted under the lock and yielded *after* releasing it, so the
+    /// continuation never runs while the lock is held.
     func appendAndYieldLines(_ data: Data, continuation: AsyncThrowingStream<String, Error>.Continuation) {
-        lock.lock()
-        buffer.append(data)
-
-        while let offset = findNewlineLocked() {
-            let lineData = buffer.subdata(in: 0..<offset)
-            buffer.removeFirst(offset + 1)
-            searchOffset = 0
-
-            // Unlock before yielding to avoid re-entrancy deadlock.
-            // The dispatch source is suspended during cancel, so no
-            // concurrent appendAndYieldLines calls can occur.
-            lock.unlock()
-            if let line = String(data: lineData, encoding: .utf8) {
-                let stripped = line.trimmingCharacters(in: .newlines)
-                continuation.yield(stripped)
+        let lines = state.withLock { state -> [String] in
+            state.buffer.append(data)
+            var extracted: [String] = []
+            // Walk newline-delimited lines in the buffer's OWN index space.
+            // `Data` indices are not guaranteed to be zero-based after slicing,
+            // so we must use `startIndex`/`index(after:)` rather than absolute
+            // offsets, and re-base the unconsumed remainder once at the end.
+            var lineStart = state.buffer.startIndex
+            while let newlineIndex = state.buffer[lineStart...].firstIndex(of: 0x0A) {
+                if let line = String(data: state.buffer[lineStart..<newlineIndex], encoding: .utf8) {
+                    extracted.append(line.trimmingCharacters(in: .newlines))
+                }
+                lineStart = state.buffer.index(after: newlineIndex)
             }
-            lock.lock()
+            if lineStart > state.buffer.startIndex {
+                // Drop the consumed prefix once; `Data(_:)` re-bases to a fresh
+                // zero-indexed buffer so the next append stays well-formed.
+                state.buffer = Data(state.buffer[lineStart...])
+            }
+            return extracted
         }
-        lock.unlock()
+
+        for line in lines {
+            continuation.yield(line)
+        }
     }
 
     /// Flushes remaining buffered data as a final line. Called from the
     /// cancel handler, which runs after the source is fully cancelled.
     func flushRemaining(into continuation: AsyncThrowingStream<String, Error>.Continuation) {
-        lock.lock()
-        let remaining = buffer
-        buffer.removeAll()
-        searchOffset = 0
-        lock.unlock()
+        let remaining = state.withLock { state -> Data in
+            let remaining = state.buffer
+            state.buffer.removeAll()
+            return remaining
+        }
 
         if !remaining.isEmpty, let line = String(data: remaining, encoding: .utf8) {
             let stripped = line.trimmingCharacters(in: .newlines)
@@ -117,16 +128,5 @@ private final class ReaderState: Sendable {
                 continuation.yield(stripped)
             }
         }
-    }
-
-    /// Searches for the next `\n` byte starting at `searchOffset`.
-    /// **Must be called while holding `lock`.**
-    private func findNewlineLocked() -> Int? {
-        let searchRange = searchOffset..<buffer.count
-        guard let offset = buffer.range(of: Data([0x0A]), options: [], in: searchRange)?.lowerBound else {
-            searchOffset = buffer.count
-            return nil
-        }
-        return offset
     }
 }

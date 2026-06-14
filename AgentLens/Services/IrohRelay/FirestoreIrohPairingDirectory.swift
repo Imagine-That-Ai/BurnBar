@@ -23,7 +23,7 @@ import OpenBurnBarIrohRelay
 ///   schemaVersion: 1
 /// }
 /// ```
-final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Sendable {
+final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
     static let shared = FirestoreIrohPairingDirectory()
 
     private let firestoreProvider: @Sendable () -> Firestore

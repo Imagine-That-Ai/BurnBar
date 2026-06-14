@@ -73,7 +73,7 @@ internal fun QuotaPulseCardHeader(
                     .clip(CircleShape)
                     .background(statusColor),
             )
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text(
                 text = if (isJiggling) "CUSTOMIZE QUOTA" else "QUOTA",
                 fontSize = AuroraTypography.tiny.sp,
@@ -101,11 +101,7 @@ internal fun QuotaPulseCardHeader(
 }
 
 @Composable
-private fun QuotaJiggleToolbar(
-    percentageDisplayMode: String,
-    prefs: QuotaPreferences,
-    onDone: () -> Unit,
-) {
+private fun QuotaJiggleToolbar(percentageDisplayMode: String, prefs: QuotaPreferences, onDone: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(
@@ -132,14 +128,10 @@ private fun QuotaJiggleToolbar(
 }
 
 @Composable
-internal fun QuotaPulseFleetHero(
-    fleetHealth: Double,
-    statusColor: Color,
-    fleetSubtitle: String,
-) {
+internal fun QuotaPulseFleetHero(fleetHealth: Double, statusColor: Color, fleetSubtitle: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         FleetGauge(progress = fleetHealth, accent = statusColor, modifier = Modifier.size(72.dp))
-        Spacer(modifier = Modifier.width(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.LG.dp))
         Column {
             Text(
                 text = "${(fleetHealth * 100).toInt()}% remaining",
@@ -157,11 +149,7 @@ internal fun QuotaPulseFleetHero(
 }
 
 @Composable
-internal fun QuotaPulseProviderList(
-    items: List<QuotaRingItem>,
-    onSelect: (String) -> Unit,
-    onOpenBurn: () -> Unit,
-) {
+internal fun QuotaPulseProviderList(items: List<QuotaRingItem>, onSelect: (String) -> Unit, onOpenBurn: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         items.take(5).forEach { item ->
             QuotaProviderRow(item = item, onClick = { onSelect(item.providerKey) })
@@ -238,9 +226,9 @@ internal fun QuotaProviderRow(item: QuotaRingItem, onClick: () -> Unit) {
                 .clip(CircleShape)
                 .background(statusColor),
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         ProviderAuroraAvatar(providerKey = item.providerKey, size = 32, showHalo = false)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.label,

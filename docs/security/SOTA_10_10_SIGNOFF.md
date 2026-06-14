@@ -27,7 +27,7 @@ Use this checklist before marketing or investor diligence claims **“SOTA secur
 - [x] Client-verifiable CloudVault trusted-device chain before Mac, iOS, or Android wraps vault keys
 - [x] CloudVault rotation callable plus client-side document, Storage-blob, and hosted-search-index rewrap workers
 - [x] **Ops:** Privileged socket red-team on RC ([`docs/runbooks/privileged-socket-redteam-rc.md`](../runbooks/privileged-socket-redteam-rc.md) → `launch-evidence/privileged-redteam-rc-20260602T003648Z.txt`, probe rejected + `PrivilegedSocketRedTeamIntegrationTests` passed)
-- [ ] **Ops:** Enable `computer_use_phone_control_attestation_required` per rollout ring after RC validation
+- [ ] **Ops:** Enable `computer_use_phone_control_attestation_required` per rollout ring after RC validation (code infrastructure verified by `scripts/ci/verify-phase1-security-gates.sh`; advance with `node scripts/rollout.mjs --flag computer_use_phone_control_attestation_required --stage ring-N`)
 
 ## Phase 3 — AI agency
 
@@ -39,14 +39,14 @@ Use this checklist before marketing or investor diligence claims **“SOTA secur
 - [x] OSV scanner in `security-pr.yml`
 - [x] `run-ecosystem-deny-checks.sh` (npm audit + optional `cargo-deny`)
 - [x] Cosign attest SBOM, VEX, checksums, **DMG, ZIP** in `release.yml`
-- [ ] **Ops:** Verify published release attestations with `scripts/ci/verify-release-attestations.sh <tag>`
+- [ ] **Ops:** Verify published release attestations with `scripts/ci/verify-release-attestations.sh <tag>` (release lane cosign wiring verified by `scripts/ci/verify-phase1-security-gates.sh`)
 
 ## Phase 5 — Trust & launch
 
 - [x] `website/public/.well-known/security.txt`
 - [x] [`DETECTION_MATRIX.md`](DETECTION_MATRIX.md)
 - [x] Automated App Check probe in `commercial-launch-gate.mjs`
-- [ ] Owner + security reviewer signatures (below)
+- [ ] Owner + security reviewer signatures (below) — accepted interim risk **AR-007** until signed; do not make public SOTA claims before then
 
 ## Signatures
 

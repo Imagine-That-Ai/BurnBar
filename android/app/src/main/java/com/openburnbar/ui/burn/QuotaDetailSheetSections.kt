@@ -49,17 +49,12 @@ import java.time.Duration
 import java.time.Instant
 
 @Composable
-internal fun QuotaDetailSheetHero(
-    provider: AgentProvider?,
-    providerKey: String,
-    accountCount: Int,
-    themeColor: Color,
-) {
+internal fun QuotaDetailSheetHero(provider: AgentProvider?, providerKey: String, accountCount: Int, themeColor: Color) {
     Box(
         modifier =
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.lg.dp))
+            .clip(RoundedCornerShape(AuroraRadius.LG.dp))
             .background(
                 Brush.linearGradient(
                     colors =
@@ -70,13 +65,13 @@ internal fun QuotaDetailSheetHero(
                     ),
                 ),
             )
-            .padding(AuroraSpacing.xl.dp),
+            .padding(AuroraSpacing.XL.dp),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             provider?.let {
                 ProviderAuroraAvatar(provider = it, size = 72)
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             Text(
                 text = provider?.displayName ?: providerKey,
                 fontSize = AuroraTypography.title.sp,
@@ -94,7 +89,7 @@ internal fun QuotaDetailSheetHero(
 
 @Composable
 internal fun QuotaDetailStatsRow(snapshots: List<ProviderQuotaSnapshot>) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
         QuotaStatChip(
             label = "Confidence",
             value = snapshots.firstOrNull()?.confidence ?: "—",
@@ -119,9 +114,9 @@ private fun QuotaStatChip(label: String, value: String, modifier: Modifier = Mod
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier =
         modifier
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(vertical = AuroraSpacing.sm.dp),
+            .padding(vertical = AuroraSpacing.SM.dp),
     ) {
         Text(
             text = value,
@@ -142,14 +137,14 @@ internal fun AccountQuotaCard(snapshot: ProviderQuotaSnapshot, themeColor: Color
         modifier =
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.lg.dp))
+            .clip(RoundedCornerShape(AuroraRadius.LG.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.65f))
-            .border(0.5.dp, themeColor.copy(alpha = 0.18f), RoundedCornerShape(AuroraRadius.lg.dp))
-            .padding(AuroraSpacing.md.dp),
+            .border(0.5.dp, themeColor.copy(alpha = 0.18f), RoundedCornerShape(AuroraRadius.LG.dp))
+            .padding(AuroraSpacing.MD.dp),
     ) {
         AccountQuotaCardHeader(snapshot = snapshot)
         AccountQuotaCardExplanation(snapshot = snapshot)
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             snapshot.buckets.forEach { bucket ->
                 UnifiedQuotaSignalView(bucket = bucket, provider = provider, compact = false)
             }
@@ -202,14 +197,14 @@ private fun AccountQuotaCardExplanation(snapshot: ProviderQuotaSnapshot) {
                 text = "Quota data is stale. Refresh this account before trusting the numbers.",
                 fontSize = AuroraTypography.caption.sp,
                 color = AuroraColors.warning,
-                modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp),
+                modifier = Modifier.padding(vertical = AuroraSpacing.SM.dp),
             )
         snapshot.buckets.isNotEmpty() ->
             Text(
                 text = quotaExplanation(snapshot.buckets),
                 fontSize = AuroraTypography.caption.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp),
+                modifier = Modifier.padding(vertical = AuroraSpacing.SM.dp),
             )
     }
 }
@@ -236,7 +231,8 @@ internal fun quotaExplanation(buckets: List<QuotaBucket>): String {
     val names = buckets.map { it.name.lowercase() }
     return when {
         windows.any { it.contains("hour") } && windows.any { it.contains("week") || it.contains("day") } ->
-            "Each gauge tracks usage over a different rolling window. The shorter window paces your near-term burn; the longer window protects against weekly caps."
+            "Each gauge tracks usage over a different rolling window. The shorter window paces your " +
+                "near-term burn; the longer window protects against weekly caps."
         names.any { it.contains("token") } && names.any { it.contains("request") } ->
             "One gauge tracks tokens consumed; the other tracks request count. Hitting either limit pauses the account."
         buckets.size > 1 ->
@@ -277,12 +273,7 @@ internal fun UnifiedQuotaSignalView(bucket: QuotaBucket, provider: AgentProvider
 }
 
 @Composable
-private fun UnifiedQuotaSignalHeader(
-    bucket: QuotaBucket,
-    primary: Color,
-    compact: Boolean,
-    resetParts: QuotaResetFormatter.Parts?,
-) {
+private fun UnifiedQuotaSignalHeader(bucket: QuotaBucket, primary: Color, compact: Boolean, resetParts: QuotaResetFormatter.Parts?) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -328,11 +319,7 @@ private fun UnifiedQuotaSignalHeader(
 }
 
 @Composable
-private fun UnifiedQuotaSignalFooter(
-    bucket: QuotaBucket,
-    compact: Boolean,
-    resetParts: QuotaResetFormatter.Parts?,
-) {
+private fun UnifiedQuotaSignalFooter(bucket: QuotaBucket, compact: Boolean, resetParts: QuotaResetFormatter.Parts?) {
     if (!compact && !bucket.isCreditBalance && bucket.window != null) {
         Text(
             text = "Window: ${bucket.window}",

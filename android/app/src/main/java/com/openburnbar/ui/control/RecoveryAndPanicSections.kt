@@ -58,10 +58,10 @@ internal fun RecoverySection(
     modifier: Modifier = Modifier,
 ) {
     AuroraGlassCard(modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Shield, contentDescription = null, tint = PensieveControlTokens.tierEndToEnd)
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 Text(
                     "Recovery",
                     style = AuroraType.title.copy(fontWeight = FontWeight.Bold),
@@ -108,13 +108,13 @@ private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: (String) -> Uni
         modifier =
         Modifier
             .fillMaxWidth()
-            .background(accent.copy(alpha = 0.08f), RoundedCornerShape(AuroraRadius.md.dp))
-            .border(0.75.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(AuroraRadius.md.dp))
-            .padding(AuroraSpacing.md.dp),
+            .background(accent.copy(alpha = 0.08f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .border(0.75.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(AuroraRadius.MD.dp))
+            .padding(AuroraSpacing.MD.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.size(8.dp).background(accent, CircleShape))
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(method.kindLabel, style = AuroraType.headline, color = PensieveControlTokens.mercuryBright)
             Text(
@@ -141,20 +141,15 @@ private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: (String) -> Uni
  * reserved for exactly this destructive surface.
  */
 @Composable
-internal fun PanicSection(
-    busy: Boolean,
-    lastResult: ControlCenterStore.PanicOutcome?,
-    onRevoke: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
+internal fun PanicSection(busy: Boolean, lastResult: ControlCenterStore.PanicOutcome?, onRevoke: (String) -> Unit, modifier: Modifier = Modifier) {
     var showDialog by remember { mutableStateOf(false) }
     var scopeAll by remember { mutableStateOf(true) }
 
     AuroraGlassCard(modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = PensieveControlTokens.sealCrimson)
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 Text(
                     "Revoke all access",
                     style = AuroraType.title.copy(fontWeight = FontWeight.Bold),
@@ -200,17 +195,12 @@ internal fun PanicSection(
 }
 
 @Composable
-private fun PanicConfirmDialog(
-    scopeAll: Boolean,
-    onScopeChange: (Boolean) -> Unit,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
+private fun PanicConfirmDialog(scopeAll: Boolean, onScopeChange: (Boolean) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Revoke all access?") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
                 Text(
                     "Every external agent, paired device, escrow device, and provider connection " +
                         "will be disconnected immediately. You'll re-pair the ones you keep.",

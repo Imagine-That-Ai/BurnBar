@@ -3,6 +3,7 @@ package com.openburnbar.data.insights.services
 
 import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightConfidence
+import com.openburnbar.data.insights.InsightDataBinding
 import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.insights.InsightFinding
 import com.openburnbar.data.insights.InsightGeneratedWidget
@@ -14,7 +15,6 @@ import com.openburnbar.data.insights.InsightWidget
 import com.openburnbar.data.insights.InsightWidgetData
 import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.InsightWidgetSpec
-import com.openburnbar.data.insights.InsightDataBinding
 import com.openburnbar.data.insights.ValueFormat
 import com.openburnbar.util.Formatting
 
@@ -68,26 +68,32 @@ private fun resolveRuleBasedBenchmarkCandidates(
             benchmarks
                 .filter { ruleBasedNormalizedModelID(it.modelID) != ruleBasedNormalizedModelID(current.id) }
                 .filter { it.costSignal != null && it.costSignal > baselineCost }
-                .filter { topBenchmark?.score == null || it.score == null || it.score >= baselineScore -
-                    INSIGHT_BENCHMARK_SCORE_TOLERANCE }
-                .maxWithOrNull(compareBy<InsightDigest.ModelBenchmarkSummary> { it.costSignal ?: 0.0 }.thenBy {
-                    it.score ?: 0.0 })
+                .filter {
+                    topBenchmark?.score == null || it.score == null || it.score >= baselineScore -
+                        INSIGHT_BENCHMARK_SCORE_TOLERANCE
+                }
+                .maxWithOrNull(
+                    compareBy<InsightDigest.ModelBenchmarkSummary> { it.costSignal ?: 0.0 }.thenBy {
+                        it.score ?: 0.0
+                    },
+                )
         }
     return RuleBasedBenchmarkCandidates(topBenchmark, bestDesign, cheapestSimilar)
 }
 
-private fun buildRuleBasedDesignFinding(
-    topModel: InsightDigest.ModelSnapshot?,
-    bestDesign: InsightDigest.ModelBenchmarkSummary?,
-): List<InsightFinding> {
+private fun buildRuleBasedDesignFinding(topModel: InsightDigest.ModelSnapshot?, bestDesign: InsightDigest.ModelBenchmarkSummary?): List<InsightFinding> {
     if (topModel == null || bestDesign == null || ruleBasedNormalizedModelID(bestDesign.modelID) ==
-        ruleBasedNormalizedModelID(topModel.id)) {
+        ruleBasedNormalizedModelID(topModel.id)
+    ) {
         return emptyList()
     }
     return listOf(
         InsightFinding(
             title = "UI/design work should be checked against ${bestDesign.modelID}",
-            whyItMatters = "${topModel.id} leads spend, but ${bestDesign.modelID} is the strongest cited ${bestDesign.taskCategory} benchmark candidate${ruleBasedScorePhrase(bestDesign)}.",
+            whyItMatters = "${topModel.id} leads spend, but ${bestDesign.modelID} is the strongest cited " +
+                "${bestDesign.taskCategory} benchmark candidate${ruleBasedScorePhrase(
+                    bestDesign,
+                )}.",
             evidence =
             listOf(
                 InsightCitation("model:${topModel.id}", InsightCitation.Kind.Model(topModel.id), topModel.id),
@@ -96,7 +102,7 @@ private fun buildRuleBasedDesignFinding(
             confidence = ruleBasedBenchmarkConfidence(bestDesign),
             severity = InsightSeverity.MEDIUM,
             recommendedAction =
-                "Use ${bestDesign.modelID} for the next UI-heavy task only if quota and routing are healthy.",
+            "Use ${bestDesign.modelID} for the next UI-heavy task only if quota and routing are healthy.",
         ),
     )
 }
@@ -122,7 +128,8 @@ private fun buildRuleBasedBenchmarkRecommendations(
                 rationale =
                 "${topModel.id} is your largest model cost contributor. ${cheapestSimilar.modelID} is close " +
                     "on benchmark evidence${ruleBasedScorePhrase(cheapestSimilar)} and has a stronger cost signal.",
-                recommendedAction = "Route one routine ${cheapestSimilar.taskCategory} session to ${cheapestSimilar.modelID}, then compare output quality before changing defaults.",
+                recommendedAction = "Route one routine ${cheapestSimilar.taskCategory} session to ${cheapestSimilar.modelID}, " +
+                    "then compare output quality before changing defaults.",
                 estimatedImpact = impact,
                 evidence =
                 listOf(
@@ -162,7 +169,8 @@ private fun buildRuleBasedBenchmarkWidget(
             .filter { it.score != null || it.rank != null }
             .sortedWith(
                 compareByDescending<InsightDigest.ModelBenchmarkSummary> {
-                    used.containsKey(ruleBasedNormalizedModelID(it.modelID)) }
+                    used.containsKey(ruleBasedNormalizedModelID(it.modelID))
+                }
                     .thenByDescending { it.score ?: -1.0 }
                     .thenBy { it.rank ?: Int.MAX_VALUE },
             )
@@ -196,8 +204,7 @@ private fun buildRuleBasedBenchmarkWidget(
     )
 }
 
-internal fun ruleBasedBenchmarkCitation(benchmark: InsightDigest.ModelBenchmarkSummary): InsightCitation =
-    InsightCitation(
+internal fun ruleBasedBenchmarkCitation(benchmark: InsightDigest.ModelBenchmarkSummary): InsightCitation = InsightCitation(
     "benchmark:${benchmark.id}",
     InsightCitation.Kind.Benchmark(benchmark.source, benchmark.modelID, benchmark.taskCategory),
     "${benchmark.attribution ?: benchmark.source} ${benchmark.taskCategory}",
@@ -216,5 +223,4 @@ internal fun ruleBasedScorePhrase(benchmark: InsightDigest.ModelBenchmarkSummary
     " (${(it * 100).toInt()}/100)"
 } ?: benchmark.rank?.let { " (#$it)" } ?: ""
 
-internal fun ruleBasedNormalizedModelID(
-    value: String): String = value.lowercase().replace("_", "-").replace(".", "-").replace("/", "-")
+internal fun ruleBasedNormalizedModelID(value: String): String = value.lowercase().replace("_", "-").replace(".", "-").replace("/", "-")

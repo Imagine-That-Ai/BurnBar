@@ -82,7 +82,13 @@ run_swift_tests() {
   swift test "${args[@]}"
 }
 
-run_swift_tests "$repo_root/OpenBurnBarCore" "${OPENBURNBAR_CORE_SWIFT_FILTER:-}"
+# OPENBURNBAR_SKIP_CORE_SWIFT_TESTS=1 runs the daemon package on its own — the
+# symmetric counterpart to OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS, used by the
+# focused daemon PR gate so daemon correctness blocks merges without paying for
+# the full Core suite on every PR.
+if [[ "${OPENBURNBAR_SKIP_CORE_SWIFT_TESTS:-}" != "1" ]]; then
+  run_swift_tests "$repo_root/OpenBurnBarCore" "${OPENBURNBAR_CORE_SWIFT_FILTER:-}"
+fi
 if [[ "${OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS:-}" != "1" ]]; then
   run_swift_tests "$repo_root/OpenBurnBarDaemon" "${OPENBURNBAR_DAEMON_SWIFT_FILTER:-}"
 fi

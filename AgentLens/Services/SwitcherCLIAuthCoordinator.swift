@@ -136,12 +136,12 @@ final class SwitcherCLIAuthCoordinator {
             )
             try await dependencies.openScriptInTerminal(scriptURL)
         } catch {
-            try? dependencies.fileManager.removeItem(at: tempDirectory)
+            try? dependencies.fileManager.removeItem(at: tempDirectory) // try?-ok(temp cleanup)
             return .failed("Failed to start \(cliType.displayName) login in Terminal: \(error.localizedDescription)")
         }
 
         defer {
-            try? dependencies.fileManager.removeItem(at: tempDirectory)
+            try? dependencies.fileManager.removeItem(at: tempDirectory) // try?-ok(temp cleanup)
         }
 
         let terminationStatus = await waitForCompletion(markerURL: markerURL, timeout: 300)
@@ -431,7 +431,7 @@ final class SwitcherCLIAuthCoordinator {
                 return value
             }
 
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
         }
 
         return 124
@@ -479,48 +479,46 @@ final class SwitcherCLIAuthCoordinator {
         cliType: SwitcherCLIProfileType,
         executablePath: String
     ) async -> CLIExecutableHealth {
-        await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executablePath)
-            process.arguments = ["--version"]
-            process.standardInput = FileHandle.nullDevice
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = ["--version"]
+        process.standardInput = FileHandle.nullDevice
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            do {
-                try process.run()
-            } catch {
-                return .broken(error.localizedDescription)
-            }
+        do {
+            try process.run()
+        } catch {
+            return .broken(error.localizedDescription)
+        }
 
-            let deadline = Date().addingTimeInterval(3)
-            while process.isRunning && Date() < deadline {
-                Darwin.usleep(50_000)
-            }
-            if process.isRunning {
-                process.terminate()
-                return .healthy
-            }
-            process.waitUntilExit()
-
-            let output = [
-                String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8),
-                String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
-            ]
-                .compactMap { $0 }
-                .joined(separator: "\n")
-
-            if let detail = detectBrokenExecutableDetail(in: output) {
-                return .broken(detail)
-            }
-
-            // Some CLIs return non-zero for --version under unusual install
-            // modes, but only known wrapper/native-binary failures block login.
-            _ = cliType
+        let deadline = Date().addingTimeInterval(3)
+        while process.isRunning && Date() < deadline {
+            Darwin.usleep(50_000)
+        }
+        if process.isRunning {
+            process.terminate()
             return .healthy
-        }.value
+        }
+        process.waitUntilExit()
+
+        let output = [
+            String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8),
+            String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+        ]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+
+        if let detail = detectBrokenExecutableDetail(in: output) {
+            return .broken(detail)
+        }
+
+        // Some CLIs return non-zero for --version under unusual install
+        // modes, but only known wrapper/native-binary failures block login.
+        _ = cliType
+        return .healthy
     }
 
     nonisolated static func detectBrokenExecutableDetail(in output: String?) -> String? {

@@ -122,6 +122,30 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
     /// Rate limiting configuration for the HTTP gateway.
     /// Default: 30 req/s sustained, 50 burst.
     public var rateLimit: BurnBarRateLimitConfiguration?
+    /// remediation(loopback-c): a stricter, dedicated throughput ceiling that
+    /// applies SPECIFICALLY when the unauthenticated-loopback escape hatch is
+    /// live (the gateway is serving with no enforced auth token). Without this,
+    /// enabling `allowUnauthenticatedLoopback` lets any same-host process spend
+    /// the user's provider credits at the gateway's full rate (or unbounded,
+    /// since production wires no general gateway rate limiter). `nil` means the
+    /// safe built-in default (`defaultUnauthenticatedLoopbackRateLimit`) is used
+    /// whenever the escape hatch is live; set it explicitly to tune the bound.
+    /// When auth IS enforced this is ignored, so authenticated callers keep the
+    /// regular (looser) `rateLimit` behavior unchanged.
+    public var unauthenticatedLoopbackRateLimit: BurnBarRateLimitConfiguration?
+
+    /// remediation(loopback-c): the fail-closed default ceiling for the
+    /// tokenless-loopback escape hatch. Deliberately much tighter than the
+    /// general gateway default (30 req/s, 50 burst): 5 req/s sustained bounds a
+    /// runaway/abusive local process to a few requests per second of provider
+    /// credit spend, while a 30-request burst leaves ample headroom for normal
+    /// interactive CLI use (and for the token-less integration harnesses, which
+    /// fire only a handful of requests per server). Tighten further via
+    /// `unauthenticatedLoopbackRateLimit` for a harder bound.
+    public static let defaultUnauthenticatedLoopbackRateLimit = BurnBarRateLimitConfiguration(
+        requestsPerSecond: 5,
+        burstCapacity: 30
+    )
 
     public init(
         isEnabled: Bool = false,
@@ -129,7 +153,8 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
         port: Int = 8317,
         authToken: String? = nil,
         allowUnauthenticatedLoopback: Bool = false,
-        rateLimit: BurnBarRateLimitConfiguration? = nil
+        rateLimit: BurnBarRateLimitConfiguration? = nil,
+        unauthenticatedLoopbackRateLimit: BurnBarRateLimitConfiguration? = nil
     ) {
         self.isEnabled = isEnabled
         self.host = host
@@ -137,6 +162,7 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
         self.authToken = authToken
         self.allowUnauthenticatedLoopback = allowUnauthenticatedLoopback
         self.rateLimit = rateLimit
+        self.unauthenticatedLoopbackRateLimit = unauthenticatedLoopbackRateLimit
     }
     public var normalizedHost: String {
         host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -145,6 +171,23 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
     /// Whether the gateway bind address is loopback.
     public var isLoopback: Bool {
         normalizedHost == "127.0.0.1" || normalizedHost == "localhost" || normalizedHost == "::1"
+    }
+
+    /// Whether a non-empty bearer token is enforced on the request path. Mirrors
+    /// the request-path check in `handleRequest`: a whitespace-only token is
+    /// treated as no token at all, so auth is "on" only with a real token.
+    public var isAuthEnforced: Bool {
+        (authToken ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    /// remediation(loopback-c): the rate-limit ceiling that bounds tokenless
+    /// callers while the unauthenticated-loopback escape hatch is live. Returns
+    /// `nil` whenever auth is enforced (so authenticated callers are unaffected)
+    /// and otherwise falls back to the fail-closed built-in default when no
+    /// explicit override is configured.
+    public var effectiveUnauthenticatedLoopbackRateLimit: BurnBarRateLimitConfiguration? {
+        guard !isAuthEnforced else { return nil }
+        return unauthenticatedLoopbackRateLimit ?? Self.defaultUnauthenticatedLoopbackRateLimit
     }
 
     /// Validates the configuration. Returns an error description if invalid.

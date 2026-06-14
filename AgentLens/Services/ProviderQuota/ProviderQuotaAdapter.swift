@@ -6,11 +6,14 @@ protocol ProviderQuotaAdapter: Sendable {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot
 }
 
-// AUDIT(@unchecked Sendable): This is an immutable adapter payload assembled on
-// the main actor before quota work is dispatched. Reference-typed members are
-// either read-only service handles or have their own synchronization/actor
-// boundary. Closures are used only as configuration readers.
-struct ProviderQuotaAdapterContext: @unchecked Sendable {
+// Immutable adapter payload assembled before quota work is dispatched into
+// `QuotaRefreshActor`/adapters. Every member is `Sendable`: value snapshots of
+// the user's plan selection (read on the main actor at build time), value-type
+// service handles (`ClaudeQuotaBridgeManager`/`ProviderQuotaSnapshotStore` are
+// structs), and the codex-cache write-back closure captures only the `Locked`
+// box plus the value-type snapshot store — so the context is genuinely
+// `Sendable` with no actor-isolated captures.
+struct ProviderQuotaAdapterContext: Sendable {
     let appPaths: OpenBurnBarAppPaths
     let fileManager: FileManager
     let session: URLSession
@@ -19,16 +22,14 @@ struct ProviderQuotaAdapterContext: @unchecked Sendable {
     let dataStoreActor: DataStoreActor
     let snapshotStore: ProviderQuotaSnapshotStore
     let bridgeManager: ClaudeQuotaBridgeManager
-    let miniMaxModeProvider: () -> MiniMaxQuotaMode
-    let factoryPlanProvider: () -> FactoryQuotaPlanTier
-    let xaiPlanProvider: () -> XAIQuotaPlanTier
-    let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
-    let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
-    let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
-    let claudeBridgeStatus: ClaudeQuotaBridgeStatus
+    let miniMaxMode: MiniMaxQuotaMode
+    let factoryPlan: FactoryQuotaPlanTier
+    let xaiPlan: XAIQuotaPlanTier
+    let mimoTokenPlanRegion: ProviderEndpointRegion
+    let mimoTokenPlanTier: MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle
     let codexRolloutScanCache: CodexRolloutScanCache
-    let updateCodexRolloutScanCache: (CodexRolloutScanCache, Bool) -> Void
-    let refreshClaudeBridgeStatus: () -> ClaudeQuotaBridgeStatus
+    let updateCodexRolloutScanCache: @Sendable (CodexRolloutScanCache, Bool) -> Void
     /// Optional explicit Claude OAuth credentials. Production uses
     /// `NoClaudeCredentialsReader` so OpenBurnBar never reads Claude
     /// Code's Keychain item or `.credentials.json` fallback.
@@ -49,16 +50,14 @@ extension ProviderQuotaAdapterContext {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
-            claudeBridgeStatus: claudeBridgeStatus,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
-            refreshClaudeBridgeStatus: refreshClaudeBridgeStatus,
             claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedAPIKeys
         )
@@ -74,16 +73,14 @@ extension ProviderQuotaAdapterContext {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
-            claudeBridgeStatus: claudeBridgeStatus,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
-            refreshClaudeBridgeStatus: refreshClaudeBridgeStatus,
             claudeCredentialsReader: reader,
             resolvedAPIKeys: resolvedAPIKeys
         )
@@ -99,16 +96,14 @@ extension ProviderQuotaAdapterContext {
             dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
-            claudeBridgeStatus: claudeBridgeStatus,
+            miniMaxMode: miniMaxMode,
+            factoryPlan: factoryPlan,
+            xaiPlan: xaiPlan,
+            mimoTokenPlanRegion: mimoTokenPlanRegion,
+            mimoTokenPlanTier: mimoTokenPlanTier,
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycle,
             codexRolloutScanCache: codexRolloutScanCache,
             updateCodexRolloutScanCache: updateCodexRolloutScanCache,
-            refreshClaudeBridgeStatus: refreshClaudeBridgeStatus,
             claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedAPIKeys
         )
@@ -377,7 +372,11 @@ struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
 
     private func cursorConnectorKey(for account: String) -> String? {
         let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "deepseek_connector_key_read_failed"
+        )
         return quotaNonEmpty(raw ?? nil)
     }
 }
@@ -398,9 +397,9 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
             environment: context.environment,
             fileManager: context.fileManager
         )
-        async let oneDayOutput = try? Self.runOpenCodeStats(days: 1, environment: context.environment)
-        async let sevenDayOutput = try? Self.runOpenCodeStats(days: 7, environment: context.environment)
-        async let thirtyDayOutput = try? Self.runOpenCodeStats(days: 30, environment: context.environment)
+        async let oneDayOutput = try? Self.runOpenCodeStats(days: 1, environment: context.environment) // try?-ok(CLI usage, empty fallback)
+        async let sevenDayOutput = try? Self.runOpenCodeStats(days: 7, environment: context.environment) // try?-ok(CLI usage, empty fallback)
+        async let thirtyDayOutput = try? Self.runOpenCodeStats(days: 30, environment: context.environment) // try?-ok(CLI usage, empty fallback)
         let buckets = await Self.buckets(
             fiveHourCost: fiveHourCost,
             oneDay: oneDayOutput ?? "",
@@ -430,24 +429,23 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
             ?? quotaNonEmpty(context.environment["OPENCODE_GO_API_KEY"])
     }
 
+    /// Blocking `Process` work runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func runOpenCodeStats(days: Int, environment: [String: String]) async throws -> String {
-        try await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["opencode", "stats", "--days", String(days), "--models", "10"]
-            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
-            let output = Pipe()
-            let error = Pipe()
-            process.standardOutput = output
-            process.standardError = error
-            try process.run()
-            process.waitUntilExit()
-            let stdout = output.fileHandleForReading.readDataToEndOfFile()
-            let stderr = error.fileHandleForReading.readDataToEndOfFile()
-            let stdoutText = String(data: stdout, encoding: .utf8) ?? ""
-            let stderrText = String(data: stderr, encoding: .utf8) ?? ""
-            return stdoutText + "\n" + stderrText
-        }.value
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["opencode", "stats", "--days", String(days), "--models", "10"]
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        let output = Pipe()
+        let error = Pipe()
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+        process.waitUntilExit()
+        let stdout = output.fileHandleForReading.readDataToEndOfFile()
+        let stderr = error.fileHandleForReading.readDataToEndOfFile()
+        let stdoutText = String(data: stdout, encoding: .utf8) ?? ""
+        let stderrText = String(data: stderr, encoding: .utf8) ?? ""
+        return stdoutText + "\n" + stderrText
     }
 
     private static func buckets(
@@ -513,44 +511,43 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
         environment: [String: String],
         fileManager: FileManager
     ) async -> Double? {
-        await Task.detached(priority: .utility) {
-            let dbURL: URL
-            if let override = environment["OPENCODE_DB_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
-                dbURL = URL(fileURLWithPath: override)
-            } else if let dataHome = environment["OPENCODE_DATA_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines), !dataHome.isEmpty {
-                dbURL = URL(fileURLWithPath: dataHome).appendingPathComponent("opencode.db")
-            } else if let xdgDataHome = environment["XDG_DATA_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines), !xdgDataHome.isEmpty {
-                dbURL = URL(fileURLWithPath: xdgDataHome).appendingPathComponent("opencode/opencode.db")
-            } else {
-                dbURL = homeDirectoryURL.appendingPathComponent(".local/share/opencode/opencode.db")
-            }
+        // Blocking SQLite read runs off the main actor (`nonisolated` `async`, SE-0338).
+        let dbURL: URL
+        if let override = environment["OPENCODE_DB_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
+            dbURL = URL(fileURLWithPath: override)
+        } else if let dataHome = environment["OPENCODE_DATA_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines), !dataHome.isEmpty {
+            dbURL = URL(fileURLWithPath: dataHome).appendingPathComponent("opencode.db")
+        } else if let xdgDataHome = environment["XDG_DATA_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines), !xdgDataHome.isEmpty {
+            dbURL = URL(fileURLWithPath: xdgDataHome).appendingPathComponent("opencode/opencode.db")
+        } else {
+            dbURL = homeDirectoryURL.appendingPathComponent(".local/share/opencode/opencode.db")
+        }
 
-            guard fileManager.fileExists(atPath: dbURL.path) else { return nil }
+        guard fileManager.fileExists(atPath: dbURL.path) else { return nil }
 
-            var db: OpaquePointer?
-            let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
-            guard sqlite3_open_v2(dbURL.path, &db, flags, nil) == SQLITE_OK, let db else {
-                return nil
-            }
-            defer { sqlite3_close(db) }
-            sqlite3_busy_timeout(db, 2_000)
+        var db: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
+        guard sqlite3_open_v2(dbURL.path, &db, flags, nil) == SQLITE_OK, let db else {
+            return nil
+        }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 2_000)
 
-            let sql = """
-            SELECT COALESCE(SUM(json_extract(data, '$.cost')), 0)
-            FROM message
-            WHERE json_extract(data, '$.role') = 'assistant'
-              AND time_created >= (CAST(strftime('%s','now') AS INTEGER) * 1000 - 5 * 60 * 60 * 1000)
-            """
+        let sql = """
+        SELECT COALESCE(SUM(json_extract(data, '$.cost')), 0)
+        FROM message
+        WHERE json_extract(data, '$.role') = 'assistant'
+          AND time_created >= (CAST(strftime('%s','now') AS INTEGER) * 1000 - 5 * 60 * 60 * 1000)
+        """
 
-            var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-                return nil
-            }
-            defer { sqlite3_finalize(statement) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
 
-            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
-            return sqlite3_column_double(statement, 0)
-        }.value
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return sqlite3_column_double(statement, 0)
     }
 
     private static func totalCost(in output: String) -> Double? {
@@ -562,7 +559,7 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private static func firstMatch(pattern: String, in output: String) -> Double? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil } // try?-ok(literal regex pattern)
         let range = NSRange(output.startIndex..<output.endIndex, in: output)
         guard let match = regex.firstMatch(in: output, range: range),
               match.numberOfRanges > 1,

@@ -980,21 +980,21 @@ final class FirestoreNormalizationTests: XCTestCase {
     func test_sanitizeForJSON_convertsTimestampToDouble() throws {
         let now = Date()
         let ts = Timestamp(date: now)
-        let result = repo.sanitizeForJSON(ts)
+        let result = FirestoreRepository.sanitizeForJSON(ts)
         let doubleVal = try XCTUnwrap(result as? Double)
         XCTAssertEqual(doubleVal, now.timeIntervalSinceReferenceDate, accuracy: 0.001)
     }
 
     func test_sanitizeForJSON_convertsDateToDouble() throws {
         let now = Date()
-        let result = repo.sanitizeForJSON(now)
+        let result = FirestoreRepository.sanitizeForJSON(now)
         let doubleVal = try XCTUnwrap(result as? Double)
         XCTAssertEqual(doubleVal, now.timeIntervalSinceReferenceDate, accuracy: 0.001)
     }
 
     func test_sanitizeForJSON_convertsISO8601StringToDouble() throws {
         let isoStr = "2026-05-02T12:00:00Z"
-        let result = repo.sanitizeForJSON(isoStr)
+        let result = FirestoreRepository.sanitizeForJSON(isoStr)
         let doubleVal = try XCTUnwrap(result as? Double, "ISO 8601 string should be converted to Double for Date decoding")
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
@@ -1004,7 +1004,7 @@ final class FirestoreNormalizationTests: XCTestCase {
 
     func test_sanitizeForJSON_convertsISO8601WithFractionalSeconds() throws {
         let isoStr = "2026-05-02T12:00:00.123Z"
-        let result = repo.sanitizeForJSON(isoStr)
+        let result = FirestoreRepository.sanitizeForJSON(isoStr)
         let doubleVal = try XCTUnwrap(result as? Double, "ISO 8601 with fractional seconds should convert")
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -1014,18 +1014,18 @@ final class FirestoreNormalizationTests: XCTestCase {
 
     func test_sanitizeForJSON_passesThroughRegularString() throws {
         let regular = "minimax"
-        let result = repo.sanitizeForJSON(regular)
+        let result = FirestoreRepository.sanitizeForJSON(regular)
         XCTAssertEqual(try XCTUnwrap(result as? String), "minimax")
     }
 
     func test_sanitizeForJSON_passesThroughURLString() throws {
         let url = "https://platform.minimax.io"
-        let result = repo.sanitizeForJSON(url)
+        let result = FirestoreRepository.sanitizeForJSON(url)
         XCTAssertEqual(try XCTUnwrap(result as? String, "URLs should not be mistaken for ISO dates"), url)
     }
 
     func test_sanitizeForJSON_passesThroughNSNull() {
-        let result = repo.sanitizeForJSON(NSNull())
+        let result = FirestoreRepository.sanitizeForJSON(NSNull())
         XCTAssertTrue(result is NSNull)
     }
 
@@ -1038,7 +1038,7 @@ final class FirestoreNormalizationTests: XCTestCase {
             "isoDate": "2026-05-02T12:00:00Z",
             "nested": ["inner": ts]
         ]
-        let result = try XCTUnwrap(repo.sanitizeForJSON(dict) as? [String: Any])
+        let result = try XCTUnwrap(FirestoreRepository.sanitizeForJSON(dict) as? [String: Any])
         XCTAssertEqual(try XCTUnwrap(result["name"] as? String), "test")
         XCTAssertTrue(result["timestamp"] is Double)
         XCTAssertTrue(result["isoDate"] is Double)
@@ -1050,7 +1050,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         let now = Date()
         let ts = Timestamp(date: now)
         let arr: [Any] = [ts, "hello", NSNull(), "2026-05-02T12:00:00Z"]
-        let result = try XCTUnwrap(repo.sanitizeForJSON(arr) as? [Any])
+        let result = try XCTUnwrap(FirestoreRepository.sanitizeForJSON(arr) as? [Any])
         XCTAssertTrue(result[0] is Double)
         XCTAssertEqual(try XCTUnwrap(result[1] as? String), "hello")
         XCTAssertTrue(result[2] is NSNull)

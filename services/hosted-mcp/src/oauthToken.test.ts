@@ -44,7 +44,10 @@ function makeDb(opts: {
   grantRevoked?: boolean;
   grantExpiresAtMs?: number;
 }): { db: RefreshFirestore; grantState: { refreshTokenHash: string; sets: unknown[] } } {
-  const grantState = { refreshTokenHash: opts.refreshTokenHash, sets: [] as unknown[] };
+  const grantState: { refreshTokenHash: string; sets: unknown[] } = {
+    refreshTokenHash: opts.refreshTokenHash,
+    sets: [],
+  };
   const db: RefreshFirestore = {
     doc(path: string) {
       return {
@@ -91,8 +94,14 @@ function makeDb(opts: {
                         ref: {
                           async set(value: unknown) {
                             grantState.sets.push(value);
-                            const v = value as { refreshTokenHash?: string };
-                            if (typeof v.refreshTokenHash === "string") {grantState.refreshTokenHash = v.refreshTokenHash;}
+                            if (
+                              value &&
+                              typeof value === "object" &&
+                              "refreshTokenHash" in value &&
+                              typeof (value as { refreshTokenHash?: unknown }).refreshTokenHash === "string"
+                            ) {
+                              grantState.refreshTokenHash = (value as { refreshTokenHash: string }).refreshTokenHash;
+                            }
                           },
                         },
                       },

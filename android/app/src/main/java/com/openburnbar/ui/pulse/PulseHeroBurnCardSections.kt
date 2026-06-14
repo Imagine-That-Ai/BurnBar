@@ -115,13 +115,8 @@ internal fun PulseHeroBurnCardHeader(
 }
 
 @Composable
-internal fun PulseHeroBurnCardMetricsBlock(
-    displayMode: UsageDisplayMode,
-    value: Double,
-    tokens: Long,
-    requests: Int,
-) {
-    Spacer(Modifier.height(AuroraSpacing.sm.dp))
+internal fun PulseHeroBurnCardMetricsBlock(displayMode: UsageDisplayMode, value: Double, tokens: Long, requests: Int) {
+    Spacer(Modifier.height(AuroraSpacing.SM.dp))
     GradientCurrency(
         text =
         if (displayMode == UsageDisplayMode.CURRENCY) {
@@ -131,19 +126,14 @@ internal fun PulseHeroBurnCardMetricsBlock(
         },
         fontSize = 56,
     )
-    Spacer(Modifier.height(AuroraSpacing.xs.dp))
+    Spacer(Modifier.height(AuroraSpacing.XS.dp))
     MetaRow(text = "${Formatting.formatTokens(tokens)} tokens · $requests requests")
 }
 
 @Composable
-internal fun PulseHeroBurnCardComparisonLine(
-    trailingValue: Double,
-    absDelta: Double,
-    isBelow: Boolean,
-    timelineScope: PulseTimelineScope,
-) {
+internal fun PulseHeroBurnCardComparisonLine(trailingValue: Double, absDelta: Double, isBelow: Boolean, timelineScope: PulseTimelineScope) {
     if (trailingValue <= 0) return
-    Spacer(Modifier.height(AuroraSpacing.sm.dp))
+    Spacer(Modifier.height(AuroraSpacing.SM.dp))
     ComparisonLine(
         text = "${if (isBelow) "Below" else "Above"} ${absDelta.toInt()}% your ${trailingWindowLabel(timelineScope)} average",
         isBelow = isBelow,
@@ -152,7 +142,7 @@ internal fun PulseHeroBurnCardComparisonLine(
 
 @Composable
 internal fun PulseHeroBurnCardStreamingFooter(requests: Int) {
-    Spacer(Modifier.height(AuroraSpacing.sm.dp))
+    Spacer(Modifier.height(AuroraSpacing.SM.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -260,22 +250,17 @@ internal fun providerAccentColor(providerKey: String?): Color {
     }
 }
 
-internal fun trailingWindowLabel(scope: PulseTimelineScope): String =
-    when (scope) {
-        PulseTimelineScope.MINUTE,
-        PulseTimelineScope.HOUR,
-        PulseTimelineScope.DAY,
-        -> "7-day"
-        PulseTimelineScope.WEEK -> "30-day"
-        PulseTimelineScope.MONTH -> "90-day"
-    }
+internal fun trailingWindowLabel(scope: PulseTimelineScope): String = when (scope) {
+    PulseTimelineScope.MINUTE,
+    PulseTimelineScope.HOUR,
+    PulseTimelineScope.DAY,
+    -> "7-day"
+    PulseTimelineScope.WEEK -> "30-day"
+    PulseTimelineScope.MONTH -> "90-day"
+}
 
 @Composable
-internal fun rememberBurnRateText(
-    displayMode: UsageDisplayMode,
-    liveUsages: List<TokenUsage>,
-    nowMillis: Long,
-): String? =
+internal fun rememberBurnRateText(displayMode: UsageDisplayMode, liveUsages: List<TokenUsage>, nowMillis: Long): String? =
     remember(displayMode, liveUsages, nowMillis) {
         when (displayMode) {
             UsageDisplayMode.CURRENCY ->
@@ -293,22 +278,18 @@ internal fun rememberBurnRateText(
 internal fun PulseHeroBurnCardBody(metrics: PulseHeroCardMetrics) {
     val derived = derivePulseHeroState(metrics)
     val burnRateText = rememberBurnRateText(metrics.displayMode, metrics.liveUsages, metrics.nowMillis)
-    Box(modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp)) {
+    Box(modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp)) {
         PulseHeroBurnCardGlass(metrics = metrics, derived = derived, burnRateText = burnRateText)
     }
 }
 
 @Composable
-private fun PulseHeroBurnCardGlass(
-    metrics: PulseHeroCardMetrics,
-    derived: PulseHeroDerivedState,
-    burnRateText: String?,
-) {
+private fun PulseHeroBurnCardGlass(metrics: PulseHeroCardMetrics, derived: PulseHeroDerivedState, burnRateText: String?) {
     val topProvider = metrics.topProvider
     AuroraGlassCard(
         modifier = Modifier.fillMaxWidth(),
-        cornerRadius = AuroraRadius.xl,
-        contentPadding = AuroraSpacing.lg.dp,
+        cornerRadius = AuroraRadius.XL,
+        contentPadding = AuroraSpacing.LG.dp,
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             PulseHeroBurnCardMainColumn(
@@ -329,12 +310,7 @@ private fun PulseHeroBurnCardGlass(
 }
 
 @Composable
-private fun PulseHeroBurnCardMainColumn(
-    metrics: PulseHeroCardMetrics,
-    derived: PulseHeroDerivedState,
-    burnRateText: String?,
-    hasTopProvider: Boolean,
-) {
+private fun PulseHeroBurnCardMainColumn(metrics: PulseHeroCardMetrics, derived: PulseHeroDerivedState, burnRateText: String?, hasTopProvider: Boolean) {
     Column(
         modifier =
         Modifier
@@ -356,10 +332,10 @@ private fun PulseHeroBurnCardMainColumn(
             requests = derived.requests,
         )
         if (metrics.trailingValue > 0) {
-            Spacer(Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(Modifier.height(AuroraSpacing.SM.dp))
             DeltaBadge(percent = derived.absDelta, isBelow = derived.isBelow)
         }
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
         PulseLiveCostCurve(
             usages = metrics.liveUsages,
             dailyPoints = metrics.dailyPoints,

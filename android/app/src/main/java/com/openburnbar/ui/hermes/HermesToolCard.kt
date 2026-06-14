@@ -291,7 +291,8 @@ private fun MercuryPulseDot(modifier: Modifier = Modifier) {
             .clip(RoundedCornerShape(percent = 50))
             .background(
                 Brush.linearGradient(colors = AuroraGradients.mercuryGradient)
-                    .let { it }, // gradient brush; alpha applied via overlay
+                    // gradient brush; alpha applied via overlay
+                    .let { it },
             ),
     ) {
         Box(
@@ -318,7 +319,7 @@ private fun Modifier.mercuryGradientBorder(animated: Boolean, cornerRadius: andr
         infiniteRepeatable(
             animation =
             tween(
-                durationMillis = AuroraMotion.mercuryShimmerDuration.toInt(),
+                durationMillis = AuroraMotion.MERCURY_SHIMMER_DURATION.toInt(),
                 easing = LinearEasing,
             ),
             repeatMode = RepeatMode.Restart,

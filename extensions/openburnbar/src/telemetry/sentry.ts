@@ -6,13 +6,9 @@
  * which keeps the dev/test experience noise-free.
  *
  * Usage:
- *   import { initSentry, captureExtensionError } from './telemetry/sentry';
+ *   import { initSentry } from './telemetry/sentry';
  *
- *   // In extension activate():
  *   initSentry(context.extension.packageJSON.version, isDev ? 'development' : 'production');
- *
- *   // Anywhere an error should be tracked:
- *   captureExtensionError(err, { component: 'DaemonClient', event: 'connect_failed' });
  */
 
 import { logger } from '../logger';
@@ -31,7 +27,7 @@ let _initialized = false;
 async function getSentry(): Promise<SentryNodeModule | undefined> {
   if (_sentry !== undefined) return _sentry;
   try {
-    _sentry = (await import('@sentry/node')) as SentryNodeModule;
+    _sentry = await import('@sentry/node');
     return _sentry;
   } catch {
     return undefined;
@@ -105,45 +101,6 @@ export async function initSentry(extensionVersion: string, environment: string):
 
   _initialized = true;
   logger.debug(`Sentry initialised (env=${environment}, release=openburnbar-extension@${extensionVersion})`);
-}
-
-/**
- * Reports an error to Sentry with structured context.
- *
- * Safe to call before `initSentry` or when Sentry is disabled — silently
- * falls back to logging.
- *
- * @param err      The error to capture. Non-Error values are wrapped.
- * @param context  Structured key/value pairs added as Sentry extras.
- */
-export function captureExtensionError(err: unknown, context?: Record<string, unknown>): void {
-  const error = err instanceof Error ? err : new Error(String(err));
-
-  if (!_initialized || !_sentry) {
-    logger.error(`[Sentry fallback] ${error.message}`, error);
-    return;
-  }
-
-  const sentry = _sentry;
-  sentry.withScope((scope) => {
-    if (context) {
-      for (const [key, value] of Object.entries(context)) {
-        scope.setExtra(key, value);
-      }
-    }
-    sentry.captureException(error);
-  });
-}
-
-/**
- * Sets the active user identity on Sentry so errors can be grouped by user.
- * Only the first 8 characters of the UID are sent to avoid full PII exposure.
- *
- * @param uidHash  Truncated/hashed user identifier.
- */
-export function setSentryUser(uidHash: string | undefined): void {
-  if (!_initialized || !_sentry || !uidHash) return;
-  _sentry.setUser({ id: uidHash.slice(0, 8) });
 }
 
 /**

@@ -47,6 +47,8 @@ data class TokenUsage(
     val cacheCreationTokens: Int = 0,
     @PropertyName("cacheReadTokens")
     val cacheReadTokens: Int = 0,
+    @PropertyName("cacheWriteTokens")
+    val cacheWriteTokens: Int = 0,
     @PropertyName("reasoningTokens")
     val reasoningTokens: Int = 0,
     @PropertyName("totalTokens")
@@ -54,6 +56,17 @@ data class TokenUsage(
     /** Canonical cost field (Firestore "costUsd"). */
     @PropertyName("costUsd")
     val costUsd: Double = 0.0,
+    /** Schema-sync alias (Firestore "costUSD"). */
+    @PropertyName("costUSD")
+    val costUSD: Double = 0.0,
+    @PropertyName("currency")
+    val currency: String? = null,
+    @PropertyName("recordedAt")
+    val recordedAt: String? = null,
+    @PropertyName("eventKind")
+    val eventKind: String? = null,
+    @PropertyName("idempotencyKey")
+    val idempotencyKey: String? = null,
     /** Legacy cost field (Firestore "cost"), consumer falls back to costUsd. */
     @PropertyName("cost")
     val cost: Double = 0.0,
@@ -175,6 +188,12 @@ data class ProviderQuotaSnapshot(
     val fetchedAt: String? = null,
     @PropertyName("source")
     val source: String? = null,
+    @PropertyName("sourceLabel")
+    val sourceLabel: String? = null,
+    @PropertyName("resetAt")
+    val resetAt: String? = null,
+    @PropertyName("planTier")
+    val planTier: String? = null,
     @PropertyName("confidence")
     val confidence: String = "low",
     @PropertyName("managementURL")
@@ -305,6 +324,10 @@ data class QuotaBucket(
     val remaining: Double = 0.0,
     @PropertyName("window")
     val window: String? = null,
+    @PropertyName("unit")
+    val unit: String? = null,
+    @PropertyName("resetAt")
+    val resetAt: String? = null,
     /**
      * First-class refill moment. Mac writes a Firestore `Timestamp` on the
      * bucket directly; older docs may instead carry an ISO 8601 string at

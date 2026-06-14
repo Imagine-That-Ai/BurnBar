@@ -113,9 +113,9 @@ private fun Map<String, Any?>.millisField(vararg names: String): Long? = names.f
  * Envelope contract (`users/{uid}/hermes_relay_requests/{id}.*`) for
  * outbound requests:
  *   - `id`, `connectionId`, `operation`, `method`, `status`,
-     *     `relayEncryption`, `relayKeyVersion=3`, `payloadCiphertext`,
-     *     `enc`, `wrappedKey`, sender identity metadata, `chunkCount`,
-     *     `createdAt`, `updatedAt`, `expiresAt`, `expireAt`, `schemaVersion=2`.
+ *     `relayEncryption`, `relayKeyVersion=3`, `payloadCiphertext`,
+ *     `enc`, `wrappedKey`, sender identity metadata, `chunkCount`,
+ *     `createdAt`, `updatedAt`, `expiresAt`, `expireAt`, `schemaVersion=2`.
  *
  * Response chunks live in `.../{requestId}/chunks/{seq}` with fields
  * `requestId`, `sequence`, `kind` (`sse`|`data`|`error`), `ciphertext`,
@@ -411,17 +411,15 @@ class HermesRelayClient(
             .await()
     }
 
-    private fun relaySenderKeyId(publicKeyX963: ByteArray): String =
-        RelaySealSenderIdentity.relaySenderKeyId(publicKeyX963)
+    private fun relaySenderKeyId(publicKeyX963: ByteArray): String = RelaySealSenderIdentity.relaySenderKeyId(publicKeyX963)
 
     private data class DecryptedChunk(val kind: String, val sequence: Int, val text: String)
 
-    private fun relayPollTerminalError(status: String?, errorMessage: String?): HermesRelayException? =
-        when (status) {
-            "failed" -> HermesRelayException(errorMessage ?: "Remote Hermes relay failed.")
-            "cancelled", "expired" -> HermesRelayException("Remote Hermes relay request was $status.")
-            else -> null
-        }
+    private fun relayPollTerminalError(status: String?, errorMessage: String?): HermesRelayException? = when (status) {
+        "failed" -> HermesRelayException(errorMessage ?: "Remote Hermes relay failed.")
+        "cancelled", "expired" -> HermesRelayException("Remote Hermes relay request was $status.")
+        else -> null
+    }
 
     private suspend fun poll(handle: RelayRequestHandle, timeoutMillis: Long, onChunk: suspend (DecryptedChunk) -> Unit) {
         val requestRef =

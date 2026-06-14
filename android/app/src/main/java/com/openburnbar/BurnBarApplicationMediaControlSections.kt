@@ -97,12 +97,11 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
         .onFailure { Log.w("BurnBar", "MediaControlStreamCoordinator.start failed: ${it.message}") }
 }
 
-private fun MediaControlStreamCoordinator.Phase.mercuryLogLabel(): String =
-    when (this) {
-        MediaControlStreamCoordinator.Phase.Idle -> "idle"
-        MediaControlStreamCoordinator.Phase.Dialing -> "dialing"
-        MediaControlStreamCoordinator.Phase.Live -> "live"
-        is MediaControlStreamCoordinator.Phase.Reconnecting -> "reconnecting"
-        MediaControlStreamCoordinator.Phase.Stopped -> "stopped"
-        is MediaControlStreamCoordinator.Phase.Failed -> "failed"
-    }
+private fun MediaControlStreamCoordinator.Phase.mercuryLogLabel(): String = when (this) {
+    MediaControlStreamCoordinator.Phase.Idle -> "idle"
+    MediaControlStreamCoordinator.Phase.Dialing -> "dialing"
+    MediaControlStreamCoordinator.Phase.Live -> "live"
+    is MediaControlStreamCoordinator.Phase.Reconnecting -> "reconnecting"
+    MediaControlStreamCoordinator.Phase.Stopped -> "stopped"
+    is MediaControlStreamCoordinator.Phase.Failed -> "failed"
+}

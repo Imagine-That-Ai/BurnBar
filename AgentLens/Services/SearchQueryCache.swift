@@ -52,34 +52,28 @@ struct SearchQueryCacheEntry: Sendable {
     }
 }
 
-final class SearchQueryCache: @unchecked Sendable {
+final class SearchQueryCache: Sendable {
     static let shared = SearchQueryCache()
-    private let lock = NSLock()
-    private var cache: [SearchQueryCacheKey: SearchQueryCacheEntry] = [:]
+    private let cache = Locked<[SearchQueryCacheKey: SearchQueryCacheEntry]>([:])
 
     private init() {}
 
     func get(key: SearchQueryCacheKey, now: Date) -> OpenBurnBarQueryRunResult? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard let entry = cache[key] else { return nil }
-        if entry.isValid(at: now) {
-            return entry.result
+        cache.withLock { cache in
+            guard let entry = cache[key] else { return nil }
+            if entry.isValid(at: now) {
+                return entry.result
+            }
+            cache.removeValue(forKey: key)
+            return nil
         }
-        cache.removeValue(forKey: key)
-        return nil
     }
 
     func set(key: SearchQueryCacheKey, result: OpenBurnBarQueryRunResult, now: Date) {
-        lock.lock()
-        defer { lock.unlock() }
-        cache[key] = SearchQueryCacheEntry(result: result, createdAt: now)
+        cache.withLock { $0[key] = SearchQueryCacheEntry(result: result, createdAt: now) }
     }
 
     func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-        cache.removeAll()
+        cache.withLock { $0.removeAll() }
     }
 }

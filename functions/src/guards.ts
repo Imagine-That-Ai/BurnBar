@@ -22,11 +22,11 @@ import type {
 
 const PROVIDER_VALUES: ReadonlySet<string> = new Set(SUPPORTED_PROVIDERS);
 
-export type TimestampWithToMillis = {
+type TimestampWithToMillis = {
   toMillis: () => number;
 };
 
-export type TimestampWithToDate = {
+type TimestampWithToDate = {
   toDate: () => Date;
 };
 
@@ -38,11 +38,7 @@ export function recordOrUndefined(value: unknown): Record<string, unknown> | und
   return isRecord(value) ? value : undefined;
 }
 
-export function recordEntries(value: unknown): Array<[string, unknown]> {
-  return isRecord(value) ? Object.entries(value) : [];
-}
-
-export function isProvider(value: unknown): value is Provider {
+function isProvider(value: unknown): value is Provider {
   return typeof value === "string" && PROVIDER_VALUES.has(value);
 }
 
@@ -52,10 +48,6 @@ export function parseProvider(value: unknown): Provider | undefined {
 
 export function stringValue(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
-}
-
-export function numberValue(raw: unknown): number | undefined {
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
 }
 
 export function isTimestampWithToMillis(value: unknown): value is TimestampWithToMillis {
@@ -85,10 +77,6 @@ export function errorMessage(error: unknown): string {
 
 export function jsonObject(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
-}
-
-export function stripUndefinedRecord(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function isCredentialKind(value: unknown): value is ProviderAccountDoc["credentialKind"] {
@@ -265,9 +253,14 @@ export function parseEntitlementBindingDoc(raw: unknown): EntitlementBindingDoc 
   ) {
     return undefined;
   }
+  const appAccountToken =
+    typeof raw.appAccountToken === "string" && raw.appAccountToken.trim()
+      ? raw.appAccountToken
+      : raw.id;
   return {
     id: raw.id,
     uid: raw.uid,
+    appAccountToken,
     productID: raw.productID,
     createdAt: raw.createdAt,
     schemaVersion: raw.schemaVersion,
@@ -401,13 +394,65 @@ export function parseModelBenchmarkSourceStatusDoc(raw: unknown): ModelBenchmark
   };
 }
 
+/** Shared Firestore date coercion — mirrors rollup `coerceDate` wire-shape handling. */
+export function coerceFirestoreDate(value: unknown): Date | undefined {
+  if (value == null) return undefined;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  if (isTimestampWithToDate(value)) {
+    const parsed = value.toDate();
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  if (isTimestampWithToMillis(value)) {
+    const parsed = new Date(value.toMillis());
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  if (isRecord(value)) {
+    const seconds =
+      typeof value.seconds === "number" ? value.seconds : typeof value._seconds === "number" ? value._seconds : undefined;
+    const nanos =
+      typeof value.nanoseconds === "number"
+        ? value.nanoseconds
+        : typeof value._nanoseconds === "number"
+          ? value._nanoseconds
+          : 0;
+    if (typeof seconds === "number") {
+      const parsed = new Date(seconds * 1000 + Math.floor(Number(nanos) / 1_000_000));
+      return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+    }
+  }
+  return undefined;
+}
+
+/** Mirrors rollup `eventDate()` precedence so legacy Firestore shapes keep parsing. */
+function synthesizeRecordedAt(raw: Record<string, unknown>): string | undefined {
+  if (typeof raw.recordedAt === "string" && raw.recordedAt.trim()) {
+    return raw.recordedAt;
+  }
+  const date =
+    coerceFirestoreDate(raw.timestamp) ??
+    coerceFirestoreDate(raw.startTime) ??
+    coerceFirestoreDate(raw.endTime) ??
+    coerceFirestoreDate(raw.createdAt) ??
+    coerceFirestoreDate(raw.updatedAt);
+  return date?.toISOString();
+}
+
 export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
   if (!isRecord(raw) || !isProvider(raw.provider)) {
     return undefined;
   }
   const schemaVersion = typeof raw.schemaVersion === "number" ? raw.schemaVersion : 1;
+  const recordedAt = synthesizeRecordedAt(raw);
+  if (!recordedAt) return undefined;
   const doc: UsageEventDoc = {
     provider: raw.provider,
+    recordedAt,
     schemaVersion,
   };
   if (typeof raw.providerID === "string") doc.providerID = raw.providerID;
@@ -483,18 +528,12 @@ export function stringField(raw: unknown, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function recordArrayField(raw: unknown, key: string): Array<Record<string, unknown>> {
-  const value = recordField(raw, key);
-  if (!Array.isArray(value)) return [];
-  return value.filter(isRecord);
-}
-
 export function isStripeSubscription(value: unknown): value is import("stripe").Stripe.Subscription {
-  return isRecord(value) && typeof value.id === "string";
+  return isRecord(value) && value.object === "subscription" && typeof value.id === "string";
 }
 
 export function isStripeCheckoutSession(value: unknown): value is import("stripe").Stripe.Checkout.Session {
-  return isRecord(value) && typeof value.id === "string";
+  return isRecord(value) && value.object === "checkout.session" && typeof value.id === "string";
 }
 
 export function stripUndefinedObject(value: object): DocumentData {

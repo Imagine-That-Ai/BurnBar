@@ -28,7 +28,7 @@ export interface OpenBurnBarWorkspaceRpcClientLike {
   runTerminal?(params: BurnBarRunTerminalRequest): Promise<BurnBarRunTerminalResult>;
 }
 
-export interface BurnBarWorkspaceCommandExecutor {
+interface BurnBarWorkspaceCommandExecutor {
   executeCommand<Result>(command: string, ...rest: unknown[]): Thenable<Result>;
 }
 

@@ -34,13 +34,13 @@ internal fun StatusFeedback(state: SmartHubSnapshot) {
     AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         ) {
             AuroraBadge(text = if (state.actionError != null) "Needs attention" else "Working", tone = tone)
             Text(message, style = AuroraType.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    Spacer(Modifier.height(AuroraSpacing.md.dp))
+    Spacer(Modifier.height(AuroraSpacing.MD.dp))
 }
 
 @Composable
@@ -49,7 +49,7 @@ internal fun NestHubCard(state: SmartHubSnapshot) {
     AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
         NestHubCardHeader(state = state, bridgeReady = bridgeReady)
 
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
 
         Text(
             text = bridgeSummary(state),
@@ -57,11 +57,11 @@ internal fun NestHubCard(state: SmartHubSnapshot) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
 
         NestHubBridgeActionButtons(state = state, bridgeReady = bridgeReady)
 
-        Spacer(Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(Modifier.height(AuroraSpacing.LG.dp))
 
         NestHubCastDiscoverySection(state = state)
     }
@@ -72,27 +72,27 @@ internal fun PixelClockCard(state: SmartHubSnapshot) {
     AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
         PixelClockCardHeader(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
 
         PixelClockEnableToggle(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
 
         PixelClockDeviceList(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
 
         PixelClockRepairActions(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
 
         PixelClockBrightnessSlider(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
 
         PixelClockTimeFormatRow(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
 
         PixelClockRefreshSlider(state = state)
     }
@@ -105,10 +105,10 @@ internal fun CastDeviceRow(device: CastDisplayDevice, selected: Boolean, busy: B
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(vertical = AuroraSpacing.xs.dp),
+            .padding(vertical = AuroraSpacing.XS.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
                 Text(device.friendlyName, style = AuroraType.body)
                 if (selected) {
                     AuroraBadge(text = "Selected", tone = AuroraBadgeTone.Success)
@@ -127,7 +127,7 @@ internal fun CastDeviceRow(device: CastDisplayDevice, selected: Boolean, busy: B
             Icon(Icons.Filled.Save, contentDescription = null)
             Text("Save")
         }
-        Spacer(Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(Modifier.width(AuroraSpacing.XS.dp))
         AuroraSecondaryButton(
             onClick = { SmartHubBridgeClientCastActions.testCast(device) },
             enabled = !busy,

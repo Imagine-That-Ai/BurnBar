@@ -1,4 +1,5 @@
 import Foundation
+import os
 import GRDB
 import OpenBurnBarCore
 
@@ -66,43 +67,46 @@ struct DaemonCredentialSlotAccountProjection {
     }
 }
 
-private final class ProviderQuotaAutomaticRefreshLifecycle: @unchecked Sendable {
-    private let lock = NSLock()
-    private var refreshTask: Task<Void, Never>?
-    private var apiKeyObserver: NSObjectProtocol?
+private final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
+    private struct State {
+        var refreshTask: Task<Void, Never>?
+        var apiKeyObserver: NSObjectProtocol?
+    }
+
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
 
     func replaceRefreshTask(_ task: Task<Void, Never>) {
-        let previous = lock.withLock { () -> Task<Void, Never>? in
-            let previous = refreshTask
-            refreshTask = task
+        let previous = state.withLockUnchecked { state -> Task<Void, Never>? in
+            let previous = state.refreshTask
+            state.refreshTask = task
             return previous
         }
         previous?.cancel()
     }
 
     func cancelRefreshTask() {
-        let task = lock.withLock { () -> Task<Void, Never>? in
-            let task = refreshTask
-            refreshTask = nil
+        let task = state.withLockUnchecked { state -> Task<Void, Never>? in
+            let task = state.refreshTask
+            state.refreshTask = nil
             return task
         }
         task?.cancel()
     }
 
     var hasAPIKeyObserver: Bool {
-        lock.withLock { apiKeyObserver != nil }
+        state.withLockUnchecked { $0.apiKeyObserver != nil }
     }
 
     func setAPIKeyObserver(_ observer: NSObjectProtocol) {
-        lock.withLock {
-            apiKeyObserver = observer
+        state.withLockUnchecked {
+            $0.apiKeyObserver = observer
         }
     }
 
     func removeAPIKeyObserver() {
-        let observer = lock.withLock { () -> NSObjectProtocol? in
-            let observer = apiKeyObserver
-            apiKeyObserver = nil
+        let observer = state.withLockUnchecked { state -> NSObjectProtocol? in
+            let observer = state.apiKeyObserver
+            state.apiKeyObserver = nil
             return observer
         }
         if let observer {
@@ -116,25 +120,39 @@ private final class ProviderQuotaAutomaticRefreshLifecycle: @unchecked Sendable 
     }
 }
 
-// AUDIT(@unchecked Sendable): quota adapters need synchronous plan readers while
-// running inside the quota refresh actor. The readers are immutable closures
-// installed during ProviderQuotaService initialization; their backing settings
-// storage is UserDefaults-based and thread-safe for reads.
-final class ProviderQuotaPlanReaders: @unchecked Sendable {
-    let miniMaxModeProvider: () -> MiniMaxQuotaMode
-    let factoryPlanProvider: () -> FactoryQuotaPlanTier
-    let xaiPlanProvider: () -> XAIQuotaPlanTier
-    let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
-    let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
-    let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
+/// An immutable, `Sendable` value snapshot of the user's quota-plan selection,
+/// captured on the main actor and handed to adapters that run off it. This is
+/// the Swift-6-safe replacement for synchronously reaching into `@MainActor`
+/// `SettingsManager` from inside `QuotaRefreshActor`.
+struct ProviderQuotaPlanSnapshot: Sendable {
+    let miniMaxMode: MiniMaxQuotaMode
+    let factoryPlan: FactoryQuotaPlanTier
+    let xaiPlan: XAIQuotaPlanTier
+    let mimoTokenPlanRegion: ProviderEndpointRegion
+    let mimoTokenPlanTier: MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycle: MimoTokenPlanBillingCycle
+}
+
+// Quota adapters need the user's plan selection while running off the main
+// actor. The readers are immutable `@MainActor` closures (which are `Sendable`)
+// installed during `ProviderQuotaService` initialization; their backing
+// `SettingsManager` is main-actor isolated, so the values are snapshotted with
+// `resolvedSnapshot()` on the main actor before any off-actor quota work.
+final class ProviderQuotaPlanReaders: Sendable {
+    let miniMaxModeProvider: @MainActor () -> MiniMaxQuotaMode
+    let factoryPlanProvider: @MainActor () -> FactoryQuotaPlanTier
+    let xaiPlanProvider: @MainActor () -> XAIQuotaPlanTier
+    let mimoTokenPlanRegionProvider: @MainActor () -> ProviderEndpointRegion
+    let mimoTokenPlanTierProvider: @MainActor () -> MimoTokenPlanTier?
+    let mimoTokenPlanBillingCycleProvider: @MainActor () -> MimoTokenPlanBillingCycle
 
     init(
-        miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
-        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
-        xaiPlanProvider: @escaping () -> XAIQuotaPlanTier,
-        mimoTokenPlanRegionProvider: @escaping () -> ProviderEndpointRegion,
-        mimoTokenPlanTierProvider: @escaping () -> MimoTokenPlanTier?,
-        mimoTokenPlanBillingCycleProvider: @escaping () -> MimoTokenPlanBillingCycle
+        miniMaxModeProvider: @escaping @MainActor () -> MiniMaxQuotaMode,
+        factoryPlanProvider: @escaping @MainActor () -> FactoryQuotaPlanTier,
+        xaiPlanProvider: @escaping @MainActor () -> XAIQuotaPlanTier,
+        mimoTokenPlanRegionProvider: @escaping @MainActor () -> ProviderEndpointRegion,
+        mimoTokenPlanTierProvider: @escaping @MainActor () -> MimoTokenPlanTier?,
+        mimoTokenPlanBillingCycleProvider: @escaping @MainActor () -> MimoTokenPlanBillingCycle
     ) {
         self.miniMaxModeProvider = miniMaxModeProvider
         self.factoryPlanProvider = factoryPlanProvider
@@ -142,6 +160,19 @@ final class ProviderQuotaPlanReaders: @unchecked Sendable {
         self.mimoTokenPlanRegionProvider = mimoTokenPlanRegionProvider
         self.mimoTokenPlanTierProvider = mimoTokenPlanTierProvider
         self.mimoTokenPlanBillingCycleProvider = mimoTokenPlanBillingCycleProvider
+    }
+
+    /// Snapshots every plan reader into a `Sendable` value on the main actor.
+    @MainActor
+    func resolvedSnapshot() -> ProviderQuotaPlanSnapshot {
+        ProviderQuotaPlanSnapshot(
+            miniMaxMode: miniMaxModeProvider(),
+            factoryPlan: factoryPlanProvider(),
+            xaiPlan: xaiPlanProvider(),
+            mimoTokenPlanRegion: mimoTokenPlanRegionProvider(),
+            mimoTokenPlanTier: mimoTokenPlanTierProvider(),
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycleProvider()
+        )
     }
 }
 
@@ -164,12 +195,12 @@ final class ProviderQuotaService {
     private let session: URLSession
     private let environment: [String: String]
     private let homeDirectoryURL: URL
-    private let miniMaxModeProvider: () -> MiniMaxQuotaMode
-    private let factoryPlanProvider: () -> FactoryQuotaPlanTier
-    private let xaiPlanProvider: () -> XAIQuotaPlanTier
-    private let mimoTokenPlanRegionProvider: () -> ProviderEndpointRegion
-    private let mimoTokenPlanTierProvider: () -> MimoTokenPlanTier?
-    private let mimoTokenPlanBillingCycleProvider: () -> MimoTokenPlanBillingCycle
+    private let miniMaxModeProvider: @MainActor () -> MiniMaxQuotaMode
+    private let factoryPlanProvider: @MainActor () -> FactoryQuotaPlanTier
+    private let xaiPlanProvider: @MainActor () -> XAIQuotaPlanTier
+    private let mimoTokenPlanRegionProvider: @MainActor () -> ProviderEndpointRegion
+    private let mimoTokenPlanTierProvider: @MainActor () -> MimoTokenPlanTier?
+    private let mimoTokenPlanBillingCycleProvider: @MainActor () -> MimoTokenPlanBillingCycle
     private let claudeCredentialsReader: any ClaudeCredentialsReading
     private let refreshProviders: [AgentProvider]
     private let planReaders: ProviderQuotaPlanReaders
@@ -190,8 +221,11 @@ final class ProviderQuotaService {
     private(set) var claudeBridgeStatus: ClaudeQuotaBridgeStatus
     private(set) var routingStatesByProviderID: [ProviderID: ProviderRoutingStateSnapshot] = [:]
     private(set) var routingEvents: [ProviderRoutingDecisionEvent] = []
-    var onSnapshotsPersistedForCloudSync: (([ProviderQuotaSnapshot]) -> Void)?
-    private var codexRolloutScanCache: CodexRolloutScanCache = .empty
+    var onSnapshotsPersistedForCloudSync: (@Sendable ([ProviderQuotaSnapshot]) -> Void)?
+    /// Codex rollout-scan cache. A `Locked` box (not a plain stored property) so
+    /// the `@Sendable` write-back handed to off-actor adapters can update it
+    /// without capturing `self` (main-actor isolated).
+    private let codexRolloutScanCacheBox = Locked<CodexRolloutScanCache>(.empty)
     private var connectedQuotaProviderIDsCache: (fetchedAt: Date, ids: Set<ProviderID>)?
     private var suppressRoutingEventPersistence = false
     private var routingEventsDirty = false
@@ -210,12 +244,12 @@ final class ProviderQuotaService {
         session: URLSession = .shared,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
-        miniMaxModeProvider: (() -> MiniMaxQuotaMode)? = nil,
-        factoryPlanProvider: (() -> FactoryQuotaPlanTier)? = nil,
-        xaiPlanProvider: (() -> XAIQuotaPlanTier)? = nil,
-        mimoTokenPlanRegionProvider: (() -> ProviderEndpointRegion)? = nil,
-        mimoTokenPlanTierProvider: (() -> MimoTokenPlanTier?)? = nil,
-        mimoTokenPlanBillingCycleProvider: (() -> MimoTokenPlanBillingCycle)? = nil,
+        miniMaxModeProvider: (@MainActor () -> MiniMaxQuotaMode)? = nil,
+        factoryPlanProvider: (@MainActor () -> FactoryQuotaPlanTier)? = nil,
+        xaiPlanProvider: (@MainActor () -> XAIQuotaPlanTier)? = nil,
+        mimoTokenPlanRegionProvider: (@MainActor () -> ProviderEndpointRegion)? = nil,
+        mimoTokenPlanTierProvider: (@MainActor () -> MimoTokenPlanTier?)? = nil,
+        mimoTokenPlanBillingCycleProvider: (@MainActor () -> MimoTokenPlanBillingCycle)? = nil,
         claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) {
@@ -274,7 +308,19 @@ final class ProviderQuotaService {
 
         self.claudeBridgeStatus = bridgeManager.refreshClaudeBridgeStatus()
 
-        _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+        // Best-effort, but observable: if the support directory can't be
+        // prepared the persisted snapshot/routing-event loads below will all
+        // miss and every later persist silently no-ops. Swallowing the error
+        // here used to make that whole-cache loss invisible. Keep init
+        // resilient (the service must still construct) but record the fault.
+        do {
+            _ = try OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+        } catch {
+            AppLogger.dataStore.error(
+                "ProviderQuotaService: prepareSupportDirectory failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
         loadPersistedSnapshots()
         loadPersistedRoutingEvents()
         loadPersistedCodexRolloutScanCache()
@@ -479,7 +525,22 @@ final class ProviderQuotaService {
         dataStore: DataStore,
         request: ProviderRoutingRequest = ProviderRoutingRequest()
     ) -> [ProviderID: ProviderRoutingStateSnapshot] {
-        let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
+        // A local-store read fault must not be invisible: routing decides
+        // which credential/account serves traffic, and a silent `[]` here
+        // drops every locally-known account from the candidate set without a
+        // trace. We still degrade gracefully (the union below also draws on
+        // live snapshots, daemon configs, and the caller's preferred IDs, so
+        // routing can proceed), but the read failure is now logged.
+        let accounts: [ProviderAccountDoc]
+        do {
+            accounts = try dataStore.providerAccountStore.fetchAll()
+        } catch {
+            AppLogger.dataStore.error(
+                "ProviderQuotaService: refreshRoutingState fetchAll failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            accounts = []
+        }
         let providerIDs = Set(
             accounts.map(\.providerID)
                 + snapshotsByProvider.values.filter(\.hasDisplayableQuotaSignal).map(\.providerID)
@@ -568,10 +629,10 @@ final class ProviderQuotaService {
     ) {
         automaticRefreshLifecycle.replaceRefreshTask(Task(priority: .utility) { [weak self, weak dataStore] in
             guard let self, let dataStore else { return }
-            try? await Task.sleep(for: initialDelay)
+            try? await Task.sleep(for: initialDelay) // try?-ok(sleep cancellation only)
             while !Task.isCancelled {
                 await self.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
-                try? await Task.sleep(for: interval)
+                try? await Task.sleep(for: interval) // try?-ok(sleep cancellation only)
             }
         })
 
@@ -820,7 +881,23 @@ final class ProviderQuotaService {
            Date().timeIntervalSince(cache.fetchedAt) < 15 {
             return cache.ids
         }
-        let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
+        let accounts: [ProviderAccountDoc]
+        do {
+            accounts = try dataStore.providerAccountStore.fetchAll()
+        } catch {
+            // Correctness over silence: this set gates popover visibility and
+            // which providers get a quota refresh. A swallowed read fault used
+            // to return `[]` AND pin that empty set in the 15s cache, so a
+            // single transient DB hiccup could hide every connected account
+            // for a quarter minute. Log the fault and return empty WITHOUT
+            // caching, so the next call re-probes and self-heals instead of
+            // serving a stale-empty answer.
+            AppLogger.dataStore.error(
+                "ProviderQuotaService: connectedQuotaProviderIDs fetchAll failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return []
+        }
         let ids: Set<ProviderID> = Set(accounts.compactMap { account in
             guard Self.isConnectedQuotaAccount(account) else { return nil }
             guard let provider = AgentProvider.fromProviderID(account.providerID),
@@ -1003,25 +1080,18 @@ final class ProviderQuotaService {
             dataStoreActor: dataStore.actor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
-            miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider,
-            xaiPlanProvider: xaiPlanProvider,
-            mimoTokenPlanRegionProvider: mimoTokenPlanRegionProvider,
-            mimoTokenPlanTierProvider: mimoTokenPlanTierProvider,
-            mimoTokenPlanBillingCycleProvider: mimoTokenPlanBillingCycleProvider,
-            claudeBridgeStatus: claudeBridgeStatus,
-            codexRolloutScanCache: codexRolloutScanCache,
-            updateCodexRolloutScanCache: { [weak self] cache, didChange in
-                self?.handleCodexRolloutScanCacheUpdate(cache, didChange: didChange)
-            },
-            refreshClaudeBridgeStatus: { [weak self] in
-                self?.refreshClaudeBridgeStatus()
-                return self?.claudeBridgeStatus ?? ClaudeQuotaBridgeStatus(
-                    state: .notInstalled,
-                    wrapperPath: "",
-                    detailText: "",
-                    lastPayloadAt: nil
-                )
+            miniMaxMode: miniMaxModeProvider(),
+            factoryPlan: factoryPlanProvider(),
+            xaiPlan: xaiPlanProvider(),
+            mimoTokenPlanRegion: mimoTokenPlanRegionProvider(),
+            mimoTokenPlanTier: mimoTokenPlanTierProvider(),
+            mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycleProvider(),
+            codexRolloutScanCache: codexRolloutScanCacheBox.read(),
+            updateCodexRolloutScanCache: { [codexCacheBox = codexRolloutScanCacheBox, store = snapshotStore] cache, didChange in
+                codexCacheBox.write(cache)
+                if didChange {
+                    store.persistCodexRolloutScanCache(cache)
+                }
             },
             claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedKeys
@@ -1066,7 +1136,11 @@ final class ProviderQuotaService {
 
         for slot in orderedSlots {
             let account = "provider.\(providerID).slot.\(slot.slotID).apiKey"
-            if let key = try? providerRuntimeKeyStore.string(for: account, allowUserInteraction: false),
+            if let key = providerRuntimeKeyStore.credentialIfPresent(
+                for: account,
+                allowUserInteraction: false,
+                event: "daemon_plan_api_key_read_failed"
+            ),
                let normalized = quotaNonEmpty(key) {
                 return normalized
             }
@@ -1143,13 +1217,6 @@ final class ProviderQuotaService {
             return .kimi
         default:
             return nil
-        }
-    }
-
-    private func handleCodexRolloutScanCacheUpdate(_ cache: CodexRolloutScanCache, didChange: Bool) {
-        codexRolloutScanCache = cache
-        if didChange {
-            persistCodexRolloutScanCache()
         }
     }
 
@@ -1370,7 +1437,7 @@ final class ProviderQuotaService {
     private func loadPersistedCodexRolloutScanCache() {
         switch snapshotStore.loadPersistedCodexRolloutScanCache() {
         case .loaded(let cache):
-            codexRolloutScanCache = cache
+            codexRolloutScanCacheBox.write(cache)
         case .failed(let target, let message):
             AppLogger.dataStore.silentFailure(
                 "ProviderQuotaService: \(target.label) load failed",
@@ -1381,9 +1448,6 @@ final class ProviderQuotaService {
         }
     }
 
-    private func persistCodexRolloutScanCache() {
-        snapshotStore.persistCodexRolloutScanCache(codexRolloutScanCache)
-    }
 }
 
 private struct ProviderQuotaPersistenceLoadError: LocalizedError {

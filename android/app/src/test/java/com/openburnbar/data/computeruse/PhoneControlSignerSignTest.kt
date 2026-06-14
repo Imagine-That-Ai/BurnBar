@@ -136,7 +136,7 @@ class PhoneControlSignerSignTest {
         val pair = generator.generateKeyPair()
         val p256 = PhoneControlSigningIdentity.SecureEnclaveP256(
             pair.private,
-            pair.public as java.security.interfaces.ECPublicKey,
+            pair.public as? java.security.interfaces.ECPublicKey ?: error("expected EC public key"),
         )
 
         val authority = PhoneControlSignerSign.sign(tapIntent(), "android-se-1", 8, nowMillis, p256)

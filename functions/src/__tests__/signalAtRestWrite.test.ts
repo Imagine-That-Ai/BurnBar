@@ -162,7 +162,7 @@ describe("validateSignalAtRestEnvelopeForWrite (L23 + L37 admin)", () => {
       throw new Error("expected SignalAtRestWriteError");
     } catch (error) {
       expect(error).toBeInstanceOf(SignalAtRestWriteError);
-      expect((error as SignalAtRestWriteError).reason).toBe("binding-docid-mismatch");
+      expect(error instanceof SignalAtRestWriteError ? error.reason : undefined).toBe("binding-docid-mismatch");
     }
     const ok = assertSignalAtRestEnvelopeForWrite(atRestEnvelope(), EXPECTED);
     expect(ok.envelope.binding.uid).toBe("uid-1");

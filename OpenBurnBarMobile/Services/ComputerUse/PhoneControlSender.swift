@@ -2,6 +2,7 @@
 import Foundation
 import CryptoKit
 import LocalAuthentication
+import os
 import Security
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
@@ -15,7 +16,7 @@ import OpenBurnBarComputerUseCore
 /// The actual stream-send closure is injected — this lets the test
 /// target drive the sender against an in-memory channel without
 /// spinning up iroh.
-public final class PhoneControlSender: @unchecked Sendable {
+public final class PhoneControlSender: Sendable {
     public enum SendError: Error, Sendable, Equatable {
         case streamClosed
         case signingFailed(String)
@@ -32,12 +33,20 @@ public final class PhoneControlSender: @unchecked Sendable {
     /// path signs through this, so key custody is a property of the stored
     /// identity rather than of each call site.
     private let signingIdentityProvider: @Sendable () -> PhoneControlAuthoritySigningKey?
-    private let userDefaults: UserDefaults
+    // `UserDefaults` is not `Sendable`, so the stored reference lives behind an
+    // unfair lock box rather than as a bare `let`. Every counter mint reads the
+    // boxed defaults and hands them to the static `nextCounter`, which still
+    // serializes the read-modify-write under `counterLock`.
+    private let userDefaultsBox: OSAllocatedUnfairLock<State>
     private let frameSink: FrameSink
     private let uid: String
     private let connectionId: String
     private let sendSequencer = PhoneControlSendSequencer()
     private static let counterLock = NSLock()
+
+    private struct State {
+        var userDefaults: UserDefaults
+    }
 
     public init(
         peerNodeId: String,
@@ -52,7 +61,7 @@ public final class PhoneControlSender: @unchecked Sendable {
         self.uid = uid
         self.connectionId = connectionId
         self.signingIdentityProvider = signingIdentityProvider
-        self.userDefaults = userDefaults
+        self.userDefaultsBox = OSAllocatedUnfairLock(uncheckedState: State(userDefaults: userDefaults))
         self.signer = signer
         self.frameSink = frameSink
     }
@@ -630,7 +639,8 @@ public final class PhoneControlSender: @unchecked Sendable {
     }
 
     private func nextCounter() -> UInt64 {
-        Self.nextCounter(peerNodeId: peerNodeId, userDefaults: userDefaults)
+        let defaults = userDefaultsBox.withLockUnchecked { $0.userDefaults }
+        return Self.nextCounter(peerNodeId: peerNodeId, userDefaults: defaults)
     }
 
     public static func nextCounter(peerNodeId: String, userDefaults: UserDefaults = .standard) -> UInt64 {
@@ -696,7 +706,7 @@ protocol PhoneControlSigningKeyProviding: AnyObject {
 /// The public key is announced on the already-verified Computer Use control
 /// stream; the Mac registers it for that stream and then validates every
 /// `control.input` intent with monotonic counters.
-public final class PhoneControlSigningKeyStore: @unchecked Sendable {
+public final class PhoneControlSigningKeyStore: Sendable {
     public static let shared = PhoneControlSigningKeyStore()
 
     private let service: String

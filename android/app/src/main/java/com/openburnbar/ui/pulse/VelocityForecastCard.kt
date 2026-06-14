@@ -17,9 +17,9 @@ import com.openburnbar.ui.theme.AuroraSpacing
 fun VelocityForecastCard(rollups: UsageRollups, liveUsages: List<TokenUsage> = emptyList()) {
     val state = remember(rollups, liveUsages) { computeVelocityForecastState(rollups, liveUsages) }
     AuroraGlassCard(
-        modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
-        cornerRadius = AuroraRadius.xl,
-        contentPadding = AuroraSpacing.lg.dp,
+        modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
+        cornerRadius = AuroraRadius.XL,
+        contentPadding = AuroraSpacing.LG.dp,
     ) {
         VelocityForecastCardBody(state = state)
     }

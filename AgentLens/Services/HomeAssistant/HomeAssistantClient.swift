@@ -101,13 +101,13 @@ actor HomeAssistantClient {
             let container = try decoder.singleValueContainer()
             if container.decodeNil() {
                 self = .null
-            } else if let s = try? container.decode(String.self) {
+            } else if let s = try? container.decode(String.self) { // try?-ok(value-shape probe, null fallback)
                 self = .string(s)
-            } else if let b = try? container.decode(Bool.self) {
+            } else if let b = try? container.decode(Bool.self) { // try?-ok(value-shape probe, null fallback)
                 self = .bool(b)
-            } else if let n = try? container.decode(Double.self) {
+            } else if let n = try? container.decode(Double.self) { // try?-ok(value-shape probe, null fallback)
                 self = .number(n)
-            } else if let a = try? container.decode([AttributeValue].self) {
+            } else if let a = try? container.decode([AttributeValue].self) { // try?-ok(value-shape probe, null fallback)
                 self = .array(a)
             } else {
                 self = .null
@@ -199,7 +199,7 @@ actor HomeAssistantClient {
            !body.contains("API running") && !body.contains("API is running") {
             // Tolerated: some proxies strip the message; only treat it as a
             // failure if the body is explicitly not JSON.
-            if (try? JSONSerialization.jsonObject(with: data)) == nil {
+            if (try? JSONSerialization.jsonObject(with: data)) == nil { // try?-ok(tolerance gate, throws on non-JSON)
                 throw ClientError.decoding("unexpected /api/ body: \(body.prefix(120))")
             }
         }

@@ -1,10 +1,10 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { FieldPath, Timestamp, type Firestore } from "firebase-admin/firestore";
 
 export type RemoteMcpGrantMode = "sealed_only" | "local_decrypt_shim" | "remote_readable_explicit_opt_in";
 export type RemoteMcpScope = "search:read" | "conversation:read" | "usage:read" | "index:status" | "knowledge:read";
 
-export interface RemoteMcpClientDoc {
+interface RemoteMcpClientDoc {
   clientId: string;
   displayName: string;
   clientType: string;
@@ -18,7 +18,7 @@ export interface RemoteMcpClientDoc {
   schemaVersion: 1;
 }
 
-export interface RemoteMcpGrantDoc {
+interface RemoteMcpGrantDoc {
   grantId: string;
   clientId: string;
   scopes: RemoteMcpScope[];
@@ -39,14 +39,8 @@ export function hashRemoteMcpSecret(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export function randomRemoteMcpSecret(prefix: string): string {
+function randomRemoteMcpSecret(prefix: string): string {
   return `${prefix}_${randomBytes(32).toString("base64url")}`;
-}
-
-export function safeEqualHash(raw: string, expectedHash: string): boolean {
-  const actual = Buffer.from(hashRemoteMcpSecret(raw), "hex");
-  const expected = Buffer.from(expectedHash, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 export async function upsertRemoteMcpClient(

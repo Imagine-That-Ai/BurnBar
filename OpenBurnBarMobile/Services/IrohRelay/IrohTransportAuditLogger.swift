@@ -6,15 +6,18 @@ import OpenBurnBarIrohRelay
 /// `IrohTransportAuditEventDoc` schema in `functions/src/types.ts`.
 /// Writes to `/users/{uid}/iroh_audit_events/{eventId}`. Read-only from the
 /// client side (rules deny update + delete).
-final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Sendable {
+final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
     static let shared = FirestoreIrohAuditLogger()
 
     private let firestoreProvider: @Sendable () -> Firestore
-    private let isoFormatter: ISO8601DateFormatter = {
+    /// Computed (not stored) so the class stays genuinely `Sendable`:
+    /// `ISO8601DateFormatter` is a non-`Sendable` reference type, and a fresh
+    /// instance per format call is race-free with no shared mutable state.
+    private var isoFormatter: ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
-    }()
+    }
     private let auditTTLSeconds: TimeInterval
 
     init(

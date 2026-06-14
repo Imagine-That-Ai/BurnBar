@@ -81,12 +81,11 @@ data class RollbackRequest(
         ;
 
         companion object {
-            fun fromToken(token: String?): Status? =
-                when (token) {
-                    "inFlight" -> IN_FLIGHT
-                    null -> null
-                    else -> values().firstOrNull { it.token == token }
-                }
+            fun fromToken(token: String?): Status? = when (token) {
+                "inFlight" -> IN_FLIGHT
+                null -> null
+                else -> values().firstOrNull { it.token == token }
+            }
         }
     }
 }
@@ -254,27 +253,18 @@ class RollbackService private constructor(
     }
 }
 
-internal fun sealedRollbackRequestPayload(
-    request: RollbackRequest,
-    source: String,
-    vaultKey: ByteArray,
-): MutableMap<String, Any> =
-    mutableMapOf(
-        "id" to request.id,
-        "sessionID" to request.sessionID,
-        "requestedAt" to Instant.ofEpochMilli(request.requestedAtEpoch).toString(),
-        "requestedBy" to request.requestedBy,
-        "status" to request.status.token,
-        "schemaVersion" to 1,
-        "source" to source,
-        "sealedScope" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(request.scope.asJson, vaultKey)),
-    )
+internal fun sealedRollbackRequestPayload(request: RollbackRequest, source: String, vaultKey: ByteArray): MutableMap<String, Any> = mutableMapOf(
+    "id" to request.id,
+    "sessionID" to request.sessionID,
+    "requestedAt" to Instant.ofEpochMilli(request.requestedAtEpoch).toString(),
+    "requestedBy" to request.requestedBy,
+    "status" to request.status.token,
+    "schemaVersion" to 1,
+    "source" to source,
+    "sealedScope" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(request.scope.asJson, vaultKey)),
+)
 
-internal fun Map<String, Any?>.toRollbackSnapshotOrNull(
-    documentID: String,
-    sessionID: String,
-    vaultKey: ByteArray? = null,
-): RollbackSnapshot? {
+internal fun Map<String, Any?>.toRollbackSnapshotOrNull(documentID: String, sessionID: String, vaultKey: ByteArray? = null): RollbackSnapshot? {
     val sequence = (this["sequence"] as? Number)?.toInt()
     val takenAtIso = this["takenAt"] as? String
     val takenAtEpoch = takenAtIso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }

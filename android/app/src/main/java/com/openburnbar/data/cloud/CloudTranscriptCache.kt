@@ -48,12 +48,7 @@ object CloudTranscriptCacheSettings {
 
 object CloudTranscriptCache {
     @Synchronized
-    fun cachedEnvelopeBytes(
-        storagePath: String,
-        bodyHash: String,
-        bodyHashVersion: Int,
-        context: Context = BurnBarApplication.appContext,
-    ): ByteArray? {
+    fun cachedEnvelopeBytes(storagePath: String, bodyHash: String, bodyHashVersion: Int, context: Context = BurnBarApplication.appContext): ByteArray? {
         if (CloudTranscriptCacheSettings.maxBytes(context) <= 0L) return null
         val file = CloudTranscriptCacheStorage.blobFile(context, storagePath, bodyHash, bodyHashVersion)
         if (!file.exists()) return null
@@ -65,13 +60,7 @@ object CloudTranscriptCache {
     }
 
     @Synchronized
-    fun storeEnvelopeBytes(
-        storagePath: String,
-        bodyHash: String,
-        bodyHashVersion: Int,
-        bytes: ByteArray,
-        context: Context = BurnBarApplication.appContext,
-    ) {
+    fun storeEnvelopeBytes(storagePath: String, bodyHash: String, bodyHashVersion: Int, bytes: ByteArray, context: Context = BurnBarApplication.appContext) {
         val maxBytes = CloudTranscriptCacheSettings.maxBytes(context)
         if (maxBytes <= 0L) {
             clear(context)
@@ -93,12 +82,7 @@ object CloudTranscriptCache {
     }
 
     @Synchronized
-    fun remove(
-        storagePath: String,
-        bodyHash: String,
-        bodyHashVersion: Int,
-        context: Context = BurnBarApplication.appContext,
-    ) {
+    fun remove(storagePath: String, bodyHash: String, bodyHashVersion: Int, context: Context = BurnBarApplication.appContext) {
         CloudTranscriptCacheStorage.blobFile(context, storagePath, bodyHash, bodyHashVersion).delete()
     }
 

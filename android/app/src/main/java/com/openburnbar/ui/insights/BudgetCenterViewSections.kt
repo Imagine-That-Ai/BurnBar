@@ -47,12 +47,7 @@ import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.util.Formatting
 
 @Composable
-internal fun BudgetCenterSummaryBanner(
-    totalSpend: Double,
-    totalLimit: Double,
-    aggregatePercent: Double,
-    isDark: Boolean,
-) {
+internal fun BudgetCenterSummaryBanner(totalSpend: Double, totalLimit: Double, aggregatePercent: Double, isDark: Boolean) {
     AuroraGlassCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -139,11 +134,7 @@ private data class BudgetForecastMetrics(
     val totalLimit: Double,
 )
 
-private fun computeBudgetForecastMetrics(
-    rules: List<BudgetRuleEntity>,
-    totalSpend: Double,
-    totalLimit: Double,
-): BudgetForecastMetrics {
+private fun computeBudgetForecastMetrics(rules: List<BudgetRuleEntity>, totalSpend: Double, totalLimit: Double): BudgetForecastMetrics {
     val dailyAverage =
         if (rules.isNotEmpty()) {
             val calculated = totalSpend / 14.0
@@ -169,28 +160,22 @@ private fun computeBudgetForecastMetrics(
     )
 }
 
-private fun budgetForecastProjectionText(metrics: BudgetForecastMetrics): String =
-    when {
-        metrics.rulesEmpty ->
-            "Configure budget rules above to enable run-rate predictive forecasts and automated breach alerting."
-        metrics.limitBreach -> {
-            val limit = Formatting.formatCurrency(metrics.totalLimit)
-            "⚠️ AI Projection: At your current 7-day average run rate, you are projected to breach " +
-                "your total budget limit of $limit in approximately ${metrics.breachDays} days. " +
-                "We recommend applying route-optimisation options listed below."
-        }
-        else ->
-            "✨ AI Projection: Nominal run-rate detected. You are fully on track to finish the " +
-                "current billing cycle safe within your configured limits."
+private fun budgetForecastProjectionText(metrics: BudgetForecastMetrics): String = when {
+    metrics.rulesEmpty ->
+        "Configure budget rules above to enable run-rate predictive forecasts and automated breach alerting."
+    metrics.limitBreach -> {
+        val limit = Formatting.formatCurrency(metrics.totalLimit)
+        "⚠️ AI Projection: At your current 7-day average run rate, you are projected to breach " +
+            "your total budget limit of $limit in approximately ${metrics.breachDays} days. " +
+            "We recommend applying route-optimisation options listed below."
     }
+    else ->
+        "✨ AI Projection: Nominal run-rate detected. You are fully on track to finish the " +
+            "current billing cycle safe within your configured limits."
+}
 
 @Composable
-internal fun BudgetCenterForecastCard(
-    rules: List<BudgetRuleEntity>,
-    totalSpend: Double,
-    totalLimit: Double,
-    isDark: Boolean,
-) {
+internal fun BudgetCenterForecastCard(rules: List<BudgetRuleEntity>, totalSpend: Double, totalLimit: Double, isDark: Boolean) {
     val metrics = computeBudgetForecastMetrics(rules, totalSpend, totalLimit)
     AuroraGlassCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -251,12 +236,11 @@ private fun BudgetCenterForecastMetricsRow(metrics: BudgetForecastMetrics, isDar
 }
 
 @Composable
-private fun budgetForecastMonthEndColor(metrics: BudgetForecastMetrics, isDark: Boolean): Color =
-    when {
-        metrics.limitBreach -> if (isDark) AuroraColors.emberDark else AuroraColors.ember
-        metrics.rulesEmpty -> MaterialTheme.colorScheme.onSurface
-        else -> if (isDark) AuroraColors.tealDark else AuroraColors.teal
-    }
+private fun budgetForecastMonthEndColor(metrics: BudgetForecastMetrics, isDark: Boolean): Color = when {
+    metrics.limitBreach -> if (isDark) AuroraColors.emberDark else AuroraColors.ember
+    metrics.rulesEmpty -> MaterialTheme.colorScheme.onSurface
+    else -> if (isDark) AuroraColors.tealDark else AuroraColors.teal
+}
 
 @Composable
 private fun BudgetForecastStatusBadge(rulesEmpty: Boolean, limitBreach: Boolean, isDark: Boolean) {
@@ -344,13 +328,7 @@ internal fun BudgetCenterRulesEmpty(onAddRule: () -> Unit) {
 }
 
 @Composable
-internal fun BudgetCenterRuleCard(
-    entity: BudgetRuleEntity,
-    spend: Double,
-    isDark: Boolean,
-    onToggleEnabled: (Boolean) -> Unit,
-    onDelete: () -> Unit,
-) {
+internal fun BudgetCenterRuleCard(entity: BudgetRuleEntity, spend: Double, isDark: Boolean, onToggleEnabled: (Boolean) -> Unit, onDelete: () -> Unit) {
     val rule = entity.toModel()
     val limit = rule.amountUSD
     val percent = if (limit > 0.0) spend / limit else 0.0
@@ -437,7 +415,8 @@ internal fun BudgetCenterAiRecommendationsList(isDark: Boolean) {
         BudgetAiRecommendationCard(
             title = "Consolidate Route-Optimisation",
             savingsLabel = "Save $18.50/mo",
-            body = "Claude 3.5 Sonnet driving 84% of total usage. Routing routine code tasks to Claude 3.5 Haiku is estimated to reduce month-end run rates by 26% without compromising quality.",
+            body = "Claude 3.5 Sonnet driving 84% of total usage. Routing routine code tasks to Claude 3.5 " +
+                "Haiku is estimated to reduce month-end run rates by 26% without compromising quality.",
             isDark = isDark,
         )
         BudgetAiRecommendationCard(
@@ -451,7 +430,8 @@ internal fun BudgetCenterAiRecommendationsList(isDark: Boolean) {
         BudgetAiRecommendationCard(
             title = "Configure Idle Timeout Limits",
             savingsLabel = "Save $5.20/wk",
-            body = "Observed 4 idle background watch sessions passively polling directory tree updates. Auto-sleeping sessions after 15 minutes of terminal inactivity reduces passive billing costs.",
+            body = "Observed 4 idle background watch sessions passively polling directory tree updates. " +
+                "Auto-sleeping sessions after 15 minutes of terminal inactivity reduces passive billing costs.",
             isDark = isDark,
         )
     }
@@ -543,7 +523,9 @@ internal fun BudgetCenterActivityLogEvent(event: BudgetEvent, isDark: Boolean) {
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Rule ID: ${event.ruleID.take(8)} · Amount: ${Formatting.formatCurrency(event.amountAtEvent)} / limit: ${Formatting.formatCurrency(event.limitAtEvent)}",
+                text = "Rule ID: ${event.ruleID.take(
+                    8,
+                )} · Amount: ${Formatting.formatCurrency(event.amountAtEvent)} / limit: ${Formatting.formatCurrency(event.limitAtEvent)}",
                 style = AuroraType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -563,31 +545,29 @@ internal fun LazyListScope.budgetCenterActivityLogSection(recentEvents: List<Bud
 }
 
 @Composable
-private fun budgetUsageProgressColor(percent: Double, isDark: Boolean): Color =
-    when {
-        percent >= 1.0 -> if (isDark) AuroraColors.emberDark else AuroraColors.ember
-        percent >= 0.8 -> if (isDark) AuroraColors.amberDark else AuroraColors.amber
-        else -> if (isDark) AuroraColors.tealDark else AuroraColors.teal
-    }
+private fun budgetUsageProgressColor(percent: Double, isDark: Boolean): Color = when {
+    percent >= 1.0 -> if (isDark) AuroraColors.emberDark else AuroraColors.ember
+    percent >= 0.8 -> if (isDark) AuroraColors.amberDark else AuroraColors.amber
+    else -> if (isDark) AuroraColors.tealDark else AuroraColors.teal
+}
 
-private fun budgetUsageStatusTriple(aggregatePercent: Double, isDark: Boolean): Triple<String, Color, Color> =
-    when {
-        aggregatePercent >= 1.0 ->
-            Triple(
-                "Blocked",
-                if (isDark) AuroraColors.emberDark.copy(alpha = 0.2f) else AuroraColors.ember.copy(alpha = 0.15f),
-                if (isDark) AuroraColors.emberDark else AuroraColors.ember,
-            )
-        aggregatePercent >= 0.8 ->
-            Triple(
-                "Warning",
-                if (isDark) AuroraColors.amberDark.copy(alpha = 0.2f) else AuroraColors.amber.copy(alpha = 0.15f),
-                if (isDark) AuroraColors.amberDark else AuroraColors.amber,
-            )
-        else ->
-            Triple(
-                "Nominal",
-                if (isDark) AuroraColors.tealDark.copy(alpha = 0.2f) else AuroraColors.teal.copy(alpha = 0.15f),
-                if (isDark) AuroraColors.tealDark else AuroraColors.teal,
-            )
-    }
+private fun budgetUsageStatusTriple(aggregatePercent: Double, isDark: Boolean): Triple<String, Color, Color> = when {
+    aggregatePercent >= 1.0 ->
+        Triple(
+            "Blocked",
+            if (isDark) AuroraColors.emberDark.copy(alpha = 0.2f) else AuroraColors.ember.copy(alpha = 0.15f),
+            if (isDark) AuroraColors.emberDark else AuroraColors.ember,
+        )
+    aggregatePercent >= 0.8 ->
+        Triple(
+            "Warning",
+            if (isDark) AuroraColors.amberDark.copy(alpha = 0.2f) else AuroraColors.amber.copy(alpha = 0.15f),
+            if (isDark) AuroraColors.amberDark else AuroraColors.amber,
+        )
+    else ->
+        Triple(
+            "Nominal",
+            if (isDark) AuroraColors.tealDark.copy(alpha = 0.2f) else AuroraColors.teal.copy(alpha = 0.15f),
+            if (isDark) AuroraColors.tealDark else AuroraColors.teal,
+        )
+}

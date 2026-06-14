@@ -21,14 +21,20 @@ final class PrivilegedSocketRedTeamIntegrationTests: XCTestCase {
             throw XCTSkip("Privileged socket not present at \(socket)")
         }
 
-        let probeURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent(".build/debug/OpenBurnBarPrivilegedSocketRedTeamProbe")
+        let probeURL: URL
+        if let probePath = ProcessInfo.processInfo.environment["OPENBURNBAR_REDTEAM_PROBE_PATH"],
+           !probePath.isEmpty {
+            probeURL = URL(fileURLWithPath: probePath)
+        } else {
+            probeURL = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent(".build/debug/OpenBurnBarPrivilegedSocketRedTeamProbe")
+        }
 
-        guard FileManager.default.fileExists(atPath: probeURL.path) else {
-            throw XCTSkip("Build OpenBurnBarPrivilegedSocketRedTeamProbe first (swift build in OpenBurnBarDaemon)")
+        guard FileManager.default.isExecutableFile(atPath: probeURL.path) else {
+            throw XCTSkip("Build OpenBurnBarPrivilegedSocketRedTeamProbe first; expected executable at \(probeURL.path)")
         }
 
         let process = Process()

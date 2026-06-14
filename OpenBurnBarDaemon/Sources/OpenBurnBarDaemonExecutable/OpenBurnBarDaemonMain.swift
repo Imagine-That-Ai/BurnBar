@@ -20,7 +20,7 @@ struct OpenBurnBarDaemonExecutable {
         URLCache.shared = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 0)
 
         #if canImport(Sentry)
-        configureSentryIfAvailable()
+        try configureSentryIfAvailable(environment: ProcessInfo.processInfo.environment)
         #endif
         let configuration = try BurnBarDaemonCommandLine.makeConfiguration(
             arguments: Array(CommandLine.arguments.dropFirst()),
@@ -32,10 +32,57 @@ struct OpenBurnBarDaemonExecutable {
             environment: ProcessInfo.processInfo.environment,
             logger: logger
         )
+
+        // T-DMN-03: before binding the control socket, re-verify the daemon's own
+        // on-disk image against the first-party designated requirement. Enforced
+        // exactly when the peer-codesig gate is enforced (signed production
+        // builds), so a same-uid attacker who swapped the user-writable installed
+        // binary cannot bring up a foreign image that serves the full RPC/HID
+        // surface. The install-location change (root-owned SMAppService) lives in
+        // the app/installer and is tracked Deferred.
+        let selfVerifier = DaemonSelfCodeSignatureVerifier(enforced: peerAuthenticator.isEnforced, logger: logger)
+        do {
+            try selfVerifier.verify()
+        } catch {
+            logger.error(
+                "daemon_self_verification_failed_refusing_start",
+                metadata: ["error": "\(error)"]
+            )
+            throw error
+        }
+
+        // T-DMN-04: the daemon's INDEPENDENT local-auth-proof verifier is wired
+        // into the high-risk computer-use RPC handlers (`computerUseSessionStart` /
+        // `computerUseInvoke`) inside `BurnBarDaemonServer`. Passing a non-`nil`
+        // verifier flips those methods to fail-closed: the request must carry a
+        // fresh, op-hash-bound proof that verifies against the PINNED phone key.
+        //
+        // It is intentionally NOT flipped on here yet. Activating it requires two
+        // changes that live OUTSIDE the `OpenBurnBarDaemon/**` SwiftPM subtree and
+        // so are tracked Deferred (mirroring how the SMAppService install-location
+        // seam in `DaemonSelfCodeSignatureVerifier` is Deferred to the installer):
+        //   1. A daemon-side PINNED phone local-auth verifying-key store, populated
+        //      at pairing. Today the phone verifying key is pinned in the Mac app's
+        //      keychain (`AgentLens/**`), not reachable from this executable target.
+        //   2. The Mac app coordinator (`ComputerUseSessionCoordinator`, the only
+        //      first-party caller) populating `localAuthProof` / `sourceDeviceId` /
+        //      `intentHashHex` on the socket request — also `AgentLens/**`.
+        // Wiring a resolver that cannot yet find the phone key would fail-close the
+        // ONLY trusted first-party caller, breaking the trusted controller path, so
+        // enforcement stays `nil` until both seams land. The mechanism, its
+        // fail-closed semantics, and its unit coverage are complete in-tree so the
+        // production flip is a one-line change once the key store exists:
+        //
+        //   let proofVerifier = peerAuthenticator.isEnforced
+        //       ? DaemonLocalAuthProofVerifier(resolvePinnedKey: <pairing key store>,
+        //                                       consumeProof: ledger.consume)
+        //       : nil
+        let localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil
         let server = BurnBarDaemonServer(
             configuration: configuration,
             logger: logger,
-            peerAuthenticator: peerAuthenticator
+            peerAuthenticator: peerAuthenticator,
+            localAuthProofVerifier: localAuthProofVerifier
         )
         let pensieveWatcher = makePensieveKnowledgeWatcher(
             environment: ProcessInfo.processInfo.environment,
@@ -60,36 +107,37 @@ struct OpenBurnBarDaemonExecutable {
     }
 }
 
-/// RR-3: build the control-socket peer authenticator for this process.
+/// RR-3 / T-DMN-05: build the control-socket peer authenticator for this process.
 ///
 /// Enforcement of the first-party code-signature gate is ON by default — a
 /// production daemon refuses any accepted peer that does not satisfy the
-/// canonical designated requirement. Unsigned developer builds can opt out with
-/// `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1`; non-debug builds ignore that
-/// flag and stay enforced.
+/// canonical designated requirement.
+///
+/// T-DMN-05: the `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1` escape hatch (used
+/// by unsigned developer builds where no binary can carry the first-party
+/// identity) is compiled out of release/distribution builds behind `#if DEBUG`.
+/// An attacker who controls the daemon's launch environment can no longer strip
+/// the gate by exporting the variable: in a release build the env value is never
+/// read, so the authenticator is unconditionally `enforced: true`. In DEBUG the
+/// opt-out remains and is logged loudly so a misconfiguration is never silent.
 private func makePeerAuthenticator(
     environment: [String: String],
     logger: BurnBarDaemonLogger
 ) -> BurnBarDaemonPeerAuthenticator {
-    #if DEBUG
-    let disabled = environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
-        || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
-    if disabled {
+    let enforced = BurnBarDaemonPeerAuthenticator.resolveEnforcementForCurrentBuild(
+        environment: environment
+    )
+    if !enforced {
+        // Only reachable in a DEBUG build where the opt-out is compiled in; log
+        // loudly so a misconfiguration is never silent. In release builds
+        // `resolveEnforcementForCurrentBuild` always returns `true`, so a hostile
+        // launch environment cannot strip the first-party code-signature gate.
         logger.warning(
             "rpc_peer_code_signature_enforcement_disabled",
-            metadata: ["reason": "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1"]
+            metadata: ["reason": "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out)"]
         )
         return .disabled
     }
-    #else
-    if environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
-        || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1" {
-        logger.warning(
-            "rpc_peer_code_signature_disable_ignored",
-            metadata: ["reason": "release_build"]
-        )
-    }
-    #endif
     return BurnBarDaemonPeerAuthenticator(enforced: true, logger: logger)
 }
 
@@ -294,11 +342,59 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
 }
 
 #if canImport(Sentry)
-private func configureSentryIfAvailable() {
-    guard let dsn = ProcessInfo.processInfo.environment["OPENBURNBAR_SENTRY_DSN"],
-          !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+/// remediation(Sentry B2): crash reporting must not fail OPEN silently. When the
+/// `OPENBURNBAR_SENTRY_DSN` is missing the daemon runs with NO crash reporting —
+/// previously a release daemon could ship that way without any signal. We now
+/// mirror the fail-closed-in-prod / quiet-in-dev posture of
+/// `functions/src/config.ts`'s App Check handling:
+///
+///   * Release builds (production posture) emit a loud WARNING that crash
+///     reporting is DARK. If the operator has set the strict-observability flag
+///     (`OPENBURNBAR_STRICT_OBSERVABILITY=1`), the daemon refuses to start —
+///     fail-closed, matching App Check's `throw` in production.
+///   * DEBUG builds (developer posture) emit a single clear log line and keep
+///     running, so local development is never blocked by a missing DSN.
+///
+/// The prod-vs-dev decision comes from the existing `#if DEBUG` build signal
+/// already used in this function; no new configuration channel is introduced
+/// beyond the explicit strict opt-in.
+private func configureSentryIfAvailable(environment: [String: String]) throws {
+    let logger = BurnBarDaemonLogger(category: "observability")
+    let dsn = (environment["OPENBURNBAR_SENTRY_DSN"] ?? environment["BURNBAR_SENTRY_DSN"])?
+        .trimmingCharacters(in: .whitespaces)
+
+    guard let dsn, !dsn.isEmpty else {
+        #if DEBUG
+        // Developer build: a single clear line, never fatal.
+        logger.notice(
+            "sentry_disabled_no_dsn_dev",
+            metadata: ["reason": "OPENBURNBAR_SENTRY_DSN is empty; crash reporting is DARK (dev build)"]
+        )
+        #else
+        let strictObservability = environment["OPENBURNBAR_STRICT_OBSERVABILITY"] == "1"
+            || environment["BURNBAR_STRICT_OBSERVABILITY"] == "1"
+        if strictObservability {
+            // Production posture + strict opt-in: fail closed, refuse to start.
+            logger.error(
+                "sentry_disabled_no_dsn_strict",
+                metadata: ["reason": "OPENBURNBAR_SENTRY_DSN is empty and OPENBURNBAR_STRICT_OBSERVABILITY=1"]
+            )
+            throw BurnBarObservabilityError.crashReportingDark
+        }
+        // Production posture, no strict opt-in: loud WARNING, keep running so a
+        // user's daemon is not crashed, but the dark state is never silent.
+        logger.warning(
+            "sentry_disabled_no_dsn",
+            metadata: [
+                "reason": "OPENBURNBAR_SENTRY_DSN is empty; crash reporting is DARK for this release daemon. "
+                    + "Set OPENBURNBAR_SENTRY_DSN to enable, or OPENBURNBAR_STRICT_OBSERVABILITY=1 to refuse "
+                    + "to start without it."
+            ]
+        )
+        #endif
         return
     }
+
     SentrySDK.start { options in
         options.dsn = dsn
         options.environment = "daemon"
@@ -307,6 +403,20 @@ private func configureSentryIfAvailable() {
         #if DEBUG
         options.debug = false
         #endif
+    }
+}
+
+/// remediation(Sentry B2): fail-closed error used when strict observability is
+/// requested but crash reporting cannot be armed.
+private enum BurnBarObservabilityError: Error, LocalizedError {
+    case crashReportingDark
+
+    var errorDescription: String? {
+        switch self {
+        case .crashReportingDark:
+            return "Crash reporting is DARK: OPENBURNBAR_SENTRY_DSN is empty while OPENBURNBAR_STRICT_OBSERVABILITY=1. "
+                + "Provide a Sentry DSN or clear the strict-observability flag."
+        }
     }
 }
 #endif

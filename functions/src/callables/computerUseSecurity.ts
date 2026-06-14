@@ -1330,11 +1330,14 @@ export const approveEscrowDeviceTrust = onCall(
         // posture there is no attestation window to replay, so the requirement is
         // scoped to enforced deployments to avoid bricking local/test flows.
         //
-        // NOTE FOR PROD: `config.requireHighRiskNonce` defaults to FALSE
-        // (config.ts) for staged client rollout. Once all shipped clients send a
-        // nonce, set REQUIRE_HIGH_RISK_NONCE=true / openburnbar.require_high_risk_nonce=true
-        // so EVERY high-risk callable (not just this bootstrap branch) enforces the
-        // single-use nonce. This branch already does so unconditionally.
+        // remediation(L1): `config.requireHighRiskNonce` now defaults to TRUE in
+        // production (config.ts) — fail-closed — so EVERY high-risk callable (not
+        // just this bootstrap branch) enforces the single-use nonce by default.
+        // An operator can still set REQUIRE_HIGH_RISK_NONCE=false /
+        // openburnbar.require_high_risk_nonce=false for a controlled staged ramp,
+        // which logs a loud `security.high_risk_nonce_replay_defense_disabled`
+        // warning. This branch enforces the nonce UNCONDITIONALLY regardless of
+        // that flag because bootstrap self-approval has no second device to gate it.
         if (isBootstrapSelfApproval && getConfig().enforceAppCheck && !nonceConsumed) {
           logWarn({
             event: "callable_warning",

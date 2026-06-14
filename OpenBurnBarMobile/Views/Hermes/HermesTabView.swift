@@ -1328,8 +1328,26 @@ struct HermesChatView: View {
     /// We do *not* render them as chat bubbles; their presence is
     /// already conveyed by the tool pill on the assistant turn that
     /// produced the call.
-    private var visibleMessages: [HermesChatMessage] {
-        service.messages.filter { $0.role != .tool }
+    ///
+    /// remediation(chat-message-windowing): cached, not computed. The old
+    /// computed property re-ran `service.messages.filter { … }` and allocated
+    /// a fresh array on *every* `body` evaluation — including the many evals
+    /// triggered by unrelated state (typing in the composer, focus changes,
+    /// sheet toggles). We now memoize the filtered slice in `@State` and
+    /// recompute it only when `service.messages` actually changes, driven by
+    /// `.onChange(of: service.messages)` on the body (see `body`'s modifier
+    /// chain) plus the `initial: true` seed. `[HermesChatMessage]` is
+    /// `Equatable`, so `onChange` fires for any mutation site (append/remove
+    /// and the per-index streaming/finalize edits in
+    /// `HermesConversationStateStore`), keeping the rendered bubbles live.
+    @State private var visibleMessages: [HermesChatMessage] = []
+
+    /// Recompute the cached `visibleMessages` from the live transcript. Same
+    /// predicate as before — drop `.tool` turns, preserve order. Cheap to call
+    /// from `onChange`; it runs once per real transcript mutation rather than
+    /// once per render.
+    private func recomputeVisibleMessages() {
+        visibleMessages = service.messages.filter { $0.role != .tool }
     }
 
     @ViewBuilder
@@ -1425,6 +1443,28 @@ struct HermesChatView: View {
         return .subtle
     }
 
+    // remediation(hermes-typecheck): extracted from the main `body` VStack so the
+    // Swift type-checker stays under its per-expression time budget. The inline
+    // ChatAttachmentTray closure + chained modifiers + transition pushed `body`
+    // into "unable to type-check this expression in reasonable time". Pure
+    // behavior-preserving extraction — identical view, identical modifiers.
+    @ViewBuilder
+    private var attachmentTraySection: some View {
+        if !pendingAttachments.isEmpty {
+            ChatAttachmentTray(
+                attachments: pendingAttachments,
+                onRemove: { id in
+                    withAnimation(AuroraDesign.Motion.auroraSpring) {
+                        pendingAttachments.removeAll { $0.id == id }
+                    }
+                }
+            )
+            .padding(.horizontal, AuroraDesign.Layout.cardInset)
+            .padding(.bottom, 4)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
     var body: some View {
         ZStack {
             AuroraBackdrop(visibility: chatBackgroundVisibility)
@@ -1447,19 +1487,7 @@ struct HermesChatView: View {
                         .padding(.bottom, 4)
                 }
 
-                if !pendingAttachments.isEmpty {
-                    ChatAttachmentTray(
-                        attachments: pendingAttachments,
-                        onRemove: { id in
-                            withAnimation(AuroraDesign.Motion.auroraSpring) {
-                                pendingAttachments.removeAll { $0.id == id }
-                            }
-                        }
-                    )
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .padding(.bottom, 4)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+                attachmentTraySection
 
                 inputBar
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
@@ -1650,6 +1678,14 @@ struct HermesChatView: View {
         }
         .onChange(of: gatewayStore.latestReply?.id) { _, _ in
             applyPendingGatewayReplyIfNeeded()
+        }
+        // remediation(chat-message-windowing): refresh the cached visible
+        // slice exactly when the transcript changes (`initial: true` seeds it
+        // on first appearance). This replaces the old per-render `.filter`
+        // allocation. Lives on `body` — not on `chatContent` — so the cache
+        // stays correct in both `.agent` and `.cli` view modes.
+        .onChange(of: service.messages, initial: true) { _, _ in
+            recomputeVisibleMessages()
         }
     }
 
@@ -3291,322 +3327,6 @@ private struct HermesRuntimeSheet: View {
     }
 }
 
-// MARK: - Hermes Model Picker
-
-struct HermesModelPickerSheet: View {
-    @Bindable var service: HermesService
-    @Environment(\.dismiss) private var dismiss
-    @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
-
-    /// Visible Hermes sub-providers per user preference. Empty set means
-    /// "no filter" — every advertised model passes through.
-    private var visibleSubProviders: Set<HermesSubProvider> {
-        let prefs = ChatTilePreferences.from(jsonString: tilePreferencesJSON)
-        return prefs.enabledHermesSubProviders
-    }
-
-    /// Live `HermesRuntimeModelOption` list filtered by the user's enabled
-    /// sub-providers. When the relay hasn't advertised any models we render
-    /// the static six-row fallback below.
-    private var filteredModelOptions: [HermesRuntimeModelOption] {
-        let raw = service.modelOptions
-        guard !visibleSubProviders.isEmpty else { return raw }
-        return raw.filter { option in
-            // Drop the option only when its provider tag maps to a sub-provider
-            // that the user has explicitly hidden. Unknown provider tags pass
-            // through so we never silently drop advertised models.
-            if let sub = HermesSubProvider.fromProviderToken(option.providerID) {
-                return visibleSubProviders.contains(sub)
-            }
-            if let sub = HermesSubProvider.fromProviderToken(option.providerName) {
-                return visibleSubProviders.contains(sub)
-            }
-            return true
-        }
-    }
-
-    private var groupedModels: [(provider: String, options: [HermesRuntimeModelOption])] {
-        Dictionary(grouping: filteredModelOptions, by: \.providerName)
-            .map { (provider: $0.key, options: $0.value.sorted { $0.displayName < $1.displayName }) }
-            .sorted { $0.provider < $1.provider }
-    }
-
-    private var favoriteModels: [HermesRuntimeModelOption] {
-        let visible = Set(filteredModelOptions.map(\.id))
-        return service.favoriteModelOptions.filter { visible.contains($0.id) }
-    }
-
-    /// Sub-providers shown as static fallback rows when the relay hasn't
-    /// advertised concrete models yet. Always honors the user's visibility set.
-    private var staticFallbackSubProviders: [HermesSubProvider] {
-        let prefs = ChatTilePreferences.from(jsonString: tilePreferencesJSON)
-        return prefs.orderedVisibleHermesSubProviders
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                AuroraBackdrop(density: .subtle)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        currentModelCard
-                        if filteredModelOptions.isEmpty {
-                            staticFallbackGroup
-                            emptyModelsCard
-                        } else {
-                            if !favoriteModels.isEmpty {
-                                favoriteGroup
-                            }
-                            ForEach(groupedModels, id: \.provider) { group in
-                                providerGroup(group)
-                            }
-                        }
-                    }
-                    .padding(AuroraDesign.Layout.cardInset)
-                    .padding(.bottom, 24)
-                }
-            }
-            .navigationTitle("Switch Model")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await service.refreshRuntime() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .accessibilityLabel("Refresh Hermes models")
-                }
-            }
-            .task { await service.refreshRuntime() }
-        }
-    }
-
-    private var currentModelCard: some View {
-        let option = service.selectedModelOption
-        let provider = option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
-        let title = option?.displayName ?? service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Automatic"
-        let subtitle = option?.providerName ?? provider.displayName
-        return AuroraGlassCard(variant: .hermes, cornerRadius: 18) {
-            HStack(spacing: 12) {
-                UnifiedProviderLogoView(provider: provider, size: 42, useFallbackColor: true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(MobileTheme.Typography.headline)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(MobileTheme.success)
-            }
-        }
-    }
-
-    private var emptyModelsCard: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(MobileTheme.warning)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("No live models yet")
-                        .font(MobileTheme.Typography.body)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text("Pick a sub-provider above to route Hermes through it. The relay will fill in concrete model names once it reports them.")
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    /// Static six-row fallback rendered when the relay hasn't advertised any
-    /// concrete models. Tapping a row selects the sub-provider's default
-    /// model hint so Hermes routes through that sub-provider until the relay
-    /// reports something more specific.
-    private var staticFallbackGroup: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(MobileTheme.hermesAureate)
-                Text("Hermes sub-providers")
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                Spacer()
-                Text("\(staticFallbackSubProviders.count)")
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            ForEach(staticFallbackSubProviders) { sub in
-                let option = HermesRuntimeModelOption(
-                    providerID: sub.providerToken,
-                    providerName: sub.displayName,
-                    modelID: sub.defaultModelHint,
-                    displayName: sub.displayName
-                )
-                HermesModelPickerRow(
-                    option: option,
-                    isSelected: service.selectedModelID == option.modelID,
-                    isFavorite: service.isFavoriteModel(option)
-                ) {
-                    service.selectModel(option)
-                    HapticBus.primaryAction()
-                    dismiss()
-                } onToggleFavorite: {
-                    service.toggleFavoriteModel(option)
-                    HapticBus.toggle()
-                }
-            }
-        }
-    }
-
-    private func providerGroup(_ group: (provider: String, options: [HermesRuntimeModelOption])) -> some View {
-        let provider = hermesAgentProvider(for: group.options.first?.providerID ?? group.provider)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                UnifiedProviderLogoView(provider: provider, size: 24, useFallbackColor: true)
-                Text(group.provider)
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                Spacer()
-                Text("\(group.options.count)")
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            ForEach(group.options) { option in
-                HermesModelPickerRow(
-                    option: option,
-                    isSelected: service.selectedModelID == option.modelID,
-                    isFavorite: service.isFavoriteModel(option)
-                ) {
-                    service.selectModel(option)
-                    HapticBus.primaryAction()
-                    dismiss()
-                } onToggleFavorite: {
-                    service.toggleFavoriteModel(option)
-                    HapticBus.toggle()
-                }
-            }
-        }
-    }
-
-    private var favoriteGroup: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(MobileTheme.amber)
-                Text("Favorites")
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                Spacer()
-                Text("\(favoriteModels.count)")
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            ForEach(favoriteModels) { option in
-                HermesModelPickerRow(
-                    option: option,
-                    isSelected: service.selectedModelID == option.modelID,
-                    isFavorite: true
-                ) {
-                    service.selectModel(option)
-                    HapticBus.primaryAction()
-                    dismiss()
-                } onToggleFavorite: {
-                    service.toggleFavoriteModel(option)
-                    HapticBus.toggle()
-                }
-            }
-        }
-    }
-}
-
-struct HermesModelPickerRow: View {
-    let option: HermesRuntimeModelOption
-    let isSelected: Bool
-    let isFavorite: Bool
-    let onSelect: () -> Void
-    let onToggleFavorite: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Button(action: onSelect) {
-                HStack(spacing: 12) {
-                    UnifiedProviderLogoView(provider: option.agentProvider, size: 30, useFallbackColor: true)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(FriendlyModelName.format(option.displayName))
-                            .font(MobileTheme.Typography.body)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                            .lineLimit(1)
-                        Text(option.modelID)
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                            .lineLimit(1)
-                        if let detail = option.liveCatalogDetailText {
-                            Text(detail)
-                                .font(MobileTheme.Typography.tiny)
-                                .foregroundStyle(option.isRouteEligible ? MobileTheme.Colors.textSecondary : MobileTheme.error)
-                                .lineLimit(1)
-                        }
-                    }
-                    Spacer()
-                    if !option.isRouteEligible {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(MobileTheme.error)
-                    } else if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(MobileTheme.success)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Use \(option.displayName)")
-            .accessibilityValue(isSelected ? "Selected" : option.providerName)
-            .disabled(!option.isRouteEligible)
-            .opacity(option.isRouteEligible ? 1 : 0.62)
-
-            Button(action: onToggleFavorite) {
-                Image(systemName: isFavorite ? "star.fill" : "star")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(isFavorite ? MobileTheme.amber : MobileTheme.Colors.textMuted)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(MobileTheme.Colors.surfaceElevated.opacity(0.75)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isFavorite ? "Remove \(option.displayName) from favorites" : "Add \(option.displayName) to favorites")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isSelected ? MobileTheme.hermesAureate.opacity(0.16) : MobileTheme.Colors.surfaceElevated.opacity(0.62))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isSelected ? MobileTheme.hermesAureate.opacity(0.6) : MobileTheme.Colors.border.opacity(0.45), lineWidth: isSelected ? 1 : 0.5)
-        )
-    }
-}
-
 extension HermesService {
     var selectedModelOption: HermesRuntimeModelOption? {
         guard let selectedModelID else { return nil }
@@ -4252,334 +3972,5 @@ struct HermesMessageBubble: View {
 
     private var assistantBubbleShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
-    }
-}
-
-// MARK: - Provider Status Globe View
-
-private struct ProviderStatusGlobeView: View {
-    let provider: AgentProvider
-    let isReachable: Bool
-    let size: CGFloat = 24
-
-    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var animateGlow = false
-
-    var body: some View {
-        ZStack {
-            // Animated Glow Background (Perfectly Centered)
-            Circle()
-                .fill((isReachable ? DesignSystemColors.primary(for: provider) : DesignSystemColors.error).opacity(0.2))
-                .frame(width: size * 1.4, height: size * 1.4)
-                .scaleEffect(shouldAnimateGlow && animateGlow ? 1.25 : 0.85)
-                .blur(radius: 2)
-                .animation(
-                    .easeInOut(duration: 1.8)
-                    .repeatForever(autoreverses: true),
-                    value: animateGlow
-                )
-
-            // Globe icon with provider or offline color gradient (Perfectly Centered)
-            Image(systemName: "globe")
-                .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: isReachable ? [
-                            DesignSystemColors.primary(for: provider),
-                            DesignSystemColors.accent(for: provider)
-                        ] : [
-                            DesignSystemColors.error,
-                            DesignSystemColors.error.opacity(0.7)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .shadow(
-                    color: (isReachable ? DesignSystemColors.primary(for: provider) : DesignSystemColors.error).opacity(0.45),
-                    radius: isReachable ? 4 : 1,
-                    x: 0,
-                    y: 1
-                )
-                .overlay(
-                    // Status Indicator Badge at bottom trailing of the globe, offset outward
-                    Circle()
-                        .fill(isReachable ? MobileTheme.success : MobileTheme.warning)
-                        .frame(width: size * 0.38, height: size * 0.38)
-                        .overlay(
-                            Circle()
-                                .stroke(MobileTheme.Colors.background, lineWidth: 1.2)
-                        )
-                        .modifier(BreathingDot(active: isReachable))
-                        .offset(x: 2.5, y: 2.5),
-                    alignment: .bottomTrailing
-                )
-        }
-        .frame(width: size, height: size)
-        .onAppear {
-            animateGlow = shouldAnimateGlow
-        }
-        .onChange(of: shouldAnimateGlow) { _, shouldAnimate in
-            animateGlow = shouldAnimate
-        }
-    }
-
-    private var shouldAnimateGlow: Bool {
-        MobileDecorativeRenderPolicy.allowsLiveEffects(
-            visibility: backgroundVisibility,
-            scenePhaseActive: scenePhase == .active
-        )
-    }
-}
-
-// MARK: - Breathing Dot
-
-private struct BreathingDot: ViewModifier {
-    let active: Bool
-    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var phase = false
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(shouldAnimate && phase ? 1.5 : 1.0)
-            .opacity(shouldAnimate && phase ? 0.55 : 1.0)
-            .animation(shouldAnimate ? .easeInOut(duration: 1.4).repeatForever(autoreverses: true) : .default, value: phase)
-            .onAppear { phase = shouldAnimate }
-            .onChange(of: shouldAnimate) { _, shouldAnimate in
-                phase = shouldAnimate
-            }
-    }
-
-    private var shouldAnimate: Bool {
-        active && MobileDecorativeRenderPolicy.allowsLiveEffects(
-            visibility: backgroundVisibility,
-            scenePhaseActive: scenePhase == .active
-        )
-    }
-}
-
-// MARK: - Dynamic Status Widget
-
-private struct HermesDynamicStatusWidget: View {
-    let provider: AgentProvider
-    let isReachable: Bool
-    let isRefreshing: Bool
-    let refreshAction: () -> Void
-
-    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var activeState: WidgetState = .globe
-    @State private var animateGlow = false
-
-    enum WidgetState: Int, CaseIterable {
-        case globe
-        case model
-        case refresh
-
-        func next(isRefreshing: Bool) -> WidgetState {
-            switch self {
-            case .globe:
-                return .model
-            case .model:
-                return isRefreshing ? .refresh : .globe
-            case .refresh:
-                return .globe
-            }
-        }
-    }
-
-    private var stateBorderColors: [Color] {
-        if !isReachable {
-            return [DesignSystemColors.error.opacity(0.48), DesignSystemColors.error.opacity(0.18)]
-        }
-        switch activeState {
-        case .globe:
-            return [
-                DesignSystemColors.primary(for: provider).opacity(0.45),
-                DesignSystemColors.accent(for: provider).opacity(0.2)
-            ]
-        case .model:
-            return [
-                DesignSystemColors.primary(for: provider).opacity(0.45),
-                DesignSystemColors.accent(for: provider).opacity(0.2)
-            ]
-        case .refresh:
-            return [
-                MobileTheme.hermesAureate.opacity(0.6),
-                MobileTheme.hermesAureate.opacity(0.24)
-            ]
-        }
-    }
-
-    private var stateShadowColor: Color {
-        if !isReachable {
-            return DesignSystemColors.error.opacity(0.35)
-        }
-        switch activeState {
-        case .globe:
-            return DesignSystemColors.primary(for: provider).opacity(0.25)
-        case .model:
-            return DesignSystemColors.primary(for: provider).opacity(0.25)
-        case .refresh:
-            return MobileTheme.hermesAureate.opacity(0.25)
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            if activeState == .globe {
-                ProviderStatusGlobeView(provider: provider, isReachable: isReachable)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
-                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.75))
-                    ))
-            } else if activeState == .model {
-                modelBadge
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
-                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.75))
-                    ))
-            } else {
-                refreshBadge
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
-                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.75))
-                    ))
-            }
-        }
-        .frame(width: 34, height: 34)
-        .background(
-            Circle()
-                .fill(MobileTheme.Colors.surface.opacity(0.65))
-                .shadow(color: stateShadowColor, radius: 4, x: 0, y: 0.8)
-        )
-        .overlay(
-            Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: stateBorderColors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.6
-                )
-        )
-        .onAppear {
-            if isRefreshing {
-                activeState = .refresh
-            }
-        }
-        .task(id: statusWidgetTickerKey) { await runStatusWidgetTicker() }
-        .onChange(of: shouldUpdateStatusWidget) { _, shouldUpdate in
-            animateGlow = shouldUpdate
-        }
-        .onChange(of: isRefreshing) { _, refreshing in
-            if refreshing {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
-                    activeState = .refresh
-                }
-            } else {
-                if activeState == .refresh {
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
-                        activeState = .globe
-                    }
-                }
-            }
-        }
-    }
-
-    private var shouldUpdateStatusWidget: Bool {
-        MobileDecorativeRenderPolicy.allowsLiveEffects(
-            visibility: backgroundVisibility,
-            scenePhaseActive: scenePhase == .active
-        )
-    }
-
-    private var statusWidgetTickerKey: String {
-        "\(shouldUpdateStatusWidget)-\(isRefreshing)"
-    }
-
-    private func runStatusWidgetTicker() async {
-        guard shouldUpdateStatusWidget else { return }
-        while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 4_500_000_000)
-            guard !Task.isCancelled, shouldUpdateStatusWidget else { return }
-            await MainActor.run {
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.76, blendDuration: 0)) {
-                    activeState = activeState.next(isRefreshing: isRefreshing)
-                }
-            }
-        }
-    }
-
-    private var modelBadge: some View {
-        ZStack {
-            // Pulse glow for model
-            Circle()
-                .fill(
-                    (isReachable ? DesignSystemColors.primary(for: provider) : DesignSystemColors.error)
-                        .opacity(0.15)
-                )
-                .frame(width: 28, height: 28)
-                .scaleEffect(animateGlow ? 1.15 : 0.9)
-                .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: animateGlow)
-                .onAppear { animateGlow = shouldUpdateStatusWidget }
-
-            UnifiedProviderLogoView(provider: provider, size: 20, useFallbackColor: true)
-                .grayscale(isReachable ? 0.0 : 0.6)
-                .opacity(isReachable ? 1.0 : 0.65)
-        }
-    }
-
-    private var refreshBadge: some View {
-        ZStack {
-            Circle()
-                .fill(MobileTheme.hermesAureate.opacity(0.12))
-                .frame(width: 28, height: 28)
-                .scaleEffect(animateGlow ? 1.15 : 0.9)
-                .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: animateGlow)
-                .onAppear { animateGlow = shouldUpdateStatusWidget }
-
-            SpinningRefreshIcon(isRefreshing: isRefreshing)
-        }
-    }
-}
-
-private struct SpinningRefreshIcon: View {
-    let isRefreshing: Bool
-    @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var spinDegree = 0.0
-
-    var body: some View {
-        Image(systemName: "arrow.clockwise")
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(MobileTheme.hermesAureate)
-            .rotationEffect(.degrees(spinDegree))
-            .id(shouldSpin)
-            .onAppear { syncSpinState() }
-            .onChange(of: shouldSpin) { _, _ in
-                syncSpinState()
-            }
-    }
-
-    private var shouldSpin: Bool {
-        isRefreshing && MobileDecorativeRenderPolicy.allowsLiveEffects(
-            visibility: backgroundVisibility,
-            scenePhaseActive: scenePhase == .active
-        )
-    }
-
-    private func syncSpinState() {
-        guard shouldSpin else {
-            spinDegree = 0.0
-            return
-        }
-        spinDegree = 0.0
-        withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-            spinDegree = 360.0
-        }
     }
 }

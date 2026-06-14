@@ -107,9 +107,8 @@ object MediaFrameSealSession {
         return deriveKey(keyData, connectionId)
     }
 
-    private fun deriveKey(sessionSecret: ByteArray, connectionId: String): ByteArray =
-        MediaFrameAead.deriveSessionKey(
-            sharedSecret = sessionSecret,
-            salt = connectionId.toByteArray(Charsets.UTF_8),
-        )
+    private fun deriveKey(sessionSecret: ByteArray, connectionId: String): ByteArray = MediaFrameAead.deriveSessionKey(
+        sharedSecret = sessionSecret,
+        salt = connectionId.toByteArray(Charsets.UTF_8),
+    )
 }

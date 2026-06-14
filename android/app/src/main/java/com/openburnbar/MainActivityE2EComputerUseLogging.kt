@@ -17,9 +17,8 @@ internal object MainActivityE2EComputerUseLogging {
         }
     }
 
-    fun swiftDateReferenceSeconds(nowMillis: Long = System.currentTimeMillis()): Double =
-        nowMillis.toDouble() / MainActivityE2EConstants.MILLIS_PER_SECOND -
-            MainActivityE2EConstants.SWIFT_REFERENCE_EPOCH_OFFSET_SECONDS
+    fun swiftDateReferenceSeconds(nowMillis: Long = System.currentTimeMillis()): Double = nowMillis.toDouble() / MainActivityE2EConstants.MILLIS_PER_SECOND -
+        MainActivityE2EConstants.SWIFT_REFERENCE_EPOCH_OFFSET_SECONDS
 
     fun androidDeviceIdForComputerUseProof(activity: MainActivity): String {
         val androidId =

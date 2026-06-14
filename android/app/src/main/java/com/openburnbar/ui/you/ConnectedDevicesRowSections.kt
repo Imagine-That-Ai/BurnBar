@@ -44,9 +44,8 @@ internal fun ConnectedDevicesPlatformIcons(devices: List<DeviceRecord>) {
     }
 }
 
-private fun platformIcon(platform: String): ImageVector =
-    when (platform.lowercase()) {
-        "ios", "iphone", "android" -> Icons.Filled.PhoneAndroid
-        "ipad" -> Icons.Filled.TabletMac
-        else -> Icons.Filled.Computer
-    }
+private fun platformIcon(platform: String): ImageVector = when (platform.lowercase()) {
+    "ios", "iphone", "android" -> Icons.Filled.PhoneAndroid
+    "ipad" -> Icons.Filled.TabletMac
+    else -> Icons.Filled.Computer
+}

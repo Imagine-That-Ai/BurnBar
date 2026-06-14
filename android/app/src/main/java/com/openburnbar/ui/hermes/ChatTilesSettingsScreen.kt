@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.hermes
 
-import androidx.compose.material3.MaterialTheme
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +63,7 @@ fun ChatTilesSettingsScreen(onBack: () -> Unit) {
                 savePrefs(context, next)
             },
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         ChatTilesHermesModelsSection(
             prefs = prefs,
             onPrefsChange = { next ->
@@ -79,7 +79,7 @@ fun ChatTilesSettingsScreen(onBack: () -> Unit) {
                 savePrefs(context, next)
             },
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XL.dp))
     }
 }
 
@@ -135,7 +135,7 @@ private fun ChatTilesSettingsHeader(onBack: () -> Unit) {
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
@@ -145,7 +145,7 @@ private fun ChatTilesSettingsHeader(onBack: () -> Unit) {
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             text = "Chat tiles",
             fontSize = 22.sp,
@@ -161,7 +161,7 @@ private fun SectionHeader(title: String, subtitle: String) {
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.SM.dp),
     ) {
         Text(
             text = title,
@@ -185,7 +185,7 @@ private fun TileToggleRow(title: String, subtitle: String, icon: @Composable () 
         Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -194,7 +194,7 @@ private fun TileToggleRow(title: String, subtitle: String, icon: @Composable () 
         ) {
             icon()
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
             Text(text = subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f))
@@ -209,7 +209,7 @@ private fun SelectedHermesModelRow(selectedModel: String?, onReset: () -> Unit) 
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -239,7 +239,7 @@ private fun SelectedHermesModelRow(selectedModel: String?, onReset: () -> Unit) 
             Modifier
                 .clip(RoundedCornerShape(7.dp))
                 .clickable(enabled = !selectedModel.isNullOrBlank()) { onReset() }
-                .padding(horizontal = AuroraSpacing.sm.dp, vertical = AuroraSpacing.xs.dp),
+                .padding(horizontal = AuroraSpacing.SM.dp, vertical = AuroraSpacing.XS.dp),
         )
     }
 }

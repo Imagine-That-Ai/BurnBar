@@ -19,10 +19,17 @@ import Foundation
 #if canImport(OpenBurnBarIrohFFI)
 @preconcurrency import OpenBurnBarIrohFFI
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable UniFFI `IrohEndpointHandle`
+// (an opaque Rust object) whose every call is serialized onto a dedicated
+// `DispatchQueue`. An actor is unsuitable here — the FFI calls block, which would
+// stall the cooperative thread pool — so queue confinement plus this audited
+// conformance is the correct concurrency model; the handle is never touched off
+// `queue`.
 /// Adapts the UniFFI-generated `IrohEndpointHandle` + `IrohStream` to our
 /// transport-level protocols. Every Rust call is wrapped in
 /// `withCheckedThrowingContinuation` on a dedicated dispatch queue so we
 /// never hop the iroh runtime on the main thread.
+/// sendable-allowlist: iroh-ffi-handle
 public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Sendable {
     private let handle: IrohEndpointHandle
     private let queue: DispatchQueue
@@ -121,6 +128,12 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
     }
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable UniFFI `IrohStream` (an opaque
+// Rust object). Reads and writes are each serialized onto dedicated send/receive
+// `DispatchQueue`s; the blocking FFI calls rule out an actor (it would stall the
+// cooperative pool), so queue confinement plus this audited conformance is the
+// correct model. The stream is never touched off its queues.
+// sendable-allowlist: iroh-ffi-handle
 public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Sendable {
     private let stream: IrohStream
     private let sendQueue: DispatchQueue

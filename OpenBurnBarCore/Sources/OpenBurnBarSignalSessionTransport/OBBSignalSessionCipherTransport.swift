@@ -268,13 +268,18 @@ public struct OBBSignalSessionReceivedMessage: Equatable, Sendable {
     }
 }
 
-public final class OBBSignalSessionCipherTransport: @unchecked Sendable {
+/// Drives one peer's side of an end-to-end-encrypted Signal session over an iroh
+/// relay stream. Actor-isolated so the libsignal Double Ratchet state (`store`)
+/// is mutated under compiler-enforced serialization — out-of-order
+/// `establishOutbound`/`send`/`receive`/`decrypt` calls on one session, which
+/// would corrupt forward secrecy and replay protection, are impossible.
+public actor OBBSignalSessionCipherTransport {
     public typealias ClaimSignalPreKeyBundle = @Sendable () async throws -> OBBSignalClaimedPreKeyBundle
 
     private let store: OBBSignalProtocolStore
     private let localAddress: ProtocolAddress
 
-    public init(store: OBBSignalProtocolStore, localAddress: ProtocolAddress) {
+    public init(store: sending OBBSignalProtocolStore, localAddress: ProtocolAddress) {
         self.store = store
         self.localAddress = localAddress
     }

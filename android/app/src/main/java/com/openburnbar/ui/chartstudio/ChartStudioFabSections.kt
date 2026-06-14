@@ -75,14 +75,7 @@ private fun chartStudioFabPulseScale(reduceMotion: Boolean): Float {
 }
 
 @Composable
-private fun ChartStudioFabSurface(
-    modifier: Modifier,
-    offset: Offset,
-    scale: Float,
-    onDrag: (Offset) -> Unit,
-    onDragEnd: () -> Unit,
-    onTap: () -> Unit,
-) {
+private fun ChartStudioFabSurface(modifier: Modifier, offset: Offset, scale: Float, onDrag: (Offset) -> Unit, onDragEnd: () -> Unit, onTap: () -> Unit) {
     Box(
         modifier =
         modifier

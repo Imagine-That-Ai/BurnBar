@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import PackageDescription
@@ -91,6 +91,8 @@ let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
             "openburnbar_iroh.modulemap",
             "openburnbar_irohFFI.h"
         ],
+        // Generated UniFFI bindings (never hand-edited; AAR parity) target Swift 5.
+        swiftSettings: [.swiftLanguageMode(.v5)],
         linkerSettings: [
             .linkedFramework("SystemConfiguration")
         ]
@@ -109,17 +111,17 @@ let signalBinaryTargets: [Target] = hasSignalFfiXCFramework ? [
     )
 ] : []
 
-let package = Package(
-    name: "OpenBurnBarCore",
-    platforms: [.macOS(.v14), .iOS(.v17)],
-    products: packageProducts,
-    dependencies: [
-        .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
-        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
-    ],
-    targets: irohBinaryTargets + signalBinaryTargets + [
+let firstPartyTargets: [Target] = [
         .target(
             name: "OpenBurnBarCore",
+            // remediation(typespec-strangler): link the generated Firestore
+            // canon into the production graph so it is no longer test-only.
+            // Core gains a real `import OpenBurnBarFirestoreModels` consumer
+            // (ProviderAccountDeviceLinkTypes+Generated.swift); anything that
+            // links OpenBurnBarCore now transitively links the generated
+            // models, so drift in the generated wire schema fails the
+            // production build, not just the test target.
+            dependencies: ["OpenBurnBarFirestoreModels"],
             resources: [
                 // SwiftPM's `.process` rule flattens nested resource folders
                 // so all files (catalog.json, MiningPickIcon*.svg, the Pretext
@@ -153,7 +155,12 @@ let package = Package(
         ),
         .target(
             name: "OpenBurnBarFirestoreModels",
-            dependencies: ["OpenBurnBarCore"],
+            // remediation(typespec-strangler): the generated canon imports only
+            // Foundation and references no OpenBurnBarCore type, so the prior
+            // `dependencies: ["OpenBurnBarCore"]` was spurious and — worse — it
+            // formed a cycle that blocked Core (the natural first consumer) from
+            // linking the generated models. Drop it so this stays a pure leaf
+            // library that Core and the app targets can both depend on.
             path: "Sources/OpenBurnBarFirestoreModels"
         ),
         .target(
@@ -180,18 +187,27 @@ let package = Package(
             ],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarIrohRelayTests",
-            dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore"]
+            dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore"],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarMediaTests",
             dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay"],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarComputerUseCoreTests",
@@ -202,7 +218,10 @@ let package = Package(
             ],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarSignalCoreTests",
@@ -213,7 +232,10 @@ let package = Package(
             ],
             resources: [
                 .process("Fixtures")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarSignalSessionTransportTests",
@@ -223,7 +245,23 @@ let package = Package(
                 "OpenBurnBarIrohRelay",
                 "OpenBurnBarCore",
                 .product(name: "LibSignalClient", package: "LibSignalClient")
-            ]
+            ],
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
+
+let allTargets: [Target] = irohBinaryTargets + signalBinaryTargets + firstPartyTargets
+
+let package = Package(
+    name: "OpenBurnBarCore",
+    platforms: [.macOS(.v14), .iOS(.v17)],
+    products: packageProducts,
+    dependencies: [
+        .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
+        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+    ],
+    targets: allTargets,
+    swiftLanguageModes: [.v6]
 )

@@ -229,7 +229,7 @@ class AgentCapabilityGrantController(
                 timestamp = request.requestedAtSwiftReferenceSeconds,
                 intentHashBlake3 = "",
                 signatureEd25519 = "",
-        )
+            )
         val unsignedWire = request.toWire(placeholder)
         val timestampMillis = System.currentTimeMillis()
         val authority =

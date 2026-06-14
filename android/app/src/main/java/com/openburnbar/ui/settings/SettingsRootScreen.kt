@@ -18,54 +18,47 @@ private const val SMART_DISPLAY_HIGHLIGHT_FADE_DELAY_MS = 1_400L
  * Wired into the You tab so the existing "Settings" row pushes here.
  */
 @Composable
-fun SettingsRootScreen(
-    onBack: (() -> Unit)? = null,
-    onComputerUse: (() -> Unit)? = null,
-    onMenuBarPrefs: @Composable (onBack: () -> Unit) -> Unit,
-) {
+fun SettingsRootScreen(onBack: (() -> Unit)? = null, onComputerUse: (() -> Unit)? = null, onMenuBarPrefs: @Composable (onBack: () -> Unit) -> Unit) {
     val router = remember { SettingsRouter() }
 
     AnimatedContent(
         targetState = router.page,
         transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "settings-page"
+        label = "settings-page",
     ) { page ->
         when (page) {
             SettingsPageRoute.ROOT -> SettingsRootContent(router = router, onBack = onBack, onComputerUse = onComputerUse)
             SettingsPageRoute.SMART_DISPLAYS -> SmartDisplayDeepLinkWrapper(
                 router = router,
-                onBack = { router.page = SettingsPageRoute.ROOT }
+                onBack = { router.page = SettingsPageRoute.ROOT },
             )
             SettingsPageRoute.MENU_BAR_PREFS -> onMenuBarPrefs { router.page = SettingsPageRoute.ROOT }
             SettingsPageRoute.THEME_PREFS -> ThemePrefsScreen(
                 router = router,
-                onBack = { router.page = SettingsPageRoute.ROOT }
+                onBack = { router.page = SettingsPageRoute.ROOT },
             )
             SettingsPageRoute.WALLPAPER_GENERATOR -> WallpaperGeneratorScreen(
-                onBack = { router.page = SettingsPageRoute.THEME_PREFS }
+                onBack = { router.page = SettingsPageRoute.THEME_PREFS },
             )
             SettingsPageRoute.QUOTA_PREFS -> QuotaCustomizationScreen(
-                onBack = { router.page = SettingsPageRoute.ROOT }
+                onBack = { router.page = SettingsPageRoute.ROOT },
             )
             SettingsPageRoute.BUDGET_PREFS -> BudgetSettingsScreen(
-                onBack = { router.page = SettingsPageRoute.ROOT }
+                onBack = { router.page = SettingsPageRoute.ROOT },
             )
             SettingsPageRoute.TEXT_EXPANSION -> TextExpansionSettingsScreen(
-                onBack = { router.page = SettingsPageRoute.ROOT }
+                onBack = { router.page = SettingsPageRoute.ROOT },
             )
             SettingsPageRoute.TRANSCRIPT_CACHE -> TranscriptCacheSettingsScreen(
                 router = router,
-                onBack = { router.page = SettingsPageRoute.ROOT }
+                onBack = { router.page = SettingsPageRoute.ROOT },
             )
         }
     }
 }
 
 @Composable
-private fun SmartDisplayDeepLinkWrapper(
-    router: SettingsRouter,
-    onBack: () -> Unit,
-) {
+private fun SmartDisplayDeepLinkWrapper(router: SettingsRouter, onBack: () -> Unit) {
     // SmartDisplayView already has its own scroll surface — we surface the
     // halo via highlightedAnchor but leave scroll behavior up to it.
     LaunchedEffect(router.pendingAnchor) {

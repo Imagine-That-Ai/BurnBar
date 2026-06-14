@@ -8,7 +8,7 @@ import OpenBurnBarComputerUseCore
 /// It validates the Ed25519 signature of incoming context targets,
 /// denormalizes targeting coordinates, performs AX tree probes at the target point,
 /// performs deny-region checks, and routes the context cleanly to the active agent thread in ChatSessionController.
-final class AgentContextTargetReceiver: @unchecked Sendable {
+final class AgentContextTargetReceiver: Sendable {
     typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     typealias DisplayBoundsProvider = @Sendable () -> [MacInputCore.DisplayBounds]
 
@@ -18,10 +18,9 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
     private let macAccessibilityInspector: MacAccessibilityInspector
     private let displayBoundsProvider: DisplayBoundsProvider
     private let replyFrameSink: FrameSink
-    private let auditLoggerProvider: () -> ComputerUseAuditLogger?
+    private let auditLoggerProvider: @MainActor () -> ComputerUseAuditLogger?
 
-    private var seenClientIntentIds: Set<String> = []
-    private let seenIntentQueue = DispatchQueue(label: "com.openburnbar.agentContextTarget.receiver.seenIntentIds")
+    private let seenClientIntentIds = Locked<Set<String>>([])
 
     init(
         sessionId: ComputerUseSessionID,
@@ -30,7 +29,7 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
         macAccessibilityInspector: MacAccessibilityInspector = MacAccessibilityInspector(),
         displayBoundsProvider: @escaping DisplayBoundsProvider,
         replyFrameSink: @escaping FrameSink,
-        auditLoggerProvider: @escaping () -> ComputerUseAuditLogger?
+        auditLoggerProvider: @escaping @MainActor () -> ComputerUseAuditLogger?
     ) {
         self.sessionId = sessionId
         self.validator = validator
@@ -148,6 +147,7 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
             ]
 
             let metadataString: String
+            // try?-ok(fallback to {} below)
             if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys, .withoutEscapingSlashes]),
                let str = String(data: data, encoding: .utf8) {
                 metadataString = str
@@ -192,27 +192,44 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
         }
 
         // 6. Audit target event without sensitive values or screenshot bytes.
-        if let logger = auditLoggerProvider() {
+        // ComputerUseAuditLogger maintains a mutable hash chain and is owned by the
+        // @MainActor coordinator, so the whole audit append runs on the main actor;
+        // only Sendable primitives cross the hop (no non-Sendable target/snapshot/logger).
+        let auditNormalizedX = target.normalizedX
+        let auditNormalizedY = target.normalizedY
+        let auditInstruction = target.instruction
+        let auditBundleId = snapshot?.bundleId
+        let auditWindowTitle = snapshot?.title
+        await MainActor.run {
+            guard let logger = auditLoggerProvider() else { return }
             let contextIntent = PhoneControlIntent(
                 kind: .contextTarget,
-                normalizedX: target.normalizedX,
-                normalizedY: target.normalizedY,
-                text: target.instruction
+                normalizedX: auditNormalizedX,
+                normalizedY: auditNormalizedY,
+                text: auditInstruction
             )
             let action = ComputerUseAction.phoneIntent(contextIntent)
 
             let scopeContext = ComputerUseScopeContext(
                 url: nil,
-                bundleId: snapshot?.bundleId,
-                windowTitle: snapshot?.title
+                bundleId: auditBundleId,
+                windowTitle: auditWindowTitle
             )
 
-            if let entry = try? logger.makeEntry(
-                for: action,
-                approvedBy: .phone,
-                scopeContext: scopeContext
-            ) {
-                _ = try? logger.append(entry)
+            do {
+                let entry = try logger.makeEntry(
+                    for: action,
+                    approvedBy: .phone,
+                    scopeContext: scopeContext
+                )
+                try logger.append(entry)
+            } catch {
+                // A dropped phone-intent entry is a gap in the tamper-evident
+                // audit chain — surface it instead of swallowing.
+                AppLogger.chat.error(
+                    "computer_use_phone_intent_audit_entry_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
             }
         }
 
@@ -228,7 +245,7 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
             connectionId: frame.connectionId,
             control: ackPayload
         )
-        try? await replyFrameSink(ackFrame)
+        try? await replyFrameSink(ackFrame) // try?-ok(fire-and-forget ack)
     }
 
     private func denormalize(_ nx: Double?, _ ny: Double?, displayId: String?) -> (Int, Int)? {
@@ -244,7 +261,7 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
     }
 
     private func markClientIntentSeen(_ clientIntentId: String) -> Bool {
-        seenIntentQueue.sync {
+        seenClientIntentIds.withLock { seenClientIntentIds in
             if seenClientIntentIds.contains(clientIntentId) {
                 return false
             }
@@ -270,7 +287,7 @@ final class AgentContextTargetReceiver: @unchecked Sendable {
             connectionId: connectionId,
             control: payload
         )
-        try? await replyFrameSink(frame)
+        try? await replyFrameSink(frame) // try?-ok(notify already-enforced deny)
     }
 
     private func deniedReason(for error: PhoneControlAuthorityValidator.ValidationError) -> HermesRealtimeRelayControlDenied.Reason {

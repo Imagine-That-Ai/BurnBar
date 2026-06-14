@@ -55,19 +55,23 @@ data class TrendDataDigest(
     val cache: CacheAggregate,
 ) {
     data class WindowTotals(
-        val window: String, // "today" | "7d" | "30d"
+        // "today" | "7d" | "30d"
+        val window: String,
         val costUsd: Double,
         val tokens: Long,
         val requests: Int,
     )
 
     data class ProviderSlice(
-        val provider: String, // display name
-        val providerKey: String, // raw persisted token
+        // display name
+        val provider: String,
+        // raw persisted token
+        val providerKey: String,
         val costUsd: Double,
         val tokens: Long,
         val requests: Int,
-        val sharePct: Double, // 0..100
+        // 0..100
+        val sharePct: Double,
     )
 
     data class ModelSlice(
@@ -95,13 +99,16 @@ data class TrendDataDigest(
     )
 
     data class DailySeries(
-        val date: String, // ISO yyyy-MM-dd
+        // ISO yyyy-MM-dd
+        val date: String,
         val total: Double,
-        val perProvider: Map<String, Double>, // providerKey → cost
+        // providerKey → cost
+        val perProvider: Map<String, Double>,
     )
 
     data class HourBucket(
-        val hour: Int, // 0..23
+        // 0..23
+        val hour: Int,
         val costUsd: Double,
         val tokens: Long,
     )
@@ -120,7 +127,8 @@ data class TrendDataDigest(
         val cacheCreationTokens: Int,
         val reasoningTokens: Int,
         val costUsd: Double,
-        val cacheHitRate: Double, // 0..1
+        // 0..1
+        val cacheHitRate: Double,
         val outputTokensPerSecond: Double,
     )
 
@@ -128,7 +136,8 @@ data class TrendDataDigest(
         val totalCacheReadTokens: Long,
         val totalCacheCreationTokens: Long,
         val totalInputTokens: Long,
-        val cacheHitRate: Double, // 0..1 across window
+        // 0..1 across window
+        val cacheHitRate: Double,
         val estSavingsUsd: Double,
     )
 

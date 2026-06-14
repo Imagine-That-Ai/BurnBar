@@ -1,6 +1,8 @@
+import CryptoKit
 import XCTest
 import FirebaseCore
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 @testable import OpenBurnBar
 
@@ -351,7 +353,238 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         )
     }
 
+    // MARK: Remote Unlock trust / certification fail-closed paths
+
+    /// A keychain fault while reading the HPKE credential identity key must
+    /// fail the readiness snapshot CLOSED. Previously the error was swallowed
+    /// (`try?`), the snapshot fell back to stale persisted key defaults, and a
+    /// report could be advertised as fresh against key material that no longer
+    /// matched — a trust/identity-key correctness hole.
+    func testCredentialKeyFaultFailsReadinessSnapshotClosed() {
+        let defaults = makeIsolatedRemoteUnlockDefaults()
+        // Seed stale persisted key material that the old fall-through would have
+        // happily reused.
+        defaults.set("hpke-stale", forKey: "remote_unlock.credential_recipient_key_id")
+        defaults.set("c3RhbGU=", forKey: "remote_unlock.credential_recipient_public_key_base64")
+        defaults.set(true, forKey: "remote_unlock.backend_certification_fresh")
+
+        let service = MacRemoteUnlockReadinessService(
+            defaults: defaults,
+            certificationStore: makeTemporaryCertificationStore(),
+            revokesPublishedTrustOnClearAll: false,
+            credentialKeyMaterialProvider: { throw FakeRemoteUnlockTrustError.keychain },
+            issuerTrustPublisher: {},
+            publishedTrustRevoker: {}
+        )
+
+        let snapshot = service.snapshot()
+
+        XCTAssertFalse(
+            snapshot.backendCertificationFresh,
+            "a keychain fault reading the credential identity key must fail the snapshot closed"
+        )
+        XCTAssertFalse(snapshot.loopbackOnlyFirewallActive)
+        XCTAssertFalse(snapshot.lastUnlockProbeSucceeded)
+    }
+
+    /// A corrupt / unreadable certification report must be treated as no-report
+    /// (fail closed), never silently mistaken for an absent-but-healthy host.
+    func testCorruptCertificationReportIsTreatedAsNoReport() throws {
+        let store = makeTemporaryCertificationStore()
+        // Write garbage where a JSON report belongs so `load()` throws.
+        try store.fileManager.createDirectory(
+            at: store.fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("not-json".utf8).write(to: store.fileURL)
+
+        let service = MacRemoteUnlockReadinessService(
+            defaults: makeIsolatedRemoteUnlockDefaults(),
+            certificationStore: store,
+            revokesPublishedTrustOnClearAll: false,
+            credentialKeyMaterialProvider: { Self.fakeCredentialKeyMaterial() },
+            issuerTrustPublisher: {},
+            publishedTrustRevoker: {}
+        )
+
+        let snapshot = service.snapshot()
+
+        XCTAssertFalse(
+            snapshot.backendCertificationFresh,
+            "a report that fails to decode must not be advertised as a fresh certification"
+        )
+    }
+
+    /// `recordCertification` must persist the report BEFORE flipping the
+    /// in-memory freshness flags. If the save fails it must fail closed (return
+    /// false, mark not-fresh) so the on-disk artifact and UserDefaults can never
+    /// diverge into a "fresh but unsaved" state.
+    func testRecordCertificationFailsClosedWhenSaveFails() {
+        let defaults = makeIsolatedRemoteUnlockDefaults()
+        // Point the store at a path whose parent is a regular file, so
+        // createDirectory / write throws.
+        let blockingFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacMediaCapabilityGateTests-block-\(UUID().uuidString)")
+        FileManager.default.createFile(atPath: blockingFile.path, contents: Data("x".utf8))
+        defer { try? FileManager.default.removeItem(at: blockingFile) }
+        let unwritable = RemoteUnlockCertificationReportStore(
+            fileURL: blockingFile.appendingPathComponent("nested/report.json")
+        )
+
+        let publishCount = CallCounter()
+        let service = MacRemoteUnlockReadinessService(
+            defaults: defaults,
+            certificationStore: unwritable,
+            revokesPublishedTrustOnClearAll: false,
+            credentialKeyMaterialProvider: { Self.fakeCredentialKeyMaterial() },
+            issuerTrustPublisher: { publishCount.increment() },
+            publishedTrustRevoker: {}
+        )
+
+        let recorded = service.recordCertification(
+            fileVaultSSHSupported: true,
+            credentialRecipientKeyId: "hpke-abc",
+            credentialRecipientPublicKeyBase64: "AAAA"
+        )
+
+        XCTAssertFalse(recorded, "recordCertification must report failure when the save fails")
+        XCTAssertFalse(
+            defaults.bool(forKey: "remote_unlock.backend_certification_fresh"),
+            "a failed save must leave the host marked not-certified"
+        )
+        XCTAssertNil(
+            defaults.object(forKey: "remote_unlock.certified_at"),
+            "freshness flags must not be set when the certification report could not be persisted"
+        )
+        XCTAssertEqual(
+            publishCount.value, 0,
+            "issuer trust must not be published when certification was not saved"
+        )
+    }
+
+    /// A successful certification persists the report first, then marks fresh and
+    /// publishes issuer trust (positive control for the fail-closed save path).
+    func testRecordCertificationPersistsThenMarksFreshAndPublishesTrust() throws {
+        let defaults = makeIsolatedRemoteUnlockDefaults()
+        let store = makeTemporaryCertificationStore()
+
+        let publishCount = CallCounter()
+        let service = MacRemoteUnlockReadinessService(
+            defaults: defaults,
+            certificationStore: store,
+            revokesPublishedTrustOnClearAll: false,
+            credentialKeyMaterialProvider: { Self.fakeCredentialKeyMaterial() },
+            issuerTrustPublisher: { publishCount.increment() },
+            publishedTrustRevoker: {}
+        )
+
+        let recorded = service.recordCertification(
+            fileVaultSSHSupported: true,
+            credentialRecipientKeyId: "hpke-abc",
+            credentialRecipientPublicKeyBase64: "AAAA"
+        )
+
+        XCTAssertTrue(recorded)
+        XCTAssertTrue(defaults.bool(forKey: "remote_unlock.backend_certification_fresh"))
+        XCTAssertEqual(publishCount.value, 1, "issuer trust should be published exactly once on success")
+        XCTAssertNotNil(try store.load(), "the certification report must be persisted on disk")
+    }
+
+    /// Revoking all sessions must surface a published-trust revocation failure
+    /// instead of swallowing it, while still clearing the local sessions so a
+    /// stuck revocation never re-permits an active session.
+    func testRevokeAllSurfacesPublishedTrustRevocationFailure() {
+        let now = Date(timeIntervalSince1970: 1_774_000_000)
+        let session = remoteUnlockSession(
+            sessionId: "unlock-session",
+            peerNodeId: "ios-peer",
+            viewerDeviceId: "iphone-1",
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(60)
+        )
+        let service = MacRemoteUnlockReadinessService(
+            defaults: makeIsolatedRemoteUnlockDefaults(),
+            certificationStore: makeTemporaryCertificationStore(),
+            revokesPublishedTrustOnClearAll: true,
+            credentialKeyMaterialProvider: { Self.fakeCredentialKeyMaterial() },
+            issuerTrustPublisher: {},
+            publishedTrustRevoker: { throw FakeRemoteUnlockTrustError.publish }
+        )
+        service.recordRemoteUnlockSession(session, now: now)
+
+        let succeeded = service.revokeAllRemoteUnlockSessions()
+
+        XCTAssertFalse(succeeded, "a revocation that fails to revoke published trust must report failure")
+        XCTAssertFalse(
+            service.isRemoteUnlockSessionActive(sessionId: "unlock-session", peerNodeId: "ios-peer", now: now),
+            "local sessions must still be cleared even when published-trust revocation fails"
+        )
+    }
+
+    /// Revocation reports success when the published-trust revoker succeeds.
+    func testRevokeAllReportsSuccessWhenTrustRevocationSucceeds() {
+        let revokeCount = CallCounter()
+        let service = MacRemoteUnlockReadinessService(
+            defaults: makeIsolatedRemoteUnlockDefaults(),
+            certificationStore: makeTemporaryCertificationStore(),
+            revokesPublishedTrustOnClearAll: true,
+            credentialKeyMaterialProvider: { Self.fakeCredentialKeyMaterial() },
+            issuerTrustPublisher: {},
+            publishedTrustRevoker: { revokeCount.increment() }
+        )
+
+        let succeeded = service.revokeAllRemoteUnlockSessions()
+
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(revokeCount.value, 1)
+    }
+
     // MARK: helpers
+
+    private enum FakeRemoteUnlockTrustError: Error {
+        case keychain
+        case publish
+    }
+
+    /// Thread-safe call counter so `@Sendable` provider closures can record how
+    /// often they ran without capturing a mutable `var` (which `@Sendable`
+    /// forbids).
+    private final class CallCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        func increment() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+    }
+
+    private nonisolated static func fakeCredentialKeyMaterial() -> RemoteUnlockCredentialKeyMaterial {
+        let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        return RemoteUnlockCredentialKeyMaterial(
+            keyId: "hpke-test",
+            publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+            privateKey: privateKey
+        )
+    }
+
+    private func makeIsolatedRemoteUnlockDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "MacMediaCapabilityGateTests.\(UUID().uuidString)")!
+    }
+
+    private func makeTemporaryCertificationStore() -> RemoteUnlockCertificationReportStore {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MacMediaCapabilityGateTests-cert-\(UUID().uuidString)")
+            .appendingPathComponent("RemoteUnlockCertification-v1.json")
+        return RemoteUnlockCertificationReportStore(fileURL: url)
+    }
 
     private func makeGate(
         entitlement: MacMediaCapabilityGate.EntitlementState,

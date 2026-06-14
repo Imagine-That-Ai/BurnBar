@@ -32,21 +32,13 @@ const STUCK_EVENT_GRACE_MS = 2 * 60_000;
  * permanently-undeliverable event becomes operator-visible instead of churning
  * the sweeper forever.
  */
-export const MAX_AGENT_FANOUT_ATTEMPTS = 8;
-
-// F-RR09-007: bound retention of the per-thread provider/runtime fingerprint
-// carried by agent_notification_events. Delivery completes in seconds and the
-// retry sweeper gives up after MAX_AGENT_FANOUT_ATTEMPTS, so a 30-day TTL never
-// races delivery — it purely caps how long this metadata accumulates (GDPR
-// Art.5(1)(e) storage limitation). Firestore auto-deletes docs once `expireAt`
-// passes (see the TTL field override in firestore.indexes.json).
-export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_AGENT_FANOUT_ATTEMPTS = 8;
 /** Max stuck events handled per scheduled tick. */
 const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
 export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
 
-export interface AgentReplyMessage {
+interface AgentReplyMessage {
   id: string;
   role: string;
   text?: string;
@@ -77,7 +69,7 @@ export interface AgentReplyNotificationEvent {
   schemaVersion: 1;
 }
 
-export interface DeviceNotificationState {
+interface DeviceNotificationState {
   id: string;
   platform: string;
   fcmToken?: string;
@@ -88,14 +80,6 @@ export interface DeviceNotificationState {
   activeRuntime?: string;
   lastSeenAtMillis: number;
   invalidatedAtMillis?: number;
-}
-
-export interface SubmitAgentNotificationReplyRequest {
-  eventId: string;
-  sealedReplyPayload: CloudVaultSealedPayload;
-  vaultKeyID: string;
-  deviceId?: string;
-  clientReplyId?: string;
 }
 
 interface CloudVaultSealedPayload {
@@ -169,7 +153,7 @@ export function shouldCreateNotificationEvent(args: {
   return !before || before.id !== after.id;
 }
 
-export function normalizeRuntime(sourceKind: AgentNotificationSourceKind, data: Record<string, unknown>): string {
+function normalizeRuntime(sourceKind: AgentNotificationSourceKind, data: Record<string, unknown>): string {
   const raw = String(data.agent ?? data.runtime ?? data.provider ?? "")
     .trim()
     .toLowerCase();
@@ -282,7 +266,7 @@ export function buildFcmMessage(args: {
   };
 }
 
-export async function createEventFromThreadWrite(args: {
+async function createEventFromThreadWrite(args: {
   uid: string;
   threadId: string;
   sourceKind: AgentNotificationSourceKind;
@@ -426,7 +410,7 @@ export async function fanoutAgentReplyEvent(args: {
   return { sent, suppressed, rejected, failed };
 }
 
-export type StuckEventOutcome = "retried" | "delivered" | "failed_sealed" | "skipped";
+type StuckEventOutcome = "retried" | "delivered" | "failed_sealed" | "skipped";
 
 /**
  * Sweep `agent_notification_events` left `pending` past the grace window and

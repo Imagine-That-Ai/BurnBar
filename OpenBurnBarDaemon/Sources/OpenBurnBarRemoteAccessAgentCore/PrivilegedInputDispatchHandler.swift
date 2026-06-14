@@ -2,7 +2,7 @@ import Foundation
 import OpenBurnBarComputerUseCore
 
 /// Executes `PrivilegedInputDispatchRequest` on the HID leaf with policy, kill-switch, and audit hooks.
-public final class PrivilegedInputDispatchHandler: @unchecked Sendable {
+public final class PrivilegedInputDispatchHandler: Sendable {
     public let auditSocketLabel: String
     private let keyboard: VirtualHIDKeyboardEngine
     private let capabilityVerifier: CapabilityTokenLeafVerifier

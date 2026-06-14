@@ -170,7 +170,8 @@ describe("rebuildUsageRollups gate-refusal mapping (P0-7)", () => {
       await promise;
     } catch (err) {
       expect(err).toBeInstanceOf(HttpsError);
-      return err as HttpsError;
+      if (err instanceof HttpsError) return err;
+      throw err;
     }
     throw new Error("expected the callable to reject");
   }

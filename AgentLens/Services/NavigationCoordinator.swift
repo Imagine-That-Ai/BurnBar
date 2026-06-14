@@ -1,5 +1,5 @@
 import Foundation
-import SwiftUI
+import Observation
 
 /// Represents a navigation destination within the app.
 /// Used by `NavigationCoordinator` to signal which screen should be shown.

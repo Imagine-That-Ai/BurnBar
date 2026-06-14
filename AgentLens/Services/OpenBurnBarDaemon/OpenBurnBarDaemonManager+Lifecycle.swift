@@ -81,16 +81,33 @@ extension OpenBurnBarDaemonManager {
         guard dependencies.fileManager.isExecutableFile(atPath: sourceURL.path) else { return false }
         guard dependencies.fileManager.fileExists(atPath: installedURL.path) else { return true }
 
-        let sourceAttributes = try? dependencies.fileManager.attributesOfItem(atPath: sourceURL.path)
-        let installedAttributes = try? dependencies.fileManager.attributesOfItem(atPath: installedURL.path)
-        let sourceSize = (sourceAttributes?[.size] as? NSNumber)?.int64Value
-        let installedSize = (installedAttributes?[.size] as? NSNumber)?.int64Value
+        // Security/correctness: a same-user attacker can swap the user-writable
+        // installed binary between install and launch (see RR-3). If we cannot
+        // stat either binary, we have lost the size/mtime evidence needed to
+        // decide staleness, so we FAIL CLOSED by treating the installed binary
+        // as needing a refresh — the refresh path re-runs `validateDaemonBinary`
+        // + atomic re-install, which is the safe action. Never silently keep the
+        // possibly-swapped installed binary in place when the probe is blind.
+        let sourceAttributes: [FileAttributeKey: Any]
+        let installedAttributes: [FileAttributeKey: Any]
+        do {
+            sourceAttributes = try dependencies.fileManager.attributesOfItem(atPath: sourceURL.path)
+            installedAttributes = try dependencies.fileManager.attributesOfItem(atPath: installedURL.path)
+        } catch {
+            AppLogger.network.error(
+                "daemon_binary_attributes_unreadable_force_refresh",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return true
+        }
+        let sourceSize = (sourceAttributes[.size] as? NSNumber)?.int64Value
+        let installedSize = (installedAttributes[.size] as? NSNumber)?.int64Value
         if sourceSize != installedSize {
             return true
         }
 
-        let sourceModifiedAt = sourceAttributes?[.modificationDate] as? Date
-        let installedModifiedAt = installedAttributes?[.modificationDate] as? Date
+        let sourceModifiedAt = sourceAttributes[.modificationDate] as? Date
+        let installedModifiedAt = installedAttributes[.modificationDate] as? Date
         if let sourceModifiedAt,
            let installedModifiedAt,
            sourceModifiedAt.timeIntervalSince(installedModifiedAt) > 1 {
@@ -177,7 +194,7 @@ extension OpenBurnBarDaemonManager {
         )
 
         if fileManager.fileExists(atPath: tempURL.path) {
-            try? fileManager.removeItem(at: tempURL)
+            try? fileManager.removeItem(at: tempURL) // try?-ok(stale temp cleanup)
         }
 
         do {
@@ -202,7 +219,7 @@ extension OpenBurnBarDaemonManager {
                 ofItemAtPath: destinationURL.path
             )
         } catch {
-            try? fileManager.removeItem(at: tempURL)
+            try? fileManager.removeItem(at: tempURL) // try?-ok(temp cleanup on error)
             throw error
         }
     }
@@ -341,7 +358,7 @@ extension OpenBurnBarDaemonManager {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         let socketURL = paths.socketURL
         while Date() < deadline {
-            if let response = try? await daemonRPC({
+            if let response = try? await daemonRPC({ // try?-ok(health poll retry)
                 try OpenBurnBarDaemonSocketClient.health(at: socketURL)
             }),
                response.ok,

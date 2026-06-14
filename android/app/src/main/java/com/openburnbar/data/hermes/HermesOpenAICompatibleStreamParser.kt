@@ -39,33 +39,29 @@ internal data class HermesStreamParseResult(
     val streamedText: Boolean = false,
 )
 
-private fun promptTokenCount(usage: JSONObject): Int? =
-    usage.optNullableInt("prompt_tokens")
-        ?: usage.optNullableInt("promptTokens")
-        ?: usage.optNullableInt("input_tokens")
-        ?: usage.optNullableInt("inputTokens")
-        ?: usage.optNullableInt("prompt_eval_count")
-        ?: usage.optNullableInt("promptEvalCount")
+private fun promptTokenCount(usage: JSONObject): Int? = usage.optNullableInt("prompt_tokens")
+    ?: usage.optNullableInt("promptTokens")
+    ?: usage.optNullableInt("input_tokens")
+    ?: usage.optNullableInt("inputTokens")
+    ?: usage.optNullableInt("prompt_eval_count")
+    ?: usage.optNullableInt("promptEvalCount")
 
-private fun outputTokenCount(usage: JSONObject): Int? =
-    usage.optNullableInt("completion_tokens")
-        ?: usage.optNullableInt("completionTokens")
-        ?: usage.optNullableInt("output_tokens")
-        ?: usage.optNullableInt("outputTokens")
-        ?: usage.optNullableInt("eval_count")
-        ?: usage.optNullableInt("evalCount")
+private fun outputTokenCount(usage: JSONObject): Int? = usage.optNullableInt("completion_tokens")
+    ?: usage.optNullableInt("completionTokens")
+    ?: usage.optNullableInt("output_tokens")
+    ?: usage.optNullableInt("outputTokens")
+    ?: usage.optNullableInt("eval_count")
+    ?: usage.optNullableInt("evalCount")
 
-private fun totalTokenCount(usage: JSONObject, promptTokens: Int?, outputTokens: Int?): Int? =
-    usage.optNullableInt("total_tokens")
-        ?: usage.optNullableInt("totalTokens")
-        ?: usage.optNullableInt("total_token_count")
-        ?: usage.optNullableInt("totalTokenCount")
-        ?: (promptTokens ?: 0).plus(outputTokens ?: 0).takeIf { it > 0 }
+private fun totalTokenCount(usage: JSONObject, promptTokens: Int?, outputTokens: Int?): Int? = usage.optNullableInt("total_tokens")
+    ?: usage.optNullableInt("totalTokens")
+    ?: usage.optNullableInt("total_token_count")
+    ?: usage.optNullableInt("totalTokenCount")
+    ?: (promptTokens ?: 0).plus(outputTokens ?: 0).takeIf { it > 0 }
 
 private fun usageStatsMissing(vararg values: Any?): Boolean = values.all { it == null }
 
-private fun JSONObject.optNullableInt(key: String): Int? =
-    if (has(key) && !isNull(key)) optInt(key) else null
+private fun JSONObject.optNullableInt(key: String): Int? = if (has(key) && !isNull(key)) optInt(key) else null
 
 internal class HermesOpenAICompatibleStreamParser {
     private data class PendingToolCall(
@@ -238,22 +234,21 @@ internal class HermesOpenAICompatibleStreamParser {
             ?: visibleContentValue(item.opt("thinking"))
     }
 
-    private fun visibleContentValue(value: Any?): String? =
-        when (value) {
-            null, JSONObject.NULL -> null
-            is String -> value
-            is JSONArray -> {
-                val joined = (0 until value.length()).joinToString("") { index ->
-                    visibleContentValue(value.opt(index)).orEmpty()
-                }
-                joined.takeIf { it.isNotEmpty() }
+    private fun visibleContentValue(value: Any?): String? = when (value) {
+        null, JSONObject.NULL -> null
+        is String -> value
+        is JSONArray -> {
+            val joined = (0 until value.length()).joinToString("") { index ->
+                visibleContentValue(value.opt(index)).orEmpty()
             }
-            is JSONObject ->
-                visibleContentValue(value.opt("text"))
-                    ?: visibleContentValue(value.opt("value"))
-                    ?: visibleContentValue(value.opt("content"))
-            else -> null
+            joined.takeIf { it.isNotEmpty() }
         }
+        is JSONObject ->
+            visibleContentValue(value.opt("text"))
+                ?: visibleContentValue(value.opt("value"))
+                ?: visibleContentValue(value.opt("content"))
+        else -> null
+    }
 
     private fun errorMessage(json: JSONObject): String? {
         val error = json.optJSONObject("error")
@@ -266,10 +261,9 @@ internal class HermesOpenAICompatibleStreamParser {
             ?: json.optString("message_error").takeIf { it.isNotEmpty() }
     }
 
-    private fun durationSecondsFromUsage(usage: JSONObject, keys: List<String>): Double? =
-        keys.asSequence()
-            .mapNotNull { key -> durationSecondsForUsageKey(usage, key) }
-            .firstOrNull()
+    private fun durationSecondsFromUsage(usage: JSONObject, keys: List<String>): Double? = keys.asSequence()
+        .mapNotNull { key -> durationSecondsForUsageKey(usage, key) }
+        .firstOrNull()
 
     private fun durationSecondsForUsageKey(usage: JSONObject, key: String): Double? {
         val value =
@@ -279,11 +273,9 @@ internal class HermesOpenAICompatibleStreamParser {
         return value?.let(::normalizedDurationSeconds)
     }
 
-    private fun normalizedDurationSeconds(value: Double): Double =
-        when {
-            value >= NANOS_PER_SECOND -> value / NANOS_PER_SECOND_D
-            value >= MILLIS_HEURISTIC_FLOOR -> value / 1_000.0
-            else -> value
-        }
-
+    private fun normalizedDurationSeconds(value: Double): Double = when {
+        value >= NANOS_PER_SECOND -> value / NANOS_PER_SECOND_D
+        value >= MILLIS_HEURISTIC_FLOOR -> value / 1_000.0
+        else -> value
+    }
 }

@@ -157,9 +157,9 @@ final class MobileAssistantChatReader {
 
 @MainActor
 final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource {
-    private let firestoreProvider: () -> Firestore
+    private let firestoreProvider: @Sendable () -> Firestore
 
-    init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
+    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
         self.firestoreProvider = firestoreProvider
     }
 

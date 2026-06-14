@@ -53,7 +53,7 @@ fun WelcomeBlock(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XL.dp))
         WelcomeBlockHeroCard(runtimeInfo = runtimeInfo, selectedModel = selectedModel)
         if (availableModels.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -100,11 +100,7 @@ private fun WelcomeBlockHeroCard(runtimeInfo: Map<String, String>, selectedModel
 }
 
 @Composable
-private fun WelcomeBlockModelPicker(
-    selectedModel: String,
-    availableModels: List<String>,
-    onModelSelect: (String) -> Unit,
-) {
+private fun WelcomeBlockModelPicker(selectedModel: String, availableModels: List<String>, onModelSelect: (String) -> Unit) {
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -115,21 +111,21 @@ private fun WelcomeBlockModelPicker(
             Surface(
                 shape = RoundedCornerShape(percent = 50),
                 color =
-                    if (selected) {
-                        AuroraColors.hermesMercury.copy(alpha = 0.22f)
-                    } else {
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.25f)
-                    },
+                if (selected) {
+                    AuroraColors.hermesMercury.copy(alpha = 0.22f)
+                } else {
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.25f)
+                },
                 border =
-                    BorderStroke(
-                        width = 0.75.dp,
-                        color =
-                            if (selected) {
-                                AuroraColors.hermesMercury.copy(alpha = 0.72f)
-                            } else {
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
-                            },
-                    ),
+                BorderStroke(
+                    width = 0.75.dp,
+                    color =
+                    if (selected) {
+                        AuroraColors.hermesMercury.copy(alpha = 0.72f)
+                    } else {
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+                    },
+                ),
             ) {
                 Row(
                     modifier =

@@ -157,7 +157,7 @@ export function isPiAgentConnectionDoc(doc: unknown): doc is PiAgentConnectionDo
   );
 }
 
-export function parsePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc | undefined {
+function parsePiAgentPairingDoc(raw: unknown): PiAgentPairingDoc | undefined {
   const record = recordOrUndefined(raw);
   if (!record) return undefined;
   if (

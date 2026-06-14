@@ -33,9 +33,12 @@ object ChartStudioCanvasStore {
     @Serializable
     data class Canvas(
         val id: String,
-        val title: String, // user-visible label — first prompt line
-        val prompt: String, // the natural-language prompt that produced this
-        val rawJson: String, // the decoded JSON spec (raw, prose stripped)
+        // user-visible label — first prompt line
+        val title: String,
+        // the natural-language prompt that produced this
+        val prompt: String,
+        // the decoded JSON spec (raw, prose stripped)
+        val rawJson: String,
         val createdAtMs: Long,
     )
 

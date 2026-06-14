@@ -113,17 +113,16 @@ private fun CloudBadgePickerTileLabels(style: CloudBadgeStyle, isSelected: Boole
     )
 }
 
-private fun cloudBadgeTileBorderBrush(isSelected: Boolean): Brush =
-    if (isSelected) {
-        Brush.linearGradient(
-            colors = listOf(AuroraColors.amber, AuroraColors.ember, AuroraColors.amber),
-        )
-    } else {
-        Brush.linearGradient(
-            colors =
-            listOf(
-                Color.White.copy(alpha = 0.12f),
-                Color.White.copy(alpha = 0.04f),
-            ),
-        )
-    }
+private fun cloudBadgeTileBorderBrush(isSelected: Boolean): Brush = if (isSelected) {
+    Brush.linearGradient(
+        colors = listOf(AuroraColors.amber, AuroraColors.ember, AuroraColors.amber),
+    )
+} else {
+    Brush.linearGradient(
+        colors =
+        listOf(
+            Color.White.copy(alpha = 0.12f),
+            Color.White.copy(alpha = 0.04f),
+        ),
+    )
+}

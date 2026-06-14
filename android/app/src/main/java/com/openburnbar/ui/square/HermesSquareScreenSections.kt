@@ -22,20 +22,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.cloud.CloudConversationSearchRow
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.hermes.HermesConnectionRecord
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.refreshRelayConnections
+import com.openburnbar.data.missions.ActiveMission
+import com.openburnbar.data.missions.ApprovalAsk
 import com.openburnbar.data.missions.ApprovalDecision
 import com.openburnbar.data.missions.ApprovalPolicyStore
+import com.openburnbar.data.missions.MissionConsoleSnapshot
 import com.openburnbar.data.missions.MissionGroupObserver
+import com.openburnbar.data.missions.MissionGroupSnapshot
 import com.openburnbar.data.missions.MobileMissionConsoleHost
+import com.openburnbar.data.missions.RollbackScope
 import com.openburnbar.data.missions.RollbackService
+import com.openburnbar.data.missions.RollbackSnapshot
+import com.openburnbar.data.models.ProjectSummary
 import com.openburnbar.data.projects.ProjectsStore
 import com.openburnbar.data.square.AgentAvailability
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.CLIAgentSessionRecord
+import com.openburnbar.data.square.HermesSquareFeatureFlags
 import com.openburnbar.data.square.MercuryPairedMacTilePreference
 import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxItem
@@ -43,20 +53,9 @@ import com.openburnbar.data.square.ThreadInboxStore
 import com.openburnbar.data.square.splitForInbox
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.ui.components.AuroraBackdrop
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-import com.openburnbar.data.assistants.AssistantChatHistoryStore
-import com.openburnbar.data.hermes.HermesConnectionRecord
-import com.openburnbar.data.missions.ActiveMission
-import com.openburnbar.data.missions.ApprovalAsk
-import com.openburnbar.data.missions.MissionConsoleSnapshot
-import com.openburnbar.data.missions.MissionGroupSnapshot
-import com.openburnbar.data.missions.RollbackScope
-import com.openburnbar.data.missions.RollbackSnapshot
-import com.openburnbar.data.models.ProjectSummary
-import com.openburnbar.data.square.HermesSquareFeatureFlags
-import kotlinx.coroutines.CoroutineScope
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +76,6 @@ internal fun HermesSquareScreenContent(
     )
     HermesSquareOverlays(state = state, actions = actions)
 }
-
 
 internal data class HermesSquareUiState(
     val registry: AgentIdentityRegistry,
@@ -288,57 +286,54 @@ private fun rememberHermesSquarePinnedGridState(context: android.content.Context
     )
 }
 
-private fun hermesSquareThreadMetadataUpdater(core: HermesSquareServiceCore): (
+private fun hermesSquareThreadMetadataUpdater(
+    core: HermesSquareServiceCore,
+): (
     ThreadInboxItem,
     String?,
     String?,
     Boolean?,
     Int?,
-) -> Unit =
-    { item, customTitle, labelColorHex, isPinned, priorityOrder ->
-        core.scope.launch {
-            if (item.id.startsWith("cli:")) {
-                core.inbox.updateSessionMetadata(
-                    id = item.id.removePrefix("cli:"),
-                    customTitle = customTitle,
-                    labelColorHex = labelColorHex,
-                    isPinned = isPinned,
-                    priorityOrder = priorityOrder,
-                )
-            } else {
-                core.historyStore.updateThreadMetadata(
-                    id = item.id.substringAfter(":"),
-                    customTitle = customTitle,
-                    labelColorHex = labelColorHex,
-                    isPinned = isPinned,
-                    priorityOrder = priorityOrder,
-                )
-            }
+) -> Unit = { item, customTitle, labelColorHex, isPinned, priorityOrder ->
+    core.scope.launch {
+        if (item.id.startsWith("cli:")) {
+            core.inbox.updateSessionMetadata(
+                id = item.id.removePrefix("cli:"),
+                customTitle = customTitle,
+                labelColorHex = labelColorHex,
+                isPinned = isPinned,
+                priorityOrder = priorityOrder,
+            )
+        } else {
+            core.historyStore.updateThreadMetadata(
+                id = item.id.substringAfter(":"),
+                customTitle = customTitle,
+                labelColorHex = labelColorHex,
+                isPinned = isPinned,
+                priorityOrder = priorityOrder,
+            )
         }
     }
+}
 
 private fun hermesSquareMoveThreadItem(
     splitInbox: Pair<List<ThreadInboxItem>, List<ThreadInboxItem>>,
     updateThreadItemMetadata: (ThreadInboxItem, String?, String?, Boolean?, Int?) -> Unit,
-): (ThreadInboxItem, Int) -> Unit =
-    moveThreadItem@{ item, direction ->
-        val (service, _) = splitInbox
-        val index = service.indexOfFirst { it.id == item.id }
-        if (index == -1) return@moveThreadItem
-        val targetIndex = index + direction
-        if (targetIndex !in service.indices) return@moveThreadItem
-        val list = service.toMutableList()
-        val temp = list[index]
-        list[index] = list[targetIndex]
-        list[targetIndex] = temp
-        list.forEachIndexed { i, threadItem -> updateThreadItemMetadata(threadItem, null, null, null, i + 1) }
-    }
+): (ThreadInboxItem, Int) -> Unit = moveThreadItem@{ item, direction ->
+    val (service, _) = splitInbox
+    val index = service.indexOfFirst { it.id == item.id }
+    if (index == -1) return@moveThreadItem
+    val targetIndex = index + direction
+    if (targetIndex !in service.indices) return@moveThreadItem
+    val list = service.toMutableList()
+    val temp = list[index]
+    list[index] = list[targetIndex]
+    list[targetIndex] = temp
+    list.forEachIndexed { i, threadItem -> updateThreadItemMetadata(threadItem, null, null, null, i + 1) }
+}
 
 @Composable
-private fun rememberHermesSquareFilteredHits(
-    core: HermesSquareServiceCore,
-    overlay: HermesSquareOverlayFields,
-) =
+private fun rememberHermesSquareFilteredHits(core: HermesSquareServiceCore, overlay: HermesSquareOverlayFields) =
     remember(overlay.query, core.inbox.items, core.registry.identities, core.cloudHits) {
         derivedStateOf {
             val q = overlay.query.trim()
@@ -353,10 +348,7 @@ private fun rememberHermesSquareFilteredHits(
     }
 
 @Composable
-private fun rememberHermesSquareDerivedData(
-    core: HermesSquareServiceCore,
-    overlay: HermesSquareOverlayFields,
-): HermesSquareDerivedData {
+private fun rememberHermesSquareDerivedData(core: HermesSquareServiceCore, overlay: HermesSquareOverlayFields): HermesSquareDerivedData {
     val updateThreadItemMetadata = remember(core) { hermesSquareThreadMetadataUpdater(core) }
     val splitInbox by remember(core.inbox.items) { derivedStateOf { core.inbox.items.splitForInbox() } }
     val moveThreadItem = remember(splitInbox, updateThreadItemMetadata) {
@@ -372,11 +364,7 @@ private fun rememberHermesSquareDerivedData(
 }
 
 @Composable
-private fun HermesSquareUiRuntimeEffects(
-    core: HermesSquareServiceCore,
-    pinned: HermesSquarePinnedGridState,
-    overlay: HermesSquareOverlayFields,
-) {
+private fun HermesSquareUiRuntimeEffects(core: HermesSquareServiceCore, pinned: HermesSquarePinnedGridState, overlay: HermesSquareOverlayFields) {
     HermesSquareBootstrapEffects(
         HermesSquareBootstrapDeps(
             inbox = core.inbox,
@@ -459,40 +447,39 @@ private fun buildHermesSquareUiState(
     pinned: HermesSquarePinnedGridState,
     overlay: HermesSquareOverlayFields,
     derived: HermesSquareDerivedData,
-): HermesSquareUiState =
-    HermesSquareUiState(
-        registry = core.registry,
-        hermesService = core.hermesService,
-        inbox = core.inbox,
-        activityStore = core.activityStore,
-        missionHost = core.missionHost,
-        rollbackService = core.rollbackService,
-        approvalPolicyStore = core.approvalPolicyStore,
-        scope = core.scope,
-        flags = core.flags,
-        cloudHits = core.cloudHits,
-        missionSnapshot = core.missionSnapshot,
-        groupSnapshot = core.groupSnapshot,
-        snapshotsBySession = core.snapshotsBySession,
-        projectSummaries = core.projectSummaries,
-        pinned = pinned.pinned,
-        query = overlay.query,
-        showDiscover = overlay.showDiscover,
-        showSubscriptions = overlay.showSubscriptions,
-        showBrandZoneURI = overlay.showBrandZoneURI,
-        showFanOut = overlay.showFanOut,
-        showVoice = overlay.showVoice,
-        voiceBanner = overlay.voiceBanner,
-        selectedCloudRow = overlay.selectedCloudRow,
-        selectedCliSession = overlay.selectedCliSession,
-        threadToManage = overlay.threadToManage,
-        showRenameDialogForThread = overlay.showRenameDialogForThread,
-        renameDialogText = overlay.renameDialogText,
-        missionToManage = overlay.missionToManage,
-        pinnedAgentToManage = overlay.pinnedAgentToManage,
-        splitInbox = derived.splitInbox,
-        filteredHits = derived.filteredHits,
-    )
+): HermesSquareUiState = HermesSquareUiState(
+    registry = core.registry,
+    hermesService = core.hermesService,
+    inbox = core.inbox,
+    activityStore = core.activityStore,
+    missionHost = core.missionHost,
+    rollbackService = core.rollbackService,
+    approvalPolicyStore = core.approvalPolicyStore,
+    scope = core.scope,
+    flags = core.flags,
+    cloudHits = core.cloudHits,
+    missionSnapshot = core.missionSnapshot,
+    groupSnapshot = core.groupSnapshot,
+    snapshotsBySession = core.snapshotsBySession,
+    projectSummaries = core.projectSummaries,
+    pinned = pinned.pinned,
+    query = overlay.query,
+    showDiscover = overlay.showDiscover,
+    showSubscriptions = overlay.showSubscriptions,
+    showBrandZoneURI = overlay.showBrandZoneURI,
+    showFanOut = overlay.showFanOut,
+    showVoice = overlay.showVoice,
+    voiceBanner = overlay.voiceBanner,
+    selectedCloudRow = overlay.selectedCloudRow,
+    selectedCliSession = overlay.selectedCliSession,
+    threadToManage = overlay.threadToManage,
+    showRenameDialogForThread = overlay.showRenameDialogForThread,
+    renameDialogText = overlay.renameDialogText,
+    missionToManage = overlay.missionToManage,
+    pinnedAgentToManage = overlay.pinnedAgentToManage,
+    splitInbox = derived.splitInbox,
+    filteredHits = derived.filteredHits,
+)
 
 private fun buildHermesSquareUiActions(
     core: HermesSquareServiceCore,
@@ -626,10 +613,7 @@ private fun HermesSquareMercuryPinEffect(
 }
 
 @Composable
-private fun HermesSquareMissionRollbackEffect(
-    missionSnapshot: MissionConsoleSnapshot,
-    rollbackService: RollbackService,
-) {
+private fun HermesSquareMissionRollbackEffect(missionSnapshot: MissionConsoleSnapshot, rollbackService: RollbackService) {
     LaunchedEffect(missionSnapshot.activeMissions) {
         for (mission in missionSnapshot.activeMissions) {
             rollbackService.startObservingSession(mission.id)
@@ -639,10 +623,7 @@ private fun HermesSquareMissionRollbackEffect(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun HermesSquareScaffold(
-    state: HermesSquareUiState,
-    actions: HermesSquareUiActions,
-) {
+internal fun HermesSquareScaffold(state: HermesSquareUiState, actions: HermesSquareUiActions) {
     Scaffold(
         containerColor = Color.Transparent,
         topBar = { HermesSquareTopBar(state = state, actions = actions) },

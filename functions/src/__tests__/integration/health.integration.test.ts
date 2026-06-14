@@ -16,13 +16,19 @@ const BASE_URL = `http://${EMULATOR_HOST}/${PROJECT_ID}/${FUNCTIONS_REGION}`;
 const describeIf = (condition: boolean) => (condition ? describe : describe.skip);
 const EMULATOR_ENABLED = process.env.FUNCTIONS_EMULATOR === "true";
 
+function readStringField(body: unknown, field: string): string | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+  const value = Object.getOwnPropertyDescriptor(body, field)?.value;
+  return typeof value === "string" ? value : undefined;
+}
+
 describeIf(EMULATOR_ENABLED)("Health Endpoint Integration Tests", () => {
   describe("GET /healthLive", () => {
     it("returns 200 with alive status", async () => {
       const res = await fetch(`${BASE_URL}/healthLive`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: string };
-      expect(body.status).toBe("alive");
+      const body = await res.json();
+      expect(readStringField(body, "status")).toBe("alive");
     });
 
     it("responds within 500ms", async () => {
@@ -36,8 +42,8 @@ describeIf(EMULATOR_ENABLED)("Health Endpoint Integration Tests", () => {
     it("returns 200 or 503 with JSON body", async () => {
       const res = await fetch(`${BASE_URL}/healthReady`);
       expect([200, 503]).toContain(res.status);
-      const body = (await res.json()) as { status: string };
-      expect(body.status).toBeDefined();
+      const body = await res.json();
+      expect(readStringField(body, "status")).toBeDefined();
     });
   });
 
@@ -45,10 +51,10 @@ describeIf(EMULATOR_ENABLED)("Health Endpoint Integration Tests", () => {
     it("returns 200 with full status object", async () => {
       const res = await fetch(`${BASE_URL}/healthCheck`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as Record<string, unknown>;
-      expect(body.status).toBe("ok");
-      expect(body.timestamp).toBeDefined();
-      expect(body.uptime_ms).toBeDefined();
+      const body = await res.json();
+      expect(readStringField(body, "status")).toBe("ok");
+      expect(readStringField(body, "timestamp")).toBeDefined();
+      expect(body && typeof body === "object" && !Array.isArray(body) && "uptime_ms" in body).toBe(true);
     });
   });
 });

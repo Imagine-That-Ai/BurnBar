@@ -16,7 +16,7 @@ import OpenBurnBarMedia
 /// contracts, scope matcher, capability gate, and audit chain stay in
 /// `OpenBurnBarComputerUseCore`.
 @MainActor
-public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked Sendable {
+public final class ComputerUseSessionCoordinator: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
     private static let phoneControlActionCap = 10_000
     private static func debugTrace(_ message: String) {
@@ -169,7 +169,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         var record = fields
         record["timestamp"] = ISO8601DateFormatter().string(from: Date())
         record["timestampMillis"] = String(Int(Date().timeIntervalSince1970 * 1000))
-        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+        guard let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), // try?-ok(debug proof encode, guarded)
               let line = String(data: data, encoding: .utf8)
         else { return }
         print("OpenBurnBar ComputerUseE2E \(line)")
@@ -181,10 +181,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         if !FileManager.default.fileExists(atPath: url.path) {
             FileManager.default.createFile(atPath: url.path, contents: nil)
         }
-        if let handle = try? FileHandle(forWritingTo: url) {
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: lineData)
-            try? handle.close()
+        if let handle = try? FileHandle(forWritingTo: url) { // try?-ok(debug proof sidecar open)
+            _ = try? handle.seekToEnd() // try?-ok(debug proof sidecar seek)
+            try? handle.write(contentsOf: lineData) // try?-ok(debug proof sidecar write)
+            try? handle.close() // try?-ok(handle teardown)
         }
         #endif
     }
@@ -490,7 +490,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
         SystemPermissionMonitor.shared.attach(
             frameSink: { [weak self] frame in
-                try? await self?.latestReplySender?(frame)
+                try? await self?.latestReplySender?(frame) // try?-ok(fire-and-forget status frame)
                 await SystemPermissionRetryDispatcher.shared.observe(statusFrame: frame)
             },
             uidProvider: { [weak self] in
@@ -557,15 +557,20 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         cancelPendingApprovals(decision: .rejectAndHalt, note: "panic halt")
         if let logger = auditLogger {
             let action: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
-            if let entry = try? logger.makeEntry(
-                for: action,
-                approvedBy: .panic,
-                denyReason: source.rawValue,
-                macHostNodeId: configuration.macHostNodeId,
-                scopeContext: macDispatcher.currentScopeContext()
-            ) {
-                _ = try? logger.append(entry)
+            do {
+                let entry = try logger.makeEntry(
+                    for: action,
+                    approvedBy: .panic,
+                    denyReason: source.rawValue,
+                    macHostNodeId: configuration.macHostNodeId,
+                    scopeContext: macDispatcher.currentScopeContext()
+                )
+                try logger.append(entry)
                 state?.auditChainHeadHashHex = logger.headHashHex
+            } catch {
+                // A dropped panic-halt entry is a gap in the tamper-evident audit
+                // chain — surface it instead of swallowing; the halt still proceeds.
+                Self.log.error("computer_use_panic_audit_entry_failed reason=\(String(describing: error), privacy: .public)")
             }
             finalizeAuditSignedHeadIfPossible()
         }
@@ -597,10 +602,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent("keys", isDirectory: true)
             .appendingPathComponent("audit-export-ed25519.raw", isDirectory: false)
-        guard let signer = try? ComputerUseKeychainAuditExportSignerProvider(legacyRawKeyURL: legacyKey).signer() else {
-            return
+        do {
+            let signer = try ComputerUseKeychainAuditExportSignerProvider(legacyRawKeyURL: legacyKey).signer()
+            try ComputerUseAuditHeadFinalizer.finalize(logger: logger, signer: signer)
+        } catch {
+            // An unsigned audit head loses its tamper-evidence guarantee — make
+            // a missing/inaccessible signer or a failed finalize observable.
+            Self.log.error("computer_use_audit_head_finalize_failed reason=\(String(describing: error), privacy: .public)")
         }
-        try? ComputerUseAuditHeadFinalizer.finalize(logger: logger, signer: signer)
     }
 
     private func haltForBudgetHardCap() {
@@ -609,15 +618,20 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         cancelPendingApprovals(decision: .rejectAndHalt, note: "budget hard cap")
         if let logger = auditLogger {
             let action: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
-            if let entry = try? logger.makeEntry(
-                for: action,
-                approvedBy: .panic,
-                denyReason: ComputerUseDenyReason.hardCap.rawValue,
-                macHostNodeId: configuration.macHostNodeId,
-                scopeContext: macDispatcher.currentScopeContext()
-            ) {
-                _ = try? logger.append(entry)
+            do {
+                let entry = try logger.makeEntry(
+                    for: action,
+                    approvedBy: .panic,
+                    denyReason: ComputerUseDenyReason.hardCap.rawValue,
+                    macHostNodeId: configuration.macHostNodeId,
+                    scopeContext: macDispatcher.currentScopeContext()
+                )
+                try logger.append(entry)
                 state?.auditChainHeadHashHex = logger.headHashHex
+            } catch {
+                // A dropped hard-cap entry is a gap in the tamper-evident audit
+                // chain — surface it instead of swallowing; the halt still proceeds.
+                Self.log.error("computer_use_hardcap_audit_entry_failed reason=\(String(describing: error), privacy: .public)")
             }
         }
         activeSessionId = nil
@@ -993,6 +1007,18 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             status: .awaitingApproval
         )
 
+        let expectedRequestHashBlake3: String
+        do {
+            expectedRequestHashBlake3 = try ComputerUsePhoneControlSigner()
+                .canonicalApprovalRequestHashHex(request: request)
+        } catch {
+            // Fail closed: an uncomputable expected hash is left empty, which the
+            // PhoneControlAuthorityValidator now rejects outright — so a later
+            // signed response cannot satisfy the request-binding check. Surface
+            // why instead of silently weakening the binding to "".
+            Self.log.error("computer_use_approval_request_hash_unavailable reason=\(String(describing: error), privacy: .public)")
+            expectedRequestHashBlake3 = ""
+        }
         let response = await withCheckedContinuation { continuation in
             approvalContinuations[request.approvalId] = continuation
             approvalContexts[request.approvalId] = ApprovalContext(
@@ -1000,7 +1026,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 connectionID: latestControlConnectionID,
                 sessionID: request.sessionId,
                 requestedAt: request.requestedAt,
-                requestHashBlake3: (try? ComputerUsePhoneControlSigner().canonicalApprovalRequestHashHex(request: request)) ?? ""
+                requestHashBlake3: expectedRequestHashBlake3
             )
             emitControlFrame(
                 type: .controlApprovalRequest,
@@ -2299,7 +2325,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             control: payload
         )
         Task {
-            try? await latestReplySender(frame)
+            try? await latestReplySender(frame) // try?-ok(fire-and-forget control frame)
         }
     }
 
@@ -2335,7 +2361,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             )
         )
         Task {
-            try? await latestReplySender(frame)
+            try? await latestReplySender(frame) // try?-ok(fire-and-forget focus frame)
         }
     }
 

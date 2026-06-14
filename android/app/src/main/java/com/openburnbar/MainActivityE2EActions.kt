@@ -8,8 +8,6 @@ import com.openburnbar.data.hermes.HermesConnectionMode
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.refreshRelayConnections
 import com.openburnbar.data.hermes.selectConnection
-import com.openburnbar.data.hermes.refreshRelayConnections
-import com.openburnbar.data.hermes.selectConnection
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 

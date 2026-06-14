@@ -3,6 +3,7 @@ import AppKit
 import CryptoKit
 import Darwin
 import Foundation
+import os
 import OSLog
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
@@ -22,20 +23,41 @@ public protocol RemoteClipboardContextInspecting: Sendable {
     func focusedDenyReason() -> ComputerUseAccessibilityDenyReason?
 }
 
-public final class GeneralRemoteClipboardPasteboard: RemoteClipboardPasteboard, @unchecked Sendable {
-    private let pasteboard: NSPasteboard
+/// Read/create the HPKE recipient key material used to certify and decrypt Remote Unlock
+/// credentials. A failure here is security-relevant: it must never silently certify with
+/// half-formed (missing/empty) key material, and its loss must be observable. This seam lets
+/// the controller fail closed + log a key-material fault, and lets tests inject a faulting store.
+protocol RemoteUnlockCredentialKeyProviding: Sendable {
+    func copyPrivateKey() throws -> Curve25519.KeyAgreement.PrivateKey
+    func copyOrCreateKeyMaterial() throws -> RemoteUnlockCredentialKeyMaterial
+}
+
+extension RemoteUnlockCredentialKeyStore: RemoteUnlockCredentialKeyProviding {}
+
+public final class GeneralRemoteClipboardPasteboard: RemoteClipboardPasteboard, Sendable {
+    private struct State {
+        var pasteboard: NSPasteboard
+    }
+
+    // `NSPasteboard` is an AppKit reference type that is not `Sendable`, and the
+    // conformed-to `RemoteClipboardPasteboard` protocol is nonisolated, so the
+    // type cannot be `@MainActor`. The lock fully mediates access to the stored
+    // reference, yielding genuine `Sendable` conformance without `@unchecked`.
+    private let state: OSAllocatedUnfairLock<State>
 
     public init(pasteboard: NSPasteboard = .general) {
-        self.pasteboard = pasteboard
+        self.state = OSAllocatedUnfairLock(uncheckedState: State(pasteboard: pasteboard))
     }
 
     public func readString() -> String? {
-        pasteboard.string(forType: .string)
+        state.withLockUnchecked { $0.pasteboard.string(forType: .string) }
     }
 
     public func writeString(_ text: String) throws {
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        state.withLockUnchecked { state in
+            state.pasteboard.clearContents()
+            state.pasteboard.setString(text, forType: .string)
+        }
     }
 }
 
@@ -513,12 +535,12 @@ final class RemoteUnlockCredentialController {
     }
 
     private let inputController: MacInputController
-    private let keyStore: RemoteUnlockCredentialKeyStore
+    private let keyStore: any RemoteUnlockCredentialKeyProviding
     private let policy: RemoteUnlockPolicy
 
     init(
         inputController: MacInputController = MacInputController(),
-        keyStore: RemoteUnlockCredentialKeyStore = .shared,
+        keyStore: any RemoteUnlockCredentialKeyProviding = RemoteUnlockCredentialKeyStore.shared,
         policy: RemoteUnlockPolicy = .default
     ) {
         self.inputController = inputController
@@ -691,9 +713,9 @@ final class RemoteUnlockCredentialController {
         // Re-wake the physical display so it redraws the (now hopefully unlocked) desktop instead of
         // lingering on a stale, asleep lock screen. The credential path can unlock the session while
         // the panel stays dark, which looks like "nothing happened" and forces a manual Touch ID.
-        try? await RemoteAccessAgentClient().wakeDisplay()
+        try? await RemoteAccessAgentClient().wakeDisplay() // try?-ok(best-effort display rewake)
 
-        try? await Task.sleep(nanoseconds: 700_000_000)
+        try? await Task.sleep(nanoseconds: 700_000_000) // try?-ok(sleep cancellation only)
         let state = context.readiness.currentState(
             sessionId: credential.sessionId,
             controlOwnerViewerId: context.authorizedPeerNodeId
@@ -703,7 +725,7 @@ final class RemoteUnlockCredentialController {
             "remote_unlock_credential_input_finished requestID=\(credential.requestId, privacy: .public) status=\(unlocked ? "unlocked" : "accepted", privacy: .public) lockState=\(state.lockState.rawValue, privacy: .public)"
         )
         Self.debugTrace("remote_unlock_credential_input_finished requestID=\(credential.requestId) status=\(unlocked ? "unlocked" : "accepted") lockState=\(state.lockState.rawValue)")
-        if unlocked, let keyMaterial = try? keyStore.copyOrCreateKeyMaterial() {
+        if unlocked, let keyMaterial = certificationKeyMaterial(requestId: credential.requestId) {
             context.readiness.recordCertification(
                 fileVaultSSHSupported: state.capabilities.fileVaultSSHSupported,
                 credentialRecipientKeyId: keyMaterial.keyId,
@@ -719,6 +741,30 @@ final class RemoteUnlockCredentialController {
 
     private func validationDetail(for error: PhoneControlAuthorityValidator.ValidationError) -> String {
         error.auditDetailToken
+    }
+
+    /// Read (or create) the HPKE recipient key material that certification is recorded against.
+    /// A keychain/key-material fault is security-relevant: we must never record a half-formed
+    /// certification with missing/empty recipient key fields (that would advertise an
+    /// undecryptable recipient and silently break later credential opens). On fault we fail
+    /// closed — skip certification — and surface the loss instead of swallowing it.
+    func certificationKeyMaterial(requestId: String) -> RemoteUnlockCredentialKeyMaterial? {
+        do {
+            return try keyStore.copyOrCreateKeyMaterial()
+        } catch {
+            let errorClass = String(describing: type(of: error))
+            AppLogger.daemon.error(
+                "remote_unlock_key_material_failed",
+                metadata: [
+                    "requestId": requestId,
+                    "errorClass": errorClass
+                ]
+            )
+            Self.debugTrace(
+                "remote_unlock_key_material_failed requestID=\(requestId) errorClass=\(errorClass)"
+            )
+            return nil
+        }
     }
 
     private func remoteUnlockInputDetail(for error: Error) -> String {
@@ -775,18 +821,18 @@ private struct RemoteAccessAgentClient: Sendable {
         self.socketPath = socketPath
     }
 
+    /// Blocking socket send runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`), so callers leave the main actor at
+    /// the `await` (SE-0338).
     func typeCredential(_ password: String) async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try send(
-                RemoteAccessAgentRequest(operation: "typeCredential", password: password)
-            )
-        }.value
+        try send(
+            RemoteAccessAgentRequest(operation: "typeCredential", password: password)
+        )
     }
 
+    /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     func wakeDisplay() async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
-        }.value
+        try send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
     }
 
     private func send(_ request: RemoteAccessAgentRequest) throws {

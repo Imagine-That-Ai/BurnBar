@@ -6,20 +6,19 @@ import com.google.firebase.firestore.DocumentReference
 import kotlinx.coroutines.tasks.await
 
 internal object SmartHubBridgeClientConfigSupport {
-    suspend fun targetConfigReference(configDocumentId: String?, androidDeviceId: String): Result<DocumentReference> =
-        runCatching {
-            val uid =
-                FirebaseAuth.getInstance().currentUser?.uid
-                    ?: error("Sign in to manage Pixel Clock.")
-            val collection = SmartHubBridgeClient.firestore.collection("users").document(uid).collection("smart_hub_config")
-            if (!configDocumentId.isNullOrBlank()) {
-                return@runCatching collection.document(configDocumentId)
-            }
-            val snapshot = collection.get().await()
-            snapshot.documents.maxByOrNull {
-                decodePublishedAtMs(it.data?.get("publishedAt"))
-            }?.reference ?: collection.document("android-$androidDeviceId")
+    suspend fun targetConfigReference(configDocumentId: String?, androidDeviceId: String): Result<DocumentReference> = runCatching {
+        val uid =
+            FirebaseAuth.getInstance().currentUser?.uid
+                ?: error("Sign in to manage Pixel Clock.")
+        val collection = SmartHubBridgeClient.firestore.collection("users").document(uid).collection("smart_hub_config")
+        if (!configDocumentId.isNullOrBlank()) {
+            return@runCatching collection.document(configDocumentId)
         }
+        val snapshot = collection.get().await()
+        snapshot.documents.maxByOrNull {
+            decodePublishedAtMs(it.data?.get("publishedAt"))
+        }?.reference ?: collection.document("android-$androidDeviceId")
+    }
 
     fun applyConfig(config: SmartHubConfig?, email: String?) {
         SmartHubBridgeClient.updateState { current ->

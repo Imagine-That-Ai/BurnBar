@@ -134,9 +134,18 @@ final class WorkflowInsightRollupService {
     /// on a background task so the main thread never blocks on SQLite.
     func snapshotAsync(refreshIfStale: Bool = true) async -> WorkflowInsightRollupSnapshot {
         let inputs = captureInputs()
-        return await Task.detached { [self] in
-            buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
-        }.value
+        return await buildSnapshotOffMainActor(inputs: inputs, refreshIfStale: refreshIfStale)
+    }
+
+    /// `nonisolated` async bridge so `snapshotAsync` leaves the main actor here
+    /// (SE-0338); the synchronous `buildSnapshot` (and all its GRDB work) then
+    /// runs entirely off the main actor. `buildSnapshot` stays synchronous for
+    /// its other, on-actor caller.
+    private nonisolated func buildSnapshotOffMainActor(
+        inputs: MainActorInputs,
+        refreshIfStale: Bool
+    ) async -> WorkflowInsightRollupSnapshot {
+        buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
     }
 
     private nonisolated func buildSnapshot(
@@ -281,7 +290,7 @@ final class WorkflowInsightRollupService {
     }
 
     private nonisolated func loadHealthRecord() -> RetrievalHealthRecord? {
-        guard let rows = try? dataStore.fetchRetrievalHealth() else { return nil }
+        guard let rows = try? dataStore.fetchRetrievalHealth() else { return nil } // try?-ok(cache read recovered)
         return rows.first(where: { $0.subsystem == .insightRollups })
     }
 
@@ -289,7 +298,7 @@ final class WorkflowInsightRollupService {
         from record: RetrievalHealthRecord?
     ) -> MaterializedInsightRollupPayload? {
         guard let json = record?.detailsJSON?.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(MaterializedInsightRollupPayload.self, from: json)
+        return try? JSONDecoder().decode(MaterializedInsightRollupPayload.self, from: json) // try?-ok(optional cache decode)
     }
 
     /// Persists the insight-rollup health row only when its semantic content

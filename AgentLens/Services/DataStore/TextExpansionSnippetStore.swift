@@ -169,7 +169,7 @@ public final class TextExpansionSnippetStore: Sendable {
 
     private static func decodeScope(_ string: String?) -> TextExpansionScope? {
         guard let string, let data = string.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(TextExpansionScope.self, from: data)
+        return try? JSONDecoder().decode(TextExpansionScope.self, from: data) // try?-ok(scope decode falls back .global)
     }
 
     private static func revisionValue(_ value: Any?) -> Int? {

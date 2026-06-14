@@ -29,16 +29,32 @@ import {
 import { PENSIEVE_LIMITS } from "./knowledgeMemory.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-export type DataTier = "ultra" | "pro" | "free";
-export type CloudProfileState = "published" | "missing";
+type DataTier = "ultra" | "pro" | "free";
+type CloudProfileState = "published" | "missing";
 
-export interface CloudProfileSummary {
+interface CloudProfileSummary {
   state: CloudProfileState;
   displayName?: string;
   avatarURL?: string;
   sourceDeviceId?: string;
   updatedAt?: string;
 }
+
+type PensieveLimits = { sources: number; chunks: number; bytes: number };
+
+type DataDomainUsageResponse = {
+  ok: true;
+  tier: DataTier;
+  account: {
+    profile: CloudProfileSummary;
+    hasPublishedData: boolean;
+    totalCount: number;
+    totalBytes: number;
+  };
+  limits: { pensieve: PensieveLimits };
+  domains: Array<{ id: string; count: number; bytes: number }>;
+  schemaVersion: number;
+};
 
 interface UsageSource {
   /** Collection whose docs are counted for the domain footprint. */
@@ -109,7 +125,7 @@ async function cloudProfileSnapshot(uid: string): Promise<CloudProfileSummary> {
   return summarizeCloudProfile(snap.exists ? snap.data() : undefined);
 }
 
-export async function resolveDataTier(uid: string): Promise<DataTier> {
+async function resolveDataTier(uid: string): Promise<DataTier> {
   const [ultra, proMax] = await Promise.all([
     db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
@@ -148,7 +164,7 @@ async function domainSnapshot(
 
 export const getDataDomainUsage = onCall(
   { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
-  wrapCallableHandler("getDataDomainUsage", async (request: CallableRequest) => {
+  wrapCallableHandler("getDataDomainUsage", async (request: CallableRequest): Promise<DataDomainUsageResponse> => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in to view your data usage.");
     enforceAuthAndAppCheck(request, uid);

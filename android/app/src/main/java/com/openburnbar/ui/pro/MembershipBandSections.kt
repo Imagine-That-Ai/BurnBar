@@ -75,7 +75,7 @@ internal data class MembershipBandSurfaceConfig(
 
 @Composable
 internal fun MembershipBandSurface(config: MembershipBandSurfaceConfig, content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(ProLayout.bandRadiusDp.dp)
+    val shape = RoundedCornerShape(ProLayout.BAND_RADIUS_DP.dp)
     Box(
         modifier =
         config.modifier
@@ -129,13 +129,7 @@ internal fun MembershipBandSurface(config: MembershipBandSurfaceConfig, content:
 }
 
 @Composable
-internal fun MembershipBandRow(
-    title: String,
-    detail: String,
-    variant: MembershipBandVariant,
-    icon: ImageVector,
-    ctaLabel: String,
-) {
+internal fun MembershipBandRow(title: String, detail: String, variant: MembershipBandVariant, icon: ImageVector, ctaLabel: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),

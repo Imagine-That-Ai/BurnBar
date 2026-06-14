@@ -1,6 +1,5 @@
 package com.openburnbar.data.media
 
-import java.io.IOException
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -10,6 +9,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import java.io.IOException
 import java.util.concurrent.Executors
 import kotlinx.coroutines.guava.await
 

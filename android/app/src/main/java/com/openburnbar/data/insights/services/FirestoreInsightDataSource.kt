@@ -34,4 +34,3 @@ class FirestoreInsightDataSource(
         return assembleFirestoreDigest(window, components, modelBenchmarks)
     }
 }
-

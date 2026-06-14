@@ -106,7 +106,9 @@ final class iPadMultiCamCaptureService: NSObject {
         let queueLabel = position == .front
             ? "ai.openburnbar.media.camera.front"
             : "ai.openburnbar.media.camera.back"
-        let context = SampleBufferContext(position: position, owner: self)
+        let context = SampleBufferContext(position: position) { [weak self] pos, buffer in
+            await self?.handle(position: pos, sampleBuffer: buffer)
+        }
         output.setSampleBufferDelegate(context, queue: DispatchQueue(label: queueLabel))
         if session.canAddOutput(output) {
             session.addOutput(output)
@@ -117,13 +119,17 @@ final class iPadMultiCamCaptureService: NSObject {
     }
 }
 
-private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, Sendable {
     let position: AVCaptureDevice.Position
-    weak var owner: iPadMultiCamCaptureService?
+    /// Main-actor frame sink. A `let @MainActor` closure (hence `Sendable`)
+    /// replaces a mutable `weak var owner` — the back-reference was only ever
+    /// set in `init` and read, but `weak` forces `var`, which is not genuinely
+    /// `Sendable`. The closure weakly captures the owner, so no retain cycle.
+    let onSampleBuffer: iPadMultiCamCaptureService.FrameHandler
 
-    init(position: AVCaptureDevice.Position, owner: iPadMultiCamCaptureService) {
+    init(position: AVCaptureDevice.Position, onSampleBuffer: @escaping iPadMultiCamCaptureService.FrameHandler) {
         self.position = position
-        self.owner = owner
+        self.onSampleBuffer = onSampleBuffer
     }
 
     func captureOutput(
@@ -133,12 +139,16 @@ private final class SampleBufferContext: NSObject, AVCaptureVideoDataOutputSampl
     ) {
         let snapshot = SendableMultiCamSampleBuffer(sampleBuffer)
         let pos = position
-        Task { @MainActor [weak owner, snapshot] in
-            await owner?.handle(position: pos, sampleBuffer: snapshot.value)
+        let handler = onSampleBuffer
+        Task { @MainActor [snapshot] in
+            await handler(pos, snapshot.value)
         }
     }
 }
 
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
+// shared concurrently. sendable-allowlist: apple-media-buffer
 private struct SendableMultiCamSampleBuffer: @unchecked Sendable {
     let value: CMSampleBuffer
 

@@ -131,15 +131,6 @@ async function tryEachHost(path: string, token: string): Promise<KimiFetchResult
 // Adapter
 // ---------------------------------------------------------------------------
 
-export interface KimiModelsPayload {
-  data?: Array<{
-    id?: string;
-    object?: string;
-    [k: string]: unknown;
-  }>;
-  [k: string]: unknown;
-}
-
 export const kimiAdapter: ProviderAdapter = {
   provider: PROVIDER,
 
@@ -301,21 +292,6 @@ export const kimiAdapter: ProviderAdapter = {
 // Balance payload
 // ---------------------------------------------------------------------------
 
-export interface KimiBalancePayload {
-  available_balance?: number;
-  availableBalance?: number;
-  balance?: number;
-  used_balance?: number;
-  usedBalance?: number;
-  used?: number;
-  total_balance?: number;
-  totalBalance?: number;
-  total?: number;
-  currency?: string;
-  data?: KimiBalancePayload;
-  [k: string]: unknown;
-}
-
 function finiteNumber(raw: unknown): number | undefined {
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : undefined;
@@ -331,9 +307,4 @@ function stringFromAny(raw: unknown): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
-export const __testing__ = {
-  kimiFetch,
-  tryEachHost,
-  HOSTS,
-  VALIDATE_PATH,
-};
+

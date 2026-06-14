@@ -37,28 +37,6 @@ function redact(token: string): string {
   return `minimax_${token.slice(0, 2)}***${token.slice(-4)}`;
 }
 
-interface MiniMaxBaseResp {
-  status_code?: number;
-  status_msg?: string;
-}
-
-export interface MiniMaxRemainsPayload {
-  base_resp?: MiniMaxBaseResp;
-  // Token Plan response shape (varies between subscription tiers, but always
-  // contains an array of model rows with usage counters).
-  model_remains?: Array<{
-    model_name?: string;
-    period?: string;
-    used?: number;
-    remains?: number;
-    total?: number;
-    [k: string]: unknown;
-  }>;
-  // Coding Plan response shape historically returned a flat object — we keep
-  // a permissive index signature so downstream consumers can still inspect it.
-  [k: string]: unknown;
-}
-
 interface MiniMaxFetchResult {
   ok: boolean;
   status?: number;
@@ -224,7 +202,7 @@ export const minimaxAdapter: ProviderAdapter = {
  * shape. We accept three flavors: Token Plan (`model_remains` array), Coding
  * Plan (`data.model_remains`), and any flat `{used, total, remains}` payload.
  */
-export function extractBuckets(payload: unknown): QuotaBucket[] {
+function extractBuckets(payload: unknown): QuotaBucket[] {
   const root = recordOrUndefined(payload);
   if (!root) return [];
 

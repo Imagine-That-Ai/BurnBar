@@ -6,14 +6,14 @@ import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightCanvas
 import com.openburnbar.data.insights.InsightCitation
+import com.openburnbar.data.insights.InsightDataBinding
 import com.openburnbar.data.insights.InsightGeneratedWidget
+import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
 import com.openburnbar.data.insights.InsightWidget
 import com.openburnbar.data.insights.InsightWidgetData
 import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.InsightWidgetSpec
-import com.openburnbar.data.insights.InsightDataBinding
-import com.openburnbar.data.insights.InsightModelTag
 import java.security.MessageDigest
 
 internal data class BoundInsightWidgetParams(

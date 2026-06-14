@@ -32,21 +32,18 @@ internal class ControlCenterFunctions(
     }
 
     // ── Scoped per-domain delete ──
-    suspend fun deleteDomainData(domainId: String): Map<String, Any> =
-        callMap("deleteDomainData", mapOf("domainId" to domainId, "confirm" to true))
+    suspend fun deleteDomainData(domainId: String): Map<String, Any> = callMap("deleteDomainData", mapOf("domainId" to domainId, "confirm" to true))
 
     // ── Recovery (forced before zero-knowledge mode) ──
     suspend fun setupRecovery(method: String, payload: Map<String, Any>): Map<String, Any> =
         callMap("setupRecovery", mapOf("method" to method, "payload" to payload))
 
-    suspend fun confirmRecovery(recoveryId: String): Map<String, Any> =
-        callMap("confirmRecovery", mapOf("recoveryId" to recoveryId))
+    suspend fun confirmRecovery(recoveryId: String): Map<String, Any> = callMap("confirmRecovery", mapOf("recoveryId" to recoveryId))
 
     suspend fun listRecovery(): Map<String, Any> = callMap("listRecovery", emptyMap())
 
     // ── Panic — revoke everything ──
-    suspend fun revokeAllAccess(scope: String): Map<String, Any> =
-        callMap("revokeAllAccess", mapOf("scope" to scope))
+    suspend fun revokeAllAccess(scope: String): Map<String, Any> = callMap("revokeAllAccess", mapOf("scope" to scope))
 
     // ── Tamper-evident audit log ──
     suspend fun getAuditLog(cursor: String? = null, limit: Int? = null): Map<String, Any> {

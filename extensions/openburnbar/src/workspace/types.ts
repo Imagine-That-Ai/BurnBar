@@ -2,14 +2,6 @@ export const BURNBAR_WORKSPACE_RPC_COMMAND = 'openburnbar.private.workspace.rpc'
 
 export type BurnBarWorkspaceHostKind = 'ui' | 'workspace';
 export type BurnBarWorkspaceToolName = 'read_file' | 'search_workspace' | 'apply_patch' | 'run_terminal';
-export type BurnBarWorkspaceRpcMethod =
-  | 'workspace.capabilities'
-  | 'workspace.read_file'
-  | 'workspace.search_workspace'
-  | 'workspace.search_burnbar_index'
-  | 'workspace.apply_patch'
-  | 'workspace.run_terminal';
-
 export interface BurnBarWorkspaceCapabilities {
   hasWorkspace: boolean;
   localWorkspace: boolean;
@@ -86,12 +78,12 @@ export interface BurnBarSearchBurnbarIndexResult {
   degradedMessage?: string | null;
 }
 
-export interface BurnBarPatchPosition {
+interface BurnBarPatchPosition {
   line: number;
   character: number;
 }
 
-export interface BurnBarPatchRange {
+interface BurnBarPatchRange {
   start: BurnBarPatchPosition;
   end: BurnBarPatchPosition;
 }
@@ -139,7 +131,7 @@ export type BurnBarWorkspaceRpcResult =
   | OpenBurnBarApplyPatchResult
   | BurnBarRunTerminalResult;
 
-export interface BurnBarWorkspaceRpcFailure {
+interface BurnBarWorkspaceRpcFailure {
   ok: false;
   error: {
     code: string;
@@ -147,7 +139,7 @@ export interface BurnBarWorkspaceRpcFailure {
   };
 }
 
-export interface BurnBarWorkspaceRpcSuccess<Result extends BurnBarWorkspaceRpcResult> {
+interface BurnBarWorkspaceRpcSuccess<Result extends BurnBarWorkspaceRpcResult> {
   ok: true;
   result: Result;
 }

@@ -137,9 +137,7 @@ private data class PairedMacControlsSessionAssembly(
     val filePickerLaunch: () -> Unit,
 )
 
-private fun assemblePairedMacControlsSession(
-    assembly: PairedMacControlsSessionAssembly,
-): PairedMacControlsSession {
+private fun assemblePairedMacControlsSession(assembly: PairedMacControlsSessionAssembly): PairedMacControlsSession {
     val effectsBinding =
         buildPairedMacEffectsBinding(
             assembly.connectionID,
@@ -171,27 +169,23 @@ private fun buildPairedMacEffectsBinding(
     app: BurnBarApplication?,
     streams: PairedMacCoordinatorStreams,
     local: PairedMacControlsLocalState,
-): PairedMacControlsEffectsBinding =
-    PairedMacControlsEffectsBinding(
-        connectionID = connectionID,
-        app = app,
-        coordinator = streams.coordinator,
-        pendingRequestID = local.pendingRequestID,
-        ack = streams.ack,
-        pendingCallRequestID = local.pendingCallRequestID,
-        callAck = streams.callAck,
-        launchedMirrorRequestID = local.launchedMirrorRequestID,
-        onCoordinatorChange = streams.onCoordinatorChange,
-        onStatusMessageChange = local.onStatusMessageChange,
-        onPendingRequestIDChange = local.onPendingRequestIDChange,
-        onPendingCallRequestIDChange = local.onPendingCallRequestIDChange,
-        onLaunchedMirrorRequestIDChange = local.onLaunchedMirrorRequestIDChange,
-    )
+): PairedMacControlsEffectsBinding = PairedMacControlsEffectsBinding(
+    connectionID = connectionID,
+    app = app,
+    coordinator = streams.coordinator,
+    pendingRequestID = local.pendingRequestID,
+    ack = streams.ack,
+    pendingCallRequestID = local.pendingCallRequestID,
+    callAck = streams.callAck,
+    launchedMirrorRequestID = local.launchedMirrorRequestID,
+    onCoordinatorChange = streams.onCoordinatorChange,
+    onStatusMessageChange = local.onStatusMessageChange,
+    onPendingRequestIDChange = local.onPendingRequestIDChange,
+    onPendingCallRequestIDChange = local.onPendingCallRequestIDChange,
+    onLaunchedMirrorRequestIDChange = local.onLaunchedMirrorRequestIDChange,
+)
 
-private fun buildPairedMacWriteCallbacks(
-    streams: PairedMacCoordinatorStreams,
-    local: PairedMacControlsLocalState,
-): PairedMacControlsWriteCallbacks =
+private fun buildPairedMacWriteCallbacks(streams: PairedMacCoordinatorStreams, local: PairedMacControlsLocalState): PairedMacControlsWriteCallbacks =
     PairedMacControlsWriteCallbacks(
         setCoordinator = streams.onCoordinatorChange,
         setPendingRequestID = local.onPendingRequestIDChange,
@@ -204,20 +198,19 @@ private fun buildPairedMacUiState(
     streams: PairedMacCoordinatorStreams,
     local: PairedMacControlsLocalState,
     premium: PairedMacPremiumUi,
-): PairedMacControlsUiState =
-    PairedMacControlsUiState(
-        phase = streams.phase,
-        statusMessage = local.statusMessage,
-        pendingRequestID = local.pendingRequestID,
-        pendingCallRequestID = local.pendingCallRequestID,
-        recoveringMercury = local.recoveringMercury,
-        sendingFile = local.sendingFile,
-        mirrorAutoAccept = streams.mirrorAutoAccept,
-        usePremiumSOTAUX = premium.usePremiumSOTAUX,
-        useWebsiteBackground = premium.useWebsiteBackground,
-        isSettingsOpen = local.isSettingsOpen,
-        coordinator = streams.coordinator,
-    )
+): PairedMacControlsUiState = PairedMacControlsUiState(
+    phase = streams.phase,
+    statusMessage = local.statusMessage,
+    pendingRequestID = local.pendingRequestID,
+    pendingCallRequestID = local.pendingCallRequestID,
+    recoveringMercury = local.recoveringMercury,
+    sendingFile = local.sendingFile,
+    mirrorAutoAccept = streams.mirrorAutoAccept,
+    usePremiumSOTAUX = premium.usePremiumSOTAUX,
+    useWebsiteBackground = premium.useWebsiteBackground,
+    isSettingsOpen = local.isSettingsOpen,
+    coordinator = streams.coordinator,
+)
 
 private data class PairedMacCoordinatorStreams(
     val coordinator: MediaControlStreamCoordinator?,
@@ -331,34 +324,33 @@ private fun rememberPairedMacFilePicker(
     activePair: MediaControlStreamCoordinator.ActivePair?,
     onStatusMessageChange: (String?) -> Unit,
     onSendingFileChange: (Boolean) -> Unit,
-) =
-    rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri: Uri? ->
-        val picked = uri ?: return@rememberLauncherForActivityResult
-        val transferService = BurnBarApplication.fileTransferService
-        val pair = activePair
-        if (transferService == null || pair == null) {
-            onStatusMessageChange("Mercury file transfer is not ready yet. Open BurnBar on the Mac and wait for Mercury to go live.")
-            return@rememberLauncherForActivityResult
-        }
-        scope.launch {
-            onSendingFileChange(true)
-            runCatching {
-                transferService.sendFile(
-                    uri = picked,
-                    uid = pair.uid,
-                    connectionID = pair.connectionID,
-                    peerDeviceID = pair.connectionID,
-                )
-            }.onSuccess { manifest ->
-                onStatusMessageChange("Sent ${manifest.filename} to your Mac.")
-            }.onFailure { error ->
-                onStatusMessageChange("File send failed: ${error.localizedMessage ?: error.javaClass.simpleName}")
-            }
-            onSendingFileChange(false)
-        }
+) = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.OpenDocument(),
+) { uri: Uri? ->
+    val picked = uri ?: return@rememberLauncherForActivityResult
+    val transferService = BurnBarApplication.fileTransferService
+    val pair = activePair
+    if (transferService == null || pair == null) {
+        onStatusMessageChange("Mercury file transfer is not ready yet. Open BurnBar on the Mac and wait for Mercury to go live.")
+        return@rememberLauncherForActivityResult
     }
+    scope.launch {
+        onSendingFileChange(true)
+        runCatching {
+            transferService.sendFile(
+                uri = picked,
+                uid = pair.uid,
+                connectionID = pair.connectionID,
+                peerDeviceID = pair.connectionID,
+            )
+        }.onSuccess { manifest ->
+            onStatusMessageChange("Sent ${manifest.filename} to your Mac.")
+        }.onFailure { error ->
+            onStatusMessageChange("File send failed: ${error.localizedMessage ?: error.javaClass.simpleName}")
+        }
+        onSendingFileChange(false)
+    }
+}
 
 private data class PairedMacControlsActionBuildContext(
     val scope: kotlinx.coroutines.CoroutineScope,
@@ -370,10 +362,7 @@ private data class PairedMacControlsActionBuildContext(
     val writeCallbacks: PairedMacControlsWriteCallbacks,
 )
 
-private fun buildPairedMacControlsUiActions(
-    context: PairedMacControlsActionBuildContext,
-    onFilePickerLaunch: () -> Unit,
-): PairedMacControlsUiActions {
+private fun buildPairedMacControlsUiActions(context: PairedMacControlsActionBuildContext, onFilePickerLaunch: () -> Unit): PairedMacControlsUiActions {
     val scope = context.scope
     val connectionID = context.connectionID
     val app = context.app
@@ -427,11 +416,7 @@ private fun buildPairedMacControlsUiActions(
 }
 
 @Composable
-private fun PairedMacControlsScreenLayout(
-    state: PairedMacControlsUiState,
-    actions: PairedMacControlsUiActions,
-    modifier: Modifier,
-) {
+private fun PairedMacControlsScreenLayout(state: PairedMacControlsUiState, actions: PairedMacControlsUiActions, modifier: Modifier) {
     Box(modifier = Modifier.fillMaxSize()) {
         if (state.useWebsiteBackground) {
             WebsiteBackground(accentColor = AuroraColors.hermesMercury)
@@ -535,10 +520,7 @@ private fun PairedMacControlsMirrorAckEffect(binding: PairedMacControlsEffectsBi
     }
 }
 
-private suspend fun handleRemoteUnlockMirrorRetry(
-    binding: PairedMacControlsEffectsBinding,
-    context: android.content.Context,
-) {
+private suspend fun handleRemoteUnlockMirrorRetry(binding: PairedMacControlsEffectsBinding, context: android.content.Context) {
     val targetCoordinator =
         binding.coordinator ?: run {
             binding.onPendingRequestIDChange(null)
@@ -595,10 +577,7 @@ private fun PairedMacControlsCallEffects(binding: PairedMacControlsEffectsBindin
 }
 
 @Composable
-internal fun PairedMacControlsHeaderSection(
-    phase: MediaControlStreamCoordinator.Phase,
-    onSettingsClick: () -> Unit,
-) {
+internal fun PairedMacControlsHeaderSection(phase: MediaControlStreamCoordinator.Phase, onSettingsClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -693,10 +672,7 @@ internal fun PairedMacControlsStatusBanner(message: String) {
 }
 
 @Composable
-internal fun PairedMacControlsDockSection(
-    state: PairedMacControlsUiState,
-    actions: PairedMacControlsUiActions,
-) {
+internal fun PairedMacControlsDockSection(state: PairedMacControlsUiState, actions: PairedMacControlsUiActions) {
     Box(
         modifier =
         Modifier
@@ -709,10 +685,7 @@ internal fun PairedMacControlsDockSection(
 }
 
 @Composable
-private fun PairedMacControlsDockButtons(
-    state: PairedMacControlsUiState,
-    actions: PairedMacControlsUiActions,
-) {
+private fun PairedMacControlsDockButtons(state: PairedMacControlsUiState, actions: PairedMacControlsUiActions) {
     val fileEnabled = state.coordinator != null && state.phase is MediaControlStreamCoordinator.Phase.Live && !state.sendingFile
     val mirrorEnabled = state.pendingRequestID == null && !state.recoveringMercury
     val callEnabled = state.pendingCallRequestID == null
@@ -905,12 +878,7 @@ private fun RowScope.PairedMacControlsDockIconButton(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun PairedMacControlsSettingsSheet(
-    isOpen: Boolean,
-    usePremiumSOTAUX: Boolean,
-    useWebsiteBackground: Boolean,
-    onDismiss: () -> Unit,
-) {
+internal fun PairedMacControlsSettingsSheet(isOpen: Boolean, usePremiumSOTAUX: Boolean, useWebsiteBackground: Boolean, onDismiss: () -> Unit) {
     if (!isOpen) return
 
     val haptic = LocalHapticFeedback.current
@@ -974,12 +942,7 @@ internal fun PairedMacControlsSettingsSheet(
 }
 
 @Composable
-private fun PairedMacControlsSettingsToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
+private fun PairedMacControlsSettingsToggleRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1011,11 +974,7 @@ private fun PairedMacControlsSettingsToggleRow(
 }
 
 @Composable
-private fun rememberPairedMacButtonScale(
-    interactionSource: MutableInteractionSource,
-    usePremiumSOTAUX: Boolean,
-    label: String,
-): Float {
+private fun rememberPairedMacButtonScale(interactionSource: MutableInteractionSource, usePremiumSOTAUX: Boolean, label: String): Float {
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) (if (usePremiumSOTAUX) 0.94f else 0.97f) else 1.0f,
@@ -1029,22 +988,20 @@ private fun rememberPairedMacButtonScale(
     return scale
 }
 
-private fun pairedMacPhaseDotColor(phase: MediaControlStreamCoordinator.Phase): Color =
-    when (phase) {
-        MediaControlStreamCoordinator.Phase.Live -> AuroraColors.successDark
-        MediaControlStreamCoordinator.Phase.Dialing,
-        is MediaControlStreamCoordinator.Phase.Reconnecting,
-        -> AuroraColors.amber
-        is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
-        else -> Color(0xFF4B5563)
-    }
+private fun pairedMacPhaseDotColor(phase: MediaControlStreamCoordinator.Phase): Color = when (phase) {
+    MediaControlStreamCoordinator.Phase.Live -> AuroraColors.successDark
+    MediaControlStreamCoordinator.Phase.Dialing,
+    is MediaControlStreamCoordinator.Phase.Reconnecting,
+    -> AuroraColors.amber
+    is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
+    else -> Color(0xFF4B5563)
+}
 
-private fun pairedMacPhaseStatusLabel(phase: MediaControlStreamCoordinator.Phase): String =
-    when (phase) {
-        MediaControlStreamCoordinator.Phase.Live -> "Live"
-        MediaControlStreamCoordinator.Phase.Dialing,
-        is MediaControlStreamCoordinator.Phase.Reconnecting,
-        -> "Connecting"
-        is MediaControlStreamCoordinator.Phase.Failed -> "Error"
-        else -> "Offline"
-    }
+private fun pairedMacPhaseStatusLabel(phase: MediaControlStreamCoordinator.Phase): String = when (phase) {
+    MediaControlStreamCoordinator.Phase.Live -> "Live"
+    MediaControlStreamCoordinator.Phase.Dialing,
+    is MediaControlStreamCoordinator.Phase.Reconnecting,
+    -> "Connecting"
+    is MediaControlStreamCoordinator.Phase.Failed -> "Error"
+    else -> "Offline"
+}

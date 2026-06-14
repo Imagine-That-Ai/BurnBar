@@ -327,11 +327,29 @@ final class MacRemoteUnlockReadinessService {
         static let credentialRecipientPublicKeyBase64 = "remote_unlock.credential_recipient_public_key_base64"
     }
 
+    /// HPKE credential-recipient identity key material (read-or-create from
+    /// the keychain). Injected so tests can model a keychain fault, which
+    /// must fail the readiness snapshot closed rather than silently presenting
+    /// stale/mismatched persisted key material.
+    typealias CredentialKeyMaterialProvider = @Sendable () throws -> RemoteUnlockCredentialKeyMaterial
+
+    /// Publishes the Ed25519 issuer/signing trust used for offline capability
+    /// token verification. Injected so a publication failure is observable and
+    /// testable instead of being swallowed.
+    typealias IssuerTrustPublisher = @Sendable () throws -> Void
+
+    /// Revokes the published issuer/signing trust during clear-all. Injected so
+    /// a revocation failure is observable instead of leaving stale trust live.
+    typealias PublishedTrustRevoker = @Sendable () throws -> Void
+
     private let defaults: UserDefaults
     private let policy: RemoteUnlockPolicy
     private let certificationStore: RemoteUnlockCertificationReportStore
     private let snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)?
     private let lockStateProvider: @MainActor @Sendable () -> HermesRealtimeRelayMacLockState
+    private let credentialKeyMaterialProvider: CredentialKeyMaterialProvider
+    private let issuerTrustPublisher: IssuerTrustPublisher
+    private let publishedTrustRevoker: PublishedTrustRevoker
     private let revokesPublishedTrustOnClearAll: Bool
     private var activeRemoteUnlockSessions: [String: ActiveRemoteUnlockSession] = [:]
 
@@ -341,6 +359,11 @@ final class MacRemoteUnlockReadinessService {
         certificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore(),
         snapshotProvider: (@MainActor @Sendable () -> RemoteUnlockReadinessSnapshot?)? = nil,
         revokesPublishedTrustOnClearAll: Bool = true,
+        credentialKeyMaterialProvider: @escaping CredentialKeyMaterialProvider = {
+            try RemoteUnlockCredentialKeyStore.shared.copyOrCreateKeyMaterial()
+        },
+        issuerTrustPublisher: @escaping IssuerTrustPublisher = MacRemoteUnlockReadinessService.defaultIssuerTrustPublisher,
+        publishedTrustRevoker: @escaping PublishedTrustRevoker = MacRemoteUnlockReadinessService.defaultPublishedTrustRevoker,
         lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState = {
             MacRemoteUnlockReadinessService.currentHostLockState()
         }
@@ -350,7 +373,30 @@ final class MacRemoteUnlockReadinessService {
         self.certificationStore = certificationStore
         self.snapshotProvider = snapshotProvider
         self.lockStateProvider = lockStateProvider
+        self.credentialKeyMaterialProvider = credentialKeyMaterialProvider
+        self.issuerTrustPublisher = issuerTrustPublisher
+        self.publishedTrustRevoker = publishedTrustRevoker
         self.revokesPublishedTrustOnClearAll = revokesPublishedTrustOnClearAll
+    }
+
+    /// Default issuer-trust publisher: publishes the Ed25519 issuer trust on
+    /// platforms that ship the signing key store; a no-op throw-free closure
+    /// elsewhere so callers can always invoke it uniformly. `nonisolated` so it
+    /// can be read as a default argument from any isolation context.
+    nonisolated static let defaultIssuerTrustPublisher: IssuerTrustPublisher = {
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        try RemoteUnlockCapabilitySigningKeyStore.shared.publishIssuerTrust()
+        #endif
+    }
+
+    /// Default published-trust revoker: revokes the published issuer trust on
+    /// platforms that ship the signing key store; a no-op throw-free closure
+    /// elsewhere. `nonisolated` so it can be read as a default argument from any
+    /// isolation context.
+    nonisolated static let defaultPublishedTrustRevoker: PublishedTrustRevoker = {
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        try RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
+        #endif
     }
 
     func capabilities() -> HermesRealtimeRelayRemoteUnlockCapabilities {
@@ -424,12 +470,30 @@ final class MacRemoteUnlockReadinessService {
         activeRemoteUnlockSessions.removeValue(forKey: normalizedSessionId)
     }
 
-    func revokeAllRemoteUnlockSessions(revokePublishedTrust: Bool = true) {
+    /// Revokes all active Remote Unlock sessions. When `revokePublishedTrust`
+    /// is set (and this service is configured to revoke on clear-all) it also
+    /// revokes the published issuer trust. The revocation outcome is returned
+    /// so callers (e.g. clear-all / revoke-all flows) can surface or retry on
+    /// failure instead of leaving stale, still-trusted capability material
+    /// published after the operator asked to revoke everything.
+    @discardableResult
+    func revokeAllRemoteUnlockSessions(revokePublishedTrust: Bool = true) -> Bool {
         activeRemoteUnlockSessions.removeAll()
-        if revokePublishedTrust && revokesPublishedTrustOnClearAll {
-            #if canImport(AppKit) && !DISTRIBUTION_MAS
-            try? RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
-            #endif
+        guard revokePublishedTrust && revokesPublishedTrustOnClearAll else {
+            return true
+        }
+        do {
+            try publishedTrustRevoker()
+            return true
+        } catch {
+            AppLogger.daemon.error(
+                "remote_unlock_revoke_published_trust_failed",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: error)))",
+                    "error": error.localizedDescription
+                ]
+            )
+            return false
         }
     }
 
@@ -437,7 +501,28 @@ final class MacRemoteUnlockReadinessService {
         if let snapshot = snapshotProvider?() {
             return snapshot
         }
-        let keyMaterial = try? RemoteUnlockCredentialKeyStore.shared.copyOrCreateKeyMaterial()
+        // Read-or-create the HPKE credential-recipient identity keypair. A
+        // thrown error here is a genuine keychain fault (not absence —
+        // `copyOrCreateKeyMaterial` mints a key when none exists), so we must
+        // NOT silently fall through to stale persisted key material that may no
+        // longer match the certified report. Fail the readiness snapshot closed
+        // when the key is unavailable.
+        let keyMaterial: RemoteUnlockCredentialKeyMaterial?
+        let credentialKeyUnavailable: Bool
+        do {
+            keyMaterial = try credentialKeyMaterialProvider()
+            credentialKeyUnavailable = false
+        } catch {
+            keyMaterial = nil
+            credentialKeyUnavailable = true
+            AppLogger.daemon.error(
+                "remote_unlock_credential_key_unavailable",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: error)))",
+                    "error": error.localizedDescription
+                ]
+            )
+        }
         if let keyMaterial {
             defaults.set(keyMaterial.keyId, forKey: Keys.credentialRecipientKeyId)
             defaults.set(keyMaterial.publicKeyBase64, forKey: Keys.credentialRecipientPublicKeyBase64)
@@ -450,11 +535,36 @@ final class MacRemoteUnlockReadinessService {
         let daemonInstalled = agentHealthy || FileManager.default.fileExists(
             atPath: "/Library/LaunchDaemons/com.openburnbar.remote-access-agent.plist"
         )
-        let report = try? certificationStore.load()
+        // Distinguish "no report on disk" (legitimately nil → fail closed via
+        // the `remote_unlock_report_missing` blocker below) from "report failed
+        // to read" (corruption / IO fault of a security artifact). A read fault
+        // is logged and treated as no-report so a corrupt file can never be
+        // mistaken for an absent-but-otherwise-healthy host.
+        let report: RemoteUnlockCertificationReport?
+        do {
+            report = try certificationStore.load()
+        } catch {
+            report = nil
+            AppLogger.daemon.error(
+                "remote_unlock_cert_report_load_failed",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: error)))",
+                    "error": error.localizedDescription
+                ]
+            )
+        }
         if report != nil {
-            #if canImport(AppKit) && !DISTRIBUTION_MAS
-            try? RemoteUnlockCapabilitySigningKeyStore.shared.publishIssuerTrust()
-            #endif
+            do {
+                try issuerTrustPublisher()
+            } catch {
+                AppLogger.daemon.error(
+                    "remote_unlock_publish_issuer_trust_failed",
+                    metadata: [
+                        "errorClass": "\(String(describing: type(of: error)))",
+                        "error": error.localizedDescription
+                    ]
+                )
+            }
         }
         let observedLockedScreenCapture =
             defaults.bool(forKey: Keys.lastLockScreenProbeSucceeded) ||
@@ -473,7 +583,10 @@ final class MacRemoteUnlockReadinessService {
             virtualHIDDriverInstalled: setupProbe.virtualHIDDriverInstalled,
             virtualHIDDriverActive: setupProbe.virtualHIDDriverActive
         ) ?? ["remote_unlock_report_missing"]
-        let hasValidReport = reportBlockers.isEmpty
+        // Fail closed when the credential identity key could not be read: the
+        // report's recipient-key match cannot be trusted, so do not let the
+        // snapshot advertise a fresh certification on stale/mismatched material.
+        let hasValidReport = reportBlockers.isEmpty && !credentialKeyUnavailable
 
         return RemoteUnlockReadinessSnapshot(
             featureFlagEnabled: featureFlag,
@@ -500,17 +613,22 @@ final class MacRemoteUnlockReadinessService {
         )
     }
 
+    /// Records a local Remote Unlock certification. Returns `false` (and marks
+    /// the host as not-certified) when the certification report cannot be
+    /// persisted, so the on-disk certification artifact and the in-memory
+    /// UserDefaults flags can never diverge into a "fresh but not saved" state.
+    @discardableResult
     func recordCertification(
         osBuild: String? = nil,
         fileVaultSSHSupported: Bool,
         credentialRecipientKeyId: String,
         credentialRecipientPublicKeyBase64: String,
         certifiedAt: Date = Date()
-    ) {
+    ) -> Bool {
         guard !credentialRecipientKeyId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !credentialRecipientPublicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             defaults.set(false, forKey: Keys.backendCertificationFresh)
-            return
+            return false
         }
         let report = RemoteUnlockCertificationReport.certifiedHardware(
             currentOSBuild: osBuild ?? currentOSBuild(),
@@ -521,7 +639,23 @@ final class MacRemoteUnlockReadinessService {
             redactedViewerDeviceKind: "mac-local-certification",
             notes: "Recorded by MacRemoteUnlockReadinessService after a local certified Remote Unlock proof."
         )
-        try? certificationStore.save(report)
+        // Persist the certification report BEFORE flipping the in-memory
+        // freshness flags. If the save fails, fail closed: mark not-fresh and
+        // bail so the snapshot never reports a certification that was lost on
+        // disk.
+        do {
+            try certificationStore.save(report)
+        } catch {
+            AppLogger.daemon.error(
+                "remote_unlock_cert_report_save_failed",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: error)))",
+                    "error": error.localizedDescription
+                ]
+            )
+            defaults.set(false, forKey: Keys.backendCertificationFresh)
+            return false
+        }
         defaults.set(certifiedAt, forKey: Keys.certifiedAt)
         defaults.set(osBuild ?? currentOSBuild(), forKey: Keys.certifiedOSBuild)
         defaults.set(true, forKey: Keys.backendCertificationFresh)
@@ -537,9 +671,18 @@ final class MacRemoteUnlockReadinessService {
         defaults.set(fileVaultSSHSupported, forKey: Keys.fileVaultSSHSupported)
         defaults.set(credentialRecipientKeyId, forKey: Keys.credentialRecipientKeyId)
         defaults.set(credentialRecipientPublicKeyBase64, forKey: Keys.credentialRecipientPublicKeyBase64)
-        #if canImport(AppKit) && !DISTRIBUTION_MAS
-        try? RemoteUnlockCapabilitySigningKeyStore.shared.publishIssuerTrust()
-        #endif
+        do {
+            try issuerTrustPublisher()
+        } catch {
+            AppLogger.daemon.error(
+                "remote_unlock_publish_issuer_trust_failed",
+                metadata: [
+                    "errorClass": "\(String(describing: type(of: error)))",
+                    "error": error.localizedDescription
+                ]
+            )
+        }
+        return true
     }
 
     private var isDirectDownloadBuild: Bool {
@@ -660,7 +803,7 @@ private enum RemoteAccessAgentHealthProbe {
             if data.last == 0x0A { break }
         }
         guard !data.isEmpty,
-              let response = try? JSONDecoder().decode(RemoteAccessAgentHealthResponse.self, from: data) else {
+              let response = try? JSONDecoder().decode(RemoteAccessAgentHealthResponse.self, from: data) else { // try?-ok(malformed health = unhealthy)
             return false
         }
         return response.ok && response.version == "1"
@@ -694,7 +837,7 @@ struct RemoteUnlockCredentialKeyMaterial: Sendable {
     var privateKey: Curve25519.KeyAgreement.PrivateKey
 }
 
-final class RemoteUnlockCredentialKeyStore: @unchecked Sendable {
+final class RemoteUnlockCredentialKeyStore: Sendable {
     static let shared = RemoteUnlockCredentialKeyStore()
 
     private let service = "com.openburnbar.remote-unlock.hpke"

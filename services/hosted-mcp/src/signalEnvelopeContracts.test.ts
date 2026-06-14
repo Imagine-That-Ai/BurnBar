@@ -47,8 +47,11 @@ test("hosted MCP uses the shared Signal envelope contract for opaque at-rest row
   assert.equal(isSignalEnvelope(envelope, "at-rest"), true);
   const { out, dropped } = sanitizeSignalEnvelopeForExport("sealedCiphertext", envelope);
   assert.deepEqual(dropped, ["sealedCiphertext.plaintext"]);
-  assert.equal((out as Record<string, unknown>).mode, "at-rest");
-  assert.equal((out as Record<string, unknown>).relayKeyVersion, undefined);
+  const mode = out && typeof out === "object" ? Object.getOwnPropertyDescriptor(out, "mode")?.value : undefined;
+  const relayKeyVersion =
+    out && typeof out === "object" ? Object.getOwnPropertyDescriptor(out, "relayKeyVersion")?.value : undefined;
+  assert.equal(mode, "at-rest");
+  assert.equal(relayKeyVersion, undefined);
 });
 
 test("hosted MCP rejects transport envelopes in at-rest-only storage paths", () => {

@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import OpenBurnBarCore
 
 // MARK: - Operating Layer Models
@@ -31,15 +30,6 @@ enum OpenBurnBarMissionLifecycle: String, Codable, Equatable, Sendable {
         }
     }
 
-    var color: Color {
-        switch self {
-        case .planned: return DesignSystem.Colors.textSecondary
-        case .running: return DesignSystem.Colors.blaze
-        case .partial: return DesignSystem.Colors.amber
-        case .blocked: return DesignSystem.Colors.error
-        case .completed: return DesignSystem.Colors.success
-        }
-    }
 }
 
 enum OpenBurnBarMissionApprovalState: String, Codable, Equatable, Sendable {
@@ -53,12 +43,6 @@ enum OpenBurnBarMissionApprovalState: String, Codable, Equatable, Sendable {
         }
     }
 
-    var color: Color {
-        switch self {
-        case .pending: return DesignSystem.Colors.amber
-        case .approved: return DesignSystem.Colors.success
-        }
-    }
 }
 
 enum OpenBurnBarDirectionAssessment: String, Equatable, CaseIterable, Codable, Sendable {
@@ -76,14 +60,6 @@ enum OpenBurnBarDirectionAssessment: String, Equatable, CaseIterable, Codable, S
         }
     }
 
-    var color: Color {
-        switch self {
-        case .aligned: return DesignSystem.Colors.success
-        case .drifting: return DesignSystem.Colors.warning
-        case .ambiguous: return DesignSystem.Colors.blaze
-        case .notEnoughSignal: return DesignSystem.Colors.textSecondary
-        }
-    }
 }
 
 enum OpenBurnBarDirectionMode: String, Equatable, Sendable {
@@ -117,14 +93,6 @@ enum OpenBurnBarFreshnessKind: String, Equatable, Sendable {
         }
     }
 
-    var color: Color {
-        switch self {
-        case .live: return DesignSystem.Colors.success
-        case .provisional: return DesignSystem.Colors.amber
-        case .stale: return DesignSystem.Colors.warning
-        case .missing: return DesignSystem.Colors.textSecondary
-        }
-    }
 }
 
 enum OpenBurnBarEvidenceFreshness: String, Equatable, Sendable {
@@ -140,13 +108,6 @@ enum OpenBurnBarEvidenceFreshness: String, Equatable, Sendable {
         }
     }
 
-    var color: Color {
-        switch self {
-        case .fresh: return DesignSystem.Colors.success
-        case .stale: return DesignSystem.Colors.warning
-        case .unknown: return DesignSystem.Colors.textSecondary
-        }
-    }
 }
 
 enum OpenBurnBarActionKind: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -178,13 +139,6 @@ enum OpenBurnBarActionTone: Equatable, Sendable {
     case error
     case neutral
 
-    var color: Color {
-        switch self {
-        case .success: return DesignSystem.Colors.success
-        case .error: return DesignSystem.Colors.error
-        case .neutral: return DesignSystem.Colors.textSecondary
-        }
-    }
 }
 
 enum OpenBurnBarDirectionOverrideModeKind: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -392,14 +346,6 @@ struct OpenBurnBarOperatingHistoryEntry: Identifiable, Equatable, Sendable {
     let detail: String?
     let createdAt: Date
 
-    var tint: Color {
-        switch kind {
-        case .missionApproval: return DesignSystem.Colors.success
-        case .missionCreation: return DesignSystem.Colors.hermesAureate
-        case .directionOverride: return DesignSystem.Colors.whimsy
-        }
-    }
-
     var icon: String {
         switch kind {
         case .missionApproval: return "checkmark.seal.fill"
@@ -434,13 +380,6 @@ enum OpenBurnBarControllerQuestionPriority: String, Codable, Equatable, Sendable
     case medium
     case low
 
-    var color: Color {
-        switch self {
-        case .high: return DesignSystem.Colors.error
-        case .medium: return DesignSystem.Colors.amber
-        case .low: return DesignSystem.Colors.textSecondary
-        }
-    }
 }
 
 enum OpenBurnBarControllerQuestionDeepLinkKind: String, Codable, Equatable, Sendable {
@@ -480,15 +419,6 @@ enum OpenBurnBarControllerTakeoverState: String, Codable, Equatable, Sendable {
         }
     }
 
-    var color: Color {
-        switch self {
-        case .monitoring: return DesignSystem.Colors.textSecondary
-        case .launched: return DesignSystem.Colors.blaze
-        case .completed: return DesignSystem.Colors.success
-        case .failed: return DesignSystem.Colors.error
-        case .skipped: return DesignSystem.Colors.textMuted
-        }
-    }
 }
 
 enum OpenBurnBarControllerEventCategory: String, Codable, Equatable, Sendable {
@@ -512,17 +442,6 @@ enum OpenBurnBarControllerEventCategory: String, Codable, Equatable, Sendable {
         }
     }
 
-    var color: Color {
-        switch self {
-        case .controller: return DesignSystem.Colors.blaze
-        case .question: return DesignSystem.Colors.amber
-        case .followup: return DesignSystem.Colors.whimsy
-        case .mission: return DesignSystem.Colors.hermesAureate
-        case .notification: return DesignSystem.Colors.teal
-        case .replay: return DesignSystem.Colors.textSecondary
-        case .governance: return DesignSystem.Colors.success
-        }
-    }
 }
 
 struct OpenBurnBarControllerQuestionOption: Identifiable, Codable, Equatable, Sendable {
@@ -1125,12 +1044,6 @@ struct OpenBurnBarControllerFeedback: Identifiable, Equatable, Sendable {
         case success
         case error
 
-        var color: Color {
-            switch self {
-            case .success: return DesignSystem.Colors.success
-            case .error: return DesignSystem.Colors.error
-            }
-        }
     }
 
     let id = UUID()

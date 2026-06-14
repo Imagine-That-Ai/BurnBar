@@ -72,7 +72,7 @@ import {
   requireSealedText,
   assertActiveBurnBarCloudProEntitlement,
   isActiveBurnBarUltraEntitlement,
-  BURNBAR_ULTRA_ENTITLEMENT_ID as ULTRA_ENTITLEMENT_ID,
+  BURNBAR_ULTRA_ENTITLEMENT_ID,
 } from "./shared.js";
 import { isRecord, stripUndefinedObject } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
@@ -142,7 +142,7 @@ function requireOptionalSignalEnvelopeForKnowledgeVector(
   }
   return result.envelope;
 }
-export interface PensieveLimits {
+interface PensieveLimits {
   sources: number;
   chunks: number;
   bytes: number;
@@ -173,7 +173,7 @@ const CALLABLE_OPTS = {
  * active + expiry here is safe.
  */
 async function resolvePensieveTier(uid: string): Promise<PensieveTier> {
-  const snap = await db.doc(`users/${uid}/entitlements/${ULTRA_ENTITLEMENT_ID}`).get();
+  const snap = await db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get();
   return isActiveBurnBarUltraEntitlement(snap.data()) ? "ultra" : "pro";
 }
 
@@ -625,10 +625,13 @@ export const deleteKnowledgeSource = onCall(
       // Resolve it from the device (preferred) or the manifest, then also sweep
       // any legacy `sourceSlug`-keyed rows so pre-B-SEC-2 sources fully delete.
       const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceManifestId}`);
+      const manifestSlugHmac = (await manifestRef.get()).get("slugHmac");
       const slugHmac =
         request.data.slugHmac !== undefined
           ? requireHexDigest(request.data.slugHmac, "slugHmac")
-          : ((await manifestRef.get()).get("slugHmac") as string | undefined);
+          : typeof manifestSlugHmac === "string"
+            ? manifestSlugHmac
+            : undefined;
 
       let deleted = 0;
       if (slugHmac) {

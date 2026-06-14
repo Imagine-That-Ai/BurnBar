@@ -75,9 +75,20 @@ actor SearchService {
 
     /// `nonisolated` because `dataStore` is an immutable `let` and `fetchConversations`
     /// uses GRDB's synchronous `read` — no actor isolation needed.
+    ///
+    /// A real DB/GRDB read failure here is recoverable (callers degrade to an empty
+    /// list), but it must be **observable**: a swallowed `try?` makes a genuine read
+    /// fault indistinguishable from an empty store. `AppLogger.search.silently` logs
+    /// the failure and only then falls back to `[]`. (This is `nonisolated`, so the
+    /// actor-scoped `setLastHealthWriteError` cannot be called from here; logging is
+    /// the available observability seam.)
     nonisolated func recentConversations(limit: Int = 80) -> [ConversationRecord] {
         let bounded = max(1, min(limit, 1_000))
-        return (try? dataStore.fetchConversations(limit: bounded)) ?? []
+        return AppLogger.search.silently(
+            "recent_conversations_fetch_failed",
+            try dataStore.fetchConversations(limit: bounded),
+            fallback: []
+        )
     }
 
     nonisolated func latestConversation(limit: Int = 200) -> ConversationRecord? {
@@ -129,13 +140,35 @@ actor SearchService {
 
         var aggregateCount: Int?
         if plan.mode == .mixed || plan.mode == .aggregate, !plan.aggregatePatterns.isEmpty {
-            aggregateCount = (try? dataStore.countOccurrencesInConversationFullText(
-                patterns: plan.aggregatePatterns,
-                provider: filters.provider,
-                projectName: filters.projectName,
-                dateRange: filters.dateRange,
-                conversationSources: filters.conversationSources
-            )) ?? 0
+            // Fail closed on a DB/FTS error: this value is surfaced as the
+            // authoritative `aggregateOccurrenceCount` for count-style queries
+            // ("how many times X"). Collapsing a real error to `0` would tell the
+            // user "0 occurrences" when the true count is *unknown* — a silent
+            // correctness regression. Leave `aggregateCount` as `nil` so the result
+            // reports "unknown"/degraded (see `runBurnBarQuery`'s telemetry, which
+            // treats a `nil` count as `.degraded`), and record the failure.
+            do {
+                aggregateCount = try dataStore.countOccurrencesInConversationFullText(
+                    patterns: plan.aggregatePatterns,
+                    provider: filters.provider,
+                    projectName: filters.projectName,
+                    dateRange: filters.dateRange,
+                    conversationSources: filters.conversationSources
+                )
+            } catch {
+                let typed = OpenBurnBarError.search(
+                    "aggregate_count_query_failed",
+                    message: "Failed to count conversation full-text occurrences for an aggregate query.",
+                    underlying: error
+                )
+                AppLogger.search.error(
+                    "aggregate_count_query_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+                setLastHealthWriteError(typed.message, typed: typed)
+                // `aggregateCount` stays `nil` (its initial value): the fail-closed
+                // "unknown" signal, never a fabricated `0`.
+            }
         }
         // Filter-aware semantic candidate generation is not yet able to enforce
         // date/source bounds before top-k truncation. For count-style and

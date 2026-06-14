@@ -41,23 +41,21 @@ object SmartHubBridgeClientPixelClockActions {
         SmartHubBridgeClient.persistPixelClockConfig()
     }
 
-    fun repairPixelClock() =
-        SmartHubBridgeClient.runSmartDisplayAction(
-            type = "pixel_clock_repair",
-            progress = "Making Pixel Clock work...",
-            success = "Pixel Clock repair completed.",
-            timeoutMs = 180_000,
-            includePixelClock = true,
-        )
+    fun repairPixelClock() = SmartHubBridgeClient.runSmartDisplayAction(
+        type = "pixel_clock_repair",
+        progress = "Making Pixel Clock work...",
+        success = "Pixel Clock repair completed.",
+        timeoutMs = 180_000,
+        includePixelClock = true,
+    )
 
-    fun pushPixelClockNow() =
-        SmartHubBridgeClient.runSmartDisplayAction(
-            type = "pixel_clock_push",
-            progress = "Pushing Pixel Clock...",
-            success = "Pixel Clock push completed.",
-            timeoutMs = 90_000,
-            includePixelClock = true,
-        )
+    fun pushPixelClockNow() = SmartHubBridgeClient.runSmartDisplayAction(
+        type = "pixel_clock_push",
+        progress = "Pushing Pixel Clock...",
+        success = "Pixel Clock push completed.",
+        timeoutMs = 90_000,
+        includePixelClock = true,
+    )
 }
 
 internal fun smartHubPreviewPixelClockBrightness(value: Float) {

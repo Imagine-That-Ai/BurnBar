@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.hermes
 
-import com.openburnbar.ui.components.AuroraGlassCard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.HermesConnectionRecord
 import com.openburnbar.data.hermes.HermesConnectionStatus
 import com.openburnbar.data.hermes.HermesRuntimeModelOption
+import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -96,17 +96,13 @@ internal data class HermesSettingsCallbacks(
 )
 
 @Composable
-internal fun HermesSettingsBody(
-    uiState: HermesSettingsUiState,
-    callbacks: HermesSettingsCallbacks,
-    modifier: Modifier = Modifier,
-) {
+internal fun HermesSettingsBody(uiState: HermesSettingsUiState, callbacks: HermesSettingsCallbacks, modifier: Modifier = Modifier) {
     Column(
         modifier =
         modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
     ) {
         HermesSettingsHeader(onDismiss = callbacks.onDismiss)
         HermesSettingsScrollContent(uiState = uiState, callbacks = callbacks)
@@ -120,7 +116,7 @@ internal fun HermesSettingsHeader(onDismiss: () -> Unit) {
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(vertical = AuroraSpacing.lg.dp),
+            .padding(vertical = AuroraSpacing.LG.dp),
     ) {
         IconButton(onClick = onDismiss) {
             Icon(Icons.Filled.Close, contentDescription = "Close")
@@ -135,16 +131,13 @@ internal fun HermesSettingsHeader(onDismiss: () -> Unit) {
 }
 
 @Composable
-internal fun HermesSettingsScrollContent(
-    uiState: HermesSettingsUiState,
-    callbacks: HermesSettingsCallbacks,
-) {
+internal fun HermesSettingsScrollContent(uiState: HermesSettingsUiState, callbacks: HermesSettingsCallbacks) {
     Column(
         modifier =
         Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         HermesSettingsStatusCard(isReachable = uiState.isReachable)
         HermesSettingsConnectionsSection(uiState = uiState, callbacks = callbacks)
@@ -155,13 +148,13 @@ internal fun HermesSettingsScrollContent(
             selectedModelID = uiState.selectedModelID,
         )
         HermesSettingsRuntimeSection(uiState = uiState)
-        Spacer(modifier = Modifier.height(AuroraSpacing.xxxl.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XXXL.dp))
     }
 }
 
 @Composable
 internal fun HermesSettingsStatusCard(isReachable: Boolean) {
-    AuroraGlassCard(cornerRadius = AuroraRadius.lg) {
+    AuroraGlassCard(cornerRadius = AuroraRadius.LG) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier =
@@ -178,7 +171,7 @@ internal fun HermesSettingsStatusCard(isReachable: Boolean) {
                     modifier = Modifier.size(28.dp),
                 )
             }
-            Spacer(modifier = Modifier.width(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.LG.dp))
             Column {
                 Text(
                     text = "Hermes",
@@ -197,10 +190,7 @@ internal fun HermesSettingsStatusCard(isReachable: Boolean) {
 }
 
 @Composable
-internal fun HermesSettingsConnectionsSection(
-    uiState: HermesSettingsUiState,
-    callbacks: HermesSettingsCallbacks,
-) {
+internal fun HermesSettingsConnectionsSection(uiState: HermesSettingsUiState, callbacks: HermesSettingsCallbacks) {
     SettingsSection(title = "Connections", icon = Icons.Filled.NetworkCheck) {
         uiState.connections.forEach { connection ->
             ConnectionRow(
@@ -216,17 +206,14 @@ internal fun HermesSettingsConnectionsSection(
         }
         TextButton(onClick = callbacks.onRequestAddDirect) {
             Icon(Icons.Filled.AddCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text("Add direct Hermes URL", fontSize = AuroraTypography.body.sp)
         }
     }
 }
 
 @Composable
-internal fun HermesSettingsModelsSection(
-    uiState: HermesSettingsUiState,
-    callbacks: HermesSettingsCallbacks,
-) {
+internal fun HermesSettingsModelsSection(uiState: HermesSettingsUiState, callbacks: HermesSettingsCallbacks) {
     SettingsSection(title = "Models", icon = Icons.Filled.Psychology) {
         if (uiState.modelOptions.isEmpty()) {
             Text(
@@ -259,7 +246,7 @@ internal fun HermesSettingsDisplaySection() {
             checked = showTps,
             onCheckedChange = { showTps = it },
         )
-        HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.SM.dp))
         HermesSettingsDisplayToggle(
             title = "Rich text rendering",
             subtitle = "Renders @mentions and code spans as inline chips.",
@@ -270,12 +257,7 @@ internal fun HermesSettingsDisplaySection() {
 }
 
 @Composable
-private fun HermesSettingsDisplayToggle(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
+private fun HermesSettingsDisplayToggle(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
@@ -293,10 +275,7 @@ private fun HermesSettingsDisplayToggle(
 }
 
 @Composable
-internal fun HermesSettingsGatewaySection(
-    selectedConnection: HermesConnectionRecord,
-    selectedModelID: String?,
-) {
+internal fun HermesSettingsGatewaySection(selectedConnection: HermesConnectionRecord, selectedModelID: String?) {
     SettingsSection(title = "Gateway", icon = Icons.Filled.Router) {
         val baseUrl = selectedConnection.endpointURL ?: "http://localhost:8642"
         InfoRow(label = "Base URL", value = baseUrl)
@@ -310,7 +289,7 @@ internal fun HermesSettingsRuntimeSection(uiState: HermesSettingsUiState) {
         if (uiState.isLoadingRuntime) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 Text("Probing runtime…", fontSize = AuroraTypography.caption.sp)
             }
         }
@@ -340,10 +319,7 @@ internal fun HermesSettingsRuntimeSection(uiState: HermesSettingsUiState) {
 }
 
 @Composable
-internal fun HermesSettingsDialogs(
-    dialogState: HermesSettingsDialogState,
-    callbacks: HermesSettingsCallbacks,
-) {
+internal fun HermesSettingsDialogs(dialogState: HermesSettingsDialogState, callbacks: HermesSettingsCallbacks) {
     if (dialogState.showAddDirect) {
         HermesSettingsAddDirectDialog(
             fields = HermesDirectDialogFields(name = dialogState.newDirectName, url = dialogState.newDirectURL),
@@ -384,11 +360,7 @@ private data class HermesDirectDialogCallbacks(
 )
 
 @Composable
-private fun HermesSettingsAddDirectDialog(
-    fields: HermesDirectDialogFields,
-    callbacks: HermesDirectDialogCallbacks,
-    canSave: Boolean,
-) {
+private fun HermesSettingsAddDirectDialog(fields: HermesDirectDialogFields, callbacks: HermesDirectDialogCallbacks, canSave: Boolean) {
     AlertDialog(
         onDismissRequest = callbacks.onDismiss,
         title = { Text("Add Direct Hermes") },
@@ -401,7 +373,7 @@ private fun HermesSettingsAddDirectDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
                 OutlinedTextField(
                     value = fields.url,
                     onValueChange = callbacks.onUrlChange,
@@ -423,11 +395,7 @@ private fun HermesSettingsAddDirectDialog(
 }
 
 @Composable
-private fun HermesSettingsDeleteConfirmDialog(
-    connection: HermesConnectionRecord,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
+private fun HermesSettingsDeleteConfirmDialog(connection: HermesConnectionRecord, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Delete connection?") },
@@ -444,12 +412,8 @@ private fun HermesSettingsDeleteConfirmDialog(
 }
 
 @Composable
-private fun SettingsSection(
-    title: String,
-    icon: ImageVector,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    AuroraGlassCard(cornerRadius = AuroraRadius.lg) {
+private fun SettingsSection(title: String, icon: ImageVector, content: @Composable ColumnScope.() -> Unit) {
+    AuroraGlassCard(cornerRadius = AuroraRadius.LG) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -467,7 +431,7 @@ private fun SettingsSection(
                         modifier = Modifier.size(16.dp),
                     )
                 }
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 Text(
                     text = title,
                     fontSize = AuroraTypography.headline.sp,
@@ -475,19 +439,14 @@ private fun SettingsSection(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             content()
         }
     }
 }
 
 @Composable
-internal fun ConnectionRow(
-    connection: HermesConnectionRecord,
-    isSelected: Boolean,
-    onSelect: () -> Unit,
-    onDelete: () -> Unit,
-) {
+internal fun ConnectionRow(connection: HermesConnectionRecord, isSelected: Boolean, onSelect: () -> Unit, onDelete: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -497,7 +456,7 @@ internal fun ConnectionRow(
             .padding(vertical = 6.dp),
     ) {
         ConnectionRowStatusDot(status = connection.status)
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         ConnectionRowDetails(connection = connection)
         ConnectionRowTrailing(
             isSelected = isSelected,
@@ -537,11 +496,7 @@ private fun RowScope.ConnectionRowDetails(connection: HermesConnectionRecord) {
 }
 
 @Composable
-private fun ConnectionRowTrailing(
-    isSelected: Boolean,
-    canDelete: Boolean,
-    onDelete: () -> Unit,
-) {
+private fun ConnectionRowTrailing(isSelected: Boolean, canDelete: Boolean, onDelete: () -> Unit) {
     if (isSelected) {
         Icon(
             Icons.Filled.CheckCircle,
@@ -563,31 +518,23 @@ private fun ConnectionRowTrailing(
 }
 
 @Composable
-private fun connectionStatusColor(status: HermesConnectionStatus): Color =
-    when (status) {
-        HermesConnectionStatus.ONLINE -> AuroraColors.success
-        HermesConnectionStatus.OFFLINE -> MaterialTheme.colorScheme.onSurfaceVariant
-        HermesConnectionStatus.PENDING -> AuroraColors.amber
-        HermesConnectionStatus.UNAUTHORIZED -> AuroraColors.warning
-        HermesConnectionStatus.REVOKED -> AuroraColors.error
-        HermesConnectionStatus.DEGRADED -> AuroraColors.warning
-    }
+private fun connectionStatusColor(status: HermesConnectionStatus): Color = when (status) {
+    HermesConnectionStatus.ONLINE -> AuroraColors.success
+    HermesConnectionStatus.OFFLINE -> MaterialTheme.colorScheme.onSurfaceVariant
+    HermesConnectionStatus.PENDING -> AuroraColors.amber
+    HermesConnectionStatus.UNAUTHORIZED -> AuroraColors.warning
+    HermesConnectionStatus.REVOKED -> AuroraColors.error
+    HermesConnectionStatus.DEGRADED -> AuroraColors.warning
+}
 
-private fun connectionSubtitle(connection: HermesConnectionRecord): String =
-    buildString {
-        append(connection.mode.name.replace("_", " "))
-        connection.endpointURL?.let { append(" · $it") }
-        append(" · ${connection.status.name.lowercase().replaceFirstChar { it.uppercase() }}")
-    }
+private fun connectionSubtitle(connection: HermesConnectionRecord): String = buildString {
+    append(connection.mode.name.replace("_", " "))
+    connection.endpointURL?.let { append(" · $it") }
+    append(" · ${connection.status.name.lowercase().replaceFirstChar { it.uppercase() }}")
+}
 
 @Composable
-private fun ModelRow(
-    option: HermesRuntimeModelOption,
-    isSelected: Boolean,
-    isFavorite: Boolean,
-    onSelect: () -> Unit,
-    onToggleFavorite: () -> Unit,
-) {
+private fun ModelRow(option: HermesRuntimeModelOption, isSelected: Boolean, isFavorite: Boolean, onSelect: () -> Unit, onToggleFavorite: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -611,7 +558,7 @@ private fun ModelRow(
                 fontWeight = FontWeight.Bold,
             )
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = option.displayName,

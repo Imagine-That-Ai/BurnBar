@@ -1,4 +1,6 @@
-import SwiftUI
+import AppKit
+import Combine
+import Foundation
 import OpenBurnBarCore
 
 // MARK: - Discovery Models
@@ -69,6 +71,19 @@ final class SwitcherDiscoveryService: ObservableObject {
     @Published var isScanning: Bool = false
     @Published var scanProgress: [String] = []
     @Published var scanErrors: [String] = []
+
+    /// Factory for the credential store used when persisting OAuth tokens.
+    /// Injectable so fault-injection tests can prove the fail-closed credential
+    /// path (a profile must never be left advertising authentication it cannot
+    /// back with a stored token). Defaults to the live Keychain-backed store.
+    private let makeAuthStore: @Sendable () -> SwitcherAuthStore
+
+    /// `nonisolated` so the service can be constructed from non-MainActor
+    /// contexts (and from tests) without an actor-isolation hop. Stored
+    /// properties carry their own defaults, so the seam is purely additive.
+    nonisolated init(makeAuthStore: @escaping @Sendable () -> SwitcherAuthStore = { SwitcherAuthStore() }) {
+        self.makeAuthStore = makeAuthStore
+    }
 
     func scan(dataStore: DataStore) async {
         isScanning = true
@@ -363,11 +378,9 @@ final class SwitcherDiscoveryService: ObservableObject {
         do {
             let saved = try dataStore.switcherStore.create(created)
 
-            // First profile auto-set as active
-            let existingCount = (try? dataStore.switcherStore.fetchAllProfiles().count) ?? 0
-            if existingCount <= 1 {
-                try? dataStore.switcherStore.setActiveProfile(saved.id)
-            }
+            // First profile auto-set as active (fail-closed: never steals the
+            // active pointer if the count read fails).
+            activateIfFirstProfile(saved.id, dataStore: dataStore)
 
             // Update identity state
             if let index = discoveredIdentities.firstIndex(where: { $0.id == identity.id }) {
@@ -426,46 +439,54 @@ final class SwitcherDiscoveryService: ObservableObject {
             sortKey: 0
         )
 
+        let saved: SwitcherProfileRecord
         do {
-            let saved = try dataStore.switcherStore.create(record)
-
-            if let token = AccountManager.shared.lastOAuthToken, !token.isEmpty {
-                let authStore = SwitcherAuthStore()
-                try? authStore.storeOAuthToken(token, forProfileID: saved.id, provider: "google")
-            }
-
-            // First profile auto-set as active
-            let existingCount = (try? dataStore.switcherStore.fetchAllProfiles().count) ?? 0
-            if existingCount <= 1 {
-                try? dataStore.switcherStore.setActiveProfile(saved.id)
-            }
-
-            // Add as a new discovered identity so UI shows it
-            let newIdentity = DiscoveredIdentity(
-                id: "chrome.different.\(saved.id)",
-                source: .chromeProfile(
-                    folderKey: folderKey,
-                    email: email,
-                    gaiaName: displayName,
-                    serviceIdentities: []
-                ),
-                displayTitle: displayName ?? email,
-                subtitle: email,
-                quotaSummary: nil,
-                authState: .authenticated,
-                isAlreadyAdded: false,
-                isAdded: true,
-                isVerifying: false,
-                isVerified: true,
-                verificationFailed: false
-            )
-            discoveredIdentities.append(newIdentity)
-
-            return saved
+            saved = try dataStore.switcherStore.create(record)
         } catch {
             scanErrors.append("Failed to save profile: \(error.localizedDescription)")
             return nil
         }
+
+        // Fail closed: the profile advertises a Google provider, so a dropped
+        // OAuth token must not leave it claiming sign-in with no credential.
+        // Roll the new profile back and report the failure instead.
+        do {
+            try persistOAuthTokenIfPresent(forProfileID: saved.id, provider: "google")
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_oauth_token_store_failed",
+                metadata: ["provider": "google", "errorClass": "\(String(describing: type(of: error)))"]
+            )
+            rollBackOrphanedProfile(saved.id, dataStore: dataStore)
+            scanErrors.append("Could not securely store the Google credential — profile not added.")
+            return nil
+        }
+
+        // First profile auto-set as active (fail-closed count read).
+        activateIfFirstProfile(saved.id, dataStore: dataStore)
+
+        // Add as a new discovered identity so UI shows it
+        let newIdentity = DiscoveredIdentity(
+            id: "chrome.different.\(saved.id)",
+            source: .chromeProfile(
+                folderKey: folderKey,
+                email: email,
+                gaiaName: displayName,
+                serviceIdentities: []
+            ),
+            displayTitle: displayName ?? email,
+            subtitle: email,
+            quotaSummary: nil,
+            authState: .authenticated,
+            isAlreadyAdded: false,
+            isAdded: true,
+            isVerifying: false,
+            isVerified: true,
+            verificationFailed: false
+        )
+        discoveredIdentities.append(newIdentity)
+
+        return saved
     }
 
     /// Signs into a different Apple account via Sign in with Apple and creates a profile for it.
@@ -500,39 +521,45 @@ final class SwitcherDiscoveryService: ObservableObject {
             sortKey: 0
         )
 
+        let saved: SwitcherProfileRecord
         do {
-            let saved = try dataStore.switcherStore.create(record)
-
-            if let token = AccountManager.shared.lastOAuthToken, !token.isEmpty {
-                let authStore = SwitcherAuthStore()
-                try? authStore.storeOAuthToken(token, forProfileID: saved.id, provider: "apple")
-            }
-
-            let existingCount = (try? dataStore.switcherStore.fetchAllProfiles().count) ?? 0
-            if existingCount <= 1 {
-                try? dataStore.switcherStore.setActiveProfile(saved.id)
-            }
-
-            let newIdentity = DiscoveredIdentity(
-                id: "safari.different.\(saved.id)",
-                source: .safari,
-                displayTitle: displayName ?? email ?? "Safari (Alt)",
-                subtitle: email ?? "Apple ID",
-                quotaSummary: nil,
-                authState: .authenticated,
-                isAlreadyAdded: false,
-                isAdded: true,
-                isVerifying: false,
-                isVerified: true,
-                verificationFailed: false
-            )
-            discoveredIdentities.append(newIdentity)
-
-            return saved
+            saved = try dataStore.switcherStore.create(record)
         } catch {
             scanErrors.append("Failed to save profile: \(error.localizedDescription)")
             return nil
         }
+
+        // Fail closed on a dropped Apple credential (see Google flow rationale).
+        do {
+            try persistOAuthTokenIfPresent(forProfileID: saved.id, provider: "apple")
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_oauth_token_store_failed",
+                metadata: ["provider": "apple", "errorClass": "\(String(describing: type(of: error)))"]
+            )
+            rollBackOrphanedProfile(saved.id, dataStore: dataStore)
+            scanErrors.append("Could not securely store the Apple credential — profile not added.")
+            return nil
+        }
+
+        activateIfFirstProfile(saved.id, dataStore: dataStore)
+
+        let newIdentity = DiscoveredIdentity(
+            id: "safari.different.\(saved.id)",
+            source: .safari,
+            displayTitle: displayName ?? email ?? "Safari (Alt)",
+            subtitle: email ?? "Apple ID",
+            quotaSummary: nil,
+            authState: .authenticated,
+            isAlreadyAdded: false,
+            isAdded: true,
+            isVerifying: false,
+            isVerified: true,
+            verificationFailed: false
+        )
+        discoveredIdentities.append(newIdentity)
+
+        return saved
     }
 
     @discardableResult
@@ -583,17 +610,30 @@ final class SwitcherDiscoveryService: ObservableObject {
             createdAt: profile.createdAt
         )
 
+        let saved: SwitcherProfileRecord
         do {
-            let saved = try dataStore.switcherStore.update(updated)
-            if let token = AccountManager.shared.lastOAuthToken, !token.isEmpty {
-                let authStore = SwitcherAuthStore()
-                try? authStore.storeOAuthToken(token, forProfileID: saved.id, provider: providerIdentifier)
-            }
-            return saved
+            saved = try dataStore.switcherStore.update(updated)
         } catch {
             scanErrors.append("Failed to update profile: \(error.localizedDescription)")
             return nil
         }
+
+        // Fail closed: a refresh whose new token can't be persisted would leave
+        // the profile's stored credential stale/absent while its metadata claims
+        // a fresh sign-in. Report the failure rather than pretend it succeeded.
+        // The profile already existed, so there is nothing to roll back.
+        do {
+            try persistOAuthTokenIfPresent(forProfileID: saved.id, provider: providerIdentifier)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_oauth_token_store_failed",
+                metadata: ["provider": providerIdentifier, "errorClass": "\(String(describing: type(of: error)))"]
+            )
+            scanErrors.append("Could not securely store the refreshed credential — please try again.")
+            return nil
+        }
+
+        return saved
     }
 
     // MARK: - Add Different API Key (CLI)
@@ -604,7 +644,22 @@ final class SwitcherDiscoveryService: ObservableObject {
         cliType: SwitcherCLIProfileType,
         dataStore: DataStore
     ) async -> SwitcherProfileRecord? {
-        let existingProfiles = ((try? dataStore.switcherStore.fetchAllProfiles()) ?? [])
+        // Fail closed: this list backs the duplicate-directory guard below. A
+        // swallowed read that defaulted to `[]` would silently bypass dedup and
+        // let a duplicate CLI profile through (state corruption), so we surface
+        // the failure instead of guessing the user has no existing profiles.
+        let allProfiles: [SwitcherProfileRecord]
+        do {
+            allProfiles = try dataStore.switcherStore.fetchAllProfiles()
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_existing_profiles_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            scanErrors.append("Could not read existing profiles — please try again.")
+            return nil
+        }
+        let existingProfiles = allProfiles
             .filter { $0.targetKind == .cli && $0.cliType == cliType }
         let placeholder = SwitcherProfileRecord(
             targetKind: .cli,
@@ -680,10 +735,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
         do {
             let saved = try dataStore.switcherStore.create(record)
-            let existingCount = (try? dataStore.switcherStore.fetchAllProfiles().count) ?? 0
-            if existingCount <= 1 {
-                try? dataStore.switcherStore.setActiveProfile(saved.id)
-            }
+            activateIfFirstProfile(saved.id, dataStore: dataStore)
 
             await scan(dataStore: dataStore)
             if let index = discoveredIdentities.firstIndex(where: { identity in
@@ -741,39 +793,49 @@ final class SwitcherDiscoveryService: ObservableObject {
             sortKey: 0
         )
 
+        let saved: SwitcherProfileRecord
         do {
-            let saved = try dataStore.switcherStore.create(record)
-
-            // Store the API key in keychain
-            let authStore = SwitcherAuthStore()
-            try authStore.storeAPIKey(apiKey, forProfileID: saved.id, cliType: cliType)
-
-            let existingCount = (try? dataStore.switcherStore.fetchAllProfiles().count) ?? 0
-            if existingCount <= 1 {
-                try? dataStore.switcherStore.setActiveProfile(saved.id)
-            }
-
-            // Add as a new discovered identity so UI shows it
-            let newIdentity = DiscoveredIdentity(
-                id: "cli.apikey.\(saved.id)",
-                source: cliTypeDiscoverySource(cliType, apiKey: apiKey),
-                displayTitle: displayLabel,
-                subtitle: "API key added",
-                quotaSummary: nil,
-                authState: .apiKeyPresent,
-                isAlreadyAdded: false,
-                isAdded: true,
-                isVerifying: false,
-                isVerified: true,
-                verificationFailed: false
-            )
-            discoveredIdentities.append(newIdentity)
-
-            return saved
+            saved = try dataStore.switcherStore.create(record)
         } catch {
             scanErrors.append("Failed to save CLI profile: \(error.localizedDescription)")
             return nil
         }
+
+        // Fail closed: the identity is published as `apiKeyPresent`, so a profile
+        // whose API key never reached the Keychain would lie about being usable.
+        // Roll the orphan back and report instead of leaving a credential-less
+        // profile that advertises a key it does not have.
+        do {
+            try makeAuthStore().storeAPIKey(apiKey, forProfileID: saved.id, cliType: cliType)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_api_key_store_failed",
+                metadata: ["cliType": cliType.rawValue, "errorClass": "\(String(describing: type(of: error)))"]
+            )
+            rollBackOrphanedProfile(saved.id, dataStore: dataStore)
+            scanErrors.append("Could not securely store the API key — profile not added.")
+            return nil
+        }
+
+        activateIfFirstProfile(saved.id, dataStore: dataStore)
+
+        // Add as a new discovered identity so UI shows it
+        let newIdentity = DiscoveredIdentity(
+            id: "cli.apikey.\(saved.id)",
+            source: cliTypeDiscoverySource(cliType, apiKey: apiKey),
+            displayTitle: displayLabel,
+            subtitle: "API key added",
+            quotaSummary: nil,
+            authState: .apiKeyPresent,
+            isAlreadyAdded: false,
+            isAdded: true,
+            isVerifying: false,
+            isVerified: true,
+            verificationFailed: false
+        )
+        discoveredIdentities.append(newIdentity)
+
+        return saved
     }
 
     private func cliTypeDiscoverySource(_ cliType: SwitcherCLIProfileType, apiKey: String) -> DiscoverySource {
@@ -951,6 +1013,72 @@ final class SwitcherDiscoveryService: ObservableObject {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    // MARK: - Active-Profile Activation
+
+    /// Auto-activates `savedID` only when it is genuinely the first profile.
+    ///
+    /// The previous `(try? fetchAllProfiles().count) ?? 0` swallowed read
+    /// failures by defaulting the count to `0`, which made `count <= 1` true and
+    /// silently *stole* the active profile from whatever the user had selected —
+    /// a fail-open on user-facing state. This fails closed instead: if the count
+    /// can't be read, we log and skip activation rather than clobber the
+    /// existing active pointer. The activation write itself is also logged on
+    /// failure so a created-but-not-activated profile is observable.
+    private func activateIfFirstProfile(_ savedID: String, dataStore: DataStore) {
+        let existingCount: Int
+        do {
+            existingCount = try dataStore.switcherStore.fetchAllProfiles().count
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_active_profile_count_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            return
+        }
+
+        guard existingCount <= 1 else { return }
+
+        do {
+            try dataStore.switcherStore.setActiveProfile(savedID)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_set_active_profile_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
+    }
+
+    // MARK: - OAuth Token Persistence (fail-closed)
+
+    /// Persists the most recent OAuth token for `profileID` under `provider`,
+    /// throwing on a genuine Keychain fault.
+    ///
+    /// This is deliberately throwing (not `try?`): a browser profile is created
+    /// with a `providerIdentifier` that advertises it as authenticated, so a
+    /// silently dropped token would leave a profile that *claims* sign-in but has
+    /// no credential to launch with — a security/correctness fail-open. Callers
+    /// run this inside their create/update `do` block so the failure unwinds to
+    /// the same fail-closed path that surfaces an error and returns `nil`.
+    private func persistOAuthTokenIfPresent(forProfileID profileID: String, provider: String) throws {
+        guard let token = AccountManager.shared.lastOAuthToken, !token.isEmpty else { return }
+        try makeAuthStore().storeOAuthToken(token, forProfileID: profileID, provider: provider)
+    }
+
+    /// Deletes a profile that was created but could not be fully provisioned
+    /// (e.g. its OAuth credential failed to persist), so the store never holds a
+    /// half-initialized, credential-less profile. A delete failure here is
+    /// logged but not fatal — the caller has already decided to fail the add.
+    private func rollBackOrphanedProfile(_ profileID: String, dataStore: DataStore) {
+        do {
+            try dataStore.switcherStore.deleteProfile(id: profileID)
+        } catch {
+            AppLogger.dataStore.error(
+                "switcher_orphan_profile_rollback_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     // MARK: - Cap Helpers

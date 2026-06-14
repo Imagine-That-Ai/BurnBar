@@ -63,10 +63,7 @@ internal fun ScreenShareViewerActivity.saveRemoteUnlockPassword(
     }
 }
 
-internal fun ScreenShareViewerActivity.sendSavedRemoteUnlockPassword(
-    store: RemoteUnlockSavedCredentialStore,
-    state: HermesRealtimeRelayRemoteUnlockState?,
-) {
+internal fun ScreenShareViewerActivity.sendSavedRemoteUnlockPassword(store: RemoteUnlockSavedCredentialStore, state: HermesRealtimeRelayRemoteUnlockState?) {
     if (mirrorViewerRole == "watcher") {
         controlStatus.value = "Watching only. Take control from this Android to unlock the Mac."
         return
@@ -144,15 +141,14 @@ private suspend fun ScreenShareViewerActivity.dispatchRemoteUnlockCredential(
     )
 }
 
-private fun ScreenShareViewerActivity.resolveRemoteUnlockStateForSend(): HermesRealtimeRelayRemoteUnlockState =
-    BurnBarApplication.mediaControlCoordinator
-        ?.lastRemoteUnlockState
+private fun ScreenShareViewerActivity.resolveRemoteUnlockStateForSend(): HermesRealtimeRelayRemoteUnlockState = BurnBarApplication.mediaControlCoordinator
+    ?.lastRemoteUnlockState
+    ?.value
+    ?: BurnBarApplication.mediaControlCoordinator
+        ?.lastMirrorAck
         ?.value
-        ?: BurnBarApplication.mediaControlCoordinator
-            ?.lastMirrorAck
-            ?.value
-            ?.remoteUnlockState
-        ?: error("Remote Unlock state is not available yet.")
+        ?.remoteUnlockState
+    ?: error("Remote Unlock state is not available yet.")
 
 private fun ScreenShareViewerActivity.buildRemoteUnlockCredentialEnvelope(
     credential: String,

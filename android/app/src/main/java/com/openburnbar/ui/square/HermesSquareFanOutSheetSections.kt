@@ -2,9 +2,7 @@
 
 package com.openburnbar.ui.square
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,8 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,11 +34,7 @@ import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.ui.components.ProviderLogo
 
 @Composable
-internal fun FanOutSheetBody(
-    dispatchableIdentities: List<AgentIdentity>,
-    uiState: FanOutSheetUiState,
-    uiCallbacks: FanOutSheetUiCallbacks,
-) {
+internal fun FanOutSheetBody(dispatchableIdentities: List<AgentIdentity>, uiState: FanOutSheetUiState, uiCallbacks: FanOutSheetUiCallbacks) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
         Text("Fan-out dispatch", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         Spacer(modifier = Modifier.height(10.dp))
@@ -80,12 +72,7 @@ internal fun FanOutSheetBody(
 }
 
 @Composable
-internal fun FanOutMissionFields(
-    title: String,
-    prompt: String,
-    onTitleChange: (String) -> Unit,
-    onPromptChange: (String) -> Unit,
-) {
+internal fun FanOutMissionFields(title: String, prompt: String, onTitleChange: (String) -> Unit, onPromptChange: (String) -> Unit) {
     OutlinedTextField(
         value = title,
         onValueChange = onTitleChange,
@@ -131,12 +118,7 @@ internal fun FanOutRuntimePicker(
 }
 
 @Composable
-internal fun FanOutRuntimeRow(
-    identity: AgentIdentity,
-    isOn: Boolean,
-    canDisable: Boolean,
-    onToggle: (runtime: String, enabled: Boolean) -> Unit,
-) {
+internal fun FanOutRuntimeRow(identity: AgentIdentity, isOn: Boolean, canDisable: Boolean, onToggle: (runtime: String, enabled: Boolean) -> Unit) {
     val runtimeID = identity.runtimeID ?: return
     val runtime = runtimeID.token
     Surface(
@@ -190,12 +172,7 @@ internal fun FanOutPermissionToggles(
 }
 
 @Composable
-internal fun FanOutDispatchButton(
-    dispatching: Boolean,
-    selectedCount: Int,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
+internal fun FanOutDispatchButton(dispatching: Boolean, selectedCount: Int, enabled: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = enabled,

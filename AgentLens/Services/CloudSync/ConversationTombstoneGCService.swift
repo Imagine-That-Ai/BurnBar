@@ -26,7 +26,7 @@ import OpenBurnBarCore
 /// Any per-conversation cloud failure is logged and the local row is preserved
 /// so the next sweep retries; partial cloud cleanup never strands a local
 /// tombstone in a state where the user keeps seeing it.
-final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable {
+final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
     /// Conversations stay recoverable for this long after a delete so offline
     /// devices can sync the tombstone before the cloud body is purged.
     static let retentionWindow: TimeInterval = 30 * 24 * 60 * 60
@@ -34,7 +34,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
     private let context: CloudSyncContext
     private let encryptedCloudClient: SessionLogEncryptedCloudClient
     private let retentionWindow: TimeInterval
-    private let now: () -> Date
+    private let now: @Sendable () -> Date
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -46,7 +46,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
         context: CloudSyncContext,
         encryptedCloudClient: SessionLogEncryptedCloudClient? = nil,
         retentionWindow: TimeInterval = ConversationTombstoneGCService.retentionWindow,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.context = context
         self.encryptedCloudClient = encryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient()

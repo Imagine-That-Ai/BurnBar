@@ -258,93 +258,119 @@ enum HermesEnvironmentFile {
             .appendingPathComponent(".env")
     }
 
+    /// Blocking file I/O runs off the main actor: this is a `nonisolated`
+    /// `async` function, so main-actor callers leave it at the `await` (SE-0338).
     static func ensureAPIServerEnabled() async throws {
-        try await Task.detached(priority: .utility) {
-            let fileManager = FileManager.default
-            let directoryURL = envURL.deletingLastPathComponent()
-            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        let fileManager = FileManager.default
+        let directoryURL = envURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
-            var lines: [String] = []
-            if fileManager.fileExists(atPath: envURL.path) {
-                let content = try String(contentsOf: envURL, encoding: .utf8)
-                lines = content.components(separatedBy: .newlines)
-            }
+        var lines: [String] = []
+        if fileManager.fileExists(atPath: envURL.path) {
+            let content = try String(contentsOf: envURL, encoding: .utf8)
+            lines = content.components(separatedBy: .newlines)
+        }
 
-            var replaced = false
-            lines = lines.map { line in
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard trimmed.hasPrefix("API_SERVER_ENABLED=") else { return line }
-                replaced = true
-                return "API_SERVER_ENABLED=true"
+        var replaced = false
+        lines = lines.map { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("API_SERVER_ENABLED=") else { return line }
+            replaced = true
+            return "API_SERVER_ENABLED=true"
+        }
+        if !replaced {
+            if lines.last?.isEmpty == false {
+                lines.append("")
             }
-            if !replaced {
-                if lines.last?.isEmpty == false {
-                    lines.append("")
-                }
-                lines.append("API_SERVER_ENABLED=true")
-            }
+            lines.append("API_SERVER_ENABLED=true")
+        }
 
-            let output = lines.joined(separator: "\n").trimmingCharacters(in: .newlines) + "\n"
-            try output.write(to: envURL, atomically: true, encoding: .utf8)
-        }.value
+        let output = lines.joined(separator: "\n").trimmingCharacters(in: .newlines) + "\n"
+        try output.write(to: envURL, atomically: true, encoding: .utf8)
     }
 
+    /// Reads off the main actor (`nonisolated` `async`, SE-0338).
     static func readAPIServerKey() async -> String? {
-        await Task.detached(priority: .utility) {
-            guard let content = try? String(contentsOf: envURL, encoding: .utf8) else { return nil }
-            for rawLine in content.components(separatedBy: .newlines) {
-                let line = rawLine.trimmingCharacters(in: .whitespaces)
-                guard line.hasPrefix("API_SERVER_KEY=") else { continue }
-                let rawValue = String(line.dropFirst("API_SERVER_KEY=".count))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !rawValue.isEmpty else { return nil }
-                return rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-            }
+        // Delegate to the absent-vs-fault-aware sync helper. No Task.detached:
+        // the helper is a `nonisolated` static (SE-0338), so this async entry
+        // point runs it off the main actor without reintroducing detached-task debt.
+        readAPIServerKey(at: envURL)
+    }
+
+    /// Reads `API_SERVER_KEY` from the Hermes `.env` file.
+    ///
+    /// The returned key becomes the bearer token the app uses to authenticate to
+    /// the local Hermes gateway (`resolvedBearerToken(_:)`), so a silent read
+    /// failure cannot be allowed to masquerade as "no key configured": a missing
+    /// file legitimately means no key, but a file that *exists* yet cannot be read
+    /// (permissions, corruption, an I/O fault) is a real failure that must be
+    /// observable instead of silently collapsing the gateway call to an
+    /// unauthenticated request. We therefore separate the absent-file case (return
+    /// `nil` quietly) from a genuine read fault (log via `silently`, still return
+    /// `nil` so callers degrade exactly as before — but now the fault surfaces).
+    static func readAPIServerKey(at url: URL) -> String? {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            // No `.env` yet: there is genuinely no configured key. Quiet skip.
             return nil
-        }.value
+        }
+        guard let content = AppLogger.network.silently(
+            "hermes_api_server_key_read_failed",
+            try String(contentsOf: url, encoding: .utf8) as String?,
+            fallback: nil
+        ) else {
+            return nil
+        }
+        for rawLine in content.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("API_SERVER_KEY=") else { continue }
+            let rawValue = String(line.dropFirst("API_SERVER_KEY=".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawValue.isEmpty else { return nil }
+            return rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        }
+        return nil
     }
 }
 
 enum HermesRuntimeProcessRunner {
+    /// Runs off the main actor (`nonisolated` `async`, SE-0338); cancellation
+    /// propagates from the awaiting task. Do not reintroduce a detached task.
     static func run(executable: String, arguments: [String]) async throws -> String {
-        try await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            process.standardInput = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        process.standardInput = FileHandle.nullDevice
 
-            let outputPipe = Pipe()
-            let errorPipe = Pipe()
-            process.standardOutput = outputPipe
-            process.standardError = errorPipe
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
 
-            try process.run()
-            process.waitUntilExit()
+        try process.run()
+        process.waitUntilExit()
 
-            let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            guard process.terminationStatus == 0 else {
-                let command = ([executable] + arguments).joined(separator: " ")
-                throw HermesRuntimeLauncherError.commandFailed(
-                    command: command,
-                    detail: error.isEmpty ? output : error
-                )
-            }
-            return output.isEmpty ? error : output
-        }.value
+        let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            let command = ([executable] + arguments).joined(separator: " ")
+            throw HermesRuntimeLauncherError.commandFailed(
+                command: command,
+                detail: error.isEmpty ? output : error
+            )
+        }
+        return output.isEmpty ? error : output
     }
 
+    /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     static func launchDetached(executable: String, arguments: [String]) async throws {
-        try await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            process.standardInput = FileHandle.nullDevice
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-        }.value
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
     }
 }

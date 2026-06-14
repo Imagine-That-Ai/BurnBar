@@ -31,17 +31,17 @@ fun SessionDetailView(usage: TokenUsage) {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(top = AuroraSpacing.lg.dp)
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(top = AuroraSpacing.LG.dp)
             .padding(bottom = 120.dp),
     ) {
         SessionDetailHeroCard(usage = usage, provider = provider, cacheHitRatio = cacheHitRatio)
-        Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XL.dp))
         SessionDetailTokenBreakdownCard(usage = usage)
-        Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XL.dp))
         SessionDetailProvenanceCard(usage = usage)
         usage.sourceDeviceId?.takeIf { it.isNotEmpty() }?.let { deviceId ->
-            Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XL.dp))
             SessionDetailDeviceCard(sourceDeviceId = deviceId)
         }
     }

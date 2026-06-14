@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 /// Multi-source Claude quota adapter. Tries the cheapest, most current
 /// data first and falls back gracefully while respecting the user's
@@ -69,16 +70,16 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// `nil`, silently zeroing every JSONL token count. Reusing two configured
     /// formatters fixes the correctness bug and removes the allocation.
     private enum JSONLTimestamp {
-        static let fractional: ISO8601DateFormatter = {
+        static var fractional: ISO8601DateFormatter {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             return formatter
-        }()
-        static let plain: ISO8601DateFormatter = {
+        }
+        static var plain: ISO8601DateFormatter {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
             return formatter
-        }()
+        }
         static func date(from text: String) -> Date? {
             fractional.date(from: text) ?? plain.date(from: text)
         }
@@ -114,23 +115,22 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// persistence plumbed through `ProviderQuotaAdapterContext`): the
     /// modification-time window cutoff already keeps a cold first scan cheap, so
     /// the persisted variant's complexity isn't warranted here.
-    private final class JSONLScanCache: @unchecked Sendable {
+    private final class JSONLScanCache: Sendable {
         private struct Entry {
             let signature: JSONLFileSignature
             let contributions: [JSONLContribution]
         }
-        private let lock = NSLock()
-        private var entries: [String: Entry] = [:]
+        private let entries = Locked<[String: Entry]>([:])
 
         func contributions(forPath path: String, signature: JSONLFileSignature) -> [JSONLContribution]? {
-            lock.lock(); defer { lock.unlock() }
-            guard let entry = entries[path], entry.signature == signature else { return nil }
-            return entry.contributions
+            entries.withLock { entries in
+                guard let entry = entries[path], entry.signature == signature else { return nil }
+                return entry.contributions
+            }
         }
 
         func store(path: String, signature: JSONLFileSignature, contributions: [JSONLContribution]) {
-            lock.lock(); defer { lock.unlock() }
-            entries[path] = Entry(signature: signature, contributions: contributions)
+            entries.withLock { $0[path] = Entry(signature: signature, contributions: contributions) }
         }
 
         /// Drop entries for transcripts that fell out of the widest rolling
@@ -139,8 +139,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         /// derives the cutoff from the same `now`, so none evicts another
         /// scope's still-relevant entries.
         func pruneEntries(olderThan cutoffEpoch: TimeInterval) {
-            lock.lock(); defer { lock.unlock() }
-            entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
+            entries.withLock { entries in
+                entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
+            }
         }
     }
 
@@ -154,7 +155,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let canUseLocalClaudeSessionForAccount = switcherProfileScope
             && Self.scopedClaudeProfileMatchesDefaultLogin(context: context)
         let workingCredentials = context.claudeCredentialsReader.load()
-        let bridgeStatus = context.refreshClaudeBridgeStatus()
+        let bridgeStatus = context.bridgeManager.refreshClaudeBridgeStatus()
 
         // Auto-install the statusline bridge on the first refresh that
         // sees Claude Code present but no bridge configured. Silent —
@@ -166,13 +167,13 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             // doesn't leave us in a retry loop. Worst case the user
             // can manually install via Settings.
             recordAutoInstallAttempt(in: context)
-            try? context.bridgeManager.installClaudeQuotaBridge()
+            try? context.bridgeManager.installClaudeQuotaBridge() // try?-ok(install best-effort, falls through)
         }
 
         // Re-read bridge status after potential auto-install so the
         // status line below reflects reality.
         let postInstallStatus = bridgeStatus.state == .notInstalled
-            ? context.refreshClaudeBridgeStatus()
+            ? context.bridgeManager.refreshClaudeBridgeStatus()
             : bridgeStatus
 
         // Explicit Claude credentials belong to a specific configured
@@ -217,7 +218,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
            !usesScopedConfig || canUseLocalClaudeSessionForAccount,
            postInstallStatus.state == .ready,
            Self.isFreshStatuslineSnapshot(postInstallStatus.lastPayloadAt),
-           let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
+           let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL), // try?-ok(quota snapshot, skip path)
            let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
             let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
             let buckets = claudeQuotaBuckets(from: rateLimits)
@@ -280,7 +281,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        let jsonlWindows = (try? Self.scanJSONLTokenWindows(
+        let jsonlWindows = (try? Self.scanJSONLTokenWindows( // try?-ok(no quota, zero fallback)
             homeDirectoryURL: context.homeDirectoryURL,
             fileManager: context.fileManager,
             environment: context.environment
@@ -391,12 +392,12 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private func recordAutoInstallAttempt(in context: ProviderQuotaAdapterContext) {
         let url = autoInstallAttemptMarkerURL(in: context)
         let parent = url.deletingLastPathComponent()
-        try? context.fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+        try? context.fileManager.createDirectory(at: parent, withIntermediateDirectories: true) // try?-ok(createDirectory best-effort)
         let envelope: [String: String] = [
             "attemptedAt": ISO8601DateFormatter().string(from: Date())
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: envelope) {
-            try? data.write(to: url, options: [.atomic])
+        if let data = try? JSONSerialization.data(withJSONObject: envelope) { // try?-ok(marker encode best-effort)
+            try? data.write(to: url, options: [.atomic]) // try?-ok(marker write best-effort)
         }
     }
 
@@ -423,7 +424,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         guard status.state == .ready,
               let lastPayloadAt = status.lastPayloadAt,
               !Self.isFreshStatuslineSnapshot(lastPayloadAt),
-              let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
+              let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL), // try?-ok(quota snapshot, nil skip)
               let rateLimitsDict = payload["rate_limits"] as? [String: Any] else {
             return nil
         }
@@ -598,8 +599,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             if let cached = scanCache.contributions(forPath: path, signature: signature) {
                 contributions = cached
             } else {
-                guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
-                defer { try? handle.close() }
+                guard let handle = try? FileHandle(forReadingFrom: file) else { continue } // try?-ok(skip unreadable file)
+                defer { try? handle.close() } // try?-ok(handle teardown)
                 contributions = parseFileContributions(from: handle, now: now)
                 scanCache.store(path: path, signature: signature, contributions: contributions)
             }
@@ -668,10 +669,47 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let defaultStateURL = context.homeDirectoryURL
             .appendingPathComponent(".claude.json", isDirectory: false)
 
-        guard let profileState = try? context.snapshotStore.readJSONObject(from: profileStateURL),
-              let defaultState = try? context.snapshotStore.readJSONObject(from: defaultStateURL) else {
+        return scopedClaudeProfileMatchesDefaultLogin(
+            snapshotStore: context.snapshotStore,
+            profileStateURL: profileStateURL,
+            defaultStateURL: defaultStateURL
+        )
+    }
+
+    /// Decide whether the scoped switcher profile's `.claude.json` identity
+    /// matches the default local login's. This gates `canUseLocalClaudeSessionForAccount`,
+    /// which permits the scoped account card to reuse the *global* statusline
+    /// session. A wrong `true` would surface another Claude account's quota on
+    /// this card — cross-account leakage — so the decision FAILS CLOSED: any
+    /// inability to read or parse either identity file returns `false` (no reuse).
+    ///
+    /// `readJSONObject` returns `nil` for an absent file (the common, benign
+    /// "this profile or home has no `.claude.json`" case) and *throws* only for a
+    /// real read/parse fault (corrupt JSON, permission denial). The benign-nil
+    /// case stays quiet; a real fault is logged so the lost signal is observable,
+    /// but it still denies reuse. The previous `try?` collapsed both into a
+    /// silent `false`, hiding genuine faults.
+    static func scopedClaudeProfileMatchesDefaultLogin(
+        snapshotStore: ProviderQuotaSnapshotStore,
+        profileStateURL: URL,
+        defaultStateURL: URL
+    ) -> Bool {
+        let profileState: [String: Any]?
+        let defaultState: [String: Any]?
+        do {
+            profileState = try snapshotStore.readJSONObject(from: profileStateURL)
+            defaultState = try snapshotStore.readJSONObject(from: defaultStateURL)
+        } catch {
+            // Fail closed: a real read/parse fault must never grant statusline
+            // reuse across accounts. Log so the lost identity signal is visible.
+            AppLogger.dataStore.error(
+                "claude_scoped_profile_identity_read_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
             return false
         }
+
+        guard let profileState, let defaultState else { return false }
 
         let profileIdentity = claudeAccountIdentity(from: profileState)
         let defaultIdentity = claudeAccountIdentity(from: defaultState)
@@ -748,7 +786,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 let path = fileURL.standardizedFileURL.path
                 guard seen.insert(path).inserted else { continue }
 
-                guard let values = try? fileURL.resourceValues(
+                guard let values = try? fileURL.resourceValues( // try?-ok(skip on stat failure)
                     forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
                 ),
                     values.isRegularFile == true,
@@ -818,7 +856,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         from handle: FileHandle,
         now: Date
     ) -> [JSONLContribution] {
-        try? handle.seek(toOffset: 0)
+        try? handle.seek(toOffset: 0) // try?-ok(best-effort rewind)
 
         var contributions: [JSONLContribution] = []
         var currentLine = Data()
@@ -835,7 +873,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
 
         while true {
-            guard let chunk = try? handle.read(upToCount: 256 * 1024), !chunk.isEmpty else {
+            guard let chunk = try? handle.read(upToCount: 256 * 1024), !chunk.isEmpty else { // try?-ok(EOF/read end-of-stream)
                 flushCurrentLine()
                 break
             }
@@ -872,7 +910,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return nil
         }
 
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed line)
               let type = obj["type"] as? String,
               type == "assistant",
               let message = obj["message"] as? [String: Any],

@@ -4,7 +4,9 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["lib/**", "node_modules/**"],
+    // src/generated/** is emitted by packages/hermes-wire-protocol/codegen.mjs
+    // (DO NOT EDIT) and gated by that package's drift + parity tests, not by lint.
+    ignores: ["lib/**", "node_modules/**", "src/generated/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

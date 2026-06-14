@@ -29,10 +29,7 @@ import com.openburnbar.ui.theme.AuroraMotion
 import com.openburnbar.ui.theme.AuroraShadowSpec
 
 @Composable
-internal fun AuroraGlassCardSurface(
-    state: AuroraGlassCardSurfaceState,
-    content: @Composable ColumnScope.() -> Unit,
-) {
+internal fun AuroraGlassCardSurface(state: AuroraGlassCardSurfaceState, content: @Composable ColumnScope.() -> Unit) {
     Card(
         shape = RoundedCornerShape(state.cornerRadius.dp),
         colors =
@@ -72,10 +69,7 @@ internal fun AuroraGlassCardSurface(
 }
 
 @Composable
-internal fun rememberAuroraGlassCardInteraction(
-    interactive: Boolean,
-    onClick: (() -> Unit)?,
-): Pair<Float, Modifier> {
+internal fun rememberAuroraGlassCardInteraction(interactive: Boolean, onClick: (() -> Unit)?): Pair<Float, Modifier> {
     var pressed by remember { mutableStateOf(false) }
     val targetScale = if (pressed && interactive) 0.98f else 1f
     val scale by animateFloatAsState(

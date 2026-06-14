@@ -457,7 +457,7 @@ final class MercuryRouter: ObservableObject {
                     focusContext: context
                 )
             )
-            try? await session.replySender(frame)
+            try? await session.replySender(frame) // try?-ok(best-effort enrichment send)
         }
     }
 
@@ -823,7 +823,7 @@ final class MercuryRouter: ObservableObject {
         remoteUnlockResumeTask?.cancel()
         remoteUnlockResumeTask = Task { @MainActor [weak self] in
             if initialDelayNanoseconds > 0 {
-                try? await Task.sleep(nanoseconds: initialDelayNanoseconds)
+                try? await Task.sleep(nanoseconds: initialDelayNanoseconds) // try?-ok(sleep cancellation only)
             }
             for attempt in 0..<maxAttempts {
                 guard !Task.isCancelled, let self else { return }
@@ -839,7 +839,7 @@ final class MercuryRouter: ObservableObject {
                     return
                 }
                 if attempt < maxAttempts - 1 {
-                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    try? await Task.sleep(nanoseconds: 350_000_000) // try?-ok(sleep cancellation only)
                 }
             }
             Self.log.info("router_remote_unlock_resume_poll_still_locked reason=\(reason, privacy: .public)")
@@ -1986,7 +1986,7 @@ final class MercuryRouter: ObservableObject {
         phase = .cooldown(secondsRemaining: remaining)
         cooldownTask = Task { [weak self] in
             while !Task.isCancelled, remaining > 0 {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // try?-ok(sleep cancellation only)
                 remaining -= 1
                 if Task.isCancelled { return }
                 if remaining > 0 {
@@ -2057,10 +2057,11 @@ private struct MercuryRemoteAccessAgentClient: Sendable {
     private static let maximumResponseBytes = 16 * 1024
     private static let requestIOTimeoutSeconds: time_t = 3
 
+    /// Blocking socket send runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`), so callers leave the main actor at
+    /// the `await` (SE-0338).
     func wakeDisplay() async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try Self.send(MercuryRemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
-        }.value
+        try Self.send(MercuryRemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
     }
 
     private static func send(_ request: MercuryRemoteAccessAgentRequest) throws {
@@ -2117,7 +2118,7 @@ private struct MercuryRemoteAccessAgentClient: Sendable {
             responseData.append(buffer, count: count)
             if responseData.count > maximumResponseBytes { throw MercuryRemoteAccessAgentClientError.responseTooLarge }
         }
-        guard let response = try? JSONDecoder().decode(MercuryRemoteAccessAgentResponse.self, from: responseData),
+        guard let response = try? JSONDecoder().decode(MercuryRemoteAccessAgentResponse.self, from: responseData), // try?-ok(malformed fails closed)
               response.ok else {
             throw MercuryRemoteAccessAgentClientError.daemonRejected
         }

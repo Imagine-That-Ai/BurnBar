@@ -1656,6 +1656,59 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(decoded, ["one", "two"])
     }
 
+    // MARK: - JSON Encode Failure Must Not Silently Drop Saved Data
+
+    /// A non-empty list must never encode to "[]". Collapsing to an empty array
+    /// on the write side would silently destroy the user's saved registered-roots
+    /// / known-patterns on the next persistence flush. This is the core invariant
+    /// the encode fix protects.
+    func test_encodeJSONStringArray_neverCollapsesNonEmptyInputToEmptyArray() {
+        let inputs: [[String]] = [
+            ["/Users/me/project"],
+            ["/a", "/b", "/c"],
+            ["pattern-with-\"quotes\"", "tab\there", "newline\nhere"],
+            ["unicode-✓-✗-🔥"]
+        ]
+        for input in inputs {
+            let encoded = SettingsManager.self.encodeJSONStringArray(input)
+            XCTAssertNotEqual(encoded, "[]", "non-empty input must not encode to empty array: \(input)")
+            let decoded = SettingsManager.self.decodeJSONStringArray(encoded)
+            XCTAssertFalse(decoded.isEmpty, "round-trip must preserve at least one value: \(input)")
+        }
+    }
+
+    /// The data-preserving fallback serializer must produce JSON that is byte-
+    /// identical (after the same normalization) to JSONEncoder for the subset of
+    /// characters needing escaping, so the fallback can never corrupt or drop a
+    /// value relative to the happy path.
+    func test_manualJSONSerializer_matchesJSONEncoderOutput() throws {
+        let cases: [[String]] = [
+            [],
+            ["plain"],
+            ["/Users/me/Projects/burn bar"],
+            ["needs \"escaping\" and \\ backslash"],
+            ["control\u{08}\u{0C}\n\r\t chars"],
+            ["unicode ✓ 🔥 é", "second"]
+        ]
+        for values in cases {
+            let manual = SettingsManager.self.manuallySerializeJSONStringArray(values)
+            let encoderData = try JSONEncoder().encode(values)
+            let encoder = try XCTUnwrap(String(data: encoderData, encoding: .utf8))
+            XCTAssertEqual(manual, encoder, "manual serializer must match JSONEncoder for \(values)")
+        }
+    }
+
+    /// The fallback serializer output must be parseable by Foundation's JSON
+    /// reader and decode losslessly, guaranteeing the user's data survives even
+    /// if the primary JSONEncoder path is unavailable.
+    func test_manualJSONSerializer_roundTripsLosslessly() throws {
+        let values = ["/path/one", "weird \"name\" \\ \t \n", "emoji 🔥", "trailing  "]
+        let serialized = SettingsManager.self.manuallySerializeJSONStringArray(values)
+        let data = try XCTUnwrap(serialized.data(using: .utf8))
+        let decoded = try JSONDecoder().decode([String].self, from: data)
+        XCTAssertEqual(decoded, values, "manual serialization must round-trip every value verbatim")
+    }
+
     // MARK: - Settings Change Persistence
 
     func test_settingProperty_triggersSave() {

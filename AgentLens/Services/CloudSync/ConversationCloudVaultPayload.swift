@@ -10,7 +10,9 @@ protocol ConversationCloudVaultKeyProviding: Sendable {
     func keyForReading(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey?
 }
 
-struct MacConversationCloudVaultKeyProvider: ConversationCloudVaultKeyProviding {
+// AUDIT(@unchecked Sendable): stores a non-Sendable Firebase `Firestore` override;
+// the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
+struct MacConversationCloudVaultKeyProvider: ConversationCloudVaultKeyProviding, @unchecked Sendable {
     private let firestoreOverride: Firestore?
 
     init(firestore: Firestore? = nil) {
@@ -164,7 +166,7 @@ enum ConversationCloudSealer {
                 if let bytes = try MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
                     data, uid: uid, collection: "conversations", docId: docId,
                     signalIdentity: signalIdentity, trustedSenderPublicKeys: trustedSenderPublicKeys
-                ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) {
+                ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) { // try?-ok(decode verified bytes, legacy fallback)
                     return payload
                 }
             } catch let signalError as OpenBurnBarSignalCoreError
@@ -215,7 +217,8 @@ enum ConversationCloudSealer {
         return String(text.prefix(500))
     }
 
-    static let plaintextFieldDeletes: [String: Any] = [
+    // Immutable Firestore field-delete sentinel map ([String: Any] can't be Sendable).
+    nonisolated(unsafe) static let plaintextFieldDeletes: [String: Any] = [
         "projectName": FieldValue.delete(),
         "keyFiles": FieldValue.delete(),
         "keyCommands": FieldValue.delete(),

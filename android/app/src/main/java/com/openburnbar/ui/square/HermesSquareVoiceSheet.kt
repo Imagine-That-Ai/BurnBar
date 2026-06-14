@@ -155,7 +155,8 @@ object AndroidVoiceIntentResolver {
 
     private fun resolveNonEmpty(cleaned: String, installedAgentNames: Map<String, String>, currentThreadAgentURI: String?): AndroidVoiceIntent {
         val lower = cleaned.lowercase()
-        val ambientPhrases = listOf("what's important", "whats important", "what is important", "give me the briefing", "ambient briefing", "what's new", "whats new")
+        val ambientPhrases =
+            listOf("what's important", "whats important", "what is important", "give me the briefing", "ambient briefing", "what's new", "whats new")
         if (ambientPhrases.any { lower.contains(it) }) return AndroidVoiceIntent.AmbientBriefing
         val searchPrefix = listOf("search for ", "search ", "find me ", "find ").firstOrNull { lower.startsWith(it) }
         if (searchPrefix != null) return AndroidVoiceIntent.Search(cleaned.drop(searchPrefix.length).trim())

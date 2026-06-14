@@ -157,11 +157,7 @@ fun MissionActivityOverlay(modifier: Modifier = Modifier, viewModel: MissionActi
 }
 
 @Composable
-private fun MissionActivityOverlayBody(
-    status: InsightsViewModel.MissionStatus,
-    interaction: MissionOverlayInteraction,
-    actions: MissionOverlayActions,
-) {
+private fun MissionActivityOverlayBody(status: InsightsViewModel.MissionStatus, interaction: MissionOverlayInteraction, actions: MissionOverlayActions) {
     when (val current = status) {
         InsightsViewModel.MissionStatus.Idle -> Unit
         is InsightsViewModel.MissionStatus.Tracking ->
@@ -181,11 +177,7 @@ private fun MissionActivityOverlayBody(
 }
 
 @Composable
-private fun MissionTrackingOverlayContent(
-    mission: CLIAgentMissionSnapshot,
-    interaction: MissionOverlayInteraction,
-    actions: MissionOverlayActions,
-) {
+private fun MissionTrackingOverlayContent(mission: CLIAgentMissionSnapshot, interaction: MissionOverlayInteraction, actions: MissionOverlayActions) {
     val isDismissed = interaction.isDismissed
     val dismissedSkillRunKeys = interaction.dismissedSkillRunKeys
     LaunchedEffect(
@@ -243,11 +235,7 @@ private fun MissionTrackingOverlayContent(
 }
 
 @Composable
-private fun MissionFailedOverlayContent(
-    isDismissed: Boolean,
-    onDismissedChange: (Boolean) -> Unit,
-    onOpenDetail: () -> Unit,
-) {
+private fun MissionFailedOverlayContent(isDismissed: Boolean, onDismissedChange: (Boolean) -> Unit, onOpenDetail: () -> Unit) {
     if (!isDismissed) {
         MissionAlertOrb(
             onClick = onOpenDetail,
@@ -289,7 +277,7 @@ internal fun SkillRunLiveTile(
         shadowElevation = 0.dp,
         modifier =
         Modifier
-            .padding(AuroraSpacing.lg.dp)
+            .padding(AuroraSpacing.LG.dp)
             .offset { tileOffset }
             .widthIn(max = 360.dp)
             .liquidGlassSurface(
@@ -323,11 +311,7 @@ internal fun SkillRunLiveTile(
     }
 }
 
-private fun Modifier.skillRunTileDragGesture(
-    onDraggingChange: (Boolean) -> Unit,
-    onDragBy: (IntOffset) -> Unit,
-    onDragSettled: () -> Unit,
-): Modifier =
+private fun Modifier.skillRunTileDragGesture(onDraggingChange: (Boolean) -> Unit, onDragBy: (IntOffset) -> Unit, onDragSettled: () -> Unit): Modifier =
     pointerInput(Unit) {
         detectDragGestures(
             onDragStart = { onDraggingChange(true) },
@@ -355,8 +339,8 @@ private fun SkillRunLiveTileContent(
     onReject: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.padding(AuroraSpacing.md.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        modifier = Modifier.padding(AuroraSpacing.MD.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         SkillRunLiveTileHeader(mission = mission, onPiP = onPiP, onDismiss = onDismiss)
         Text(
@@ -377,7 +361,7 @@ private fun SkillRunLiveTileContent(
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
             SkillRunTilePill(mission.displayStatus.uppercase(), accent)
             SkillRunTilePill(mission.deliveryMode.displayLabel, AuroraColors.whimsy)
         }
@@ -388,15 +372,11 @@ private fun SkillRunLiveTileContent(
 }
 
 @Composable
-private fun SkillRunLiveTileHeader(
-    mission: CLIAgentMissionSnapshot,
-    onPiP: () -> Unit,
-    onDismiss: () -> Unit,
-) {
+private fun SkillRunLiveTileHeader(mission: CLIAgentMissionSnapshot, onPiP: () -> Unit, onDismiss: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Filled.TextSnippet,
@@ -433,7 +413,7 @@ private fun SkillRunLiveTileHeader(
 
 @Composable
 private fun SkillRunApprovalActions(onApprove: () -> Unit, onReject: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         TextButton(onClick = onApprove) {
             Text(
                 text = "Approve",
@@ -477,7 +457,7 @@ internal fun MissionLiveOrb(mission: CLIAgentMissionSnapshot, onClick: () -> Uni
     var isDragging by remember { mutableStateOf(false) }
     val glowAlpha = missionLiveOrbGlowAlpha()
 
-    Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+    Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.padding(AuroraSpacing.LG.dp)) {
         AnimatedVisibility(
             visible = showTooltip,
             enter = scaleIn() + fadeIn(),
@@ -525,10 +505,7 @@ internal fun MissionLiveOrb(mission: CLIAgentMissionSnapshot, onClick: () -> Uni
 }
 
 @Composable
-private fun BoxScope.MissionLiveOrbSurface(
-    gesture: MissionLiveOrbGestureState,
-    content: @Composable () -> Unit,
-) {
+private fun BoxScope.MissionLiveOrbSurface(gesture: MissionLiveOrbGestureState, content: @Composable () -> Unit) {
     Surface(
         shape = CircleShape,
         color = Color.Transparent,
@@ -681,12 +658,7 @@ internal fun MissionAlertOrb(onClick: () -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun MissionTerminalOrb(
-    accent: Color,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    onDismiss: () -> Unit,
-) {
+private fun MissionTerminalOrb(accent: Color, icon: ImageVector, onClick: () -> Unit, onDismiss: () -> Unit) {
     var orbOffset by remember { mutableStateOf(IntOffset.Zero) }
     var isDragging by remember { mutableStateOf(false) }
 
@@ -696,7 +668,7 @@ private fun MissionTerminalOrb(
         shadowElevation = 0.dp,
         modifier =
         Modifier
-            .padding(AuroraSpacing.lg.dp)
+            .padding(AuroraSpacing.LG.dp)
             .offset { orbOffset }
             .pointerInput(Unit) {
                 detectDragGestures(
@@ -782,7 +754,7 @@ private fun RestoreDot(accent: Color, onRestore: () -> Unit) {
         onClick = onRestore,
         modifier =
         Modifier
-            .padding(AuroraSpacing.lg.dp)
+            .padding(AuroraSpacing.LG.dp)
             .size(24.dp),
     ) {
         Box(

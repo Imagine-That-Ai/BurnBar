@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.hermes
 
-import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
@@ -24,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.components.BreathingDot
 import com.openburnbar.ui.theme.AuroraColors
@@ -41,7 +41,7 @@ internal fun HermesChatTopBar(args: HermesChatTopBarArgs) {
                     fontSize = AuroraTypography.headline.sp,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 if (args.isConnected) BreathingDot(color = AuroraColors.success, size = 8)
             }
         },

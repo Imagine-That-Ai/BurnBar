@@ -5,8 +5,8 @@ package com.openburnbar.ui.components
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -40,8 +40,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -82,8 +82,8 @@ import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 @Composable
 fun AuroraGlassCard(
     modifier: Modifier = Modifier,
-    cornerRadius: Int = AuroraRadius.lg,
-    contentPadding: Dp = AuroraSpacing.md.dp,
+    cornerRadius: Int = AuroraRadius.LG,
+    contentPadding: Dp = AuroraSpacing.MD.dp,
     interactive: Boolean = false,
     onClick: (() -> Unit)? = null,
     shadow: AuroraShadowSpec = AuroraShadows.small,
@@ -213,11 +213,7 @@ private fun AuroraAnimatedBackdrop(isDark: Boolean, density: AuroraDensity, redu
  * the single dispatch point keeping all surfaces coherent.
  */
 @Composable
-fun WebsiteBackground(
-    accentColor: Color = AuroraColors.ember,
-    modifier: Modifier = Modifier,
-    forceLight: Boolean = false,
-) {
+fun WebsiteBackground(accentColor: Color = AuroraColors.ember, modifier: Modifier = Modifier, forceLight: Boolean = false) {
     val backgroundStyle by rememberBackgroundStyle()
     // Editorial forces the light dot-crest, so it bypasses the constellation
     // style and always renders the swarm in light mode.
@@ -281,11 +277,10 @@ private data class OrbMotion(
  * drift feeds the eased phase in). Extracted from the placement lambda so the
  * math is unit-testable without a composition.
  */
-internal fun auroraOrbDriftOffset(offsetA: Offset, offsetB: Offset, phase: Float): androidx.compose.ui.unit.IntOffset =
-    androidx.compose.ui.unit.IntOffset(
-        (offsetA.x + (offsetB.x - offsetA.x) * phase).toInt(),
-        (offsetA.y + (offsetB.y - offsetA.y) * phase).toInt(),
-    )
+internal fun auroraOrbDriftOffset(offsetA: Offset, offsetB: Offset, phase: Float): androidx.compose.ui.unit.IntOffset = androidx.compose.ui.unit.IntOffset(
+    (offsetA.x + (offsetB.x - offsetA.x) * phase).toInt(),
+    (offsetA.y + (offsetB.y - offsetA.y) * phase).toInt(),
+)
 
 @Composable
 private fun Orb(color: Color, baseAlpha: Float, size: androidx.compose.ui.unit.Dp, motion: OrbMotion) {
@@ -569,13 +564,13 @@ fun Modifier.breathingPulse(reduceMotion: Boolean = LocalAuroraReduceMotion.curr
 fun <T> ChipSelector(items: List<T>, selected: T, onSelect: (T) -> Unit, labelProvider: (T) -> String = { it.toString() }, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         items.forEach { item ->
             val isSelected = item == selected
             Surface(
                 onClick = { onSelect(item) },
-                shape = RoundedCornerShape(AuroraRadius.full.dp),
+                shape = RoundedCornerShape(AuroraRadius.FULL.dp),
                 color =
                 if (isSelected) {
                     AuroraColors.ember.copy(alpha = 0.15f)
@@ -591,7 +586,7 @@ fun <T> ChipSelector(items: List<T>, selected: T, onSelect: (T) -> Unit, labelPr
             ) {
                 Text(
                     text = labelProvider(item),
-                    modifier = Modifier.padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+                    modifier = Modifier.padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
                     fontSize = AuroraTypography.caption.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                     color =
@@ -625,7 +620,7 @@ fun ShimmerCard(height: Int = 120, modifier: Modifier = Modifier) {
         modifier
             .fillMaxWidth()
             .height(height.dp)
-            .clip(RoundedCornerShape(AuroraRadius.lg.dp))
+            .clip(RoundedCornerShape(AuroraRadius.LG.dp))
             .background(
                 Brush.linearGradient(
                     colors =
@@ -648,7 +643,7 @@ fun EmptyStateView(icon: ImageVector = Icons.Default.Info, title: String, messag
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(AuroraSpacing.xxxl.dp),
+            .padding(AuroraSpacing.XXXL.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -657,14 +652,14 @@ fun EmptyStateView(icon: ImageVector = Icons.Default.Info, title: String, messag
             modifier = Modifier.size(48.dp),
             tint = AuroraColors.whimsy.copy(alpha = 0.5f),
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         Text(
             text = title,
             fontSize = AuroraTypography.title.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
         Text(
             text = message,
             fontSize = AuroraTypography.body.sp,
@@ -672,7 +667,7 @@ fun EmptyStateView(icon: ImageVector = Icons.Default.Info, title: String, messag
             textAlign = TextAlign.Center,
         )
         if (onRetry != null) {
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
             Button(onClick = onRetry) {
                 Text(retryLabel)
             }
@@ -693,7 +688,7 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: (@Compos
         modifier =
         modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -709,14 +704,14 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier, action: (@Compos
 
 // ── Mercury Shimmer Overlay (Hermes) ──
 @Composable
-fun MercuryShimmerOverlay(modifier: Modifier = Modifier, cornerRadius: Int = AuroraRadius.lg) {
+fun MercuryShimmerOverlay(modifier: Modifier = Modifier, cornerRadius: Int = AuroraRadius.LG) {
     val infiniteTransition = rememberInfiniteTransition()
     val shimmer by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec =
         infiniteRepeatable(
-            animation = tween(AuroraMotion.mercuryShimmerDuration.toInt(), easing = LinearEasing),
+            animation = tween(AuroraMotion.MERCURY_SHIMMER_DURATION.toInt(), easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
     )

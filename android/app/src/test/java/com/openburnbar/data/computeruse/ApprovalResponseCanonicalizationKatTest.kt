@@ -122,27 +122,25 @@ class ApprovalResponseCanonicalizationKatTest {
         assertNull(reducer.state.value.pendingApproval)
     }
 
-    private fun sampleApprovalRequest(): HermesRealtimeRelayApprovalRequest =
-        HermesRealtimeRelayApprovalRequest(
-            approvalId = "approval-123",
-            runId = "run-1",
-            sessionId = "session-1",
-            toolKind = "bash",
-            title = "Run command",
-            message = "rm -rf build",
-            actionSummary = "delete build dir",
-            requestedAt = 721_692_800.0,
-        )
+    private fun sampleApprovalRequest(): HermesRealtimeRelayApprovalRequest = HermesRealtimeRelayApprovalRequest(
+        approvalId = "approval-123",
+        runId = "run-1",
+        sessionId = "session-1",
+        toolKind = "bash",
+        title = "Run command",
+        message = "rm -rf build",
+        actionSummary = "delete build dir",
+        requestedAt = 721_692_800.0,
+    )
 
     private fun approvalRequestFrame(
         request: HermesRealtimeRelayApprovalRequest,
         uid: String,
         connectionId: String,
-    ): com.openburnbar.irohrelay.HermesRealtimeRelayFrame =
-        com.openburnbar.irohrelay.HermesRealtimeRelayFrame(
-            type = com.openburnbar.irohrelay.HermesRealtimeRelayFrameType.CONTROL_APPROVAL_REQUEST,
-            uid = uid,
-            connectionId = connectionId,
-            control = com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload(approvalRequest = request),
-        )
+    ): com.openburnbar.irohrelay.HermesRealtimeRelayFrame = com.openburnbar.irohrelay.HermesRealtimeRelayFrame(
+        type = com.openburnbar.irohrelay.HermesRealtimeRelayFrameType.CONTROL_APPROVAL_REQUEST,
+        uid = uid,
+        connectionId = connectionId,
+        control = com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload(approvalRequest = request),
+    )
 }

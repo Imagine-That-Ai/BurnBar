@@ -3,6 +3,9 @@
 package com.openburnbar.ui.media
 
 import android.view.SurfaceView
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -11,6 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -21,6 +31,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -28,17 +39,6 @@ import com.openburnbar.data.media.VideoReceivePipeline
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 
 @Composable
 internal fun rememberScreenShareViewerLocals(selectedDisplayId: String?): ScreenShareViewerLocals {
@@ -68,11 +68,7 @@ internal fun rememberScreenShareViewerLocals(selectedDisplayId: String?): Screen
 }
 
 @Composable
-internal fun ScreenShareViewerScreenBody(
-    modifier: Modifier,
-    inputs: ScreenShareViewerScreenInputs,
-    route: ScreenShareViewerScreenRouteCallbacks,
-) {
+internal fun ScreenShareViewerScreenBody(modifier: Modifier, inputs: ScreenShareViewerScreenInputs, route: ScreenShareViewerScreenRouteCallbacks) {
     val locals = rememberScreenShareViewerLocals(inputs.selectedDisplayId)
     val stats by inputs.pipeline.stats.collectAsState()
     val phase by inputs.pipeline.phase.collectAsState()
@@ -434,10 +430,7 @@ private fun ScreenShareViewerVideoSurface(
 }
 
 @Composable
-private fun ScreenShareViewerControlGestureLayer(
-    uiState: ScreenShareViewerGestureUiState,
-    uiCallbacks: ScreenShareViewerGestureUiCallbacks,
-) {
+private fun ScreenShareViewerControlGestureLayer(uiState: ScreenShareViewerGestureUiState, uiCallbacks: ScreenShareViewerGestureUiCallbacks) {
     if (uiState.controlMode == ScreenMirrorControlMode.VIEW || !uiState.standardControlEnabled) return
 
     Box(
@@ -549,11 +542,7 @@ private fun handleScreenShareGestureUp(
     }
 }
 
-private fun normalizedGesturePoint(
-    position: Offset,
-    scopeSize: IntSize,
-    uiState: ScreenShareViewerGestureUiState,
-): Pair<Double, Double>? =
+private fun normalizedGesturePoint(position: Offset, scopeSize: IntSize, uiState: ScreenShareViewerGestureUiState): Pair<Double, Double>? =
     ScreenMirrorInputPolicy.normalizedPoint(
         position,
         scopeSize,
@@ -736,39 +725,35 @@ private fun rememberScreenShareZoomHandlers(
     )
 }
 
-private fun ScreenShareViewerMainUiState.toGestureUiState(): ScreenShareViewerGestureUiState =
-    ScreenShareViewerGestureUiState(
-        controlMode = controlMode,
-        fit = fit,
-        aspect = aspect,
-        standardControlEnabled = standardControlEnabled,
-        smartZoomDecision = smartZoomDecision,
-        activeDisplayId = activeDisplayId,
-        tapCount = tapCount,
-        lastTapAt = lastTapAt,
-        dragActive = dragActive,
-        dragStartNormalized = dragStartNormalized,
-        pressStartedAt = pressStartedAt,
-        statsVisible = statsVisible,
-    )
+private fun ScreenShareViewerMainUiState.toGestureUiState(): ScreenShareViewerGestureUiState = ScreenShareViewerGestureUiState(
+    controlMode = controlMode,
+    fit = fit,
+    aspect = aspect,
+    standardControlEnabled = standardControlEnabled,
+    smartZoomDecision = smartZoomDecision,
+    activeDisplayId = activeDisplayId,
+    tapCount = tapCount,
+    lastTapAt = lastTapAt,
+    dragActive = dragActive,
+    dragStartNormalized = dragStartNormalized,
+    pressStartedAt = pressStartedAt,
+    statsVisible = statsVisible,
+)
 
-private fun ScreenShareViewerMainUiCallbacks.toGestureUiCallbacks(): ScreenShareViewerGestureUiCallbacks =
-    ScreenShareViewerGestureUiCallbacks(
-        onTapCount = onTapCount,
-        onLastTapAt = onLastTapAt,
-        onDragActive = onDragActive,
-        onDragStartNormalized = onDragStartNormalized,
-        onPressStartedAt = onPressStartedAt,
-        onStatsVisible = onStatsVisible,
-        onCoPilotTargetChange = onCoPilotTargetChange,
-        onCoPilotViewPointChange = onCoPilotViewPointChange,
-        onTapNormalized = onTapNormalized,
-        onScrollDragNormalized = onScrollDragNormalized,
-    )
+private fun ScreenShareViewerMainUiCallbacks.toGestureUiCallbacks(): ScreenShareViewerGestureUiCallbacks = ScreenShareViewerGestureUiCallbacks(
+    onTapCount = onTapCount,
+    onLastTapAt = onLastTapAt,
+    onDragActive = onDragActive,
+    onDragStartNormalized = onDragStartNormalized,
+    onPressStartedAt = onPressStartedAt,
+    onStatsVisible = onStatsVisible,
+    onCoPilotTargetChange = onCoPilotTargetChange,
+    onCoPilotViewPointChange = onCoPilotViewPointChange,
+    onTapNormalized = onTapNormalized,
+    onScrollDragNormalized = onScrollDragNormalized,
+)
 
-private fun ScreenShareViewerMainUiState.toModeOverlayParams(
-    uiCallbacks: ScreenShareViewerMainUiCallbacks,
-): ScreenShareViewerModeOverlayParams =
+private fun ScreenShareViewerMainUiState.toModeOverlayParams(uiCallbacks: ScreenShareViewerMainUiCallbacks): ScreenShareViewerModeOverlayParams =
     ScreenShareViewerModeOverlayParams(
         controlMode = controlMode,
         standardControlEnabled = standardControlEnabled,
@@ -792,9 +777,7 @@ private fun ScreenShareViewerMainUiState.toModeOverlayParams(
         onPointerClick = uiCallbacks.onPointerClick,
     )
 
-private fun ScreenShareViewerMainUiState.toStatusOverlayParams(
-    uiCallbacks: ScreenShareViewerMainUiCallbacks,
-): ScreenShareViewerStatusOverlayParams =
+private fun ScreenShareViewerMainUiState.toStatusOverlayParams(uiCallbacks: ScreenShareViewerMainUiCallbacks): ScreenShareViewerStatusOverlayParams =
     ScreenShareViewerStatusOverlayParams(
         statusText = statusText,
         statsVisible = statsVisible,
@@ -812,72 +795,63 @@ private fun ScreenShareViewerMainUiState.toStatusOverlayParams(
         ),
     )
 
-private fun mirrorDockUiStateFromMain(uiState: ScreenShareViewerMainUiState): MirrorDockUiState =
-    buildMirrorDockUiState(uiState)
+private fun mirrorDockUiStateFromMain(uiState: ScreenShareViewerMainUiState): MirrorDockUiState = buildMirrorDockUiState(uiState)
 
 private fun mirrorDockActionsFromMain(
     uiState: ScreenShareViewerMainUiState,
     uiCallbacks: ScreenShareViewerMainUiCallbacks,
     zoomHandlers: ScreenShareZoomHandlers,
-): MirrorDockActions =
-    buildMirrorDockActions(MirrorDockActionsBuildInput(uiState, uiCallbacks, zoomHandlers))
+): MirrorDockActions = buildMirrorDockActions(MirrorDockActionsBuildInput(uiState, uiCallbacks, zoomHandlers))
 
-private fun buildMirrorDockUiState(uiState: ScreenShareViewerMainUiState): MirrorDockUiState =
-    MirrorDockUiState(
-        collapsed = uiState.toolsCollapsed,
-        openGroup = uiState.openGroup,
-        fit = uiState.fit,
-        controlMode = uiState.controlMode,
-        typingOpen = uiState.typingOpen,
-        statsVisible = uiState.statsVisible,
-        phaseLabel =
-        when (uiState.phase) {
-            VideoReceivePipeline.Phase.Idle -> "Preparing"
-            is VideoReceivePipeline.Phase.Running ->
-                when {
-                    uiState.stats.queuedFrameCount == 0L -> "Waiting"
-                    uiState.streamNeedsRecovery -> "Recovering"
-                    else -> "Live"
-                }
-            is VideoReceivePipeline.Phase.Failed -> "Decoder"
-            VideoReceivePipeline.Phase.Stopped -> "Stopped"
-        },
-        trayScale = uiState.trayScale,
-        stats = uiState.stats,
-        availableDisplays = uiState.availableDisplays,
-        activeDisplayId = uiState.activeDisplayId,
-        smartZoomMode = uiState.smartZoomMode,
-        smartZoomAutoFollowing = uiState.smartZoomDecision.isAutoFollowing,
-        autoKeyboardOnTextFocus = uiState.autoKeyboardOnTextFocus,
-        controlStatus =
-        if (uiState.activeRemoteUnlockState != null) {
-            "Mac locked. Remote Unlock controls only."
-        } else {
-            uiState.controlStatus
-        },
-        isZoomed = uiState.smartZoomDecision.scale > 1.01f,
-    )
+private fun buildMirrorDockUiState(uiState: ScreenShareViewerMainUiState): MirrorDockUiState = MirrorDockUiState(
+    collapsed = uiState.toolsCollapsed,
+    openGroup = uiState.openGroup,
+    fit = uiState.fit,
+    controlMode = uiState.controlMode,
+    typingOpen = uiState.typingOpen,
+    statsVisible = uiState.statsVisible,
+    phaseLabel =
+    when (uiState.phase) {
+        VideoReceivePipeline.Phase.Idle -> "Preparing"
+        is VideoReceivePipeline.Phase.Running ->
+            when {
+                uiState.stats.queuedFrameCount == 0L -> "Waiting"
+                uiState.streamNeedsRecovery -> "Recovering"
+                else -> "Live"
+            }
+        is VideoReceivePipeline.Phase.Failed -> "Decoder"
+        VideoReceivePipeline.Phase.Stopped -> "Stopped"
+    },
+    trayScale = uiState.trayScale,
+    stats = uiState.stats,
+    availableDisplays = uiState.availableDisplays,
+    activeDisplayId = uiState.activeDisplayId,
+    smartZoomMode = uiState.smartZoomMode,
+    smartZoomAutoFollowing = uiState.smartZoomDecision.isAutoFollowing,
+    autoKeyboardOnTextFocus = uiState.autoKeyboardOnTextFocus,
+    controlStatus =
+    if (uiState.activeRemoteUnlockState != null) {
+        "Mac locked. Remote Unlock controls only."
+    } else {
+        uiState.controlStatus
+    },
+    isZoomed = uiState.smartZoomDecision.scale > 1.01f,
+)
 
-private fun mirrorDockSelectDisplayAction(
-    uiCallbacks: ScreenShareViewerMainUiCallbacks,
-): (String) -> Unit =
-    { displayId ->
-        uiCallbacks.onActiveDisplayId(displayId)
-        uiCallbacks.onSelectDisplay(displayId)
+private fun mirrorDockSelectDisplayAction(uiCallbacks: ScreenShareViewerMainUiCallbacks): (String) -> Unit = { displayId ->
+    uiCallbacks.onActiveDisplayId(displayId)
+    uiCallbacks.onSelectDisplay(displayId)
+}
+
+private fun mirrorDockSelectSmartZoomModeAction(uiCallbacks: ScreenShareViewerMainUiCallbacks): (SmartZoomMode) -> Unit = { mode ->
+    uiCallbacks.onSmartZoomModeName(mode.name)
+    uiCallbacks.onSmartZoomManualOverrideUntilMillis(null)
+    if (mode == SmartZoomMode.OFF) {
+        uiCallbacks.onSmartZoomDecision(ScreenShareSmartZoomDecision.identity)
+    } else {
+        uiCallbacks.onRecomputeSmartZoom()
     }
-
-private fun mirrorDockSelectSmartZoomModeAction(
-    uiCallbacks: ScreenShareViewerMainUiCallbacks,
-): (SmartZoomMode) -> Unit =
-    { mode ->
-        uiCallbacks.onSmartZoomModeName(mode.name)
-        uiCallbacks.onSmartZoomManualOverrideUntilMillis(null)
-        if (mode == SmartZoomMode.OFF) {
-            uiCallbacks.onSmartZoomDecision(ScreenShareSmartZoomDecision.identity)
-        } else {
-            uiCallbacks.onRecomputeSmartZoom()
-        }
-    }
+}
 
 private fun buildMirrorDockActions(input: MirrorDockActionsBuildInput): MirrorDockActions {
     val uiState = input.uiState
@@ -938,47 +912,46 @@ private fun Modifier.screenShareSmartZoomPinchModifier(
     onSmartZoomManualOverride: () -> Unit,
     onSmartZoomDecision: (ScreenShareSmartZoomDecision) -> Unit,
     onLastInteraction: () -> Unit,
-): Modifier =
-    pointerInput(fit, aspect, smartZoomDecision) {
-        awaitPointerEventScope {
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                onLastInteraction()
-                val activePointers = event.changes.filter { it.pressed }
-                if (activePointers.size >= 2) {
-                    val p1 = activePointers[0]
-                    val p2 = activePointers[1]
-                    val currentDist = (p1.position - p2.position).getDistance()
-                    val prevDist = (p1.previousPosition - p2.previousPosition).getDistance()
-                    if (prevDist > 0f && currentDist > 0f) {
-                        val scaleMultiplier = currentDist / prevDist
-                        val currentCentroid = (p1.position + p2.position) / 2f
-                        val prevCentroid = (p1.previousPosition + p2.previousPosition) / 2f
-                        val panDelta = currentCentroid - prevCentroid
-                        onSmartZoomManualOverride()
-                        val currentScale = smartZoomDecision.scale
-                        val currentTranslation = smartZoomDecision.translation
-                        val newScale = (currentScale * scaleMultiplier).coerceIn(1f, 5f)
-                        val halfW = size.width / 2f
-                        val halfH = size.height / 2f
-                        val centroidX = currentCentroid.x - halfW
-                        val centroidY = currentCentroid.y - halfH
-                        var newTranslationX = (currentTranslation.x - centroidX) * scaleMultiplier + centroidX + panDelta.x
-                        var newTranslationY = (currentTranslation.y - centroidY) * scaleMultiplier + centroidY + panDelta.y
-                        val maxTransX = halfW * (newScale - 1f)
-                        val maxTransY = halfH * (newScale - 1f)
-                        newTranslationX = newTranslationX.coerceIn(-maxTransX, maxTransX)
-                        newTranslationY = newTranslationY.coerceIn(-maxTransY, maxTransY)
-                        onSmartZoomDecision(
-                            ScreenShareSmartZoomDecision(
-                                scale = newScale,
-                                translation = Offset(newTranslationX, newTranslationY),
-                                isAutoFollowing = false,
-                            ),
-                        )
-                    }
-                    event.changes.forEach { it.consume() }
+): Modifier = pointerInput(fit, aspect, smartZoomDecision) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            onLastInteraction()
+            val activePointers = event.changes.filter { it.pressed }
+            if (activePointers.size >= 2) {
+                val p1 = activePointers[0]
+                val p2 = activePointers[1]
+                val currentDist = (p1.position - p2.position).getDistance()
+                val prevDist = (p1.previousPosition - p2.previousPosition).getDistance()
+                if (prevDist > 0f && currentDist > 0f) {
+                    val scaleMultiplier = currentDist / prevDist
+                    val currentCentroid = (p1.position + p2.position) / 2f
+                    val prevCentroid = (p1.previousPosition + p2.previousPosition) / 2f
+                    val panDelta = currentCentroid - prevCentroid
+                    onSmartZoomManualOverride()
+                    val currentScale = smartZoomDecision.scale
+                    val currentTranslation = smartZoomDecision.translation
+                    val newScale = (currentScale * scaleMultiplier).coerceIn(1f, 5f)
+                    val halfW = size.width / 2f
+                    val halfH = size.height / 2f
+                    val centroidX = currentCentroid.x - halfW
+                    val centroidY = currentCentroid.y - halfH
+                    var newTranslationX = (currentTranslation.x - centroidX) * scaleMultiplier + centroidX + panDelta.x
+                    var newTranslationY = (currentTranslation.y - centroidY) * scaleMultiplier + centroidY + panDelta.y
+                    val maxTransX = halfW * (newScale - 1f)
+                    val maxTransY = halfH * (newScale - 1f)
+                    newTranslationX = newTranslationX.coerceIn(-maxTransX, maxTransX)
+                    newTranslationY = newTranslationY.coerceIn(-maxTransY, maxTransY)
+                    onSmartZoomDecision(
+                        ScreenShareSmartZoomDecision(
+                            scale = newScale,
+                            translation = Offset(newTranslationX, newTranslationY),
+                            isAutoFollowing = false,
+                        ),
+                    )
                 }
+                event.changes.forEach { it.consume() }
             }
         }
     }
+}

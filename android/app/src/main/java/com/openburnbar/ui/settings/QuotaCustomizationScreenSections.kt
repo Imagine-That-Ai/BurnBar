@@ -69,11 +69,7 @@ import com.openburnbar.ui.theme.AuroraTypography
 import kotlin.math.roundToInt
 
 @Composable
-internal fun QuotaCustomizationScaffold(
-    isDark: Boolean,
-    actions: QuotaCustomizationActions,
-    content: @Composable () -> Unit,
-) {
+internal fun QuotaCustomizationScaffold(isDark: Boolean, actions: QuotaCustomizationActions, content: @Composable () -> Unit) {
     Column(
         modifier =
         Modifier
@@ -81,10 +77,10 @@ internal fun QuotaCustomizationScaffold(
             .background(
                 if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground,
             )
-            .padding(horizontal = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
         QuotaCustomizationHeader(onBack = actions.onBack)
         content()
     }
@@ -103,7 +99,7 @@ internal fun QuotaCustomizationHeader(onBack: () -> Unit) {
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             text = "Quota Customisation",
             style = AuroraType.displayLarge,
@@ -124,10 +120,7 @@ internal fun QuotaCustomizationSectionLabel(text: String) {
 }
 
 @Composable
-internal fun QuotaCustomizationPreviewCard(
-    mockBucket: QuotaBucket,
-    percentageDisplayMode: String,
-) {
+internal fun QuotaCustomizationPreviewCard(mockBucket: QuotaBucket, percentageDisplayMode: String) {
     QuotaCustomizationSectionLabel(text = "LIVE PREVIEW")
     Spacer(modifier = Modifier.height(4.dp))
     AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -139,16 +132,13 @@ internal fun QuotaCustomizationPreviewCard(
 }
 
 @Composable
-private fun QuotaCustomizationPreviewCardBody(
-    mockBucket: QuotaBucket,
-    percentageDisplayMode: String,
-) {
+private fun QuotaCustomizationPreviewCardBody(mockBucket: QuotaBucket, percentageDisplayMode: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
     ) {
         ProviderLogo(provider = AgentProvider.CLAUDE_CODE, size = 32.dp)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Monthly limit",
@@ -169,10 +159,7 @@ private fun QuotaCustomizationPreviewCardBody(
 }
 
 @Composable
-private fun QuotaCustomizationPreviewMetrics(
-    mockBucket: QuotaBucket,
-    percentageDisplayMode: String,
-) {
+private fun QuotaCustomizationPreviewMetrics(mockBucket: QuotaBucket, percentageDisplayMode: String) {
     Column(horizontalAlignment = Alignment.End) {
         val pct = mockBucket.displayRemainingPercent?.roundToInt() ?: 20
         Text(
@@ -194,18 +181,13 @@ private fun QuotaCustomizationPreviewMetrics(
     }
 }
 
-private fun quotaPreviewPrimaryText(
-    mockBucket: QuotaBucket,
-    percentageDisplayMode: String,
-    pct: Int,
-): String =
-    when (percentageDisplayMode) {
-        "remainingPercent" -> "$pct%"
-        "usedPercent" -> "${100 - pct}%"
-        "fractional" -> "%.2f".format(pct / 100.0)
-        "absoluteValues" -> mockBucket.formatValue(mockBucket.remaining)
-        else -> "$pct%"
-    }
+private fun quotaPreviewPrimaryText(mockBucket: QuotaBucket, percentageDisplayMode: String, pct: Int): String = when (percentageDisplayMode) {
+    "remainingPercent" -> "$pct%"
+    "usedPercent" -> "${100 - pct}%"
+    "fractional" -> "%.2f".format(pct / 100.0)
+    "absoluteValues" -> mockBucket.formatValue(mockBucket.remaining)
+    else -> "$pct%"
+}
 
 private val quotaDisplayModeOptions =
     listOf(
@@ -216,19 +198,15 @@ private val quotaDisplayModeOptions =
     )
 
 @Composable
-internal fun QuotaCustomizationFormatSelector(
-    percentageDisplayMode: String,
-    onSelectMode: (String) -> Unit,
-    onHaptic: () -> Unit,
-) {
+internal fun QuotaCustomizationFormatSelector(percentageDisplayMode: String, onSelectMode: (String) -> Unit, onHaptic: () -> Unit) {
     QuotaCustomizationSectionLabel(text = "PERCENTAGE DISPLAY FORMAT")
     Spacer(modifier = Modifier.height(4.dp))
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.lg.dp),
+        shape = RoundedCornerShape(AuroraRadius.LG.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
     ) {
-        Column(modifier = Modifier.padding(AuroraSpacing.sm.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.SM.dp)) {
             quotaDisplayModeOptions.forEach { (mode, label) ->
                 QuotaCustomizationFormatOptionRow(
                     mode = mode,
@@ -243,13 +221,7 @@ internal fun QuotaCustomizationFormatSelector(
 }
 
 @Composable
-private fun QuotaCustomizationFormatOptionRow(
-    mode: String,
-    label: String,
-    selected: Boolean,
-    onSelectMode: (String) -> Unit,
-    onHaptic: () -> Unit,
-) {
+private fun QuotaCustomizationFormatOptionRow(mode: String, label: String, selected: Boolean, onSelectMode: (String) -> Unit, onHaptic: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -259,7 +231,7 @@ private fun QuotaCustomizationFormatOptionRow(
                 onSelectMode(mode)
                 onHaptic()
             }
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
     ) {
         RadioButton(
             selected = selected,
@@ -268,7 +240,7 @@ private fun QuotaCustomizationFormatOptionRow(
                 onHaptic()
             },
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             text = label,
             fontSize = AuroraTypography.body.sp,
@@ -284,13 +256,9 @@ private fun QuotaCustomizationFormatOptionRow(
 }
 
 @Composable
-internal fun QuotaCustomizationContent(
-    state: QuotaCustomizationUiState,
-    actions: QuotaCustomizationActions,
-    modifier: Modifier = Modifier,
-) {
+internal fun QuotaCustomizationContent(state: QuotaCustomizationUiState, actions: QuotaCustomizationActions, modifier: Modifier = Modifier) {
     LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
         modifier = modifier.fillMaxSize(),
     ) {
         item {
@@ -314,15 +282,12 @@ internal fun QuotaCustomizationContent(
             actions = actions,
         )
         item {
-            Spacer(modifier = Modifier.height(AuroraSpacing.xxl.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XXL.dp))
         }
     }
 }
 
-internal fun LazyListScope.quotaCustomizationProviderItems(
-    state: QuotaCustomizationUiState,
-    actions: QuotaCustomizationActions,
-) {
+internal fun LazyListScope.quotaCustomizationProviderItems(state: QuotaCustomizationUiState, actions: QuotaCustomizationActions) {
     itemsIndexed(state.providerOrder) { idx, provider ->
         QuotaCustomizationProviderCard(
             context =
@@ -348,7 +313,7 @@ internal fun QuotaCustomizationProviderCard(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.lg.dp),
+        shape = RoundedCornerShape(AuroraRadius.LG.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = if (context.isVisible) 0.6f else 0.3f),
     ) {
         Column {
@@ -382,7 +347,7 @@ internal fun QuotaCustomizationProviderRowHeader(
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(AuroraSpacing.md.dp),
+            .padding(AuroraSpacing.MD.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(
@@ -394,9 +359,9 @@ internal fun QuotaCustomizationProviderRowHeader(
                 actions.onHaptic()
             },
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         ProviderLogo(provider = provider, size = 28.dp)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         QuotaCustomizationProviderTitleColumn(
             provider = provider,
             isVisible = isVisible,
@@ -409,7 +374,7 @@ internal fun QuotaCustomizationProviderRowHeader(
             onProviderOrder = actions.onProviderOrder,
             onHaptic = actions.onHaptic,
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         QuotaCustomizationProviderExpandButton(
             isExpanded = isExpanded,
             providerKey = provider.key,
@@ -419,11 +384,7 @@ internal fun QuotaCustomizationProviderRowHeader(
 }
 
 @Composable
-private fun RowScope.QuotaCustomizationProviderTitleColumn(
-    provider: AgentProvider,
-    isVisible: Boolean,
-    matchingSnapshot: ProviderQuotaSnapshot?,
-) {
+private fun RowScope.QuotaCustomizationProviderTitleColumn(provider: AgentProvider, isVisible: Boolean, matchingSnapshot: ProviderQuotaSnapshot?) {
     Column(modifier = Modifier.weight(1f)) {
         Text(
             text = provider.displayName,
@@ -453,7 +414,7 @@ private fun QuotaCustomizationProviderReorderButtons(
     onProviderOrder: (List<AgentProvider>) -> Unit,
     onHaptic: () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         IconButton(
             onClick = {
                 if (index > 0) {
@@ -498,11 +459,7 @@ private fun QuotaCustomizationProviderReorderButtons(
 }
 
 @Composable
-private fun QuotaCustomizationProviderExpandButton(
-    isExpanded: Boolean,
-    providerKey: String,
-    onExpandedProviderKey: (String?) -> Unit,
-) {
+private fun QuotaCustomizationProviderExpandButton(isExpanded: Boolean, providerKey: String, onExpandedProviderKey: (String?) -> Unit) {
     val expandRotation by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
         animationSpec = tween(durationMillis = 200),
@@ -536,7 +493,7 @@ internal fun QuotaCustomizationProviderBucketsAccordion(
             Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
+                .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
         ) {
             QuotaCustomizationProviderBucketsPanel(
                 provider = context.provider,
@@ -565,7 +522,7 @@ private fun QuotaCustomizationProviderBucketsPanel(
             text = "No dynamic buckets reported for this provider yet.",
             fontSize = AuroraTypography.caption.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(AuroraSpacing.md.dp),
+            modifier = Modifier.padding(AuroraSpacing.MD.dp),
         )
         return
     }
@@ -626,7 +583,7 @@ private fun QuotaCustomizationBucketRow(
                 actions.onHaptic()
             },
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         QuotaCustomizationBucketLabelColumn(bucket = bucket)
         QuotaCustomizationBucketReorderButtons(
             bucketIndex = bucketIndex,

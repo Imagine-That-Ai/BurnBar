@@ -4,10 +4,10 @@ import Foundation
 // concurrent use. `UserDefaults` is thread-safe for value access/mutation, and
 // this module additionally funnels high-volume settings writes through
 // `SettingsPersistenceCoordinator`.
-extension FileManager: @retroactive @unchecked Sendable {}
-extension UserDefaults: @retroactive @unchecked Sendable {}
-extension NSDictionary: @retroactive @unchecked Sendable {}
-extension KeyPath: @retroactive @unchecked Sendable {}
+extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
+extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
+extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
+extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
 
 public struct FileSignature: Codable, Equatable, Sendable {
     public let modifiedAt: TimeInterval

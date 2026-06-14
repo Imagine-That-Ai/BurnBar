@@ -9,14 +9,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -92,11 +92,11 @@ internal fun TextExpansionSettingsScreenContent(onBack: () -> Unit, state: TextE
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = colors.backgroundCol),
                 )
-            }
+            },
         ) { padding ->
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = AuroraSpacing.lg.dp),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = AuroraSpacing.LG.dp),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
             ) {
                 textExpansionSettingsItems(state)
             }
@@ -122,28 +122,28 @@ internal fun LazyListScope.textExpansionSettingsItems(state: TextExpansionSettin
             modifier = Modifier.animateItem(),
         )
     }
-    item { Spacer(modifier = Modifier.height(AuroraSpacing.xxl.dp)) }
+    item { Spacer(modifier = Modifier.height(AuroraSpacing.XXL.dp)) }
 }
 
 @Composable
 internal fun TextExpansionImeSection(state: TextExpansionSettingsState) {
     val colors = state.colors
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         Button(
             onClick = state.openKeyboardSettings,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = AuroraColors.amber),
-            shape = RoundedCornerShape(AuroraRadius.sm.dp),
+            shape = RoundedCornerShape(AuroraRadius.SM.dp),
         ) {
             Icon(Icons.Filled.Keyboard, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text("Open Android Keyboard Settings", style = AuroraType.caption)
         }
         Text(
             "Enable OpenBurnBar Snippets keyboard in Android settings to expand &&triggers in any app.",
             style = AuroraType.tiny,
             color = colors.textMutedColor,
-            modifier = Modifier.padding(horizontal = AuroraSpacing.xs.dp),
+            modifier = Modifier.padding(horizontal = AuroraSpacing.XS.dp),
         )
     }
 }
@@ -152,19 +152,24 @@ internal fun TextExpansionImeSection(state: TextExpansionSettingsState) {
 internal fun TextExpansionCloudSyncSection(state: TextExpansionSettingsState) {
     val colors = state.colors
     Surface(
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
+        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.MD.dp)),
     ) {
         Box {
             Box(
                 modifier = Modifier.width(3.dp).align(Alignment.CenterStart).matchParentSize().background(
-                    Brush.verticalGradient(listOf(AuroraColors.whimsy, AuroraColors.teal))
-                )
+                    Brush.verticalGradient(listOf(AuroraColors.whimsy, AuroraColors.teal)),
+                ),
             )
             Column(
-                modifier = Modifier.padding(start = AuroraSpacing.lg.dp + 3.dp, top = AuroraSpacing.lg.dp, end = AuroraSpacing.lg.dp, bottom = AuroraSpacing.lg.dp),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+                modifier = Modifier.padding(
+                    start = AuroraSpacing.LG.dp + 3.dp,
+                    top = AuroraSpacing.LG.dp,
+                    end = AuroraSpacing.LG.dp,
+                    bottom = AuroraSpacing.LG.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
             ) {
                 Text("CLOUD SYNC", style = AuroraType.tiny, color = colors.textMutedColor, letterSpacing = 1.4.dp.value.sp)
                 AuroraSettingsToggle(
@@ -179,10 +184,10 @@ internal fun TextExpansionCloudSyncSection(state: TextExpansionSettingsState) {
                         onClick = state.syncNow,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = AuroraColors.ember),
-                        shape = RoundedCornerShape(AuroraRadius.full.dp),
+                        shape = RoundedCornerShape(AuroraRadius.FULL.dp),
                     ) {
                         Icon(Icons.Filled.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                         Text("Sync Now", style = AuroraType.caption)
                     }
                 }
@@ -194,19 +199,24 @@ internal fun TextExpansionCloudSyncSection(state: TextExpansionSettingsState) {
 @Composable
 internal fun TextExpansionEditorSection(state: TextExpansionSettingsState) {
     Surface(
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
+        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.MD.dp)),
     ) {
         Box {
             Box(
                 modifier = Modifier.width(3.dp).align(Alignment.CenterStart).matchParentSize().background(
-                    Brush.verticalGradient(listOf(AuroraColors.ember, AuroraColors.hermesAureate))
-                )
+                    Brush.verticalGradient(listOf(AuroraColors.ember, AuroraColors.hermesAureate)),
+                ),
             )
             Column(
-                modifier = Modifier.padding(start = AuroraSpacing.lg.dp + 3.dp, top = AuroraSpacing.lg.dp, end = AuroraSpacing.lg.dp, bottom = AuroraSpacing.lg.dp),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+                modifier = Modifier.padding(
+                    start = AuroraSpacing.LG.dp + 3.dp,
+                    top = AuroraSpacing.LG.dp,
+                    end = AuroraSpacing.LG.dp,
+                    bottom = AuroraSpacing.LG.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
             ) {
                 TextExpansionEditorHeader(state)
                 TextExpansionEditorTriggerPreview(state)
@@ -226,10 +236,10 @@ internal fun TextExpansionEditorHeader(state: TextExpansionSettingsState) {
             style = AuroraType.tiny,
             color = state.colors.textMutedColor,
             letterSpacing = 1.4.dp.value.sp,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
         if (state.editing != null) {
-            Text("✨ Editing", style = AuroraType.tiny, color = AuroraColors.hermesAureate, modifier = Modifier.padding(horizontal = AuroraSpacing.xs.dp))
+            Text("✨ Editing", style = AuroraType.tiny, color = AuroraColors.hermesAureate, modifier = Modifier.padding(horizontal = AuroraSpacing.XS.dp))
         }
     }
 }
@@ -238,22 +248,22 @@ internal fun TextExpansionEditorHeader(state: TextExpansionSettingsState) {
 internal fun TextExpansionEditorTriggerPreview(state: TextExpansionSettingsState) {
     if (state.trigger.isBlank()) return
     val displayTrigger = if (state.trigger.startsWith("&&")) state.trigger else "&&${state.trigger}"
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = displayTrigger,
             style = AuroraType.monoSmall,
             color = AuroraColors.hermesAureate,
             modifier = Modifier
-                .background(color = AuroraColors.hermesAureate.copy(alpha = 0.12f), shape = RoundedCornerShape(AuroraRadius.full.dp))
-                .border(0.75.dp, AuroraColors.hermesAureate.copy(alpha = 0.25f), RoundedCornerShape(AuroraRadius.full.dp))
-                .padding(horizontal = AuroraSpacing.sm.dp, vertical = AuroraSpacing.xs.dp),
+                .background(color = AuroraColors.hermesAureate.copy(alpha = 0.12f), shape = RoundedCornerShape(AuroraRadius.FULL.dp))
+                .border(0.75.dp, AuroraColors.hermesAureate.copy(alpha = 0.25f), RoundedCornerShape(AuroraRadius.FULL.dp))
+                .padding(horizontal = AuroraSpacing.SM.dp, vertical = AuroraSpacing.XS.dp),
         )
         Text(
             text = "Static",
             style = AuroraType.tiny,
             color = state.colors.textMutedColor,
             modifier = Modifier
-                .background(color = state.colors.textMutedColor.copy(alpha = 0.12f), shape = RoundedCornerShape(AuroraRadius.full.dp))
+                .background(color = state.colors.textMutedColor.copy(alpha = 0.12f), shape = RoundedCornerShape(AuroraRadius.FULL.dp))
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
@@ -269,7 +279,7 @@ internal fun TextExpansionEditorFields(state: TextExpansionSettingsState) {
         unfocusedLabelColor = colors.textMutedColor,
         cursorColor = AuroraColors.hermesAureate,
         focusedContainerColor = colors.surfaceElevatedColor,
-        unfocusedContainerColor = Color.Transparent
+        unfocusedContainerColor = Color.Transparent,
     )
     OutlinedTextField(
         value = state.title,
@@ -277,7 +287,7 @@ internal fun TextExpansionEditorFields(state: TextExpansionSettingsState) {
         label = { Text("Name", style = AuroraType.caption) },
         textStyle = AuroraType.body,
         colors = fieldColors,
-        shape = RoundedCornerShape(AuroraRadius.sm.dp),
+        shape = RoundedCornerShape(AuroraRadius.SM.dp),
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
     )
@@ -290,7 +300,7 @@ internal fun TextExpansionEditorFields(state: TextExpansionSettingsState) {
             Text("&&", style = AuroraType.mono, color = AuroraColors.hermesAureate, modifier = Modifier.padding(start = 12.dp))
         },
         colors = fieldColors,
-        shape = RoundedCornerShape(AuroraRadius.sm.dp),
+        shape = RoundedCornerShape(AuroraRadius.SM.dp),
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
     )
@@ -300,7 +310,7 @@ internal fun TextExpansionEditorFields(state: TextExpansionSettingsState) {
         label = { Text("Snippet Expansion Text", style = AuroraType.caption) },
         textStyle = AuroraType.body,
         colors = fieldColors,
-        shape = RoundedCornerShape(AuroraRadius.sm.dp),
+        shape = RoundedCornerShape(AuroraRadius.SM.dp),
         modifier = Modifier.fillMaxWidth(),
         minLines = 3,
     )
@@ -327,7 +337,7 @@ internal fun TextExpansionEditorValidation(state: TextExpansionSettingsState) {
 
 @Composable
 internal fun TextExpansionValidationRow(message: String, errorColor: Color) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Filled.Warning, contentDescription = null, tint = errorColor, modifier = Modifier.size(14.dp))
         Text(message, style = AuroraType.tiny, color = errorColor)
     }
@@ -344,31 +354,31 @@ internal fun TextExpansionEditorActions(state: TextExpansionSettingsState) {
         state.title.isNotBlank() &&
         state.body.isNotBlank() &&
         state.trigger.isNotBlank()
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         Button(
             onClick = state.saveSnippet,
             enabled = canSave,
             colors = ButtonDefaults.buttonColors(containerColor = AuroraColors.ember),
-            shape = RoundedCornerShape(AuroraRadius.full.dp),
+            shape = RoundedCornerShape(AuroraRadius.FULL.dp),
         ) {
             Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
             Text("Save", style = AuroraType.caption)
         }
         if (state.editing != null) {
             Button(
                 onClick = state.deleteSnippet,
                 colors = ButtonDefaults.buttonColors(containerColor = state.colors.errorColor.copy(alpha = 0.85f)),
-                shape = RoundedCornerShape(AuroraRadius.full.dp),
+                shape = RoundedCornerShape(AuroraRadius.FULL.dp),
             ) {
                 Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
                 Text("Delete", style = AuroraType.caption)
             }
             Button(
                 onClick = { state.loadDraft(null) },
                 colors = ButtonDefaults.buttonColors(containerColor = state.colors.borderSubtleColor),
-                shape = RoundedCornerShape(AuroraRadius.full.dp),
+                shape = RoundedCornerShape(AuroraRadius.FULL.dp),
             ) {
                 Text("Cancel", style = AuroraType.caption, color = state.colors.textPrimaryColor)
             }
@@ -379,15 +389,20 @@ internal fun TextExpansionEditorActions(state: TextExpansionSettingsState) {
 @Composable
 internal fun TextExpansionSandboxSection(state: TextExpansionSettingsState) {
     Surface(
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
+        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.MD.dp)),
     ) {
         Box {
             Box(modifier = Modifier.width(3.dp).align(Alignment.CenterStart).matchParentSize().background(AuroraColors.hermesAureate))
             Column(
-                modifier = Modifier.padding(start = AuroraSpacing.lg.dp + 3.dp, top = AuroraSpacing.lg.dp, end = AuroraSpacing.lg.dp, bottom = AuroraSpacing.lg.dp),
-                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+                modifier = Modifier.padding(
+                    start = AuroraSpacing.LG.dp + 3.dp,
+                    top = AuroraSpacing.LG.dp,
+                    end = AuroraSpacing.LG.dp,
+                    bottom = AuroraSpacing.LG.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
             ) {
                 TextExpansionSandboxHeader(state)
                 TextExpansionSandboxField(state)
@@ -400,7 +415,7 @@ internal fun TextExpansionSandboxSection(state: TextExpansionSettingsState) {
 internal fun TextExpansionSandboxHeader(state: TextExpansionSettingsState) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Filled.PlayCircle, contentDescription = null, tint = AuroraColors.hermesAureate, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
         Text("LIVE EXPANSION SANDBOX", style = AuroraType.caption, color = AuroraColors.hermesAureate, modifier = Modifier.weight(1f))
         if (state.sandboxSuccess) {
             Text("✨ Expanded Live!", style = AuroraType.tiny, color = state.colors.successColor)
@@ -411,7 +426,7 @@ internal fun TextExpansionSandboxHeader(state: TextExpansionSettingsState) {
     Text(
         text = "Test ground: Type `&&$demoText` followed by a space to watch it expand in real-time:",
         style = AuroraType.tiny,
-        color = state.colors.textMutedColor
+        color = state.colors.textMutedColor,
     )
 }
 
@@ -429,9 +444,9 @@ internal fun TextExpansionSandboxField(state: TextExpansionSettingsState) {
             unfocusedBorderColor = sandboxBorder,
             cursorColor = AuroraColors.hermesAureate,
             focusedContainerColor = colors.surfaceElevatedColor,
-            unfocusedContainerColor = Color.Transparent
+            unfocusedContainerColor = Color.Transparent,
         ),
-        shape = RoundedCornerShape(AuroraRadius.sm.dp),
+        shape = RoundedCornerShape(AuroraRadius.SM.dp),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -439,13 +454,13 @@ internal fun TextExpansionSandboxField(state: TextExpansionSettingsState) {
 @Composable
 internal fun TextExpansionSnippetsSearchHeader(state: TextExpansionSettingsState) {
     val colors = state.colors
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
         Text(
             text = "SAVED SNIPPETS",
             style = AuroraType.tiny,
             color = colors.textMutedColor,
             letterSpacing = 1.4.dp.value.sp,
-            modifier = Modifier.padding(top = AuroraSpacing.sm.dp),
+            modifier = Modifier.padding(top = AuroraSpacing.SM.dp),
         )
         OutlinedTextField(
             value = state.searchQuery,
@@ -463,41 +478,45 @@ internal fun TextExpansionSnippetsSearchHeader(state: TextExpansionSettingsState
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = AuroraColors.hermesAureate,
                 unfocusedBorderColor = colors.borderSubtleColor,
-                cursorColor = AuroraColors.hermesAureate
+                cursorColor = AuroraColors.hermesAureate,
             ),
-            shape = RoundedCornerShape(AuroraRadius.full.dp),
+            shape = RoundedCornerShape(AuroraRadius.FULL.dp),
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            singleLine = true,
         )
     }
 }
 
 @Composable
 internal fun TextExpansionEmptyState(state: TextExpansionSettingsState) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = AuroraSpacing.xxl.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = AuroraSpacing.XXL.dp)) {
         Icon(Icons.Filled.Keyboard, contentDescription = null, tint = state.colors.textMutedColor, modifier = Modifier.size(48.dp))
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-        Text(if (state.searchQuery.isEmpty()) "No snippets saved" else "No matching snippets", style = AuroraType.headline, color = state.colors.textSecondaryColor)
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-        Text(if (state.searchQuery.isEmpty()) "Create your first &&trigger" else "Adjust search query", style = AuroraType.caption, color = state.colors.textMutedColor)
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
+        Text(
+            if (state.searchQuery.isEmpty()) "No snippets saved" else "No matching snippets",
+            style = AuroraType.headline,
+            color = state.colors.textSecondaryColor,
+        )
+        Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
+        Text(
+            if (state.searchQuery.isEmpty()) "Create your first &&trigger" else "Adjust search query",
+            style = AuroraType.caption,
+            color = state.colors.textMutedColor,
+        )
     }
 }
 
 @Composable
-internal fun TextExpansionSnippetCard(
-    snippet: TextExpansionSnippetEntity,
-    state: TextExpansionSettingsState,
-    modifier: Modifier = Modifier,
-) {
+internal fun TextExpansionSnippetCard(snippet: TextExpansionSnippetEntity, state: TextExpansionSettingsState, modifier: Modifier = Modifier) {
     val colors = state.colors
     val isSelected = state.editing?.id == snippet.id
-    val glassModifier = modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
+    val glassModifier = modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.MD.dp))
     Surface(
         onClick = { state.loadDraft(snippet) },
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         color = Color.Transparent,
         modifier = if (isSelected) {
-            glassModifier.border(BorderStroke(1.5.dp, AuroraColors.hermesAureate), RoundedCornerShape(AuroraRadius.md.dp))
+            glassModifier.border(BorderStroke(1.5.dp, AuroraColors.hermesAureate), RoundedCornerShape(AuroraRadius.MD.dp))
         } else {
             glassModifier
         },
@@ -513,9 +532,12 @@ internal fun TextExpansionSnippetCard(
 internal fun BoxScope.TextExpansionSnippetAccentStrip(snippet: TextExpansionSnippetEntity, colors: TextExpansionColorTokens) {
     Box(
         modifier = Modifier.width(4.dp).align(Alignment.CenterStart).matchParentSize().background(
-            if (snippet.isEnabled) Brush.verticalGradient(listOf(AuroraColors.hermesAureate, AuroraColors.ember))
-            else Brush.verticalGradient(listOf(colors.textMutedColor.copy(alpha = 0.4f), colors.textMutedColor.copy(alpha = 0.2f)))
-        )
+            if (snippet.isEnabled) {
+                Brush.verticalGradient(listOf(AuroraColors.hermesAureate, AuroraColors.ember))
+            } else {
+                Brush.verticalGradient(listOf(colors.textMutedColor.copy(alpha = 0.4f), colors.textMutedColor.copy(alpha = 0.2f)))
+            },
+        ),
     )
 }
 
@@ -526,10 +548,10 @@ internal fun TextExpansionSnippetRow(snippet: TextExpansionSnippetEntity, state:
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = AuroraSpacing.md.dp + 4.dp,
-                top = AuroraSpacing.md.dp,
-                end = AuroraSpacing.md.dp,
-                bottom = AuroraSpacing.md.dp,
+                start = AuroraSpacing.MD.dp + 4.dp,
+                top = AuroraSpacing.MD.dp,
+                end = AuroraSpacing.MD.dp,
+                bottom = AuroraSpacing.MD.dp,
             )
             .alpha(if (snippet.isEnabled) 1f else 0.55f),
         verticalAlignment = Alignment.CenterVertically,
@@ -540,18 +562,14 @@ internal fun TextExpansionSnippetRow(snippet: TextExpansionSnippetEntity, state:
                 imageVector = if (snippet.isEnabled) Icons.Filled.CheckCircle else Icons.Filled.Block,
                 contentDescription = "Toggle status",
                 tint = if (snippet.isEnabled) AuroraColors.ember else colors.textMutedColor.copy(alpha = 0.5f),
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(22.dp),
             )
         }
     }
 }
 
 @Composable
-internal fun RowScope.TextExpansionSnippetDetails(
-    snippet: TextExpansionSnippetEntity,
-    colors: TextExpansionColorTokens,
-    isSelected: Boolean,
-) {
+internal fun RowScope.TextExpansionSnippetDetails(snippet: TextExpansionSnippetEntity, colors: TextExpansionColorTokens, isSelected: Boolean) {
     Column(modifier = Modifier.weight(1f)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = snippet.title, style = AuroraType.headline, color = colors.textPrimaryColor, modifier = Modifier.weight(1f))
@@ -563,20 +581,20 @@ internal fun RowScope.TextExpansionSnippetDetails(
                     modifier = Modifier
                         .background(
                             color = AuroraColors.hermesAureate.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(AuroraRadius.full.dp),
+                            shape = RoundedCornerShape(AuroraRadius.FULL.dp),
                         )
                         .border(
                             0.5.dp,
                             AuroraColors.hermesAureate.copy(alpha = 0.25f),
-                            RoundedCornerShape(AuroraRadius.full.dp),
+                            RoundedCornerShape(AuroraRadius.FULL.dp),
                         )
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
-                Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
             }
         }
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "&&${snippet.trigger}",
                 style = AuroraType.monoSmall,
@@ -584,12 +602,12 @@ internal fun RowScope.TextExpansionSnippetDetails(
                 modifier = Modifier
                     .background(
                         color = AuroraColors.hermesAureate.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(AuroraRadius.full.dp),
+                        shape = RoundedCornerShape(AuroraRadius.FULL.dp),
                     )
                     .border(
                         0.5.dp,
                         AuroraColors.hermesAureate.copy(alpha = 0.15f),
-                        RoundedCornerShape(AuroraRadius.full.dp),
+                        RoundedCornerShape(AuroraRadius.FULL.dp),
                     )
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             )
@@ -598,11 +616,11 @@ internal fun RowScope.TextExpansionSnippetDetails(
                 style = AuroraType.tiny,
                 color = colors.textMutedColor,
                 modifier = Modifier
-                    .background(color = colors.textMutedColor.copy(alpha = 0.12f), shape = RoundedCornerShape(AuroraRadius.full.dp))
+                    .background(color = colors.textMutedColor.copy(alpha = 0.12f), shape = RoundedCornerShape(AuroraRadius.FULL.dp))
                     .padding(horizontal = 6.dp, vertical = 1.dp),
             )
         }
-        Spacer(modifier = Modifier.height(AuroraSpacing.xxs.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.XXS.dp))
         Text(text = textExpansionRelativeTime(snippet.updatedAtMillis), style = AuroraType.tiny, color = colors.textMutedColor)
     }
 }
@@ -614,25 +632,25 @@ internal fun BoxScope.TextExpansionToastOverlay(state: TextExpansionSettingsStat
         visible = state.status != null,
         enter = fadeIn() + expandVertically(),
         exit = fadeOut() + shrinkVertically(),
-        modifier = Modifier.align(Alignment.TopCenter).padding(top = 20.dp)
+        modifier = Modifier.align(Alignment.TopCenter).padding(top = 20.dp),
     ) {
         Surface(
-            shape = RoundedCornerShape(AuroraRadius.full.dp),
+            shape = RoundedCornerShape(AuroraRadius.FULL.dp),
             color = colors.surfaceElevatedColor.copy(alpha = 0.95f),
             border = BorderStroke(1.dp, colors.borderSubtleColor),
             shadowElevation = 8.dp,
-            modifier = Modifier.padding(horizontal = 24.dp)
+            modifier = Modifier.padding(horizontal = 24.dp),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
             ) {
                 Icon(
                     imageVector = if (state.statusIsError) Icons.Filled.Warning else Icons.Filled.CheckCircle,
                     contentDescription = null,
                     tint = if (state.statusIsError) colors.errorColor else colors.successColor,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(16.dp),
                 )
                 Text(text = state.status.orEmpty(), style = AuroraType.body, color = colors.textPrimaryColor)
             }

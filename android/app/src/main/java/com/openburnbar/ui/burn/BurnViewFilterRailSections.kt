@@ -51,26 +51,22 @@ internal data class QuotaFilterRailActions(
 )
 
 @Composable
-internal fun QuotaFilterRail(
-    state: QuotaFilterRailState,
-    actions: QuotaFilterRailActions,
-    modifier: Modifier = Modifier
-) {
+internal fun QuotaFilterRail(state: QuotaFilterRailState, actions: QuotaFilterRailActions, modifier: Modifier = Modifier) {
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.SM.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         QuotaViewModeToggle(viewMode = state.viewMode, onViewModeChange = actions.onViewModeChange)
         QuotaSortMenu(
             sort = state.sort,
             expanded = sortMenuExpanded,
             onExpandedChange = { sortMenuExpanded = it },
-            onSortChange = actions.onSortChange
+            onSortChange = actions.onSortChange,
         )
         QuotaInactiveToggle(showInactive = state.showInactive, onShowInactiveChange = actions.onShowInactiveChange)
         Spacer(modifier = Modifier.weight(1f))
@@ -86,7 +82,7 @@ private fun QuotaViewModeToggle(viewMode: BurnViewStyle, onViewModeChange: (Burn
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
             .padding(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         listOf(BurnViewStyle.CARDS, BurnViewStyle.LIST).forEach { mode ->
             QuotaViewModeChip(mode = mode, active = viewMode == mode, onClick = { onViewModeChange(mode) })
@@ -103,28 +99,23 @@ private fun QuotaViewModeChip(mode: BurnViewStyle, active: Boolean, onClick: () 
             .border(
                 0.5.dp,
                 if (active) AuroraColors.ember.copy(alpha = 0.4f) else Color.Transparent,
-                RoundedCornerShape(14.dp)
+                RoundedCornerShape(14.dp),
             )
             .clickable { onClick() }
             .padding(horizontal = 10.dp, vertical = 4.5.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = mode.label,
             fontSize = 11.sp,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+            color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
         )
     }
 }
 
 @Composable
-private fun QuotaSortMenu(
-    sort: QuotaSortMode,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onSortChange: (QuotaSortMode) -> Unit
-) {
+private fun QuotaSortMenu(sort: QuotaSortMode, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onSortChange: (QuotaSortMode) -> Unit) {
     Box {
         Row(
             modifier = Modifier
@@ -134,19 +125,19 @@ private fun QuotaSortMenu(
                 .clickable { onExpandedChange(true) }
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = "Sort · ${sort.label}",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(12.dp),
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
@@ -165,12 +156,15 @@ private fun QuotaSortMenuItem(mode: QuotaSortMode, selected: Boolean, onClick: (
     DropdownMenuItem(
         text = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (selected) Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                else Spacer(modifier = Modifier.size(14.dp))
+                if (selected) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                } else {
+                    Spacer(modifier = Modifier.size(14.dp))
+                }
                 Text(mode.label, fontSize = 13.sp)
             }
         },
-        onClick = onClick
+        onClick = onClick,
     )
 }
 
@@ -180,25 +174,31 @@ private fun QuotaInactiveToggle(showInactive: Boolean, onShowInactiveChange: (Bo
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (showInactive) AuroraColors.ember.copy(alpha = 0.10f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                if (showInactive) {
+                    AuroraColors.ember.copy(alpha = 0.10f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                },
             )
             .border(
                 0.5.dp,
-                if (showInactive) AuroraColors.ember.copy(alpha = 0.45f)
-                else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                RoundedCornerShape(16.dp)
+                if (showInactive) {
+                    AuroraColors.ember.copy(alpha = 0.45f)
+                } else {
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                },
+                RoundedCornerShape(16.dp),
             )
             .clickable { onShowInactiveChange(!showInactive) }
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             text = "Inactive plans",
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            color = if (showInactive) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (showInactive) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -213,27 +213,27 @@ private fun QuotaRefreshAllButton(isRefreshing: Boolean, onRefreshAll: () -> Uni
             .clickable(enabled = !isRefreshing) { onRefreshAll() }
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (isRefreshing) {
             Text(
                 text = "Refreshing…",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
             )
         } else {
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(10.dp)
+                modifier = Modifier.size(10.dp),
             )
             Text(
                 text = "Refresh all",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }

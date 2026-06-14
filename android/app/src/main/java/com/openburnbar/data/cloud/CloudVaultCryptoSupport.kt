@@ -77,7 +77,6 @@ internal object CloudVaultCryptoSupport {
         return java.security.KeyFactory.getInstance("EC")
             .generatePublic(java.security.spec.ECPublicKeySpec(java.security.spec.ECPoint(x, y), params))
     }
-
 }
 
 internal fun cloudVaultFixed32(value: java.math.BigInteger): ByteArray {

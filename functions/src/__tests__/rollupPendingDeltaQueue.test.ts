@@ -41,6 +41,7 @@ function codexEvent(overrides: Partial<UsageEventDoc> = {}): UsageEventDoc {
     outputTokens: 25,
     totalTokens: 125,
     cost: 0.001,
+    recordedAt: T0,
     startTime: T0,
     ...overrides,
   };
@@ -60,7 +61,14 @@ describe("buildPendingCounterDelta", () => {
   it("returns undefined when neither side contributes (mirrors applyUsageCounterDelta's early return)", () => {
     expect(buildPendingCounterDelta("doc-1", undefined, undefined, T0)).toBeUndefined();
     // An event with no resolvable date contributes nothing.
-    expect(buildPendingCounterDelta("doc-1", undefined, { provider: "codex", schemaVersion: 1 }, T0)).toBeUndefined();
+    expect(
+      buildPendingCounterDelta(
+        "doc-1",
+        undefined,
+        { provider: "codex", schemaVersion: 1, recordedAt: "" },
+        T0,
+      ),
+    ).toBeUndefined();
   });
 
   it("captures full winner-resolution data for both sides", () => {

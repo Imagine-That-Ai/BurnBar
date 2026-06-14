@@ -97,11 +97,7 @@ private fun FanOutSheetModal(
     }
 }
 
-internal fun dispatchFanOutMission(
-    scope: kotlinx.coroutines.CoroutineScope,
-    request: FanOutDispatchRequest,
-    callbacks: FanOutDispatchCallbacks,
-) {
+internal fun dispatchFanOutMission(scope: kotlinx.coroutines.CoroutineScope, request: FanOutDispatchRequest, callbacks: FanOutDispatchCallbacks) {
     if (request.prompt.trim().isBlank() || request.selected.size < 2) return
     callbacks.onDispatching(true)
     callbacks.onError(null)

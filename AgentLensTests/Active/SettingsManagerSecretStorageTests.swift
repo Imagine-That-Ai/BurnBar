@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import Security
 import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
@@ -401,4 +402,99 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "gatewayAuthToken"), "legacy-verify-value")
     }
 
+    // MARK: - Keychain Read-Fault Observability (try? -> credentialIfPresent)
+
+    /// A genuine keychain read fault (locked keychain / ACL denial / unhandled
+    /// `OSStatus`) used to be collapsed into the same `nil` as "no credential"
+    /// by `try? keychain.string(for:)` in `SettingsSecretPersistence.load`.
+    /// `credentialIfPresent` now surfaces such faults to `AppLogger` instead of
+    /// silently vanishing them, while preserving the exact `nil`-on-fault read
+    /// behavior the surrounding control flow depends on. These tests drive the
+    /// fault and the genuinely-absent path through the public initializer seam.
+
+    func test_load_keychainReadFaults_doesNotCrashAndFallsBackToLegacyDefaults() throws {
+        let suiteName = "com.openburnbar.tests.settings.read-fault.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated defaults suite")
+            return
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // A legacy value exists so we can prove the keychain read fault degrades
+        // to the legacy-defaults path rather than throwing or crashing.
+        defaults.set("legacy-fault-value", forKey: "openClawBearerToken")
+
+        let service = "tests.read-fault.\(UUID().uuidString)"
+        let backend = ReadFaultKeychainBackend()
+        backend.readErrors[service] = KeychainStoreError.unhandled(errSecNotAvailable)
+        let keychain = KeychainStore(service: service, legacyServices: [], backend: backend)
+        let persistence = SettingsSecretPersistence(defaults: defaults, keychain: keychain)
+
+        var result = ""
+        // The fault must surface as a logged nil read, never a thrown error or crash.
+        XCTAssertNoThrow(
+            result = persistence.load(
+                account: OpenBurnBarIdentity.openClawBearerTokenAccount,
+                legacyDefaultsKey: "openClawBearerToken"
+            )
+        )
+
+        // The faulting keychain read returned nil (observable as the legacy path
+        // being taken), so the legacy value is returned and preserved for retry —
+        // the keychain re-write that would normally clear it also faults.
+        XCTAssertEqual(result, "legacy-fault-value")
+        XCTAssertEqual(defaults.string(forKey: "openClawBearerToken"), "legacy-fault-value")
+    }
+
+    func test_load_keychainGenuinelyAbsent_stillYieldsEmptyWithoutFaultLog() throws {
+        let suiteName = "com.openburnbar.tests.settings.absent.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated defaults suite")
+            return
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // No keychain value, no legacy value: the absent path must still resolve
+        // to the empty string exactly as it did under `try?`.
+        let service = "tests.absent.\(UUID().uuidString)"
+        let backend = ReadFaultKeychainBackend()
+        let keychain = KeychainStore(service: service, legacyServices: [], backend: backend)
+        let persistence = SettingsSecretPersistence(defaults: defaults, keychain: keychain)
+
+        var result = "unset"
+        XCTAssertNoThrow(
+            result = persistence.load(
+                account: OpenBurnBarIdentity.hermesBearerTokenAccount,
+                legacyDefaultsKey: "hermesBearerToken"
+            )
+        )
+
+        XCTAssertEqual(result, "", "Genuinely absent credential must read as empty, same as before.")
+    }
+
+}
+
+/// A `KeychainStore` backend that can be made to throw a real keychain fault on
+/// read (keyed by service), used to prove `SettingsSecretPersistence` surfaces
+/// such faults via `credentialIfPresent` instead of silently swallowing them.
+private final class ReadFaultKeychainBackend: KeychainStoreBackend {
+    var storage: [String: [String: Data]] = [:]
+    var readErrors: [String: Error] = [:]
+
+    func set(_ value: Data, service: String, account: String) throws {
+        storage[service, default: [:]][account] = value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        if let error = readErrors[service] {
+            throw error
+        }
+        return storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        storage[service]?[account] = nil
+    }
 }

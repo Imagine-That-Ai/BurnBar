@@ -68,12 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var wallpaperSpaceChangeObserver: NSObjectProtocol?
     private var wallpaperColorDriverTask: Task<Void, Never>?
 
-    // RR-5: Cloud Vault rotation pickup. A revoke initiated from an offline Mac
-    // or an Android device (which cannot rotate the Cloud Vault) leaves the
-    // rotation requirement `pending`, so the revoked device's cached key is not
-    // yet retired. This surviving Mac discovers those pending requirements on
-    // foreground/launch (and right after a local revoke) and finishes the
-    // rotation when it is an eligible survivor.
+    // RR-5: Cloud Vault rotation pickup. A revoke initiated from an offline or
+    // unavailable device leaves the rotation requirement `pending`, so the
+    // revoked device's cached key is not yet retired. This surviving Mac
+    // discovers those pending requirements on foreground/launch (and right after
+    // a local revoke) and finishes the rotation when it is an eligible survivor.
     private var cloudVaultRotationPickupObserver: NSObjectProtocol?
     private var postRevokeCloudVaultRotationPickupObserver: NSObjectProtocol?
     private var lastCloudVaultRotationPickupAt: TimeInterval = 0

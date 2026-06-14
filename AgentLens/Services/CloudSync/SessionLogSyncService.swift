@@ -2,27 +2,23 @@ import FirebaseAuth
 import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import Foundation
+import os
 import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 
-private final class SessionLogSyncProcessGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var running = false
+private final class SessionLogSyncProcessGate: Sendable {
+    private let running = Locked(false)
 
     func tryEnter() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !running else { return false }
-        running = true
-        return true
+        running.withLock { running in
+            guard !running else { return false }
+            running = true
+            return true
+        }
     }
 
-    func leave() {
-        lock.lock()
-        running = false
-        lock.unlock()
-    }
+    func leave() { running.write(false) }
 }
 
 /// Sync domain for uploading session-log manifests/search metadata to Firestore.
@@ -33,7 +29,7 @@ private final class SessionLogSyncProcessGate: @unchecked Sendable {
 ///
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
-final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
+final class SessionLogSyncService: CloudSyncDomain, Sendable {
     private typealias FirestoreWrite = (data: [String: Any], document: CloudSyncDocumentGateway, merge: Bool)
 
     private static let processGate = SessionLogSyncProcessGate()
@@ -42,7 +38,9 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
     private let encryptedCloudClient: SessionLogEncryptedCloudClient
     private let vaultKeyStore: SessionLogVaultKeyProviding
     private let vaultKeyPublisher: SessionLogVaultKeyPublishing
-    private var archivedSessionMirror: SessionLogArchivedSessionMirroring?
+    // SessionLogArchivedSessionMirroring is not Sendable; the lazily-resolved
+    // singleton lives in an OSAllocatedUnfairLock so the service is plainly Sendable.
+    private let archivedSessionMirrorBox: OSAllocatedUnfairLock<SessionLogArchivedSessionMirroring?>
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -61,15 +59,15 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         self.encryptedCloudClient = encryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient()
         self.vaultKeyStore = vaultKeyStore
         self.vaultKeyPublisher = vaultKeyPublisher
-        self.archivedSessionMirror = archivedSessionMirror
+        self.archivedSessionMirrorBox = OSAllocatedUnfairLock(uncheckedState: archivedSessionMirror)
     }
 
     private func resolvedArchivedSessionMirror() async -> SessionLogArchivedSessionMirroring {
-        if let archivedSessionMirror {
-            return archivedSessionMirror
+        if let existing = archivedSessionMirrorBox.withLockUnchecked({ $0 }) {
+            return existing
         }
         let shared = await MainActor.run { CLIAgentSessionMirror.shared }
-        archivedSessionMirror = shared
+        archivedSessionMirrorBox.withLockUnchecked { $0 = shared }
         return shared
     }
 
@@ -138,8 +136,8 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
 
             let userRef = context.firestoreGateway.collection("users").document(uid)
             let logsRef = userRef.collection("session_logs")
-            let sessionModelMap = (try? context.dataStore.sessionModelMap()) ?? [:]
-            let sessionFacetsMap = (try? context.dataStore.sessionFacetsMap()) ?? [:]
+            let sessionModelMap = (try? context.dataStore.sessionModelMap()) ?? [:] // try?-ok(best-effort metadata read)
+            let sessionFacetsMap = (try? context.dataStore.sessionFacetsMap()) ?? [:] // try?-ok(best-effort metadata read)
 
             var processedAnyBatch = false
             repeat {
@@ -1062,7 +1060,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
 
 }
 
-protocol SessionLogVaultKeyProviding {
+protocol SessionLogVaultKeyProviding: Sendable {
     func loadKey(uid: String) throws -> Data?
     func getOrCreateKey(uid: String) throws -> Data
 }
@@ -1076,7 +1074,7 @@ protocol SessionLogArchivedSessionMirroring {
 extension CLIAgentSessionMirror: SessionLogArchivedSessionMirroring {}
 
 @MainActor
-protocol SessionLogVaultKeyPublishing {
+protocol SessionLogVaultKeyPublishing: Sendable {
     func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws
 }
 
@@ -1403,11 +1401,11 @@ private extension SessionLogSyncService {
         return try encoder.encode(value)
     }
 
-    static let iso8601: ISO8601DateFormatter = {
+    static var iso8601: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
     static func isPermissionDeniedFunctionsError(_ error: Error) -> Bool {
         let nsError = error as NSError
@@ -1440,10 +1438,10 @@ private extension SessionLogSyncService {
 
     static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
         guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(optional envelope parse)
             return nil
         }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(optional envelope decode)
     }
 }
 
@@ -1452,7 +1450,7 @@ struct EncryptedSessionBlobUploadTicket {
     let uploadURL: URL
 }
 
-protocol SessionLogEncryptedCloudClient {
+protocol SessionLogEncryptedCloudClient: Sendable {
     func beginEncryptedSessionBlobUpload(
         documentID: String,
         bodyHash: String,
@@ -1474,6 +1472,8 @@ protocol SessionLogEncryptedCloudClient {
     func deleteEncryptedSessionBlob(documentID: String, storagePath: String) async throws
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase `Functions` instance;
+// the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient, @unchecked Sendable {
     private let injectedFunctions: Functions?
     private let urlSession: URLSession
@@ -1648,42 +1648,159 @@ extension CloudSyncService {
         guard let dict = result.data as? [String: Any],
               let hits = dict["hits"] as? [[String: Any]] else { return [] }
 
-        return hits.compactMap { hit in
-            guard let rawProvider = hit["provider"] as? String,
-                  let provider = AgentProvider(rawValue: rawProvider),
-                  let documentID = hit["documentID"] as? String else { return nil }
-            let title = Self.decodeSealedText(hit["sealedTitle"])
-                .flatMap { try? CloudVaultCrypto.openText($0, keyData: vaultKey) }
-                ?? "Encrypted session"
-            let snippet = Self.decodeSealedText(hit["sealedSnippet"])
-                .flatMap { try? CloudVaultCrypto.openText($0, keyData: vaultKey) }
-                ?? ""
-            return ConversationRecord(
-                id: hit["sourceID"] as? String ?? documentID,
-                provider: provider,
-                sessionId: documentID,
-                projectName: "",
-                startTime: nil,
-                endTime: nil,
-                messageCount: 0,
-                userWordCount: 0,
-                assistantWordCount: 0,
-                keyFiles: [],
-                keyCommands: [],
-                keyTools: [],
-                inferredTaskTitle: title,
-                lastAssistantMessage: snippet,
-                fullText: snippet,
-                indexedAt: Date(),
-                fileModifiedAt: nil,
-                summary: snippet,
-                summaryTitle: title,
-                sourceType: .providerLog,
-                sourceDeviceId: nil,
-                sourceDeviceName: nil,
-                isRemote: true
-            )
+        return hits.compactMap { Self.decodeEncryptedSearchHit($0, vaultKey: vaultKey, uid: uid) }
+    }
+
+    /// Outcome of decrypting one server-relayed encrypted-search field (title/snippet).
+    enum EncryptedSearchFieldDecode: Equatable {
+        /// No sealed field was present on the hit (legitimately absent → safe placeholder).
+        case absent
+        /// The sealed field authenticated and decrypted to this plaintext.
+        case decrypted(String)
+        /// A sealed field was present but failed AES-GCM authentication/decryption.
+        /// In an E2EE search index this means the server returned a forged, tampered,
+        /// or mis-keyed entry — the hit must be rejected, never shown with a placeholder.
+        case tampered
+    }
+
+    /// Decrypts one sealed search field with its bound AAD context, failing CLOSED.
+    ///
+    /// The seal side (and the Cloud Function relay) bind every sealed search field to a
+    /// `CloudVaultAADContext`, so opening WITHOUT the matching AAD always fails. A failure
+    /// here is a trust/verification signal (forgery / tamper / wrong key), not a recoverable
+    /// read — so the caller rejects the whole hit rather than surfacing a placeholder entry.
+    ///
+    /// `nonisolated`: a pure AAD-bound decrypt with no `@MainActor` state, so it is
+    /// callable off the main actor (the enclosing `CloudSyncService` is `@MainActor`,
+    /// which would otherwise isolate this `static` helper).
+    nonisolated static func decryptEncryptedSearchField(
+        _ raw: Any?,
+        vaultKey: Data,
+        uid: String,
+        collection: String,
+        docID: String,
+        field: String
+    ) -> EncryptedSearchFieldDecode {
+        guard let envelope = decodeSealedText(raw) else {
+            // Distinguish a genuinely-absent field from a PRESENT-but-undecodable
+            // one. A present sealed field that cannot be parsed into a
+            // CloudVaultSealedText (missing required tag/nonce, wrong types, or a
+            // non-dict value) is a forgery/tamper signal from the untrusted
+            // server — reject the hit (.tampered) rather than surfacing it as a
+            // safe placeholder (.absent). Absence (no value / explicit null) is
+            // legitimate and stays .absent.
+            if Self.sealedFieldIsPresent(raw) {
+                AppLogger.search.error(
+                    "encryptedSearchHit.fieldMalformed",
+                    metadata: ["field": field, "collection": collection]
+                )
+                return .tampered
+            }
+            return .absent
         }
+        do {
+            let aadContext = try CloudVaultAADContext(
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                field: field
+            )
+            return .decrypted(try CloudVaultCrypto.openText(envelope, keyData: vaultKey, aadContext: aadContext))
+        } catch {
+            AppLogger.search.error(
+                "encryptedSearchHit.fieldAuthFailed",
+                metadata: [
+                    "field": field,
+                    "collection": collection,
+                    "errorClass": "\(String(describing: type(of: error)))"
+                ]
+            )
+            return .tampered
+        }
+    }
+
+    /// Builds a `ConversationRecord` from one encrypted-search hit, returning `nil`
+    /// (skipping the hit) whenever the hit is malformed or any present sealed field
+    /// fails authentication. Never returns a record carrying an unauthenticated
+    /// title/snippet, so a cloud-side forgery cannot masquerade as a real result.
+    ///
+    /// `nonisolated`: pure decode (delegates to `decryptEncryptedSearchField`), no
+    /// `@MainActor` state — callable off the main actor despite the `@MainActor`
+    /// `CloudSyncService` extension scope.
+    nonisolated static func decodeEncryptedSearchHit(
+        _ hit: [String: Any],
+        vaultKey: Data,
+        uid: String
+    ) -> ConversationRecord? {
+        guard let rawProvider = hit["provider"] as? String,
+              let provider = AgentProvider(rawValue: rawProvider),
+              let documentID = hit["documentID"] as? String else { return nil }
+
+        let titleDecode = decryptEncryptedSearchField(
+            hit["sealedTitle"],
+            vaultKey: vaultKey,
+            uid: uid,
+            collection: "cloud_search_documents",
+            docID: documentID,
+            field: "sealedTitle"
+        )
+        let chunkID = hit["chunkID"] as? String ?? documentID
+        let snippetDecode = decryptEncryptedSearchField(
+            hit["sealedSnippet"],
+            vaultKey: vaultKey,
+            uid: uid,
+            collection: "cloud_search_chunks",
+            docID: chunkID,
+            field: "sealedSnippet"
+        )
+
+        // Fail closed: a present-but-unauthenticated field means the hit is forged/tampered.
+        if titleDecode == .tampered || snippetDecode == .tampered {
+            AppLogger.search.error(
+                "encryptedSearchHit.rejectedUnauthenticated",
+                metadata: ["documentID": documentID]
+            )
+            return nil
+        }
+
+        let title: String
+        switch titleDecode {
+        case .decrypted(let plaintext): title = plaintext
+        case .absent: title = "Encrypted session"
+        case .tampered: return nil
+        }
+        let snippet: String
+        switch snippetDecode {
+        case .decrypted(let plaintext): snippet = plaintext
+        case .absent: snippet = ""
+        case .tampered: return nil
+        }
+
+        return ConversationRecord(
+            id: hit["sourceID"] as? String ?? documentID,
+            provider: provider,
+            sessionId: documentID,
+            projectName: "",
+            startTime: nil,
+            endTime: nil,
+            messageCount: 0,
+            userWordCount: 0,
+            assistantWordCount: 0,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: title,
+            lastAssistantMessage: snippet,
+            fullText: snippet,
+            indexedAt: Date(),
+            fileModifiedAt: nil,
+            summary: snippet,
+            summaryTitle: title,
+            sourceType: .providerLog,
+            sourceDeviceId: nil,
+            sourceDeviceName: nil,
+            isRemote: true
+        )
     }
 
     /// Fetches and decrypts a session-log body from encrypted Cloud Storage.
@@ -1725,12 +1842,26 @@ extension CloudSyncService {
         return nil
     }
 
-    private static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
+    /// Whether the (untrusted, server-supplied) sealed field carries an actual
+    /// value. A missing key or explicit null is a legitimate absence; any other
+    /// present value that fails to decode is treated as tamper by the caller.
+    private nonisolated static func sealedFieldIsPresent(_ raw: Any?) -> Bool {
+        guard let raw else { return false }
+        return !(raw is NSNull)
+    }
+
+    // Pure parser: returns nil for an absent OR present-but-undecodable field.
+    // The present-vs-absent (and therefore tamper-vs-absent) security decision is
+    // made by `decryptEncryptedSearchField` via `sealedFieldIsPresent`, so these
+    // `try?` reads are genuinely best-effort here.
+    // `nonisolated`: pure JSON parse, no `@MainActor` state — keeps the
+    // `decryptEncryptedSearchField` chain callable off the main actor.
+    private nonisolated static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
         guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(parse; caller fails closed)
             return nil
         }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
+        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(decode; caller fails closed)
     }
 
     // MARK: - Chunking

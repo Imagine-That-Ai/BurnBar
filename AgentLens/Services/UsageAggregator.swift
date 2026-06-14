@@ -8,7 +8,8 @@ import OpenBurnBarCore
 ///
 /// Heavy work (parsing 12+ providers, DB persistence, quota API calls,
 /// conversation indexing, cloud sync) runs off the main thread via
-/// `RefreshBackgroundWork` inside `Task.detached`.  Observable state updates
+/// `RefreshBackgroundWork`, a `nonisolated` namespace that runs off the main
+/// actor when awaited (SE-0338).  Observable state updates
 /// happen on the main actor at apply boundaries.
 @Observable
 @MainActor
@@ -112,7 +113,7 @@ final class UsageAggregator {
         Task {
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+                let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
                 if pendingProjectionJobs > 0 {
                     self.requestProjectionSweep()
                 }
@@ -163,15 +164,23 @@ final class UsageAggregator {
         await orchestrator.runRetentionPurgeIfNeeded()
 
         // ── Heavy work runs entirely off the main thread ─────────────
-        let result = await Task.detached(priority: .utility) {
-            await RefreshBackgroundWork.runFullRefresh(
+        // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
+        // from this `@MainActor` method runs it off the main actor (SE-0338).
+        let result: FullRefreshResult
+        do {
+            result = try await RefreshBackgroundWork.runFullRefresh(
                 parsers: parsers,
                 dataStore: dataStore,
                 orchestrator: orchestrator,
                 existingUsages: existingUsages,
                 settings: settings
             )
-        }.value
+        } catch is CancellationError {
+            return
+        } catch {
+            // runFullRefresh only throws CancellationError; any other error is unexpected.
+            return
+        }
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth = result.parserHealth
@@ -294,14 +303,14 @@ final class UsageAggregator {
         let refreshStartedAt = Date()
 
         // ── Heavy work runs entirely off the main thread ─────────────
-        let result = await Task.detached(priority: .utility) {
-            await RefreshBackgroundWork.runSingleProviderRefresh(
-                provider: provider,
-                parser: parser,
-                dataStore: dataStore,
-                settings: settings
-            )
-        }.value
+        // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
+        // from this `@MainActor` method runs it off the main actor (SE-0338).
+        let result = await RefreshBackgroundWork.runSingleProviderRefresh(
+            provider: provider,
+            parser: parser,
+            dataStore: dataStore,
+            settings: settings
+        )
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth[provider] = result.health
@@ -330,7 +339,7 @@ final class UsageAggregator {
             typedPersistenceError = typed
         }
 
-        let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+        let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
         launchArtifactDiscoverySweep()
         if result.indexedConversationChanges > 0 {
             summaryEngine.launchAutoSummarySweep(indexedAfter: refreshStartedAt)
@@ -537,10 +546,10 @@ private extension UsageAggregator {
                     break
                 }
                 projectionSweepRequested = true
-                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.backlogDelayNanoseconds)
+                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.backlogDelayNanoseconds) // try?-ok(cancellation only)
             } else if projectionSweepRequested {
                 continuousBacklogPasses = 0
-                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.coalesceDelayNanoseconds)
+                try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.coalesceDelayNanoseconds) // try?-ok(cancellation only)
             } else {
                 continuousBacklogPasses = 0
             }

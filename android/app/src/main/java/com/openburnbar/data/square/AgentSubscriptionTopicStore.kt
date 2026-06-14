@@ -84,7 +84,9 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreListener: ListenerRegistration? = null
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     @Volatile private var listenerGeneration: Long = 0
+
     @Volatile private var activeListenerUID: String? = auth.currentUser?.uid
 
     init {
@@ -403,8 +405,7 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                 .filter { it.isNotBlank() && !it.contains("/") }
                 .toSet()
 
-        private fun topicsKey(uid: String?): String =
-            uid?.takeIf { it.isNotBlank() }?.let { "$KEY_TOPICS_UID_PREFIX$it" } ?: KEY_TOPICS
+        private fun topicsKey(uid: String?): String = uid?.takeIf { it.isNotBlank() }?.let { "$KEY_TOPICS_UID_PREFIX$it" } ?: KEY_TOPICS
 
         private fun minimumImportance(forMode: SkillRunDeliveryMode): SkillRunEventImportance = if (forMode == SkillRunDeliveryMode.FULL_STREAM) {
             SkillRunEventImportance.NORMAL
@@ -444,10 +445,7 @@ internal fun decodeSubscriptionTopicConsentEpoch(raw: Any?): Long? = when (raw) 
  * description)` — either may be null when neither the sealed nor the legacy field
  * is present/openable.
  */
-internal fun decodeSubscriptionTopicDisplay(
-    data: Map<String, Any?>,
-    vaultKey: ByteArray?,
-): Pair<String?, String?> {
+internal fun decodeSubscriptionTopicDisplay(data: Map<String, Any?>, vaultKey: ByteArray?): Pair<String?, String?> {
     val displayName =
         CloudVaultSealedTextCodec.openOrLegacy(data["sealedDisplayName"], vaultKey, data["displayName"] as? String)
     val description =
@@ -464,10 +462,7 @@ internal fun decodeSubscriptionTopicDisplay(
  * may be null when neither the sealed nor the legacy field is present/openable
  * (e.g. a sealed doc read before the vault key resolves).
  */
-internal fun decodeSubscriptionTopicGraph(
-    data: Map<String, Any?>,
-    vaultKey: ByteArray?,
-): Pair<String?, String?> {
+internal fun decodeSubscriptionTopicGraph(data: Map<String, Any?>, vaultKey: ByteArray?): Pair<String?, String?> {
     val agentURI =
         CloudVaultSealedTextCodec.openOrLegacy(data["sealedAgentURI"], vaultKey, data["agentURI"] as? String)
     val topicID =
@@ -475,42 +470,38 @@ internal fun decodeSubscriptionTopicGraph(
     return agentURI to topicID
 }
 
-internal fun sealedSubscriptionTopicPayload(
-    topic: AgentSubscriptionTopic,
-    vaultKey: ByteArray,
-): MutableMap<String, Any> =
-    mutableMapOf(
-        // The whole subscription graph is cloaked: the graph edge
-        // (`agentURI`/`topicID`) and the display text are sealed, and merge
-        // writes actively delete any legacy plaintext copies. `cadence`/
-        // `consentGivenAt` stay cleartext — server order/filter inputs only.
-        // CANONICAL TYPE: `consentGivenAt` is a Firestore Timestamp (matches what
-        // iOS writes from its Swift `Date?` and what `.orderBy("consentGivenAt")`
-        // is designed for). Firestore sorts mixed-type fields by type-group first
-        // (Number < Timestamp), so a Long here would land ALL Android docs before
-        // ALL iOS docs under server orderBy. Writing a Timestamp keeps the two
-        // platforms in one sort group. Old Android docs are Numbers but self-heal:
-        // the doc is fully rewritten on every topic update (see `writeFirestore`),
-        // so the next update normalizes the type — no eager backfill is needed
-        // (the per-user corpus is tiny and both clients re-sort in memory). A
-        // future maintainer who adds `.limit()`/pagination to the ordered query
-        // can rely on the corpus converging on Timestamp.
-        "sealedAgentURI" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.agentURI, vaultKey)),
-        "sealedTopicID" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.topicID, vaultKey)),
-        "cadence" to topic.cadence.token,
-        "consentGivenAt" to Timestamp(java.util.Date(topic.createdAtEpoch)),
-        "isMuted" to topic.muted,
-        "deliveryMode" to topic.deliveryMode.wire,
-        "minimumEventImportance" to topic.minimumEventImportance.wire,
-        "deliveryCountThisMonth" to 0,
-        "updatedAt" to FieldValue.serverTimestamp(),
-        "sealedDisplayName" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.displayName, vaultKey)),
-        "sealedDescription" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.description, vaultKey)),
-        "agentURI" to FieldValue.delete(),
-        "topicID" to FieldValue.delete(),
-        "displayName" to FieldValue.delete(),
-        "description" to FieldValue.delete(),
-    )
+internal fun sealedSubscriptionTopicPayload(topic: AgentSubscriptionTopic, vaultKey: ByteArray): MutableMap<String, Any> = mutableMapOf(
+    // The whole subscription graph is cloaked: the graph edge
+    // (`agentURI`/`topicID`) and the display text are sealed, and merge
+    // writes actively delete any legacy plaintext copies. `cadence`/
+    // `consentGivenAt` stay cleartext — server order/filter inputs only.
+    // CANONICAL TYPE: `consentGivenAt` is a Firestore Timestamp (matches what
+    // iOS writes from its Swift `Date?` and what `.orderBy("consentGivenAt")`
+    // is designed for). Firestore sorts mixed-type fields by type-group first
+    // (Number < Timestamp), so a Long here would land ALL Android docs before
+    // ALL iOS docs under server orderBy. Writing a Timestamp keeps the two
+    // platforms in one sort group. Old Android docs are Numbers but self-heal:
+    // the doc is fully rewritten on every topic update (see `writeFirestore`),
+    // so the next update normalizes the type — no eager backfill is needed
+    // (the per-user corpus is tiny and both clients re-sort in memory). A
+    // future maintainer who adds `.limit()`/pagination to the ordered query
+    // can rely on the corpus converging on Timestamp.
+    "sealedAgentURI" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.agentURI, vaultKey)),
+    "sealedTopicID" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.topicID, vaultKey)),
+    "cadence" to topic.cadence.token,
+    "consentGivenAt" to Timestamp(java.util.Date(topic.createdAtEpoch)),
+    "isMuted" to topic.muted,
+    "deliveryMode" to topic.deliveryMode.wire,
+    "minimumEventImportance" to topic.minimumEventImportance.wire,
+    "deliveryCountThisMonth" to 0,
+    "updatedAt" to FieldValue.serverTimestamp(),
+    "sealedDisplayName" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.displayName, vaultKey)),
+    "sealedDescription" to CloudVaultSealedTextCodec.toMap(CloudVaultCrypto.sealText(topic.description, vaultKey)),
+    "agentURI" to FieldValue.delete(),
+    "topicID" to FieldValue.delete(),
+    "displayName" to FieldValue.delete(),
+    "description" to FieldValue.delete(),
+)
 
 internal fun resolveSubscriptionTopicDeleteDocumentID(agentURI: String, topicID: String, vaultKey: ByteArray?): String? =
     vaultKey?.let { AgentSubscriptionTopicStore.documentID(agentURI, topicID, it) }

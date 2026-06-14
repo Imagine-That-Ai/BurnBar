@@ -1,7 +1,5 @@
 package com.openburnbar.ui.hermes
 
-import com.openburnbar.data.hermes.importSession
-import com.openburnbar.data.hermes.refreshSessions
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.HermesSessionSummary
+import com.openburnbar.data.hermes.importSession
+import com.openburnbar.data.hermes.refreshSessions
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -141,8 +141,8 @@ private fun HermesSessionsBody(
             sessions.isEmpty() -> EmptyState()
             else ->
                 LazyColumn(
-                    contentPadding = PaddingValues(AuroraSpacing.md.dp),
-                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                    contentPadding = PaddingValues(AuroraSpacing.MD.dp),
+                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                 ) {
                     items(sessions) { session ->
                         SessionRow(
@@ -159,7 +159,7 @@ private fun HermesSessionsBody(
 @Composable
 private fun EmptyState() {
     Column(
-        modifier = Modifier.fillMaxSize().padding(AuroraSpacing.xl.dp),
+        modifier = Modifier.fillMaxSize().padding(AuroraSpacing.XL.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -169,14 +169,14 @@ private fun EmptyState() {
             tint = AuroraColors.hermesMercury,
             modifier = Modifier.size(48.dp),
         )
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
         Text(
             text = "No Hermes sessions yet",
             fontSize = AuroraTypography.headline.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(Modifier.height(AuroraSpacing.xs.dp))
+        Spacer(Modifier.height(AuroraSpacing.XS.dp))
         Text(
             text = "Sessions you run on a paired Hermes host will appear here for import.",
             fontSize = AuroraTypography.body.sp,
@@ -191,13 +191,13 @@ private fun SessionRow(session: HermesSessionSummary, isImporting: Boolean, onCl
         modifier =
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .clickable(enabled = !isImporting, onClick = onClick),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         tonalElevation = 1.dp,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.md.dp),
+            modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.MD.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -209,7 +209,7 @@ private fun SessionRow(session: HermesSessionSummary, isImporting: Boolean, onCl
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(AuroraSpacing.xxs.dp))
+                Spacer(Modifier.height(AuroraSpacing.XXS.dp))
                 Text(
                     text =
                     session.preview?.takeIf { it.isNotBlank() }

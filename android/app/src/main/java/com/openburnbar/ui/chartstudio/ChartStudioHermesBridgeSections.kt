@@ -72,20 +72,29 @@ internal fun ChartStudioHermesBridge.streamEvents(
     }
 }.flowOn(Dispatchers.IO)
 
-private fun buildStreamRequestBody(systemPrompt: String, userPrompt: String, model: String, temperature: Double): JSONObject =
-    JSONObject().apply {
-        put("model", model)
-        put("temperature", temperature)
-        put("stream", true)
-        put("response_format", JSONObject().put("type", "json_object"))
-        put(
-            "messages",
-            JSONArray().apply {
-                put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-                put(JSONObject().apply { put("role", "user"); put("content", userPrompt) })
-            },
-        )
-    }
+private fun buildStreamRequestBody(systemPrompt: String, userPrompt: String, model: String, temperature: Double): JSONObject = JSONObject().apply {
+    put("model", model)
+    put("temperature", temperature)
+    put("stream", true)
+    put("response_format", JSONObject().put("type", "json_object"))
+    put(
+        "messages",
+        JSONArray().apply {
+            put(
+                JSONObject().apply {
+                    put("role", "system")
+                    put("content", systemPrompt)
+                },
+            )
+            put(
+                JSONObject().apply {
+                    put("role", "user")
+                    put("content", userPrompt)
+                },
+            )
+        },
+    )
+}
 
 private fun ChartStudioHermesBridge.resolveEndpointURL(connection: HermesConnectionRecord): String? {
     val raw =

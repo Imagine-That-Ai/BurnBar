@@ -5,9 +5,8 @@
 # accumulated invisibly and the green check asserted nothing (diligence
 # 2026-06-11, quality-gate theater). Raw enforcement would flip the lane red
 # on ~119 pre-existing findings, so this uses the repo's established budget
-# idiom (cf. budgets/try-optional-baseline.json): the TOTAL finding count may
-# only go down. New debt fails the PR; paying debt down lets you lower the
-# baseline in budgets/knip-baseline.json.
+# idiom: the TOTAL finding count may only go down. New debt fails the PR;
+# paying debt down lets you lower the baseline in budgets/knip-baseline.json.
 #
 # Usage: scripts/ci/knip-ratchet.sh <package-dir> <baseline-key>
 set -euo pipefail
@@ -16,6 +15,12 @@ package_dir="$1"
 baseline_key="$2"
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 baseline_file="$repo_root/budgets/knip-baseline.json"
+
+# functions script harnesses import compiled `lib/*.js`; knip must see those
+# edges on CI checkouts (no warm lib/). Build first so ratchet matches local dev.
+if [[ "$package_dir" == "functions" && -f "$repo_root/functions/package.json" ]]; then
+  npm run build --prefix "$repo_root/functions" >/dev/null
+fi
 
 output="$(cd "$repo_root/$package_dir" && npx knip --reporter compact 2>&1 || true)"
 printf '%s\n' "$output"

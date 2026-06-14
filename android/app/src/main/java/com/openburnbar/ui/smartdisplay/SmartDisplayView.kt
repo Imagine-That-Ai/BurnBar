@@ -52,9 +52,9 @@ fun SmartDisplayView(onBack: (() -> Unit)? = null) {
             .fillMaxSize()
             .background(if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
     ) {
-        Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) {
@@ -76,16 +76,16 @@ fun SmartDisplayView(onBack: (() -> Unit)? = null) {
             }
         }
 
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
+        Spacer(Modifier.height(AuroraSpacing.MD.dp))
 
         StatusFeedback(state)
 
         NestHubCard(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.lg.dp))
+        Spacer(Modifier.height(AuroraSpacing.LG.dp))
 
         PixelClockCard(state = state)
 
-        Spacer(Modifier.height(AuroraSpacing.xxxl.dp))
+        Spacer(Modifier.height(AuroraSpacing.XXXL.dp))
     }
 }

@@ -7,6 +7,18 @@ import Foundation
 struct SummaryAPIKeyResolver {
     let providerAPIKeyStore: ProviderAPIKeyStore
 
+    /// Constructs the Keychain used for Cursor Connector bridge-key lookups.
+    /// Defaults to the live store; tests inject a fake backend through this seam.
+    private let keychainStoreProvider: @Sendable () -> KeychainStore
+
+    init(
+        providerAPIKeyStore: ProviderAPIKeyStore,
+        keychainStoreProvider: @escaping @Sendable () -> KeychainStore = { KeychainStore() }
+    ) {
+        self.providerAPIKeyStore = providerAPIKeyStore
+        self.keychainStoreProvider = keychainStoreProvider
+    }
+
     func resolveAPIKey(for provider: SummaryProviderID) async -> String? {
         let env = ProcessInfo.processInfo.environment
         let store = providerAPIKeyStore
@@ -42,8 +54,12 @@ struct SummaryAPIKeyResolver {
     }
 
     private func cursorConnectorKey(for account: String) -> String? {
-        let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
-        return nonEmpty(raw ?? nil)
+        let keychain = keychainStoreProvider()
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "summary_cursor_connector_key_read_failed"
+        )
+        return nonEmpty(raw)
     }
 }

@@ -19,10 +19,7 @@ import com.openburnbar.data.stores.QuotaPreferences
 import com.openburnbar.data.stores.QuotaStore
 
 @Composable
-fun QuotaCustomizationScreen(
-    onBack: () -> Unit,
-    quotaStore: QuotaStore = viewModel(),
-) {
+fun QuotaCustomizationScreen(onBack: () -> Unit, quotaStore: QuotaStore = viewModel()) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val isDark = isSystemInDarkTheme()

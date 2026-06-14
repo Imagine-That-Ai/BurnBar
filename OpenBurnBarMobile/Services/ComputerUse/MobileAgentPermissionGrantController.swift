@@ -235,7 +235,7 @@ final class MobileAgentPermissionGrantController {
         PhoneControlSender.nextCounter(peerNodeId: peerNodeId, userDefaults: userDefaults)
     }
 
-    private func jsonObject<T: Encodable>(from value: T) throws -> [String: Any] {
+    private nonisolated func jsonObject<T: Encodable>(from value: T) throws -> sending [String: Any] {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)

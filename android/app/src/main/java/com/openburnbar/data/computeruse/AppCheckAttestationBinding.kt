@@ -45,8 +45,7 @@ object AppCheckAttestationBinding {
         return Claim(appId = appId, boundAtMillis = boundAtMillis)
     }
 
-    fun isFresh(claim: Claim, nowMillis: Long = System.currentTimeMillis()): Boolean =
-        nowMillis - claim.boundAtMillis <= MAX_AGE_MILLIS
+    fun isFresh(claim: Claim, nowMillis: Long = System.currentTimeMillis()): Boolean = nowMillis - claim.boundAtMillis <= MAX_AGE_MILLIS
 
     private const val BYTE_MASK = 0xFF
 }

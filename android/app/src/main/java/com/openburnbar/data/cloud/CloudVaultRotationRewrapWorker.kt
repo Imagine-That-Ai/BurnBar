@@ -220,9 +220,9 @@ class CloudVaultRotationRewrapWorker(
                             "startOffset" to 0,
                             "endOffset" to chunk.toByteArray(Charsets.UTF_8).size,
                             "contentHash" to CloudVaultCrypto.sessionChunkHash(chunk, newKey),
-                            "contentHashVersion" to CloudVaultCrypto.sessionChunkHashVersion,
+                            "contentHashVersion" to CloudVaultCrypto.SESSION_CHUNK_HASH_VERSION,
                             "bodyHash" to newBodyHash,
-                            "bodyHashVersion" to CloudVaultCrypto.sessionBodyHashVersion,
+                            "bodyHashVersion" to CloudVaultCrypto.SESSION_BODY_HASH_VERSION,
                             "storagePath" to uploadTicket.storagePath,
                             "sealedSnippet" to CloudVaultCrypto.sealedTextMap(sealedSnippet),
                             "tokenHashes" to
@@ -232,7 +232,7 @@ class CloudVaultRotationRewrapWorker(
                                     cloudSearchChunkTokenHashLimit,
                                 ),
                             "semanticHashes" to CloudVaultCrypto.semanticHashes(searchText, newKey),
-                            "semanticHashVersion" to CloudVaultCrypto.semanticHashVersion,
+                            "semanticHashVersion" to CloudVaultCrypto.SEMANTIC_HASH_VERSION,
                             "provider" to provider,
                         )
                     }
@@ -241,20 +241,20 @@ class CloudVaultRotationRewrapWorker(
                     deviceId = deviceId,
                     indexVersion = cloudSearchIndexVersion,
                     document =
-                        mapOf(
-                            "documentID" to document.id,
-                            "sourceKind" to "conversation",
-                            "sourceID" to sourceID,
-                            "sourceVersionID" to newBodyHash,
-                            "provider" to provider,
-                            "bodyHash" to newBodyHash,
-                            "bodyHashVersion" to CloudVaultCrypto.sessionBodyHashVersion,
-                            "storagePath" to uploadTicket.storagePath,
-                            "sealedTitle" to CloudVaultCrypto.sealedTextMap(sealedSearchTitle),
-                            "sealedBodyPreview" to CloudVaultCrypto.sealedTextMap(sealedSearchPreview),
-                            "byteCount" to plaintext.size,
-                            "encryptedByteCount" to resealedData.size,
-                        ),
+                    mapOf(
+                        "documentID" to document.id,
+                        "sourceKind" to "conversation",
+                        "sourceID" to sourceID,
+                        "sourceVersionID" to newBodyHash,
+                        "provider" to provider,
+                        "bodyHash" to newBodyHash,
+                        "bodyHashVersion" to CloudVaultCrypto.SESSION_BODY_HASH_VERSION,
+                        "storagePath" to uploadTicket.storagePath,
+                        "sealedTitle" to CloudVaultCrypto.sealedTextMap(sealedSearchTitle),
+                        "sealedBodyPreview" to CloudVaultCrypto.sealedTextMap(sealedSearchPreview),
+                        "byteCount" to plaintext.size,
+                        "encryptedByteCount" to resealedData.size,
+                    ),
                     chunks = cloudSearchChunks,
                 )
 
@@ -263,7 +263,7 @@ class CloudVaultRotationRewrapWorker(
                         mapOf(
                             "storagePath" to uploadTicket.storagePath,
                             "bodyHash" to newBodyHash,
-                            "bodyHashVersion" to CloudVaultCrypto.sessionBodyHashVersion,
+                            "bodyHashVersion" to CloudVaultCrypto.SESSION_BODY_HASH_VERSION,
                             "encryptedByteCount" to resealedData.size,
                             "vaultKeyID" to newVaultKeyID,
                             "vaultGeneration" to vaultGeneration,
@@ -336,11 +336,7 @@ class CloudVaultRotationRewrapWorker(
         )
     }
 
-    private suspend fun beginEncryptedSessionBlobUpload(
-        documentID: String,
-        bodyHash: String,
-        byteCount: Int,
-    ): CloudVaultRotationUploadTicket {
+    private suspend fun beginEncryptedSessionBlobUpload(documentID: String, bodyHash: String, byteCount: Int): CloudVaultRotationUploadTicket {
         val raw =
             functions
                 .getHttpsCallable("beginEncryptedSessionBlobUpload")
@@ -371,12 +367,7 @@ class CloudVaultRotationRewrapWorker(
         }
     }
 
-    private suspend fun commitEncryptedSearchIndex(
-        deviceId: String,
-        indexVersion: Int,
-        document: Map<String, Any>,
-        chunks: List<Map<String, Any>>,
-    ) {
+    private suspend fun commitEncryptedSearchIndex(deviceId: String, indexVersion: Int, document: Map<String, Any>, chunks: List<Map<String, Any>>) {
         functions
             .getHttpsCallable("commitEncryptedSearchIndexBatch")
             .call(
@@ -407,13 +398,7 @@ class CloudVaultRotationRewrapWorker(
             .await()
     }
 
-    private fun titlePlaintext(
-        raw: Any?,
-        uid: String,
-        docID: String,
-        oldKey: ByteArray,
-        newKey: ByteArray,
-    ): String? {
+    private fun titlePlaintext(raw: Any?, uid: String, docID: String, oldKey: ByteArray, newKey: ByteArray): String? {
         val sealed = CloudVaultCrypto.sealedTextFromMap(raw as? Map<*, *>) ?: return null
         val aad = CloudVaultAADContext(uid = uid, collection = "session_logs", docID = docID, field = "sealedTitle")
         return runCatching { CloudVaultCrypto.openText(sealed, newKey, aad) }.getOrNull()
@@ -451,11 +436,7 @@ class CloudVaultRotationRewrapWorker(
         return chunks.ifEmpty { listOf(text) }
     }
 
-    private fun updatePayload(
-        result: CloudVaultDocumentRewrapResult,
-        vaultGeneration: Int,
-        jobId: String,
-    ): Map<String, Any> {
+    private fun updatePayload(result: CloudVaultDocumentRewrapResult, vaultGeneration: Int, jobId: String): Map<String, Any> {
         val updates = linkedMapOf<String, Any>()
         for (field in result.changedFields) {
             result.data[field]?.let { updates[field] = it }
@@ -469,14 +450,7 @@ class CloudVaultRotationRewrapWorker(
         return updates
     }
 
-    private suspend fun checkpoint(
-        jobId: String,
-        uid: String,
-        domainID: String,
-        scanned: Int,
-        rewrapped: Int,
-        changed: Int,
-    ) {
+    private suspend fun checkpoint(jobId: String, uid: String, domainID: String, scanned: Int, rewrapped: Int, changed: Int) {
         firestore
             .collection("users")
             .document(uid)

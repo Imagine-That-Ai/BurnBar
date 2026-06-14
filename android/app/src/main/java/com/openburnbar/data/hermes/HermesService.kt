@@ -406,8 +406,7 @@ fun HermesService.retryLastUserTurn() = messageActions.retryLastUserTurn()
 
 fun HermesService.selectConnection(connection: HermesConnectionRecord) = connectionActions.selectConnection(connection)
 
-fun HermesService.addDirectConnection(name: String, url: String): HermesConnectionRecord? =
-    connectionActions.addDirectConnection(name, url)
+fun HermesService.addDirectConnection(name: String, url: String): HermesConnectionRecord? = connectionActions.addDirectConnection(name, url)
 
 fun HermesService.revokeConnection(connection: HermesConnectionRecord) = connectionActions.revokeConnection(connection)
 
@@ -420,14 +419,11 @@ suspend fun HermesService.importSession(id: String): String? = sessionActions.im
 suspend fun HermesService.streamCLIAgentChatPayload(body: ByteArray, sessionID: String, onRawEvent: suspend (String) -> Unit) =
     relayActions.streamCLIAgentChatPayload(body, sessionID, onRawEvent)
 
-suspend fun HermesService.macRelayPayloadForCLIAgentChat(body: ByteArray, sessionID: String) =
-    relayActions.macRelayPayloadForCLIAgentChat(body, sessionID)
+suspend fun HermesService.macRelayPayloadForCLIAgentChat(body: ByteArray, sessionID: String) = relayActions.macRelayPayloadForCLIAgentChat(body, sessionID)
 
-suspend fun HermesService.sendCLIAgentSessionActionPayload(body: ByteArray, sessionID: String) =
-    relayActions.sendCLIAgentSessionActionPayload(body, sessionID)
+suspend fun HermesService.sendCLIAgentSessionActionPayload(body: ByteArray, sessionID: String) = relayActions.sendCLIAgentSessionActionPayload(body, sessionID)
 
 suspend fun HermesService.macRelayPayloadForCLIAgentSessionAction(body: ByteArray, sessionID: String) =
     relayActions.macRelayPayloadForCLIAgentSessionAction(body, sessionID)
 
-suspend fun HermesService.fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID) =
-    relayActions.fetchCLIRuntimeModelCatalog(runtime)
+suspend fun HermesService.fetchCLIRuntimeModelCatalog(runtime: AssistantRuntimeID) = relayActions.fetchCLIRuntimeModelCatalog(runtime)

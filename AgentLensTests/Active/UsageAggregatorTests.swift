@@ -162,6 +162,30 @@ final class UsageAggregatorTests: XCTestCase {
         XCTAssertFalse(aggregator.isRefreshing)
     }
 
+    func test_refreshAll_respectsCancellation() async throws {
+        let dataStore = try makeTestDataStore()
+        let mockParser = MockParser(provider: .factory)
+        mockParser.parseDelayNanoseconds = 500_000_000
+        mockParser.parseResult = ParseResult(usages: [], conversations: [])
+        let aggregator = makeTestAggregator(dataStore: dataStore, parserOverrides: [.factory: mockParser])
+
+        let task = Task {
+            await aggregator.refreshAll()
+        }
+
+        // Let the refresh enter its off-main work before cancelling.
+        try await Task.sleep(nanoseconds: 50_000_000)
+        task.cancel()
+
+        let start = Date()
+        await task.value
+        let elapsed = Date().timeIntervalSince(start)
+
+        // Cancellation should stop the refresh early, well before the 0.5s parser delay.
+        XCTAssertLessThan(elapsed, 0.3, "refreshAll should return quickly after cancellation")
+        XCTAssertFalse(aggregator.isRefreshing)
+    }
+
     func test_refreshAll_clearsErrorsBeforeRefresh() async throws {
         let dataStore = try makeTestDataStore()
         let mockParser = MockParser(provider: .factory)

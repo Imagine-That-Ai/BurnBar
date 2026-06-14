@@ -37,36 +37,6 @@ count_swift_glob_lines() {
   echo "${total}"
 }
 
-count_rg() {
-  local pattern="$1"
-  shift
-  python3 - "${pattern}" "$@" <<'PY'
-import pathlib
-import re
-import sys
-
-pattern = re.compile(sys.argv[1])
-total = 0
-
-def swift_files(root: pathlib.Path):
-    if root.is_file() and root.suffix == ".swift":
-        yield root
-    elif root.is_dir():
-        yield from root.rglob("*.swift")
-
-for raw in sys.argv[2:]:
-    for path in swift_files(pathlib.Path(raw)):
-        try:
-            for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                if pattern.search(line):
-                    total += 1
-        except OSError:
-            pass
-
-print(total)
-PY
-}
-
 count_swift_files_containing() {
   local needle="$1"
   shift
@@ -109,9 +79,9 @@ usage_agg_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/UsageAggre
 projection_lines="$(count_swift_glob_lines "${repo_root}/AgentLens/Services/ProjectionPipeline/"*.swift)"
 top_four_total=$((cloud_sync_lines + search_lines + usage_agg_lines + projection_lines))
 
-task_detached_services="$(count_rg 'Task\.detached' "${repo_root}/AgentLens/Services")"
+task_detached_services="$(python3 "${repo_root}/tools/concurrency-debt/count-task-detached.py" --repo-root "${repo_root}" --path AgentLens/Services --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).taskDetached.total))")"
 
-swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore")"
+swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services")"
 
 try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 
@@ -140,8 +110,67 @@ PY
 done
 
 unsafe_cast_total="n/a"
-if [[ -f "${repo_root}/budgets/unsafe-cast-baseline.json" ]]; then
-  unsafe_cast_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${repo_root}/budgets/unsafe-cast-baseline.json")"
+unsafe_cast_report="$(mktemp "${TMPDIR:-/tmp}/unsafe-cast-metrics.XXXXXX")"
+trap 'rm -f "${unsafe_cast_report}"' EXIT
+node "${repo_root}/tools/type-debt/audit-unsafe-casts.mjs" \
+  --repo-root "${repo_root}" \
+  --ts-mode token-fallback \
+  --out "${unsafe_cast_report}"
+if [[ -s "${unsafe_cast_report}" ]]; then
+  unsafe_cast_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${unsafe_cast_report}")"
+fi
+
+knip_functions_total="n/a"
+if [[ -f "${repo_root}/budgets/knip-baseline.json" ]]; then
+  knip_functions_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).functions ?? 'n/a')" "${repo_root}/budgets/knip-baseline.json")"
+fi
+
+schema_known_drift_total="n/a"
+if [[ -f "${repo_root}/tools/schema-sync/manifest.json" ]]; then
+  schema_known_drift_total="$(node -e "
+const fs=require('node:fs');
+const manifest=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+let total=0;
+for (const domain of manifest.domains ?? []) {
+  for (const key of ['tsHandMirror','swiftHandMirror','kotlinHandMirror']) {
+    for (const entry of domain[key] ?? []) {
+      if (typeof entry === 'object' && Array.isArray(entry.knownDrift)) total += entry.knownDrift.length;
+    }
+  }
+}
+console.log(total);
+" "${repo_root}/tools/schema-sync/manifest.json")"
+fi
+
+unchecked_sendable_total="n/a"
+unchecked_sendable_allowlist="n/a"
+if [[ -x "${repo_root}/tools/concurrency-debt/count-unchecked-sendable.sh" ]]; then
+  unchecked_sendable_json="$(bash "${repo_root}/tools/concurrency-debt/count-unchecked-sendable.sh" --repo-root "${repo_root}" --format json)"
+  unchecked_sendable_total="$(node -e "console.log(JSON.parse(process.argv[1]).total)" "${unchecked_sendable_json}")"
+  unchecked_sendable_allowlist="$(node -e "console.log(JSON.parse(process.argv[1]).allowlist ?? 'n/a')" "${unchecked_sendable_json}")"
+fi
+
+phase1_register="${repo_root}/docs/governance/PHASE1_SECURITY_REGISTER.md"
+phase1_security_open="n/a"
+if [[ -f "${phase1_register}" ]]; then
+  phase1_security_open="$(python3 - "${phase1_register}" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+count = 0
+for line in text.splitlines():
+    if not line.startswith("|") or line.startswith("| ---"):
+        continue
+    cols = [col.strip() for col in line.split("|")[1:-1]]
+    if len(cols) < 2:
+        continue
+    if re.search(r"\*\*Open|\*\*Partial", cols[1]):
+        count += 1
+print(count)
+PY
+)"
 fi
 
 rust_panic_debt="$(python3 - "${repo_root}" <<'PY'
@@ -188,12 +217,16 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Empty \`catch {}\` blocks (app + daemon) | ${empty_catch_blocks} | 0 | 0 |
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |
 | \`try?\` in \`AgentLens/Services/\` | ${try_optional_services} | ≤ 120 | ≤ 50 |
-| Unsafe cast budget (\`budgets/unsafe-cast-baseline.json\`) | ${unsafe_cast_total} | 0 | 0 |
+| Unsafe cast assert-zero gate | ${unsafe_cast_total} | 0 | 0 |
+| Knip dead-code budget (\`budgets/knip-baseline.json\`, functions) | ${knip_functions_total} | 0 | 0 |
+| Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
+| \`@unchecked Sendable\` ratchet (assert-zero gate; ${unchecked_sendable_allowlist} documented allowlist exceptions) | ${unchecked_sendable_total} | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | ${top_four_total} | ≤ 5000 | ≤ 3500 |
 | \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
 | \`functions/src/index.ts\` LOC | ${index_ts_lines} | modularize | — |
-| \`import SwiftUI\` in Services/ + DataStore/ | ${swiftui_services} | ≤ 3 | 0 |
+| \`import SwiftUI\` in Services/ | ${swiftui_services} | 0 | 0 |
+| Phase 1 security register open items (\`docs/governance/PHASE1_SECURITY_REGISTER.md\`) | ${phase1_security_open} | ≤ 3 | 0 |
 | Rust \`unwrap()\`/\`expect()\` in \`crates/{burnbar-remote,openburnbar-iroh}\` | ${rust_panic_debt} | 0 | 0 |
 
 ## Top service files (lines)
@@ -211,6 +244,8 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 - [SLO runbook](runbooks/slos.md)
 - [Type debt budget](TYPE_DEBT.md)
 - [Technical readiness](TECHNICAL_READINESS.md)
+- [Phase 1 security register](governance/PHASE1_SECURITY_REGISTER.md)
+- [Accepted risk register](governance/RISK_REGISTER.md)
 EOF
 
 echo "Updated ${metrics_doc}"

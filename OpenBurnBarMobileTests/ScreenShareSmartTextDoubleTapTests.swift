@@ -85,6 +85,20 @@ final class ScreenShareSmartTextDoubleTapTests: XCTestCase {
         XCTAssertFalse(ScreenShareViewportGesturePolicy.allowsQuickZoom(interactionMode: .coPilot))
     }
 
+    func testControllerMirrorDefaultsToControlModeSoTapsBecomeInput() {
+        XCTAssertEqual(
+            ScreenShareInteractionModePolicy.defaultMode(controlInputEnabled: true),
+            .control
+        )
+    }
+
+    func testWatcherMirrorDefaultsToViewModeForPanAndZoom() {
+        XCTAssertEqual(
+            ScreenShareInteractionModePolicy.defaultMode(controlInputEnabled: false),
+            .view
+        )
+    }
+
     // MARK: - Coach-mark visibility
 
     func testCoachShowsWhenTextFieldFocusedAndKeyboardDown() {

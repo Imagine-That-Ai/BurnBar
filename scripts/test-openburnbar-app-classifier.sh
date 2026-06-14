@@ -82,6 +82,32 @@ Failing tests:
 LOG
 )"
 
+restarted_final_green_with_stale_footer_log="$(write_fixture restarted-final-green-with-stale-footer <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-14 17:50:09.282.
+Test Case '-[OpenBurnBarTests.CLIBridgeTests test_agentToolBroker_shellRunCannotWriteOutsideWorkspace]' failed (1.011 seconds).
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+Test Suite 'Selected tests' started at 2026-06-14 17:53:55.145.
+Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-14 17:54:46.313.
+	 Executed 1279 tests, with 0 failures (0 unexpected) in 49.338 (51.167) seconds
+Test Suite 'Selected tests' passed at 2026-06-14 17:54:46.314.
+	 Executed 1279 tests, with 0 failures (0 unexpected) in 49.338 (51.168) seconds
+Failing tests:
+	CLIBridgeTests.test_agentToolBroker_shellRunCannotWriteOutsideWorkspace()
+** TEST FAILED **
+LOG
+)"
+
+restarted_final_run_failure_log="$(write_fixture restarted-final-run-failure <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-14 17:50:09.282.
+Test Case '-[OpenBurnBarTests.CLIBridgeTests test_agentToolBroker_shellRunCannotWriteOutsideWorkspace]' failed (1.011 seconds).
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+Test Suite 'Selected tests' started at 2026-06-14 17:53:55.145.
+Test Case '-[OpenBurnBarTests.SomeTests test_realRegression]' failed (0.123 seconds).
+Test Suite 'Selected tests' failed at 2026-06-14 17:54:46.314.
+	 Executed 1279 tests, with 1 failure (0 unexpected) in 49.338 (51.168) seconds
+LOG
+)"
+
 hang_log="$(write_fixture hang <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-03 16:58:03.425.
 freed pointer was not the last allocation
@@ -129,6 +155,8 @@ assert_true "green XCTest summary plus trailing Xcode failure is accepted" is_xc
 assert_false "concrete XCTest failure is not accepted as a false-negative pass" is_xcode_false_negative_pass "$concrete_failure_log"
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
 assert_false "final failing-tests section is not hidden by a stale green summary" is_xcode_false_negative_pass "$final_failing_tests_log"
+assert_true "runner-restart stale failing footer is accepted when final Selected tests run is green" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
+assert_false "runner-restart final-run assertion failure is not hidden" is_xcode_false_negative_pass "$restarted_final_run_failure_log"
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
 assert_false "runner crash with concrete XCTest failure is not hidden as infrastructure" is_known_hang "$hang_with_failure_log"
 assert_true "test-host timeout relaunch with stale failing footer is retryable" is_known_hang "$timeout_restart_log"

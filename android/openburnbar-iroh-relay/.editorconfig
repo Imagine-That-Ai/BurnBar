@@ -1,7 +1,9 @@
 root = true
 
-# UniFFI-generated Rust bindings — naming follows foreign ABI, not Kotlin style
+# UniFFI-generated Kotlin bindings — emitted by the UniFFI tool against a foreign
+# ABI surface (naming, wrapping, line length, imports all follow the generator,
+# not Kotlin style). The bindings are never hand-edited, so ktlint scope excludes
+# them entirely; the fix for any violation belongs in the UniFFI emitter, never in
+# a checked-in baseline of generated output.
 [src/main/java/uniffi/**]
-ktlint_standard_function-naming = disabled
-ktlint_standard_property-naming = disabled
-ktlint_standard_no-wildcard-imports = disabled
+ktlint = disabled

@@ -43,19 +43,6 @@ async function cursorFetch(url: string, cookie: string): Promise<{ ok: boolean; 
   }
 }
 
-export interface CursorDashPayload {
-  usage?: {
-    used?: number;
-    limit?: number;
-    window?: string;
-  };
-  subscription?: {
-    tier?: string;
-    status?: string;
-  };
-  [k: string]: unknown;
-}
-
 export const cursorAdapter: ProviderAdapter = {
   provider: PROVIDER,
 

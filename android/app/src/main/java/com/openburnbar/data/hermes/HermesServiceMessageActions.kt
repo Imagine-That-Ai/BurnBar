@@ -34,27 +34,22 @@ private fun hasDesktopAgentRelayGrant(threadId: String?): Boolean {
     return AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.HERMES.token, resolved) != null
 }
 
-private fun buildHermesStreamRequestBody(
-    modelName: String,
-    conversationId: String?,
-    contentBuilder: JSONObject.() -> Unit,
-): String =
-    JSONObject().apply {
-        put("model", modelName)
-        put("stream", true)
-        put(
-            "messages",
-            JSONArray().apply {
-                put(
-                    JSONObject().apply {
-                        put("role", "user")
-                        contentBuilder()
-                    },
-                )
-            },
-        )
-        conversationId?.let { put("conversation_id", it) }
-    }.toString()
+private fun buildHermesStreamRequestBody(modelName: String, conversationId: String?, contentBuilder: JSONObject.() -> Unit): String = JSONObject().apply {
+    put("model", modelName)
+    put("stream", true)
+    put(
+        "messages",
+        JSONArray().apply {
+            put(
+                JSONObject().apply {
+                    put("role", "user")
+                    contentBuilder()
+                },
+            )
+        },
+    )
+    conversationId?.let { put("conversation_id", it) }
+}.toString()
 
 private fun reduceHermesStreamEvent(
     context: HermesStreamEventContext,
@@ -105,11 +100,7 @@ private fun HermesStreamEventContext.applyToolCallFinished(
     return accumulated to nextIterations
 }
 
-private fun HermesStreamEventContext.applyMessageStop(
-    event: HermesStreamEvent.MessageStop,
-    accumulated: String,
-    toolUseIterations: Int,
-): Pair<String, Int> {
+private fun HermesStreamEventContext.applyMessageStop(event: HermesStreamEvent.MessageStop, accumulated: String, toolUseIterations: Int): Pair<String, Int> {
     val outcome = event.outcome.toLocalHermesOutcome()
     if (outcome != HermesChatMessageOutcome.NORMAL) {
         val existing = service.messagesInternal.value.firstOrNull { it.id == assistantID }
@@ -125,11 +116,7 @@ private fun HermesStreamEventContext.applyMessageStop(
     return accumulated to toolUseIterations
 }
 
-private fun HermesStreamEventContext.applyNotice(
-    event: HermesStreamEvent.Notice,
-    accumulated: String,
-    toolUseIterations: Int,
-): Pair<String, Int> {
+private fun HermesStreamEventContext.applyNotice(event: HermesStreamEvent.Notice, accumulated: String, toolUseIterations: Int): Pair<String, Int> {
     if (event.level != "error") return accumulated to toolUseIterations
     service.upsertStreamingAssistant(
         assistantID,
@@ -142,16 +129,15 @@ private fun HermesStreamEventContext.applyNotice(
     return event.text to toolUseIterations
 }
 
-private fun RelayHermesChatMessageOutcome.toLocalHermesOutcome(): HermesChatMessageOutcome =
-    when (this) {
-        RelayHermesChatMessageOutcome.NORMAL -> HermesChatMessageOutcome.NORMAL
-        RelayHermesChatMessageOutcome.REFUSAL -> HermesChatMessageOutcome.REFUSAL
-        RelayHermesChatMessageOutcome.REASONING_FALLBACK -> HermesChatMessageOutcome.REASONING_FALLBACK
-        RelayHermesChatMessageOutcome.LENGTH_CAP -> HermesChatMessageOutcome.LENGTH_CAP
-        RelayHermesChatMessageOutcome.CONTENT_FILTER -> HermesChatMessageOutcome.CONTENT_FILTER
-        RelayHermesChatMessageOutcome.TOOL_CALL_NO_FOLLOW_UP -> HermesChatMessageOutcome.TOOL_CALL_NO_FOLLOW_UP
-        RelayHermesChatMessageOutcome.EMPTY -> HermesChatMessageOutcome.EMPTY
-    }
+private fun RelayHermesChatMessageOutcome.toLocalHermesOutcome(): HermesChatMessageOutcome = when (this) {
+    RelayHermesChatMessageOutcome.NORMAL -> HermesChatMessageOutcome.NORMAL
+    RelayHermesChatMessageOutcome.REFUSAL -> HermesChatMessageOutcome.REFUSAL
+    RelayHermesChatMessageOutcome.REASONING_FALLBACK -> HermesChatMessageOutcome.REASONING_FALLBACK
+    RelayHermesChatMessageOutcome.LENGTH_CAP -> HermesChatMessageOutcome.LENGTH_CAP
+    RelayHermesChatMessageOutcome.CONTENT_FILTER -> HermesChatMessageOutcome.CONTENT_FILTER
+    RelayHermesChatMessageOutcome.TOOL_CALL_NO_FOLLOW_UP -> HermesChatMessageOutcome.TOOL_CALL_NO_FOLLOW_UP
+    RelayHermesChatMessageOutcome.EMPTY -> HermesChatMessageOutcome.EMPTY
+}
 
 /** Send, stream, and retry chat turns for [HermesService]. */
 internal class HermesServiceMessageActions(
@@ -202,13 +188,7 @@ internal class HermesServiceMessageActions(
 
     internal fun dispatchLocalToolCalls(json: JSONObject): Int = toolDispatch.dispatchLocalToolCalls(json)
 
-    fun streamHttpChatCompletion(
-        endpoint: String,
-        content: String,
-        resolvedModelName: String,
-        attachments: List<HermesAttachment>,
-        conversationId: String?,
-    ) {
+    fun streamHttpChatCompletion(endpoint: String, content: String, resolvedModelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
         val userContent =
             if (attachments.isEmpty()) {
                 content
@@ -377,12 +357,7 @@ internal class HermesServiceMessageActions(
             )
     }
 
-    private fun executeHttpChatStream(
-        endpoint: String,
-        modelName: String,
-        conversationId: String?,
-        userContent: Any,
-    ) {
+    private fun executeHttpChatStream(endpoint: String, modelName: String, conversationId: String?, userContent: Any) {
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
         var toolUseIterations = 0
@@ -477,12 +452,7 @@ internal class HermesServiceMessageActions(
         )
     }
 
-    private fun finalizeAssistantStream(
-        assistantID: String,
-        accumulated: String,
-        modelName: String,
-        rescue: HermesEmptyResponseRescue,
-    ) {
+    private fun finalizeAssistantStream(assistantID: String, accumulated: String, modelName: String, rescue: HermesEmptyResponseRescue) {
         val existing = service.messagesInternal.value.firstOrNull { it.id == assistantID }
         var finalText = accumulated.ifBlank { existing?.content.orEmpty() }
         var finalOutcome = existing?.outcome ?: HermesChatMessageOutcome.NORMAL
@@ -561,13 +531,7 @@ private fun HermesService.upsertStreamingAssistant(
     streamingTickInternal.value = streamingTickInternal.value + 1
 }
 
-private fun HermesService.mergeToolCallForAssistant(
-    assistantID: String,
-    id: String,
-    index: Int,
-    nameFragment: String?,
-    argumentsDelta: String,
-) {
+private fun HermesService.mergeToolCallForAssistant(assistantID: String, id: String, index: Int, nameFragment: String?, argumentsDelta: String) {
     messagesInternal.value =
         messagesInternal.value.map { existing ->
             if (existing.id != assistantID) return@map existing
@@ -583,11 +547,7 @@ private fun HermesService.mergeToolCallForAssistant(
     streamingTickInternal.value = streamingTickInternal.value + 1
 }
 
-private fun MutableList<ToolCall>.withMergedToolCall(
-    resolvedID: String,
-    nameFragment: String?,
-    argumentsDelta: String,
-): List<ToolCall> {
+private fun MutableList<ToolCall>.withMergedToolCall(resolvedID: String, nameFragment: String?, argumentsDelta: String): List<ToolCall> {
     val existingIndex = indexOfFirst { it.id == resolvedID }
     if (existingIndex >= 0) {
         val current = this[existingIndex]

@@ -99,8 +99,7 @@ class QuotaStoreTest {
         assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
     }
 
-    private fun firestorePermissionDenied(): FirebaseException =
-        mockk {
-            every { message } returns "Missing or insufficient permissions."
-        }
+    private fun firestorePermissionDenied(): FirebaseException = mockk {
+        every { message } returns "Missing or insufficient permissions."
+    }
 }

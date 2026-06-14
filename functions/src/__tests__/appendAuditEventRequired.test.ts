@@ -23,7 +23,7 @@ const { writes, runTransaction, failingRunTransaction, dbMock } = vi.hoisted(() 
   const runTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
     // A fresh chain: the tail query returns no docs (seq starts at 0).
     const tx = {
-      get: async () => ({ docs: [] as unknown[] }),
+      get: async () => ({ docs: [] }),
       set: (ref: { path: string }, data: Record<string, unknown>) => {
         writes.push({ path: ref.path, data });
       },

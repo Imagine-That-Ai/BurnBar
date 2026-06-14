@@ -31,8 +31,8 @@ fun AuroraBadge(
     modifier: Modifier = Modifier,
     tone: AuroraBadgeTone = AuroraBadgeTone.Neutral,
     bordered: Boolean = true,
-    cornerRadius: Dp = AuroraRadius.full.dp,
-    padding: PaddingValues = PaddingValues(horizontal = AuroraSpacing.sm.dp, vertical = 2.dp),
+    cornerRadius: Dp = AuroraRadius.FULL.dp,
+    padding: PaddingValues = PaddingValues(horizontal = AuroraSpacing.SM.dp, vertical = 2.dp),
 ) {
     val (fg, bg) = toneColors(tone)
 

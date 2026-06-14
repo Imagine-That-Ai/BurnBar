@@ -60,7 +60,7 @@ fun BudgetStatusChip(rules: List<BudgetRuleEntity>, spendByRule: Map<String, Dou
         modifier =
         modifier
             .height(24.dp),
-        shape = RoundedCornerShape(AuroraRadius.full.dp),
+        shape = RoundedCornerShape(AuroraRadius.FULL.dp),
         color = chipColor.copy(alpha = 0.15f),
         border =
         androidx.compose.foundation.BorderStroke(

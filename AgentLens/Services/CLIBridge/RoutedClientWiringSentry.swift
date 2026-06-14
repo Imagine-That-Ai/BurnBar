@@ -71,7 +71,7 @@ final class RoutedClientWiringSentry {
     private nonisolated(unsafe) var enrollmentObserver: NSObjectProtocol?
     private var isStarted = false
 
-    private final class Watcher: @unchecked Sendable {
+    private final class Watcher: Sendable {
         let descriptor: Int32
         let source: DispatchSourceFileSystemObject
 
@@ -272,7 +272,7 @@ final class RoutedClientWiringSentry {
         guard isStarted else { return }
         let backoff = configuration.reopenBackoffNanoseconds
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: backoff)
+            try? await Task.sleep(nanoseconds: backoff) // try?-ok(sleep cancellation only)
             guard let self else { return }
             guard self.isStarted else { return }
             guard self.watchers[target] == nil else { return }
@@ -310,7 +310,7 @@ final class RoutedClientWiringSentry {
         pendingRepairs[target]?.cancel()
         let debounce = configuration.debounceNanoseconds
         pendingRepairs[target] = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: debounce)
+            try? await Task.sleep(nanoseconds: debounce) // try?-ok(sleep cancellation only)
             if Task.isCancelled { return }
             guard let self else { return }
             self.pendingRepairs.removeValue(forKey: target)
@@ -407,7 +407,7 @@ final class RoutedClientWiringSentry {
         sweepTask = Task { @MainActor [weak self] in
             let nanos = UInt64(seconds * 1_000_000_000)
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: nanos)
+                try? await Task.sleep(nanoseconds: nanos) // try?-ok(sleep cancellation only)
                 if Task.isCancelled { return }
                 await self?.performSweep()
             }

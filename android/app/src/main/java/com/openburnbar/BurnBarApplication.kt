@@ -4,8 +4,6 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.google.firebase.FirebaseApp
-import com.openburnbar.data.budget.BudgetNotificationCenter
-import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
@@ -16,24 +14,26 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.messaging.FirebaseMessaging
+import com.openburnbar.data.budget.BudgetNotificationCenter
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
 import com.openburnbar.data.media.AndroidFileTransferService
 import com.openburnbar.data.media.IrohBlobKeyStore
-import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.data.media.MediaControlStreamCoordinator
+import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.data.media.RetainedIrohControlTransportPool
+import com.openburnbar.data.text.TextExpansionSyncWorker
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
-import com.openburnbar.data.text.TextExpansionSyncWorker
-import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
+import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
-import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
+import com.openburnbar.services.media.AgentReplyNotificationState
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,28 +56,26 @@ internal object IrohPairingSelection {
         val publishedAtMillis: Long,
     )
 
-    fun newest(documents: List<DocumentSnapshot>): Candidate? =
-        newestCandidates(
-            documents.mapNotNull { document ->
-                val connectionId = document.getString("connectionId")
-                    ?: document.getString("id")
-                    ?: document.id
-                val normalizedConnectionId = connectionId.trim().takeIf { it.isNotBlank() }
-                    ?: return@mapNotNull null
-                Candidate(
-                    connectionId = normalizedConnectionId,
-                    publishedAtMillis = document.getLong("publishedAtMillis") ?: 0L,
-                )
-            }
-        )
-
-    fun newestCandidates(candidates: List<Candidate>): Candidate? =
-        candidates
-            .filter { it.connectionId.isNotBlank() }
-            .maxWithOrNull(
-                compareBy<Candidate> { it.publishedAtMillis }
-                    .thenBy { it.connectionId }
+    fun newest(documents: List<DocumentSnapshot>): Candidate? = newestCandidates(
+        documents.mapNotNull { document ->
+            val connectionId = document.getString("connectionId")
+                ?: document.getString("id")
+                ?: document.id
+            val normalizedConnectionId = connectionId.trim().takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            Candidate(
+                connectionId = normalizedConnectionId,
+                publishedAtMillis = document.getLong("publishedAtMillis") ?: 0L,
             )
+        },
+    )
+
+    fun newestCandidates(candidates: List<Candidate>): Candidate? = candidates
+        .filter { it.connectionId.isNotBlank() }
+        .maxWithOrNull(
+            compareBy<Candidate> { it.publishedAtMillis }
+                .thenBy { it.connectionId },
+        )
 }
 
 class BurnBarApplication : Application() {
@@ -135,8 +133,11 @@ class BurnBarApplication : Application() {
             }
         }
     }
+
     @Volatile internal var activeCoordinatorConnection: String? = null
+
     @Volatile internal var activeCoordinatorPublishedAtMillis: Long? = null
+
     @Volatile internal var activeCoordinatorTarget: IrohDialTarget? = null
     internal val mediaCoordinatorLock = Mutex()
 
@@ -144,6 +145,11 @@ class BurnBarApplication : Application() {
         super.onCreate()
         appContext = applicationContext
         OpenBurnBarIrohNativeContext.install(applicationContext)
+        // T-AND-06: install the Sentry privacy scrubber BEFORE anything can capture a crash/ANR,
+        // so no payload or breadcrumb can ship prompt/credential fragments off device. This reads
+        // the manifest-configured DSN/options and adds beforeSend/beforeBreadcrumb on top.
+        runCatching { SentryPrivacyInit.install(applicationContext) }
+            .onFailure { Log.w("BurnBar", "Sentry privacy scrubber install failed: ${it.message}") }
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         // F2/F7/F10: land remote kill-switch values so the default-ON
@@ -198,6 +204,7 @@ class BurnBarApplication : Application() {
         // users/{uid}/devices/{deviceId}/fcm_token so triggerVoIPCall
         // can send a Mercury push to this device.
         AgentReplyNotificationState.installLifecycleTracking(this)
+        com.openburnbar.data.cloud.CloudVaultRotationPickupLifecycle.install(this)
         registerFcmToken()
     }
 
@@ -219,7 +226,7 @@ class BurnBarApplication : Application() {
                     getSharedPreferences("mercury_media", MODE_PRIVATE)
                         .getBoolean("media_blob_transfer_enabled", true)
                 },
-            )
+            ),
         )
     }
 
@@ -286,11 +293,7 @@ class BurnBarApplication : Application() {
         pairingListener = null
     }
 
-    private suspend fun ensureMediaControlCoordinator(
-        uid: String,
-        selection: IrohPairingSelection.Candidate,
-        forceRestart: Boolean = false,
-    ) {
+    private suspend fun ensureMediaControlCoordinator(uid: String, selection: IrohPairingSelection.Candidate, forceRestart: Boolean = false) {
         ensureMediaControlCoordinatorManaged(uid = uid, selection = selection, forceRestart = forceRestart)
     }
 
@@ -303,9 +306,11 @@ class BurnBarApplication : Application() {
             uid = uid,
             selection = IrohPairingSelection.Candidate(
                 connectionId = normalizedConnectionID,
-                publishedAtMillis = if (activeCoordinatorConnection == normalizedConnectionID)
+                publishedAtMillis = if (activeCoordinatorConnection == normalizedConnectionID) {
                     activeCoordinatorPublishedAtMillis ?: 0L
-                else 0L,
+                } else {
+                    0L
+                },
             ),
             forceRestart = forceRestart,
         )
@@ -372,7 +377,9 @@ class BurnBarApplication : Application() {
     internal suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
         Log.i(
             "BurnBar",
-            "Mercury control dial target node=${target.nodeId.take(LOG_NODE_ID_PREFIX_LENGTH)} relay=${target.relayURL != null} directAddresses=${target.directAddresses.size}",
+            "Mercury control dial target node=${target.nodeId.take(
+                LOG_NODE_ID_PREFIX_LENGTH,
+            )} relay=${target.relayURL != null} directAddresses=${target.directAddresses.size}",
         )
         return controlTransportPool.dial(target, timeoutMillis = MEDIA_CONTROL_DIAL_TIMEOUT_MILLIS)
     }
@@ -465,10 +472,9 @@ class BurnBarApplication : Application() {
     }
 }
 
-private fun MediaControlStreamCoordinator.Phase.isActiveOrConnecting(): Boolean =
-    this is MediaControlStreamCoordinator.Phase.Dialing ||
-        this is MediaControlStreamCoordinator.Phase.Live ||
-        this is MediaControlStreamCoordinator.Phase.Reconnecting
+private fun MediaControlStreamCoordinator.Phase.isActiveOrConnecting(): Boolean = this is MediaControlStreamCoordinator.Phase.Dialing ||
+    this is MediaControlStreamCoordinator.Phase.Live ||
+    this is MediaControlStreamCoordinator.Phase.Reconnecting
 
 internal object MediaControlCoordinatorReusePolicy {
     fun shouldReuse(

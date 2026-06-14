@@ -49,7 +49,7 @@ fun BudgetBlockedCard(
             .border(
                 width = 1.5.dp,
                 color = errorColor.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(AuroraRadius.lg.dp),
+                shape = RoundedCornerShape(AuroraRadius.LG.dp),
             ),
         colors =
         CardDefaults.cardColors(
@@ -60,7 +60,7 @@ fun BudgetBlockedCard(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.md.dp),
+                .padding(AuroraSpacing.MD.dp),
             verticalAlignment = Alignment.Top,
         ) {
             Icon(
@@ -69,10 +69,10 @@ fun BudgetBlockedCard(
                 tint = errorColor,
                 modifier = Modifier.size(36.dp).padding(top = 2.dp),
             )
-            Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
             Column(modifier = Modifier.weight(1f)) {
                 BudgetBlockedCardSummary(rule = rule, used = used, limit = limit, errorColor = errorColor)
-                Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
                 BudgetBlockedCardActions(
                     rule = rule,
                     errorColor = errorColor,

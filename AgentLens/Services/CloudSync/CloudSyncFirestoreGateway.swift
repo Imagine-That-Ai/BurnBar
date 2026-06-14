@@ -52,6 +52,8 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
 
 // MARK: - Live Implementations
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase `Firestore` handle
+// (override for tests); the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 /// Thin wrapper around real Firebase Firestore SDK.
 final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
     private let firestoreOverride: Firestore?
@@ -73,6 +75,8 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
     }
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase Firestore SDK
+// reference; the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 final class CloudSyncCollectionLiveGateway: CloudSyncCollectionGateway, @unchecked Sendable {
     private let reference: CollectionReference
 
@@ -106,6 +110,8 @@ final class CloudSyncCollectionLiveGateway: CloudSyncCollectionGateway, @uncheck
     }
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase Firestore SDK
+// reference; the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway, @unchecked Sendable {
     let reference: DocumentReference
 
@@ -130,6 +136,8 @@ final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway, @unchecked S
     }
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase Firestore SDK
+// reference; the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway, @unchecked Sendable {
     private let query: Query
 
@@ -159,6 +167,8 @@ final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway, @unchecked Sendabl
     }
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase Firestore SDK
+// reference; the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @unchecked Sendable {
     private let batch: WriteBatch
 
@@ -182,7 +192,7 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @uncheck
     }
 }
 
-final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway, @unchecked Sendable {
+final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway, Sendable {
     private let snapshot: QuerySnapshot
 
     init(snapshot: QuerySnapshot) {
@@ -194,7 +204,7 @@ final class CloudSyncQuerySnapshotLiveGateway: CloudSyncQuerySnapshotGateway, @u
     }
 }
 
-final class CloudSyncDocumentSnapshotLiveGateway: CloudSyncDocumentSnapshotGateway, @unchecked Sendable {
+final class CloudSyncDocumentSnapshotLiveGateway: CloudSyncDocumentSnapshotGateway, Sendable {
     private let document: DocumentSnapshot
 
     init(document: DocumentSnapshot) {

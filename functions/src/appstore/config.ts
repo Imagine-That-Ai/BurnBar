@@ -33,13 +33,13 @@ type StringParam = ReturnType<typeof defineString>;
  * page; not technically secret, but treated as sensitive for parity with
  * the ASC private key.
  */
-export const APP_STORE_ASC_KEY_ID: SecretParam = defineSecret("APP_STORE_ASC_KEY_ID");
+const APP_STORE_ASC_KEY_ID: SecretParam = defineSecret("APP_STORE_ASC_KEY_ID");
 
 /**
  * App Store Connect API issuer id (UUID). Sourced from the same
  * App Store Connect "Keys" page.
  */
-export const APP_STORE_ASC_ISSUER_ID: SecretParam = defineSecret("APP_STORE_ASC_ISSUER_ID");
+const APP_STORE_ASC_ISSUER_ID: SecretParam = defineSecret("APP_STORE_ASC_ISSUER_ID");
 
 /**
  * PEM-encoded ASC API private key (the `.p8` file body, including
@@ -48,7 +48,7 @@ export const APP_STORE_ASC_ISSUER_ID: SecretParam = defineSecret("APP_STORE_ASC_
  *
  * MUST be created with `firebase functions:secrets:set APP_STORE_ASC_KEY_P8`.
  */
-export const APP_STORE_ASC_KEY_P8: SecretParam = defineSecret("APP_STORE_ASC_KEY_P8");
+const APP_STORE_ASC_KEY_P8: SecretParam = defineSecret("APP_STORE_ASC_KEY_P8");
 
 /**
  * Numeric `appAppleId` for production. Optional in sandbox; required for
@@ -57,18 +57,18 @@ export const APP_STORE_ASC_KEY_P8: SecretParam = defineSecret("APP_STORE_ASC_KEY
  * Surfaced as a non-secret string param so it is visible in the deployed
  * function configuration without revealing key material.
  */
-export const APP_STORE_APPLE_APP_ID: StringParam = defineString("APP_STORE_APPLE_APP_ID", { default: "" });
+const APP_STORE_APPLE_APP_ID: StringParam = defineString("APP_STORE_APPLE_APP_ID", { default: "" });
 
 /** Bundle identifier override; defaults to the real App Store Connect app. */
-export const APP_STORE_BUNDLE_ID: StringParam = defineString("APP_STORE_BUNDLE_ID", { default: "com.openburnbar.app" });
+const APP_STORE_BUNDLE_ID: StringParam = defineString("APP_STORE_BUNDLE_ID", { default: "com.openburnbar.app" });
 
 /** Default environment override (`"Production"`, `"Sandbox"`, …). */
-export const APP_STORE_ENV: StringParam = defineString("APP_STORE_ENV", {
+const APP_STORE_ENV: StringParam = defineString("APP_STORE_ENV", {
   default: "Sandbox",
 });
 
 /** StoreKit product id for hosted quota sync. */
-export const HOSTED_QUOTA_PRODUCT_ID: StringParam = defineString("HOSTED_QUOTA_PRODUCT_ID", {
+const HOSTED_QUOTA_PRODUCT_ID: StringParam = defineString("HOSTED_QUOTA_PRODUCT_ID", {
   default: "com.openburnbar.hostedQuotaSync.cloud.monthly",
 });
 
@@ -90,7 +90,7 @@ export const APP_STORE_SECRETS: SecretParam[] = [APP_STORE_ASC_KEY_ID, APP_STORE
  * the handler runs; at module-load time the `.value()` reads return the
  * empty string and we'd silently cache that forever.
  */
-export function readAscCredentials(): {
+function readAscCredentials(): {
   keyId: string;
   issuerId: string;
   privateKeyP8: string;

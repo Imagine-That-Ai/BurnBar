@@ -1,10 +1,10 @@
 
 package com.openburnbar.data.hermes.relay
 
+import android.util.Base64
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayPayload
-import android.util.Base64
 import java.util.UUID
 import org.json.JSONObject
 

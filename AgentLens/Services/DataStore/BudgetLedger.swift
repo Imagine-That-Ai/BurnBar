@@ -23,13 +23,35 @@ actor BudgetLedger {
         return try await query(rule: rule, windowStart: windowStart, reference: reference)
     }
 
-    /// Cheaper "fast path" check for batch gate evaluation — runs the SQL once and returns
-    /// the total. The caller picks how to combine with `estimatedCost`.
+    /// Cheaper "fast path" check for batch gate evaluation — runs the SQL once per rule and
+    /// returns the totals keyed by `rule.id`. The caller picks how to combine with
+    /// `estimatedCost`.
+    ///
+    /// Fail-closed contract: a rule whose spend read **succeeds** is always present in the
+    /// result — including the legitimate `0.0` for "no matching rows". A rule whose spend
+    /// read **fails** (DB I/O error, corrupt page, locked file) is deliberately *omitted*
+    /// from the result and the failure is logged. This distinguishes "definitely spent $0"
+    /// (key present, value `0`) from "spend is unknown because the read failed" (key absent),
+    /// so the gate never silently treats an unreadable ledger as zero accumulated spend and
+    /// lets an over-limit request through. Callers MUST treat a missing key as
+    /// at-limit / blocked, e.g. `result[rule.id] ?? rule.amountUSD`, rather than `?? 0`.
     func snapshot(forRules rules: [BudgetRule], reference: Date = Date()) async -> [String: Double] {
         var result: [String: Double] = [:]
         for rule in rules {
-            let value = (try? await currentSpend(forRule: rule, reference: reference)) ?? 0
-            result[rule.id] = value
+            do {
+                result[rule.id] = try await currentSpend(forRule: rule, reference: reference)
+            } catch {
+                // Do NOT default to 0: a swallowed read failure would report zero accumulated
+                // spend and let an over-limit request through (fail-open). Omit the key so the
+                // gate fails closed on unknown spend, and surface the failure for observability.
+                AppLogger.dataStore.error(
+                    "budget_ledger_snapshot_read_failed",
+                    metadata: [
+                        "ruleScope": rule.scope.rawValue,
+                        "errorClass": "\(String(describing: type(of: error)))"
+                    ]
+                )
+            }
         }
         return result
     }

@@ -33,6 +33,5 @@ internal object PhoneControlSignerCanonical {
     fun systemPermissionRequestHashHex(request: PhoneControlSystemPermissionRequest): String =
         hashJson(PhoneControlSignerCanonicalJson.canonicalSystemPermissionRequestJson(request))
 
-    private fun hashJson(json: String): String =
-        PhoneControlSignerJsonEncoding.sha256Hex(json.toByteArray(Charsets.UTF_8))
+    private fun hashJson(json: String): String = PhoneControlSignerJsonEncoding.sha256Hex(json.toByteArray(Charsets.UTF_8))
 }

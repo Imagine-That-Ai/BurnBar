@@ -32,7 +32,7 @@ import {
 } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-export const KNOWLEDGE_GITHUB_WEBHOOK_SECRET = defineSecret("KNOWLEDGE_GITHUB_WEBHOOK_SECRET");
+const KNOWLEDGE_GITHUB_WEBHOOK_SECRET = defineSecret("KNOWLEDGE_GITHUB_WEBHOOK_SECRET");
 /**
  * Server-held HMAC key for the opaque repo MATCH token (privacy-leak-
  * remediation-2026-06-02 §4). The GitHub-push webhook has no vault key and no
@@ -43,7 +43,7 @@ export const KNOWLEDGE_GITHUB_WEBHOOK_SECRET = defineSecret("KNOWLEDGE_GITHUB_WE
  * the GitHub-signed `full_name`) recompute the same token with this key; a
  * Firestore-only adversary sees only an opaque token.
  */
-export const KNOWLEDGE_REPO_MATCH_KEY = defineSecret("KNOWLEDGE_REPO_MATCH_KEY");
+const KNOWLEDGE_REPO_MATCH_KEY = defineSecret("KNOWLEDGE_REPO_MATCH_KEY");
 
 /** Staleness window: a connected repo not synced within this is flagged for re-sync. */
 const RECONCILE_STALE_MS = 24 * 60 * 60 * 1000;
@@ -422,7 +422,7 @@ export const reconcileKnowledgeMemoryDaily = onSchedule(
   },
 );
 
-export const __testing__ = {
+const __testing__ = {
   sourceManifestIdFor,
   manifestKeyForRepoRow,
   opaqueSourceManifestIdForRepoRow,

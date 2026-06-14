@@ -17,8 +17,8 @@ import {
   sanitizeGatewayRelayEnvelopeCapabilities,
   sanitizeGatewaySignalEnvelope,
   serializeHermesGatewayEvent,
-  type GatewaySignalEnvelopeDoc,
 } from "../hermesGateway.js";
+import type { GatewaySignalEnvelopeDoc } from "../types/generated/hermes-gateway.js";
 
 function signalEnvelope(): GatewaySignalEnvelopeDoc {
   return {

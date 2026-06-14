@@ -19,7 +19,7 @@ actor CursorConnectorLogStreamManager {
 
     private func readDelta(from url: URL, offset: inout UInt64) throws -> String? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path), // try?-ok(optional file-size probe)
            let fileSize = attrs[.size] as? NSNumber {
             let size = fileSize.uint64Value
             if offset > size {
@@ -27,7 +27,7 @@ actor CursorConnectorLogStreamManager {
             }
         }
         let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(filehandle teardown)
 
         try handle.seek(toOffset: offset)
         let data = handle.readDataToEndOfFile()

@@ -2,6 +2,10 @@
 
 package com.openburnbar.ui.streams
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,16 +21,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -41,17 +42,15 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -63,6 +62,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -76,20 +76,20 @@ import com.openburnbar.data.models.ProjectSummary
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.StreamsSegment
+import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.components.CookingLoaderStyle
 import com.openburnbar.ui.components.EmptyStateView
 import com.openburnbar.ui.components.ErrorStateView
+import com.openburnbar.ui.components.HapticBus
 import com.openburnbar.ui.components.ModeAwareLoader
 import com.openburnbar.ui.components.ModelLogo
 import com.openburnbar.ui.components.ProviderAvatar
 import com.openburnbar.ui.components.ShimmerCard
-import com.openburnbar.ui.components.HapticBus
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
-import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.util.Formatting
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -172,11 +172,7 @@ internal fun StreamsCloudDialogOverlay(state: StreamsCloudDialogState) {
 }
 
 @Composable
-internal fun StreamsViewInitialEffects(
-    activityStore: ActivityStore,
-    searchQuery: String,
-    selectedSegment: StreamsSegment,
-) {
+internal fun StreamsViewInitialEffects(activityStore: ActivityStore, searchQuery: String, selectedSegment: StreamsSegment) {
     LaunchedEffect(Unit) { activityStore.loadInitial() }
     LaunchedEffect(searchQuery, selectedSegment) {
         if (selectedSegment != StreamsSegment.COCKPIT) activityStore.updateSearch(searchQuery)
@@ -240,12 +236,12 @@ internal fun StreamsViewContent(
                 )
             } else {
                 StreamsSearchField(searchQuery = state.searchQuery, onSearchChange = callbacks.onSearchChange)
-                Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = AuroraSpacing.md.dp),
-                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-                    contentPadding = PaddingValues(bottom = AuroraSpacing.xxl.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = AuroraSpacing.MD.dp),
+                    verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+                    contentPadding = PaddingValues(bottom = AuroraSpacing.XXL.dp),
                 ) {
                     when (state.selectedSegment) {
                         StreamsSegment.COCKPIT -> {}
@@ -268,7 +264,7 @@ internal fun StreamsViewContent(
                                 projects = state.projects,
                                 isLoading = state.isLoading,
                                 error = state.error,
-                                onRetry = { activityStore.setSegment(StreamsSegment.PROJECTS) }
+                                onRetry = { activityStore.setSegment(StreamsSegment.PROJECTS) },
                             )
                     }
                 }
@@ -283,13 +279,13 @@ private fun CustomMicroChip(text: String, modifier: Modifier = Modifier) {
         modifier = modifier
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
             .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             text = text,
             fontSize = 9.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -302,14 +298,14 @@ internal fun StreamsSegmentTabs(selectedSegment: StreamsSegment, onSelectSegment
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp)
             .height(42.dp)
             .clip(RoundedCornerShape(21.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
             .border(
                 width = 0.5.dp,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(21.dp)
+                shape = RoundedCornerShape(21.dp),
             )
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -328,12 +324,7 @@ internal fun StreamsSegmentTabs(selectedSegment: StreamsSegment, onSelectSegment
 }
 
 @Composable
-private fun RowScope.StreamsSegmentTab(
-    segment: StreamsSegment,
-    isSelected: Boolean,
-    isDark: Boolean,
-    onClick: () -> Unit,
-) {
+private fun RowScope.StreamsSegmentTab(segment: StreamsSegment, isSelected: Boolean, isDark: Boolean, onClick: () -> Unit) {
     val bgGradient = if (isSelected) {
         Brush.linearGradient(
             if (isDark) {
@@ -381,7 +372,7 @@ internal fun StreamsSearchField(searchQuery: String, onSearchChange: (String) ->
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.md.dp)
+            .padding(horizontal = AuroraSpacing.MD.dp)
             .height(48.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
@@ -391,11 +382,11 @@ internal fun StreamsSearchField(searchQuery: String, onSearchChange: (String) ->
                 shape = RoundedCornerShape(12.dp),
             )
             .padding(horizontal = 12.dp),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.CenterStart,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
         ) {
             StreamsSearchLeadingIcon(inputFocused = inputFocused)
             Spacer(modifier = Modifier.width(8.dp))
@@ -422,11 +413,7 @@ private fun StreamsSearchLeadingIcon(inputFocused: Boolean) {
 }
 
 @Composable
-private fun RowScope.StreamsSearchTextInput(
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
-    onFocusChanged: (Boolean) -> Unit,
-) {
+private fun RowScope.StreamsSearchTextInput(searchQuery: String, onSearchChange: (String) -> Unit, onFocusChanged: (Boolean) -> Unit) {
     OutlinedTextField(
         value = searchQuery,
         onValueChange = onSearchChange,
@@ -515,7 +502,7 @@ internal fun LazyListScope.streamsSessionsItems(ctx: StreamsSessionsListContext)
         )
     }
     if (ctx.isLoading && ctx.usages.isNotEmpty()) {
-        item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.sm.dp)) }
+        item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.SM.dp)) }
     }
 }
 
@@ -527,7 +514,7 @@ private fun LazyListScope.streamsCloudSearchItems(
     item {
         Text(
             "Cloud conversation matches",
-            modifier = Modifier.padding(top = AuroraSpacing.xs.dp, bottom = AuroraSpacing.xxs.dp),
+            modifier = Modifier.padding(top = AuroraSpacing.XS.dp, bottom = AuroraSpacing.XXS.dp),
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -563,12 +550,7 @@ internal fun LazyListScope.streamsModelsItems(usages: List<TokenUsage>, isLoadin
     }
 }
 
-internal fun LazyListScope.streamsProjectsItems(
-    projects: List<ProjectSummary>,
-    isLoading: Boolean,
-    error: String?,
-    onRetry: () -> Unit
-) {
+internal fun LazyListScope.streamsProjectsItems(projects: List<ProjectSummary>, isLoading: Boolean, error: String?, onRetry: () -> Unit) {
     if (isLoading && projects.isEmpty()) {
         items(5) { ShimmerCard(height = 70) }
         return
@@ -607,11 +589,11 @@ private fun streamsFilterUsages(usages: List<TokenUsage>, searchQuery: String): 
 @Composable
 fun UsageCard(usage: TokenUsage, onAskHermes: (String) -> Unit) {
     AuroraGlassCard {
-        Column(modifier = Modifier.padding(AuroraSpacing.md.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.MD.dp)) {
             UsageCardHeader(usage = usage)
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
             UsageCardMetaRow(usage = usage)
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             UsageCardActions(usage = usage, onAskHermes = onAskHermes)
         }
     }
@@ -622,7 +604,7 @@ private fun UsageCardHeader(usage: TokenUsage) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             ProviderAvatar(providerKey = usage.provider, size = 20)
-            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
             Text(usage.provider, fontWeight = FontWeight.Bold, fontSize = AuroraTypography.caption.sp)
             Text(" · ${usage.model}", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -733,10 +715,10 @@ private fun UsageProjectChip(projectName: String) {
 @Composable
 fun CloudConversationSearchCard(hit: CloudConversationSearchRow, onClick: () -> Unit) {
     AuroraGlassCard(interactive = true, onClick = onClick) {
-        Column(modifier = Modifier.padding(AuroraSpacing.md.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.MD.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(16.dp), tint = AuroraColors.teal)
-                Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.XS.dp))
                 Text(
                     hit.title.ifBlank { "Encrypted session" },
                     modifier = Modifier.weight(1f),
@@ -752,7 +734,7 @@ fun CloudConversationSearchCard(hit: CloudConversationSearchRow, onClick: () -> 
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
             Text(
                 hit.snippet,
                 fontSize = 11.sp,
@@ -760,8 +742,8 @@ fun CloudConversationSearchCard(hit: CloudConversationSearchRow, onClick: () -> 
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+            Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
                 hit.provider?.takeIf { it.isNotBlank() }?.let {
                     CustomMicroChip(text = it)
                 }
@@ -771,13 +753,7 @@ fun CloudConversationSearchCard(hit: CloudConversationSearchRow, onClick: () -> 
 }
 
 @Composable
-internal fun CloudConversationDetailDialog(
-    hit: CloudConversationSearchRow,
-    body: String,
-    error: String?,
-    isLoading: Boolean,
-    onDismiss: () -> Unit,
-) {
+internal fun CloudConversationDetailDialog(hit: CloudConversationSearchRow, body: String, error: String?, isLoading: Boolean, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -791,7 +767,7 @@ internal fun CloudConversationDetailDialog(
                 isLoading ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                     ) {
                         ModeAwareLoader(style = CookingLoaderStyle.INLINE, strokeWidth = 2.dp)
                         Text("Opening encrypted conversation...")
@@ -818,13 +794,13 @@ internal fun CloudConversationDetailDialog(
 fun ModelSummaryCard(model: String, requestCount: Int, totalCost: Double) {
     AuroraGlassCard {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.md.dp),
+            modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.MD.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ModelLogo(modelKey = model, size = 32.dp)
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 Column {
                     Text(model, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(2.dp))
@@ -843,7 +819,7 @@ fun ModelSummaryCard(model: String, requestCount: Int, totalCost: Double) {
 fun ProjectCard(project: ProjectSummary) {
     AuroraGlassCard {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.md.dp),
+            modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.MD.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -852,9 +828,9 @@ fun ProjectCard(project: ProjectSummary) {
                     imageVector = Icons.Filled.Folder,
                     contentDescription = null,
                     tint = AuroraColors.ember,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(22.dp),
                 )
-                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
                 Column {
                     Text(project.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(2.dp))

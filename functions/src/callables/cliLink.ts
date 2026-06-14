@@ -24,6 +24,43 @@ import {
   recordCallableApprovalFailure,
 } from "./publicRateLimit.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
+import { setPublicJsonSecurityHeaders } from "../publicHttpSecurityHeaders.js";
+
+interface CliLinkSessionDoc {
+  deviceSecretHash: string;
+  expiresAt: Timestamp;
+  status: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  clientId?: string;
+  scopes?: string[];
+  grantMode?: string;
+  clientType?: string;
+  displayName?: string;
+}
+
+function readCliLinkSessionData(raw: FirebaseFirestore.DocumentData | undefined): CliLinkSessionDoc | undefined {
+  if (raw == null) return undefined;
+  const expiresAt = raw.expiresAt;
+  if (!(expiresAt instanceof Timestamp)) return undefined;
+  if (typeof raw.deviceSecretHash !== "string" || typeof raw.status !== "string") return undefined;
+  return {
+    deviceSecretHash: raw.deviceSecretHash,
+    expiresAt,
+    status: raw.status,
+    accessToken: typeof raw.accessToken === "string" ? raw.accessToken : undefined,
+    refreshToken: typeof raw.refreshToken === "string" ? raw.refreshToken : undefined,
+    expiresIn: typeof raw.expiresIn === "number" ? raw.expiresIn : undefined,
+    clientId: typeof raw.clientId === "string" ? raw.clientId : undefined,
+    scopes: Array.isArray(raw.scopes)
+      ? raw.scopes.filter((scope): scope is string => typeof scope === "string")
+      : undefined,
+    grantMode: typeof raw.grantMode === "string" ? raw.grantMode : undefined,
+    clientType: typeof raw.clientType === "string" ? raw.clientType : undefined,
+    displayName: typeof raw.displayName === "string" ? raw.displayName : undefined,
+  };
+}
 
 function generateUserCode(): string {
   const chars = "ABCDEFGHJKLMNOPQRSTUVWXYZ23456789"; // Omit confusing chars: 0, 1, I, L
@@ -43,6 +80,7 @@ export const startCliLink = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res) => {
+    setPublicJsonSecurityHeaders(res);
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
       return;
@@ -97,6 +135,7 @@ export const pollCliLink = onRequest(
     cors: true,
   },
   async (req, res) => {
+    setPublicJsonSecurityHeaders(res);
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
       return;
@@ -115,7 +154,11 @@ export const pollCliLink = onRequest(
         return;
       }
 
-      const data = snap.data()!;
+      const data = readCliLinkSessionData(snap.data());
+      if (data == null) {
+        res.status(200).json({ status: "expired" });
+        return;
+      }
 
       // Verify deviceSecretHash matches sha256(deviceSecret)
       const computedHash = createHash("sha256").update(deviceSecret).digest("hex");
@@ -125,8 +168,7 @@ export const pollCliLink = onRequest(
       }
 
       // Check expiration
-      const expiresAt = data.expiresAt as Timestamp;
-      if (expiresAt.toDate().getTime() < Date.now()) {
+      if (data.expiresAt.toDate().getTime() < Date.now()) {
         res.status(200).json({ status: "expired" });
         await sessionRef.delete();
         return;
@@ -203,11 +245,14 @@ export const completeCliLink = onCall(
 
     const sessionDoc = sessionsQuery.docs[0];
     const sessionRef = sessionDoc.ref;
-    const sessionData = sessionDoc.data();
+    const sessionData = readCliLinkSessionData(sessionDoc.data());
+    if (sessionData == null) {
+      await sessionRef.delete();
+      throw new HttpsError("failed-precondition", "This link code has expired.");
+    }
 
     // Check expiration
-    const expiresAt = sessionData.expiresAt as Timestamp;
-    if (expiresAt.toDate().getTime() < Date.now()) {
+    if (sessionData.expiresAt.toDate().getTime() < Date.now()) {
       await sessionRef.delete();
       throw new HttpsError("failed-precondition", "This link code has expired.");
     }

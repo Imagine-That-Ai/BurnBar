@@ -60,13 +60,78 @@ def count_empty_catches(repo_root: pathlib.Path) -> dict[str, int]:
     return {"total": count, "agent_lens": agent_lens, "daemon": daemon}
 
 
-def count_try_optional_services(repo_root: pathlib.Path) -> dict[str, int]:
-    """Count try? occurrences under AgentLens/Services."""
-    services = repo_root / "AgentLens" / "Services"
-    total = 0
-    if not services.exists():
-        return {"total": 0}
+# A `try?` occurrence: the Swift keyword `try` followed by `?`, NOT the `try?`
+# substring inside an identifier doing optional chaining (`entry?`, `registry?`,
+# `auditEntry?`, `CacheEntry?`, `retry?`). The leading word boundary excludes
+# those; the negative lookahead on `-ok` excludes the `try?-ok` justification
+# token so a tag comment can never inflate the count.
+TRY_OPTIONAL_OCCURRENCE = re.compile(r"\btry\?(?!-ok)")
+# The justification token that marks an intentional, reviewed best-effort
+# optionality. Written as `// try?-ok(<reason>)` on the same source line as the
+# `try?` (preferred) or on the line immediately above it.
+TRY_OPTIONAL_TAG = "try?-ok("
 
+
+def strip_line_comment(line: str) -> str:
+    """Return the code portion of a Swift line, dropping a trailing `//` comment.
+
+    Tracks string state so a `//` inside a string literal (e.g. a URL like
+    ``"https://…"``) is preserved. This keeps a `try?` mentioned only in prose —
+    a doc comment or an inline explanation — from being miscounted as executable
+    debt; only `try?` in actual code counts.
+    """
+    in_string = False
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == '"':
+            in_string = not in_string
+        elif char == "/" and not in_string and index + 1 < len(line) and line[index + 1] == "/":
+            return line[:index]
+    return line
+
+
+def count_untagged_try_optional_in_text(text: str) -> tuple[int, int]:
+    """Return (untagged, tagged) `try?` counts for one Swift source string.
+
+    Only `try?` in **code** is counted — a `try?` appearing solely in a comment
+    is never executable and never debt. A code `try?` is *tagged* when a
+    ``try?-ok(<reason>)`` token appears on its own line or the line immediately
+    above it. Tagged sites are intentional best-effort reads that have been
+    reviewed and justified; only untagged code sites count as debt, which lets
+    the ratchet drive the untagged total to zero without forcing
+    genuinely-optional reads into `do/catch`.
+    """
+    untagged = 0
+    tagged = 0
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        hits = len(TRY_OPTIONAL_OCCURRENCE.findall(strip_line_comment(line)))
+        if hits == 0:
+            continue
+        previous = lines[index - 1] if index > 0 else ""
+        if TRY_OPTIONAL_TAG in line or TRY_OPTIONAL_TAG in previous:
+            tagged += hits
+        else:
+            untagged += hits
+    return untagged, tagged
+
+
+def count_try_optional_services(repo_root: pathlib.Path) -> dict[str, int]:
+    """Count untagged `try?` occurrences under AgentLens/Services.
+
+    Only untagged sites count toward the debt budget; sites carrying a
+    ``try?-ok(<reason>)`` justification are reported separately as ``tagged``.
+    """
+    services = repo_root / "AgentLens" / "Services"
+    if not services.exists():
+        return {"total": 0, "tagged": 0}
+
+    untagged_total = 0
+    tagged_total = 0
     for path in services.rglob("*.swift"):
         if is_excluded_path(path.relative_to(repo_root)):
             continue
@@ -74,9 +139,11 @@ def count_try_optional_services(repo_root: pathlib.Path) -> dict[str, int]:
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        total += len(re.findall(r"try\?", text))
+        untagged, tagged = count_untagged_try_optional_in_text(text)
+        untagged_total += untagged
+        tagged_total += tagged
 
-    return {"total": total}
+    return {"total": untagged_total, "tagged": tagged_total}
 
 
 def main() -> int:
@@ -105,7 +172,7 @@ def main() -> int:
         if "tryOptional" in payload:
             to = payload["tryOptional"]
             assert isinstance(to, dict)
-            print(f"try_optional total={to['total']}")
+            print(f"try_optional total={to['total']} tagged={to.get('tagged', 0)}")
     else:
         json.dump(payload, sys.stdout, indent=2)
         sys.stdout.write("\n")

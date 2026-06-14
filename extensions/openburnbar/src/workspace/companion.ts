@@ -37,7 +37,7 @@ const DEFAULT_SEARCH_MAX_RESULTS = 50;
 const DEFAULT_SEARCH_MAX_FILE_BYTES = 256_000;
 const decoder = new TextDecoder('utf-8');
 
-export type BurnBarIndexedSearchBridge = (
+type BurnBarIndexedSearchBridge = (
   params: BurnBarSearchBurnbarIndexRequest
 ) => Promise<BurnBarSearchBurnbarIndexResult>;
 

@@ -126,10 +126,7 @@ class AndroidEscrowDeviceRegistry(
         }
     }
 
-    private suspend fun publishPublicKeyIfNeeded(
-        keypair: AndroidCloudVaultDeviceKeypair,
-        userRef: com.google.firebase.firestore.DocumentReference,
-    ) {
+    private suspend fun publishPublicKeyIfNeeded(keypair: AndroidCloudVaultDeviceKeypair, userRef: com.google.firebase.firestore.DocumentReference) {
         val publicKeyDataBase64 = CloudVaultCryptoSupport.encodeBase64(keypair.publicKeyData)
         val publicKeyRef = userRef.collection("escrow_public_keys")
             .document("${keypair.deviceId}_${keypair.keyVersion}")

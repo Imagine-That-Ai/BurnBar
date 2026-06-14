@@ -88,7 +88,7 @@ private fun HermesQuickAskEmptyPreview() {
             text = "✦",
             fontSize = 24.sp,
             color = AuroraColors.hermesAureate,
-            modifier = Modifier.padding(end = AuroraSpacing.sm.dp),
+            modifier = Modifier.padding(end = AuroraSpacing.SM.dp),
         )
         Column {
             Text(
@@ -131,12 +131,7 @@ private fun HermesQuickAskMessageRow(msg: com.openburnbar.data.hermes.HermesMess
 }
 
 @Composable
-internal fun HermesQuickAskInputRow(
-    input: String,
-    inputFocused: Boolean,
-    onInputChange: (String) -> Unit,
-    onSend: () -> Unit,
-) {
+internal fun HermesQuickAskInputRow(input: String, inputFocused: Boolean, onInputChange: (String) -> Unit, onSend: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -189,10 +184,7 @@ internal fun HermesQuickAskInputRow(
 }
 
 @Composable
-internal fun HermesQuickAskPromptRail(
-    suggestedPrompts: List<String>,
-    onPromptSelected: (String) -> Unit,
-) {
+internal fun HermesQuickAskPromptRail(suggestedPrompts: List<String>, onPromptSelected: (String) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items(suggestedPrompts) { prompt ->
             SuggestedPromptChip(prompt = prompt, onClick = { onPromptSelected(prompt) })

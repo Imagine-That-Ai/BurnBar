@@ -25,6 +25,18 @@ import OpenBurnBarCore
 @Observable
 @MainActor
 final class HermesConversationStateStore {
+    // remediation(chat-cap): hard upper bound on the retained visible
+    // transcript. A long-lived chat surface appends two messages per turn
+    // forever; without a cap the array (and every wire payload rebuilt from
+    // it in HermesStreamingEngine) grows unbounded. We trim only from the
+    // FRONT, only at turn-start, and only the already-finalized history —
+    // never the active streaming tail. See `capRetainedMessages()`.
+    static let maxRetainedMessages = 500
+    /// Only trim once we're meaningfully over the cap, so the active tail of
+    /// an in-flight turn is never near the trim boundary. Keeps `cap + slack`
+    /// messages before the first trim fires.
+    private static let retainedMessagesTrimSlack = 64
+
     var messages: [HermesChatMessage] = []
     var selectedSessionID: String?
     var currentConversationTokenBurn = 0
@@ -70,6 +82,12 @@ final class HermesConversationStateStore {
         lastError = nil
         selectedSessionID = thread.id
         messages = thread.messages.map { Self.convertFromStore($0) }
+        // remediation(chat-cap): a huge persisted thread must not reintroduce
+        // unbounded growth on restore. Safe here because every restored
+        // message has `isStreaming == false` (convertFromStore) and tool
+        // replies were already dropped on persist (convertToStore returns nil
+        // for `.tool`), so the cap only trims finalized user/assistant turns.
+        capRetainedMessages()
     }
 
     func persistCurrentThread() {
@@ -91,6 +109,68 @@ final class HermesConversationStateStore {
             messages: storedMessages
         )
         history.upsert(thread)
+    }
+
+    // MARK: - Transcript windowing cap
+
+    // remediation(chat-cap): keep the most recent `maxRetainedMessages`
+    // messages, trimming only from the FRONT and only the finalized history.
+    //
+    // Safe-by-construction notes (all verified against the mutation sites in
+    // this file and HermesStreamingEngine):
+    //   * Every in-place mutation locates its target by id
+    //     (`messages.firstIndex(where: { $0.id == … })`) and is guarded with
+    //     `if let index`, so a dropped leading id simply isn't found — it
+    //     never reads a stale positional index.
+    //   * We only trim at turn-start, AFTER the prior turn's placeholder has
+    //     been finalized and BEFORE the new user/placeholder pair is
+    //     appended, so the streaming tail is never the thing we drop.
+    //   * We never drop a message with `isStreaming == true`: the trim
+    //     boundary is clamped to stop before the first streaming message.
+    //   * `retainedMessagesTrimSlack` means we only act once we're well over
+    //     the cap, so the active tail is never near the boundary.
+    //   * A leading `.tool` message would orphan from its assistant
+    //     `tool_calls` turn (and produce an unpaired `{role:"tool"}` on the
+    //     wire); after computing the boundary we advance it forward until the
+    //     first retained message is a non-tool message.
+    //   * At least one `.user` message is kept so the retry / "last user
+    //     message" lookup always succeeds.
+    func capRetainedMessages() {
+        let cap = Self.maxRetainedMessages
+        // Only act once we're meaningfully over the cap.
+        guard messages.count > cap + Self.retainedMessagesTrimSlack else { return }
+
+        // Drop everything before this index. Start by keeping the trailing
+        // `cap` messages.
+        var trimBoundary = messages.count - cap
+
+        // Never trim into the active streaming tail: clamp the boundary to
+        // before the first streaming message (defensive — turn-start callers
+        // have already finalized the prior placeholder, but a stray in-flight
+        // message must never be dropped).
+        if let firstStreamingIndex = messages.firstIndex(where: { $0.isStreaming }),
+           firstStreamingIndex < trimBoundary {
+            trimBoundary = firstStreamingIndex
+        }
+
+        // Keep at least one `.user` message for the retry / last-user lookup.
+        // If the trailing window we'd retain has none, pull the boundary back
+        // to the last user message that falls before it.
+        if !messages[trimBoundary...].contains(where: { $0.role == .user }),
+           let lastUserIndex = messages[..<trimBoundary].lastIndex(where: { $0.role == .user }),
+           lastUserIndex < trimBoundary {
+            trimBoundary = lastUserIndex
+        }
+
+        // Don't orphan a leading `.tool` reply from its assistant tool-call
+        // turn: advance forward until the first retained message is a
+        // non-tool (user/assistant/system) message.
+        while trimBoundary < messages.count, messages[trimBoundary].role == .tool {
+            trimBoundary += 1
+        }
+
+        guard trimBoundary > 0 else { return }
+        messages.removeFirst(trimBoundary)
     }
 
     // MARK: - BurnBar Cloud Gateway turns
@@ -130,6 +210,10 @@ final class HermesConversationStateStore {
             isStreaming: true,
             responseStartedAt: now
         )
+        // remediation(chat-cap): trim old history at turn-start, after the
+        // prior placeholder is finalized and before this turn's pair is
+        // appended.
+        capRetainedMessages()
         messages.append(userMessage)
         messages.append(placeholder)
         isStreaming = true
@@ -299,6 +383,10 @@ final class HermesConversationStateStore {
             isStreaming: true,
             responseStartedAt: now
         )
+        // remediation(chat-cap): trim old history at turn-start, after the
+        // prior placeholder is finalized and before this turn's pair is
+        // appended.
+        capRetainedMessages()
         messages.append(userMessage)
         messages.append(assistantPlaceholder)
         isStreaming = true
@@ -443,7 +531,7 @@ final class HermesConversationStateStore {
             "llm_response",
             "final_answer"
         ]
-        return snapshot.events.reversed().compactMap { event in
+        return snapshot.events.reversed().compactMap { event -> String? in
             guard responsePhases.contains(event.phase) || responseKinds.contains(event.kind) else {
                 return nil
             }

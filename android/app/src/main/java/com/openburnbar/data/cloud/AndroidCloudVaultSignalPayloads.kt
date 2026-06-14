@@ -133,11 +133,7 @@ object AndroidCloudVaultSignalPayloads {
      * [SignalAtRestFallbackPolicy] with `senderSetComplete = false`). After the readiness gate (all
      * trusted devices published) this returns the full set, activating cross-device sender-auth.
      */
-    suspend fun trustedSenderPublicKeys(
-        uid: String,
-        firestore: FirebaseFirestore,
-        localIdentity: AndroidSignalIdentityKeypair,
-    ): Map<String, ByteArray> {
+    suspend fun trustedSenderPublicKeys(uid: String, firestore: FirebaseFirestore, localIdentity: AndroidSignalIdentityKeypair): Map<String, ByteArray> {
         val map = LinkedHashMap<String, ByteArray>()
         map[localIdentity.identityKeyId] = localIdentity.publicKeyData
         runCatching { atRestRecipients(uid = uid, firestore = firestore, localIdentity = localIdentity) }
@@ -154,11 +150,7 @@ object AndroidCloudVaultSignalPayloads {
      * that should be able to read it. Activation must ensure every trusted device has
      * published its Signal identity before the domain gate is flipped on.
      */
-    suspend fun atRestRecipients(
-        uid: String,
-        firestore: FirebaseFirestore,
-        localIdentity: AndroidSignalIdentityKeypair,
-    ): List<CloudVaultSignalRecipient> {
+    suspend fun atRestRecipients(uid: String, firestore: FirebaseFirestore, localIdentity: AndroidSignalIdentityKeypair): List<CloudVaultSignalRecipient> {
         val userRef = firestore.collection("users").document(uid)
         val trusted = userRef.collection("escrow_devices").whereEqualTo("trustState", "trusted").get().await()
         val byId = LinkedHashMap<String, CloudVaultSignalRecipient>()
@@ -182,10 +174,7 @@ object AndroidCloudVaultSignalPayloads {
     }
 
     /** Local identity first, then every distinct other recipient, sorted by identityKeyId. */
-    private fun dedupeRecipients(
-        local: CloudVaultSignalRecipient,
-        others: List<CloudVaultSignalRecipient>,
-    ): List<CloudVaultSignalRecipient> {
+    private fun dedupeRecipients(local: CloudVaultSignalRecipient, others: List<CloudVaultSignalRecipient>): List<CloudVaultSignalRecipient> {
         val byId = LinkedHashMap<String, CloudVaultSignalRecipient>()
         byId[local.recipientIdentityKeyId] = local
         for (recipient in others) byId.putIfAbsent(recipient.recipientIdentityKeyId, recipient)

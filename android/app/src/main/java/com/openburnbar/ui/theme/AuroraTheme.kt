@@ -172,11 +172,7 @@ object AuroraColors {
     /**
      * Completely shifts the entire color palette based on user preference and UI mode.
      */
-    fun updateColorsForPalette(
-        palette: String,
-        uiMode: UIMode = UIMode.STANDARD,
-        appearance: AppAppearance = AppAppearance.AURORA,
-    ) {
+    fun updateColorsForPalette(palette: String, uiMode: UIMode = UIMode.STANDARD, appearance: AppAppearance = AppAppearance.AURORA) {
         if (appearance == AppAppearance.EDITORIAL) {
             // "Quiet Editorial" / paper skin — the light, ink-on-paper console
             // look. One coral accent, ochre + deep-coral + slate secondaries,
@@ -658,23 +654,23 @@ private val AuroraMaterialTypography =
 
 // ── Aurora Spacing ──
 object AuroraSpacing {
-    const val xxs = 2
-    const val xs = 4
-    const val sm = 8
-    const val md = 12
-    const val lg = 16
-    const val xl = 24
-    const val xxl = 32
-    const val xxxl = 48
+    const val XXS = 2
+    const val XS = 4
+    const val SM = 8
+    const val MD = 12
+    const val LG = 16
+    const val XL = 24
+    const val XXL = 32
+    const val XXXL = 48
 }
 
 // ── Aurora Radius ──
 object AuroraRadius {
-    const val sm = 6
-    const val md = 10
-    const val lg = 16
-    const val xl = 22
-    const val full = 9999
+    const val SM = 6
+    const val MD = 10
+    const val LG = 16
+    const val XL = 22
+    const val FULL = 9999
 }
 
 // ── Aurora Shadows ──
@@ -766,7 +762,7 @@ object AuroraMotion {
     val auroraSnap = SpringSpec(150, 1.0f)
     val cardHover = SpringSpec(250, 0.80f)
     val cardPress = SpringSpec(220, 0.70f)
-    const val mercuryShimmerDuration = 3000L
+    const val MERCURY_SHIMMER_DURATION = 3000L
 
     fun <T> auroraSpringSpec(): AnimationSpec<T> = spring(stiffness = 322f, dampingRatio = 0.75f)
 

@@ -16,16 +16,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.openburnbar.data.db.AppDatabase
 import com.openburnbar.data.db.TextExpansionSnippetEntity
-import com.openburnbar.data.text.TextExpansionTrigger
 import com.openburnbar.data.text.TextExpansionSyncManager
 import com.openburnbar.data.text.TextExpansionSyncWorker
+import com.openburnbar.data.text.TextExpansionTrigger
 import com.openburnbar.ui.theme.AuroraColors
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 private const val TEXT_EXPANSION_STATUS_TOAST_MS = 2_500L
 private const val TEXT_EXPANSION_SANDBOX_SUCCESS_MS = 1_500L
@@ -115,10 +115,7 @@ internal class TextExpansionSettingsState(
 private suspend fun textExpansionReload(context: Context): List<TextExpansionSnippetEntity> =
     withContext(Dispatchers.IO) { AppDatabase.getDatabase(context).textExpansionDao().getAllActive() }
 
-private fun textExpansionFilterSnippets(
-    snippets: List<TextExpansionSnippetEntity>,
-    searchQuery: String,
-): List<TextExpansionSnippetEntity> {
+private fun textExpansionFilterSnippets(snippets: List<TextExpansionSnippetEntity>, searchQuery: String): List<TextExpansionSnippetEntity> {
     if (searchQuery.isBlank()) return snippets
     val query = searchQuery.trim().lowercase()
     return snippets.filter {
@@ -173,7 +170,9 @@ private fun rememberTextExpansionSnippetData(context: Context): TextExpansionSni
     }
     var cloudSyncEnabled by remember { mutableStateOf(prefs.getBoolean("cloud_sync_enabled", true)) }
 
-    suspend fun reload() { snippets = textExpansionReload(context) }
+    suspend fun reload() {
+        snippets = textExpansionReload(context)
+    }
     LaunchedEffect(Unit) { reload() }
 
     val filteredSnippets = remember(snippets, searchQuery) { textExpansionFilterSnippets(snippets, searchQuery) }
@@ -335,10 +334,7 @@ private fun rememberTextExpansionSandboxFields(
 }
 
 @Composable
-private fun rememberTextExpansionEditorFields(
-    snippets: List<TextExpansionSnippetEntity>,
-    scope: CoroutineScope,
-): TextExpansionEditorBundle {
+private fun rememberTextExpansionEditorFields(snippets: List<TextExpansionSnippetEntity>, scope: CoroutineScope): TextExpansionEditorBundle {
     val status = rememberTextExpansionStatusHolder()
     val draft = rememberTextExpansionDraftFields(status)
     val sandbox = rememberTextExpansionSandboxFields(draft.trigger, draft.body, snippets, scope)
@@ -500,10 +496,7 @@ private data class TextExpansionSaveSnippetInput(
     val snippets: List<TextExpansionSnippetEntity>,
 )
 
-private fun textExpansionSaveSnippet(
-    mutation: TextExpansionSnippetMutationContext,
-    input: TextExpansionSaveSnippetInput,
-) {
+private fun textExpansionSaveSnippet(mutation: TextExpansionSnippetMutationContext, input: TextExpansionSaveSnippetInput) {
     mutation.scope.launch {
         val validationError = TextExpansionTrigger.validationError(input.trigger)
         val canonicalTrigger = TextExpansionTrigger.canonicalName(input.trigger)
@@ -535,10 +528,7 @@ private fun textExpansionSaveSnippet(
     }
 }
 
-private fun textExpansionDeleteSnippet(
-    mutation: TextExpansionSnippetMutationContext,
-    editing: TextExpansionSnippetEntity?,
-) {
+private fun textExpansionDeleteSnippet(mutation: TextExpansionSnippetMutationContext, editing: TextExpansionSnippetEntity?) {
     mutation.scope.launch {
         val target = editing ?: return@launch
         withContext(Dispatchers.IO) { AppDatabase.getDatabase(mutation.context).textExpansionDao().softDelete(target.id) }
@@ -562,10 +552,7 @@ private fun textExpansionSyncNow(mutation: TextExpansionSnippetMutationContext) 
     }
 }
 
-private fun textExpansionToggleSnippet(
-    mutation: TextExpansionSnippetMutationContext,
-    snippet: TextExpansionSnippetEntity,
-) {
+private fun textExpansionToggleSnippet(mutation: TextExpansionSnippetMutationContext, snippet: TextExpansionSnippetEntity) {
     mutation.scope.launch {
         val updated = snippet.copy(
             isEnabled = !snippet.isEnabled,
@@ -579,13 +566,7 @@ private fun textExpansionToggleSnippet(
     }
 }
 
-private fun snippetSaveBlocked(
-    validationError: String?,
-    duplicateTrigger: Boolean,
-    title: String,
-    body: String,
-    trigger: String,
-): Boolean =
+private fun snippetSaveBlocked(validationError: String?, duplicateTrigger: Boolean, title: String, body: String, trigger: String): Boolean =
     validationError != null ||
         duplicateTrigger ||
         title.isBlank() ||

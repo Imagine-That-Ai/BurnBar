@@ -118,9 +118,8 @@ private fun StatCapsule(modifier: Modifier = Modifier, dotColor: Color, label: S
     }
 }
 
-private fun formatTokensShort(n: Long): String =
-    when {
-        n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
-        n >= 1_000 -> "%.1fK".format(n / 1_000.0)
-        else -> n.toString()
-    }
+private fun formatTokensShort(n: Long): String = when {
+    n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
+    n >= 1_000 -> "%.1fK".format(n / 1_000.0)
+    else -> n.toString()
+}

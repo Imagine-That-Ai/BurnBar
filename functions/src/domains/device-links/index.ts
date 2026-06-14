@@ -1,7 +1,6 @@
 export {
   adoptDeviceLink,
   backfillUserDeviceLinks,
-  deviceLinkCollectionPath,
   deviceLinkId,
   deviceLinkPath,
   isDeviceLinkCapability,

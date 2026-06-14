@@ -1,13 +1,12 @@
 package com.openburnbar.ui.square
 
 import android.speech.SpeechRecognizer
+import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.missions.MobileMissionConsoleHost
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.AgentSubscriptionTopic
 import com.openburnbar.data.square.AgentSubscriptionTopicStore
-
-import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.square.SubscriptionCadence
 import kotlinx.coroutines.CoroutineScope
 

@@ -239,7 +239,7 @@ enum FactoryLoginHelper {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
                 if let captured = await captureSession() {
                     complete(with: captured)
                 }
@@ -251,7 +251,7 @@ enum FactoryLoginHelper {
             didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!
         ) {
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
                 if let captured = await captureSession() {
                     complete(with: captured)
                 }

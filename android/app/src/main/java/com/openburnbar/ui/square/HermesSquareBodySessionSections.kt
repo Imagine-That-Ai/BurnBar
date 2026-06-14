@@ -107,10 +107,7 @@ private data class CLIAgentSessionActionState(
 )
 
 @Composable
-private fun rememberCLIAgentSessionActionState(
-    session: CLIAgentSessionRecord,
-    transport: CLIAgentRelayChatTransport,
-): CLIAgentSessionActionState {
+private fun rememberCLIAgentSessionActionState(session: CLIAgentSessionRecord, transport: CLIAgentRelayChatTransport): CLIAgentSessionActionState {
     val scope = rememberCoroutineScope()
     var isStarting by remember(session.id) { mutableStateOf(false) }
     var actionMessage by remember(session.id) { mutableStateOf<String?>(null) }
@@ -221,7 +218,12 @@ private fun CLIAgentSessionActionButtons(
             }
         }
         Text(
-            text = actionMessage ?: if (session.canResume) "Native resume is available when the Mac validates this handle." else "This provider uses a Mac-local handoff package.",
+            text =
+            actionMessage ?: if (session.canResume) {
+                "Native resume is available when the Mac validates this handle."
+            } else {
+                "This provider uses a Mac-local handoff package."
+            },
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             color = if (actionIsError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,

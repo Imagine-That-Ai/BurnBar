@@ -9,7 +9,7 @@ import { nowISO } from "./shared.js";
 
 export const GOOGLE_PLAY_TOKEN_CLAIMS_COLLECTION = "google_play_token_claims";
 
-export type GooglePlayTokenClaimKind = "subscription" | "topup";
+type GooglePlayTokenClaimKind = "subscription" | "topup";
 
 function errorCode(error: unknown): unknown {
   return typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;

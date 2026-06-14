@@ -55,19 +55,20 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         self.timeoutSeconds = timeoutSeconds
     }
 
+    /// Blocking RFB socket work runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`, not actor-bound), so callers leave
+    /// the main actor at the `await` (SE-0338).
     func typeCredential(_ credentials: Credentials) async throws {
-        try await Task.detached(priority: .userInitiated) { [host, port, timeoutSeconds] in
-            var stream = try RFBStream(host: host, port: port, timeoutSeconds: timeoutSeconds)
-            defer { stream.close() }
+        var stream = try RFBStream(host: host, port: port, timeoutSeconds: timeoutSeconds)
+        defer { stream.close() }
 
-            try Self.performHandshake(stream: &stream, credentials: credentials)
-            let server = try Self.readServerInit(stream: &stream)
+        try Self.performHandshake(stream: &stream, credentials: credentials)
+        let server = try Self.readServerInit(stream: &stream)
 
-            try Self.focusLoginPasswordLane(stream: &stream, server: server)
-            try Self.sendText(credentials.password, stream: &stream)
-            usleep(90_000)
-            try Self.sendKey(stream: &stream, keysym: RFBKeysym.returnKey)
-        }.value
+        try Self.focusLoginPasswordLane(stream: &stream, server: server)
+        try Self.sendText(credentials.password, stream: &stream)
+        usleep(90_000)
+        try Self.sendKey(stream: &stream, keysym: RFBKeysym.returnKey)
     }
 
     private static func performHandshake(stream: inout RFBStream, credentials: Credentials) throws {
@@ -80,7 +81,7 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         try stream.write(Data("RFB 003.889\n".utf8))
         let securityCount = try stream.readExact(byteCount: 1)[0]
         guard securityCount > 0 else {
-            let reason = try? readReason(stream: &stream)
+            let reason = try? readReason(stream: &stream) // try?-ok(diagnostic reason, has fallback)
             throw Failure.protocolMismatch(reason ?? "empty_security_type_list")
         }
 
@@ -133,7 +134,7 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         let resultData = try stream.readExact(byteCount: 4)
         let result = resultData.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
         guard result == 0 else {
-            throw Failure.authenticationRejected(try? readReason(stream: &stream))
+            throw Failure.authenticationRejected(try? readReason(stream: &stream)) // try?-ok(diagnostic reason on reject)
         }
     }
 

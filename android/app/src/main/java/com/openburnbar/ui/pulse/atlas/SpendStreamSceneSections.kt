@@ -19,11 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.openburnbar.data.derived.TrendDataDigest
 
 @Composable
-internal fun SpendStreamChartArea(
-    daily: List<TrendDataDigest.DailySeries>,
-    selectedIndex: Int?,
-    onSelect: (Int?) -> Unit,
-) {
+internal fun SpendStreamChartArea(daily: List<TrendDataDigest.DailySeries>, selectedIndex: Int?, onSelect: (Int?) -> Unit) {
     Box(modifier = Modifier.fillMaxWidth().height(180.dp)) {
         StreamGraphCanvas(
             series = daily,

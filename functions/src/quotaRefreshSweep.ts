@@ -42,7 +42,7 @@
  */
 
 /** Subset of `DocumentReference` the sweep touches on account docs. */
-export type SweepAccountDocRef = {
+type SweepAccountDocRef = {
   readonly path: string;
   update(data: Record<string, unknown>): Promise<unknown>;
 };
@@ -84,7 +84,7 @@ export type SweepDb<Doc extends SweepAccountDoc> = {
   doc(path: string): SweepDocRef;
 };
 
-export type QuotaBackfillResult = {
+type QuotaBackfillResult = {
   /** True when the backfill is already complete and no scan was issued. */
   skipped: boolean;
   /** True once every (status, storageScope) stream has been drained. */
@@ -95,7 +95,7 @@ export type QuotaBackfillResult = {
   backfilled: number;
 };
 
-export type QuotaRefreshSweepOptions<Doc extends SweepAccountDoc> = {
+type QuotaRefreshSweepOptions<Doc extends SweepAccountDoc> = {
   /** Maximum account + legacy-connection refreshes per run. */
   batchSize: number;
   /** Parallel refresh width (default 5). */
@@ -112,7 +112,7 @@ export type QuotaRefreshSweepOptions<Doc extends SweepAccountDoc> = {
   legacyKeyForConnectionDoc(doc: Doc): string | undefined;
 };
 
-export type QuotaRefreshSweepResult = {
+type QuotaRefreshSweepResult = {
   backfill: QuotaBackfillResult;
   refreshedAccountPaths: string[];
   refreshedLegacyPaths: string[];

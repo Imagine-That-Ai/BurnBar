@@ -60,7 +60,12 @@ final class CameraCapturePipeline: NSObject {
         if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
         session.commitConfiguration()
 
-        await Task.detached { [session] in session.startRunning() }.value
+        // Run the blocking `startRunning()` off the main actor in a structured
+        // child task; `withTaskGroup` awaits it before returning and it cannot
+        // outlive this scope (replaces an unstructured detached task).
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { [session] in session.startRunning() }
+        }
     }
 
     func stop() {
@@ -94,6 +99,9 @@ extension CameraCapturePipeline: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 }
 
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
+// shared concurrently. sendable-allowlist: apple-media-buffer
 private struct SendableCameraSampleBuffer: @unchecked Sendable {
     let sampleBuffer: CMSampleBuffer
 

@@ -53,6 +53,7 @@ object ControlFrameSeal {
     private const val NONCE_BYTES = 12
     private const val TAG_BYTES = 16
     private const val TAG_BITS = TAG_BYTES * Byte.SIZE_BITS
+
     /** magic(6) + version(1). */
     private const val HEADER_BYTES = 7
     private const val BYTE_MASK = 0xFF
@@ -146,6 +147,5 @@ object ControlFrameSealNegotiation {
     /** Same default-off ramp key the iOS client reads (`ControlFrameSealNegotiation.remoteConfigKey`). */
     const val REMOTE_CONFIG_KEY = "computer_use_control_seal_enabled"
 
-    fun resolveSealingEnabled(localSupports: Boolean, remoteSupports: Boolean): Boolean =
-        localSupports && remoteSupports
+    fun resolveSealingEnabled(localSupports: Boolean, remoteSupports: Boolean): Boolean = localSupports && remoteSupports
 }

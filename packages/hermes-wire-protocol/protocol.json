@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "$comment": "CANONICAL SOURCE OF TRUTH for the Hermes/iroh realtime wire protocol. Frame types and wire constants are hand-mirrored across Swift (OpenBurnBarCore), Kotlin (android/openburnbar-iroh-relay), TypeScript (services/hermes-realtime-relay), and Rust (crates/openburnbar-iroh). Edit HERE and run `node codegen.mjs`; CI parity gate fails if any language drifts from this file. See README.md.",
+  "protocol": {
+    "version": 1,
+    "realtimeCapability": "realtime_relay",
+    "irohCapability": "iroh_relay",
+    "alpn": "openburnbar/1",
+    "maxFrameBytes": 524288,
+    "lengthPrefixBytes": 4,
+    "lengthPrefixEndian": "big",
+    "roleHeaderName": "X-OpenBurnBar-Relay-Role",
+    "hostRoleHeaderValue": "host",
+    "clientRoleHeaderValue": "client",
+    "defaultHostedRelayURLString": "",
+    "doc": "version: frame schema version carried in every HermesRealtimeRelayFrame. realtimeCapability: advertised in the host.register frame for the WebSocket/relay path. irohCapability: advertised by the Mac so iOS confirms iroh-transport awareness before binding requests to the iroh stream. alpn: QUIC ALPN shared by Mac + iOS + Android; bumping it is the clean cross-platform upgrade boundary. maxFrameBytes: inbound length-prefix ceiling (512 KiB). lengthPrefix: a 4-byte big-endian u32 prefix precedes each JSON frame on the wire (matches the Rust crate's to_be_bytes writer)."
+  },
+  "groups": [
+    { "id": "session", "title": "Session + chat multiplexing", "doc": "The original Hermes request/response multiplexing frames. These are the ONLY frames the Cloud Run WebSocket relay (services/hermes-realtime-relay) validates and routes; the relay is a dumb chat multiplexer. Every other group is peer-to-peer over iroh and never touches the relay." },
+    { "id": "signal", "title": "Signal session transport", "doc": "Device-to-device Signal Double Ratchet ciphertext carried over the iroh relay stream. The opaque ciphertext bytes ride the top-level signalSessionCiphertextB64 field so the transport stays protocol-aware but crypto-agnostic." },
+    { "id": "media", "title": "Mercury media", "doc": "Mercury media rollout (plans/2026-05-15-mercury-media-master-plan.md, docs/HERMES_MEDIA_TRANSPORT.md). Older peers skip unknown frame types on the chat stream, so adding cases here is forward-compatible. iroh-only." },
+    { "id": "control", "title": "Computer Use control plane", "doc": "Computer Use control plane (plans/2026-05-16-computer-use-master-plan.md). Same forward-compatibility contract as the media frames: older peers skip unknown control frame types. iroh-only." },
+    { "id": "remoteUnlock", "title": "Remote Unlock", "doc": "Human-only Mac unlock lane. These frames are kept deliberately separate from Computer Use so agents can never consume credential input. iroh-only." },
+    { "id": "systemPermission", "title": "System Permission Concierge", "doc": "System Permission Concierge (Phase 14). The Mac emits status frames when a tool failure is classified as a TCC denial; the phone replies with a signed request asking the Mac to surface the right native prompt / System Settings deep link. Both frames are forward-compatible. iroh-only." }
+  ],
+  "frames": [
+    { "id": "hostRegister", "wire": "host.register", "group": "session", "relayAccepted": true, "doc": "Host announces itself and its capabilities to the relay." },
+    { "id": "hostReady", "wire": "host.ready", "group": "session", "relayAccepted": true, "doc": "Server-originated readiness signal to a registered host." },
+    { "id": "requestStart", "wire": "request.start", "group": "session", "relayAccepted": true, "doc": "Client opens a request; carries the encrypted operation payload." },
+    { "id": "requestCancel", "wire": "request.cancel", "group": "session", "relayAccepted": true, "doc": "Client cancels an in-flight request." },
+    { "id": "responseChunk", "wire": "response.chunk", "group": "session", "relayAccepted": true, "doc": "Host streams one response chunk (sse/data/error)." },
+    { "id": "responseComplete", "wire": "response.complete", "group": "session", "relayAccepted": true, "doc": "Host signals the response stream is complete." },
+    { "id": "responseError", "wire": "response.error", "group": "session", "relayAccepted": true, "doc": "Host signals a terminal error for the request." },
+    { "id": "ping", "wire": "ping", "group": "session", "relayAccepted": true, "implicitSwiftRawValue": true, "doc": "Keep-alive ping. Either role may send." },
+    { "id": "pong", "wire": "pong", "group": "session", "relayAccepted": true, "implicitSwiftRawValue": true, "doc": "Keep-alive pong. Either role may send." },
+
+    { "id": "signalSessionMessage", "wire": "signal.session.message", "group": "signal", "relayAccepted": false, "doc": "Signal Double Ratchet ciphertext; dispatched by the top-level message-type integer. Opaque to the transport." },
+
+    { "id": "mediaClassify", "wire": "media.classify", "group": "media", "relayAccepted": false, "doc": "Media stream-class negotiation." },
+    { "id": "mediaBlobAdvertise", "wire": "media.blob.advertise", "group": "media", "relayAccepted": false, "doc": "Advertise a content-addressed media blob." },
+    { "id": "mediaBlobAck", "wire": "media.blob.ack", "group": "media", "relayAccepted": false, "doc": "Acknowledge a media blob advertisement." },
+    { "id": "mediaMirrorRequest", "wire": "media.mirror.request", "group": "media", "relayAccepted": false, "doc": "Mercury Phase 8: iOS-initiated mirror request. Rides the existing media.control stream; no new ALPN." },
+    { "id": "mediaMirrorAck", "wire": "media.mirror.ack", "group": "media", "relayAccepted": false, "doc": "Mac ack of a mirror request." },
+    { "id": "mediaMirrorStop", "wire": "media.mirror.stop", "group": "media", "relayAccepted": false, "doc": "Stop an active mirror." },
+    { "id": "mediaMirrorDisplaySelect", "wire": "media.mirror.display.select", "group": "media", "relayAccepted": false, "doc": "Select which display to mirror." },
+    { "id": "mediaPresenceHeartbeat", "wire": "media.presence.heartbeat", "group": "media", "relayAccepted": false, "doc": "iOS outbound presence heartbeat." },
+    { "id": "mediaCallInvite", "wire": "media.call.invite", "group": "media", "relayAccepted": false, "doc": "Invite the peer to a media call." },
+    { "id": "mediaCallAck", "wire": "media.call.ack", "group": "media", "relayAccepted": false, "doc": "Acknowledge a media call invite." },
+    { "id": "mediaLongTermReferenceAck", "wire": "media.ltr.ack", "group": "media", "relayAccepted": false, "doc": "Receiver -> encoder acknowledgement for a VideoToolbox LTR token carried on a decoded MediaFrame v2 video frame. Inert for v1 peers; only participates after both peers negotiate v2." },
+    { "id": "mediaStreamFrame", "wire": "media.stream.frame", "group": "media", "relayAccepted": false, "doc": "Encoded OpenBurnBarMedia.MediaFrame bytes over the long-lived media.control stream after a mirror request is accepted. The payload's streamClass identifies the logical receiver (media.screen.video, control.surface.frame, etc.)." },
+
+    { "id": "controlClassify", "wire": "control.classify", "group": "control", "relayAccepted": false, "doc": "Computer Use control-plane classification frame." },
+    { "id": "controlActionLogEntry", "wire": "control.action.log.entry", "group": "control", "relayAccepted": false, "doc": "Agent Watch action-log entry." },
+    { "id": "controlInputIntent", "wire": "control.input.intent", "group": "control", "relayAccepted": false, "doc": "Signed phone-control input intent. Security-relevant: carries the agent's intended input action." },
+    { "id": "controlApprovalRequest", "wire": "control.approval.request", "group": "control", "relayAccepted": false, "doc": "Request human approval for a control action." },
+    { "id": "controlApprovalResponse", "wire": "control.approval.response", "group": "control", "relayAccepted": false, "doc": "Human approval response for a control action." },
+    { "id": "controlAgentGrantRequest", "wire": "control.agent.grant.request", "group": "control", "relayAccepted": false, "doc": "Request an agent capability grant." },
+    { "id": "controlAgentGrantReceipt", "wire": "control.agent.grant.receipt", "group": "control", "relayAccepted": false, "doc": "Receipt for an agent capability grant." },
+    { "id": "controlClipboardRequest", "wire": "control.clipboard.request", "group": "control", "relayAccepted": false, "doc": "Request clipboard contents." },
+    { "id": "controlClipboardResponse", "wire": "control.clipboard.response", "group": "control", "relayAccepted": false, "doc": "Clipboard contents response." },
+    { "id": "controlDenied", "wire": "control.denied", "group": "control", "relayAccepted": false, "doc": "A control action was denied." },
+    { "id": "controlAgentContextTarget", "wire": "control.agent.context.target", "group": "control", "relayAccepted": false, "doc": "Identify the agent's current context target." },
+
+    { "id": "remoteUnlockSession", "wire": "remote_unlock.session", "group": "remoteUnlock", "relayAccepted": false, "doc": "Open a remote-unlock session." },
+    { "id": "remoteUnlockState", "wire": "remote_unlock.state", "group": "remoteUnlock", "relayAccepted": false, "doc": "Remote-unlock session state update." },
+    { "id": "remoteUnlockInput", "wire": "remote_unlock.input", "group": "remoteUnlock", "relayAccepted": false, "doc": "Human unlock input (keystrokes). Never consumable by agents." },
+    { "id": "remoteUnlockCredential", "wire": "remote_unlock.credential", "group": "remoteUnlock", "relayAccepted": false, "doc": "Credential material for remote unlock. Security-critical: human-only lane." },
+    { "id": "remoteUnlockResult", "wire": "remote_unlock.result", "group": "remoteUnlock", "relayAccepted": false, "doc": "Result of a remote-unlock attempt." },
+    { "id": "remoteUnlockDenied", "wire": "remote_unlock.denied", "group": "remoteUnlock", "relayAccepted": false, "doc": "A remote-unlock attempt was denied." },
+
+    { "id": "controlSystemPermissionRequest", "wire": "control.system.permission.request", "group": "systemPermission", "relayAccepted": false, "doc": "Phone asks the Mac to surface the right native TCC prompt / System Settings deep link." },
+    { "id": "controlSystemPermissionStatus", "wire": "control.system.permission.status", "group": "systemPermission", "relayAccepted": false, "doc": "Mac reports a TCC denial classification back to the phone." }
+  ]
+}

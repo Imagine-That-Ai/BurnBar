@@ -38,7 +38,7 @@ import com.openburnbar.ui.theme.AuroraType
 internal fun PixelClockCardHeader(state: SmartHubSnapshot) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(Icons.Filled.Tv, contentDescription = null, tint = AuroraColors.ember)
@@ -58,7 +58,7 @@ internal fun PixelClockDeviceList(state: SmartHubSnapshot) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    Spacer(Modifier.height(AuroraSpacing.xs.dp))
+    Spacer(Modifier.height(AuroraSpacing.XS.dp))
 
     if (state.discoveredDevices.isEmpty()) {
         Text(
@@ -76,7 +76,7 @@ internal fun PixelClockDeviceList(state: SmartHubSnapshot) {
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = AuroraSpacing.xs.dp),
+                .padding(vertical = AuroraSpacing.XS.dp),
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(device.name, style = AuroraType.body)
@@ -98,7 +98,7 @@ internal fun PixelClockDeviceList(state: SmartHubSnapshot) {
 
 @Composable
 internal fun PixelClockRepairActions(state: SmartHubSnapshot) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         AuroraSecondaryButton(
             onClick = SmartHubBridgeClientPixelClockActions::repairPixelClock,
             enabled = !state.actionInFlight && state.bridgeIsLive,
@@ -127,7 +127,7 @@ internal fun PixelClockBrightnessSlider(state: SmartHubSnapshot) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(18.dp),
         )
-        Spacer(Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(Modifier.width(AuroraSpacing.SM.dp))
         Text(
             "Brightness ${(state.pixelClockBrightness * 100).toInt()}%",
             style = AuroraType.caption,
@@ -151,7 +151,7 @@ internal fun PixelClockTimeFormatRow(state: SmartHubSnapshot) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(18.dp),
         )
-        Spacer(Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(Modifier.width(AuroraSpacing.SM.dp))
         Text("Time format", style = AuroraType.caption, modifier = Modifier.weight(1f))
         AuroraSecondaryButton(
             onClick = {
@@ -183,7 +183,7 @@ internal fun PixelClockRefreshSlider(state: SmartHubSnapshot) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(18.dp),
         )
-        Spacer(Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(Modifier.width(AuroraSpacing.SM.dp))
         Text(
             "Refresh every ${state.pixelClockRefreshSeconds}s",
             style = AuroraType.caption,

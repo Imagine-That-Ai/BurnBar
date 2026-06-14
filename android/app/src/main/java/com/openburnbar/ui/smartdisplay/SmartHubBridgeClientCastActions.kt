@@ -9,42 +9,37 @@ object SmartHubBridgeClientCastActions {
         runCastDiscovery()
     }
 
-    fun refreshNestHub() =
-        SmartHubBridgeClient.runSmartDisplayAction(
-            type = "nest_hub_refresh",
-            progress = "Refreshing Google smart display...",
-            success = "Refresh sent to the Mac bridge.",
-        )
+    fun refreshNestHub() = SmartHubBridgeClient.runSmartDisplayAction(
+        type = "nest_hub_refresh",
+        progress = "Refreshing Google smart display...",
+        success = "Refresh sent to the Mac bridge.",
+    )
 
-    fun repairNestHub() =
-        SmartHubBridgeClient.runSmartDisplayAction(
-            type = "nest_hub_repair",
-            progress = "Repairing Google smart display...",
-            success = "Google smart display repair completed.",
-            timeoutMs = 180_000,
-        )
+    fun repairNestHub() = SmartHubBridgeClient.runSmartDisplayAction(
+        type = "nest_hub_repair",
+        progress = "Repairing Google smart display...",
+        success = "Google smart display repair completed.",
+        timeoutMs = 180_000,
+    )
 
-    fun repairAllSmartDisplays() =
-        SmartHubBridgeClient.runSmartDisplayAction(
-            type = "smart_display_repair",
-            progress = "Repairing smart displays...",
-            success = "Smart display repair completed.",
-            timeoutMs = 300_000,
-        )
+    fun repairAllSmartDisplays() = SmartHubBridgeClient.runSmartDisplayAction(
+        type = "smart_display_repair",
+        progress = "Repairing smart displays...",
+        success = "Smart display repair completed.",
+        timeoutMs = 300_000,
+    )
 
-    fun identifyNestHub() =
-        SmartHubBridgeClient.runSmartDisplayAction(
-            type = "nest_hub_identify",
-            progress = "Identifying Google smart display...",
-            success = "Identify command sent.",
-        )
+    fun identifyNestHub() = SmartHubBridgeClient.runSmartDisplayAction(
+        type = "nest_hub_identify",
+        progress = "Identifying Google smart display...",
+        success = "Identify command sent.",
+    )
 
-    fun stopNestHub() =
-        SmartHubBridgeClient.runSmartDisplayAction(
-            type = "nest_hub_stop",
-            progress = "Stopping Google smart display...",
-            success = "Google smart display stopped.",
-        )
+    fun stopNestHub() = SmartHubBridgeClient.runSmartDisplayAction(
+        type = "nest_hub_stop",
+        progress = "Stopping Google smart display...",
+        success = "Google smart display stopped.",
+    )
 
     fun runCastDiscovery() {
         SmartHubBridgeClient.bridgeScope.launch {
@@ -58,7 +53,7 @@ object SmartHubBridgeClientCastActions {
             }
             val result =
                 SmartHubBridgeClientPublish.publish(
-                    collection = SmartHubBridgeClient.castActionsCollection,
+                    collection = SmartHubBridgeClient.CAST_ACTIONS_COLLECTION,
                     payload = mapOf("type" to "test"),
                     timeoutMs = 30_000,
                 )
@@ -97,7 +92,7 @@ object SmartHubBridgeClientCastActions {
             }
             val result =
                 SmartHubBridgeClientPublish.publish(
-                    collection = SmartHubBridgeClient.castActionsCollection,
+                    collection = SmartHubBridgeClient.CAST_ACTIONS_COLLECTION,
                     payload =
                     mapOf(
                         "type" to "save_selection",
@@ -134,7 +129,7 @@ object SmartHubBridgeClientCastActions {
             }
             val result =
                 SmartHubBridgeClientPublish.publish(
-                    collection = SmartHubBridgeClient.castActionsCollection,
+                    collection = SmartHubBridgeClient.CAST_ACTIONS_COLLECTION,
                     payload =
                     mapOf(
                         "type" to "cast",

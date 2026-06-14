@@ -39,7 +39,7 @@ internal fun BudgetBlockedCardActions(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Button(
@@ -49,7 +49,7 @@ internal fun BudgetBlockedCardActions(
                 containerColor = errorColor,
                 contentColor = Color.White,
             ),
-            contentPadding = PaddingValues(horizontal = AuroraSpacing.sm.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = AuroraSpacing.SM.dp, vertical = 4.dp),
             modifier = Modifier.height(32.dp),
         ) {
             Text("+$25", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -61,7 +61,7 @@ internal fun BudgetBlockedCardActions(
                 containerColor = purpleColor,
                 contentColor = Color.White,
             ),
-            contentPadding = PaddingValues(horizontal = AuroraSpacing.sm.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = AuroraSpacing.SM.dp, vertical = 4.dp),
             modifier = Modifier.height(32.dp),
         ) {
             Text("Allow session", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -92,7 +92,7 @@ internal fun BudgetBlockedCardSummary(rule: BudgetRuleEntity, used: Double, limi
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
     Text(
         text = "Spent $${"%.2f".format(used)} of $${"%.2f".format(limit)} per ${rule.period}",
         style = AuroraType.caption,

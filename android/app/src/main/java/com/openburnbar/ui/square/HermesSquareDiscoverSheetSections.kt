@@ -118,11 +118,7 @@ internal fun RecentAgentRow(identity: AgentIdentity) {
 }
 
 @Composable
-internal fun ProjectMemoryList(
-    projects: List<ProjectSummary>,
-    onOpenProject: (ProjectSummary) -> Unit,
-    onAskWiki: (ProjectSummary) -> Unit,
-) {
+internal fun ProjectMemoryList(projects: List<ProjectSummary>, onOpenProject: (ProjectSummary) -> Unit, onAskWiki: (ProjectSummary) -> Unit) {
     if (projects.isEmpty()) {
         ProjectMemoryEmptyState()
         return
@@ -164,11 +160,7 @@ internal fun ProjectMemoryEmptyState() {
 }
 
 @Composable
-internal fun ProjectMemoryCard(
-    project: ProjectSummary,
-    onOpenProject: (ProjectSummary) -> Unit,
-    onAskWiki: (ProjectSummary) -> Unit,
-) {
+internal fun ProjectMemoryCard(project: ProjectSummary, onOpenProject: (ProjectSummary) -> Unit, onAskWiki: (ProjectSummary) -> Unit) {
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
@@ -212,12 +204,7 @@ internal fun ProjectMemoryCard(
 }
 
 @Composable
-internal fun ProjectActionPill(
-    label: String,
-    fillColor: Color,
-    textColor: Color,
-    onClick: () -> Unit,
-) {
+internal fun ProjectActionPill(label: String, fillColor: Color, textColor: Color, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = fillColor,
@@ -237,12 +224,7 @@ internal fun ProjectActionPill(
 }
 
 @Composable
-internal fun AgentsList(
-    registry: AgentIdentityRegistry,
-    pinned: PinnedAgentGridConfig,
-    onPin: (String) -> Unit,
-    onUnpin: (String) -> Unit,
-) {
+internal fun AgentsList(registry: AgentIdentityRegistry, pinned: PinnedAgentGridConfig, onPin: (String) -> Unit, onUnpin: (String) -> Unit) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(horizontal = 16.dp),
@@ -264,11 +246,7 @@ internal fun AgentsList(
 }
 
 @Composable
-internal fun AgentListRow(
-    identity: AgentIdentity,
-    isPinned: Boolean,
-    onPinToggle: () -> Unit,
-) {
+internal fun AgentListRow(identity: AgentIdentity, isPinned: Boolean, onPinToggle: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
@@ -350,11 +328,7 @@ internal fun AgentPinToggleButton(isPinned: Boolean, onPinToggle: () -> Unit) {
 }
 
 @Composable
-internal fun AgentGlyphAvatar(
-    identity: AgentIdentity,
-    size: Dp,
-    glyphFontSize: TextUnit,
-) {
+internal fun AgentGlyphAvatar(identity: AgentIdentity, size: Dp, glyphFontSize: TextUnit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier =
@@ -458,10 +432,7 @@ internal fun MarketplacePlaceholder() {
 }
 
 @Composable
-internal fun SubscriptionsSheetContent(
-    topics: List<AgentSubscriptionTopic>,
-    store: AgentSubscriptionTopicStore,
-) {
+internal fun SubscriptionsSheetContent(topics: List<AgentSubscriptionTopic>, store: AgentSubscriptionTopicStore) {
     val coroutineScope = rememberCoroutineScope()
     var unsubscribeNotice by remember { mutableStateOf<String?>(null) }
     Column(
@@ -534,10 +505,7 @@ internal fun SubscriptionsEmptyState() {
 }
 
 @Composable
-internal fun SubscriptionsTopicList(
-    topics: List<AgentSubscriptionTopic>,
-    onUnsubscribe: (String) -> Unit,
-) {
+internal fun SubscriptionsTopicList(topics: List<AgentSubscriptionTopic>, onUnsubscribe: (String) -> Unit) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().height(360.dp),
@@ -552,10 +520,7 @@ internal fun SubscriptionsTopicList(
 }
 
 @Composable
-internal fun SubscriptionTopicRow(
-    topic: AgentSubscriptionTopic,
-    onUnsubscribe: () -> Unit,
-) {
+internal fun SubscriptionTopicRow(topic: AgentSubscriptionTopic, onUnsubscribe: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),

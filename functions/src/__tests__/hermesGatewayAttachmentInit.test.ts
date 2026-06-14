@@ -17,7 +17,7 @@
  *      onRequest end-to-end over an in-memory Firestore double (mirrors the
  *      harness in hermesGatewaySealedEvent.test.ts).
  */
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -131,13 +131,17 @@ const CLIENT_ID = "hgw_attach_client";
 const TOKEN = "obb_hgw_test_token_attachments";
 const TOKEN_HASH = hashHermesGatewayBearerToken(TOKEN);
 const { publicKey: AGENT_SIGNING_PUBLIC_KEY, privateKey: AGENT_SIGNING_PRIVATE_KEY } = generateKeyPairSync("ed25519");
-const AGENT_SIGNING_PUBLIC_KEY_BASE64 = Buffer.from(
-  AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" }) as Buffer,
-)
-  .subarray(-32)
-  .toString("base64");
+const AGENT_SIGNING_PUBLIC_KEY_BASE64 = exportedSpkiDer(AGENT_SIGNING_PUBLIC_KEY).subarray(-32).toString("base64");
 const AGENT_SIGNING_KEY_ID = createHash("sha256").update(AGENT_SIGNING_PUBLIC_KEY_BASE64).digest("hex").slice(0, 32);
 let popNonceCounter = 0;
+
+function exportedSpkiDer(key: KeyObject): Buffer {
+  const exported = key.export({ format: "der", type: "spki" });
+  if (typeof exported === "string") {
+    throw new TypeError("Expected DER public key export to be bytes");
+  }
+  return exported;
+}
 
 function stableJSONString(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -218,7 +222,13 @@ interface TestHttpResponse {
 }
 
 function makeReq(path: string, body: Record<string, unknown>) {
-  const headers: Record<string, string> = { authorization: `Bearer ${TOKEN}`, ...popHeaders("POST", path, body) };
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${TOKEN}`,
+    // T-GW-02: PoP-signed write routes now require an application/json content
+    // type. A real signing client always sets it; mirror that here.
+    "content-type": "application/json",
+    ...popHeaders("POST", path, body),
+  };
   return {
     method: "POST",
     path,

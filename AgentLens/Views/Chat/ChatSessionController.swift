@@ -58,15 +58,14 @@ enum TextExpansionRewriteError: LocalizedError {
     }
 }
 
-private final class ChatSessionControllerGrantReference: @unchecked Sendable {
-    @MainActor weak var controller: ChatSessionController?
+@MainActor
+private final class ChatSessionControllerGrantReference {
+    weak var controller: ChatSessionController?
 
-    @MainActor
     init(_ controller: ChatSessionController) {
         self.controller = controller
     }
 
-    @MainActor
     func hasActiveGrant(id grantID: String) -> Bool {
         controller?.activeDesktopControlGrant?.grantID == grantID
     }

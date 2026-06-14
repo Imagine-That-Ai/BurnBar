@@ -46,8 +46,16 @@ function matches(matcher: Matcher, normalized: string): boolean {
   return containsAll && containsAny && containsNone;
 }
 
+function isCatalog(value: unknown): value is Catalog {
+  if (!value || typeof value !== "object") return false;
+  const providers = Object.getOwnPropertyDescriptor(value, "providers")?.value;
+  return Array.isArray(providers);
+}
+
 function loadMoonshotModels(): CatalogModel[] {
-  const catalog = JSON.parse(readFileSync(CATALOG_PATH, "utf8")) as Catalog;
+  const parsed: unknown = JSON.parse(readFileSync(CATALOG_PATH, "utf8"));
+  if (!isCatalog(parsed)) throw new Error("invalid catalog fixture");
+  const catalog = parsed;
   const moonshot = catalog.providers.find((provider) => provider.id === "moonshot");
   expect(moonshot).toBeDefined();
   if (!moonshot) throw new Error("moonshot provider missing from the catalog fixture");

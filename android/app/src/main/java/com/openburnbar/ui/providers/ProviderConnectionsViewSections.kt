@@ -58,24 +58,21 @@ internal data class ProviderConnectionsListCallbacks(
 )
 
 @Composable
-internal fun ProviderConnectionsList(
-    model: ProviderConnectionsListModel,
-    callbacks: ProviderConnectionsListCallbacks,
-) {
+internal fun ProviderConnectionsList(model: ProviderConnectionsListModel, callbacks: ProviderConnectionsListCallbacks) {
     LazyColumn(
         modifier =
         Modifier
             .fillMaxSize()
             .padding(model.innerPadding),
-        contentPadding = PaddingValues(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+        contentPadding = PaddingValues(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
     ) {
         item {
             ProviderConnectionsSectionHeader(title = "Connected")
         }
         if (model.isLoading && model.accounts.isEmpty()) {
             items(2) {
-                AuroraGlassCard(modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp)) {
+                AuroraGlassCard(modifier = Modifier.padding(vertical = AuroraSpacing.SM.dp)) {
                     Box(modifier = Modifier.fillMaxWidth().height(72.dp))
                 }
             }
@@ -99,7 +96,7 @@ internal fun ProviderConnectionsList(
             }
         }
         item {
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
             ProviderConnectionsSectionHeader(title = "Add Account")
         }
         items(model.availableProviders) { provider ->
@@ -115,7 +112,7 @@ private fun ProviderConnectionsSectionHeader(title: String) {
         fontSize = AuroraTypography.tiny.sp,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-        modifier = Modifier.padding(bottom = AuroraSpacing.sm.dp),
+        modifier = Modifier.padding(bottom = AuroraSpacing.SM.dp),
     )
 }
 
@@ -131,7 +128,7 @@ internal fun ProviderAccountGroupSection(
         Column {
             ProviderAccountGroupHeader(provider = provider, accountCount = accounts.size, onAddMore = onAddMore)
             accounts.forEach { account ->
-                HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.SM.dp))
                 AccountRow(
                     account = account,
                     onRefresh = { onRefresh(account) },
@@ -149,7 +146,7 @@ private fun ProviderAccountGroupHeader(provider: AgentProvider, accountCount: In
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ProviderAvatar(providerKey = provider.key, size = 40)
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(provider.displayName, fontWeight = FontWeight.SemiBold, fontSize = AuroraTypography.body.sp)
             Text(
@@ -168,7 +165,7 @@ private fun ProviderAccountGroupHeader(provider: AgentProvider, accountCount: In
 internal fun AccountRow(account: ProviderAccount, onRefresh: () -> Unit, onDelete: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         AccountStatusStripe(status = account.status ?: "unknown")
-        Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
         AccountRowDetails(account = account, modifier = Modifier.weight(1f))
         AccountRowActions(onRefresh = onRefresh, onDelete = onDelete)
     }
@@ -209,7 +206,7 @@ private fun AccountRowDetails(account: ProviderAccount, modifier: Modifier = Mod
                     "Default",
                     fontSize = AuroraTypography.tiny.sp,
                     color = AuroraColors.success,
-                    modifier = Modifier.padding(start = AuroraSpacing.sm.dp),
+                    modifier = Modifier.padding(start = AuroraSpacing.SM.dp),
                 )
             }
         }
@@ -250,11 +247,11 @@ internal fun AvailableProviderRow(provider: AgentProvider, onTap: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onTap)
-                .padding(vertical = AuroraSpacing.sm.dp),
+                .padding(vertical = AuroraSpacing.SM.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ProviderAvatar(providerKey = provider.key, size = 40)
-            Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(provider.displayName, fontWeight = FontWeight.SemiBold, fontSize = AuroraTypography.body.sp)
                 Text("Tap to connect", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

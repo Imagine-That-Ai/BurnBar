@@ -7,17 +7,23 @@ import OpenBurnBarCore
 /// without awaiting. See `docs/runbooks/slos.md` for SLO probe names.
 public enum BurnBarDaemonMetricsCounters {
     private static let lock = NSLock()
-    private static var rpcRequestsTotal = 0
-    private static var rpcErrorsTotal = 0
-    private static var rpcLatencyMsSamples: [Int] = []
+    // guarded by `lock`
+    private nonisolated(unsafe) static var rpcRequestsTotal = 0
+    // guarded by `lock`
+    private nonisolated(unsafe) static var rpcErrorsTotal = 0
+    // guarded by `lock`
+    private nonisolated(unsafe) static var rpcLatencyMsSamples: [Int] = []
     private static let maxLatencySamples = 256
 
     /// Tri-state listener bind health: `nil` when the gateway has not attempted
     /// to bind, `true` once the socket is ready, `false` when the bind failed
     /// (e.g. the port is already in use). Surfaced on `GET /metrics` so a
     /// "gateway port bound but not serving" condition is visible, not silent.
-    private static var gatewayListenerBound: Bool?
-    private static var gatewayListenerErrorMessage: String?
+    ///
+    /// `nonisolated(unsafe)`: guarded by `lock`.
+    private nonisolated(unsafe) static var gatewayListenerBound: Bool?
+    // guarded by `lock`
+    private nonisolated(unsafe) static var gatewayListenerErrorMessage: String?
 
     /// Records that the gateway TCP listener reached the `.ready` state.
     public static func recordGatewayListenerReady() {

@@ -2,6 +2,7 @@
 
 package com.openburnbar.ui.pulse
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.TokenUsage
@@ -31,12 +31,12 @@ import com.openburnbar.ui.theme.AuroraTypography
 @Composable
 fun RecentSessionsStripCard(sessions: List<TokenUsage>, onSelect: (TokenUsage) -> Unit, onSeeAll: () -> Unit) {
     AuroraGlassCard(
-        modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
-        cornerRadius = AuroraRadius.xl,
+        modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
+        cornerRadius = AuroraRadius.XL,
     ) {
         Column {
             RecentSessionsStripHeader(sessionCount = sessions.size, onSeeAll = onSeeAll)
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             if (sessions.isEmpty()) {
                 EmptyStateView(
                     title = "No sessions yet",

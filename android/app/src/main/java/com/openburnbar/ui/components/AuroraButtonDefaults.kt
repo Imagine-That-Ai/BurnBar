@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,9 +49,9 @@ import com.openburnbar.ui.theme.AuroraSpacing
  */
 
 object AuroraButtonDefaults {
-    val shape = RoundedCornerShape(AuroraRadius.full.dp)
-    val contentPadding = PaddingValues(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.md.dp)
-    const val pressedScale = 0.96f
+    val shape = RoundedCornerShape(AuroraRadius.FULL.dp)
+    val contentPadding = PaddingValues(horizontal = AuroraSpacing.LG.dp, vertical = AuroraSpacing.MD.dp)
+    const val PRESSED_SCALE = 0.96f
 }
 
 @Composable
@@ -98,7 +98,7 @@ fun AuroraGradientButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
-    val target = if (pressed) AuroraButtonDefaults.pressedScale else 1f
+    val target = if (pressed) AuroraButtonDefaults.PRESSED_SCALE else 1f
     val scale by animateFloatAsState(
         targetValue = target,
         animationSpec = AuroraMotion.cardPressSpec(),
@@ -131,7 +131,7 @@ fun AuroraSecondaryButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
-    val target = if (pressed) AuroraButtonDefaults.pressedScale else 1f
+    val target = if (pressed) AuroraButtonDefaults.PRESSED_SCALE else 1f
     val scale by animateFloatAsState(
         targetValue = target,
         animationSpec = AuroraMotion.cardPressSpec(),
@@ -180,7 +180,7 @@ fun AuroraSecondaryButton(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
                         content = content,
                     )
                 }

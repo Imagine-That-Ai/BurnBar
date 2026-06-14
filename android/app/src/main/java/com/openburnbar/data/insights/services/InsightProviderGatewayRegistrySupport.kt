@@ -104,11 +104,10 @@ internal fun insightGatewayTag(
     modelID: String,
     displayName: String,
     egressTier: InsightEgressTier = InsightEgressTier.USER_KEY,
-): InsightModelTag =
-    InsightModelTag(
-        providerKey = providerKey,
-        modelID = modelID,
-        displayName = displayName,
-        egressTier = egressTier,
-        stampedAt = Instant.now().toString(),
-    )
+): InsightModelTag = InsightModelTag(
+    providerKey = providerKey,
+    modelID = modelID,
+    displayName = displayName,
+    egressTier = egressTier,
+    stampedAt = Instant.now().toString(),
+)

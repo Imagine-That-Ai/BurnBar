@@ -77,17 +77,16 @@ class TextExpansionSyncManager(
             val triggerHash =
                 CloudVaultCrypto.tokenHashes(entity.trigger, vaultKey, limit = 1).firstOrNull()
                     ?: CloudVaultCrypto.sha256Hex(entity.trigger.toByteArray(Charsets.UTF_8))
-            fun seal(value: String, field: String) =
-                CloudVaultCrypto.sealText(
-                    value,
-                    vaultKey,
-                    CloudVaultAADContext(
-                        uid = uid,
-                        collection = "text_snippets",
-                        docID = entity.id,
-                        field = field,
-                    ),
-                ).toMap()
+            fun seal(value: String, field: String) = CloudVaultCrypto.sealText(
+                value,
+                vaultKey,
+                CloudVaultAADContext(
+                    uid = uid,
+                    collection = "text_snippets",
+                    docID = entity.id,
+                    field = field,
+                ),
+            ).toMap()
 
             val doc =
                 mapOf(
@@ -105,7 +104,7 @@ class TextExpansionSyncManager(
                     "createdAt" to com.google.firebase.Timestamp(Date(entity.createdAtMillis)),
                     "updatedAt" to com.google.firebase.Timestamp(Date(entity.updatedAtMillis)),
                     "deletedAt" to entity.deletedAtMillis?.let { com.google.firebase.Timestamp(Date(it)) },
-                    "schemaVersion" to CloudVaultCrypto.currentSealedTextSchemaVersion,
+                    "schemaVersion" to CloudVaultCrypto.CURRENT_SEALED_TEXT_SCHEMA_VERSION,
                     "encryption" to
                         mapOf(
                             "algorithm" to "AES-256-GCM",
@@ -174,13 +173,12 @@ class TextExpansionSyncManager(
         val updatedAt = parseTimestamp(doc.get("updatedAt")) ?: Date()
         val deletedAt = parseTimestamp(doc.get("deletedAt"))
 
-        fun context(field: String) =
-            CloudVaultAADContext(
-                uid = uid,
-                collection = "text_snippets",
-                docID = id,
-                field = field,
-            )
+        fun context(field: String) = CloudVaultAADContext(
+            uid = uid,
+            collection = "text_snippets",
+            docID = id,
+            field = field,
+        )
         val title = CloudVaultCrypto.openText(sealedTitleMap.toSealedText(), vaultKey, context("sealedTitle"))
         val trigger = CloudVaultCrypto.openText(sealedTriggerMap.toSealedText(), vaultKey, context("sealedTrigger"))
         val body = CloudVaultCrypto.openText(sealedBodyMap.toSealedText(), vaultKey, context("sealedBody"))
@@ -225,13 +223,15 @@ class TextExpansionSyncManager(
         return buildMap {
             schemaVersion?.let { put("schemaVersion", it) }
             aad?.let { put("aad", it) }
-            putAll(mapOf(
-            "algorithm" to algorithm,
-            "keyVersion" to keyVersion,
-            "nonce" to nonce,
-            "ciphertext" to ciphertext,
-            "tag" to tag,
-            ))
+            putAll(
+                mapOf(
+                    "algorithm" to algorithm,
+                    "keyVersion" to keyVersion,
+                    "nonce" to nonce,
+                    "ciphertext" to ciphertext,
+                    "tag" to tag,
+                ),
+            )
         }
     }
 

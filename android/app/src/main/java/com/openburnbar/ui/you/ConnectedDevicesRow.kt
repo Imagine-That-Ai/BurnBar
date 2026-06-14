@@ -35,13 +35,27 @@ fun ConnectedDevicesRow(devices: List<DeviceRecord>, onClick: () -> Unit = {}) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Filled.Devices, contentDescription = null, modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Connected Devices", fontSize = AuroraTypography.headline.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                Text("$deviceCount device${if (deviceCount != 1) "s" else ""} connected", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Connected Devices",
+                    fontSize = AuroraTypography.headline.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "$deviceCount device${if (deviceCount != 1) "s" else ""} connected",
+                    fontSize = AuroraTypography.caption.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (devices.isNotEmpty()) ConnectedDevicesPlatformIcons(devices)
-            Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+            Icon(
+                Icons.AutoMirrored.Filled.NavigateNext,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            )
         }
     }
 }

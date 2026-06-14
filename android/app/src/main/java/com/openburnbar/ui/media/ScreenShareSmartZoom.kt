@@ -114,11 +114,7 @@ object ScreenShareSmartZoomReducer {
         return reduceForTargetKind(viewport, ctx)
     }
 
-    private fun canFollowSmartZoom(
-        viewport: SmartZoomViewport,
-        inputs: SmartZoomReduceInputs,
-        ctx: ScreenShareSmartZoomContext,
-    ): Boolean {
+    private fun canFollowSmartZoom(viewport: SmartZoomViewport, inputs: SmartZoomReduceInputs, ctx: ScreenShareSmartZoomContext): Boolean {
         val viewportSize = viewport.viewportSize
         val contentRect = viewport.contentRect
         return inputs.mode != SmartZoomMode.OFF &&
@@ -132,10 +128,7 @@ object ScreenShareSmartZoomReducer {
             screenShareSmartZoomTargetMatches(inputs.mode, ctx.targetKind)
     }
 
-    private fun reduceForTargetKind(
-        viewport: SmartZoomViewport,
-        ctx: ScreenShareSmartZoomContext,
-    ): ScreenShareSmartZoomDecision {
+    private fun reduceForTargetKind(viewport: SmartZoomViewport, ctx: ScreenShareSmartZoomContext): ScreenShareSmartZoomDecision {
         val viewportSize = viewport.viewportSize
         val contentRect = viewport.contentRect
         val currentScale = viewport.currentScale

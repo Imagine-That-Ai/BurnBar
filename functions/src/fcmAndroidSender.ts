@@ -31,7 +31,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { pushWithResilience } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
-export interface SendResult {
+interface SendResult {
   status: "sent" | "rejected" | "retry";
   messageId?: string;
   errorCode?: string;
@@ -130,7 +130,7 @@ type FcmPushFn = (args: {
 }) => Promise<SendResult>;
 
 /** Outcome of processing a single stuck FCM document. */
-export type StuckFcmOutcome = "sent" | "rejected" | "rescheduled" | "skipped";
+type StuckFcmOutcome = "sent" | "rejected" | "rescheduled" | "skipped";
 
 export function nextFcmRetryDelayMs(attempt: number): number {
   const exponent = Math.max(0, attempt - 1);

@@ -29,14 +29,15 @@ fun DemoDataPromptCard(
     onDismissStatus: () -> Unit,
 ) {
     AuroraGlassCard(
-        modifier = modifier.padding(horizontal = AuroraSpacing.lg.dp),
-        cornerRadius = AuroraRadius.xl,
-        contentPadding = AuroraSpacing.lg.dp,
+        modifier = modifier.padding(horizontal = AuroraSpacing.LG.dp),
+        cornerRadius = AuroraRadius.XL,
+        contentPadding = AuroraSpacing.LG.dp,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             DemoDataPromptHeader()
             Text(
-                text = "Load a clearly labeled sample workspace into this Google account so closed testers can verify Pulse, Burn, Streams, quotas, and projects on Android.",
+                text = "Load a clearly labeled sample workspace into this Google account so closed testers " +
+                    "can verify Pulse, Burn, Streams, quotas, and projects on Android.",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -68,7 +69,7 @@ fun DemoDataEmptyState(
     onDismissStatus: () -> Unit,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(AuroraSpacing.lg.dp),
+        modifier = modifier.fillMaxWidth().padding(AuroraSpacing.LG.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         EmptyStateView(
@@ -76,7 +77,7 @@ fun DemoDataEmptyState(
             title = "No Mac data yet",
             message = "This account has no synced Mac data. Closed testers can load a sample workspace instead.",
         )
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         DemoDataPromptCard(
             isLoading = isLoading,
             message = message,

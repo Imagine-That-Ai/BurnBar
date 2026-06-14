@@ -22,6 +22,12 @@ disabled_rules:
 #   * size/complexity thresholds are RATCHETS set just above the measured
 #     codebase maximum — they block regression now and must be tightened as
 #     the tracked debt below is burned down;
+#   * 2026-06-14: tightened each size/complexity ERROR threshold down to just
+#     above today's measured maximum (was certifying the ceiling, e.g. error
+#     700 vs max 612). These are deliberately set with only a small margin over
+#     the current max so they ratchet DOWN as code improves — once the in-flight
+#     god-file decomposition lands and re-measures the maxima, tighten again.
+#     Do NOT raise any error threshold to "make room"; lower the code instead.
 #   * brownfield-refactor opt-ins that require API-changing rewrites were
 #     removed with their measured debt recorded:
 #       force_unwrapping               715 sites
@@ -175,19 +181,35 @@ line_length:
 
 # Ratchet: max measured body 612 lines (1,030 functions exceeded the previous
 # warning of 50; p50=67, p90=124). Tighten as functions are decomposed.
+# remediation(swiftlint-ratchets): error 700->650, warning 620->615 (both just
+# above the measured 612 max). Was certifying the ceiling. NOTE: CI runs
+# `swiftlint lint --quiet --strict`, which promotes WARNINGS to errors — so the
+# warning level must also stay above today's max or the build breaks. The honest
+# ratchet here is the *error* threshold; both must drop together as the in-flight
+# god-file decomposition shrinks the max. Ratchet DOWN toward p90 (~124) then.
 function_body_length:
-  warning: 620
-  error: 700
+  warning: 615
+  error: 650
 
 # Ratchet: max measured type body 4,659 lines (360 types over the previous 300).
+# remediation(swiftlint-ratchets): error 5000->4800, warning 4700->4700 (both
+# above the measured 4,659 max). CI `--strict` promotes warnings to errors, so
+# the warning level must stay above max too. In-flight decomposition will shrink
+# the max; ratchet DOWN again (warning+error together) once it lands.
 type_body_length:
   warning: 4700
-  error: 5000
+  error: 4800
 
 # Ratchet: max measured file 5,914 lines (347 files over the previous 500).
+# remediation(swiftlint-ratchets): error 6500->6200, warning 6000->5950 (both
+# above the measured 5,914 max). CI `--strict` promotes warnings to errors, so
+# the warning level must stay above max too. In-flight decomposition will shrink
+# the max; ratchet DOWN again (warning+error together) once it lands.
+# The lower target is enforced by budgets/swift-file-size-baseline.json: no new
+# file may cross 2,000 lines and no baselined file may grow.
 file_length:
-  warning: 6000
-  error: 6500
+  warning: 5950
+  error: 6200
 
 identifier_name:
   min_length:
@@ -249,14 +271,22 @@ type_name:
     - DS
 
 # Ratchet: max measured complexity 66 (129 functions over the previous 15).
+# remediation(swiftlint-ratchets): error 80->70, warning 70->67 (both just above
+# the measured 66 max). CI `--strict` promotes warnings to errors, so the warning
+# level must stay above max too. Tighten DOWN (warning+error together) toward 15
+# as branchy functions are split.
 cyclomatic_complexity:
-  warning: 70
-  error: 80
+  warning: 67
+  error: 70
 
 # Ratchet: max measured parameter count 15 (218 functions over the default 5).
+# remediation(swiftlint-ratchets): error 20->16, warning 16->15 (both at/above
+# the measured 15 max). CI `--strict` promotes warnings to errors, so the warning
+# level must stay at/above max too. Tighten DOWN (warning+error together) toward
+# 5 as wide signatures are refactored.
 function_parameter_count:
-  warning: 16
-  error: 20
+  warning: 15
+  error: 16
 
 # 3-member tuples are accepted in this codebase; 5+ must become structs.
 large_tuple:

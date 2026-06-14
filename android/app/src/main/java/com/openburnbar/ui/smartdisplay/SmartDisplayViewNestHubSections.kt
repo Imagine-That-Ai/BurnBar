@@ -33,7 +33,7 @@ import com.openburnbar.ui.theme.AuroraType
 internal fun NestHubCardHeader(state: SmartHubSnapshot, bridgeReady: Boolean) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(Icons.Filled.Devices, contentDescription = null, tint = AuroraColors.whimsy)
@@ -60,7 +60,7 @@ internal fun NestHubCardHeader(state: SmartHubSnapshot, bridgeReady: Boolean) {
 
 @Composable
 internal fun NestHubBridgeActionButtons(state: SmartHubSnapshot, bridgeReady: Boolean) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         AuroraSecondaryButton(
             onClick = SmartHubBridgeClientCastActions::refreshNestHub,
             enabled = !state.actionInFlight && bridgeReady,
@@ -77,7 +77,7 @@ internal fun NestHubBridgeActionButtons(state: SmartHubSnapshot, bridgeReady: Bo
             Icon(Icons.Filled.Settings, contentDescription = null)
             Text("Repair connection")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             AuroraSecondaryButton(
                 onClick = SmartHubBridgeClientCastActions::identifyNestHub,
                 enabled = !state.actionInFlight && state.bridgeIsLive,
@@ -120,7 +120,7 @@ internal fun NestHubCastDiscoverySection(state: SmartHubSnapshot) {
         }
     }
 
-    Spacer(Modifier.height(AuroraSpacing.xs.dp))
+    Spacer(Modifier.height(AuroraSpacing.XS.dp))
 
     if (state.castDevices.isEmpty()) {
         Text(

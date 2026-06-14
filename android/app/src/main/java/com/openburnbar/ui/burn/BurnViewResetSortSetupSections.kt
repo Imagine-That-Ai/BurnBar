@@ -35,9 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
-import com.openburnbar.data.models.pressure
-import com.openburnbar.data.models.nextResetDate
 import com.openburnbar.data.models.UsageRollups
+import com.openburnbar.data.models.nextResetDate
+import com.openburnbar.data.models.pressure
 import com.openburnbar.ui.components.ProviderAvatar
 import com.openburnbar.ui.components.ShimmerCard
 import com.openburnbar.ui.theme.AuroraColors
@@ -80,8 +80,8 @@ fun BurnViewLoadingShimmer() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)
+            .padding(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         ShimmerCard(height = BURN_LOADING_HERO_HEIGHT_DP)
         ShimmerCard(height = BURN_LOADING_FILTER_HEIGHT_DP)
@@ -95,30 +95,23 @@ fun sortQuotaSnapshots(
     snapshots: List<ProviderQuotaSnapshot>,
     mode: QuotaSortMode,
     rollups: UsageRollups?,
-    pinnedKeys: Set<String> = emptySet()
+    pinnedKeys: Set<String> = emptySet(),
 ): List<ProviderQuotaSnapshot> {
     val spendByID = rollups?.providerSummaries.orEmpty().associate { it.provider.lowercase() to it.totalCost }
     val baseComparator = quotaSnapshotComparator(mode, spendByID)
     return snapshots.sortedWith(pinnedQuotaComparator(pinnedKeys, baseComparator))
 }
 
-private fun quotaSnapshotComparator(
-    mode: QuotaSortMode,
-    spendByID: Map<String, Double>
-): Comparator<ProviderQuotaSnapshot> =
-    Comparator { lhs, rhs ->
-        when (mode) {
-            QuotaSortMode.URGENCY -> compareQuotaUrgency(lhs, rhs)
-            QuotaSortMode.SPEND -> compareQuotaSpend(lhs, rhs, spendByID)
-            QuotaSortMode.ALPHABETICAL -> compareQuotaProviderName(lhs, rhs)
-            QuotaSortMode.RECENTLY_REFRESHED -> (rhs.fetchedAt ?: "").compareTo(lhs.fetchedAt ?: "")
-        }
+private fun quotaSnapshotComparator(mode: QuotaSortMode, spendByID: Map<String, Double>): Comparator<ProviderQuotaSnapshot> = Comparator { lhs, rhs ->
+    when (mode) {
+        QuotaSortMode.URGENCY -> compareQuotaUrgency(lhs, rhs)
+        QuotaSortMode.SPEND -> compareQuotaSpend(lhs, rhs, spendByID)
+        QuotaSortMode.ALPHABETICAL -> compareQuotaProviderName(lhs, rhs)
+        QuotaSortMode.RECENTLY_REFRESHED -> (rhs.fetchedAt ?: "").compareTo(lhs.fetchedAt ?: "")
     }
+}
 
-private fun pinnedQuotaComparator(
-    pinnedKeys: Set<String>,
-    baseComparator: Comparator<ProviderQuotaSnapshot>
-): Comparator<ProviderQuotaSnapshot> =
+private fun pinnedQuotaComparator(pinnedKeys: Set<String>, baseComparator: Comparator<ProviderQuotaSnapshot>): Comparator<ProviderQuotaSnapshot> =
     Comparator { lhs, rhs ->
         val lPinned = pinnedKeys.contains(lhs.quotaSortKey())
         val rPinned = pinnedKeys.contains(rhs.quotaSortKey())
@@ -128,17 +121,12 @@ private fun pinnedQuotaComparator(
         }
     }
 
-private fun compareQuotaUrgency(lhs: ProviderQuotaSnapshot, rhs: ProviderQuotaSnapshot): Int =
-    compareByDescending<ProviderQuotaSnapshot> { it.pressure }
-        .thenBy { it.nextResetDate ?: Instant.MAX }
-        .thenComparator(::compareQuotaProviderName)
-        .compare(lhs, rhs)
+private fun compareQuotaUrgency(lhs: ProviderQuotaSnapshot, rhs: ProviderQuotaSnapshot): Int = compareByDescending<ProviderQuotaSnapshot> { it.pressure }
+    .thenBy { it.nextResetDate ?: Instant.MAX }
+    .thenComparator(::compareQuotaProviderName)
+    .compare(lhs, rhs)
 
-private fun compareQuotaSpend(
-    lhs: ProviderQuotaSnapshot,
-    rhs: ProviderQuotaSnapshot,
-    spendByID: Map<String, Double>
-): Int {
+private fun compareQuotaSpend(lhs: ProviderQuotaSnapshot, rhs: ProviderQuotaSnapshot, spendByID: Map<String, Double>): Int {
     val spendCompare = (spendByID[rhs.provider.lowercase()] ?: 0.0).compareTo(spendByID[lhs.provider.lowercase()] ?: 0.0)
     return if (spendCompare != 0) spendCompare else compareQuotaProviderName(lhs, rhs)
 }
@@ -146,24 +134,20 @@ private fun compareQuotaSpend(
 private fun compareQuotaProviderName(lhs: ProviderQuotaSnapshot, rhs: ProviderQuotaSnapshot): Int =
     lhs.quotaProviderDisplayName().compareTo(rhs.quotaProviderDisplayName(), ignoreCase = true)
 
-private fun ProviderQuotaSnapshot.quotaProviderDisplayName(): String =
-    AgentProvider.fromKey(provider)?.displayName ?: provider
+private fun ProviderQuotaSnapshot.quotaProviderDisplayName(): String = AgentProvider.fromKey(provider)?.displayName ?: provider
 
 internal fun ProviderQuotaSnapshot.quotaSortKey(): String = provider + "_" + (accountId ?: sourceId)
 
 @Composable
-fun QuotaResetAtlas(
-    snapshots: List<ProviderQuotaSnapshot>,
-    modifier: Modifier = Modifier
-) {
+fun QuotaResetAtlas(snapshots: List<ProviderQuotaSnapshot>, modifier: Modifier = Modifier) {
     val dayBuckets = rememberResetAtlasBuckets(snapshots)
     val totalResetCount = remember(dayBuckets) { dayBuckets.sumOf { it.snapshots.size } }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+            .padding(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         QuotaResetAtlasHeader(totalResetCount = totalResetCount)
         QuotaResetAtlasDivider()
@@ -172,25 +156,24 @@ fun QuotaResetAtlas(
 }
 
 @Composable
-private fun rememberResetAtlasBuckets(snapshots: List<ProviderQuotaSnapshot>): List<DayBucketData> =
-    remember(snapshots) {
-        val zone = ZoneId.systemDefault()
-        val today = ZonedDateTime.ofInstant(Instant.now(), zone).toLocalDate()
-        val bucketsMap = resetAtlasBucketsByDay(snapshots, zone, today)
-        (0..RESET_ATLAS_DAYS_FORWARD).map { offset ->
-            val day = today.plusDays(offset.toLong())
-            DayBucketData(
-                day = day,
-                isToday = offset == 0,
-                snapshots = (bucketsMap[day] ?: emptyList()).sortedBy { it.nextResetDate ?: Instant.MAX }
-            )
-        }
+private fun rememberResetAtlasBuckets(snapshots: List<ProviderQuotaSnapshot>): List<DayBucketData> = remember(snapshots) {
+    val zone = ZoneId.systemDefault()
+    val today = ZonedDateTime.ofInstant(Instant.now(), zone).toLocalDate()
+    val bucketsMap = resetAtlasBucketsByDay(snapshots, zone, today)
+    (0..RESET_ATLAS_DAYS_FORWARD).map { offset ->
+        val day = today.plusDays(offset.toLong())
+        DayBucketData(
+            day = day,
+            isToday = offset == 0,
+            snapshots = (bucketsMap[day] ?: emptyList()).sortedBy { it.nextResetDate ?: Instant.MAX },
+        )
     }
+}
 
 private fun resetAtlasBucketsByDay(
     snapshots: List<ProviderQuotaSnapshot>,
     zone: ZoneId,
-    today: java.time.LocalDate
+    today: java.time.LocalDate,
 ): Map<java.time.LocalDate, List<ProviderQuotaSnapshot>> {
     val bucketsMap = mutableMapOf<java.time.LocalDate, MutableList<ProviderQuotaSnapshot>>()
     for (snap in snapshots) {
@@ -206,7 +189,7 @@ private fun QuotaResetAtlasHeader(totalResetCount: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "RESET ATLAS · NEXT 7 DAYS",
@@ -214,22 +197,21 @@ private fun QuotaResetAtlasHeader(totalResetCount: Int) {
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            letterSpacing = 1.0.sp
+            letterSpacing = 1.0.sp,
         )
         Text(
             text = resetAtlasCountText(totalResetCount),
             fontSize = AuroraTypography.tiny.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (totalResetCount == 0) 0.5f else 1f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (totalResetCount == 0) 0.5f else 1f),
         )
     }
 }
 
-private fun resetAtlasCountText(totalResetCount: Int): String =
-    if (totalResetCount == 0) {
-        "No resets scheduled in this window"
-    } else {
-        "$totalResetCount reset event${if (totalResetCount == 1) "" else "s"}"
-    }
+private fun resetAtlasCountText(totalResetCount: Int): String = if (totalResetCount == 0) {
+    "No resets scheduled in this window"
+} else {
+    "$totalResetCount reset event${if (totalResetCount == 1) "" else "s"}"
+}
 
 @Composable
 private fun QuotaResetAtlasDivider() {
@@ -244,10 +226,10 @@ private fun QuotaResetAtlasDivider() {
                         AuroraColors.hermesMercury.copy(alpha = 0.55f),
                         AuroraColors.hermesAureate.copy(alpha = 0.65f),
                         AuroraColors.hermesMercury.copy(alpha = 0.55f),
-                        AuroraColors.hermesMercury.copy(alpha = 0f)
-                    )
-                )
-            )
+                        AuroraColors.hermesMercury.copy(alpha = 0f),
+                    ),
+                ),
+            ),
     )
 }
 
@@ -255,16 +237,16 @@ private fun QuotaResetAtlasDivider() {
 private fun QuotaResetAtlasGrid(dayBuckets: List<DayBucketData>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.40f))
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.40f)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.sm.dp),
+                .padding(AuroraSpacing.SM.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.Top,
         ) {
             dayBuckets.forEachIndexed { index, bucket ->
                 DayColumn(bucket = bucket, modifier = Modifier.weight(1f), showLeadingDivider = index > 0)
@@ -278,15 +260,11 @@ private const val RESET_ATLAS_DAYS_FORWARD = 7
 private data class DayBucketData(
     val day: java.time.LocalDate,
     val isToday: Boolean,
-    val snapshots: List<ProviderQuotaSnapshot>
+    val snapshots: List<ProviderQuotaSnapshot>,
 )
 
 @Composable
-private fun DayColumn(
-    bucket: DayBucketData,
-    modifier: Modifier = Modifier,
-    showLeadingDivider: Boolean = false
-) {
+private fun DayColumn(bucket: DayBucketData, modifier: Modifier = Modifier, showLeadingDivider: Boolean = false) {
     Box(modifier = modifier) {
         if (showLeadingDivider) {
             Box(
@@ -294,7 +272,7 @@ private fun DayColumn(
                     .align(Alignment.CenterStart)
                     .width(0.5.dp)
                     .height(60.dp)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
             )
         }
 
@@ -303,9 +281,11 @@ private fun DayColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 2.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            val dayLabel = if (bucket.isToday) "TODAY" else {
+            val dayLabel = if (bucket.isToday) {
+                "TODAY"
+            } else {
                 val formatter = java.time.format.DateTimeFormatter.ofPattern("E d", Locale.getDefault())
                 bucket.day.format(formatter).uppercase(Locale.getDefault())
             }
@@ -313,7 +293,7 @@ private fun DayColumn(
                 text = dayLabel,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (bucket.isToday) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                color = if (bucket.isToday) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             )
 
             Box(
@@ -321,9 +301,12 @@ private fun DayColumn(
                     .size(4.dp)
                     .clip(CircleShape)
                     .background(
-                        if (bucket.isToday) AuroraColors.ember.copy(alpha = 0.85f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-                    )
+                        if (bucket.isToday) {
+                            AuroraColors.ember.copy(alpha = 0.85f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        },
+                    ),
             )
 
             if (bucket.snapshots.isEmpty()) {
@@ -332,13 +315,13 @@ private fun DayColumn(
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             } else {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = 2.dp),
                 ) {
                     bucket.snapshots.forEach { snap ->
                         ResetCell(snapshot = snap)
@@ -365,11 +348,11 @@ private fun ResetCell(snapshot: ProviderQuotaSnapshot) {
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -379,11 +362,11 @@ private fun ResetCell(snapshot: ProviderQuotaSnapshot) {
                         Brush.linearGradient(
                             colors = listOf(
                                 primaryColor.copy(alpha = 0.22f),
-                                accentColor.copy(alpha = 0.10f)
-                            )
-                        )
+                                accentColor.copy(alpha = 0.10f),
+                            ),
+                        ),
                     )
-                    .border(0.75.dp, primaryColor.copy(alpha = 0.34f), CircleShape)
+                    .border(0.75.dp, primaryColor.copy(alpha = 0.34f), CircleShape),
             )
             ProviderAvatar(providerKey = provider.key, size = 14)
         }
@@ -394,35 +377,31 @@ private fun ResetCell(snapshot: ProviderQuotaSnapshot) {
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
+            maxLines = 1,
         )
     }
 }
 
 @Composable
-fun QuotaSetupSuggestionsStrip(
-    slots: List<AgentProvider>,
-    onConnectClick: (AgentProvider) -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun QuotaSetupSuggestionsStrip(slots: List<AgentProvider>, onConnectClick: (AgentProvider) -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+            .padding(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "✨",
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
                 )
                 val s = if (slots.size == 1) "" else "S"
                 Text(
@@ -431,14 +410,14 @@ fun QuotaSetupSuggestionsStrip(
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    letterSpacing = 1.0.sp
+                    letterSpacing = 1.0.sp,
                 )
             }
         }
 
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         ) {
             items(slots) { provider ->
                 SlotChip(provider = provider, onClick = { onConnectClick(provider) })
@@ -448,34 +427,30 @@ fun QuotaSetupSuggestionsStrip(
 }
 
 @Composable
-private fun SlotChip(
-    provider: AgentProvider,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun SlotChip(provider: AgentProvider, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val primaryColor = Color(provider.brandColor)
     Card(
         modifier = modifier.width(232.dp),
-        shape = RoundedCornerShape(AuroraRadius.md.dp),
+        shape = RoundedCornerShape(AuroraRadius.MD.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-        border = androidx.compose.foundation.BorderStroke(0.75.dp, primaryColor.copy(alpha = 0.20f))
+        border = androidx.compose.foundation.BorderStroke(0.75.dp, primaryColor.copy(alpha = 0.20f)),
     ) {
         Column(
             modifier = Modifier
                 .clickable { onClick() }
-                .padding(AuroraSpacing.md.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+                .padding(AuroraSpacing.MD.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
                         .background(primaryColor.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     ProviderAvatar(providerKey = provider.key, size = 18)
                 }
@@ -485,13 +460,13 @@ private fun SlotChip(
                         text = provider.displayName,
                         fontSize = AuroraTypography.body.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
                         text = "Not connected",
                         fontSize = AuroraTypography.tiny.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     )
                 }
             }
@@ -502,7 +477,7 @@ private fun SlotChip(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(200.dp)
+                modifier = Modifier.width(200.dp),
             )
         }
     }

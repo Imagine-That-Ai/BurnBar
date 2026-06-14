@@ -122,7 +122,7 @@ struct SharedArtifactSyncReport: Equatable, Sendable {
 ///
 /// Account and settings reads cross into `MainActor` via `syncGate()`; persistence uses
 /// `DataStore`'s nonisolated store accessors and `DataStoreActor` for heavy I/O.
-final class CloudSyncContext: @unchecked Sendable {
+final class CloudSyncContext: Sendable {
     let dataStore: DataStore
     let accountManager: any AccountManaging
     let settingsManager: any SettingsManagerProtocol
@@ -139,8 +139,17 @@ final class CloudSyncContext: @unchecked Sendable {
     /// User-facing backup limits enforced before upload.
     let backupPlanLimits: CloudBackupPlanLimits
 
+    /// Shared backoff suppression date, mutated from nonisolated async sync
+    /// domains via `suppressSync(_:)`. Boxed so the context stays genuinely
+    /// `Sendable` without main-actor isolating the immutable dependencies the
+    /// off-actor sync pipeline reads synchronously.
+    private let suppressedSyncUntilBox = Locked<Date?>(nil)
+
     /// Shared backoff suppression date.
-    var suppressedSyncUntil: Date?
+    var suppressedSyncUntil: Date? {
+        get { suppressedSyncUntilBox.read() }
+        set { suppressedSyncUntilBox.write(newValue) }
+    }
 
     /// Computed Firebase UID, nil if unavailable.
     @MainActor
@@ -156,12 +165,14 @@ final class CloudSyncContext: @unchecked Sendable {
     /// Whether sync is suppressed due to backoff.
     @MainActor
     func syncIsSuppressed(now: Date = Date()) -> Bool {
-        guard let suppressedSyncUntil else { return false }
-        if suppressedSyncUntil > now {
-            return true
+        suppressedSyncUntilBox.withLock { suppressedSyncUntil in
+            guard let until = suppressedSyncUntil else { return false }
+            if until > now {
+                return true
+            }
+            suppressedSyncUntil = nil
+            return false
         }
-        self.suppressedSyncUntil = nil
-        return false
     }
 
     init(
@@ -498,9 +509,8 @@ struct CloudBackupProgressSnapshot: Equatable, Sendable {
 }
 
 /// Thread-safe accumulator for backup progress. Sync services mutate this; UI observes copies.
-final class CloudBackupProgressTracker: @unchecked Sendable {
-    private let lock = NSLock()
-    private var snapshot = CloudBackupProgressSnapshot()
+final class CloudBackupProgressTracker: Sendable {
+    private let snapshot = Locked(CloudBackupProgressSnapshot())
     private let onUpdate: (@Sendable (CloudBackupProgressSnapshot) -> Void)?
 
     init(onUpdate: (@Sendable (CloudBackupProgressSnapshot) -> Void)? = nil) {
@@ -508,9 +518,7 @@ final class CloudBackupProgressTracker: @unchecked Sendable {
     }
 
     func currentSnapshot() -> CloudBackupProgressSnapshot {
-        lock.lock()
-        defer { lock.unlock() }
-        return snapshot
+        snapshot.read()
     }
 
     func begin(pendingSessionLogs: Int, pendingChatThreads: Int) {
@@ -604,11 +612,11 @@ final class CloudBackupProgressTracker: @unchecked Sendable {
     }
 
     private func publish(_ mutate: (inout CloudBackupProgressSnapshot) -> Void) {
-        lock.lock()
-        mutate(&snapshot)
-        snapshot.updatedAt = Date()
-        let copy = snapshot
-        lock.unlock()
+        let copy = snapshot.withLock { snapshot -> CloudBackupProgressSnapshot in
+            mutate(&snapshot)
+            snapshot.updatedAt = Date()
+            return snapshot
+        }
         onUpdate?(copy)
     }
 }

@@ -35,7 +35,7 @@ type DemoUsageSeed = {
   reasoningTokens: number;
 };
 
-export type SeedAndroidDemoAccountResult = {
+type SeedAndroidDemoAccountResult = {
   success: true;
   seeded: true;
   usageCount: number;
@@ -316,6 +316,7 @@ function demoUsage(seed: DemoUsageSeed, now: Date): UsageEventDoc & Record<strin
     provenanceConfidence: "exact",
     provenanceMethod: "android_demo_seed",
     timestamp: startTime,
+    recordedAt: startTime,
     startTime,
     endTime,
     createdAt: startTime,

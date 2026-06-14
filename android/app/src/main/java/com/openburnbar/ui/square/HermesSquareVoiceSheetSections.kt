@@ -40,10 +40,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 @Composable
-internal fun VoiceSheetContent(
-    state: VoiceSheetCaptureState,
-    callbacks: VoiceHoldToTalkCallbacks,
-) {
+internal fun VoiceSheetContent(state: VoiceSheetCaptureState, callbacks: VoiceHoldToTalkCallbacks) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 18.dp)) {
         Text(
             "Voice command",
@@ -96,10 +93,7 @@ internal fun VoiceTranscriptPanel(listening: Boolean, transcript: String) {
 }
 
 @Composable
-internal fun VoiceHoldToTalkControl(
-    state: VoiceSheetCaptureState,
-    callbacks: VoiceHoldToTalkCallbacks,
-) {
+internal fun VoiceHoldToTalkControl(state: VoiceSheetCaptureState, callbacks: VoiceHoldToTalkCallbacks) {
     val pulseScale = voiceMicPulseScale(listening = state.listening)
     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().height(140.dp)) {
         VoiceMicButton(state = state, pulseScale = pulseScale, callbacks = callbacks)
@@ -107,11 +101,7 @@ internal fun VoiceHoldToTalkControl(
 }
 
 @Composable
-private fun VoiceMicButton(
-    state: VoiceSheetCaptureState,
-    pulseScale: Float,
-    callbacks: VoiceHoldToTalkCallbacks,
-) {
+private fun VoiceMicButton(state: VoiceSheetCaptureState, pulseScale: Float, callbacks: VoiceHoldToTalkCallbacks) {
     Box(
         contentAlignment = Alignment.Center,
         modifier =
@@ -144,10 +134,7 @@ private fun voiceMicPulseScale(listening: Boolean): Float {
     return 1.005f + 0.055f * sin(pulsePhase)
 }
 
-private fun Modifier.voiceMicGesture(
-    state: VoiceSheetCaptureState,
-    callbacks: VoiceHoldToTalkCallbacks,
-): Modifier =
+private fun Modifier.voiceMicGesture(state: VoiceSheetCaptureState, callbacks: VoiceHoldToTalkCallbacks): Modifier =
     pointerInput(state.permissionGranted, state.listening, state.transcript) {
         awaitPointerEventScope {
             while (true) {
@@ -173,11 +160,7 @@ private fun Modifier.voiceMicGesture(
         }
     }
 
-internal fun resolveVoiceIntentOnRelease(
-    transcript: String,
-    nameMap: Map<String, String>,
-    currentThreadAgentURI: String?,
-): AndroidVoiceIntent? {
+internal fun resolveVoiceIntentOnRelease(transcript: String, nameMap: Map<String, String>, currentThreadAgentURI: String?): AndroidVoiceIntent? {
     if (transcript.isBlank()) return null
     return AndroidVoiceIntentResolver.resolve(
         transcript = transcript,

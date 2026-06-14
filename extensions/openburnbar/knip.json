@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": [
+    ".dependency-cruiser.cjs",
+    "src/extension.ts",
+    "src/webview/panel.js",
+    "src/webview/workspace.js",
+    "test/extensionHost/suite/index.ts",
+    "test/extensionHost/suite/localWorkspace.integration.ts",
+    "test/extensionHost/suite/workspaceModes.integration.ts",
+    "test/fixtures/workspace/src/example.ts"
+  ],
+  "project": [
+    ".dependency-cruiser.cjs",
+    "src/**/*.ts",
+    "src/webview/*.js",
+    "test/**/*.ts"
+  ],
+  "ignore": [
+    ".build/**",
+    ".vscode-test/**",
+    "dist/**",
+    "node_modules/**"
+  ]
+}

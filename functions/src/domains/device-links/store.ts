@@ -41,7 +41,7 @@ export function deviceLinkPath(uid: string, accountID: string, deviceID: string)
   return `users/${uid}/provider_account_device_links/${deviceLinkId(accountID, deviceID)}`;
 }
 
-export function deviceLinkCollectionPath(uid: string): string {
+function deviceLinkCollectionPath(uid: string): string {
   return `users/${uid}/provider_account_device_links`;
 }
 

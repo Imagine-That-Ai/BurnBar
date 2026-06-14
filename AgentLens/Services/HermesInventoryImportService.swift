@@ -182,6 +182,10 @@ final class HermesInventoryImportService {
 enum HermesInventoryImportPreflightError: Error, Equatable {
     case supportDirectoryUnwritable(path: String)
     case insufficientDiskSpace(availableBytes: Int64, neededBytes: Int64, path: String)
+    /// The volume's available capacity could not be read, so the preflight cannot
+    /// prove there is enough free space. The import is refused (fail-closed)
+    /// rather than letting a half-written chunked transaction blow up mid-flight.
+    case capacityUnverifiable(path: String)
 
     var userMessage: String {
         switch self {
@@ -194,6 +198,8 @@ enum HermesInventoryImportPreflightError: Error, Equatable {
             let available = formatter.string(fromByteCount: availableBytes)
             let needed = formatter.string(fromByteCount: neededBytes)
             return "Not enough free space on the volume containing \(path) — \(available) free, ~\(needed) needed. Free up space and try the import again."
+        case let .capacityUnverifiable(path):
+            return "OpenBurnBar couldn't check how much free space is left on the volume containing \(path), so it stopped before importing to avoid a partial write. Make sure that folder is reachable (the volume isn't ejected or offline) and try the import again."
         }
     }
 }
@@ -209,32 +215,71 @@ struct HermesInventoryImportPreflight: Sendable {
 
     var check: @Sendable (_ estimatedTranscriptBytes: Int) throws -> Void
 
-    static let live = HermesInventoryImportPreflight { estimatedTranscriptBytes in
-        let paths = OpenBurnBarAppPaths.live()
-        let supportDir = paths.supportDirectory
-
-        let neededBytes = max(
-            HermesInventoryImportPreflight.minimumFreeBytes,
-            Int64(estimatedTranscriptBytes) * 2
-        )
-
-        if FileManager.default.fileExists(atPath: supportDir.path),
-           !FileManager.default.isWritableFile(atPath: supportDir.path) {
-            throw HermesInventoryImportPreflightError.supportDirectoryUnwritable(
-                path: supportDir.path
-            )
-        }
-
-        let values = try? supportDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        if let availableBytes = values?.volumeAvailableCapacityForImportantUsage,
-           availableBytes < neededBytes {
-            throw HermesInventoryImportPreflightError.insufficientDiskSpace(
-                availableBytes: availableBytes,
-                neededBytes: neededBytes,
-                path: supportDir.path
-            )
-        }
+    /// Reads the available "important usage" capacity of the volume backing
+    /// `url`, in bytes. Returns `nil` when the key is genuinely unavailable but
+    /// the read itself succeeded; *throws* when the underlying filesystem probe
+    /// fails (volume ejected, directory vanished, transient I/O error). The
+    /// throwing case is what lets `live` fail closed instead of silently
+    /// treating an unreadable volume as having unlimited space.
+    static let liveCapacityProbe: @Sendable (URL) throws -> Int64? = { url in
+        try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            .volumeAvailableCapacityForImportantUsage
+            .map { Int64($0) }
     }
 
+    static let live = HermesInventoryImportPreflight.make(
+        availableCapacityProbe: HermesInventoryImportPreflight.liveCapacityProbe
+    )
+
     static let alwaysOk = HermesInventoryImportPreflight { _ in }
+
+    /// Builds a preflight whose disk-space gate reads the volume capacity through
+    /// the injected `availableCapacityProbe`. Extracted so tests can drive the
+    /// probe into its throwing branch and assert the fail-closed behavior without
+    /// needing a real disk volume to misbehave.
+    static func make(
+        availableCapacityProbe: @escaping @Sendable (URL) throws -> Int64?
+    ) -> HermesInventoryImportPreflight {
+        HermesInventoryImportPreflight { estimatedTranscriptBytes in
+            let paths = OpenBurnBarAppPaths.live()
+            let supportDir = paths.supportDirectory
+
+            let neededBytes = max(
+                HermesInventoryImportPreflight.minimumFreeBytes,
+                Int64(estimatedTranscriptBytes) * 2
+            )
+
+            if FileManager.default.fileExists(atPath: supportDir.path),
+               !FileManager.default.isWritableFile(atPath: supportDir.path) {
+                throw HermesInventoryImportPreflightError.supportDirectoryUnwritable(
+                    path: supportDir.path
+                )
+            }
+
+            // Fail closed: if we can't read how much space is left, we can't prove
+            // the import will fit, so refuse rather than walking into a half-written
+            // chunked transaction. A successful read returning nil (capacity key
+            // truly unavailable on this volume) keeps the prior lenient behavior.
+            let availableBytes: Int64?
+            do {
+                availableBytes = try availableCapacityProbe(supportDir)
+            } catch {
+                AppLogger.dataStore.error(
+                    "hermes_import_capacity_probe_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+                throw HermesInventoryImportPreflightError.capacityUnverifiable(
+                    path: supportDir.path
+                )
+            }
+
+            if let availableBytes, availableBytes < neededBytes {
+                throw HermesInventoryImportPreflightError.insufficientDiskSpace(
+                    availableBytes: availableBytes,
+                    neededBytes: neededBytes,
+                    path: supportDir.path
+                )
+            }
+        }
+    }
 }

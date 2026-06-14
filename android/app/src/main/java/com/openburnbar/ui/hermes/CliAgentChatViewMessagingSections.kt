@@ -1,9 +1,6 @@
 
 package com.openburnbar.ui.hermes
 
-import com.openburnbar.data.assistants.CLIAgentRelayChatStreamRequest
-
-import com.openburnbar.data.models.AgentProvider
 import android.net.Uri
 import com.openburnbar.data.assistants.AssistantChatAttachment
 import com.openburnbar.data.assistants.AssistantChatHermesMetadata
@@ -15,11 +12,13 @@ import com.openburnbar.data.assistants.CLIAgentChatPresentationMode
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.assistants.CLIAgentRelayChatEvent
+import com.openburnbar.data.assistants.CLIAgentRelayChatStreamRequest
 import com.openburnbar.data.assistants.CLIAgentRelayChatTransporting
 import com.openburnbar.data.assistants.CLIAgentRelayTranscriptPieceKind
 import com.openburnbar.data.computeruse.AgentCapabilityGrantState
 import com.openburnbar.data.computeruse.AgentDesktopCapability
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.models.AgentProvider
 import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -160,11 +159,7 @@ internal fun sendMessage(request: CliSendMessageRequest, deps: CliSendMessageDep
     callbacks.onPending(null, placeholder.id, job)
 }
 
-private fun appendCliSendMessages(
-    historyStore: AssistantChatHistoryStore,
-    thread: AssistantChatThread,
-    request: CliSendMessageRequest,
-): AssistantChatMessage {
+private fun appendCliSendMessages(historyStore: AssistantChatHistoryStore, thread: AssistantChatThread, request: CliSendMessageRequest): AssistantChatMessage {
     val now = System.currentTimeMillis()
     val userMessage =
         AssistantChatMessage(

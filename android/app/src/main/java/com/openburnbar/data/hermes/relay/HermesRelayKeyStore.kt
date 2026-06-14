@@ -6,9 +6,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
-import java.security.KeyStore
 import java.security.KeyFactory
 import java.security.KeyPair
+import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.spec.PKCS8EncodedKeySpec

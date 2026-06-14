@@ -44,7 +44,7 @@ struct UsageRefreshPipeline: Sendable {
         return result
     }
 
-    func parse(from discovery: DiscoverResult) async -> ParsedBatch {
+    func parse(from discovery: DiscoverResult) async throws -> ParsedBatch {
         var result = ParsedBatch()
         let startedAt = Date()
 
@@ -61,6 +61,9 @@ struct UsageRefreshPipeline: Sendable {
                 }
                 result.parserHealth[provider] = providerHealth
             } catch {
+                if error is CancellationError {
+                    throw error
+                }
                 let typed = OpenBurnBarError.parse(
                     "provider_parse_failed",
                     message: error.localizedDescription,

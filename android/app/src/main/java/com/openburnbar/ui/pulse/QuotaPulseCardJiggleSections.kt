@@ -92,7 +92,7 @@ private fun JigglingProviderHeader(model: JigglingProviderRowModel) {
     val haptic = LocalHapticFeedback.current
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         ProviderAuroraAvatar(providerKey = model.provider.key, size = 32, showHalo = false)
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text(
             text = model.provider.displayName,
             fontSize = AuroraTypography.headline.sp,
@@ -131,13 +131,7 @@ private fun JigglingMoveButton(enabled: Boolean, up: Boolean, onClick: () -> Uni
 }
 
 @Composable
-private fun JigglingBucketRow(
-    model: JigglingProviderRowModel,
-    bucket: QuotaBucket,
-    bucketIndex: Int,
-    totalBuckets: Int,
-    currentKeys: List<String>,
-) {
+private fun JigglingBucketRow(model: JigglingProviderRowModel, bucket: QuotaBucket, bucketIndex: Int, totalBuckets: Int, currentKeys: List<String>) {
     val haptic = LocalHapticFeedback.current
     val provider = model.provider
     val isHidden = model.hiddenBuckets.contains("${provider.key}:${bucket.key}")
@@ -190,12 +184,7 @@ private fun RowScope.JigglingBucketLabels(bucket: QuotaBucket, isHidden: Boolean
 }
 
 @Composable
-private fun JigglingBucketMoveButtons(
-    enabledUp: Boolean,
-    enabledDown: Boolean,
-    onUp: () -> Unit,
-    onDown: () -> Unit,
-) {
+private fun JigglingBucketMoveButtons(enabledUp: Boolean, enabledDown: Boolean, onUp: () -> Unit, onDown: () -> Unit) {
     IconButton(onClick = onUp, enabled = enabledUp, modifier = Modifier.size(24.dp)) {
         Icon(Icons.Filled.ArrowUpward, "Move Up", tint = if (enabledUp) AuroraColors.ember else Color.Gray, modifier = Modifier.size(16.dp))
     }
@@ -249,12 +238,7 @@ private fun toggleBucketVisibility(model: JigglingProviderRowModel, bucket: Quot
     model.prefs.setHiddenBuckets(newHidden)
 }
 
-private fun reorderBucket(
-    model: JigglingProviderRowModel,
-    bucket: QuotaBucket,
-    currentKeys: List<String>,
-    direction: Int,
-) {
+private fun reorderBucket(model: JigglingProviderRowModel, bucket: QuotaBucket, currentKeys: List<String>, direction: Int) {
     val newKeys = currentKeys.toMutableList()
     val idx = newKeys.indexOf(bucket.key)
     val swapIdx = idx + direction

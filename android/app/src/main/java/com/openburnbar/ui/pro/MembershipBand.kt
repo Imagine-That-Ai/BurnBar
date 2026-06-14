@@ -38,7 +38,7 @@ fun MembershipBand(
                 targetValue = 1f,
                 animationSpec =
                 infiniteRepeatable(
-                    animation = tween(ProMotion.mercuryShimmerDurationMs.toInt(), easing = LinearEasing),
+                    animation = tween(ProMotion.MERCURY_SHIMMER_DURATION_MS.toInt(), easing = LinearEasing),
                     repeatMode = RepeatMode.Restart,
                 ),
                 label = "bandShimmerPhase",

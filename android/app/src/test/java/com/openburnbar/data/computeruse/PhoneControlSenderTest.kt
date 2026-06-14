@@ -1,6 +1,8 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaStreamClass
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
@@ -370,7 +372,7 @@ class PhoneControlSenderTest {
         val identity =
             PhoneControlSigningIdentity.SecureEnclaveP256(
                 pair.private,
-                pair.public as java.security.interfaces.ECPublicKey,
+                pair.public as? java.security.interfaces.ECPublicKey ?: error("expected EC public key"),
             )
         val peerNodeId = PhoneControlAuthorityDocumentFactory.peerNodeId(identity)
         val frames = mutableListOf<HermesRealtimeRelayFrame>()

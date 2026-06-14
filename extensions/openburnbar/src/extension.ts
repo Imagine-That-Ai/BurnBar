@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 
 import { OpenBurnBarDaemonClient } from './daemon/client';
 import { OpenBurnBarRepairService } from './daemon/repair';
+import { alertDaemonUnreachable } from './alerting';
 import {
   OpenBurnBarExtensionController,
   type OpenBurnBarControllerDependencies,
@@ -96,7 +97,8 @@ export async function activateBurnBarExtension(
   const controllerDependencies = dependencies.controllerDependencies ?? {
     client: daemonClient,
     repairService: new OpenBurnBarRepairService(),
-    workspaceClient
+    workspaceClient,
+    alertDaemonUnreachable
   };
 
   const controller = new OpenBurnBarExtensionController(controllerDependencies, {

@@ -38,7 +38,10 @@ function docs(n: number): StubDoc[] {
 }
 
 // drainCollection takes a FirebaseFirestore.Query; the stub satisfies the slice we use.
-const asQuery = (q: StubQuery) => q as unknown as FirebaseFirestore.Query;
+function asQuery(q: StubQuery): FirebaseFirestore.Query {
+  // @ts-expect-error reason: StubQuery implements the query surface drainCollection uses
+  return q;
+}
 
 describe("panic drainCollection — completeness (the >500 fix)", () => {
   it("visits EVERY document across multiple pages (not just the first page)", async () => {

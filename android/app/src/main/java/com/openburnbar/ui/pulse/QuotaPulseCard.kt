@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,13 +16,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.unit.dp
 import com.openburnbar.data.models.AgentProvider
-import com.openburnbar.data.models.displayRemainingFraction
 import com.openburnbar.data.models.ProviderQuotaSnapshot
+import com.openburnbar.data.models.displayRemainingFraction
 import com.openburnbar.data.stores.QuotaPreferences
 import com.openburnbar.ui.burn.buildQuotaRingItems
 import com.openburnbar.ui.components.AuroraGlassCard
@@ -29,8 +31,6 @@ import com.openburnbar.ui.components.EmptyStateView
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.unit.dp
 
 @Composable
 fun QuotaPulseCard(snapshots: List<ProviderQuotaSnapshot>, onSelect: (String) -> Unit, onOpenBurn: () -> Unit) {
@@ -40,7 +40,7 @@ fun QuotaPulseCard(snapshots: List<ProviderQuotaSnapshot>, onSelect: (String) ->
     AuroraGlassCard(
         modifier =
         Modifier
-            .padding(horizontal = AuroraSpacing.lg.dp)
+            .padding(horizontal = AuroraSpacing.LG.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onLongPress = {
@@ -51,7 +51,7 @@ fun QuotaPulseCard(snapshots: List<ProviderQuotaSnapshot>, onSelect: (String) ->
                     },
                 )
             },
-        cornerRadius = AuroraRadius.xl,
+        cornerRadius = AuroraRadius.XL,
     ) {
         Column {
             QuotaPulseCardHeader(
@@ -66,7 +66,7 @@ fun QuotaPulseCard(snapshots: List<ProviderQuotaSnapshot>, onSelect: (String) ->
                 },
             )
 
-            Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
 
             when {
                 ui.items.isEmpty() && !ui.isJiggling ->
@@ -147,10 +147,7 @@ private data class QuotaFleetMeta(
     val fleetSubtitle: String,
 )
 
-private fun computeQuotaFleetMeta(
-    snapshots: List<ProviderQuotaSnapshot>,
-    items: List<com.openburnbar.ui.burn.QuotaRingItem>,
-): QuotaFleetMeta {
+private fun computeQuotaFleetMeta(snapshots: List<ProviderQuotaSnapshot>, items: List<com.openburnbar.ui.burn.QuotaRingItem>): QuotaFleetMeta {
     val hasUrgent =
         snapshots.flatMap { it.buckets }.any { bucket ->
             bucket.displayRemainingFraction ?: 1.0 < 0.25
@@ -231,8 +228,8 @@ private fun QuotaPulseDefaultBody(
         statusColor = fleetMeta.statusColor,
         fleetSubtitle = fleetMeta.fleetSubtitle,
     )
-    Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-    Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
     QuotaPulseProviderList(items = items, onSelect = onSelect, onOpenBurn = onOpenBurn)
 }

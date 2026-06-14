@@ -43,7 +43,7 @@ internal fun InsightCardContent(spec: InsightSpec, modifier: Modifier = Modifier
     AuroraGlassCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.Top) {
             InsightToneIcon(tone = tone)
-            Spacer(Modifier.width(AuroraSpacing.md.dp))
+            Spacer(Modifier.width(AuroraSpacing.MD.dp))
             InsightCardTextColumn(spec = spec, tone = tone, onFollowUp = onFollowUp)
         }
     }
@@ -91,7 +91,7 @@ private fun RowScope.InsightCardTextColumn(spec: InsightSpec, tone: ToneStyling,
 @Composable
 private fun InsightSparklineSection(spec: InsightSpec, tone: ToneStyling) {
     spec.sparkline?.takeIf { it.size >= 2 }?.let { points ->
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         Box(modifier = Modifier.fillMaxWidth().height(56.dp)) {
             AuroraSparkline(
                 data = points.map { it.toFloat() },
@@ -107,7 +107,7 @@ private fun InsightSparklineSection(spec: InsightSpec, tone: ToneStyling) {
 private fun InsightFollowUpButton(spec: InsightSpec, onFollowUp: ((String) -> Unit)?) {
     val followUp = spec.followUpPrompt
     if (!followUp.isNullOrBlank() && onFollowUp != null) {
-        Spacer(Modifier.height(AuroraSpacing.sm.dp))
+        Spacer(Modifier.height(AuroraSpacing.SM.dp))
         TextButton(
             onClick = { onFollowUp(followUp) },
             contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),

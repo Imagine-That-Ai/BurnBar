@@ -31,21 +31,20 @@ object SignalAtRestFallbackPolicy {
      * @return `true` if a legacy fallback is safe, `false` if the caller must fail closed (drop the
      *   payload / surface an error, never decode legacy).
      */
-    fun allowsLegacyAtRestFallback(error: Throwable, senderSetComplete: Boolean): Boolean =
-        when (error) {
-            // A forged signature or a stripped sender block — never downgrade to the
-            // sender-unauthenticated legacy path.
-            is CloudVaultSignalSenderAuthException.SenderSignatureInvalid,
-            is CloudVaultSignalSenderAuthException.SenderAuthMissing,
-            -> false
-            // Unknown sender: an attack once every expected sender is resolved, a readiness gap before then.
-            is CloudVaultSignalSenderAuthException.SenderNotTrusted -> !senderSetComplete
-            // A relocated/replayed doc (binding mismatch) is surfaced by the binding-guard
-            // `require(...)` (IllegalArgumentException) in the opener — never downgrade it either.
-            is IllegalArgumentException -> false
-            // Structural / not-addressed-to-this-recipient errors are not a sender downgrade; preserve
-            // the existing legacy-compatible behavior so a genuinely old or non-matching payload is
-            // still read by the caller's legacy path.
-            else -> true
-        }
+    fun allowsLegacyAtRestFallback(error: Throwable, senderSetComplete: Boolean): Boolean = when (error) {
+        // A forged signature or a stripped sender block — never downgrade to the
+        // sender-unauthenticated legacy path.
+        is CloudVaultSignalSenderAuthException.SenderSignatureInvalid,
+        is CloudVaultSignalSenderAuthException.SenderAuthMissing,
+        -> false
+        // Unknown sender: an attack once every expected sender is resolved, a readiness gap before then.
+        is CloudVaultSignalSenderAuthException.SenderNotTrusted -> !senderSetComplete
+        // A relocated/replayed doc (binding mismatch) is surfaced by the binding-guard
+        // `require(...)` (IllegalArgumentException) in the opener — never downgrade it either.
+        is IllegalArgumentException -> false
+        // Structural / not-addressed-to-this-recipient errors are not a sender downgrade; preserve
+        // the existing legacy-compatible behavior so a genuinely old or non-matching payload is
+        // still read by the caller's legacy path.
+        else -> true
+    }
 }

@@ -174,7 +174,7 @@ struct ForgeQuotaAdapter: ProviderQuotaAdapter {
                         if let text = sqlite3_column_text(stmt, 0) {
                             let jsonStr = String(cString: text)
                             if let data = jsonStr.data(using: .utf8),
-                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional metrics decode)
                                let filesChanged = json["files_changed"] as? [String: [String: Any]] {
                                 for (path, changes) in filesChanged {
                                     uniqueFiles.insert(path)
@@ -191,7 +191,7 @@ struct ForgeQuotaAdapter: ProviderQuotaAdapter {
 
         // Read TOML config for model/provider
         if FileManager.default.fileExists(atPath: Self.forgeTOMLPath),
-           let tomlContent = try? String(contentsOfFile: Self.forgeTOMLPath, encoding: .utf8) {
+           let tomlContent = try? String(contentsOfFile: Self.forgeTOMLPath, encoding: .utf8) { // try?-ok(optional config read)
             // Simple TOML parsing for [session] section
             var inSession = false
             for line in tomlContent.split(separator: "\n") {

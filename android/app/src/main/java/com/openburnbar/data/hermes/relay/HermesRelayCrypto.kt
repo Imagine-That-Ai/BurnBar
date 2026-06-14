@@ -31,8 +31,7 @@ object HermesRelayCrypto {
     fun requestAAD(uid: String, connectionId: String, requestId: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("request", uid, connectionId, requestId))
 
-    fun keyAAD(uid: String, connectionId: String, requestId: String): ByteArray =
-        HermesRelayCryptoSupport.aad(listOf("key", uid, connectionId, requestId))
+    fun keyAAD(uid: String, connectionId: String, requestId: String): ByteArray = HermesRelayCryptoSupport.aad(listOf("key", uid, connectionId, requestId))
 
     fun authenticatedRequestAAD(
         uid: String,
@@ -43,20 +42,19 @@ object HermesRelayCrypto {
         senderPeerNodeId: String,
         senderCounter: Long,
         keyId: String,
-    ): ByteArray =
-        HermesRelayCryptoSupport.aad(
-            listOf(
-                "request-v3",
-                uid,
-                connectionId,
-                requestId,
-                operation,
-                senderDeviceId,
-                senderPeerNodeId,
-                senderCounter.toString(),
-                keyId,
-            ),
-        )
+    ): ByteArray = HermesRelayCryptoSupport.aad(
+        listOf(
+            "request-v3",
+            uid,
+            connectionId,
+            requestId,
+            operation,
+            senderDeviceId,
+            senderPeerNodeId,
+            senderCounter.toString(),
+            keyId,
+        ),
+    )
 
     fun authenticatedKeyAAD(
         uid: String,
@@ -67,20 +65,19 @@ object HermesRelayCrypto {
         senderPeerNodeId: String,
         senderCounter: Long,
         keyId: String,
-    ): ByteArray =
-        HermesRelayCryptoSupport.aad(
-            listOf(
-                "key-v3",
-                uid,
-                connectionId,
-                requestId,
-                operation,
-                senderDeviceId,
-                senderPeerNodeId,
-                senderCounter.toString(),
-                keyId,
-            ),
-        )
+    ): ByteArray = HermesRelayCryptoSupport.aad(
+        listOf(
+            "key-v3",
+            uid,
+            connectionId,
+            requestId,
+            operation,
+            senderDeviceId,
+            senderPeerNodeId,
+            senderCounter.toString(),
+            keyId,
+        ),
+    )
 
     fun chunkAAD(uid: String, connectionId: String, requestId: String, sequence: Int, kind: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("chunk", uid, connectionId, requestId, sequence.toString(), kind))
@@ -91,14 +88,7 @@ object HermesRelayCrypto {
      * key), bound to the mirror `viewerId`. Byte-identical to the Swift
      * `HermesRelayCrypto.mediaSealKeyAAD` parts order.
      */
-    fun mediaSealKeyAAD(
-        uid: String,
-        connectionId: String,
-        viewerId: String,
-        senderDeviceId: String,
-        senderKeyId: String,
-        senderCounter: Long,
-    ): ByteArray =
+    fun mediaSealKeyAAD(uid: String, connectionId: String, viewerId: String, senderDeviceId: String, senderKeyId: String, senderCounter: Long): ByteArray =
         HermesRelayCryptoSupport.aad(
             listOf("mediaSealKey", uid, connectionId, viewerId, senderDeviceId, senderKeyId, senderCounter.toString()),
         )
@@ -109,14 +99,7 @@ object HermesRelayCrypto {
      * key), bound to the controller peerNodeId. Byte-identical to the Swift
      * `HermesRelayCrypto.controlSealKeyAAD` parts order.
      */
-    fun controlSealKeyAAD(
-        uid: String,
-        connectionId: String,
-        peerNodeId: String,
-        senderDeviceId: String,
-        senderKeyId: String,
-        senderCounter: Long,
-    ): ByteArray =
+    fun controlSealKeyAAD(uid: String, connectionId: String, peerNodeId: String, senderDeviceId: String, senderKeyId: String, senderCounter: Long): ByteArray =
         HermesRelayCryptoSupport.aad(
             listOf("controlSealKey", uid, connectionId, peerNodeId, senderDeviceId, senderKeyId, senderCounter.toString()),
         )
@@ -178,12 +161,7 @@ object HermesRelayCrypto {
      * (concat, `dh1` first — never XOR), one HKDF-SHA256 over the v2 `info`
      * binding `enc ‖ pkR ‖ pkS`. The wire layout is unchanged from v1.
      */
-    fun wrapSymmetricKey(
-        keyData: ByteArray,
-        recipientPublicKeyX963: ByteArray,
-        aad: ByteArray,
-        senderPrivateKey: java.security.PrivateKey? = null,
-    ): String {
+    fun wrapSymmetricKey(keyData: ByteArray, recipientPublicKeyX963: ByteArray, aad: ByteArray, senderPrivateKey: java.security.PrivateKey? = null): String {
         require(keyData.size == AES_KEY_BYTES) { "symmetric key must be 32 bytes" }
         val recipientKey = HermesRelayCryptoEc.decodeUncompressedPublicKey(recipientPublicKeyX963)
         val ephemeralKeyPair = HermesRelayCryptoEc.generateEphemeralKeyPair()
@@ -200,12 +178,12 @@ object HermesRelayCrypto {
                 HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
                     sharedSecret = dh1 + dh2,
                     sharedInfo =
-                        HermesRelayCryptoSupport.keyWrapSharedInfoV2(
-                            aad = aad,
-                            enc = enc,
-                            pkR = recipientPublicKeyX963,
-                            pkS = senderPubX963,
-                        ),
+                    HermesRelayCryptoSupport.keyWrapSharedInfoV2(
+                        aad = aad,
+                        enc = enc,
+                        pkR = recipientPublicKeyX963,
+                        pkS = senderPubX963,
+                    ),
                     length = AES_KEY_BYTES,
                 )
             } else {
@@ -233,12 +211,7 @@ object HermesRelayCrypto {
      * defense. The pinned recipient public key is recovered from [privateKey]
      * (`Q = d·G`) so it byte-matches the seal-side `info`.
      */
-    fun unwrapSymmetricKey(
-        wrappedKeyBase64: String,
-        privateKey: java.security.PrivateKey,
-        aad: ByteArray,
-        senderPublicKeyX963: ByteArray? = null,
-    ): ByteArray {
+    fun unwrapSymmetricKey(wrappedKeyBase64: String, privateKey: java.security.PrivateKey, aad: ByteArray, senderPublicKeyX963: ByteArray? = null): ByteArray {
         val envelope = HermesRelayCryptoSupport.base64Decode(wrappedKeyBase64)
         require(envelope.size > HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN) { "wrapped key too short" }
         val ephemeralPubBytes = envelope.copyOfRange(0, HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN)
@@ -255,12 +228,12 @@ object HermesRelayCrypto {
                 HermesRelayCryptoHkdf.hkdfDeriveSymmetricKey(
                     sharedSecret = dh1 + dh2,
                     sharedInfo =
-                        HermesRelayCryptoSupport.keyWrapSharedInfoV2(
-                            aad = aad,
-                            enc = ephemeralPubBytes,
-                            pkR = recipientOwnPubX963,
-                            pkS = senderPublicKeyX963,
-                        ),
+                    HermesRelayCryptoSupport.keyWrapSharedInfoV2(
+                        aad = aad,
+                        enc = ephemeralPubBytes,
+                        pkR = recipientOwnPubX963,
+                        pkS = senderPublicKeyX963,
+                    ),
                     length = AES_KEY_BYTES,
                 )
             } else {
@@ -390,12 +363,11 @@ object HermesRelayCrypto {
         privateKey: java.security.PrivateKey,
         pinnedSenderPublicKeyX963: ByteArray,
         aad: ByteArray,
-    ): ByteArray =
-        HermesRelayCryptoHpkeV3.openKey(
-            enc = HermesRelayCryptoSupport.base64Decode(encBase64),
-            wrappedKey = HermesRelayCryptoSupport.base64Decode(wrappedKeyBase64),
-            recipientPrivateKey = privateKey,
-            pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
-            aad = aad,
-        )
+    ): ByteArray = HermesRelayCryptoHpkeV3.openKey(
+        enc = HermesRelayCryptoSupport.base64Decode(encBase64),
+        wrappedKey = HermesRelayCryptoSupport.base64Decode(wrappedKeyBase64),
+        recipientPrivateKey = privateKey,
+        pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
+        aad = aad,
+    )
 }

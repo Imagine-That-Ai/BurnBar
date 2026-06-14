@@ -39,10 +39,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayAttachmentManifest
 import com.openburnbar.ui.theme.AuroraColors
 
 @Composable
-internal fun AttachmentBubbleHeader(
-    manifest: HermesRealtimeRelayAttachmentManifest,
-    state: AttachmentBubbleState,
-) {
+internal fun AttachmentBubbleHeader(manifest: HermesRealtimeRelayAttachmentManifest, state: AttachmentBubbleState) {
     Row(verticalAlignment = Alignment.Top) {
         Box(
             modifier =
@@ -142,21 +139,20 @@ internal fun AttachmentBubbleCompleteActions(
     }
 }
 
-internal fun attachmentBubbleBorderBrush(state: AttachmentBubbleState): Brush =
-    when (state) {
-        is AttachmentBubbleState.Error ->
-            Brush.horizontalGradient(
-                listOf(Color(0xFFCC4242), Color(0xFFCC4242).copy(alpha = 0.4f)),
-            )
-        else ->
-            Brush.horizontalGradient(
-                listOf(
-                    AuroraColors.hermesMercury.copy(alpha = 0.85f),
-                    AuroraColors.hermesAureate.copy(alpha = 0.7f),
-                    AuroraColors.hermesMercury.copy(alpha = 0.85f),
-                ),
-            )
-    }
+internal fun attachmentBubbleBorderBrush(state: AttachmentBubbleState): Brush = when (state) {
+    is AttachmentBubbleState.Error ->
+        Brush.horizontalGradient(
+            listOf(Color(0xFFCC4242), Color(0xFFCC4242).copy(alpha = 0.4f)),
+        )
+    else ->
+        Brush.horizontalGradient(
+            listOf(
+                AuroraColors.hermesMercury.copy(alpha = 0.85f),
+                AuroraColors.hermesAureate.copy(alpha = 0.7f),
+                AuroraColors.hermesMercury.copy(alpha = 0.85f),
+            ),
+        )
+}
 
 private fun secondaryLine(manifest: HermesRealtimeRelayAttachmentManifest, state: AttachmentBubbleState): String {
     val size = humanReadableBytes(manifest.size)
@@ -178,10 +174,7 @@ private fun humanReadableBytes(bytes: Long): String {
 }
 
 @Composable
-internal fun AttachmentBubblePreviewRow(
-    manifest: HermesRealtimeRelayAttachmentManifest,
-    state: AttachmentBubbleState,
-) {
+internal fun AttachmentBubblePreviewRow(manifest: HermesRealtimeRelayAttachmentManifest, state: AttachmentBubbleState) {
     AttachmentBubbleHeader(manifest = manifest, state = state)
     if (state is AttachmentBubbleState.InFlight) {
         AttachmentBubbleProgressBar(progress = state.progress)

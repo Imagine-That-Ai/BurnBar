@@ -27,7 +27,7 @@ public enum PhoneControlAuthorityProviderError: Error, Sendable, Equatable {
 /// opening the control stream. Firestore rules require the authority to name a
 /// trusted escrow device and an existing pairing record, so the Mac can reject
 /// in-band public-key injection and stale keys from a different connection.
-public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthorityPublicKeyProviding, @unchecked Sendable {
+public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthorityPublicKeyProviding, Sendable {
     public static let shared = FirestorePhoneControlAuthorityProvider()
 
     private let firestoreProvider: @Sendable () -> Firestore

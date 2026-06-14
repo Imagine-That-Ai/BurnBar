@@ -124,7 +124,7 @@ fun HolographicCrestHero(tier: CloudTier, modifier: Modifier = Modifier, size: D
                 targetValue = 0.5f,
                 animationSpec =
                 infiniteRepeatable(
-                    animation = tween(durationMillis = ProMotion.breathingDurationMs, easing = LinearEasing),
+                    animation = tween(durationMillis = ProMotion.BREATHING_DURATION_MS, easing = LinearEasing),
                     repeatMode = RepeatMode.Reverse,
                 ),
                 label = "crestHeroGlowPulse",

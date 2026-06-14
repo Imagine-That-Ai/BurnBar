@@ -3,13 +3,28 @@
 
   "workspaces": {
     "functions": {
-      "entry": ["src/index.ts"],
+      "entry": ["src/index.ts", "src/types/generatedParity.ts"],
       "project": ["src/**/*.ts"],
-      "ignore": ["lib/**", "scripts/**", "node_modules/**"]
+      "ignore": [
+        "lib/**",
+        "scripts/**",
+        "node_modules/**",
+        "src/types/generated/**",
+        ".dependency-cruiser.cjs"
+      ]
     },
     "extensions/openburnbar": {
-      "entry": ["src/extension.ts"],
-      "project": ["src/**/*.ts"],
+      "entry": [
+        ".dependency-cruiser.cjs",
+        "src/extension.ts",
+        "src/webview/panel.js",
+        "src/webview/workspace.js",
+        "test/extensionHost/suite/index.ts",
+        "test/extensionHost/suite/localWorkspace.integration.ts",
+        "test/extensionHost/suite/workspaceModes.integration.ts",
+        "test/fixtures/workspace/src/example.ts"
+      ],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignore": ["dist/**", ".vscode-test/**", "node_modules/**"]
     },
     "website": {

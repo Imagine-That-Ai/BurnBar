@@ -189,8 +189,6 @@ import {
   publishPhoneControlAuthority,
   publishAgentGrantAuthority,
   revokeEscrowDeviceTrust,
-  queueAgentCapabilityGrantRequest,
-  __testing__,
 } from "../callables/computerUseSecurity.js";
 import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY } from "../appCheckAttestation.js";
@@ -576,6 +574,7 @@ describe("F2 rotateCloudVaultKey requirement handoff", () => {
 function p256Pair(): { x963: Buffer; privateKey: import("node:crypto").KeyObject; peerNodeId: string } {
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const jwk = publicKey.export({ format: "jwk" });
+  // EC JWKs always carry x/y; the fallbacks only satisfy the optional typing.
   const x963 = Buffer.concat([
     Buffer.from([0x04]),
     Buffer.from(jwk.x ?? "", "base64url"),
@@ -583,6 +582,38 @@ function p256Pair(): { x963: Buffer; privateKey: import("node:crypto").KeyObject
   ]);
   const digest = createHash("sha256").update(x963).digest("hex").slice(0, 24);
   return { x963, privateKey, peerNodeId: `ios-se-${digest}` };
+}
+
+function queuedGrantData(options: { peerNodeId: string; signGrant: (payload: Buffer) => Buffer }) {
+  const now = cocoaNow();
+  const grantRequest = {
+    requestId: `grant-${Math.random().toString(36).slice(2)}`,
+    runtime: "claude",
+    threadId: "thread-1",
+    preset: "low",
+    capabilities: ["workspace_read"],
+    trustMode: "manual",
+    deliveryMode: "queued",
+    requestedAt: now,
+    expiresAt: now + 120,
+    grantDurationSeconds: 120,
+    sourceDeviceId: DEVICE,
+    clientIntentId: "intent-queued-1",
+    localAuthenticationSatisfied: false,
+  };
+  const intentHashHex = __testing__.agentGrantRequestHashHex(grantRequest);
+  const payload = __testing__.agentGrantAuthoritySignablePayload(intentHashHex.toLowerCase(), 1, now);
+  const signature = options.signGrant(payload);
+  return {
+    ...grantRequest,
+    authority: {
+      peerNodeId: options.peerNodeId,
+      counter: 1,
+      timestamp: now,
+      intentHashBlake3: intentHashHex,
+      signatureEd25519: signature.toString("base64"),
+    },
+  };
 }
 
 describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {

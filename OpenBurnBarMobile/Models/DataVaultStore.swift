@@ -189,13 +189,18 @@ final class FunctionsDataVaultService: DataVaultServicing {
         guard !preparedPayloads.isEmpty else { return 0 }
 
         var written = 0
-        for payload in preparedPayloads {
+        // Consume each payload out of the array so the non-`Sendable`
+        // `[String: Any]` is a disconnected, owned value when it crosses into
+        // the callable (region isolation can't transfer an aliased element).
+        var remaining = preparedPayloads
+        while !remaining.isEmpty {
+            let payload = remaining.removeFirst()
             written += try await commitPreparedKnowledgeBatch(payload)
         }
         return written
     }
 
-    private func commitPreparedKnowledgeBatch(_ payload: [String: Any]) async throws -> Int {
+    private func commitPreparedKnowledgeBatch(_ payload: sending [String: Any]) async throws -> Int {
         let result = try await functions.httpsCallable("commitKnowledgeBatch").call(payload)
         guard let dict = result.data as? [String: Any],
               dict["ok"] as? Bool != false else {
@@ -206,7 +211,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
 
     private static func decode<T: Decodable>(_ type: T.Type, from raw: Any?) throws -> T {
         guard let raw else { throw DataVaultError.malformedResponse }
-        let sanitized = FirestoreRepository.shared.sanitizeForJSON(raw)
+        let sanitized = FirestoreRepository.sanitizeForJSON(raw)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         return try JSONDecoder().decode(type, from: data)
     }

@@ -649,4 +649,62 @@ final class ContextPackServiceTests: XCTestCase {
         XCTAssertEqual(a.pages, b.pages)
         XCTAssertEqual(a.visuals, b.visuals)
     }
+
+    // MARK: - VAL-PROJMEM-003: contentHash encode-failure fails distinct, never the empty-SHA256
+
+    /// The SHA-256 of zero bytes — what a silent `?? Data()` fallback would have
+    /// produced for *every* encode failure, colliding all failures (and aliasing a
+    /// later distinct snapshot) onto one digest and silently suppressing the cloud
+    /// backup. The fix must never emit this on the failure path.
+    private static let emptyDataSHA256 =
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    /// An `Encodable` whose encode always throws, forcing `contentHash` down its
+    /// failure path so the fallback behavior is observable.
+    private struct AlwaysFailingEncodable: Encodable {
+        struct EncodeFailure: Error {}
+        func encode(to encoder: Encoder) throws {
+            throw EncodeFailure()
+        }
+    }
+
+    func test_contentHash_encodeFailure_isDistinctAndNotEmptySHA256() {
+        let first = ProjectMemoryService.contentHashForTesting(AlwaysFailingEncodable())
+        let second = ProjectMemoryService.contentHashForTesting(AlwaysFailingEncodable())
+
+        // 1. Never the constant empty-SHA256 that a silent `?? Data()` would yield.
+        XCTAssertNotEqual(first, Self.emptyDataSHA256,
+            "Encode failure must not collapse to the empty-data SHA-256 (the old fail-open).")
+        XCTAssertNotEqual(second, Self.emptyDataSHA256)
+
+        // 2. Two distinct failures must produce distinct hashes so they can never
+        //    alias one another and silently suppress a backup. A changed snapshot
+        //    that fails to encode must still read as "changed" -> upload (safe).
+        XCTAssertNotEqual(first, second,
+            "Each encode failure must hash to a unique value to avoid change-detection collisions.")
+
+        // 3. Output is still a well-formed 64-hex-char SHA-256 digest.
+        XCTAssertEqual(first.count, 64)
+        XCTAssertEqual(second.count, 64)
+        XCTAssertTrue(first.allSatisfy { $0.isHexDigit })
+        XCTAssertTrue(second.allSatisfy { $0.isHexDigit })
+    }
+
+    func test_contentHash_successPath_isDeterministicForEqualValues() {
+        // Encodable that always succeeds: equal inputs must hash identically so the
+        // change-detection guard correctly skips redundant uploads (no false churn).
+        struct Stable: Encodable {
+            let a: String
+            let b: Int
+        }
+        let lhs = ProjectMemoryService.contentHashForTesting(Stable(a: "alpha", b: 7))
+        let rhs = ProjectMemoryService.contentHashForTesting(Stable(a: "alpha", b: 7))
+        let other = ProjectMemoryService.contentHashForTesting(Stable(a: "alpha", b: 8))
+
+        XCTAssertEqual(lhs, rhs,
+            "Equal encodable inputs must hash identically (determinism preserved).")
+        XCTAssertNotEqual(lhs, other,
+            "Different encodable inputs must hash differently (change detection works).")
+        XCTAssertNotEqual(lhs, Self.emptyDataSHA256)
+    }
 }

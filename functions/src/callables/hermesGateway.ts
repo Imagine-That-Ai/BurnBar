@@ -194,24 +194,67 @@ function sendJSON(res: HttpResponse, status: number, body: Record<string, unknow
   res.status(status).json(body);
 }
 
+/**
+ * Defense-in-depth (T-GW-02): every PoP-signed write route must declare a JSON
+ * body. Rejecting any non-`application/json` content type closes
+ * simple-request / form-encoded cross-origin POSTs and content-type confusion
+ * before the PoP body hash is even computed. A missing content type is treated
+ * as a violation — a legitimate signing client always sets it. Parameters after
+ * the media type (e.g. `; charset=utf-8`) are allowed.
+ */
+function assertJsonWriteContentType(req: HttpRequest): void {
+  const contentType = header(req, "content-type");
+  const mediaType = (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (mediaType !== "application/json") {
+    throw httpError(415, "unsupported_media_type", "application/json required");
+  }
+}
+
 function setNoStore(res: HttpResponse): void {
   res.set("Cache-Control", "no-store");
 }
 
-function assertSafeAttachmentContentType(contentType: string): void {
+/**
+ * Allowlist of media types accepted on the (deprecated, gate-disabled) legacy
+ * plaintext attachment write path. T-ATT-07: a deny-list silently accepts every
+ * NEW dangerous type the moment a browser learns to render it (the original list
+ * missed, e.g., `application/pdf` with embedded JS, `text/csv` formula injection,
+ * MathML, wasm). An allowlist fails CLOSED: anything not explicitly known-inert
+ * is rejected. Sealed (ciphertext) uploads never reach this — their stored type
+ * is always `application/octet-stream` and they skip the check entirely.
+ */
+const LEGACY_ATTACHMENT_ALLOWED_MEDIA_TYPES = new Set([
+  "application/octet-stream",
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "text/plain",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/aac",
+  "audio/wav",
+  "video/mp4",
+  "video/quicktime",
+]);
+
+export function assertSafeAttachmentContentType(contentType: string): void {
   const mediaType = baseAttachmentContentType(contentType);
-  const blocked = new Set([
-    "text/html",
-    "text/javascript",
-    "application/javascript",
-    "application/ecmascript",
-    "application/xhtml+xml",
-    "application/xml",
-    "text/xml",
-    "image/svg+xml",
-  ]);
-  if (!mediaType || blocked.has(mediaType)) {
+  if (!mediaType || !LEGACY_ATTACHMENT_ALLOWED_MEDIA_TYPES.has(mediaType)) {
     throw httpError(400, "unsafe_content_type");
+  }
+}
+
+/** Exported for tests: true when the legacy plaintext write path would accept `contentType`. */
+export function legacyAttachmentContentTypeAllowed(contentType: string): boolean {
+  try {
+    assertSafeAttachmentContentType(contentType);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1085,15 +1128,24 @@ async function handleEvents(req: HttpRequest, res: HttpResponse): Promise<void> 
     typeof req.query.destinationId === "string"
       ? sanitizeHermesGatewayDestinationId(req.query.destinationId)
       : undefined;
-  let query = db
-    .collection(`users/${grant.uid}/hermes_gateway_events`)
+  // T-GW-05: the targeting filter is enforced as a Firestore query constraint
+  // (`targetClientId in [null, clientId]`) rather than only in app code, so a bug
+  // in app-layer filtering can never let a client over-read another client's
+  // targeted events. `null` covers legacy broadcast/untargeted documents (the
+  // field is only ever a string or absent on new writes); the `in` membership
+  // also implicitly excludes any document whose `targetClientId` is some OTHER
+  // client id. The app-layer filter below is retained as defense-in-depth.
+  const targetIn: Array<string | null> = [null, grant.client.id];
+  const baseCollection = db.collection(`users/${grant.uid}/hermes_gateway_events`);
+  let query = baseCollection
+    .where("targetClientId", "in", targetIn)
     .where("sequence", ">", cursor)
     .orderBy("sequence", "asc")
     .limit(limit);
   if (destinationId) {
-    query = db
-      .collection(`users/${grant.uid}/hermes_gateway_events`)
+    query = baseCollection
       .where("destinationId", "==", destinationId)
+      .where("targetClientId", "in", targetIn)
       .where("sequence", ">", cursor)
       .orderBy("sequence", "asc")
       .limit(limit);
@@ -1103,8 +1155,27 @@ async function handleEvents(req: HttpRequest, res: HttpResponse): Promise<void> 
     const event = serializeHermesGatewayEvent(doc.data());
     return event ? [event] : [];
   });
+  // Defense-in-depth: re-apply the targeting filter in app code even though the
+  // query already constrains it.
   const events = scannedEvents.filter((event) => !event.targetClientId || event.targetClientId === grant.client.id);
-  const nextCursor = scannedEvents.reduce((max, event) => Math.max(max, event.sequence), cursor);
+  // Advance the cursor across the FULL window (including other clients' events)
+  // so a run of events targeted at a different client never wedges this client's
+  // pagination on an empty-but-unadvancing window. A projection (`select`) keeps
+  // this scan cheap — it reads only the `sequence` field, not event bodies.
+  const cursorAdvanceQuery = (
+    destinationId
+      ? baseCollection.where("destinationId", "==", destinationId)
+      : baseCollection
+  )
+    .where("sequence", ">", cursor)
+    .orderBy("sequence", "asc")
+    .limit(limit)
+    .select("sequence");
+  const cursorSnap = await cursorAdvanceQuery.get();
+  const nextCursor = cursorSnap.docs.reduce((max, doc) => {
+    const seq = doc.get("sequence");
+    return typeof seq === "number" && Number.isFinite(seq) ? Math.max(max, seq) : max;
+  }, cursor);
   if (header(req, "accept")?.includes("text/event-stream") || req.query.stream === "true") {
     res.set("Content-Type", "text/event-stream; charset=utf-8");
     res.set("Cache-Control", "no-store");
@@ -1116,6 +1187,7 @@ async function handleEvents(req: HttpRequest, res: HttpResponse): Promise<void> 
 
 async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  assertJsonWriteContentType(req);
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   await checkHermesGatewayBearerRateLimit(grant.uid, grant.client.id, "hermes_gateway_message_send");
   const body = requestBody(req);
@@ -1195,6 +1267,7 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
 
 async function handleTyping(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  assertJsonWriteContentType(req);
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   const body = requestBody(req);
   if (grant.client.relayCapable !== true) {
@@ -1214,6 +1287,7 @@ async function handleTyping(req: HttpRequest, res: HttpResponse): Promise<void> 
 
 async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  assertJsonWriteContentType(req);
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   const body = requestBody(req);
   const runtimeModelId = sanitizeHermesGatewayModelId(body.currentModelId);
@@ -1409,6 +1483,7 @@ async function handleGatewayState(req: HttpRequest, res: HttpResponse): Promise<
 
 async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  assertJsonWriteContentType(req);
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   await checkHermesGatewayBearerRateLimit(grant.uid, grant.client.id, "hermes_gateway_attachment_init");
   const body = requestBody(req);
@@ -1513,6 +1588,7 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
 
 async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  assertJsonWriteContentType(req);
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   const body = requestBody(req);
   const attachmentId = requiredHttpIdentifier(body.attachmentId, "attachmentId");
@@ -1652,10 +1728,20 @@ export async function handleHermesGatewayAttachmentDownloadUrl(
   }
 
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  // T-ATT-08: force the browser/OS to DOWNLOAD the (sealed, opaque) blob rather
+  // than render it inline. A malicious actor who managed to seal an HTML/SVG/JS
+  // payload into an attachment must not be able to get it executed in the app's
+  // origin by opening the signed URL: `responseType` overrides the stored
+  // object's content type with `application/octet-stream`, and
+  // `responseDisposition: attachment` forces a save dialog with a fixed, inert
+  // filename. The signed-URL query params are tamper-evident (they are part of
+  // the V4 signature), so a caller cannot strip them to coax inline rendering.
   const [downloadURL] = await file.getSignedUrl({
     version: "v4",
     action: "read",
     expires: expiresAt,
+    responseType: "application/octet-stream",
+    responseDisposition: `attachment; filename="${attachmentId}.bin"`,
   });
 
   return {
@@ -1681,6 +1767,7 @@ function gatewayApprovalDocId(clientId: string, actionId: string): string {
  */
 async function handleArmApproval(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
+  assertJsonWriteContentType(req);
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   const body = requestBody(req);
   const actionId = requiredHttpIdentifier(body.actionId, "actionId");
@@ -2000,7 +2087,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
         request.data.displayName,
         String(session.clientName ?? "Hermes Agent"),
       );
-      const clientDoc: HermesGatewayClientDoc = stripUndefinedObject({
+      const clientDocPayload: HermesGatewayClientDoc = {
         id: clientId,
         uid,
         displayName,
@@ -2053,13 +2140,14 @@ export const approveHermesGatewayDeviceGrant = onCall(
         createdAt: now,
         updatedAt: now,
         schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
-      }) as HermesGatewayClientDoc;
+      };
+      const clientDoc = stripUndefinedObject(clientDocPayload);
 
       await ensureDefaultDestination(uid, now);
       await Promise.all([
         db
           .doc(`users/${uid}/hermes_gateway_clients/${clientId}`)
-          .set(stripUndefinedObject(clientDoc), { merge: false }),
+          .set(clientDoc, { merge: false }),
         db
           .doc(`hermes_gateway_token_index/${tokenHash}`)
           .set({ uid, clientId, status: "active", createdAt: now, expiresAt: tokenExpiresAt }),
@@ -2094,7 +2182,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
       // Echo the agent's relay key back so the phone can seal its first event
       // without waiting for a /state round-trip. publicClientView already carries
       // both keys, so the phone reads agentRelayPublicKey straight off `client`.
-      return { client: publicClientView(clientDoc), homeDestinationId };
+      return { client: publicClientView(clientDocPayload), homeDestinationId };
     },
   ),
 );

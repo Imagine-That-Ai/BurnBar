@@ -1,6 +1,5 @@
 package com.openburnbar.data.media
 
-import java.io.IOException
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
@@ -13,6 +12,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.IrohEndpointIdentity
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -247,12 +247,11 @@ class AndroidFileTransferService(
         return failure
     }
 
-    private suspend fun requireControlCoordinator(): MediaControlStreamCoordinator =
-        mutex.withLock { controlCoordinator }
-            ?: run {
-                _lastError.value = Failure.DispatchUnavailable
-                throw Failure.DispatchUnavailable
-            }
+    private suspend fun requireControlCoordinator(): MediaControlStreamCoordinator = mutex.withLock { controlCoordinator }
+        ?: run {
+            _lastError.value = Failure.DispatchUnavailable
+            throw Failure.DispatchUnavailable
+        }
 
     private fun bumpInFlight(delta: Int) {
         _inFlightCount.value = (_inFlightCount.value + delta).coerceAtLeast(0)

@@ -15,9 +15,16 @@ import OpenBurnBarCore
 /// Uses existing DataStore APIs:
 ///   - `fetchChatThreadSummaries(limit:)` → `[ChatThreadSummary]`
 ///   - `fetchChatMessages(threadID:)` → `[ChatMessageRecord]`
-final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
+final class ChatThreadSyncService: CloudSyncDomain, Sendable {
+    /// Fetches the persisted messages for one thread. A throwing seam so a DB read
+    /// failure surfaces as an error (fail-closed) instead of an empty-thread masquerade.
+    /// `@Sendable` so the genuinely-`Sendable` service can store it; the production
+    /// default reads `DataStore`'s `nonisolated` accessor through the Sendable context.
+    typealias ChatMessageFetcher = @Sendable (_ threadID: String) throws -> [ChatMessageRecord]
+
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
+    private let messageFetcher: ChatMessageFetcher
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -27,10 +34,14 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
 
     init(
         context: CloudSyncContext,
-        vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
+        vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider(),
+        messageFetcher: ChatMessageFetcher? = nil
     ) {
         self.context = context
         self.vaultKeyProvider = vaultKeyProvider
+        self.messageFetcher = messageFetcher ?? { threadID in
+            try context.dataStore.fetchChatMessages(threadID: threadID)
+        }
     }
 
     func sync() async {
@@ -79,9 +90,28 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     operation: includeContent ? "Packaging thread messages" : "Writing thread metadata"
                 )
 
-                let messages = includeContent
-                    ? ((try? context.dataStore.fetchChatMessages(threadID: thread.id)) ?? [])
-                    : []
+                // FAIL CLOSED: a DB read failure must NOT masquerade as an empty thread.
+                // An empty `messages` array would flow into the sealed payload and overwrite
+                // the prior (good) cloud record with empty content. On a fetch fault we log and
+                // skip this thread, leaving its existing cloud record untouched.
+                let messages: [ChatMessageRecord]
+                if includeContent {
+                    do {
+                        messages = try messageFetcher(thread.id)
+                    } catch {
+                        AppLogger.sync.error(
+                            "chat_thread_message_fetch_failed_skipping_thread",
+                            metadata: [
+                                "accountUid": uid,
+                                "threadId": thread.id,
+                                "errorClass": "\(String(describing: type(of: error)))"
+                            ]
+                        )
+                        continue
+                    }
+                } else {
+                    messages = []
+                }
 
                 let docId = "\(deviceId)_\(thread.id)"
                 let docRef = collectionRef.document(docId)

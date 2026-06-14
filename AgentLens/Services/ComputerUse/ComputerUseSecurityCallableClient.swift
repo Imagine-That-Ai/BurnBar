@@ -356,7 +356,7 @@ enum ComputerUseSecurityCallableClient {
     /// survivor for and runs the rotation chain locally.
     ///
     /// Revocation normally rotates the vault from the revoking device. When that
-    /// device is offline or runs Android (which cannot rotate the Cloud Vault),
+    /// device is offline or cannot finish rotation locally,
     /// the rotation requirement stays `pending` and the revoked device's cached
     /// key is not yet retired. Calling this on launch/foreground (and after any
     /// local revoke) lets a surviving Mac finish the rotation instead, making
@@ -376,7 +376,7 @@ enum ComputerUseSecurityCallableClient {
             return CloudVaultRotationPickupResult()
         }
 
-        let pending = try await listPendingCloudVaultRotationRequirements()
+        let pending = try await listPendingCloudVaultRotationRequirements(callerDeviceId: rotatingDeviceId)
         let eligible = eligibleRequirements(from: pending, rotatingDeviceId: rotatingDeviceId)
         var completed: [String] = []
         var failed: [String: String] = [:]
@@ -438,12 +438,23 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func listPendingCallablePayload(callerDeviceId: String) -> [String: Any] {
+        ["callerDeviceId": callerDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)]
+    }
+
     /// Lists the user's pending Cloud Vault rotation requirements via S1's
     /// server-only callable. The server is the source of truth for which
     /// requirements remain unconsumed; this client filters by survivor locally.
-    static func listPendingCloudVaultRotationRequirements() async throws -> [PendingCloudVaultRotationRequirement] {
+    static func listPendingCloudVaultRotationRequirements(
+        callerDeviceId: String
+    ) async throws -> [PendingCloudVaultRotationRequirement] {
+        let callerDeviceId = callerDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !callerDeviceId.isEmpty else {
+            throw ClientError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")
+        }
         _ = try requireSignedInUser()
-        let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements").call([:])
+        let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements")
+            .call(listPendingCallablePayload(callerDeviceId: callerDeviceId))
         guard let dict = result.data as? [String: Any],
               let rawRequirements = dict["requirements"] as? [[String: Any]] else {
             throw ClientError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")

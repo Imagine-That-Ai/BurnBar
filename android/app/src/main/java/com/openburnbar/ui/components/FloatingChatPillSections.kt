@@ -29,7 +29,7 @@ import com.openburnbar.ui.theme.AuroraType
 internal fun FloatingChatPillContent(snippet: String, mode: FloatingChatMode, accent: Color) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         FloatingChatPillIcon(mode = mode, accent = accent)
         Column(modifier = Modifier.weight(1f)) {

@@ -4,6 +4,9 @@ import CoreMedia
 import VideoToolbox
 import OpenBurnBarMedia
 
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
+// shared concurrently. sendable-allowlist: apple-media-buffer
 private final class SendableVideoSampleBuffer: @unchecked Sendable {
     let sampleBuffer: CMSampleBuffer
 
@@ -168,7 +171,11 @@ final class VideoEncoder: VideoEncoding {
         ) { [weak self] (status: OSStatus, _: VTEncodeInfoFlags, sampleBuffer: CMSampleBuffer?) in
             guard let self, status == noErr, let sampleBuffer else { return }
             let snapshot = SendableVideoSampleBuffer(sampleBuffer)
-            Task.detached { [weak self, snapshot] in
+            // Fires from VideoToolbox's (nonisolated) callback thread, which has
+            // no enclosing async scope to bind to. A plain `Task` inherits the
+            // callback's priority/task-locals (an unstructured detached task
+            // would discard them) and hops to `handleEncodedSampleBuffer`'s actor.
+            Task { [weak self, snapshot] in
                 await self?.handleEncodedSampleBuffer(snapshot.sampleBuffer)
             }
         }
@@ -293,6 +300,7 @@ final class VideoEncoder: VideoEncoding {
             parameterSets.append(Data(bytes: pointer, count: size))
         }
         guard !parameterSets.isEmpty else { return nil }
+        // try?-ok(optional encode, raw-payload fallback)
         return try? VideoDecoderConfigurationPayload(
             codec: .hevc,
             parameterSets: parameterSets,
@@ -333,6 +341,7 @@ final class VideoEncoder: VideoEncoding {
             parameterSets.append(Data(bytes: pointer, count: size))
         }
         guard !parameterSets.isEmpty else { return nil }
+        // try?-ok(optional encode, raw-payload fallback)
         return try? VideoDecoderConfigurationPayload(
             codec: .h264,
             parameterSets: parameterSets,
