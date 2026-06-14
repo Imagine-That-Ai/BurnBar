@@ -53,6 +53,21 @@ enum MobileCloudVaultTrustedDeviceChainVerifier {
         )
     }
 
+    static func verifiedTrustedDevice(
+        uid: String,
+        userRef: DocumentReference,
+        deviceId: String,
+        localIdentity: OpenBurnBarSignalIdentityKeypair
+    ) async throws -> MobileCloudVaultVerifiedTrustedDevice {
+        try await verifiedTrustedDevice(
+            uid: uid,
+            userRef: userRef,
+            deviceId: deviceId,
+            localIdentity: localIdentity,
+            visited: []
+        )
+    }
+
     private static func verifiedTrustedDevice(
         uid: String,
         userRef: DocumentReference,

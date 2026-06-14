@@ -144,6 +144,29 @@ if [[ -f "${repo_root}/budgets/unsafe-cast-baseline.json" ]]; then
   unsafe_cast_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${repo_root}/budgets/unsafe-cast-baseline.json")"
 fi
 
+phase1_register="${repo_root}/docs/governance/PHASE1_SECURITY_REGISTER.md"
+phase1_security_open="n/a"
+if [[ -f "${phase1_register}" ]]; then
+  phase1_security_open="$(python3 - "${phase1_register}" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+count = 0
+for line in text.splitlines():
+    if not line.startswith("|") or line.startswith("| ---"):
+        continue
+    cols = [col.strip() for col in line.split("|")[1:-1]]
+    if len(cols) < 2:
+        continue
+    if re.search(r"\*\*Open|\*\*Partial", cols[1]):
+        count += 1
+print(count)
+PY
+)"
+fi
+
 rust_panic_debt="$(python3 - "${repo_root}" <<'PY'
 import pathlib
 import re
@@ -194,6 +217,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
 | \`functions/src/index.ts\` LOC | ${index_ts_lines} | modularize | — |
 | \`import SwiftUI\` in Services/ + DataStore/ | ${swiftui_services} | ≤ 3 | 0 |
+| Phase 1 security register open items (\`docs/governance/PHASE1_SECURITY_REGISTER.md\`) | ${phase1_security_open} | ≤ 3 | 0 |
 | Rust \`unwrap()\`/\`expect()\` in \`crates/{burnbar-remote,openburnbar-iroh}\` | ${rust_panic_debt} | 0 | 0 |
 
 ## Top service files (lines)
@@ -211,6 +235,8 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 - [SLO runbook](runbooks/slos.md)
 - [Type debt budget](TYPE_DEBT.md)
 - [Technical readiness](TECHNICAL_READINESS.md)
+- [Phase 1 security register](governance/PHASE1_SECURITY_REGISTER.md)
+- [Accepted risk register](governance/RISK_REGISTER.md)
 EOF
 
 echo "Updated ${metrics_doc}"
