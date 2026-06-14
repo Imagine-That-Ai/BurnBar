@@ -9,7 +9,9 @@ import {
 import { readFileSync } from "node:fs";
 import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 
-const PROJECT_ID = "burnbar-test";
+const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
+const FIRESTORE_HOST = process.env.FIRESTORE_TEST_HOST || "127.0.0.1";
+const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080", 10);
 const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
 
 const aliceUid = "alice-media-budget";
@@ -31,7 +33,7 @@ console.log("media-budget rules tests");
 
 testEnv = await initializeTestEnvironment({
   projectId: PROJECT_ID,
-  firestore: { rules, host: "127.0.0.1", port: 8080 },
+  firestore: { rules, host: FIRESTORE_HOST, port: FIRESTORE_PORT },
 });
 
 await testEnv.clearFirestore();

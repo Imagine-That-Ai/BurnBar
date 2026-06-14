@@ -1100,8 +1100,13 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             if shouldUseVirtualHIDForLockedInput() {
                 Self.log.info("mac_phone_action_virtual_hid_dispatch kind=\(input.kind.rawValue, privacy: .public)")
                 Self.debugTrace("mac_phone_action_virtual_hid_dispatch kind=\(input.kind.rawValue)")
-                let token = try await mintVirtualHIDCapabilityToken(actionKind: input.kind.rawValue)
-                output = try await RemoteUnlockVirtualHIDInputClient().dispatch(input, capabilityToken: token)
+                let capability = try await mintVirtualHIDCapabilityDispatch(actionKind: input.kind.rawValue)
+                output = try await RemoteUnlockVirtualHIDInputClient().dispatch(
+                    input,
+                    capabilityToken: capability.token,
+                    presentingEscrowDeviceId: capability.presentingEscrowDeviceId,
+                    requiredAttestationHashBlake3: capability.requiredAttestationHashBlake3
+                )
             } else {
                 output = try macDispatcher.dispatch(input)
             }
@@ -1138,22 +1143,37 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         }
     }
 
-    private func mintVirtualHIDCapabilityToken(actionKind: String) async throws -> CapabilityToken {
+    private struct VirtualHIDCapabilityDispatch: Sendable {
+        var token: CapabilityToken
+        var presentingEscrowDeviceId: String?
+        var requiredAttestationHashBlake3: String?
+    }
+
+    private func mintVirtualHIDCapabilityDispatch(actionKind: String) async throws -> VirtualHIDCapabilityDispatch {
         let peerNodeId = phoneControlAuthorizedPeerNodeProvider?()
         let sessionId = activeSessionId?.rawValue ?? latestControlConnectionID
         let scopeHash = SHA256.hash(data: Data("remote_unlock:\(sessionId ?? "none")".utf8))
             .map { String(format: "%02x", $0) }
             .joined()
+        let binding = MacRemoteUnlockReadinessService.shared.activeRemoteUnlockBinding(
+            sessionId: sessionId,
+            peerNodeId: peerNodeId
+        )
         guard let token = try await RemoteUnlockCapabilityTokenBroker.shared.mintInputToken(
             actionKind: actionKind,
             scopeHash: scopeHash,
-            attestationHashBlake3: nil,
+            attestationHashBlake3: binding?.attestationHashBlake3,
+            boundEscrowDeviceId: binding?.viewerDeviceId,
             sessionId: sessionId,
             peerNodeId: peerNodeId
         ) else {
             throw CoordinatorError.noActiveSession
         }
-        return token
+        return VirtualHIDCapabilityDispatch(
+            token: token,
+            presentingEscrowDeviceId: binding?.viewerDeviceId,
+            requiredAttestationHashBlake3: binding?.attestationHashBlake3
+        )
     }
 
     /// F10 — control-seal interception, the single chokepoint every control

@@ -143,8 +143,14 @@ public struct CapabilityTokenLeafVerifier: Sendable {
             self.token = token
             self.expectedDomain = expectedDomain
             self.actionKind = actionKind
-            self.requiredAttestationHashBlake3 = requiredAttestationHashBlake3
-            self.boundEscrowDeviceId = boundEscrowDeviceId
+            self.requiredAttestationHashBlake3 = Self.normalizedBinding(requiredAttestationHashBlake3)
+            self.boundEscrowDeviceId = Self.normalizedBinding(boundEscrowDeviceId)
+        }
+
+        private static func normalizedBinding(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
         }
     }
 
@@ -186,8 +192,8 @@ public struct CapabilityTokenLeafVerifier: Sendable {
         // a hash, the token must match the required hash. This prevents a bound
         // token from being accepted under an unbound request (replay across
         // same-UID first-party contexts) and vice versa.
-        let requiredAttestation = request.requiredAttestationHashBlake3
         let tokenAttestation = token.attestationHashBlake3
+        let requiredAttestation = request.requiredAttestationHashBlake3 ?? tokenAttestation
         if requiredAttestation != nil || tokenAttestation != nil {
             guard tokenAttestation == requiredAttestation else {
                 return .failure(.attestationMismatch)
@@ -196,8 +202,8 @@ public struct CapabilityTokenLeafVerifier: Sendable {
 
         // Escrow-device binding is enforced symmetrically: if either side
         // specifies a device, they must agree.
-        let requiredDevice = request.boundEscrowDeviceId
         let tokenDevice = token.boundEscrowDeviceId
+        let requiredDevice = request.boundEscrowDeviceId ?? tokenDevice
         if requiredDevice != nil || tokenDevice != nil {
             guard tokenDevice == requiredDevice else {
                 return .failure(.escrowDeviceMismatch)

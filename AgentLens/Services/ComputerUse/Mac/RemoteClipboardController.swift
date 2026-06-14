@@ -671,9 +671,16 @@ final class RemoteUnlockCredentialController {
                         "remote_unlock_virtual_hid_input_start requestID=\(credential.requestId, privacy: .public)"
                     )
                     Self.debugTrace("remote_unlock_virtual_hid_input_start requestID=\(credential.requestId)")
+                    let binding = context.readiness.activeRemoteUnlockBinding(
+                        sessionId: credential.sessionId,
+                        peerNodeId: credential.authority.peerNodeId,
+                        now: validationNow
+                    )
                     try await RemoteUnlockVirtualHIDClient(
                         sessionId: credential.sessionId,
-                        peerNodeId: credential.authority.peerNodeId
+                        peerNodeId: credential.authority.peerNodeId,
+                        presentingEscrowDeviceId: binding?.viewerDeviceId,
+                        requiredAttestationHashBlake3: binding?.attestationHashBlake3 ?? credential.authority.attestationHashBlake3
                     ).typeCredential(password)
                 } else {
                     Self.log.info(
@@ -916,12 +923,19 @@ private struct RemoteAccessAgentClient: Sendable {
 private struct RemoteUnlockVirtualHIDClient: Sendable {
     var sessionId: String
     var peerNodeId: String
+    var presentingEscrowDeviceId: String?
+    var requiredAttestationHashBlake3: String?
 
     func typeCredential(_ password: String) async throws {
         do {
             let token = try await mintCredentialToken()
             let request = PrivilegedInputDispatchRequest(operation: "typeCredential", password: password)
-            let envelope = PrivilegedInputDispatchEnvelope(request: request, capabilityToken: token)
+            let envelope = PrivilegedInputDispatchEnvelope(
+                request: request,
+                capabilityToken: token,
+                presentingEscrowDeviceId: presentingEscrowDeviceId,
+                requiredAttestationHashBlake3: requiredAttestationHashBlake3
+            )
             let response = try PrivilegedInputXPCClient().perform(envelope)
             guard response.ok else {
                 throw RemoteUnlockVirtualHIDClientError.rejected(response.error ?? "privileged_input_rejected")
@@ -939,6 +953,8 @@ private struct RemoteUnlockVirtualHIDClient: Sendable {
         guard let token = try RemoteUnlockCapabilityTokenBroker.shared.mintInputToken(
             actionKind: "type_credential",
             scopeHash: scopeHash,
+            attestationHashBlake3: requiredAttestationHashBlake3,
+            boundEscrowDeviceId: presentingEscrowDeviceId,
             sessionId: sessionId,
             peerNodeId: peerNodeId
         ) else {

@@ -34,7 +34,12 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
     /// Blocking XPC/socket dispatch runs off the main actor: this is a
     /// `nonisolated` `async` method (the type is `Sendable`), so callers leave the
     /// main actor at the `await` (SE-0338).
-    func dispatch(_ action: MacInputAction, capabilityToken: CapabilityToken? = nil) async throws -> BurnBarJSONValue {
+    func dispatch(
+        _ action: MacInputAction,
+        capabilityToken: CapabilityToken? = nil,
+        presentingEscrowDeviceId: String? = nil,
+        requiredAttestationHashBlake3: String? = nil
+    ) async throws -> BurnBarJSONValue {
         let request = PrivilegedInputDispatchRequest(
             operation: "input",
             kind: action.kind.rawValue,
@@ -49,7 +54,12 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
             key: action.key,
             modifiers: action.modifiers
         )
-        let envelope = PrivilegedInputDispatchEnvelope(request: request, capabilityToken: capabilityToken)
+        let envelope = PrivilegedInputDispatchEnvelope(
+            request: request,
+            capabilityToken: capabilityToken,
+            presentingEscrowDeviceId: presentingEscrowDeviceId,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
+        )
         // This method is `nonisolated async` (SE-0338), so the blocking dispatch
         // already runs off the main actor without a detached task.
         do {
@@ -91,7 +101,14 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
                 metadata: ["errorClass": "\(String(describing: type(of: error)))"]
             )
         }
-        try Self.sendSocket(Self.legacyRequest(from: request, capabilityToken: capabilityToken))
+        try Self.sendSocket(
+            Self.legacyRequest(
+                from: request,
+                capabilityToken: capabilityToken,
+                presentingEscrowDeviceId: presentingEscrowDeviceId,
+                requiredAttestationHashBlake3: requiredAttestationHashBlake3
+            )
+        )
         return Self.successPayload(for: action)
     }
 
@@ -116,7 +133,9 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
 
     private static func legacyRequest(
         from request: PrivilegedInputDispatchRequest,
-        capabilityToken: CapabilityToken?
+        capabilityToken: CapabilityToken?,
+        presentingEscrowDeviceId: String?,
+        requiredAttestationHashBlake3: String?
     ) -> RemoteUnlockVirtualHIDInputRequest {
         RemoteUnlockVirtualHIDInputRequest(
             operation: request.operation,
@@ -132,7 +151,9 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
             text: request.text,
             key: request.key,
             modifiers: request.modifiers,
-            capabilityToken: capabilityToken
+            capabilityToken: capabilityToken,
+            presentingEscrowDeviceId: presentingEscrowDeviceId,
+            requiredAttestationHashBlake3: requiredAttestationHashBlake3
         )
     }
 
@@ -237,6 +258,8 @@ private struct RemoteUnlockVirtualHIDInputRequest: Encodable, Sendable {
     var key: String?
     var modifiers: [String]?
     var capabilityToken: CapabilityToken?
+    var presentingEscrowDeviceId: String?
+    var requiredAttestationHashBlake3: String?
 }
 
 private struct RemoteUnlockVirtualHIDInputResponse: Decodable, Sendable {

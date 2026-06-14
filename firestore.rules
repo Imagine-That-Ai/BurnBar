@@ -344,15 +344,11 @@ service cloud.firestore {
         && hasActiveHostedQuotaEntitlement(userId);
     }
 
-    // Strict allowlist for the encrypted session-log manifest. The set below is
-    // the UNION of every key any write path leaves on the doc post-merge: the
-    // full create (SessionLogSyncService.swift uploadManifest) plus the
-    // facet-refresh merge update (facetFields + updatedAt). Because the writer
-    // uses merge:true, request.resource.data is the post-merge full document, so
-    // the allowlist must cover the union; the legacy plaintext fields are removed
-    // via FieldValue.delete() and therefore absent — they stay denied by
-    // hasOnly. No content/title/project text can ride along — only sealed
-    // envelopes, storage pointers, hashes, and bounded cockpit facets.
+    // Strict allowlist for encrypted session-log manifest creates. Full uploads
+    // use setData(merge: false), while later merge:true writes are restricted to
+    // facet refresh plus legacy plaintext field deletes by validSessionLogRefreshKeys().
+    // No content/title/project text can ride along — only sealed envelopes,
+    // storage pointers, hashes, and bounded cockpit facets.
     function validSessionLogManifestKeys() {
       return request.resource.data.keys().hasOnly([
         "id",
@@ -515,7 +511,18 @@ service cloud.firestore {
       return (!("model" in data) || (data.model is string && data.model.size() <= 200))
         && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
         && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
-        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32));
+        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32))
+        && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
+        && (!("inputTokens" in data) || (data.inputTokens is int && data.inputTokens >= 0))
+        && (!("outputTokens" in data) || (data.outputTokens is int && data.outputTokens >= 0))
+        && (!("cacheCreationTokens" in data) || (data.cacheCreationTokens is int && data.cacheCreationTokens >= 0))
+        && (!("cacheReadTokens" in data) || (data.cacheReadTokens is int && data.cacheReadTokens >= 0))
+        && (!("totalTokens" in data) || (data.totalTokens is int && data.totalTokens >= 0))
+        && (!("messageCount" in data) || (data.messageCount is int && data.messageCount >= 0))
+        && (!("userWordCount" in data) || (data.userWordCount is int && data.userWordCount >= 0))
+        && (!("assistantWordCount" in data) || (data.assistantWordCount is int && data.assistantWordCount >= 0))
+        && (!("durationSeconds" in data) || (data.durationSeconds is int && data.durationSeconds >= 0))
+        && (!("facetSchemaVersion" in data) || (data.facetSchemaVersion is int && data.facetSchemaVersion >= 0));
     }
 
     function validCloudHexDigest(value) {
@@ -2400,10 +2407,12 @@ service cloud.firestore {
 
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId)
+      function ownerWritableActiveCloudVaultKeyWrapper(wrapperId) {
+        return ownerWritableHostedCloudBackup(userId)
         && validKeyWrapperDocId(wrapperId)
         && request.resource.data.keys().hasOnly([
           "uid",
+          "wrapperId",
           "targetDeviceId",
           "sourceDeviceId",
           "publicKeyFingerprint",
@@ -2420,6 +2429,7 @@ service cloud.firestore {
           "schemaVersion"
         ])
         && request.resource.data.uid == userId
+        && (!("wrapperId" in request.resource.data) || request.resource.data.wrapperId == wrapperId)
         && validVaultKeyID(request.resource.data.vaultKeyID)
         && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
         && request.resource.data.targetDeviceId is string
@@ -2438,12 +2448,19 @@ service cloud.firestore {
         && request.resource.data.wrappedVaultKey.size() <= 8192
         && request.resource.data.wrappedVaultKey.matches("^[A-Za-z0-9+/=]+$")
         && request.resource.data.algorithm == "ECIES-P256-AESGCM"
-        && request.resource.data.status in ["active", "revoked"]
+        && request.resource.data.status == "active"
 	        && request.resource.data.schemaVersion in [2, 3]
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
+      }
+      allow create: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId);
+      allow update: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "wrappedVaultKey",
+          "updatedAt"
+        ]);
 	      allow delete: if false;
 	    }
 

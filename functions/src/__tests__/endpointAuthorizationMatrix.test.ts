@@ -25,6 +25,16 @@ function referencedTestFiles(value: string): string[] {
   return Array.from(value.matchAll(TEST_FILE_PATTERN), (match) => match[0]);
 }
 
+function expectExecutableAssertionFile(entryName: string, ref: string): void {
+  const source = readFileSync(resolve(REPO_ROOT, ref), "utf8");
+  expect(source, `${entryName} references ${ref}, but it has no executable test body`).toMatch(
+    /\b(?:describe|it|test|step)\s*\(/u,
+  );
+  expect(source, `${entryName} references ${ref}, but it has no assertion`).toMatch(
+    /\b(?:expect|assertFails|assertSucceeds|assertRejects|strictEqual)\b/u,
+  );
+}
+
 describe("endpoint authorization matrix", () => {
   it("covers every exported Cloud Function from index.ts", () => {
     const exported = exportedFunctionNames();
@@ -71,6 +81,7 @@ describe("endpoint authorization matrix", () => {
         expect(existsSync(resolve(REPO_ROOT, ref)), `${entry.exportedName} references missing test file ${ref}`).toBe(
           true,
         );
+        expectExecutableAssertionFile(entry.exportedName, ref);
       }
     }
   });
