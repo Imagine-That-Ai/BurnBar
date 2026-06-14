@@ -8,6 +8,8 @@ import OpenBurnBarMedia
 
 // MARK: - Relay shared types
 
+// AUDIT(@unchecked Sendable): carries an untyped Firestore `[String: Any]`
+// claimed-relay payload (immutable, read-only). sendable-allowlist: firestore-any-payload
 struct ClaimedRelayRequest: @unchecked Sendable {
     let data: [String: Any]
 }

@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import Foundation
+import os
 import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
@@ -28,7 +29,7 @@ private final class SessionLogSyncProcessGate: Sendable {
 ///
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
-final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
+final class SessionLogSyncService: CloudSyncDomain, Sendable {
     private typealias FirestoreWrite = (data: [String: Any], document: CloudSyncDocumentGateway, merge: Bool)
 
     private static let processGate = SessionLogSyncProcessGate()
@@ -37,7 +38,9 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
     private let encryptedCloudClient: SessionLogEncryptedCloudClient
     private let vaultKeyStore: SessionLogVaultKeyProviding
     private let vaultKeyPublisher: SessionLogVaultKeyPublishing
-    private var archivedSessionMirror: SessionLogArchivedSessionMirroring?
+    // SessionLogArchivedSessionMirroring is not Sendable; the lazily-resolved
+    // singleton lives in an OSAllocatedUnfairLock so the service is plainly Sendable.
+    private let archivedSessionMirrorBox: OSAllocatedUnfairLock<SessionLogArchivedSessionMirroring?>
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -56,15 +59,15 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         self.encryptedCloudClient = encryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient()
         self.vaultKeyStore = vaultKeyStore
         self.vaultKeyPublisher = vaultKeyPublisher
-        self.archivedSessionMirror = archivedSessionMirror
+        self.archivedSessionMirrorBox = OSAllocatedUnfairLock(uncheckedState: archivedSessionMirror)
     }
 
     private func resolvedArchivedSessionMirror() async -> SessionLogArchivedSessionMirroring {
-        if let archivedSessionMirror {
-            return archivedSessionMirror
+        if let existing = archivedSessionMirrorBox.withLockUnchecked({ $0 }) {
+            return existing
         }
         let shared = await MainActor.run { CLIAgentSessionMirror.shared }
-        archivedSessionMirror = shared
+        archivedSessionMirrorBox.withLockUnchecked { $0 = shared }
         return shared
     }
 
