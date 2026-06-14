@@ -139,7 +139,7 @@ export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = SIGNAL_AT_REST_ENCRYPTIO
 // NOT a misconfiguration or drift. Do not "fix" the asymmetry by emptying SUPPORTED.
 export const HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS = new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
 export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>();
-const HERMES_GATEWAY_SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED";
+export const HERMES_GATEWAY_SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED";
 
 /**
  * The plaintext grace window is closed. Keep the helper for old callers/tests,
@@ -149,17 +149,17 @@ export function isWithinGatewayGraceWindow(_now = Date.now()): boolean {
   return false;
 }
 
-function gatewaySignalRequiredMode(env: NodeJS.ProcessEnv = process.env): boolean {
+export function gatewaySignalRequiredMode(env: NodeJS.ProcessEnv = process.env): boolean {
   return env[HERMES_GATEWAY_SIGNAL_REQUIRED_ENV] === "true";
 }
 
-function productionGatewaySignalEnvelopeVersions(): Set<number> {
+export function productionGatewaySignalEnvelopeVersions(): Set<number> {
   return gatewaySignalRequiredMode()
     ? new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL])
     : new Set(HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS);
 }
 
-function productionGatewayRelayKeyVersions(): Set<number> {
+export function productionGatewayRelayKeyVersions(): Set<number> {
   return gatewaySignalRequiredMode() ? new Set() : new Set(HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS);
 }
 

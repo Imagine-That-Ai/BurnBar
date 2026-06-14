@@ -65,7 +65,17 @@ assert.equal(parseProviderConnectionDoc({
 assert.equal(parseUsageEventDoc({
   provider: "kimi",
   totalTokens: 42,
+  startTime: "2026-06-09T12:00:00.000Z",
 })?.totalTokens, 42);
+
+assert.equal(
+  parseUsageEventDoc({
+    provider: "kimi",
+    totalTokens: 42,
+    startTime: "2026-06-09T12:00:00.000Z",
+  })?.recordedAt,
+  "2026-06-09T12:00:00.000Z",
+);
 
 assert.equal(parseEntitlementBindingDoc({
   id: "binding",
@@ -74,5 +84,16 @@ assert.equal(parseEntitlementBindingDoc({
   createdAt: "2026-05-26T00:00:00.000Z",
   schemaVersion: 1,
 })?.uid, "user_1");
+
+assert.equal(
+  parseEntitlementBindingDoc({
+    id: "legacy-binding-token",
+    uid: "user_1",
+    productID: "burnbar_pro_monthly",
+    createdAt: "2026-05-26T00:00:00.000Z",
+    schemaVersion: 1,
+  })?.appAccountToken,
+  "legacy-binding-token",
+);
 
 console.log("guards tests passed");
