@@ -205,3 +205,6 @@ fix_silently.py
 functions/coverage/
 .build-verify/
 .build-verify-mac/
+
+# Local-only Firebase security-evidence snapshots (contain IAM/PII recon — never commit)
+security/evidence/firebase-security-evidence-*.json

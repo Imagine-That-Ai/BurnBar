@@ -159,6 +159,27 @@ function redactString(value) {
     .replace(
       /(AIza[0-9A-Za-z_-]{20,})/g,
       "[REDACTED_FIREBASE_WEB_API_KEY]",
+    )
+    // IAM members (user:/serviceAccount:/group:/domain:) — redact the principal,
+    // keep the member type so the policy shape stays auditable without leaking PII.
+    .replace(
+      /\b(user|serviceAccount|group|domain):[^"\s,\]}]+/gi,
+      "$1:[REDACTED_PRINCIPAL]",
+    )
+    // Google service-account emails encountered outside an IAM member prefix.
+    .replace(
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]*gserviceaccount\.com/g,
+      "[REDACTED_SERVICE_ACCOUNT]",
+    )
+    // Any remaining email address (human/owner PII).
+    .replace(
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+      "[REDACTED_EMAIL]",
+    )
+    // Secret Manager resource names — the secret ID can encode UIDs/tenant data.
+    .replace(
+      /projects\/[^/\s"]+\/secrets\/[^/\s",}\]]+/g,
+      "projects/[REDACTED]/secrets/[REDACTED]",
     );
 }
 
