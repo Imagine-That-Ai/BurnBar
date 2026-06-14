@@ -160,3 +160,17 @@ Query mem0 for the phase matrix (phases 8–13, capabilities, feature flags), th
 - The audit chain is content-addressed (SHA-256 today, BLAKE3-swappable). Tamper detection covers every entry including the terminal one when `head.json` is supplied.
 - Three independent panic-kill paths halt a session — `⌃⌥⌘.` global hotkey, phone three-finger long-press, the NSWorkspace auth gate (loginwindow / SecurityAgent / screen sleep) — alongside the Remote Config `computer_use_kill_switch`.
 - Path C (Mac System) ships only via direct download with notarization. The MAS build compiles it out via `#if DISTRIBUTION_MAS`.
+
+---
+
+## Cursor Cloud specific instructions
+
+Cursor Cloud agents run on a **Linux** VM (Node 22 + Java 21 + pnpm preinstalled). The Swift/macOS/iOS clients (`AgentLens/`, `OpenBurnBar*`, `OpenBurnBarMobile/`) and the Android app (`android/`) **cannot build or run on Linux** — they are out of scope here. The Linux-runnable surface is the **Firebase Functions backend** (`functions/`, required) plus the two web apps: the Astro marketing site (`website/`, dev port 4321) and the Next.js member console (`apps/console/`, dev port 3000). The startup update script installs deps for those three with `npm ci`.
+
+Non-obvious caveats (standard commands live in `functions/package.json`, `website/package.json`, `apps/console/package.json`):
+
+- **No global `firebase-tools`** and the CLI is not logged in. Use the local binary at `functions/node_modules/.bin/firebase`, run from the repo root (where `firebase.json` lives), and pass `--project burnbar`.
+- **Emulator startup prompts for `defineString` params** (e.g. `OPENBURNBAR_OTS_VERIFY_URL`, `APNS_VOIP_TOPIC`) one at a time. In firebase-tools 15 this prompt is NOT suppressed by `--non-interactive`, `CI=true`, or `</dev/null`. Start it by auto-accepting every default: `yes "" | ./functions/node_modules/.bin/firebase emulators:start --only functions,firestore --project burnbar`. Add `,firestore` so `healthReady` can probe the datastore. Smoke test: `curl http://127.0.0.1:5001/burnbar/us-central1/healthReady` → `{"status":"ready","checks":{"firestore":"ok"}}`. The `MetadataLookupWarning ... 169.254.169.254` lines are harmless (no GCP metadata server on the VM).
+- **`functions` build runs prebuild scripts** (`scripts/build-signal-envelope-contracts.sh`, `scripts/build-entitlements.sh`) that install + `tsc`-build `packages/signal-envelope-contracts` and `packages/entitlements`. So `npm --prefix functions run build` is needed before `serve`/tests if `functions/lib` is stale; plain `npm ci` does not build those packages.
+- **`apps/console` dev server** is auth-gated: without real Firebase config it renders only a loading spinner (the dev server is still healthy — title shows "BurnBar Console"). `predev`/`prebuild` run `sync:domains` codegen from `packages/data-domains` + `packages/design-tokens`.
+- A dev-only `functions/.env` is **not** required when starting via the `yes ""` pattern above (it would also work, but `.env` keys with reserved prefixes `FIREBASE_`/`FUNCTION_`/`X_GOOGLE_`/`EXT_` are rejected by the Functions `.env` loader).
