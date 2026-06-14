@@ -85,4 +85,21 @@ require_pattern "phone control attestation policy" \
   'PhoneControlAttestationPolicy' \
   OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PhoneControlAttestationPolicy.swift
 
+echo "==> C-3 iOS Cloud Vault rotation survivor pickup (T-PTR-02)"
+require_pattern "iOS mobile rotation chain" \
+  'pickUpPendingCloudVaultRotations' \
+  OpenBurnBarMobile/Services/MobileCloudVaultRevocationRotation.swift
+require_pattern "iOS mobile pickup lifecycle" \
+  'CloudVaultRotationPickupLifecycle\.install' \
+  OpenBurnBarMobile/App/AppDelegate.swift
+require_pattern "iOS mobile pickup lifecycle service" \
+  'UIApplication\.didBecomeActiveNotification' \
+  OpenBurnBarMobile/Services/CloudVaultRotationPickupLifecycle.swift
+require_pattern "iOS mobile post-revoke pickup trigger" \
+  'openBurnBarDidRevokeDeviceTrust' \
+  OpenBurnBarMobile/Services/LiveCloudReader.swift
+require_pattern "iOS mobile rotation pickup tests" \
+  'MobileCloudVaultRotationPickupTests' \
+  OpenBurnBarMobileTests/MobileCloudVaultRotationPickupTests.swift
+
 echo "PASS: Phase 1 security gates structurally wired"

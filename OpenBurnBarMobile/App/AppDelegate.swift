@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
         configureMercuryFileTransfer()
         AgentReplyNotificationService.shared.configure(application: application)
+        CloudVaultRotationPickupLifecycle.install()
         return true
     }
 
