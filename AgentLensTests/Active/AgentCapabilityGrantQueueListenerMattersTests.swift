@@ -14,6 +14,7 @@ import XCTest
 ///      reason at the request's own path), and
 ///   2. a failing write degrades gracefully (no propagation/crash of the
 ///      detached process Task) while NEVER falling open into approval.
+@MainActor
 final class AgentCapabilityGrantQueueListenerMattersTests: XCTestCase {
     /// Records every receipt-write the listener attempts; can be armed to throw
     /// so the catch-path's durable-but-graceful handling is exercised.
