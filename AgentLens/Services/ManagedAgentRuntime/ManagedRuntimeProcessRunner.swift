@@ -20,48 +20,51 @@ enum ManagedRuntimeProcessRunner {
     }
 
     /// Run `executable` synchronously, return its merged stdout/stderr.
+    ///
+    /// The blocking `Process` work runs off the main actor: this is a
+    /// `nonisolated` `async` function, so callers on the main actor leave it
+    /// when they `await` (SE-0338). Cancellation propagates from the awaiting
+    /// task — do not reintroduce an unstructured detached task, which would sever it.
     static func run(executable: String, arguments: [String]) async throws -> String {
-        try await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            process.standardInput = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        process.standardInput = FileHandle.nullDevice
 
-            let outputPipe = Pipe()
-            let errorPipe = Pipe()
-            process.standardOutput = outputPipe
-            process.standardError = errorPipe
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
 
-            try process.run()
-            process.waitUntilExit()
+        try process.run()
+        process.waitUntilExit()
 
-            let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            guard process.terminationStatus == 0 else {
-                let command = ([executable] + arguments).joined(separator: " ")
-                throw CommandFailedError(
-                    command: command,
-                    detail: error.isEmpty ? output : error
-                )
-            }
-            return output.isEmpty ? error : output
-        }.value
+        let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            let command = ([executable] + arguments).joined(separator: " ")
+            throw CommandFailedError(
+                command: command,
+                detail: error.isEmpty ? output : error
+            )
+        }
+        return output.isEmpty ? error : output
     }
 
     /// Launch `executable` and immediately return, with stdout/stderr/stdin
     /// detached. Used for long-lived companion apps (Hermes Dashboard, Pi
     /// app, etc.) that own their own lifecycle.
+    ///
+    /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     static func launchDetached(executable: String, arguments: [String]) async throws {
-        try await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            process.standardInput = FileHandle.nullDevice
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-        }.value
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
     }
 }

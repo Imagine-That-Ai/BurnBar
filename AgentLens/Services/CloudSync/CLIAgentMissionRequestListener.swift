@@ -1649,34 +1649,34 @@ final class CLIAgentMissionRequestListener {
         return URL(fileURLWithPath: expandedPath, isDirectory: true)
     }
 
-    private func gitChangedFiles(in workingDirectoryURL: URL?) async -> Set<String> {
+    /// `nonisolated` so the blocking `git status` runs off the main actor
+    /// (SE-0338); it touches no main-actor state, so it needs no detached task.
+    private nonisolated func gitChangedFiles(in workingDirectoryURL: URL?) async -> Set<String> {
         let directoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let gitPath = "/usr/bin/git"
         guard FileManager.default.fileExists(atPath: gitPath) else { return [] }
 
-        return await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: gitPath)
-            process.arguments = ["-C", directoryURL.path, "status", "--porcelain=v1"]
-            let stdout = Pipe()
-            process.standardOutput = stdout
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                process.waitUntilExit()
-                guard process.terminationStatus == 0 else { return Set<String>() }
-                let data = stdout.fileHandleForReading.readDataToEndOfFile()
-                let text = String(data: data, encoding: .utf8) ?? ""
-                return Set(text
-                    .split(separator: "\n")
-                    .compactMap { line -> String? in
-                        guard line.count >= 4 else { return nil }
-                        return String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                    })
-            } catch {
-                return []
-            }
-        }.value
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: gitPath)
+        process.arguments = ["-C", directoryURL.path, "status", "--porcelain=v1"]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return Set<String>() }
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8) ?? ""
+            return Set(text
+                .split(separator: "\n")
+                .compactMap { line -> String? in
+                    guard line.count >= 4 else { return nil }
+                    return String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                })
+        } catch {
+            return []
+        }
     }
 
     private func recordChangedFileEvents(
@@ -1823,7 +1823,7 @@ final class CLIAgentMissionRequestListener {
         }
     }
 
-    private func runVisibleTerminalProcess(
+    private nonisolated func runVisibleTerminalProcess(
         sessionID: String,
         executable: String,
         executableName: String,
@@ -1835,123 +1835,121 @@ final class CLIAgentMissionRequestListener {
         cancellationTracker: MissionCancellationTracker,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let fileManager = FileManager.default
-            let rootURL = fileManager.temporaryDirectory
-                .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
-            let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
-            try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
+        let fileManager = FileManager.default
+        let rootURL = fileManager.temporaryDirectory
+            .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
+        let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
+        try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true)
 
-            let scriptURL = sessionURL.appendingPathComponent("run.command")
-            let logURL = sessionURL.appendingPathComponent("terminal.log")
-            let exitURL = sessionURL.appendingPathComponent("exit.status")
-            let pidURL = sessionURL.appendingPathComponent("terminal.pid")
-            let command = ([executable] + arguments)
-                .map(Self.shellQuoted)
-                .joined(separator: " ")
+        let scriptURL = sessionURL.appendingPathComponent("run.command")
+        let logURL = sessionURL.appendingPathComponent("terminal.log")
+        let exitURL = sessionURL.appendingPathComponent("exit.status")
+        let pidURL = sessionURL.appendingPathComponent("terminal.pid")
+        let command = ([executable] + arguments)
+            .map(Self.shellQuoted)
+            .joined(separator: " ")
 
-            var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
-            scriptEnvironment.merge(extraEnvironment) { _, new in new }
-            let exportLines = scriptEnvironment
-                .filter { Self.isValidEnvironmentKey($0.key) }
-                .sorted { $0.key < $1.key }
-                .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
-                .joined(separator: "\n")
-            let cdLine = workingDirectoryURL.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
-            let script = """
-            #!/bin/zsh
-            set +e
-            setopt pipefail
-            echo $$ > \(Self.shellQuoted(pidURL.path))
-            \(exportLines)
-            \(cdLine)
-            echo "OpenBurnBar visible CLI session"
-            echo "Runtime: \(backendDisplayName)"
-            echo "Executable: \(executableName)"
-            echo ""
-            ( \(command) ) 2>&1 | tee \(Self.shellQuoted(logURL.path))
-            status=${pipestatus[1]}
-            echo "$status" > \(Self.shellQuoted(exitURL.path))
-            echo ""
-            echo "OpenBurnBar visible CLI session finished with exit $status"
-            exit "$status"
-            """
-            try script.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        var scriptEnvironment = ["PATH": CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)["PATH"] ?? ""]
+        scriptEnvironment.merge(extraEnvironment) { _, new in new }
+        let exportLines = scriptEnvironment
+            .filter { Self.isValidEnvironmentKey($0.key) }
+            .sorted { $0.key < $1.key }
+            .map { "export \($0.key)=\(Self.shellQuoted($0.value))" }
+            .joined(separator: "\n")
+        let cdLine = workingDirectoryURL.map { "cd \(Self.shellQuoted($0.path))" } ?? ""
+        let script = """
+        #!/bin/zsh
+        set +e
+        setopt pipefail
+        echo $$ > \(Self.shellQuoted(pidURL.path))
+        \(exportLines)
+        \(cdLine)
+        echo "OpenBurnBar visible CLI session"
+        echo "Runtime: \(backendDisplayName)"
+        echo "Executable: \(executableName)"
+        echo ""
+        ( \(command) ) 2>&1 | tee \(Self.shellQuoted(logURL.path))
+        status=${pipestatus[1]}
+        echo "$status" > \(Self.shellQuoted(exitURL.path))
+        echo ""
+        echo "OpenBurnBar visible CLI session finished with exit $status"
+        exit "$status"
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
 
-            let opener = Process()
-            opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            opener.arguments = ["-a", "Terminal", scriptURL.path]
-            try opener.run()
-            opener.waitUntilExit()
-            guard opener.terminationStatus == 0 else {
+        let opener = Process()
+        opener.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        opener.arguments = ["-a", "Terminal", scriptURL.path]
+        try opener.run()
+        opener.waitUntilExit()
+        guard opener.terminationStatus == 0 else {
+            throw NSError(
+                domain: "OpenBurnBar.VisibleTerminalMission",
+                code: Int(opener.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: "macOS could not open Terminal for the visible CLI session."]
+            )
+        }
+
+        eventSink(.toolCall("Terminal opened a visible \(backendDisplayName) CLI session.", title: "Terminal session", toolName: "Terminal"))
+
+        let streamMirror = DirectCLIStreamMirror()
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        var offset: UInt64 = 0
+        var output = ""
+        var lastEventAt = Date.distantPast
+
+        while Date() < deadline {
+            if cancellationTracker.isCancelled {
+                Self.killVisibleTerminalSession(pidURL: pidURL)
                 throw NSError(
                     domain: "OpenBurnBar.VisibleTerminalMission",
-                    code: Int(opener.terminationStatus),
-                    userInfo: [NSLocalizedDescriptionKey: "macOS could not open Terminal for the visible CLI session."]
+                    code: 299,
+                    userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
                 )
             }
 
-            eventSink(.toolCall("Terminal opened a visible \(backendDisplayName) CLI session.", title: "Terminal session", toolName: "Terminal"))
-
-            let streamMirror = DirectCLIStreamMirror()
-            let deadline = Date().addingTimeInterval(timeoutSeconds)
-            var offset: UInt64 = 0
-            var output = ""
-            var lastEventAt = Date.distantPast
-
-            while Date() < deadline {
-                if cancellationTracker.isCancelled {
-                    Self.killVisibleTerminalSession(pidURL: pidURL)
-                    throw NSError(
-                        domain: "OpenBurnBar.VisibleTerminalMission",
-                        code: 299,
-                        userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
-                    )
+            let chunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
+            if !chunk.isEmpty {
+                output += chunk
+                let emittedStructuredEvents = streamMirror.consumeStdout(chunk, eventSink: eventSink)
+                if !emittedStructuredEvents,
+                   Date().timeIntervalSince(lastEventAt) >= 1,
+                   let message = chunk.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                    lastEventAt = Date()
+                    eventSink(.assistant(message, title: "Terminal output"))
                 }
-
-                let chunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
-                if !chunk.isEmpty {
-                    output += chunk
-                    let emittedStructuredEvents = streamMirror.consumeStdout(chunk, eventSink: eventSink)
-                    if !emittedStructuredEvents,
-                       Date().timeIntervalSince(lastEventAt) >= 1,
-                       let message = chunk.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                        lastEventAt = Date()
-                        eventSink(.assistant(message, title: "Terminal output"))
-                    }
-                }
-
-                if fileManager.fileExists(atPath: exitURL.path) {
-                    let finalChunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
-                    if !finalChunk.isEmpty {
-                        output += finalChunk
-                        _ = streamMirror.consumeStdout(finalChunk, eventSink: eventSink)
-                    }
-                    let rawStatus = (try? String(contentsOf: exitURL, encoding: .utf8))
-                        ?? "1"
-                    let status = Int(rawStatus.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
-                    let finalOutput = streamMirror.finalOutputSnapshot(fallback: output.nilIfEmpty ?? rawStatus)
-                    guard status == 0 else {
-                        throw NSError(
-                            domain: "OpenBurnBar.VisibleTerminalMission",
-                            code: status,
-                            userInfo: [NSLocalizedDescriptionKey: finalOutput.nilIfEmpty ?? "Visible \(backendDisplayName) CLI session failed with exit \(status)."]
-                        )
-                    }
-                    return finalOutput
-                }
-
-                try await Task.sleep(nanoseconds: 250_000_000)
             }
 
-            Self.killVisibleTerminalSession(pidURL: pidURL)
-            throw NSError(
-                domain: "OpenBurnBar.VisibleTerminalMission",
-                code: 124,
-                userInfo: [NSLocalizedDescriptionKey: "Visible \(backendDisplayName) CLI session timed out after \(Int(timeoutSeconds)) seconds."]
-            )
-        }.value
+            if fileManager.fileExists(atPath: exitURL.path) {
+                let finalChunk = Self.readVisibleTerminalLogChunk(logURL: logURL, offset: &offset)
+                if !finalChunk.isEmpty {
+                    output += finalChunk
+                    _ = streamMirror.consumeStdout(finalChunk, eventSink: eventSink)
+                }
+                let rawStatus = (try? String(contentsOf: exitURL, encoding: .utf8))
+                    ?? "1"
+                let status = Int(rawStatus.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+                let finalOutput = streamMirror.finalOutputSnapshot(fallback: output.nilIfEmpty ?? rawStatus)
+                guard status == 0 else {
+                    throw NSError(
+                        domain: "OpenBurnBar.VisibleTerminalMission",
+                        code: status,
+                        userInfo: [NSLocalizedDescriptionKey: finalOutput.nilIfEmpty ?? "Visible \(backendDisplayName) CLI session failed with exit \(status)."]
+                    )
+                }
+                return finalOutput
+            }
+
+            try await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        Self.killVisibleTerminalSession(pidURL: pidURL)
+        throw NSError(
+            domain: "OpenBurnBar.VisibleTerminalMission",
+            code: 124,
+            userInfo: [NSLocalizedDescriptionKey: "Visible \(backendDisplayName) CLI session timed out after \(Int(timeoutSeconds)) seconds."]
+        )
     }
 
     private func runDirectCLIMission(
@@ -2022,7 +2020,7 @@ final class CLIAgentMissionRequestListener {
         }
     }
 
-    private func runProcess(
+    private nonisolated func runProcess(
         executable: String,
         arguments: [String],
         timeoutSeconds: TimeInterval,
@@ -2031,89 +2029,59 @@ final class CLIAgentMissionRequestListener {
         cancellationTracker: MissionCancellationTracker,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            environment.merge(extraEnvironment) { _, new in new }
-            process.environment = environment
-            process.currentDirectoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            process.standardInput = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        environment.merge(extraEnvironment) { _, new in new }
+        process.environment = environment
+        process.currentDirectoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        process.standardInput = FileHandle.nullDevice
 
-            let stdout = Pipe()
-            let stderr = Pipe()
-            let output = LockedProcessOutput()
-            let streamMirror = DirectCLIStreamMirror()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            stdout.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                guard !data.isEmpty,
-                      let text = String(data: data, encoding: .utf8)
-                else { return }
-                output.appendStdout(text)
-                let emittedStructuredEvents = streamMirror.consumeStdout(text, eventSink: eventSink)
-                if !emittedStructuredEvents,
-                   let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                    eventSink(.assistant(chunk))
-                }
+        let stdout = Pipe()
+        let stderr = Pipe()
+        let output = LockedProcessOutput()
+        let streamMirror = DirectCLIStreamMirror()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        stdout.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8)
+            else { return }
+            output.appendStdout(text)
+            let emittedStructuredEvents = streamMirror.consumeStdout(text, eventSink: eventSink)
+            if !emittedStructuredEvents,
+               let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                eventSink(.assistant(chunk))
             }
-            stderr.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                guard !data.isEmpty,
-                      let text = String(data: data, encoding: .utf8)
-                else { return }
-                output.appendStderr(text)
-                let emittedStructuredEvents = streamMirror.consumeStderr(text, eventSink: eventSink)
-                if !emittedStructuredEvents,
-                   let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                    eventSink(.toolResult(chunk, title: "Process stderr", isError: true))
-                }
+        }
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8)
+            else { return }
+            output.appendStderr(text)
+            let emittedStructuredEvents = streamMirror.consumeStderr(text, eventSink: eventSink)
+            if !emittedStructuredEvents,
+               let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                eventSink(.toolResult(chunk, title: "Process stderr", isError: true))
             }
+        }
 
+        if cancellationTracker.isCancelled {
+            throw NSError(
+                domain: "OpenBurnBar.DirectCLIMission",
+                code: 299,
+                userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
+            )
+        }
+
+        try process.run()
+
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while process.isRunning && Date() < deadline {
             if cancellationTracker.isCancelled {
-                throw NSError(
-                    domain: "OpenBurnBar.DirectCLIMission",
-                    code: 299,
-                    userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
-                )
-            }
-
-            try process.run()
-
-            let deadline = Date().addingTimeInterval(timeoutSeconds)
-            while process.isRunning && Date() < deadline {
-                if cancellationTracker.isCancelled {
-                    let pid = process.processIdentifier
-                    let killScript = """
-                    kill_tree() {
-                        local _pid=$1
-                        for _child in $(pgrep -P $_pid); do
-                            kill_tree $_child
-                        done
-                        kill -TERM $_pid 2>/dev/null
-                    }
-                    kill_tree \(pid)
-                    """
-                    let killTask = Process()
-                    killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                    killTask.arguments = ["-c", killScript]
-                    try? killTask.run()
-                    killTask.waitUntilExit()
-
-                    process.terminate()
-                    stdout.fileHandleForReading.readabilityHandler = nil
-                    stderr.fileHandleForReading.readabilityHandler = nil
-                    throw NSError(
-                        domain: "OpenBurnBar.DirectCLIMission",
-                        code: 299,
-                        userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
-                    )
-                }
-                try await Task.sleep(nanoseconds: 100_000_000)
-            }
-            if process.isRunning {
                 let pid = process.processIdentifier
                 let killScript = """
                 kill_tree() {
@@ -2136,30 +2104,58 @@ final class CLIAgentMissionRequestListener {
                 stderr.fileHandleForReading.readabilityHandler = nil
                 throw NSError(
                     domain: "OpenBurnBar.DirectCLIMission",
-                    code: 124,
-                    userInfo: [NSLocalizedDescriptionKey: "Direct \(URL(fileURLWithPath: executable).lastPathComponent) mission timed out after \(Int(timeoutSeconds)) seconds."]
+                    code: 299,
+                    userInfo: [NSLocalizedDescriptionKey: "Mission was cancelled by the user."]
                 )
             }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        if process.isRunning {
+            let pid = process.processIdentifier
+            let killScript = """
+            kill_tree() {
+                local _pid=$1
+                for _child in $(pgrep -P $_pid); do
+                    kill_tree $_child
+                done
+                kill -TERM $_pid 2>/dev/null
+            }
+            kill_tree \(pid)
+            """
+            let killTask = Process()
+            killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            killTask.arguments = ["-c", killScript]
+            try? killTask.run()
+            killTask.waitUntilExit()
 
+            process.terminate()
             stdout.fileHandleForReading.readabilityHandler = nil
             stderr.fileHandleForReading.readabilityHandler = nil
-            let captured = output.snapshot()
-            let stdoutText = captured.stdout
-            let stderrText = captured.stderr
-            let finalOutput = streamMirror.finalOutputSnapshot(fallback: stdoutText.nilIfEmpty ?? stderrText)
-            guard process.terminationStatus == 0 else {
-                let message = [stdoutText, stderrText]
-                    .joined(separator: "\n")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                throw NSError(
-                    domain: "OpenBurnBar.DirectCLIMission",
-                    code: Int(process.terminationStatus),
-                    userInfo: [NSLocalizedDescriptionKey: message.nilIfEmpty ?? "Direct CLI mission failed with exit \(process.terminationStatus)."]
-                )
-            }
+            throw NSError(
+                domain: "OpenBurnBar.DirectCLIMission",
+                code: 124,
+                userInfo: [NSLocalizedDescriptionKey: "Direct \(URL(fileURLWithPath: executable).lastPathComponent) mission timed out after \(Int(timeoutSeconds)) seconds."]
+            )
+        }
 
-            return finalOutput
-        }.value
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        let captured = output.snapshot()
+        let stdoutText = captured.stdout
+        let stderrText = captured.stderr
+        let finalOutput = streamMirror.finalOutputSnapshot(fallback: stdoutText.nilIfEmpty ?? stderrText)
+        guard process.terminationStatus == 0 else {
+            let message = [stdoutText, stderrText]
+                .joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(
+                domain: "OpenBurnBar.DirectCLIMission",
+                code: Int(process.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: message.nilIfEmpty ?? "Direct CLI mission failed with exit \(process.terminationStatus)."]
+            )
+        }
+
+        return finalOutput
     }
 
     private func recordEvent(
