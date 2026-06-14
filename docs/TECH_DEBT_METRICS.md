@@ -15,7 +15,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | `@MainActor` on I/O facades (listed set) | 2 | 4 | 0 |
 | Empty `catch {}` blocks (app + daemon) | 0 | 0 | 0 |
 | `Task.detached` in `AgentLens/Services/` | 65 | ≤ 10 | 0 |
-| `try?` in `AgentLens/Services/` | 808 | ≤ 120 | ≤ 50 |
+| `try?` in `AgentLens/Services/` | 727 | ≤ 120 | ≤ 50 |
 | Unsafe cast assert-zero gate | 0 | 0 | 0 |
 | Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 0 | 0 | 0 |
 | Schema `knownDrift` tokens (`tools/schema-sync/manifest.json`) | 0 | 0 | 0 |

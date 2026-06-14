@@ -126,8 +126,8 @@ final class CloudSyncCoordinator {
     /// Drains all pending session logs and chat threads while emitting live progress snapshots.
     @MainActor
     func performManualBackup(onProgress: @escaping (CloudBackupProgressSnapshot) -> Void) async {
-        let pendingLogs = (try? context.dataStore.countUnsyncedSessionLogs()) ?? 0
-        let pendingThreads = (try? context.dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0
+        let pendingLogs = (try? context.dataStore.countUnsyncedSessionLogs()) ?? 0 // try?-ok(optional progress estimate)
+        let pendingThreads = (try? context.dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0 // try?-ok(optional progress estimate)
 
         let tracker = CloudBackupProgressTracker { snapshot in
             Task { @MainActor in

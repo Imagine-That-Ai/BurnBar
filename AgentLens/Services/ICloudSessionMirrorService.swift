@@ -51,9 +51,9 @@ enum ICloudSessionMirrorEngine {
         let fm = FileManager()
         var total: Int64 = 0
         for spec in snapshot.providers {
-            guard let sources = try? sourceFiles(for: spec, fm: fm) else { continue }
+            guard let sources = try? sourceFiles(for: spec, fm: fm) else { continue } // try?-ok(best-effort size scan)
             for url in sources {
-                total += (try? fm.fileSize(at: url)) ?? 0
+                total += (try? fm.fileSize(at: url)) ?? 0 // try?-ok(best-effort size read)
             }
             await Task.yield()
         }
@@ -294,7 +294,7 @@ enum ICloudSessionMirrorEngine {
         ) else { return result }
 
         for case let item as URL in enumerator {
-            let isFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
+            let isFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false // try?-ok(optional resource read)
             guard isFile else { continue }
             let ext = item.pathExtension.lowercased()
             guard matchingExtensions.contains(ext) else { continue }
@@ -317,8 +317,8 @@ enum ICloudSessionMirrorEngine {
 
     private static func loadState(path: String, fm: FileManager) -> ICloudSessionMirrorStateFile {
         let url = URL(fileURLWithPath: path)
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(ICloudSessionMirrorStateFile.self, from: data) else {
+        guard let data = try? Data(contentsOf: url), // try?-ok(optional state read)
+              let decoded = try? JSONDecoder().decode(ICloudSessionMirrorStateFile.self, from: data) else { // try?-ok(optional state decode)
             return ICloudSessionMirrorStateFile(files: [:])
         }
         return decoded
@@ -451,6 +451,7 @@ final class ICloudSessionMirrorService {
 
     private nonisolated static func extractConversations(from mirrorRoot: URL) -> [ConversationRecord] {
         let fm = FileManager()
+        // try?-ok(best-effort dir listing)
         guard let slugDirs = try? fm.contentsOfDirectory(
             at: mirrorRoot,
             includingPropertiesForKeys: [.isDirectoryKey]
@@ -459,7 +460,7 @@ final class ICloudSessionMirrorService {
         var latestByCanonicalID: [String: ConversationRecord] = [:]
 
         for slugDir in slugDirs {
-            let isDir = (try? slugDir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            let isDir = (try? slugDir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false // try?-ok(optional resource read)
             guard isDir else { continue }
 
             let slug = slugDir.lastPathComponent
@@ -474,7 +475,7 @@ final class ICloudSessionMirrorService {
             ) else { continue }
 
             for case let fileURL as URL in enumerator {
-                let isFile = (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
+                let isFile = (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false // try?-ok(optional resource read)
                 guard isFile else { continue }
                 let ext = fileURL.pathExtension.lowercased()
                 guard ext == "jsonl" || ext == "json" else { continue }
@@ -499,7 +500,7 @@ final class ICloudSessionMirrorService {
     }
 
     private nonisolated static func lightweightParse(file: URL, provider: AgentProvider) -> ConversationRecord? {
-        let attrs = try? file.resourceValues(forKeys: [.contentModificationDateKey])
+        let attrs = try? file.resourceValues(forKeys: [.contentModificationDateKey]) // try?-ok(optional mtime read)
 
         let sessionId = file.deletingPathExtension().lastPathComponent
         let projectName = file.deletingLastPathComponent().lastPathComponent
@@ -574,6 +575,7 @@ final class ICloudSessionMirrorService {
     }
 
     private var stateFileURL: URL {
+        // try?-ok(best-effort support dir)
         let base = (try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager))
             ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("OpenBurnBar", isDirectory: true)

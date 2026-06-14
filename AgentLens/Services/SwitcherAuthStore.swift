@@ -36,7 +36,14 @@ final class SwitcherAuthStore {
     /// Retrieves the API key for a profile (if stored).
     func apiKey(forProfileID profileID: String, cliType: SwitcherCLIProfileType) -> String? {
         let account = "switcher.\(profileID).\(cliType.rawValue).apiKey"
-        return try? keychain.string(for: account, allowUserInteraction: false)
+        // `KeychainStore.string` already returns nil for the soft cases
+        // (item-not-found, interaction-not-allowed); a throw here is a genuinely
+        // unexpected keychain fault worth tracking instead of swallowing.
+        return AppLogger.shared.silently(
+            "switcher_keychain_api_key_read",
+            try keychain.string(for: account, allowUserInteraction: false),
+            fallback: nil
+        )
     }
 
     // MARK: - OAuth Token
@@ -54,19 +61,42 @@ final class SwitcherAuthStore {
     /// Retrieves the OAuth token for a profile (if stored).
     func oauthToken(forProfileID profileID: String, provider: String) -> String? {
         let account = "switcher.\(profileID).\(provider).oauthToken"
-        return try? keychain.string(for: account, allowUserInteraction: false)
+        return AppLogger.shared.silently(
+            "switcher_keychain_oauth_token_read",
+            try keychain.string(for: account, allowUserInteraction: false),
+            fallback: nil
+        )
     }
 
     // MARK: - Cleanup
 
     /// Deletes all credentials for a profile.
+    ///
+    /// A failed delete leaves a live credential in the Keychain, so each failure
+    /// is surfaced via the logger rather than swallowed — but the loop continues
+    /// so one stuck account never blocks removal of the rest.
     func deleteCredentials(forProfileID profileID: String) throws {
-        // Try to delete known account patterns
         for cliType in SwitcherCLIProfileType.allCases {
-            try? keychain.delete(account: "switcher.\(profileID).\(cliType.rawValue).apiKey")
+            let account = "switcher.\(profileID).\(cliType.rawValue).apiKey"
+            do {
+                try keychain.delete(account: account)
+            } catch {
+                AppLogger.shared.error(
+                    "switcher_keychain_api_key_delete_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
         }
         for provider in ["google", "apple", "anthropic", "openai"] {
-            try? keychain.delete(account: "switcher.\(profileID).\(provider).oauthToken")
+            let account = "switcher.\(profileID).\(provider).oauthToken"
+            do {
+                try keychain.delete(account: account)
+            } catch {
+                AppLogger.shared.error(
+                    "switcher_keychain_oauth_token_delete_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
         }
     }
 }
