@@ -50,6 +50,10 @@ object AndroidCloudVaultRevocationRotation {
     // pass does not double-run the rotation chain for the same revocation while the first settles.
     private val inFlightRotationPickups = ConcurrentHashMap.newKeySet<String>()
 
+    /** Callable payload for `listPendingCloudVaultRotationRequirements` (server requires callerDeviceId). */
+    fun listPendingCallablePayload(callerDeviceId: String): Map<String, Any> =
+        mapOf("callerDeviceId" to callerDeviceId.trim())
+
     /**
      * Pure decoder for the `listPendingCloudVaultRotationRequirements` payload. Accepts either
      * `requirementId` or `id` for the requirement key and trims/filters survivor ids — byte-for-byte
