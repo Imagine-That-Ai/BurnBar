@@ -151,27 +151,6 @@ const firestoreTimeout = timeout(10_000, TimeoutStrategy.Cooperative);
 /** Firestore resilience policy. */
 export const firestorePolicy: IPolicy = wrap(firestoreTimeout, firestoreBulkhead, firestoreRetry, firestoreBreaker);
 
-// ── Quota refresh circuit breaker ─────────────────────────────────────────────
-
-/**
- * Provider quota refresh policy: retry 2 times with generous backoff.
- * Circuit breaks after 5 failures — quota refresh is a periodic background job.
- */
-const quotaBreaker = circuitBreaker(handleAll, {
-  halfOpenAfter: 120_000, // 2 minutes — quota providers are slow to recover
-  breaker: new ConsecutiveBreaker(5),
-});
-
-const quotaRetry = retry(handleAll, {
-  maxAttempts: 2,
-  backoff: makeBackoff(),
-});
-
-const quotaTimeout = timeout(30_000, TimeoutStrategy.Aggressive);
-
-/** Provider quota refresh resilience policy. */
-export const quotaPolicy: IPolicy = wrap(quotaTimeout, quotaRetry, quotaBreaker);
-
 // ── Convenience wrapper ───────────────────────────────────────────────────────
 
 /**

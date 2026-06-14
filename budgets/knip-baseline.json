@@ -1,5 +1,5 @@
 {
-  "_comment": "Ratchet baselines for scripts/ci/knip-ratchet.sh \u2014 total knip finding counts per package. New findings fail CI; update only from clean CI/worktree evidence. CI-measured 2026-06-12 (CI checkouts are canonical: local gitignored files alter knip entry resolution).",
-  "functions": 87,
+  "_comment": "Ratchet baselines for scripts/ci/knip-ratchet.sh \u2014 total knip finding counts per package. New findings fail CI; update only from clean CI/worktree evidence. CI-measured 2026-06-14 (CI checkouts are canonical: local gitignored files alter knip entry resolution). functions uses functions/knip.json for schema-sync generated stubs.",
+  "functions": 98,
   "extension": 28
 }

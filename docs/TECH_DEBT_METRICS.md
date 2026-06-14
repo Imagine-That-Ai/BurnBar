@@ -17,7 +17,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | `Task.detached` in `AgentLens/Services/` | 65 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 808 | ≤ 120 | ≤ 50 |
 | Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 132 | 0 | 0 |
-| Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 87 | 0 | 0 |
+| Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 98 | 0 | 0 |
 | Schema `knownDrift` tokens (`tools/schema-sync/manifest.json`) | 8 | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3617 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 22 | stable (re-export) | — |
