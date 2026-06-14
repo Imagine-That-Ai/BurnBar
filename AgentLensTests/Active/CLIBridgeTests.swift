@@ -855,7 +855,7 @@ final class CLIBridgeTests: XCTestCase {
         let path = env["PATH"] ?? ""
         let entries = path.split(separator: ":").map(String.init)
 
-        XCTAssertTrue(entries.first == "/Users/test/.local/bin")
+        XCTAssertEqual(entries.first, "/Users/test/.local/bin")
         XCTAssertTrue(entries.contains("/opt/homebrew/bin"))
         XCTAssertTrue(entries.contains("/usr/local/bin"))
         XCTAssertTrue(entries.contains("/usr/bin"))
