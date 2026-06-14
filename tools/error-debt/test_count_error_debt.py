@@ -93,6 +93,15 @@ def main() -> int:
     # a `try?` living only in the trailing comment is still ignored.
     expect("slashes-in-string", count('let u = "https://x" // try? here'), (0, 0))
 
+    # The `try?` substring inside an identifier doing optional chaining is NOT a
+    # Swift `try?` and must not be counted (the original regex over-counted these).
+    expect("entry-optional-chain", count("auditEntryIndex: entry?.entryIndex,"), (0, 0))
+    expect("cacheentry-type", count("let conversation: CodexConversationCacheEntry?"), (0, 0))
+    expect("registry-optional-chain", count("foo.mediaControlStreamRegistry?.bar()"), (0, 0))
+    expect("retry-in-string", count('label.text = "Refresh failed — retry?"'), (0, 0))
+    # …but a real `try?` after an identifier-adjacent boundary still counts.
+    expect("real-try-after-paren", count("let x = (try? foo()) ?? d"), (1, 0))
+
     print("\nAll try? counter tests passed.")
     return 0
 

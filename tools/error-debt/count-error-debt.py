@@ -60,9 +60,12 @@ def count_empty_catches(repo_root: pathlib.Path) -> dict[str, int]:
     return {"total": count, "agent_lens": agent_lens, "daemon": daemon}
 
 
-# A `try?` occurrence, excluding the `try?-ok` justification token itself so a
-# tag comment can never inflate the count (negative lookahead on `-ok`).
-TRY_OPTIONAL_OCCURRENCE = re.compile(r"try\?(?!-ok)")
+# A `try?` occurrence: the Swift keyword `try` followed by `?`, NOT the `try?`
+# substring inside an identifier doing optional chaining (`entry?`, `registry?`,
+# `auditEntry?`, `CacheEntry?`, `retry?`). The leading word boundary excludes
+# those; the negative lookahead on `-ok` excludes the `try?-ok` justification
+# token so a tag comment can never inflate the count.
+TRY_OPTIONAL_OCCURRENCE = re.compile(r"\btry\?(?!-ok)")
 # The justification token that marks an intentional, reviewed best-effort
 # optionality. Written as `// try?-ok(<reason>)` on the same source line as the
 # `try?` (preferred) or on the line immediately above it.
