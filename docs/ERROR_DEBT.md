@@ -9,7 +9,7 @@ rule, which matches only a subset of empty catches.
 | Metric | Scope | Gate |
 |--------|-------|------|
 | Empty `catch {}` | `AgentLens/` + `OpenBurnBarDaemon/` | assert-zero; no baseline |
-| `try?` | `AgentLens/Services/` | `budgets/try-optional-baseline.json` |
+| `try?` | `AgentLens/` + `OpenBurnBarCore/Sources/` + `OpenBurnBarMobile/` + `OpenBurnBarDaemon/Sources/` (production Swift) | `budgets/try-optional-baseline.json` |
 
 ## Local workflow
 

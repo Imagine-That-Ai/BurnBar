@@ -60,23 +60,47 @@ def count_empty_catches(repo_root: pathlib.Path) -> dict[str, int]:
     return {"total": count, "agent_lens": agent_lens, "daemon": daemon}
 
 
-def count_try_optional_services(repo_root: pathlib.Path) -> dict[str, int]:
-    """Count try? occurrences under AgentLens/Services."""
-    services = repo_root / "AgentLens" / "Services"
+# Production Swift roots monitored for try? debt. Test targets live in sibling
+# *Tests directories (excluded below): try? in test scaffolding is expected and
+# not part of the production error-handling budget.
+TRY_OPTIONAL_ROOTS = (
+    "AgentLens",
+    "OpenBurnBarCore/Sources",
+    "OpenBurnBarMobile",
+    "OpenBurnBarDaemon/Sources",
+)
+
+
+def _is_test_path(rel: pathlib.Path) -> bool:
+    return any(part == "Tests" or part.endswith("Tests") for part in rel.parts)
+
+
+def count_try_optional(repo_root: pathlib.Path) -> dict[str, int]:
+    """Count try? occurrences across every production Swift root (excluding tests).
+
+    Reports a per-root breakdown so the baseline shows where the debt lives and
+    a regression names the offending area. CI fails on any increase to total.
+    """
+    by_root: dict[str, int] = {}
     total = 0
-    if not services.exists():
-        return {"total": 0}
 
-    for path in services.rglob("*.swift"):
-        if is_excluded_path(path.relative_to(repo_root)):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        total += len(re.findall(r"try\?", text))
+    for root in TRY_OPTIONAL_ROOTS:
+        base = repo_root / root
+        subtotal = 0
+        if base.exists():
+            for path in base.rglob("*.swift"):
+                rel = path.relative_to(repo_root)
+                if is_excluded_path(rel) or _is_test_path(rel):
+                    continue
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                subtotal += len(re.findall(r"try\?", text))
+        by_root[root.replace("/", "_")] = subtotal
+        total += subtotal
 
-    return {"total": total}
+    return {"total": total, "byRoot": by_root}
 
 
 def main() -> int:
@@ -95,7 +119,7 @@ def main() -> int:
     if args.metric in ("empty-catch", "all"):
         payload["emptyCatch"] = count_empty_catches(repo_root)
     if args.metric in ("try-optional", "all"):
-        payload["tryOptional"] = count_try_optional_services(repo_root)
+        payload["tryOptional"] = count_try_optional(repo_root)
 
     if args.format == "text":
         if "emptyCatch" in payload:

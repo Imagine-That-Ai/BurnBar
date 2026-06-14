@@ -113,7 +113,7 @@ task_detached_services="$(count_rg 'Task\.detached' "${repo_root}/AgentLens/Serv
 
 swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services" "${repo_root}/AgentLens/Services/DataStore")"
 
-try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
+try_optional_total="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 
 empty_catch_blocks="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric empty-catch --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).emptyCatch.total))")"
 
@@ -187,7 +187,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`@MainActor\` on I/O facades (listed set) | ${main_actor_io_services} | 4 | 0 |
 | Empty \`catch {}\` blocks (app + daemon) | ${empty_catch_blocks} | 0 | 0 |
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |
-| \`try?\` in \`AgentLens/Services/\` | ${try_optional_services} | ≤ 120 | ≤ 50 |
+| \`try?\` (all production Swift) | ${try_optional_total} | ≤ baseline | ≤ 800 |
 | Unsafe cast budget (\`budgets/unsafe-cast-baseline.json\`) | ${unsafe_cast_total} | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | ${top_four_total} | ≤ 5000 | ≤ 3500 |
 | \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |

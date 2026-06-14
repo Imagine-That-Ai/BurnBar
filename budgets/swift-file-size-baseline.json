@@ -1,0 +1,90 @@
+{
+  "target": 2000,
+  "total": 21,
+  "files": [
+    {
+      "path": "OpenBurnBarMobile/Views/Hermes/HermesTabView.swift",
+      "lines": 4585
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift",
+      "lines": 4516
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/ProjectsView.swift",
+      "lines": 4388
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView.swift",
+      "lines": 3926
+    },
+    {
+      "path": "AgentLens/Views/Settings/ProviderPlanWizardView.swift",
+      "lines": 3766
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Hermes/HermesSettingsView.swift",
+      "lines": 3656
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
+      "lines": 3059
+    },
+    {
+      "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
+      "lines": 3003
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift",
+      "lines": 2799
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
+      "lines": 2590
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
+      "lines": 2576
+    },
+    {
+      "path": "AgentLens/Views/Chat/ChatSessionController.swift",
+      "lines": 2546
+    },
+    {
+      "path": "AgentLens/Views/Settings/ConnectionsSettingsView.swift",
+      "lines": 2419
+    },
+    {
+      "path": "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift",
+      "lines": 2381
+    },
+    {
+      "path": "AgentLens/Views/Settings/CloudStoreSettingsView.swift",
+      "lines": 2352
+    },
+    {
+      "path": "AgentLens/Services/UsageAggregatorParsers.swift",
+      "lines": 2209
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift",
+      "lines": 2206
+    },
+    {
+      "path": "AgentLens/Services/Media/MercuryRouter.swift",
+      "lines": 2188
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Streams/StreamsView.swift",
+      "lines": 2174
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/DatabaseWorkspaceView.swift",
+      "lines": 2119
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/IntelligenceBriefView.swift",
+      "lines": 2067
+    }
+  ]
+}

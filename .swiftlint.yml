@@ -184,7 +184,11 @@ type_body_length:
   warning: 4700
   error: 5000
 
-# Ratchet: max measured file 5,914 lines (347 files over the previous 500).
+# Coarse absolute ceiling only. The REAL shrink-only constraint on file bloat is
+# the count+size ratchet in budgets/swift-file-size-baseline.json (target 2000
+# lines), enforced merge-blocking by scripts/debt/check-swift-file-size-budget.sh:
+# no new file may cross the target and no baselined file may grow. Lower these
+# thresholds toward the target as the giant views are decomposed (Phase 3).
 file_length:
   warning: 6000
   error: 6500

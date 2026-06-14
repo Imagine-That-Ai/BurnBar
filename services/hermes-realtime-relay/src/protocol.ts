@@ -1,6 +1,17 @@
-export const PROTOCOL_VERSION = 1;
-export const REALTIME_CAPABILITY = "realtime_relay";
-export const DEFAULT_MAX_FRAME_BYTES = 512 * 1024;
+import {
+  HERMES_MAX_FRAME_BYTES,
+  HERMES_PROTOCOL_VERSION,
+  HERMES_REALTIME_CAPABILITY,
+  RELAY_ACCEPTED_FRAME_TYPES,
+  type RelayAcceptedFrameType,
+} from "./generated/wireProtocol.js";
+
+// Protocol version, capability, and the frame ceiling are single-sourced from
+// the canonical wire-protocol spec (packages/hermes-wire-protocol/protocol.json)
+// via the generated module, so they can never drift from the iOS/Android apps.
+export const PROTOCOL_VERSION = HERMES_PROTOCOL_VERSION;
+export const REALTIME_CAPABILITY = HERMES_REALTIME_CAPABILITY;
+export const DEFAULT_MAX_FRAME_BYTES = HERMES_MAX_FRAME_BYTES;
 export const MAX_RELAY_ERROR_LENGTH = 2_048;
 export const MAX_RELAY_CAPABILITIES = 32;
 export const MAX_RELAY_CAPABILITY_LENGTH = 64;
@@ -33,16 +44,11 @@ export function normalizeRuntime(value: unknown): HermesRelayRuntime {
     : DEFAULT_RELAY_RUNTIME;
 }
 
-export type HermesRealtimeFrameType =
-  | "host.register"
-  | "host.ready"
-  | "request.start"
-  | "request.cancel"
-  | "response.chunk"
-  | "response.complete"
-  | "response.error"
-  | "ping"
-  | "pong";
+// The relay validates and multiplexes exactly the relay-accepted subset of the
+// protocol; the other 32 frame types are peer-to-peer over iroh and never reach
+// this relay. The subset comes from the generated wire-protocol module so it can
+// never silently fall behind the apps' full frame set.
+export type HermesRealtimeFrameType = RelayAcceptedFrameType;
 
 export interface HermesRealtimePayload {
   operation?: HermesRelayOperation;
@@ -71,17 +77,7 @@ export interface HermesRealtimeFrame {
   payload?: HermesRealtimePayload;
 }
 
-const FRAME_TYPES = new Set<string>([
-  "host.register",
-  "host.ready",
-  "request.start",
-  "request.cancel",
-  "response.chunk",
-  "response.complete",
-  "response.error",
-  "ping",
-  "pong",
-]);
+const FRAME_TYPES = new Set<string>(RELAY_ACCEPTED_FRAME_TYPES);
 
 const RELAY_OPERATIONS = new Set<string>([
   "chatCompletions",

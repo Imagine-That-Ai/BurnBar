@@ -34,6 +34,17 @@ test("configures TLS for rediss Redis URLs with a PEM CA", () => {
   });
 });
 
+test("verifies revoked Firebase ID tokens by default", () => {
+  // Security default: a revoked/disabled-user token must not hold a live socket.
+  assert.equal(loadRelayConfig({}).verifyRevokedIdTokens, true);
+});
+
+test("allows disabling revoked-token verification only via explicit env", () => {
+  assert.equal(loadRelayConfig({ VERIFY_REVOKED_ID_TOKENS: "false" }).verifyRevokedIdTokens, false);
+  assert.equal(loadRelayConfig({ VERIFY_REVOKED_ID_TOKENS: "0" }).verifyRevokedIdTokens, false);
+  assert.equal(loadRelayConfig({ VERIFY_REVOKED_ID_TOKENS: "true" }).verifyRevokedIdTokens, true);
+});
+
 test("accepts base64 encoded Redis CA material for secret managers", () => {
   const config = loadRelayConfig({
     REDIS_URL: "rediss://10.1.2.3:6378",

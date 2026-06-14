@@ -11,6 +11,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import type { IrohTransportAuditEventDoc, IrohTransportDailyRollupDoc } from "./types.js";
 import { numberField, recordField, stringField } from "./guards.js";
+import { forEachInPages } from "./rollupPagination.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const IROH_ROLLUP_SCHEMA_VERSION = 1;
@@ -198,13 +199,19 @@ export async function buildAndPersistIrohDailyRollup(
   generatedAt: Date = new Date(),
 ): Promise<IrohTransportDailyRollupDoc> {
   const window = utcDayWindow(day);
-  const snapshot = await db
+  const query = db
     .collectionGroup(IROH_AUDIT_COLLECTION)
     .where("observedAt", ">=", window.start.toISOString())
-    .where("observedAt", "<", window.end.toISOString())
-    .get();
+    .where("observedAt", "<", window.end.toISOString());
 
-  const events = snapshot.docs.map(eventFromSnapshot).filter((event): event is IrohAuditRollupInput => event !== null);
+  // Stream the day in bounded pages so a high-volume day cannot OOM the rollup.
+  const events: IrohAuditRollupInput[] = [];
+  await forEachInPages(query, "observedAt", (doc) => {
+    const event = eventFromSnapshot(doc);
+    if (event !== null) {
+      events.push(event);
+    }
+  });
   const rollup = summarizeIrohAuditEvents(events, window, generatedAt);
 
   await db.collection(IROH_ROLLUP_COLLECTION).doc(rollup.id).set(rollup, { merge: true });
@@ -217,6 +224,8 @@ export const rollupIrohTransportDaily = onSchedule(
     schedule: "15 8 * * *",
     timeZone: "Etc/UTC",
     region: FUNCTIONS_REGION,
+    memory: "1GiB",
+    timeoutSeconds: 540,
   },
   async (_event) => {
     await buildAndPersistIrohDailyRollup(getFirestore());

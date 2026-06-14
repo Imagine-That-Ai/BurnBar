@@ -1,6 +1,12 @@
 {
-  "total": 808,
-  "scope": "AgentLens/Services",
-  "generatedAt": "2026-06-12T23:52:38Z",
-  "note": "try? occurrences in AgentLens/Services. CI fails on increase."
+  "total": 1743,
+  "scope": "AgentLens + OpenBurnBarCore/Sources + OpenBurnBarMobile + OpenBurnBarDaemon/Sources (production Swift, tests excluded)",
+  "byRoot": {
+    "AgentLens": 999,
+    "OpenBurnBarCore_Sources": 220,
+    "OpenBurnBarMobile": 379,
+    "OpenBurnBarDaemon_Sources": 145
+  },
+  "generatedAt": "2026-06-14T15:34:09Z",
+  "note": "try? occurrences across all production Swift roots. CI fails on any increase to total; ratchet down only."
 }

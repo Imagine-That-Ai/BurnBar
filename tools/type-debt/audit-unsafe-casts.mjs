@@ -12,7 +12,7 @@ const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".c
 const SWIFT_EXTENSIONS = new Set([".swift"]);
 const KOTLIN_EXTENSIONS = new Set([".kt", ".kts"]);
 const GENERATED_FILE_PATTERNS = [/\.generated\.(swift|ts|tsx|js|jsx|kt|kts)$/i, /Generated\.(swift|ts|tsx|js|jsx|kt|kts)$/i];
-const EXCLUDED_SEGMENTS = new Set([".build", ".derived-data", ".git", ".next", ".turbo", ".venv", ".vscode-test", "Carthage", "DerivedData", "Generated", "Pods", "build", "coverage", "dist", "lib", "node_modules", "uniffi"]);
+const EXCLUDED_SEGMENTS = new Set([".build", ".derived-data", ".git", ".next", ".turbo", ".venv", ".vscode-test", "Carthage", "DerivedData", "Generated", "generated", "Pods", "build", "coverage", "dist", "lib", "node_modules", "uniffi"]);
 const EXCLUDED_PREFIXES = [
   ".firebase/",
   ".swiftpm/",

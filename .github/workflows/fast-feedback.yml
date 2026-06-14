@@ -349,6 +349,28 @@ jobs:
       - name: Data-domain registry (codegen + drift)
         run: cd packages/data-domains && node codegen.mjs && node driftcheck.mjs && node --test
 
+      # Hermes/iroh wire protocol: ONE canonical protocol.json -> generated TS
+      # (consumed by the relay) + Swift/Kotlin/Rust references, plus a parity gate
+      # that fails if any hand-written language surface drifts from canon. This is
+      # the contract iOS + Android + macOS all encode/decode, so a silent interop
+      # break here (a renamed wire string, a changed ALPN or frame cap) would
+      # otherwise ship green to all three apps.
+      - name: Hermes wire protocol (codegen drift + parity + tests)
+        run: |
+          # Tracked-file guard: a PR that DELETES a generated file must fail too.
+          git ls-files --error-unmatch \
+            services/hermes-realtime-relay/src/generated/wireProtocol.ts \
+            packages/hermes-wire-protocol/gen/HermesWireProtocol.swift \
+            packages/hermes-wire-protocol/gen/HermesWireProtocol.kt \
+            packages/hermes-wire-protocol/gen/wire_protocol.rs
+          node packages/hermes-wire-protocol/codegen.mjs
+          git diff --exit-code -- \
+            services/hermes-realtime-relay/src/generated/wireProtocol.ts \
+            packages/hermes-wire-protocol/gen \
+            || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
+          node packages/hermes-wire-protocol/parity.mjs
+          node --test packages/hermes-wire-protocol/protocol.test.mjs
+
       # DTCG tokens build to CSS/Swift/Kotlin and stay one source of truth.
       - name: Design tokens (Style Dictionary build + tests)
         run: |
@@ -475,9 +497,13 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
         with:
-          toolchain: stable
+          # Match crates/openburnbar-iroh/rust-toolchain.toml so fmt/clippy/test
+          # run under the same rustc the crate is pinned to (and its components
+          # resolve). The crate's rust-toolchain.toml otherwise overrides `stable`
+          # mid-job and the requested components would be missing.
+          toolchain: "1.96.0"
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -493,6 +519,12 @@ jobs:
             -D warnings \
             -D clippy::unwrap_used \
             -D clippy::expect_used
+
+      - name: cargo test — iroh loopback handshake (openburnbar-iroh)
+        # Merge-blocking validation of the SHIPPING iroh transport: a hermetic
+        # two-endpoint loopback ALPN handshake + length-prefixed frame round-trip.
+        # Fails on ALPN drift, length-prefix changes, or handshake regressions.
+        run: cd crates/openburnbar-iroh && cargo test --test loopback_handshake
 
       - name: Install cargo-deny
         run: |
@@ -630,6 +662,90 @@ jobs:
       - name: Check no unjustified suppressions or baselines
         run: bash scripts/ci/check-no-suppressions.sh
 
+  # ── Functions critical correctness (money + compliance; merge-blocking) ─────
+  # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
+  # allowance, and account-deletion harnesses guard revenue and compliance. They
+  # ran only in the post-merge/nightly aggregate; this blocks merges on them.
+  # Each is self-contained (no emulator/secrets) and exits non-zero on a regression.
+  functions-correctness:
+    name: Functions (money + compliance harnesses)
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Build Signal envelope contracts
+        run: bash scripts/build-signal-envelope-contracts.sh
+
+      - name: Build entitlements contracts
+        run: bash scripts/build-entitlements.sh
+
+      - name: Build functions
+        run: npm run build --prefix functions
+
+      - name: App Store JWS verifier regression
+        working-directory: functions
+        run: node scripts/test-appstore.mjs
+
+      - name: Billing / tier rollups
+        working-directory: functions
+        run: node scripts/test-rollups.mjs
+
+      - name: Tier COGS
+        working-directory: functions
+        run: node scripts/test-tier-cogs.mjs
+
+      - name: Cloud Pro allowance
+        working-directory: functions
+        run: node scripts/test-cloud-pro-allowance.mjs
+
+      - name: Account deletion
+        working-directory: functions
+        run: node scripts/test-account-deletion.mjs
+
+  # ── Debt-budget ratchets (shrink-only; merge-blocking) ──────────────────────
+  # These ratchets only move DOWN. A PR that adds a new try? / empty catch /
+  # unsafe cast / @unchecked Sendable / Rust panic, or a new oversized Swift file,
+  # fails HERE at merge time — not a day later in the post-merge harness. Pure
+  # bash + python3 + node; no Swift/Rust toolchain needed.
+  debt-budgets:
+    name: Debt budgets (shrink-only ratchets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: try? debt budget
+        run: ./scripts/debt/check-try-optional-budget.sh
+
+      - name: empty catch debt budget
+        run: ./scripts/debt/check-empty-catch-budget.sh
+
+      - name: unsafe cast debt budget
+        run: ./scripts/debt/check-unsafe-cast-budget.sh
+
+      - name: unchecked Sendable debt budget
+        run: ./scripts/debt/check-unchecked-sendable-budget.sh
+
+      - name: Rust panic debt budget (unwrap/expect)
+        run: ./scripts/debt/check-rust-panic-budget.sh
+
+      - name: Swift file-size debt budget (shrink-only)
+        run: ./scripts/debt/check-swift-file-size-budget.sh
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate
@@ -653,6 +769,8 @@ jobs:
       - signal-honesty-copy
       - services-fast
       - no-suppressions
+      - debt-budgets
+      - functions-correctness
     runs-on: ubuntu-latest
     if: always()
     steps:

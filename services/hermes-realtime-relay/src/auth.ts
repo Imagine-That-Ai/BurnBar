@@ -12,22 +12,40 @@ export interface AuthResult {
   entitlementSource: "firestore" | "cache";
 }
 
+/**
+ * The only part of an incoming request the relay auth path reads. Narrowing to
+ * this (instead of the full node:http IncomingMessage) keeps the contract honest
+ * and lets callers — including tests — pass a plain `{ headers }` with no cast.
+ */
+export type RelayRequest = Pick<IncomingMessage, "headers">;
+
+/**
+ * Verifies a Firebase ID token. `checkRevoked` is threaded straight through to
+ * the Firebase Admin SDK so that revoked/disabled-user tokens are rejected.
+ * Injectable so the revoked-token rejection path can be exercised in unit tests
+ * without a live Firebase project; production uses the default below.
+ */
+export type IdTokenVerifier = (token: string, checkRevoked: boolean) => Promise<{ uid: string }>;
+
 export interface AuthOptions {
   enforceAppCheck: boolean;
   verifyRevokedIdTokens: boolean;
   entitlementVerifier: EntitlementVerifier;
   allowedAppIDs: string[];
+  idTokenVerifier?: IdTokenVerifier;
 }
 
 export async function authenticateRequest(
-  req: IncomingMessage,
+  req: RelayRequest,
   options: AuthOptions
 ): Promise<AuthResult> {
   const role = relayRole(req);
   const authorization = req.headers.authorization;
   const match = typeof authorization === "string" ? authorization.match(/^Bearer\s+(.+)$/i) : null;
   if (!match) {throw new RelayHttpError(401, "missing_firebase_token", "Missing Firebase ID token.");}
-  const decoded = await getAuth().verifyIdToken(match[1], options.verifyRevokedIdTokens);
+  const verifyIdToken: IdTokenVerifier =
+    options.idTokenVerifier ?? ((token, checkRevoked) => getAuth().verifyIdToken(token, checkRevoked));
+  const decoded = await verifyIdToken(match[1], options.verifyRevokedIdTokens);
 
   let appID: string | undefined;
   if (options.enforceAppCheck) {
@@ -51,7 +69,7 @@ export async function authenticateRequest(
   };
 }
 
-function relayRole(req: IncomingMessage): HermesRelaySocketRole {
+function relayRole(req: RelayRequest): HermesRelaySocketRole {
   const raw = req.headers["x-openburnbar-relay-role"];
   const role = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (role === "host" || role === "client") {
