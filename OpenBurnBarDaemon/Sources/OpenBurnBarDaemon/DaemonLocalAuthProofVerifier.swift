@@ -199,31 +199,28 @@ public struct DaemonLocalAuthProofVerifier: Sendable {
 /// restart re-pins keys per session. A future iteration can back this with a
 /// persisted store (as the app does via `PhoneControlConsumedProofStore`) without
 /// changing the verifier contract.
-public final class DaemonConsumedLocalAuthProofLedger: @unchecked Sendable {
-    private let lock = NSLock()
-    private var consumed: [String: Date] = [:]
+public final class DaemonConsumedLocalAuthProofLedger: Sendable {
+    // `Locked` box (OpenBurnBarCore) instead of a hand-rolled `NSLock` + `var`,
+    // so the class is genuinely `Sendable` (compiler-verified) rather than
+    // `@unchecked`. State is a `Sendable` `[String: Date]`; all access is under
+    // the lock. Behaviour is identical: prune-then-check-and-insert on `consume`.
+    private let consumed = Locked<[String: Date]>([:])
 
     public init() {}
 
     /// Returns `true` when `proofId` was newly recorded (NOT a replay).
     public func consume(proofId: String, expiresAt: Date, now: Date = Date()) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        pruneExpired(now: now)
-        if consumed[proofId] != nil {
-            return false
+        consumed.withLock { state in
+            state = state.filter { $0.value > now }
+            if state[proofId] != nil {
+                return false
+            }
+            state[proofId] = expiresAt
+            return true
         }
-        consumed[proofId] = expiresAt
-        return true
     }
 
     public func isConsumed(proofId: String) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return consumed[proofId] != nil
-    }
-
-    private func pruneExpired(now: Date) {
-        consumed = consumed.filter { $0.value > now }
+        consumed.withLock { $0[proofId] != nil }
     }
 }

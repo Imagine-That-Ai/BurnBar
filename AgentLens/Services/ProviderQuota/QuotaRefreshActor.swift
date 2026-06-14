@@ -165,7 +165,6 @@ actor QuotaRefreshActor {
             fileManager: fileManager,
             snapshotStore: snapshotStore
         )
-        let claudeBridgeStatus = bridgeManager.refreshClaudeBridgeStatus()
 
         let keyStore = self.keyStore
         let runtimeKeyStore = self.providerRuntimeKeyStore
@@ -194,7 +193,6 @@ actor QuotaRefreshActor {
             mimoTokenPlanRegion: plan.mimoTokenPlanRegion,
             mimoTokenPlanTier: plan.mimoTokenPlanTier,
             mimoTokenPlanBillingCycle: plan.mimoTokenPlanBillingCycle,
-            claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexCacheBox.read(),
             updateCodexRolloutScanCache: { [codexCacheBox, snapshotStore] cache, didChange in
                 codexCacheBox.write(cache)

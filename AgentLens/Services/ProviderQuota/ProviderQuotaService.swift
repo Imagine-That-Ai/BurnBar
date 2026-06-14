@@ -1086,7 +1086,6 @@ final class ProviderQuotaService {
             mimoTokenPlanRegion: mimoTokenPlanRegionProvider(),
             mimoTokenPlanTier: mimoTokenPlanTierProvider(),
             mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycleProvider(),
-            claudeBridgeStatus: claudeBridgeStatus,
             codexRolloutScanCache: codexRolloutScanCacheBox.read(),
             updateCodexRolloutScanCache: { [codexCacheBox = codexRolloutScanCacheBox, store = snapshotStore] cache, didChange in
                 codexCacheBox.write(cache)
