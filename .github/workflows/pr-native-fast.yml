@@ -193,17 +193,76 @@ jobs:
       - name: Fail if committed project.pbxproj drifted from project.yml
         run: |
           set -euo pipefail
-          if ! git diff --exit-code OpenBurnBar.xcodeproj/project.pbxproj; then
-            {
-              echo "::error file=OpenBurnBar.xcodeproj/project.pbxproj::project.pbxproj is stale."
-              echo "The committed OpenBurnBar.xcodeproj/project.pbxproj does not match the"
-              echo "output of \`xcodegen generate --spec project.yml\`. Run"
-              echo "\`xcodegen generate --spec project.yml\` locally and commit the result so"
-              echo "no source/test file is silently dropped from the build."
-            } >&2
-            exit 1
+          if git diff --quiet OpenBurnBar.xcodeproj/project.pbxproj; then
+            echo "project.pbxproj is in sync with project.yml."
+            exit 0
           fi
-          echo "project.pbxproj is in sync with project.yml."
+
+          # XcodeGen can churn XCSwiftPackageProductDependency TEMP_<uuid>
+          # identifiers across versions/runner installs. Those IDs are internal
+          # references only, and because the section is keyed by those IDs, its
+          # order churns too. Normalize UUIDs everywhere else and compare that
+          # package-product section by sorted productName multiset, so the gate
+          # still catches missing source/test files and real package product
+          # changes like the test-file drop that motivated this workflow.
+          git show HEAD:OpenBurnBar.xcodeproj/project.pbxproj > /tmp/committed.pbxproj
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          temp_id = re.compile(
+              r"TEMP_[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+              r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+          )
+          product_name = re.compile(r"productName = ([^;]+);")
+
+          def normalize(path: str) -> str:
+              out: list[str] = []
+              product_section: list[str] = []
+              in_product_section = False
+              for line in Path(path).read_text().splitlines():
+                  if "/* Begin XCSwiftPackageProductDependency section */" in line:
+                      out.append(line)
+                      product_section = []
+                      in_product_section = True
+                      continue
+                  if "/* End XCSwiftPackageProductDependency section */" in line and in_product_section:
+                      names = []
+                      for section_line in product_section:
+                          match = product_name.search(section_line)
+                          if match:
+                              names.append(match.group(1))
+                      for name in sorted(names):
+                          out.append(f"\t\t/* normalized XCSwiftPackageProductDependency */ productName = {name};")
+                      out.append(line)
+                      in_product_section = False
+                      continue
+                  if in_product_section:
+                      product_section.append(line)
+                      continue
+                  out.append(temp_id.sub("TEMP_NORMALIZED", line))
+              return "\n".join(out) + "\n"
+
+          Path("/tmp/committed.normalized.pbxproj").write_text(normalize("/tmp/committed.pbxproj"))
+          Path("/tmp/generated.normalized.pbxproj").write_text(
+              normalize("OpenBurnBar.xcodeproj/project.pbxproj")
+          )
+          PY
+
+          if diff -u /tmp/committed.normalized.pbxproj /tmp/generated.normalized.pbxproj; then
+            echo "project.pbxproj differs only by XcodeGen TEMP_<uuid> package-product identifiers."
+            exit 0
+          fi
+
+          git diff -- OpenBurnBar.xcodeproj/project.pbxproj
+          {
+            echo "::error file=OpenBurnBar.xcodeproj/project.pbxproj::project.pbxproj is stale."
+            echo "The committed OpenBurnBar.xcodeproj/project.pbxproj does not match the"
+            echo "output of \`xcodegen generate --spec project.yml\`. Run"
+            echo "\`xcodegen generate --spec project.yml\` locally and commit the result so"
+            echo "no source/test file is silently dropped from the build."
+          } >&2
+          exit 1
 
   # ── Aggregate gate ─────────────────────────────────────────────────────────
   # Single required status. Passes when the native jobs succeed OR when they
