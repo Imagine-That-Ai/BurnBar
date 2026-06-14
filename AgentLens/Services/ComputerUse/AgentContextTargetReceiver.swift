@@ -207,12 +207,20 @@ final class AgentContextTargetReceiver: Sendable {
                 windowTitle: snapshot?.title
             )
 
-            if let entry = try? logger.makeEntry(
-                for: action,
-                approvedBy: .phone,
-                scopeContext: scopeContext
-            ) {
-                _ = try? logger.append(entry)
+            do {
+                let entry = try logger.makeEntry(
+                    for: action,
+                    approvedBy: .phone,
+                    scopeContext: scopeContext
+                )
+                try logger.append(entry)
+            } catch {
+                // A dropped phone-intent entry is a gap in the tamper-evident
+                // audit chain — surface it instead of swallowing.
+                AppLogger.chat.error(
+                    "computer_use_phone_intent_audit_entry_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
             }
         }
 
