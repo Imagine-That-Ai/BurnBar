@@ -112,10 +112,7 @@ internal val LocalLiquidGlassBackdrop =
  * and the adapters use their flat translucent fallback.
  */
 @Composable
-fun LiquidGlassGroup(
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit,
-) {
+fun LiquidGlassGroup(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val state = remember { LiquidGlassBackdropState() }
         state.layer = rememberGraphicsLayer()
@@ -159,19 +156,18 @@ fun Modifier.liquidGlassBackdrop(): Modifier {
  */
 @Composable
 fun Modifier.liquidGlassSurface(
-    shape: Shape = RoundedCornerShape(AuroraRadius.lg.dp),
+    shape: Shape = RoundedCornerShape(AuroraRadius.LG.dp),
     wash: Color? = null,
     washBrush: Brush? = null,
     shadow: AuroraShadowSpec = AuroraShadows.none,
     isDark: Boolean = isSystemInDarkTheme(),
-): Modifier =
-    liquidGlassPlate(
-        shape = shape,
-        wash = wash,
-        washBrush = washBrush,
-        shadow = shadow,
-        isDark = isDark,
-    )
+): Modifier = liquidGlassPlate(
+    shape = shape,
+    wash = wash,
+    washBrush = washBrush,
+    shadow = shadow,
+    isDark = isDark,
+)
 
 /**
  * Glass for a tappable control. Pass `tint` only to convey meaning (primary
@@ -181,38 +177,29 @@ fun Modifier.liquidGlassSurface(
 @Composable
 fun Modifier.liquidGlassInteractive(
     tint: Color? = null,
-    shape: Shape = RoundedCornerShape(AuroraRadius.lg.dp),
+    shape: Shape = RoundedCornerShape(AuroraRadius.LG.dp),
     shadow: AuroraShadowSpec = AuroraShadows.none,
     isDark: Boolean = isSystemInDarkTheme(),
-): Modifier =
-    liquidGlassPlate(
-        shape = shape,
-        wash = tint?.copy(alpha = INTERACTIVE_TINT_ALPHA),
-        washBrush = null,
-        shadow = shadow,
-        isDark = isDark,
-    )
+): Modifier = liquidGlassPlate(
+    shape = shape,
+    wash = tint?.copy(alpha = INTERACTIVE_TINT_ALPHA),
+    washBrush = null,
+    shadow = shadow,
+    isDark = isDark,
+)
 
 /**
  * The recurring circular glass control used in toolbars and as floating
  * overlay buttons (close ✕, call controls, FAB discs).
  */
 @Composable
-fun Modifier.liquidGlassCircleButton(
-    diameter: Dp = CircleButtonDiameter,
-    tint: Color? = null,
-): Modifier = size(diameter).liquidGlassInteractive(tint = tint, shape = CircleShape)
+fun Modifier.liquidGlassCircleButton(diameter: Dp = CircleButtonDiameter, tint: Color? = null): Modifier =
+    size(diameter).liquidGlassInteractive(tint = tint, shape = CircleShape)
 
 // MARK: - Shared plate implementation
 
 @Composable
-private fun Modifier.liquidGlassPlate(
-    shape: Shape,
-    wash: Color?,
-    washBrush: Brush? = null,
-    shadow: AuroraShadowSpec,
-    isDark: Boolean,
-): Modifier {
+private fun Modifier.liquidGlassPlate(shape: Shape, wash: Color?, washBrush: Brush? = null, shadow: AuroraShadowSpec, isDark: Boolean): Modifier {
     val backdrop = LocalLiquidGlassBackdrop.current
     val withShadow =
         if (shadow.elevation > 0.dp) {
@@ -253,17 +240,16 @@ private fun baseFill(isDark: Boolean, sampled: Boolean): Color {
     }
 }
 
-private fun sheenBrush(isDark: Boolean): Brush =
-    Brush.verticalGradient(
-        colors =
-        listOf(
-            Color.White.copy(alpha = if (isDark) DARK_SHEEN_TOP_ALPHA else LIGHT_SHEEN_TOP_ALPHA),
-            Color.Transparent,
-            AuroraColors.blaze.copy(
-                alpha = if (isDark) DARK_SHEEN_BOTTOM_ALPHA else LIGHT_SHEEN_BOTTOM_ALPHA,
-            ),
+private fun sheenBrush(isDark: Boolean): Brush = Brush.verticalGradient(
+    colors =
+    listOf(
+        Color.White.copy(alpha = if (isDark) DARK_SHEEN_TOP_ALPHA else LIGHT_SHEEN_TOP_ALPHA),
+        Color.Transparent,
+        AuroraColors.blaze.copy(
+            alpha = if (isDark) DARK_SHEEN_BOTTOM_ALPHA else LIGHT_SHEEN_BOTTOM_ALPHA,
         ),
-    )
+    ),
+)
 
 // MARK: - Backdrop sampling (API 31+)
 
@@ -277,11 +263,7 @@ private fun Modifier.liquidGlassBackdropSample(state: LiquidGlassBackdropState?)
         .drawBehind { drawBlurredBackdrop(state, blurLayer, positionInRoot) }
 }
 
-private fun DrawScope.drawBlurredBackdrop(
-    state: LiquidGlassBackdropState,
-    blurLayer: GraphicsLayer,
-    positionInRoot: Offset,
-) {
+private fun DrawScope.drawBlurredBackdrop(state: LiquidGlassBackdropState, blurLayer: GraphicsLayer, positionInRoot: Offset) {
     val source = state.layer ?: return
     // Draw-phase read: re-draws this plate whenever the backdrop re-records.
     if (state.frame < 0) return

@@ -49,7 +49,7 @@ fun FoilCTAButton(
     fillWidth: Boolean = true,
 ) {
     val reduceMotion = LocalAuroraReduceMotion.current
-    val shape = RoundedCornerShape(ProLayout.bandRadiusDp.dp)
+    val shape = RoundedCornerShape(ProLayout.BAND_RADIUS_DP.dp)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(targetValue = if (pressed) 0.98f else 1.0f, label = "ctaScale")
@@ -61,7 +61,7 @@ fun FoilCTAButton(
                 targetValue = 1f,
                 animationSpec =
                 infiniteRepeatable(
-                    animation = tween(ProMotion.mercuryShimmerDurationMs.toInt(), easing = LinearEasing),
+                    animation = tween(ProMotion.MERCURY_SHIMMER_DURATION_MS.toInt(), easing = LinearEasing),
                     repeatMode = RepeatMode.Restart,
                 ),
                 label = "ctaShimmerPhase",

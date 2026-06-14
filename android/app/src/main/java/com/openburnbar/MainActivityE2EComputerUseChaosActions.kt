@@ -32,13 +32,13 @@ internal object MainActivityE2EComputerUseChaosActions {
                 PhoneControlIntent(
                     kind = PhoneControlIntentKind.TAP,
                     normalizedX =
-                        MainActivityE2EConstants.COMPUTER_USE_TAP_ORIGIN_NORMALIZED +
-                            index % MainActivityE2EConstants.COMPUTER_USE_TAP_MODULO_X *
-                            MainActivityE2EConstants.COMPUTER_USE_TAP_OFFSET_STEP,
+                    MainActivityE2EConstants.COMPUTER_USE_TAP_ORIGIN_NORMALIZED +
+                        index % MainActivityE2EConstants.COMPUTER_USE_TAP_MODULO_X *
+                        MainActivityE2EConstants.COMPUTER_USE_TAP_OFFSET_STEP,
                     normalizedY =
-                        MainActivityE2EConstants.COMPUTER_USE_TAP_ORIGIN_NORMALIZED +
-                            index % MainActivityE2EConstants.COMPUTER_USE_TAP_MODULO_Y *
-                            MainActivityE2EConstants.COMPUTER_USE_TAP_OFFSET_STEP,
+                    MainActivityE2EConstants.COMPUTER_USE_TAP_ORIGIN_NORMALIZED +
+                        index % MainActivityE2EConstants.COMPUTER_USE_TAP_MODULO_Y *
+                        MainActivityE2EConstants.COMPUTER_USE_TAP_OFFSET_STEP,
                 ),
             )
         } else {
@@ -114,9 +114,9 @@ internal object MainActivityE2EComputerUseChaosActions {
         val tamperedIntent =
             signedIntent.copy(
                 normalizedX =
-                    MainActivityE2EConstants.COMPUTER_USE_TAMPER_OFFSET_BASE +
-                        index % MainActivityE2EConstants.COMPUTER_USE_TAMPER_MODULO *
-                        MainActivityE2EConstants.COMPUTER_USE_TAMPER_OFFSET_STEP,
+                MainActivityE2EConstants.COMPUTER_USE_TAMPER_OFFSET_BASE +
+                    index % MainActivityE2EConstants.COMPUTER_USE_TAMPER_MODULO *
+                    MainActivityE2EConstants.COMPUTER_USE_TAMPER_OFFSET_STEP,
             )
         val authority =
             PhoneControlSignerSign.sign(
@@ -145,26 +145,26 @@ internal object MainActivityE2EComputerUseChaosActions {
     }
 
     fun readBurstConfig(intent: Intent): BurstConfig = BurstConfig(
-            intentCount =
-                intent.getIntExtra(
-                    MainActivity.EXTRA_E2E_COMPUTER_USE_INTENT_COUNT,
-                    MainActivityE2EConstants.COMPUTER_USE_DEFAULT_INTENT_COUNT,
-                ).coerceIn(1, MainActivityE2EConstants.COMPUTER_USE_MAX_INTENT_COUNT),
-            intervalMillis =
-                intent.getLongExtra(
-                    MainActivity.EXTRA_E2E_COMPUTER_USE_INTENT_INTERVAL_MILLIS,
-                    MainActivityE2EConstants.COMPUTER_USE_DEFAULT_INTERVAL_MILLIS,
-                ).coerceIn(0L, MainActivityE2EConstants.COMPUTER_USE_MAX_INTERVAL_MILLIS),
-            sendPanic = intent.getBooleanExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_SEND_PANIC, true),
-            replayCount =
-                intent.getIntExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_REPLAY_COUNT, 0)
-                    .coerceIn(0, MainActivityE2EConstants.COMPUTER_USE_MAX_REPLAY_COUNT),
-            tamperCount =
-                intent.getIntExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_TAMPER_COUNT, 0)
-                    .coerceIn(0, MainActivityE2EConstants.COMPUTER_USE_MAX_TAMPER_COUNT),
-            tamperTimestampStepMillis =
-                intent.getLongExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_TAMPER_TIMESTAMP_STEP_MILLIS, 0L)
-                    .coerceIn(0L, MainActivityE2EConstants.COMPUTER_USE_MAX_TAMPER_TIMESTAMP_STEP_MILLIS),
+        intentCount =
+        intent.getIntExtra(
+            MainActivity.EXTRA_E2E_COMPUTER_USE_INTENT_COUNT,
+            MainActivityE2EConstants.COMPUTER_USE_DEFAULT_INTENT_COUNT,
+        ).coerceIn(1, MainActivityE2EConstants.COMPUTER_USE_MAX_INTENT_COUNT),
+        intervalMillis =
+        intent.getLongExtra(
+            MainActivity.EXTRA_E2E_COMPUTER_USE_INTENT_INTERVAL_MILLIS,
+            MainActivityE2EConstants.COMPUTER_USE_DEFAULT_INTERVAL_MILLIS,
+        ).coerceIn(0L, MainActivityE2EConstants.COMPUTER_USE_MAX_INTERVAL_MILLIS),
+        sendPanic = intent.getBooleanExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_SEND_PANIC, true),
+        replayCount =
+        intent.getIntExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_REPLAY_COUNT, 0)
+            .coerceIn(0, MainActivityE2EConstants.COMPUTER_USE_MAX_REPLAY_COUNT),
+        tamperCount =
+        intent.getIntExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_TAMPER_COUNT, 0)
+            .coerceIn(0, MainActivityE2EConstants.COMPUTER_USE_MAX_TAMPER_COUNT),
+        tamperTimestampStepMillis =
+        intent.getLongExtra(MainActivity.EXTRA_E2E_COMPUTER_USE_TAMPER_TIMESTAMP_STEP_MILLIS, 0L)
+            .coerceIn(0L, MainActivityE2EConstants.COMPUTER_USE_MAX_TAMPER_TIMESTAMP_STEP_MILLIS),
     )
 
     data class BurstConfig(
@@ -175,5 +175,4 @@ internal object MainActivityE2EComputerUseChaosActions {
         val tamperCount: Int,
         val tamperTimestampStepMillis: Long,
     )
-
 }

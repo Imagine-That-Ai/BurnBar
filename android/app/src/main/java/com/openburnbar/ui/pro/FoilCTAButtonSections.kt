@@ -65,12 +65,7 @@ internal fun FoilCTAShimmerLayer(shimmerPhase: Float, shape: RoundedCornerShape)
 }
 
 @Composable
-internal fun FoilCTAButtonRow(
-    title: String,
-    subtitle: String?,
-    icon: ImageVector,
-    isLoading: Boolean,
-) {
+internal fun FoilCTAButtonRow(title: String, subtitle: String?, icon: ImageVector, isLoading: Boolean) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =

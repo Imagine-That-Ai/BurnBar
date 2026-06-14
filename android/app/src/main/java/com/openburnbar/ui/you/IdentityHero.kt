@@ -15,14 +15,7 @@ import com.openburnbar.data.stores.CloudSyncHealth
 import com.openburnbar.ui.components.AuroraGlassCard
 
 @Composable
-fun IdentityHero(
-    displayName: String,
-    email: String?,
-    photoUrl: String?,
-    syncHealth: CloudSyncHealth,
-    connectionsCount: Int,
-    modifier: Modifier = Modifier,
-) {
+fun IdentityHero(displayName: String, email: String?, photoUrl: String?, syncHealth: CloudSyncHealth, connectionsCount: Int, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "halo")
     val haloRotation by infiniteTransition.animateFloat(
         initialValue = 0f,

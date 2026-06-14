@@ -31,17 +31,17 @@ fun ProjectDetailView(project: ProjectSummary, sessions: List<TokenUsage>, onSes
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(vertical = AuroraSpacing.md.dp)
-            .padding(bottom = AuroraSpacing.xxl.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(vertical = AuroraSpacing.MD.dp)
+            .padding(bottom = AuroraSpacing.XXL.dp),
     ) {
         ProjectDetailHeroCard(project = project)
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         ProjectDetailStatRow(project = project, sessions = sessions, topModels = topModels)
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         ProjectDetailTopModelsCard(topModels = topModels)
         if (topModels.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         }
         ProjectDetailSessionsCard(sessions = sessions, onSessionClick = onSessionClick)
     }

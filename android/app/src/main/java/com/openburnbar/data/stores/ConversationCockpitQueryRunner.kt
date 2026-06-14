@@ -147,13 +147,7 @@ internal class ConversationCockpitQueryRunner(
         )
     }
 
-    private fun openCockpitSealedText(
-        sealed: CloudVaultSealedText,
-        key: ByteArray,
-        uid: String,
-        rowId: String,
-        field: String,
-    ): String? {
+    private fun openCockpitSealedText(sealed: CloudVaultSealedText, key: ByteArray, uid: String, rowId: String, field: String): String? {
         return runCatching {
             CloudVaultCrypto.openText(
                 sealed,

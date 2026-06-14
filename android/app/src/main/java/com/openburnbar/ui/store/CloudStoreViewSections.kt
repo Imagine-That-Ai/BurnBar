@@ -419,12 +419,7 @@ internal fun CloudAuroraMemberCard(expirationDateMs: Long?, purchaseDateMs: Long
 }
 
 @Composable
-internal fun CloudAuroraMemberCardContent(
-    expirationDateMs: Long?,
-    purchaseDateMs: Long?,
-    onRestore: () -> Unit,
-    onShowBadgePicker: () -> Unit,
-) {
+internal fun CloudAuroraMemberCardContent(expirationDateMs: Long?, purchaseDateMs: Long?, onRestore: () -> Unit, onShowBadgePicker: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),

@@ -11,15 +11,32 @@ import kotlinx.serialization.Serializable
 sealed class InsightDataBinding {
     @Serializable data class Kpi(val metric: String, val window: InsightTimeWindow) : InsightDataBinding()
 
-    @Serializable data class TimeSeries(val metric: String, val dimension: InsightWidgetSpec.Dimension? = null, val window: InsightTimeWindow) : InsightDataBinding()
+    @Serializable
+    data class TimeSeries(
+        val metric: String,
+        val dimension: InsightWidgetSpec.Dimension? = null,
+        val window: InsightTimeWindow,
+    ) : InsightDataBinding()
 
-    @Serializable data class Ranking(val metric: String, val dimension: InsightWidgetSpec.Dimension, val limit: Int, val window: InsightTimeWindow) : InsightDataBinding()
+    @Serializable
+    data class Ranking(
+        val metric: String,
+        val dimension: InsightWidgetSpec.Dimension,
+        val limit: Int,
+        val window: InsightTimeWindow,
+    ) : InsightDataBinding()
 
     @Serializable data class Distribution(val metric: String, val dimension: InsightWidgetSpec.Dimension, val window: InsightTimeWindow) : InsightDataBinding()
 
     @Serializable data class Heatmap(val metric: String, val window: InsightTimeWindow) : InsightDataBinding()
 
-    @Serializable data class Scatter(val xMetric: String, val yMetric: String, val dimension: InsightWidgetSpec.Dimension, val window: InsightTimeWindow) : InsightDataBinding()
+    @Serializable
+    data class Scatter(
+        val xMetric: String,
+        val yMetric: String,
+        val dimension: InsightWidgetSpec.Dimension,
+        val window: InsightTimeWindow,
+    ) : InsightDataBinding()
 
     @Serializable data class Sankey(
         val source: InsightWidgetSpec.Dimension,

@@ -67,21 +67,20 @@ internal fun filterVisibleSnapshots(
     snapshots: List<ProviderQuotaSnapshot>,
     providerOrder: List<AgentProvider>,
     visibleProviders: Set<AgentProvider>,
-): List<ProviderQuotaSnapshot> =
-    snapshots
-        .filter { snapshot ->
-            val prov = AgentProvider.fromKey(snapshot.provider)
-            prov != null && prov in visibleProviders
-        }
-        .sortedWith { lhs, rhs ->
-            val lhsProv = AgentProvider.fromKey(lhs.provider)
-            val rhsProv = AgentProvider.fromKey(rhs.provider)
-            val lhsIdx = if (lhsProv != null) providerOrder.indexOf(lhsProv) else -1
-            val rhsIdx = if (rhsProv != null) providerOrder.indexOf(rhsProv) else -1
-            val lhsVal = if (lhsIdx >= 0) lhsIdx else Int.MAX_VALUE
-            val rhsVal = if (rhsIdx >= 0) rhsIdx else Int.MAX_VALUE
-            lhsVal.compareTo(rhsVal)
-        }
+): List<ProviderQuotaSnapshot> = snapshots
+    .filter { snapshot ->
+        val prov = AgentProvider.fromKey(snapshot.provider)
+        prov != null && prov in visibleProviders
+    }
+    .sortedWith { lhs, rhs ->
+        val lhsProv = AgentProvider.fromKey(lhs.provider)
+        val rhsProv = AgentProvider.fromKey(rhs.provider)
+        val lhsIdx = if (lhsProv != null) providerOrder.indexOf(lhsProv) else -1
+        val rhsIdx = if (rhsProv != null) providerOrder.indexOf(rhsProv) else -1
+        val lhsVal = if (lhsIdx >= 0) lhsIdx else Int.MAX_VALUE
+        val rhsVal = if (rhsIdx >= 0) rhsIdx else Int.MAX_VALUE
+        lhsVal.compareTo(rhsVal)
+    }
 
 @Composable
 internal fun rememberBurnViewStoreState(

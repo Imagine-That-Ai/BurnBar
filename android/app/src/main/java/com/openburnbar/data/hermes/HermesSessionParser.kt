@@ -133,15 +133,14 @@ private fun JSONObject.optTimestampMillis(vararg keys: String): Long? {
     return null
 }
 
-private fun timestampMillisFromRaw(raw: Any): Long? =
-    when (raw) {
-        is Number -> {
-            val n = raw.toLong()
-            if (n > TIMESTAMP_RAW_SECONDS_THRESHOLD_L) n else n * 1000L
-        }
-        is String -> {
-            val n = raw.toDoubleOrNull() ?: return null
-            if (n > TIMESTAMP_RAW_SECONDS_THRESHOLD_D) n.toLong() else (n * 1000).toLong()
-        }
-        else -> null
+private fun timestampMillisFromRaw(raw: Any): Long? = when (raw) {
+    is Number -> {
+        val n = raw.toLong()
+        if (n > TIMESTAMP_RAW_SECONDS_THRESHOLD_L) n else n * 1000L
     }
+    is String -> {
+        val n = raw.toDoubleOrNull() ?: return null
+        if (n > TIMESTAMP_RAW_SECONDS_THRESHOLD_D) n.toLong() else (n * 1000).toLong()
+    }
+    else -> null
+}

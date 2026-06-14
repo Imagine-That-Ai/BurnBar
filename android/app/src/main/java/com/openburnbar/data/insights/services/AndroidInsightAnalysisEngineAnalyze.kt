@@ -43,11 +43,7 @@ internal suspend fun resolveCachedAndroidInsightResult(
     return result
 }
 
-internal fun buildStartedAndroidAuditEntry(
-    request: InsightAnalysisRequest,
-    auditID: String,
-    startedAt: String,
-): InsightAnalysisAuditEntry {
+internal fun buildStartedAndroidAuditEntry(request: InsightAnalysisRequest, auditID: String, startedAt: String): InsightAnalysisAuditEntry {
     val timeWindow = request.currentCanvas?.filter?.window ?: InsightTimeWindow.Last7d
     return InsightAnalysisAuditEntry(
         id = auditID,
@@ -103,11 +99,7 @@ internal suspend fun completeAndroidInsightAnalysis(
     return result
 }
 
-internal suspend fun maybeStoreAndroidInsightCache(
-    cache: InsightAnalysisCacheRepository?,
-    request: InsightAnalysisRequest,
-    result: InsightAnalysisResult,
-) {
+internal suspend fun maybeStoreAndroidInsightCache(cache: InsightAnalysisCacheRepository?, request: InsightAnalysisRequest, result: InsightAnalysisResult) {
     val cacheKey =
         InsightAnalysisCacheRepository.key(
             prompt = request.prompt,

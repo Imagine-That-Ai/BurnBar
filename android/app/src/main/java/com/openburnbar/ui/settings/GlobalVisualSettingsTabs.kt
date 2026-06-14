@@ -6,18 +6,18 @@ import androidx.compose.runtime.mutableStateOf
 internal object GlobalVisualSettingsTabs {
     private const val KEY_PRIMARY_TABS = "primaryTabs"
     private const val KEY_SECONDARY_TABS = "secondaryTabs"
-    private const val defaultPrimaryTabs = "pulse,burn,insights,streams,agents"
-    private const val defaultSecondaryTabs = "you,providers,devices,settings"
+    private const val DEFAULT_PRIMARY_TABS = "pulse,burn,insights,streams,agents"
+    private const val DEFAULT_SECONDARY_TABS = "you,providers,devices,settings"
 
-    private val _primaryTabs = mutableStateOf(defaultPrimaryTabs)
-    private val _secondaryTabs = mutableStateOf(defaultSecondaryTabs)
+    private val _primaryTabs = mutableStateOf(DEFAULT_PRIMARY_TABS)
+    private val _secondaryTabs = mutableStateOf(DEFAULT_SECONDARY_TABS)
 
     val primaryTabs: State<String> get() = _primaryTabs
     val secondaryTabs: State<String> get() = _secondaryTabs
 
     fun loadFromPrefs(prefs: android.content.SharedPreferences) {
-        _primaryTabs.value = prefs.getString(KEY_PRIMARY_TABS, defaultPrimaryTabs) ?: defaultPrimaryTabs
-        _secondaryTabs.value = prefs.getString(KEY_SECONDARY_TABS, defaultSecondaryTabs) ?: defaultSecondaryTabs
+        _primaryTabs.value = prefs.getString(KEY_PRIMARY_TABS, DEFAULT_PRIMARY_TABS) ?: DEFAULT_PRIMARY_TABS
+        _secondaryTabs.value = prefs.getString(KEY_SECONDARY_TABS, DEFAULT_SECONDARY_TABS) ?: DEFAULT_SECONDARY_TABS
     }
 
     fun setPrimaryTabs(value: String) {

@@ -221,12 +221,11 @@ class DevicesStore(
     }
 
     companion object {
-        internal fun currentAndroidDeviceID(context: Context?): String? =
-            runCatching {
-                Settings.Secure.getString(
-                    context?.contentResolver ?: return@runCatching null,
-                    Settings.Secure.ANDROID_ID,
-                )
-            }.getOrNull()
+        internal fun currentAndroidDeviceID(context: Context?): String? = runCatching {
+            Settings.Secure.getString(
+                context?.contentResolver ?: return@runCatching null,
+                Settings.Secure.ANDROID_ID,
+            )
+        }.getOrNull()
     }
 }

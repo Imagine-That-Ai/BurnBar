@@ -34,7 +34,8 @@ class BweEstimator(
 
     data class Sample(
         val roundTripMillis: Int,
-        val packetLossRate: Double, // 0.0 ... 1.0
+        // 0.0 ... 1.0
+        val packetLossRate: Double,
         val observedBitsPerSecond: Int,
     )
 

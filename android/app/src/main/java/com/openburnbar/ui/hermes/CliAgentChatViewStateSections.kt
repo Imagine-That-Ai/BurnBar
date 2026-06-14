@@ -27,10 +27,10 @@ import com.openburnbar.data.assistants.CLIAgentRelayChatTransporting
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.CliRuntimeModelOption
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.data.text.TextExpansionSnippet
 import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.text.expandStaticTextSnippetDraft
 import com.openburnbar.ui.text.rememberTextExpansionSnippets
-import com.openburnbar.data.text.TextExpansionSnippet
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -220,10 +220,7 @@ internal fun rememberCliAgentChatState(
 }
 
 @Composable
-private fun rememberCliAgentThreadSlice(
-    runtime: AssistantRuntimeID,
-    historyStore: AssistantChatHistoryStore,
-): CliAgentThreadSlice {
+private fun rememberCliAgentThreadSlice(runtime: AssistantRuntimeID, historyStore: AssistantChatHistoryStore): CliAgentThreadSlice {
     val threads by historyStore.threads.collectAsState()
     var activeThreadID by rememberSaveable(runtime) {
         mutableStateOf(
@@ -268,10 +265,7 @@ private fun rememberCliAgentThreadSlice(
 }
 
 @Composable
-private fun rememberCliAgentCatalogSlice(
-    runtime: AssistantRuntimeID,
-    context: android.content.Context,
-): CliAgentCatalogSlice {
+private fun rememberCliAgentCatalogSlice(runtime: AssistantRuntimeID, context: android.content.Context): CliAgentCatalogSlice {
     var modelOptions by remember(runtime) { mutableStateOf<List<CliRuntimeModelOption>>(emptyList()) }
     var modelCatalogError by remember(runtime) { mutableStateOf<String?>(null) }
     var modelCatalogLoading by remember(runtime) { mutableStateOf(false) }
@@ -301,10 +295,7 @@ private fun rememberCliAgentCatalogSlice(
 }
 
 @Composable
-private fun rememberCliAgentPrefsSlice(
-    runtime: AssistantRuntimeID,
-    context: android.content.Context,
-): CliAgentPrefsSlice {
+private fun rememberCliAgentPrefsSlice(runtime: AssistantRuntimeID, context: android.content.Context): CliAgentPrefsSlice {
     var presentationMode by rememberSaveable(runtime) {
         mutableStateOf(preferredCliPresentationMode(context, runtime))
     }
@@ -361,10 +352,7 @@ private fun wireCliAgentChatLifecycle(
 private data class CliAgentAttachmentLaunchers(val pickPhoto: () -> Unit, val pickFile: () -> Unit)
 
 @Composable
-private fun rememberCliAgentAttachmentLaunchers(
-    context: android.content.Context,
-    thread: CliAgentThreadSlice,
-): CliAgentAttachmentLaunchers {
+private fun rememberCliAgentAttachmentLaunchers(context: android.content.Context, thread: CliAgentThreadSlice): CliAgentAttachmentLaunchers {
     val pickPhotoLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             uri?.let {
@@ -394,30 +382,29 @@ private fun rememberCliAgentSendDispatcher(
     catalog: CliAgentCatalogSlice,
     prefs: CliAgentPrefsSlice,
     sendDeps: CliSendMessageDeps,
-): (String, List<AssistantChatAttachment>) -> Unit =
-    remember(runtime, thread, catalog, prefs, sendDeps) {
-        { text, attachments ->
-            sendCliAgentMessage(
-                text = text,
-                attachments = attachments,
-                runtime = runtime,
-                selectedModelID = catalog.selectedModel?.modelID,
-                presentationMode = prefs.presentationMode,
-                threadID = thread.activeThreadID,
-                deps = sendDeps,
-                onPending = { id, msgID, job ->
-                    thread.setPendingRequestID(id)
-                    thread.setStreamingMessageID(msgID)
-                    thread.setObserverJob(job)
-                },
-                onStreamComplete = {
-                    thread.setPendingRequestID(null)
-                    thread.setStreamingMessageID(null)
-                    thread.setStagedAttachments(emptyList())
-                },
-            )
-        }
+): (String, List<AssistantChatAttachment>) -> Unit = remember(runtime, thread, catalog, prefs, sendDeps) {
+    { text, attachments ->
+        sendCliAgentMessage(
+            text = text,
+            attachments = attachments,
+            runtime = runtime,
+            selectedModelID = catalog.selectedModel?.modelID,
+            presentationMode = prefs.presentationMode,
+            threadID = thread.activeThreadID,
+            deps = sendDeps,
+            onPending = { id, msgID, job ->
+                thread.setPendingRequestID(id)
+                thread.setStreamingMessageID(msgID)
+                thread.setObserverJob(job)
+            },
+            onStreamComplete = {
+                thread.setPendingRequestID(null)
+                thread.setStreamingMessageID(null)
+                thread.setStagedAttachments(emptyList())
+            },
+        )
     }
+}
 
 private fun buildCliAgentChatActions(
     context: android.content.Context,
@@ -480,39 +467,38 @@ private fun buildCliAgentCatalogActions(
     scope: CoroutineScope,
     catalog: CliAgentCatalogSlice,
     relayChatTransport: CLIAgentRelayChatTransporting,
-): CliAgentCatalogActions =
-    CliAgentCatalogActions(
-        onShowModelPicker = { catalog.setShowModelPicker(true) },
-        onDismissModelPicker = { catalog.setShowModelPicker(false) },
-        onRefreshModelCatalog = {
-            scope.launch {
-                refreshCliModelCatalog(
-                    params =
-                    CliModelCatalogRefreshParams(
-                        runtime = runtime,
-                        relayChatTransport = relayChatTransport,
-                        selectedModelID = catalog.selectedModelID,
-                        context = context,
-                        onLoading = catalog.setModelCatalogLoading,
-                        onError = catalog.setModelCatalogError,
-                        onOptions = catalog.setModelOptions,
-                        onSelectedModelID = catalog.setSelectedModelID,
-                    ),
-                )
-            }
-        },
-        onClearModelSelection = {
-            setPreferredCliModelID(context, runtime, null)
-            catalog.setSelectedModelID(null)
-            catalog.setShowModelPicker(false)
-        },
-        onSelectModel = { option ->
-            val modelID = option.modelID.trim().takeIf { it.isNotEmpty() }
-            setPreferredCliModelID(context, runtime, modelID)
-            catalog.setSelectedModelID(modelID)
-            catalog.setShowModelPicker(false)
-        },
-    )
+): CliAgentCatalogActions = CliAgentCatalogActions(
+    onShowModelPicker = { catalog.setShowModelPicker(true) },
+    onDismissModelPicker = { catalog.setShowModelPicker(false) },
+    onRefreshModelCatalog = {
+        scope.launch {
+            refreshCliModelCatalog(
+                params =
+                CliModelCatalogRefreshParams(
+                    runtime = runtime,
+                    relayChatTransport = relayChatTransport,
+                    selectedModelID = catalog.selectedModelID,
+                    context = context,
+                    onLoading = catalog.setModelCatalogLoading,
+                    onError = catalog.setModelCatalogError,
+                    onOptions = catalog.setModelOptions,
+                    onSelectedModelID = catalog.setSelectedModelID,
+                ),
+            )
+        }
+    },
+    onClearModelSelection = {
+        setPreferredCliModelID(context, runtime, null)
+        catalog.setSelectedModelID(null)
+        catalog.setShowModelPicker(false)
+    },
+    onSelectModel = { option ->
+        val modelID = option.modelID.trim().takeIf { it.isNotEmpty() }
+        setPreferredCliModelID(context, runtime, modelID)
+        catalog.setSelectedModelID(modelID)
+        catalog.setShowModelPicker(false)
+    },
+)
 
 private data class CliAgentThreadActions(
     val onDraftChange: (String) -> Unit,
@@ -535,45 +521,44 @@ private fun buildCliAgentThreadActions(
     thread: CliAgentThreadSlice,
     prefs: CliAgentPrefsSlice,
     dispatchSend: (String, List<AssistantChatAttachment>) -> Unit,
-): CliAgentThreadActions =
-    CliAgentThreadActions(
-        onDraftChange = { thread.setDraft(expandStaticTextSnippetDraft(it, textExpansionSnippets)) },
-        onPresentationModeChange = { mode ->
-            prefs.setPresentationMode(mode)
-            setPreferredCliPresentationMode(context, runtime, mode)
-        },
-        onStartFreshThread = {
-            thread.setStagedAttachments(emptyList())
+): CliAgentThreadActions = CliAgentThreadActions(
+    onDraftChange = { thread.setDraft(expandStaticTextSnippetDraft(it, textExpansionSnippets)) },
+    onPresentationModeChange = { mode ->
+        prefs.setPresentationMode(mode)
+        setPreferredCliPresentationMode(context, runtime, mode)
+    },
+    onStartFreshThread = {
+        thread.setStagedAttachments(emptyList())
+        thread.setDraft("")
+        thread.cancelObserver()
+        thread.setPendingRequestID(null)
+        thread.setStreamingMessageID(null)
+        if (thread.activeThread.messages.isNotEmpty()) {
+            thread.setActiveThreadID(createThread(historyStore, runtime).id)
+        }
+    },
+    onToggleViewMode = {
+        val next = if (prefs.chatViewMode == ChatViewMode.AGENT) ChatViewMode.CLI else ChatViewMode.AGENT
+        prefs.setChatViewMode(next)
+        context.getSharedPreferences("chat", 0).edit().putString("viewMode", next.key).apply()
+    },
+    onShowPermissionSheet = { thread.setShowPermissionSheet(true) },
+    onDismissPermissionSheet = { thread.setShowPermissionSheet(false) },
+    onRemoveAttachment = { id ->
+        thread.setStagedAttachments(thread.stagedAttachments.filterNot { it.id == id })
+    },
+    onSend = {
+        val text = thread.draft.trim()
+        if (text.isNotEmpty() || thread.stagedAttachments.isNotEmpty()) {
+            val pending = thread.stagedAttachments
             thread.setDraft("")
-            thread.cancelObserver()
-            thread.setPendingRequestID(null)
-            thread.setStreamingMessageID(null)
-            if (thread.activeThread.messages.isNotEmpty()) {
-                thread.setActiveThreadID(createThread(historyStore, runtime).id)
-            }
-        },
-        onToggleViewMode = {
-            val next = if (prefs.chatViewMode == ChatViewMode.AGENT) ChatViewMode.CLI else ChatViewMode.AGENT
-            prefs.setChatViewMode(next)
-            context.getSharedPreferences("chat", 0).edit().putString("viewMode", next.key).apply()
-        },
-        onShowPermissionSheet = { thread.setShowPermissionSheet(true) },
-        onDismissPermissionSheet = { thread.setShowPermissionSheet(false) },
-        onRemoveAttachment = { id ->
-            thread.setStagedAttachments(thread.stagedAttachments.filterNot { it.id == id })
-        },
-        onSend = {
-            val text = thread.draft.trim()
-            if (text.isNotEmpty() || thread.stagedAttachments.isNotEmpty()) {
-                val pending = thread.stagedAttachments
-                thread.setDraft("")
-                focusManager.clearFocus()
-                dispatchSend(text.ifEmpty { "[attachments]" }, pending)
-                thread.setStagedAttachments(emptyList())
-            }
-        },
-        onQuickPrompt = { prompt -> dispatchSend(prompt, thread.stagedAttachments) },
-    )
+            focusManager.clearFocus()
+            dispatchSend(text.ifEmpty { "[attachments]" }, pending)
+            thread.setStagedAttachments(emptyList())
+        }
+    },
+    onQuickPrompt = { prompt -> dispatchSend(prompt, thread.stagedAttachments) },
+)
 
 @Composable
 internal fun CliAgentChatLifecycleEffects(args: CliAgentChatLifecycleArgs) {

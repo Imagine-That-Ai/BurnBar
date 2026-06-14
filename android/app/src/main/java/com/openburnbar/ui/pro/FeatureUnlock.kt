@@ -123,12 +123,7 @@ private fun UnlockBulletList(bullets: List<String>, tier: CloudTier) {
 }
 
 @Composable
-private fun UnlockFooter(
-    tier: CloudTier,
-    livePrice: String?,
-    onUnlock: () -> Unit,
-    onMaybeLater: (() -> Unit)?,
-) {
+private fun UnlockFooter(tier: CloudTier, livePrice: String?, onUnlock: () -> Unit, onMaybeLater: (() -> Unit)?) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -173,13 +168,7 @@ private fun UnlockFooter(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeatureUnlockSheet(
-    feature: GatedFeature,
-    show: Boolean,
-    onUnlock: () -> Unit,
-    onDismiss: () -> Unit,
-    livePrice: String? = null,
-) {
+fun FeatureUnlockSheet(feature: GatedFeature, show: Boolean, onUnlock: () -> Unit, onDismiss: () -> Unit, livePrice: String? = null) {
     if (!show) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(

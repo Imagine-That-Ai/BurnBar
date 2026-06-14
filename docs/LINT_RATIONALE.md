@@ -77,10 +77,6 @@ budgets/try-optional-baseline.json
 budgets/unchecked-sendable-baseline.json
 budgets/unsafe-cast-baseline.json
 
-# --- Generated ktlint baselines: plan D7 burn-down (ktlintFormat + delete) ---
-android/app/config/ktlint/baseline.xml
-android/openburnbar-iroh-relay/config/ktlint/baseline.xml
-
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable
 website/src/scripts/dotConstellation.ts | ts-suppress

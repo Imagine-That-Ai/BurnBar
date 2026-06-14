@@ -151,7 +151,8 @@ data class AgentRecentStats(
     val threadCount: Int = 0,
     val missionCount: Int = 0,
     val burnUSD: Double = 0.0,
-    val successRate: Double = 0.0, // 0…1
+    // 0…1
+    val successRate: Double = 0.0,
     val medianRoundtripSeconds: Double? = null,
     val windowDays: Int = 7,
 ) {

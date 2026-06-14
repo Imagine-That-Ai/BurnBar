@@ -1,6 +1,7 @@
 package com.openburnbar.data.insights.services
 
 import com.openburnbar.data.insights.InsightAnalysisContext
+import com.openburnbar.data.insights.InsightAnalysisPlatform
 import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightAnomaly
@@ -15,16 +16,11 @@ import com.openburnbar.data.insights.InsightSeverity
 import com.openburnbar.data.insights.InsightTimeWindow
 import com.openburnbar.data.insights.InsightTokenUsage
 import com.openburnbar.data.insights.InsightWidgetKind
-import com.openburnbar.data.insights.InsightAnalysisPlatform
 import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal fun decodeInsightAnalysisResultJson(
-    content: String,
-    request: InsightAnalysisRequest,
-    usage: InsightTokenUsage?,
-): InsightAnalysisResult {
+internal fun decodeInsightAnalysisResultJson(content: String, request: InsightAnalysisRequest, usage: InsightTokenUsage?): InsightAnalysisResult {
     val root = extractInsightJsonObject(content)
     val resolver = InsightCitationResolver(request.context)
     val citations = root.optJSONArray("citations").toInsightCitationRefs().map { resolver.resolve(it) }
@@ -122,19 +118,18 @@ private fun decodeInsightGeneratedWidgets(
     request: InsightAnalysisRequest,
     recommendations: List<InsightRecommendation>,
     resolver: InsightCitationResolver,
-): List<InsightGeneratedWidget> =
-    root.optJSONArray("generatedWidgets").toInsightJsonObjects()
-        .take(request.maxGeneratedWidgets)
-        .map { obj ->
-            decodeInsightGeneratedWidget(
-                kind = insightJsonWidgetKind(obj.optString("kind")),
-                title = obj.optString("title", "Generated widget"),
-                reason = obj.optString("reason", ""),
-                citations = obj.optJSONArray("citations").toInsightCitationRefs().map { resolver.resolve(it) },
-                modelTag = request.selectedModel,
-                recommendation = recommendations.firstOrNull(),
-            )
-        }
+): List<InsightGeneratedWidget> = root.optJSONArray("generatedWidgets").toInsightJsonObjects()
+    .take(request.maxGeneratedWidgets)
+    .map { obj ->
+        decodeInsightGeneratedWidget(
+            kind = insightJsonWidgetKind(obj.optString("kind")),
+            title = obj.optString("title", "Generated widget"),
+            reason = obj.optString("reason", ""),
+            citations = obj.optJSONArray("citations").toInsightCitationRefs().map { resolver.resolve(it) },
+            modelTag = request.selectedModel,
+            recommendation = recommendations.firstOrNull(),
+        )
+    }
 
 private fun decodeInsightFollowUpQuestions(root: JSONObject): List<InsightFollowUpQuestion> =
     root.optJSONArray("followUpQuestions").toInsightJsonObjects().map { obj ->
@@ -349,16 +344,24 @@ private fun insightJsonDefaultBinding(kind: InsightWidgetKind): com.openburnbar.
 
 private fun insightJsonDefaultSpec(kind: InsightWidgetKind): com.openburnbar.data.insights.InsightWidgetSpec = when (kind) {
     InsightWidgetKind.BAR_RANKING -> com.openburnbar.data.insights.InsightWidgetSpec.Ranking(com.openburnbar.data.insights.InsightWidgetSpec.RankingSpec())
-    InsightWidgetKind.TIME_SERIES_LINE -> com.openburnbar.data.insights.InsightWidgetSpec.TimeSeries(com.openburnbar.data.insights.InsightWidgetSpec.TimeSeriesSpec())
+    InsightWidgetKind.TIME_SERIES_LINE -> com.openburnbar.data.insights.InsightWidgetSpec.TimeSeries(
+        com.openburnbar.data.insights.InsightWidgetSpec.TimeSeriesSpec(),
+    )
     InsightWidgetKind.TIME_SERIES_AREA ->
         com.openburnbar.data.insights.InsightWidgetSpec.TimeSeries(
             com.openburnbar.data.insights.InsightWidgetSpec.TimeSeriesSpec(
                 style = com.openburnbar.data.insights.InsightWidgetSpec.TimeSeriesSpec.Style.AREA,
             ),
         )
-    InsightWidgetKind.QUOTA_PULSE -> com.openburnbar.data.insights.InsightWidgetSpec.QuotaPulse(com.openburnbar.data.insights.InsightWidgetSpec.QuotaPulseSpec())
-    InsightWidgetKind.ANOMALY_TABLE -> com.openburnbar.data.insights.InsightWidgetSpec.AnomalyTable(com.openburnbar.data.insights.InsightWidgetSpec.AnomalyTableSpec())
-    InsightWidgetKind.RECOMMENDATION -> com.openburnbar.data.insights.InsightWidgetSpec.Recommendation(com.openburnbar.data.insights.InsightWidgetSpec.RecommendationSpec())
+    InsightWidgetKind.QUOTA_PULSE -> com.openburnbar.data.insights.InsightWidgetSpec.QuotaPulse(
+        com.openburnbar.data.insights.InsightWidgetSpec.QuotaPulseSpec(),
+    )
+    InsightWidgetKind.ANOMALY_TABLE -> com.openburnbar.data.insights.InsightWidgetSpec.AnomalyTable(
+        com.openburnbar.data.insights.InsightWidgetSpec.AnomalyTableSpec(),
+    )
+    InsightWidgetKind.RECOMMENDATION -> com.openburnbar.data.insights.InsightWidgetSpec.Recommendation(
+        com.openburnbar.data.insights.InsightWidgetSpec.RecommendationSpec(),
+    )
     else -> com.openburnbar.data.insights.InsightWidgetSpec.Narrative(com.openburnbar.data.insights.InsightWidgetSpec.NarrativeSpec())
 }
 

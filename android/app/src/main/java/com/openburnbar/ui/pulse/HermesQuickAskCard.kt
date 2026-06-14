@@ -2,7 +2,6 @@
 
 package com.openburnbar.ui.pulse
 
-import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -14,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraRadius
@@ -27,16 +27,16 @@ fun HermesQuickAskCard(service: HermesService, suggestedPrompts: List<String>, o
     var inputFocused by remember { mutableStateOf(false) }
 
     AuroraGlassCard(
-        modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
-        cornerRadius = AuroraRadius.xl,
+        modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
+        cornerRadius = AuroraRadius.XL,
     ) {
         Column {
             HermesQuickAskHeader(isConnected = isConnected, onOpenHermes = onOpenHermes)
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
             HermesQuickAskThreadPreview(recent = messages.takeLast(3))
-            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
             HermesQuickAskDivider()
-            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
             HermesQuickAskInputRow(
                 input = input,
                 inputFocused = inputFocused,
@@ -47,7 +47,7 @@ fun HermesQuickAskCard(service: HermesService, suggestedPrompts: List<String>, o
                 },
             )
             if (input.isEmpty() && suggestedPrompts.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+                Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
                 HermesQuickAskPromptRail(
                     suggestedPrompts = suggestedPrompts,
                     onPromptSelected = { service.sendMessage(it) },

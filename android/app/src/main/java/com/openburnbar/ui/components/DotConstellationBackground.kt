@@ -214,14 +214,7 @@ private class ConstellationField(
     }
 
     /** Renders the active logo for this frame via [paint] (center, radius, colour). */
-    fun draw(
-        size: Size,
-        nowNanos: Long,
-        reduceMotion: Boolean,
-        sparkle: Boolean,
-        isDark: Boolean,
-        paint: (Offset, Float, Color) -> Unit,
-    ) {
+    fun draw(size: Size, nowNanos: Long, reduceMotion: Boolean, sparkle: Boolean, isDark: Boolean, paint: (Offset, Float, Color) -> Unit) {
         if (size.width <= 0f || size.height <= 0f || logos.isEmpty()) return
         if (startNanos == 0L) startNanos = nowNanos
 
@@ -307,21 +300,20 @@ private class ConstellationField(
      * thread-safe (no shared mutable state); always called OFF the main thread by
      * [prewarm] / [prefetchNext]. An empty list means "decoded but unusable".
      */
-    private fun computeSample(index: Int): List<ConstellationDot> =
-        try {
-            val bitmap = BitmapFactory.decodeResource(context.resources, logos[index].resId)
-            if (bitmap == null) {
-                emptyList()
-            } else {
-                try {
-                    sampleBitmap(bitmap)
-                } finally {
-                    bitmap.recycle()
-                }
-            }
-        } catch (_: Throwable) {
+    private fun computeSample(index: Int): List<ConstellationDot> = try {
+        val bitmap = BitmapFactory.decodeResource(context.resources, logos[index].resId)
+        if (bitmap == null) {
             emptyList()
+        } else {
+            try {
+                sampleBitmap(bitmap)
+            } finally {
+                bitmap.recycle()
+            }
         }
+    } catch (_: Throwable) {
+        emptyList()
+    }
 
     /**
      * Samples a logo bitmap into coloured dots — same approach as the swarm engine:
@@ -350,7 +342,10 @@ private class ConstellationField(
             source,
             null,
             android.graphics.RectF(left, top, left + drawW.toFloat(), top + drawH.toFloat()),
-            android.graphics.Paint().apply { isAntiAlias = true; isFilterBitmap = true },
+            android.graphics.Paint().apply {
+                isAntiAlias = true
+                isFilterBitmap = true
+            },
         )
 
         val pixels = IntArray(side * side)

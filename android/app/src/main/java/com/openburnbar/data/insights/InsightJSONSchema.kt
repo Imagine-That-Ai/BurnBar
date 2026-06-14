@@ -3,7 +3,7 @@ package com.openburnbar.data.insights
 /**
  * JSON Schema (Draft 2020-12) for the structured `InsightAnalysisResult`.
  *
- * Mirrors `InsightJSONSchema.analysisResultSchemaV1` in
+ * Mirrors `InsightJSONSchema.ANALYSIS_RESULT_SCHEMA_V1` in
  * `OpenBurnBarCore/.../InsightJSONSchema.swift` and
  * `functions/src/insightAnalysis.ts`.
  *
@@ -13,7 +13,7 @@ package com.openburnbar.data.insights
  * widgets.
  */
 object InsightJSONSchema {
-    const val analysisResultSchemaV1: String = """
+    const val ANALYSIS_RESULT_SCHEMA_V1: String = """
     {
       "${"$"}schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",

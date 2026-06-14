@@ -30,11 +30,7 @@ internal object HostedQuotaBillingSupport {
         else -> "UNKNOWN_$statusCode"
     }
 
-    suspend fun queryProductDetails(
-        billingClient: BillingClient,
-        productType: String,
-        productIDs: List<String>,
-    ): Map<String, ProductDetails> {
+    suspend fun queryProductDetails(billingClient: BillingClient, productType: String, productIDs: List<String>): Map<String, ProductDetails> {
         if (productIDs.isEmpty()) return emptyMap()
         val params =
             QueryProductDetailsParams.newBuilder()

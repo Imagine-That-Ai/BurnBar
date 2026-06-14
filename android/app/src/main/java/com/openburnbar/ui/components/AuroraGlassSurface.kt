@@ -20,9 +20,9 @@ import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraShadowSpec
 import com.openburnbar.ui.theme.AuroraShadows
 
-private const val DefaultGlassFrostDp = 12f
-private const val MinimumGlassFrostStrength = 0.75f
-private const val MaximumGlassFrostStrength = 1.25f
+private const val DEFAULT_GLASS_FROST_DP = 12f
+private const val MINIMUM_GLASS_FROST_STRENGTH = 0.75f
+private const val MAXIMUM_GLASS_FROST_STRENGTH = 1.25f
 
 /**
  * Aurora glass surface — translucent fill + brand-tinted sheen + edge-gradient
@@ -46,7 +46,7 @@ private const val MaximumGlassFrostStrength = 1.25f
  * to wrap content inside this modifier — the shadow and stroke draw outside of
  * its bounds while the blur applies to anything drawn inside.
  *
- * @param cornerRadius corner radius for the surface; defaults to AuroraRadius.lg
+ * @param cornerRadius corner radius for the surface; defaults to AuroraRadius.LG
  * @param blurRadiusDp perceived frost strength. Android Compose cannot blur
  * the backdrop here without blurring content, so the value modulates fill
  * density around the default 12dp baseline.
@@ -57,7 +57,7 @@ private const val MaximumGlassFrostStrength = 1.25f
  */
 @Composable
 fun Modifier.auroraGlass(
-    cornerRadius: Dp = AuroraRadius.lg.dp,
+    cornerRadius: Dp = AuroraRadius.LG.dp,
     blurRadiusDp: Float = 12f,
     tintAlpha: Float = 0.48f,
     shadow: AuroraShadowSpec = AuroraShadows.medium,
@@ -65,8 +65,8 @@ fun Modifier.auroraGlass(
 ): Modifier {
     val shape = RoundedCornerShape(cornerRadius)
     val frostStrength =
-        (blurRadiusDp / DefaultGlassFrostDp)
-            .coerceIn(MinimumGlassFrostStrength, MaximumGlassFrostStrength)
+        (blurRadiusDp / DEFAULT_GLASS_FROST_DP)
+            .coerceIn(MINIMUM_GLASS_FROST_STRENGTH, MAXIMUM_GLASS_FROST_STRENGTH)
     val effectiveTintAlpha = (tintAlpha * frostStrength).coerceIn(0f, 1f)
 
     // Frosted fill that stays glass-like regardless of theme. In dark mode
@@ -122,7 +122,7 @@ fun Modifier.auroraGlass(
 @Composable
 fun AuroraGlassBox(
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = AuroraRadius.lg.dp,
+    cornerRadius: Dp = AuroraRadius.LG.dp,
     shadow: AuroraShadowSpec = AuroraShadows.medium,
     isDark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
