@@ -1,7 +1,7 @@
 {
-  "loc": 2702,
-  "exportedInterfaces": 258,
+  "loc": 2708,
+  "exportedInterfaces": 259,
   "fileCount": 191,
   "generatedAt": "2026-06-14T04:40:00.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3226 -> 2702 on 2026-06-14 after Swarm 6 knip unexports + unsafe-cast cleanup. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
+  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3226 -> 2702 on 2026-06-14 after Swarm 6 knip unexports + unsafe-cast cleanup. 2702 -> 2708: added the local PageableQuery<Doc> pagination helper (rollupPagination.ts) that makes forEachInPages cast-free and type-safe for the bounded daily ops rollups; it is a local structural helper, not a TypeSpec-able shared schema. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
 }

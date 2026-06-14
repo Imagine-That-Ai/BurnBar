@@ -35,13 +35,13 @@ if [[ -z "$RESULTS_JSON" ]]; then
 fi
 [[ -n "$RESULTS_JSON" ]] || { echo "FAIL: could not read test results from $XCRESULT" >&2; exit 1; }
 
-printf '%s' "$RESULTS_JSON" | MIN="$MIN" MODE="$MODE" python3 - "$XCRESULT" <<'PY'
+RESULTS_JSON="$RESULTS_JSON" MIN="$MIN" MODE="$MODE" python3 - "$XCRESULT" <<'PY'
 import json, os, sys
 
 xcresult = sys.argv[1]
 min_total = int(os.environ["MIN"])
 mode = os.environ["MODE"]
-data = json.load(sys.stdin)
+data = json.loads(os.environ["RESULTS_JSON"])
 
 if mode == "summary":
     # Xcode 16+: { "totalTestCount": N, "passedTests": .., "failedTests": .., ... }

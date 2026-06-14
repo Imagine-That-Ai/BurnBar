@@ -10,14 +10,15 @@
  * size rather than the day's event count.
  */
 
-/** Documents per page for daily-rollup collectionGroup scans. */
-export const ROLLUP_PAGE_SIZE = 2000;
+/** Documents per page for daily-rollup collectionGroup scans (internal default). */
+const ROLLUP_PAGE_SIZE = 2000;
 
 /**
  * The minimal paging surface `forEachInPages` needs. A Firestore
  * `Query<DocumentData>` satisfies it structurally (with `Doc` =
- * `QueryDocumentSnapshot<DocumentData>`), and a unit-test fake can implement it
- * directly — so neither production nor tests need an `as`-cast.
+ * `QueryDocumentSnapshot<DocumentData>`), and a unit-test fake implements it
+ * directly — so neither production nor tests need an `as`-cast. Exported so the
+ * generic param type infers cleanly for callers and the test can `implement` it.
  */
 export interface PageableQuery<Doc> {
   orderBy(field: string): PageableQuery<Doc>;
