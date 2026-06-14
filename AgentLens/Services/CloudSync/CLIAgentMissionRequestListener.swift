@@ -711,7 +711,7 @@ final class CLIAgentMissionRequestListener {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     self?.attachIfPossible()
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: 3_000_000_000) // try?-ok(cancellation only)
                 }
             }
         }
@@ -1193,7 +1193,7 @@ final class CLIAgentMissionRequestListener {
                     backend: backend
                 )
             }
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
         }
 
         if cancellationTracker.isCancelled {
@@ -1928,6 +1928,7 @@ final class CLIAgentMissionRequestListener {
                         output += finalChunk
                         _ = streamMirror.consumeStdout(finalChunk, eventSink: eventSink)
                     }
+                    // try?-ok(sidecar read fallback)
                     let rawStatus = (try? String(contentsOf: exitURL, encoding: .utf8))
                         ?? "1"
                     let status = Int(rawStatus.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
@@ -2099,7 +2100,7 @@ final class CLIAgentMissionRequestListener {
                     let killTask = Process()
                     killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
                     killTask.arguments = ["-c", killScript]
-                    try? killTask.run()
+                    try? killTask.run() // try?-ok(fire-and-forget kill)
                     killTask.waitUntilExit()
 
                     process.terminate()
@@ -2128,7 +2129,7 @@ final class CLIAgentMissionRequestListener {
                 let killTask = Process()
                 killTask.executableURL = URL(fileURLWithPath: "/bin/zsh")
                 killTask.arguments = ["-c", killScript]
-                try? killTask.run()
+                try? killTask.run() // try?-ok(fire-and-forget kill)
                 killTask.waitUntilExit()
 
                 process.terminate()
@@ -2240,9 +2241,10 @@ final class CLIAgentMissionRequestListener {
         offset: inout UInt64
     ) -> String {
         guard FileManager.default.fileExists(atPath: logURL.path),
+              // try?-ok(sidecar log read)
               let handle = try? FileHandle(forReadingFrom: logURL)
         else { return "" }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
         do {
             try handle.seek(toOffset: offset)
             let data = try handle.readToEnd() ?? Data()
@@ -2254,6 +2256,7 @@ final class CLIAgentMissionRequestListener {
     }
 
     private nonisolated static func killVisibleTerminalSession(pidURL: URL) {
+        // try?-ok(sidecar pid read)
         guard let rawPID = try? String(contentsOf: pidURL, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines),
               let pid = Int32(rawPID),
@@ -2272,7 +2275,7 @@ final class CLIAgentMissionRequestListener {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", killScript]
-        try? process.run()
+        try? process.run() // try?-ok(fire-and-forget kill)
         process.waitUntilExit()
     }
 
@@ -2466,6 +2469,7 @@ private final class DirectCLIStreamMirror: @unchecked Sendable {
     private func parseJSONLine(_ line: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
         guard line.first == "{",
               let data = line.data(using: .utf8),
+              // try?-ok(optional jsonline parse)
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = object["type"] as? String
         else { return nil }
@@ -2773,7 +2777,7 @@ final class AgentHarnessImportJobListener {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     self?.attachIfPossible()
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: 3_000_000_000) // try?-ok(cancellation only)
                 }
             }
         }
