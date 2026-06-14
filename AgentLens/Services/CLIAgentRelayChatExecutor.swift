@@ -198,45 +198,46 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         return executable
     }
 
+    /// Blocking `Process` work runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`), so callers leave the main actor at
+    /// the `await` (SE-0338); cancellation propagates from the awaiting task.
     private func run(
         executable: String,
         arguments: [String],
         timeoutSeconds: TimeInterval
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-            process.standardInput = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.standardInput = FileHandle.nullDevice
 
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            try process.run()
-            let deadline = Date().addingTimeInterval(timeoutSeconds)
-            while process.isRunning && Date() < deadline {
-                try await Task.sleep(nanoseconds: 50_000_000)
-            }
-            if process.isRunning {
-                process.terminate()
-                throw CLIRuntimeModelCatalogDiscoveryError.timeout(URL(fileURLWithPath: executable).lastPathComponent)
-            }
+        try process.run()
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while process.isRunning && Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        if process.isRunning {
+            process.terminate()
+            throw CLIRuntimeModelCatalogDiscoveryError.timeout(URL(fileURLWithPath: executable).lastPathComponent)
+        }
 
-            let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            guard process.terminationStatus == 0 else {
-                throw CLIRuntimeModelCatalogDiscoveryError.processFailed(
-                    URL(fileURLWithPath: executable).lastPathComponent,
-                    Int(process.terminationStatus),
-                    errorOutput.nonEmpty ?? output
-                )
-            }
-            return output
-        }.value
+        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            throw CLIRuntimeModelCatalogDiscoveryError.processFailed(
+                URL(fileURLWithPath: executable).lastPathComponent,
+                Int(process.terminationStatus),
+                errorOutput.nonEmpty ?? output
+            )
+        }
+        return output
     }
 }
 

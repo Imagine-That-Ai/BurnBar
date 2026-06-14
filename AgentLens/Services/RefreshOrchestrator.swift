@@ -120,19 +120,19 @@ actor RefreshOrchestrator {
             dataStoreActor: actor,
             usageAPIService: usageAPIService,
             allParsedUsages: allUsages,
-            persistAndReload: { [dataStore] newRecords in
+            // `@Sendable` makes these closures nonisolated, so `reconcile`
+            // (itself `nonisolated`) runs the blocking GRDB work on the
+            // cooperative pool — off this actor and off the main actor (SE-0338)
+            // — without an unstructured detached task.
+            persistAndReload: { @Sendable [dataStore] newRecords in
                 let innerStore = dataStore.actor.usageStore
-                return try await Task.detached(priority: .utility) {
-                    try innerStore.insert(newRecords)
-                    return try innerStore.fetchAllUsage()
-                }.value
+                try innerStore.insert(newRecords)
+                return try innerStore.fetchAllUsage()
             },
-            deleteAndReload: { [dataStore] sessionIDPrefix in
+            deleteAndReload: { @Sendable [dataStore] sessionIDPrefix in
                 let innerStore = dataStore.actor.usageStore
-                return try await Task.detached(priority: .utility) {
-                    try innerStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
-                    return try innerStore.fetchAllUsage()
-                }.value
+                try innerStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
+                return try innerStore.fetchAllUsage()
             }
         )
 

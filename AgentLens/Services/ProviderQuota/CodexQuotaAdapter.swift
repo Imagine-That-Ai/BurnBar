@@ -14,13 +14,13 @@ struct CodexQuotaAdapter: ProviderQuotaAdapter {
 
         let freshnessCutoff = Date().addingTimeInterval(-CodexQuotaScanPolicy.freshnessWindow)
         let existingCache = context.codexRolloutScanCache
-        let scanResult = try await Task.detached(priority: .utility) {
-            try CodexRolloutScanner.scanCodexRateLimitEvents(
-                in: candidateDirectories,
-                freshnessCutoff: freshnessCutoff,
-                existingCache: existingCache
-            )
-        }.value
+        // `fetch` is a `nonisolated` `async` method, so the blocking rollout scan
+        // runs off the main actor (SE-0338) without an extra detached task.
+        let scanResult = try CodexRolloutScanner.scanCodexRateLimitEvents(
+            in: candidateDirectories,
+            freshnessCutoff: freshnessCutoff,
+            existingCache: existingCache
+        )
         context.updateCodexRolloutScanCache(scanResult.cache, scanResult.didChangeCache)
 
         if let event = scanResult.latestEvent {
@@ -340,34 +340,33 @@ private enum CodexOAuthQuotaFetcher {
         return Date().timeIntervalSince(lastRefresh) > authRefreshGrace
     }
 
+    /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func nudgeCodexAuthRefresh(environment: [String: String], configURL: URL) async {
-        await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["codex", "login", "status"]
-            var env = environment
-            env["CODEX_HOME"] = configURL.path
-            env["CODEX_CONFIG_PATH"] = configURL.path
-            process.environment = env
-            process.standardOutput = Pipe()
-            process.standardError = Pipe()
-            process.standardInput = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["codex", "login", "status"]
+        var env = environment
+        env["CODEX_HOME"] = configURL.path
+        env["CODEX_CONFIG_PATH"] = configURL.path
+        process.environment = env
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        process.standardInput = FileHandle.nullDevice
 
-            do {
-                try process.run()
-            } catch {
-                return
-            }
+        do {
+            try process.run()
+        } catch {
+            return
+        }
 
-            let deadline = Date().addingTimeInterval(8)
-            while process.isRunning && Date() < deadline {
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-            if process.isRunning {
-                process.terminate()
-            }
-            process.waitUntilExit()
-        }.value
+        let deadline = Date().addingTimeInterval(8)
+        while process.isRunning && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if process.isRunning {
+            process.terminate()
+        }
+        process.waitUntilExit()
     }
 
     private static func slug(_ value: String) -> String {

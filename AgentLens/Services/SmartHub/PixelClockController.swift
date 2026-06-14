@@ -100,9 +100,11 @@ private enum PixelClockExternalAgentActivityScanner {
     }
 
     fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus] {
-        let lines = await Task.detached(priority: .utility) {
-            processLines()
-        }.value
+        // `processLines()` (blocking `/bin/ps`) runs off the main actor here:
+        // `scanRunningStatuses` is `nonisolated` `async`, so awaiting it leaves
+        // the caller's actor onto the generic executor (SE-0338). See the
+        // off-main warning on `runningStatuses()` above.
+        let lines = processLines()
         return PixelClockAgentProcessDetector.statuses(fromProcessLines: lines)
     }
 
@@ -162,29 +164,28 @@ private actor PixelClockExternalAgentActivityScanCache {
 }
 
 enum PixelClockAgentProcessDetector {
+    /// Blocking `/bin/ps` work runs off the main actor (`nonisolated` `async`, SE-0338).
     static func runningStatuses() async -> [String: PixelClockAgentStatus] {
-        await Task.detached(priority: .utility) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/ps")
-            process.arguments = ["-axo", "comm,args"]
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-axo", "comm,args"]
 
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
 
-            do {
-                try process.run()
-            } catch {
-                AppLogger.network.error("pixel_clock_mdns_resolve_failed", metadata: ["error": error.localizedDescription])
-                return [:]
-            }
+        do {
+            try process.run()
+        } catch {
+            AppLogger.network.error("pixel_clock_mdns_resolve_failed", metadata: ["error": error.localizedDescription])
+            return [:]
+        }
 
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return [:] }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return [:] }
-            return statuses(fromPSOutput: output)
-        }.value
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return [:] }
+        return statuses(fromPSOutput: output)
     }
 
     static func statuses(fromPSOutput output: String) -> [String: PixelClockAgentStatus] {
