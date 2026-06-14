@@ -34,7 +34,7 @@ function percentile(sortedAscending: number[], p: number): number {
   return sortedAscending[rank];
 }
 
-export function uidFromComputerUseCollectionPath(path: string, collectionId: string): string | null {
+function uidFromComputerUseCollectionPath(path: string, collectionId: string): string | null {
   const parts = path.split("/");
   if (parts.length === 4 && parts[0] === "users" && parts[2] === collectionId && parts[1] && parts[3]) {
     return parts[1];
@@ -56,7 +56,7 @@ function shouldIncludeUserScopedRollupDoc(
   return userId;
 }
 
-export function boundedVisionSpendContribution(currentUserTotal: number, rawCost: number | undefined): number {
+function boundedVisionSpendContribution(currentUserTotal: number, rawCost: number | undefined): number {
   if (typeof rawCost !== "number" || !Number.isFinite(rawCost) || rawCost <= 0) return 0;
   const remaining = Math.max(0, MAX_ROLLUP_VISION_SPEND_USD_PER_USER_PER_DAY - currentUserTotal);
   return Math.min(rawCost, remaining);

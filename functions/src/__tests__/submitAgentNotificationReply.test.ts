@@ -80,11 +80,14 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
-vi.mock("../logging.js", () => ({
-  logInfo: vi.fn(),
-  logError: vi.fn(),
-  wrapCallableHandler: (_name: string, handler: unknown) => handler,
-}));
+vi.mock("../logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+  return {
+    ...actual,
+    logInfo: vi.fn(),
+    logError: vi.fn(),
+  };
+});
 
 import { submitAgentNotificationReply } from "../callables/agentNotifications.js";
 
@@ -96,7 +99,11 @@ function timestamp(): typeof import("firebase-admin/firestore").Timestamp {
 }
 
 function callableRunner(candidate: unknown): (request: unknown) => Promise<unknown> {
-  if (typeof candidate !== "object" || candidate === null || !("run" in candidate)) {
+  if (
+    candidate === null ||
+    (typeof candidate !== "object" && typeof candidate !== "function") ||
+    !("run" in candidate)
+  ) {
     throw new Error("callable test target is missing run()");
   }
   const { run } = candidate;
