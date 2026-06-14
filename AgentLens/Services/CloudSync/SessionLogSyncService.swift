@@ -6,23 +6,18 @@ import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 
-private final class SessionLogSyncProcessGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var running = false
+private final class SessionLogSyncProcessGate: Sendable {
+    private let running = Locked(false)
 
     func tryEnter() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !running else { return false }
-        running = true
-        return true
+        running.withLock { running in
+            guard !running else { return false }
+            running = true
+            return true
+        }
     }
 
-    func leave() {
-        lock.lock()
-        running = false
-        lock.unlock()
-    }
+    func leave() { running.write(false) }
 }
 
 /// Sync domain for uploading session-log manifests/search metadata to Firestore.

@@ -8,7 +8,7 @@ import Security
 ///
 /// The private key lives in the login keychain (device-only, after-first-unlock). The
 /// corresponding public trust material is published for offline bridge verification.
-public final class RemoteUnlockCapabilitySigningKeyStore: @unchecked Sendable {
+public final class RemoteUnlockCapabilitySigningKeyStore: Sendable {
     public static let shared = RemoteUnlockCapabilitySigningKeyStore()
 
     public struct KeyMaterial: Sendable {

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Home Assistant Token Store
 //
@@ -65,20 +66,23 @@ struct HomeAssistantTokenStore: HomeAssistantTokenStoring {
 
 // MARK: - In-memory token store for tests
 
-final class InMemoryHomeAssistantTokenStore: HomeAssistantTokenStoring, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "openburnbar.ha.token-store.test")
-    private var token: String?
-    private var webhook: String?
+final class InMemoryHomeAssistantTokenStore: HomeAssistantTokenStoring, Sendable {
+    private struct State {
+        var token: String?
+        var webhook: String?
+    }
 
-    func loadAccessToken() throws -> String? { queue.sync { token } }
+    private let state = Locked(State())
+
+    func loadAccessToken() throws -> String? { state.withLock { $0.token } }
     func saveAccessToken(_ token: String) throws {
-        queue.sync { self.token = token.isEmpty ? nil : token }
+        state.withLock { $0.token = token.isEmpty ? nil : token }
     }
-    func deleteAccessToken() throws { queue.sync { self.token = nil } }
+    func deleteAccessToken() throws { state.withLock { $0.token = nil } }
 
-    func loadWebhookSecret() throws -> String? { queue.sync { webhook } }
+    func loadWebhookSecret() throws -> String? { state.withLock { $0.webhook } }
     func saveWebhookSecret(_ secret: String) throws {
-        queue.sync { self.webhook = secret.isEmpty ? nil : secret }
+        state.withLock { $0.webhook = secret.isEmpty ? nil : secret }
     }
-    func deleteWebhookSecret() throws { queue.sync { self.webhook = nil } }
+    func deleteWebhookSecret() throws { state.withLock { $0.webhook = nil } }
 }
