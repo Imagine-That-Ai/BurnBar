@@ -35,6 +35,8 @@ import { HOSTED_RUNNER_SECRETS } from "../hostedRunnerConfig.js";
 import { errorMessage, optionalStringField, requireProviderAccountDoc, stripUndefinedObject } from "../guards.js";
 import type { ProviderAccountConnectContext, ProviderAccountDoc } from "../types.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 
 // ---------------------------------------------------------------------------
 // Callable: connectProviderAccount
@@ -84,6 +86,10 @@ export const connectProviderAccount = onCall(
       }
       enforceAuthAndAppCheck(request, uid);
       assertProvider(provider);
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "provider_account_connect",
+        subjectId: accountIDFor(provider, accountID),
+      });
 
       if (typeof credential !== "string" || credential.trim().length === 0) {
         throw new HttpsError("invalid-argument", "credential must be a non-empty string.");
@@ -136,6 +142,10 @@ export const connectProviderCredential = onCall(
       enforceAuthAndAppCheck(request, uid);
 
       assertProvider(provider);
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "provider_credential_connect",
+        subjectId: `${provider}_default`,
+      });
 
       if (typeof credential !== "string" || credential.trim().length === 0) {
         throw new HttpsError("invalid-argument", "credential must be a non-empty string.");
@@ -191,9 +201,13 @@ export const connectHostedQuotaAccount = onCall(
       const provider = String(request.data.provider ?? "");
       assertHostedProvider(provider);
       await assertActiveHostedQuotaEntitlement(uid);
+      const accountID = accountIDFor(provider, request.data.accountID);
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "hosted_quota_account_connect",
+        subjectId: accountID,
+      });
 
       const credential = normalizeHostedCredential(provider, request.data.credential);
-      const accountID = accountIDFor(provider, request.data.accountID);
       const providerLabel = hostedProviderLabel(provider);
       const accountRedactedLabel = `${providerLabel} credential stored in Secret Manager`;
       const label = boundedTrimmedString(request.data.label, "label", 80) ?? `Hosted ${providerLabel}`;
@@ -278,6 +292,14 @@ export const connectSelfHostedQuotaAccount = onCall(
       assertSelfHostedProvider(provider);
 
       const accountID = accountIDFor(provider, request.data.accountID);
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "self_hosted_quota_account_connect",
+        subjectId: accountID,
+      });
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "self_hosted_quota_account_connect",
+        subjectId: `${provider}:${accountID}`,
+      });
       const label =
         boundedTrimmedString(request.data.label, "label", 80) ?? `${hostedProviderLabel(provider)} self-hosted`;
       const now = nowISO();
@@ -326,8 +348,9 @@ export const connectSelfHostedQuotaAccount = onCall(
           });
         } catch (linkErr) {
           logError({
-            event: "callable_warn",
-            message: `device_links upsert failed for ${uid}/${accountID}:`,
+            event: "device_links_upsert_failed",
+            uid,
+            accountID,
             detail: String(linkErr),
           });
         }
@@ -404,6 +427,14 @@ export const deleteHostedQuotaCredentials = onCall(
           : "codex";
       assertHostedProvider(provider);
       const accountID = accountIDFor(provider, request.data.accountID);
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "hosted_quota_credential_delete",
+        subjectId: accountID,
+      });
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "hosted_quota_credential_delete",
+        subjectId: `${provider}:${accountID}`,
+      });
       const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
       const accountSnap = await accountRef.get();
       if (!accountSnap.exists) {
@@ -468,6 +499,10 @@ export const updateProviderAccount = onCall(
       enforceAuthAndAppCheck(request, uid);
 
       const accountID = accountIDFor("account", request.data.accountID);
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "provider_account_update",
+        subjectId: accountID,
+      });
       const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
       const snap = await accountRef.get();
       if (!snap.exists) {
@@ -614,8 +649,9 @@ export const deleteProviderAccount = onCall(
       await revokeAllLinksForAccount(db, uid, accountID);
     } catch (linkErr) {
       logError({
-        event: "callable_warn",
-        message: `device_links cascade revoke failed for ${uid}/${accountID}:`,
+        event: "device_links_cascade_revoke_failed",
+        uid,
+        accountID,
         detail: String(linkErr),
       });
     }
@@ -642,6 +678,10 @@ export const deleteUserCloudData = onCall(
       throw new HttpsError("unauthenticated", "Sign in before deleting cloud data.");
     }
     enforceAuthAndAppCheck(request, uid);
+    await enforceHighRiskOwnerAction(request, uid, {
+      actionKind: "user_cloud_data_delete",
+      subjectId: uid,
+    });
 
     const summary = await eraseUserAccount(db, uid, {
       destroyCredential,
@@ -693,8 +733,9 @@ export const deleteProviderCredential = onCall(
         await destroyCredential(secretVersionName);
       } catch (err) {
         logError({
-          event: "callable_warn",
-          message: `Failed to destroy provider credential secret for ${uid}/${accountID}:`,
+          event: "destroy_provider_credential_secret_failed",
+          uid,
+          accountID,
           detail: String(err),
         });
       }

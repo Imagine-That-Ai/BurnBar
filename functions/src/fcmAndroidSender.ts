@@ -25,7 +25,7 @@ import { errorCode, errorMessage, isRecord, stringValue } from "./guards.js";
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
-import * as logger from "firebase-functions/logger";
+import { logError, logInfo } from "./logging.js";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { pushWithResilience } from "./resilienceHelpers.js";
@@ -240,8 +240,9 @@ export async function sweepStuckFcmPushes(
       tally[outcome] += 1;
     } catch (err) {
       tally.skipped += 1;
-      logger.error("retryStuckFcmPushes: failed to process document", {
-        documentPath: doc.ref.path,
+      logError({
+        event: "retry_stuck_fcm_pushes_failed",
+        document_id: doc.id,
         error: errorMessage(err),
       });
     }
@@ -315,7 +316,7 @@ export const retryStuckFcmPushes = onSchedule(
   async () => {
     const tally = await sweepStuckFcmPushes(getFirestore(), (args) => pushAndroidFcm(args));
     if (tally.sent || tally.rejected || tally.rescheduled || tally.skipped) {
-      logger.info("retryStuckFcmPushes swept stuck FCM pushes", tally);
+      logInfo({ event: "retry_stuck_fcm_pushes_swept", ...tally });
     }
   },
 );

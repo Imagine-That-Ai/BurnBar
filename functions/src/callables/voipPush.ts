@@ -11,6 +11,20 @@ import { logInfo, wrapCallableHandler } from "../logging.js";
 import { macHasActiveMediaEntitlement, parseTriggerRequest, resolveFanOut } from "../voipPush.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
+// F-RR09-001: bound retention of push-queue docs (which carry uid + cleartext
+// caller name + live push tokens). Delivery + retry settle in minutes, so a
+// 7-day TTL never races delivery — it caps how long an undelivered/terminal
+// doc lingers. Account deletion additionally sweeps these by uid; this TTL is
+// the safety net for docs that belong to a still-active account.
+const PUSH_QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function pushQueueTimestamps(nowMillis: number = Date.now()): { createdAt: Timestamp; expireAt: Timestamp } {
+  return {
+    createdAt: Timestamp.fromMillis(nowMillis),
+    expireAt: Timestamp.fromMillis(nowMillis + PUSH_QUEUE_TTL_MS),
+  };
+}
+
 export const triggerVoIPCall = onCall(
   { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck },
   wrapCallableHandler("triggerVoIPCall", async (request) => {
@@ -45,6 +59,7 @@ export const triggerVoIPCall = onCall(
     };
 
     const writes: Array<Promise<unknown>> = [];
+    const queueTimestamps = pushQueueTimestamps();
 
     if (fanOut.apnsToken) {
       const apnsPayload = {
@@ -58,7 +73,8 @@ export const triggerVoIPCall = onCall(
           uid: request.auth.uid,
           payload: apnsPayload,
           voipDeviceToken: fanOut.apnsToken,
-          createdAt: Timestamp.now(),
+          createdAt: queueTimestamps.createdAt,
+          expireAt: queueTimestamps.expireAt,
           status: "pending",
         }),
       );
@@ -80,7 +96,8 @@ export const triggerVoIPCall = onCall(
           payload: fcmPayload,
           fcmToken: fanOut.fcmToken,
           androidDeviceId: fanOut.androidDeviceId ?? null,
-          createdAt: Timestamp.now(),
+          createdAt: queueTimestamps.createdAt,
+          expireAt: queueTimestamps.expireAt,
           status: "pending",
         }),
       );

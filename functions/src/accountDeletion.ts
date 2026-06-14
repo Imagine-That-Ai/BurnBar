@@ -6,7 +6,7 @@
  * Manager cleanup happen under one audited callable.
  */
 
-import type { CollectionReference, DocumentReference, Firestore, WriteBatch } from "firebase-admin/firestore";
+import type { CollectionReference, DocumentReference, Firestore, Query, WriteBatch } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
 export interface AccountDeletionSummary {
@@ -109,6 +109,13 @@ export async function eraseUserCloudData(
     await batcher.delete(doc.ref);
   }
 
+  // Root push-queue collections are keyed by random doc id (not under the
+  // users/{uid} tree), so the recursive walk below never reaches them. Without
+  // an explicit uid-scoped sweep they survive "delete my account" forever,
+  // retaining uid + cleartext caller name + live push tokens (F-RR09-001,
+  // GDPR Art.17). The companion expireAt TTL only bounds delivered docs.
+  await deleteQuery(db.collection("voip_outbound").where("uid", "==", uid), batcher);
+  await deleteQuery(db.collection("fcm_outbound").where("uid", "==", uid), batcher);
   await deleteDocumentTree(db.doc(`users/${uid}`), batcher);
   await deleteDocumentTree(db.doc(`workspaces/${userWorkspaceID(uid)}`), batcher);
   await batcher.flush();
@@ -148,6 +155,14 @@ async function deleteDocumentTree(ref: DocumentReference, batcher: DeleteBatcher
     await deleteCollectionTree(collection, batcher);
   }
   await batcher.delete(ref);
+}
+
+/** Delete every doc matched by a (uid-scoped) query — used for root collections. */
+async function deleteQuery(query: Query, batcher: DeleteBatcher): Promise<void> {
+  const snapshot = await query.get();
+  for (const doc of snapshot.docs) {
+    await batcher.delete(doc.ref);
+  }
 }
 
 async function deleteCollectionTree(collection: CollectionReference, batcher: DeleteBatcher): Promise<void> {

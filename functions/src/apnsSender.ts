@@ -26,7 +26,7 @@ import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import * as logger from "firebase-functions/logger";
+import { logError, logInfo } from "./logging.js";
 import { pushWithResilience } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
@@ -435,8 +435,9 @@ export async function sweepStuckVoIPPushes(
       tally[outcome] += 1;
     } catch (err) {
       tally.skipped += 1;
-      logger.error("retryStuckVoIPPushes: failed to process document", {
-        documentPath: doc.ref.path,
+      logError({
+        event: "retry_stuck_voip_pushes_failed",
+        document_id: doc.id,
         error: errorMessage(err),
       });
     }
@@ -458,7 +459,7 @@ export const retryStuckVoIPPushes = onSchedule(
   async () => {
     const tally = await sweepStuckVoIPPushes(getFirestore(), (args) => pushToAPNs(args));
     if (tally.sent || tally.rejected || tally.rescheduled || tally.skipped) {
-      logger.info("retryStuckVoIPPushes swept stuck VoIP pushes", tally);
+      logInfo({ event: "retry_stuck_voip_pushes_swept", ...tally });
     }
   },
 );

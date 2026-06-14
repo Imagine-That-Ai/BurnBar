@@ -11,7 +11,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import * as logger from "firebase-functions/logger";
+import { logError, logInfo } from "./logging.js";
 import { errorCode, isRecord } from "./guards.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
@@ -33,6 +33,14 @@ const STUCK_EVENT_GRACE_MS = 2 * 60_000;
  * the sweeper forever.
  */
 export const MAX_AGENT_FANOUT_ATTEMPTS = 8;
+
+// F-RR09-007: bound retention of the per-thread provider/runtime fingerprint
+// carried by agent_notification_events. Delivery completes in seconds and the
+// retry sweeper gives up after MAX_AGENT_FANOUT_ATTEMPTS, so a 30-day TTL never
+// races delivery — it purely caps how long this metadata accumulates (GDPR
+// Art.5(1)(e) storage limitation). Firestore auto-deletes docs once `expireAt`
+// passes (see the TTL field override in firestore.indexes.json).
+export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Max stuck events handled per scheduled tick. */
 const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
@@ -61,6 +69,8 @@ export interface AgentReplyNotificationEvent {
   createdAtMillis: number;
   updatedAt: FirebaseFirestore.Timestamp;
   updatedAtMillis: number;
+  /** Firestore TTL field — the doc self-deletes once this passes (F-RR09-007). */
+  expireAt: FirebaseFirestore.Timestamp;
   status: "pending" | "fanout_complete" | "fanout_failed";
   fanoutAttemptCount: number;
   replyEnabled: boolean;
@@ -312,6 +322,7 @@ export async function createEventFromThreadWrite(args: {
     createdAtMillis: nowMillis,
     updatedAt: now,
     updatedAtMillis: nowMillis,
+    expireAt: Timestamp.fromMillis(nowMillis + AGENT_NOTIFICATION_EVENT_TTL_MS),
     status: "pending",
     fanoutAttemptCount: 0,
     replyEnabled: true,
@@ -481,8 +492,13 @@ export async function sweepStuckAgentReplyEvents(args: {
       tally[result.sent > 0 ? "delivered" : "retried"] += 1;
     } catch (err) {
       tally.skipped += 1;
-      logger.error("sweepStuckAgentReplyEvents: failed to process event", {
-        documentPath: doc.ref.path,
+      // Log the bare event document id, never `doc.ref.path` — the path is
+      // `users/<uid>/agent_notification_events/<id>` and would carry the raw
+      // UID into Cloud Logging (F-RR09-002). The scrubber also redacts
+      // path-shaped UIDs as defense-in-depth.
+      logError({
+        event: "agent_reply_sweeper_event_failed",
+        document_id: doc.id,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -499,7 +515,7 @@ export const retryStuckAgentReplyEvents = onSchedule(
   async () => {
     const tally = await sweepStuckAgentReplyEvents({});
     if (tally.retried || tally.delivered || tally.failed_sealed || tally.skipped) {
-      logger.info("retryStuckAgentReplyEvents swept stuck agent-reply events", tally);
+      logInfo({ event: "retry_stuck_agent_reply_events_swept", ...tally });
     }
   },
 );
@@ -600,6 +616,13 @@ function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | und
     createdAtMillis: numberValue(raw.createdAtMillis) ?? 0,
     updatedAt: raw.updatedAt,
     updatedAtMillis: numberValue(raw.updatedAtMillis) ?? 0,
+    // Lenient for legacy docs written before the TTL field existed: derive a
+    // sensible expireAt from createdAt so the in-memory object is well-formed
+    // and a later write back-fills the TTL field (F-RR09-007).
+    expireAt:
+      raw.expireAt instanceof Timestamp
+        ? raw.expireAt
+        : Timestamp.fromMillis((numberValue(raw.createdAtMillis) ?? 0) + AGENT_NOTIFICATION_EVENT_TTL_MS),
     status: raw.status,
     fanoutAttemptCount: raw.fanoutAttemptCount,
     replyEnabled: raw.replyEnabled,

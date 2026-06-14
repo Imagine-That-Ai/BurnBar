@@ -1598,8 +1598,13 @@ export async function connectProviderAccountInternal(params: {
     }
   } catch (quotaErr) {
     logError({
-      event: "callable_warn",
-      message: `Initial quota refresh failed for ${uid}/${accountID}:`,
+      // Pass uid/accountID as discrete fields (uid is truncated to
+      // user_id_hash by the scrubber) instead of interpolating the raw 28-char
+      // UID into a free-form message string the scrubber cannot redact
+      // (F-RR09-002).
+      event: "initial_quota_refresh_failed",
+      uid,
+      accountID,
       detail: String(quotaErr),
     });
   }

@@ -29,6 +29,39 @@ const SCRUB_PATTERNS: Array<[RegExp, string]> = [
 ];
 
 const MAX_FIELD_LENGTH = 1024;
+
+// Firebase Auth UIDs embedded inside Firestore-path-shaped string VALUES.
+// The key-name UID truncation in `scrubValue` only catches `uid`/`userId`/
+// `user_id` KEYS; a UID inside a path or free-form string value (e.g.
+// `document_path`, `sourcePath`, a `message`, or a raw `String(error)`) would
+// otherwise leak the full 28-char identifier into Cloud Logging.
+//
+// This is a STRUCTURAL defense-in-depth control (F-RR09-002): it does not rely
+// on every call site remembering to log `doc.id` instead of `doc.ref.path`.
+// The first path segment after `users/` is always the owner uid in this
+// codebase, and `workspaces/workspace-<uid>` embeds it after the prefix. We
+// keep the first 8 chars to match the `user_id_hash` correlation convention
+// used everywhere else, then append U+2026 so the value is clearly redacted.
+//
+// Targeted by design: it fires only on these known uid-bearing path shapes, so
+// it never mangles git SHAs, trace IDs, or other long tokens (the deliberate
+// reason the SCRUB_PATTERNS list avoids a blanket 28-char regex).
+function truncateUidSegment(prefix: string, id: string): string {
+  return `${prefix}${id.slice(0, 8)}…`;
+}
+
+/** Redact UIDs embedded inside Firestore-path-shaped string values. */
+function redactUidPaths(value: string): string {
+  let result = value;
+  result = result.replace(/\busers\/([A-Za-z0-9_-]{9,})/g, (_m, id: string) =>
+    truncateUidSegment("users/", id),
+  );
+  result = result.replace(/\bworkspace-([A-Za-z0-9_-]{9,})/g, (_m, id: string) =>
+    truncateUidSegment("workspace-", id),
+  );
+  return result;
+}
+
 function isSensitiveLogKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
   return (
@@ -53,6 +86,10 @@ function scrubString(value: string): string {
   for (const [pattern, replacement] of SCRUB_PATTERNS) {
     result = result.replace(pattern, replacement);
   }
+  // Defense-in-depth: redact UIDs embedded in path-shaped values regardless of
+  // the field key, so a logged `doc.ref.path`/`sourcePath`/`message`/error
+  // string cannot leak a full Firebase UID even if a call site forgets.
+  result = redactUidPaths(result);
   return result;
 }
 

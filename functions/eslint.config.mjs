@@ -20,6 +20,24 @@ export default [
       ...tsPlugin.configs.recommended.rules,
       "no-console": "error",
 
+      // F-RR09-002: the raw firebase-functions logger bypasses the PII/secret
+      // scrubber in logging.ts. All production logging MUST go through
+      // logInfo/logWarn/logError so UIDs, tokens, and path-embedded identifiers
+      // are redacted. (Tests may still `vi.mock("firebase-functions/logger")`
+      // — that is a string arg, not an import, so this rule does not flag it.)
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "firebase-functions/logger",
+              message:
+                "Use logInfo/logWarn/logError from ./logging.js — the raw firebase-functions logger bypasses the PII/secret scrubber (F-RR09-002).",
+            },
+          ],
+        },
+      ],
+
       // Enforce cyclomatic complexity threshold — warn on existing violations
       "complexity": ["warn", { max: 25 }],
 
