@@ -1007,6 +1007,18 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             status: .awaitingApproval
         )
 
+        let expectedRequestHashBlake3: String
+        do {
+            expectedRequestHashBlake3 = try ComputerUsePhoneControlSigner()
+                .canonicalApprovalRequestHashHex(request: request)
+        } catch {
+            // Fail closed: an uncomputable expected hash is left empty, which the
+            // PhoneControlAuthorityValidator now rejects outright — so a later
+            // signed response cannot satisfy the request-binding check. Surface
+            // why instead of silently weakening the binding to "".
+            Self.log.error("computer_use_approval_request_hash_unavailable reason=\(String(describing: error), privacy: .public)")
+            expectedRequestHashBlake3 = ""
+        }
         let response = await withCheckedContinuation { continuation in
             approvalContinuations[request.approvalId] = continuation
             approvalContexts[request.approvalId] = ApprovalContext(
@@ -1014,7 +1026,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
                 connectionID: latestControlConnectionID,
                 sessionID: request.sessionId,
                 requestedAt: request.requestedAt,
-                requestHashBlake3: (try? ComputerUsePhoneControlSigner().canonicalApprovalRequestHashHex(request: request)) ?? ""
+                requestHashBlake3: expectedRequestHashBlake3
             )
             emitControlFrame(
                 type: .controlApprovalRequest,
