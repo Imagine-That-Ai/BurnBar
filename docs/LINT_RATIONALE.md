@@ -74,7 +74,7 @@ Kinds: `eslint-disable`, `ts-suppress`, `noqa`, `kotlin-suppress`, `detekt`,
 budgets/hand-maintained-ts-baseline.json
 budgets/knip-baseline.json
 budgets/try-optional-baseline.json
-budgets/unchecked-sendable-baseline.json
+budgets/unsafe-cast-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable
