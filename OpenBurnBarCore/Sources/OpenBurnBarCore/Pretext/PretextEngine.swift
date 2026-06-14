@@ -37,7 +37,7 @@ public final class PretextEngine: NSObject {
 
     private var webView: WKWebView!
     private var nextRequestID: Int = 1
-    private var pendingRequests: [Int: CheckedContinuation<Any, Error>] = [:]
+    private var pendingRequests: [Int: CheckedContinuation<PretextBridgeValue, Error>] = [:]
     private var readyContinuations: [CheckedContinuation<Void, Error>] = []
     private var isReady: Bool = false
     private var didStartLoad: Bool = false
@@ -339,7 +339,7 @@ public final class PretextEngine: NSObject {
         guard let cont = pendingRequests.removeValue(forKey: id) else { return }
         let okFlag = (dict["ok"] as? NSNumber)?.boolValue ?? false
         if okFlag {
-            cont.resume(returning: dict["value"] ?? [String: Any]())
+            cont.resume(returning: PretextBridgeValue(dict["value"] ?? [String: Any]()))
         } else {
             let msg = (dict["error"] as? String) ?? "unknown"
             cont.resume(throwing: PretextError.bridgeError(msg))
@@ -355,7 +355,7 @@ public final class PretextEngine: NSObject {
         guard let jsonString = String(data: json, encoding: .utf8) else {
             throw PretextError.invalidResponse
         }
-        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Any, Error>) in
+        let boxed = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<PretextBridgeValue, Error>) in
             pendingRequests[id] = cont
             let escaped = jsonString
                 .replacingOccurrences(of: "\\", with: "\\\\")
@@ -375,6 +375,7 @@ public final class PretextEngine: NSObject {
                 }
             }
         }
+        return boxed.value
     }
 
     private func callForHandle(_ method: String, params: [String: Any]) async throws -> PretextHandle {
@@ -414,6 +415,25 @@ extension PretextEngine: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         self.webView(webView, didFail: navigation, withError: error)
+    }
+}
+
+// MARK: - Bridge Value Box
+//
+// Wraps the JSON-ish `Any` result that the JS bridge posts back so it can ride
+// a `CheckedContinuation` under the Swift 6 language mode (continuation values
+// must be `Sendable`). Both ends of the continuation — the `call(_:params:)`
+// that creates it and `handleBridgeMessage(_:)` that resumes it — are
+// `@MainActor`-isolated, so the wrapped value never actually crosses an
+// isolation boundary; this box only exists to satisfy the type checker.
+
+private struct PretextBridgeValue: Sendable {
+    // nonisolated(unsafe): immutable `let`, produced and consumed solely on the
+    // main actor (see type doc); the box never enables cross-thread mutation.
+    nonisolated(unsafe) let value: Any
+
+    init(_ value: Any) {
+        self.value = value
     }
 }
 

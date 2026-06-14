@@ -368,7 +368,7 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
         let resolvedProviderKey = (resultDict["providerKey"] as? String) ?? providerKey
         let egress = InsightEgressTier(rawValue: (resultDict["egressTier"] as? String) ?? "hosted") ?? .hosted
         let tokenUsage = Self.decodeTokenUsage(resultDict["tokenUsage"], modelSlug: resolvedModelSlug)
-        let ranAt = (resultDict["ranAt"] as? String).flatMap(Self.iso8601.date(from:))
+        let ranAt = (resultDict["ranAt"] as? String).flatMap(ThreadSafeISO8601DateFormatter.parse)
 
         return HostedAnswerResponse(
             envelope: envelopeString,
@@ -390,8 +390,8 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
         let outputTokens = (dict["outputTokens"] as? Int)
             ?? Int((dict["outputTokens"] as? NSNumber)?.intValue ?? 0)
         let estimatedCostUSD = (dict["estimatedCostUSD"] as? Double) ?? 0
-        let started = (dict["startedAt"] as? String).flatMap(iso8601.date(from:)) ?? Date()
-        let completed = (dict["completedAt"] as? String).flatMap(iso8601.date(from:)) ?? Date()
+        let started = (dict["startedAt"] as? String).flatMap(ThreadSafeISO8601DateFormatter.parse) ?? Date()
+        let completed = (dict["completedAt"] as? String).flatMap(ThreadSafeISO8601DateFormatter.parse) ?? Date()
         return InsightTokenUsage(
             providerKey: providerKey,
             modelID: modelID,
@@ -402,12 +402,6 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
             completedAt: completed
         )
     }
-
-    private static let iso8601: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 
     /// Encodes the analysis request as the Firebase v2 callable
     /// payload (`{ "data": ... }`). Keeps the digest and the canvas

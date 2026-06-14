@@ -42,15 +42,18 @@ public enum CLILaunchAdapter {
 
     // MARK: - Executable Resolution Seam (Testability)
 
+    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup; reads are effectively immutable in production.
     /// Injectable resolver for executable availability.
     /// Defaults to real filesystem resolution. Override in tests for deterministic behavior.
-    public static var executableResolver: ((_ cliType: SwitcherCLIProfileType) -> URL?)? {
+    public nonisolated(unsafe) static var executableResolver: ((_ cliType: SwitcherCLIProfileType) -> URL?)? {
         didSet { executableResolutionCache.write([:]) }
     }
-    static var environmentProvider: () -> [String: String] = { ProcessInfo.processInfo.environment } {
+    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup; reads are effectively immutable in production.
+    nonisolated(unsafe) static var environmentProvider: () -> [String: String] = { ProcessInfo.processInfo.environment } {
         didSet { executableResolutionCache.write([:]) }
     }
-    static var homeDirectoryProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path } {
+    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup; reads are effectively immutable in production.
+    nonisolated(unsafe) static var homeDirectoryProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path } {
         didSet { executableResolutionCache.write([:]) }
     }
 
@@ -922,12 +925,14 @@ public actor CLILaunchCoordinator {
 /// Actually performs the CLI launch using Foundation Process.
 /// Isolated to prevent direct invocation outside of the coordinator.
 public struct CLILaunchInvoker {
+    // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup; reads are effectively immutable in production.
     /// Injectable launch handler for deterministic testing.
     /// When set, replaces the real Process-based launch with the provided handler.
     /// Receives the launch parameters and returns a Result.
-    public static var launchHandler: ((SwitcherCLIProfileType, URL, [String], [String: String], String?, (@Sendable (String) -> Void)?) async -> Result<Void, CLILaunchError>)?
+    public nonisolated(unsafe) static var launchHandler: ((SwitcherCLIProfileType, URL, [String], [String: String], String?, (@Sendable (String) -> Void)?) async -> Result<Void, CLILaunchError>)?
     public static let defaultStartupObservationTimeout: TimeInterval = 0.35
-    static var startupObservationTimeout: TimeInterval = defaultStartupObservationTimeout
+    // nonisolated(unsafe): test-only tunable, set during single-threaded test setup; effectively a constant in production.
+    nonisolated(unsafe) static var startupObservationTimeout: TimeInterval = defaultStartupObservationTimeout
 
     /// Launches a CLI process with the given configuration.
     /// Returns after the startup observation window passes or a startup failure is detected.

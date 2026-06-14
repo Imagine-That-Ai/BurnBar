@@ -613,7 +613,7 @@ public enum CLIAgentSessionCodec {
     /// Treats `Date` straight through and `Double` as Unix epoch
     /// seconds; the Firebase-aware decoder lives in the iOS reader so
     /// Core stays SDK-free.
-    public static let defaultTimestampDecoder: (Any?) -> Date? = { raw in
+    public static let defaultTimestampDecoder: @Sendable (Any?) -> Date? = { raw in
         if let date = raw as? Date { return date }
         if let value = raw as? Double { return Date(timeIntervalSince1970: value) }
         if let value = raw as? Int { return Date(timeIntervalSince1970: TimeInterval(value)) }

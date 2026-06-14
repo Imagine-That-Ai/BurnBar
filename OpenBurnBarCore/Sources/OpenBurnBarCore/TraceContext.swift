@@ -29,7 +29,8 @@ public struct TraceContext: Sendable, Equatable, Codable {
 
 public enum TraceContextBridge {
     private static let lock = NSLock()
-    private static var current = TraceContext()
+    // guarded by lock
+    nonisolated(unsafe) private static var current = TraceContext()
 
     public static func currentContext() -> TraceContext {
         lock.lock()

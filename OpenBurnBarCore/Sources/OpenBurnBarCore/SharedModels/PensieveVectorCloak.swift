@@ -114,7 +114,8 @@ public enum PensieveVectorCloak {
     }
 
     private static let cacheLock = NSLock()
-    private static var reflectionCache: [CacheKey: [[Double]]] = [:]
+    // guarded by cacheLock
+    private static nonisolated(unsafe) var reflectionCache: [CacheKey: [[Double]]] = [:]
 
     private static func deriveReflections(vaultKey: Data, modelVersion: String, dim: Int) -> [[Double]] {
         let keyHash = SHA256.hash(data: vaultKey).map { String(format: "%02x", $0) }.joined().prefix(32)

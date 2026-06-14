@@ -28,7 +28,7 @@ import SwiftUI
 // all day, so it must not keep SwiftUI's render loop alive while idle.
 
 public struct MissionFABGauge: View {
-    public enum Size {
+    public enum Size: Sendable {
         case compact   // 44pt — peek / inline
         case standard  // 56pt — FAB default
         case hero      // 84pt — console hero / preview
@@ -66,7 +66,7 @@ public struct MissionFABGauge: View {
         }
     }
 
-    public struct Configuration: Equatable {
+    public struct Configuration: Equatable, Sendable {
         public var size: Size
         public var activeMissionCount: Int
         public var approvalPendingCount: Int

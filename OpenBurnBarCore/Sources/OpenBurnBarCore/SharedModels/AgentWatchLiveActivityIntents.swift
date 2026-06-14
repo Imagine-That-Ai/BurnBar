@@ -55,8 +55,8 @@ public enum AgentWatchLiveActivityIntentRouter {
 
 @available(iOS 17.0, *)
 public struct AgentApproveIntent: LiveActivityIntent {
-    public static var title: LocalizedStringResource = "Approve"
-    public static var description = IntentDescription("Approve the pending Agent Watch action.")
+    public static let title: LocalizedStringResource = "Approve"
+    public static let description = IntentDescription("Approve the pending Agent Watch action.")
 
     public init() {}
 
@@ -68,8 +68,8 @@ public struct AgentApproveIntent: LiveActivityIntent {
 
 @available(iOS 17.0, *)
 public struct AgentRejectIntent: LiveActivityIntent {
-    public static var title: LocalizedStringResource = "Reject"
-    public static var description = IntentDescription("Reject the pending Agent Watch action.")
+    public static let title: LocalizedStringResource = "Reject"
+    public static let description = IntentDescription("Reject the pending Agent Watch action.")
 
     public init() {}
 
@@ -81,8 +81,8 @@ public struct AgentRejectIntent: LiveActivityIntent {
 
 @available(iOS 17.0, *)
 public struct AgentHaltIntent: LiveActivityIntent {
-    public static var title: LocalizedStringResource = "Halt"
-    public static var description = IntentDescription("Halt the live Agent Watch session.")
+    public static let title: LocalizedStringResource = "Halt"
+    public static let description = IntentDescription("Halt the live Agent Watch session.")
 
     public init() {}
 
