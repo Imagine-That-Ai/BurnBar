@@ -50,7 +50,7 @@ const CLOUD_PRO_PRODUCT_IDS = new Set([
   "com.openburnbar.proMax.bundle.monthly",
 ]);
 
-export interface TriggerRequest {
+interface TriggerRequest {
   callId: string;
   connectionId: string;
   pairedDeviceId: string;
@@ -61,7 +61,7 @@ export interface TriggerRequest {
 }
 
 /** Generic, non-identifying caller label sent in every push (T-PRV-01). */
-export const GENERIC_CALLER_DISPLAY_NAME = "Incoming call";
+const GENERIC_CALLER_DISPLAY_NAME = "Incoming call";
 
 /**
  * Build the APNs VoIP push payload (T-PRV-01 / T-PRV-07). It deliberately carries

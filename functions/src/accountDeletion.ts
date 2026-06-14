@@ -9,25 +9,25 @@
 import type { CollectionReference, DocumentReference, Firestore, WriteBatch } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
-export interface AccountDeletionSummary {
+interface AccountDeletionSummary {
   destroyedSecrets: number;
   failedSecretDestroys: number;
   deletedDocuments: number;
 }
 
-export interface AccountDeletionResult extends AccountDeletionSummary {
+interface AccountDeletionResult extends AccountDeletionSummary {
   deletedAuthUser: boolean;
   authUserAlreadyMissing: boolean;
 }
 
-export interface AccountDeletionOptions {
+interface AccountDeletionOptions {
   destroyCredential: (secretVersionName: string) => Promise<void>;
   logger?: Pick<typeof console, "warn">;
   /** Delete a Cloud Storage prefix (objects). Injectable for tests; defaults to the live bucket. */
   deleteStorageObjects?: (prefix: string) => Promise<void>;
 }
 
-export interface DeleteUserAccountOptions extends AccountDeletionOptions {
+interface DeleteUserAccountOptions extends AccountDeletionOptions {
   deleteAuthUser: (uid: string) => Promise<void>;
 }
 
@@ -38,7 +38,7 @@ const BATCH_LIMIT = 400;
  * and therefore are not reached by the `users/{uid}` subtree walk. Account erase
  * must delete the caller's documents in each (GDPR Art.17).
  */
-export const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound"] as const;
+const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound"] as const;
 
 export function userWorkspaceID(uid: string): string {
   return `workspace-${uid}`;
