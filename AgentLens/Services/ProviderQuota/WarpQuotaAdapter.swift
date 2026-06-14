@@ -104,7 +104,7 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
         let logFiles = candidateLogFiles(in: directory, fileManager: context.fileManager)
 
         for file in logFiles.reversed() {
-            guard let data = try? Data(contentsOf: file),
+            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable telemetry log)
                   let content = String(data: data, encoding: .utf8) else {
                 continue
             }
@@ -141,13 +141,13 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
-        )) ?? []
+        )) ?? [] // try?-ok(empty list fallback)
 
         return files
             .filter { $0.lastPathComponent.hasPrefix("warp_network") && $0.pathExtension == "log" }
             .sorted {
-                let lhs = ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-                let rhs = ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+                let lhs = ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) // try?-ok(distantPast sort fallback)
+                let rhs = ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) // try?-ok(distantPast sort fallback)
                 return lhs < rhs
             }
     }

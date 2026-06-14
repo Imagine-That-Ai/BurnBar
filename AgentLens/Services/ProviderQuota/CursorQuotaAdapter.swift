@@ -37,6 +37,7 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
                     cookieHeader: credential.cookieHeader,
                     session: context.session
                 )
+                // try?-ok(optional email enrichment)
                 let userInfo = try? await fetchCursorUserInfo(
                     cookieHeader: credential.cookieHeader,
                     session: context.session

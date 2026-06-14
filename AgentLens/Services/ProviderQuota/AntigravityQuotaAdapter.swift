@@ -86,8 +86,8 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             // --- Determine active model ---
             let activeModelName: String = {
                 guard context.fileManager.fileExists(atPath: settingsURL.path),
-                      let settingsData = try? Data(contentsOf: settingsURL),
-                      let settings = try? JSONDecoder().decode(SettingsFile.self, from: settingsData),
+                      let settingsData = try? Data(contentsOf: settingsURL), // try?-ok(settings read fallback)
+                      let settings = try? JSONDecoder().decode(SettingsFile.self, from: settingsData), // try?-ok(decode default fallback)
                       let model = settings.model, !model.isEmpty else {
                     return Self.defaultModelName
                 }
@@ -112,7 +112,7 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                 guard !trimmed.isEmpty else { continue }
 
                 guard let lineData = trimmed.data(using: .utf8),
-                      let event = try? decoder.decode(HistoryEvent.self, from: lineData) else {
+                      let event = try? decoder.decode(HistoryEvent.self, from: lineData) else { // try?-ok(skip malformed line)
                     continue
                 }
 

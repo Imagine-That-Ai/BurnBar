@@ -28,7 +28,7 @@ enum CodexRolloutScanner {
                 continue
             }
 
-            let event = try? lastCodexRateLimitEvent(in: file)
+            let event = try? lastCodexRateLimitEvent(in: file) // try?-ok(cache scan skip)
             updatedCache.fileEntries[path] = CodexRolloutFileCacheEntry(
                 signature: signature,
                 latestRateLimitEvent: event
@@ -64,7 +64,7 @@ enum CodexRolloutScanner {
 
     static func lastCodexRateLimitEvent(in file: URL) throws -> CodexRateLimitEvent? {
         let handle = try FileHandle(forReadingFrom: file)
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         let size = try handle.seekToEnd()
         let bytesToRead = min(UInt64(CodexQuotaScanPolicy.tailReadBytes), size)
@@ -88,7 +88,7 @@ enum CodexRolloutScanner {
 
         for line in lines.reversed() {
             let lineData = Data(line.utf8)
-            guard let event = try? decoder.decode(CodexRolloutEnvelope.self, from: lineData) else { continue }
+            guard let event = try? decoder.decode(CodexRolloutEnvelope.self, from: lineData) else { continue } // try?-ok(skip malformed line)
             guard event.type == "event_msg",
                   event.payload.type == "token_count",
                   event.payload.rateLimits.primary != nil || event.payload.rateLimits.secondary != nil else {
@@ -118,7 +118,7 @@ enum CodexRolloutScanner {
     }
 
     static func fileSignature(for url: URL) -> CodexRolloutFileSignature? {
-        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]) // try?-ok(metadata guard-nil)
         guard values?.isRegularFile == true else { return nil }
         guard let modifiedAt = values?.contentModificationDate else { return nil }
         return CodexRolloutFileSignature(

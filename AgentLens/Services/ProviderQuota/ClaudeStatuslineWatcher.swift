@@ -179,7 +179,7 @@ final class ClaudeStatuslineWatcher {
         debounceTask?.cancel()
         debounceTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(nanoseconds: self.configuration.debounceNanoseconds)
+            try? await Task.sleep(nanoseconds: self.configuration.debounceNanoseconds) // try?-ok(debounce cancellation only)
             guard !Task.isCancelled else { return }
             self.onChange()
         }
@@ -194,7 +194,7 @@ final class ClaudeStatuslineWatcher {
         reopenTask?.cancel()
         reopenTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(nanoseconds: delay)
+            try? await Task.sleep(nanoseconds: delay) // try?-ok(reopen backoff cancellation only)
             guard !Task.isCancelled, self.isStarted else { return }
             self.arm()
         }

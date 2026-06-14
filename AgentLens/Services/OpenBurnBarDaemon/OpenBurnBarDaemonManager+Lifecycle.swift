@@ -177,7 +177,7 @@ extension OpenBurnBarDaemonManager {
         )
 
         if fileManager.fileExists(atPath: tempURL.path) {
-            try? fileManager.removeItem(at: tempURL)
+            try? fileManager.removeItem(at: tempURL) // try?-ok(stale temp cleanup)
         }
 
         do {
@@ -202,7 +202,7 @@ extension OpenBurnBarDaemonManager {
                 ofItemAtPath: destinationURL.path
             )
         } catch {
-            try? fileManager.removeItem(at: tempURL)
+            try? fileManager.removeItem(at: tempURL) // try?-ok(temp cleanup on error)
             throw error
         }
     }
@@ -341,7 +341,7 @@ extension OpenBurnBarDaemonManager {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         let socketURL = paths.socketURL
         while Date() < deadline {
-            if let response = try? await daemonRPC({
+            if let response = try? await daemonRPC({ // try?-ok(health poll retry)
                 try OpenBurnBarDaemonSocketClient.health(at: socketURL)
             }),
                response.ok,

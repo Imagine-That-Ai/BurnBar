@@ -2,7 +2,7 @@ import Foundation
 
 struct CodexQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        if let oauthSnapshot = try? await CodexOAuthQuotaFetcher.fetch(context: context) {
+        if let oauthSnapshot = try? await CodexOAuthQuotaFetcher.fetch(context: context) { // try?-ok(quota fetch, fallback to scan)
             return oauthSnapshot
         }
 
@@ -364,7 +364,7 @@ private enum CodexOAuthQuotaFetcher {
         // process is reaped below) instead of busy-spinning to the deadline: the
         // optional-cancelled sleep below is swallowed and would otherwise re-loop.
         while process.isRunning && Date() < deadline && !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(100))
+            try? await Task.sleep(for: .milliseconds(100)) // try?-ok(cancellation only)
         }
         if process.isRunning {
             process.terminate()
@@ -416,7 +416,7 @@ private struct CodexAuthPayload: Decodable {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
-            if let value = try? container.decode(Double.self) {
+            if let value = try? container.decode(Double.self) { // try?-ok(optional decode, falls through)
                 self = .seconds(value)
                 return
             }
