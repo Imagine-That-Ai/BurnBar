@@ -47,6 +47,9 @@ jobs:
       - name: Check unchecked Sendable debt budget
         run: ./scripts/debt/check-unchecked-sendable-budget.sh
 
+      - name: Check Rust panic debt budget (unwrap/expect)
+        run: ./scripts/debt/check-rust-panic-budget.sh
+
       - name: Refresh tech debt metrics snapshot
         run: |
           set -euo pipefail
