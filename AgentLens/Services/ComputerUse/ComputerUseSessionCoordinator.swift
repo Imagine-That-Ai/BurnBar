@@ -557,15 +557,20 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         cancelPendingApprovals(decision: .rejectAndHalt, note: "panic halt")
         if let logger = auditLogger {
             let action: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
-            if let entry = try? logger.makeEntry(
-                for: action,
-                approvedBy: .panic,
-                denyReason: source.rawValue,
-                macHostNodeId: configuration.macHostNodeId,
-                scopeContext: macDispatcher.currentScopeContext()
-            ) {
-                _ = try? logger.append(entry)
+            do {
+                let entry = try logger.makeEntry(
+                    for: action,
+                    approvedBy: .panic,
+                    denyReason: source.rawValue,
+                    macHostNodeId: configuration.macHostNodeId,
+                    scopeContext: macDispatcher.currentScopeContext()
+                )
+                try logger.append(entry)
                 state?.auditChainHeadHashHex = logger.headHashHex
+            } catch {
+                // A dropped panic-halt entry is a gap in the tamper-evident audit
+                // chain — surface it instead of swallowing; the halt still proceeds.
+                Self.log.error("computer_use_panic_audit_entry_failed reason=\(String(describing: error), privacy: .public)")
             }
             finalizeAuditSignedHeadIfPossible()
         }
@@ -597,10 +602,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent("keys", isDirectory: true)
             .appendingPathComponent("audit-export-ed25519.raw", isDirectory: false)
-        guard let signer = try? ComputerUseKeychainAuditExportSignerProvider(legacyRawKeyURL: legacyKey).signer() else {
-            return
+        do {
+            let signer = try ComputerUseKeychainAuditExportSignerProvider(legacyRawKeyURL: legacyKey).signer()
+            try ComputerUseAuditHeadFinalizer.finalize(logger: logger, signer: signer)
+        } catch {
+            // An unsigned audit head loses its tamper-evidence guarantee — make
+            // a missing/inaccessible signer or a failed finalize observable.
+            Self.log.error("computer_use_audit_head_finalize_failed reason=\(String(describing: error), privacy: .public)")
         }
-        try? ComputerUseAuditHeadFinalizer.finalize(logger: logger, signer: signer)
     }
 
     private func haltForBudgetHardCap() {
@@ -609,15 +618,20 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         cancelPendingApprovals(decision: .rejectAndHalt, note: "budget hard cap")
         if let logger = auditLogger {
             let action: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
-            if let entry = try? logger.makeEntry(
-                for: action,
-                approvedBy: .panic,
-                denyReason: ComputerUseDenyReason.hardCap.rawValue,
-                macHostNodeId: configuration.macHostNodeId,
-                scopeContext: macDispatcher.currentScopeContext()
-            ) {
-                _ = try? logger.append(entry)
+            do {
+                let entry = try logger.makeEntry(
+                    for: action,
+                    approvedBy: .panic,
+                    denyReason: ComputerUseDenyReason.hardCap.rawValue,
+                    macHostNodeId: configuration.macHostNodeId,
+                    scopeContext: macDispatcher.currentScopeContext()
+                )
+                try logger.append(entry)
                 state?.auditChainHeadHashHex = logger.headHashHex
+            } catch {
+                // A dropped hard-cap entry is a gap in the tamper-evident audit
+                // chain — surface it instead of swallowing; the halt still proceeds.
+                Self.log.error("computer_use_hardcap_audit_entry_failed reason=\(String(describing: error), privacy: .public)")
             }
         }
         activeSessionId = nil
