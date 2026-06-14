@@ -1900,17 +1900,18 @@ final class CLIAgentMissionRequestListener {
         let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
         
         defer {
-            guard fileManager.fileExists(atPath: sessionURL.path) else { return }
-            do {
-                try fileManager.removeItem(at: sessionURL)
-            } catch {
-                AppLogger.sync.error(
-                    "mission_visible_terminal_cleanup_failed",
-                    metadata: [
-                        "sessionID": sessionID,
-                        "errorClass": "\(String(describing: type(of: error)))"
-                    ]
-                )
+            if fileManager.fileExists(atPath: sessionURL.path) {
+                do {
+                    try fileManager.removeItem(at: sessionURL)
+                } catch {
+                    AppLogger.sync.error(
+                        "mission_visible_terminal_cleanup_failed",
+                        metadata: [
+                            "sessionID": sessionID,
+                            "errorClass": "\(String(describing: type(of: error)))"
+                        ]
+                    )
+                }
             }
         }
         

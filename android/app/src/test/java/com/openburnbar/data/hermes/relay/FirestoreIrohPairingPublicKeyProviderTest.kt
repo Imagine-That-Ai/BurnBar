@@ -8,6 +8,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import java.util.Base64
 import kotlinx.coroutines.runBlocking
@@ -43,9 +45,7 @@ class FirestoreIrohPairingPublicKeyProviderTest {
         unmockkStatic(android.util.Base64::class)
     }
 
-    private fun makeFirestore(
-        documentRef: DocumentReference,
-    ): FirebaseFirestore {
+    private fun makeFirestore(documentRef: DocumentReference): FirebaseFirestore {
         val pairingKeysCollection = mockk<CollectionReference>(relaxed = true) {
             every { document("host") } returns documentRef
         }

@@ -1146,7 +1146,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     private func mintVirtualHIDCapabilityDispatch(actionKind: String) async throws -> VirtualHIDCapabilityDispatch {
         let peerNodeId = phoneControlAuthorizedPeerNodeProvider?()
         let sessionId = activeSessionId?.rawValue ?? latestControlConnectionID
-        return try await mintVirtualHIDCapabilityDispatch(
+        return try await mintRemoteUnlockVirtualHIDCapabilityDispatch(
             actionKind: actionKind,
             sessionId: sessionId,
             peerNodeId: peerNodeId

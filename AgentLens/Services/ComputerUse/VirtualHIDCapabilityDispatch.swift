@@ -9,7 +9,7 @@ struct VirtualHIDCapabilityDispatch: Sendable {
     var requiredAttestationHashBlake3: String?
 }
 
-func mintVirtualHIDCapabilityDispatch(
+func mintRemoteUnlockVirtualHIDCapabilityDispatch(
     actionKind: String,
     sessionId: String?,
     peerNodeId: String?
@@ -17,7 +17,7 @@ func mintVirtualHIDCapabilityDispatch(
     let scopeHash = SHA256.hash(data: Data("remote_unlock:\(sessionId ?? "none")".utf8))
         .map { String(format: "%02x", $0) }
         .joined()
-    let binding = MacRemoteUnlockReadinessService.shared.activeRemoteUnlockBinding(
+    let binding = await MacRemoteUnlockReadinessService.shared.activeRemoteUnlockBinding(
         sessionId: sessionId,
         peerNodeId: peerNodeId
     )

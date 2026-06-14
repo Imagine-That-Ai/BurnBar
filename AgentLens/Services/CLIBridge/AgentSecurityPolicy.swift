@@ -25,8 +25,8 @@ import OpenBurnBarComputerUseCore
 public enum AgentDistributionGate {
     /// `true` when this is a shipped distribution build (App Store / notarized
     /// release). Kept as an injectable input for tests and future policy
-    /// telemetry, but dangerous-autonomy flags require fresh local auth in every
-    /// build.
+    /// telemetry; vendor dangerous-autonomy flags are never emitted from
+    /// OpenBurnBar.
     public static var isDistributionBuild: Bool {
         #if DISTRIBUTION_MAS
         return true

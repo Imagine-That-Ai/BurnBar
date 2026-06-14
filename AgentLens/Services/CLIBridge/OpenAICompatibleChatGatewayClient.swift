@@ -727,26 +727,9 @@ final class AgentToolBroker: Sendable {
         )
     }
 
-    /// Read roots a restricted shell legitimately needs for dev tooling to run
-    /// (interpreters, compilers, system libraries, shell startup). T-TOOL-10:
-    /// the read policy is a **default-deny allow-list** — only these roots (plus
-    /// the workspace) are readable; everything else, including the rest of the
-    /// home directory, is denied. This is strictly tighter than the prior
-    /// curated deny-list, which read-allowed everything except an enumerated set
-    /// of secret stores (so any new secret location leaked by default).
-    static let restrictedShellReadAllowlistRoots: [String] = [
-        // Executables, shared libraries, the dyld shared cache, and OS roots that
-        // any spawned interpreter/compiler must read to even start.
-        "/usr", "/bin", "/sbin", "/System", "/Library", "/private/var",
-        "/private/etc", "/etc", "/opt", "/dev", "/var", "/tmp", "/private/tmp",
-        "/Applications", "/Network/Library",
-        // dyld shared cache + cryptex mounts on modern macOS so dynamic linking
-        // works under default-deny read.
-        "/System/Cryptexes", "/System/Volumes", "/cores"
-    ]
-
     /// Home-relative read roots dev tooling needs (toolchains, language version
-    /// managers, package caches). Everything else under home is denied.
+    /// managers, package caches). Everything else under home is denied unless it
+    /// is the active workspace.
     static let restrictedShellHomeReadAllowlistSubpaths: [String] = [
         "/.rustup", "/.cargo/bin", "/.cargo/registry", "/.rbenv", "/.rbenv",
         "/.pyenv", "/.nvm", "/.nodenv", "/.asdf", "/.local/share/mise",
@@ -758,21 +741,15 @@ final class AgentToolBroker: Sendable {
     /// Seatbelt profile for the **restricted** agent shell (`shell_run`).
     ///
     /// Hardening layers (T-TOOL-10 + prior F3/F9):
-    ///   * `(deny network*)` — no outbound/inbound network from the restricted
-    ///     shell, so a `curl … | sh` / `… | curl -d @-` exfil cannot reach the
-    ///     wire. Network-dependent work belongs in the trusted (`shell_run_
-    ///     unrestricted`) path the operator explicitly opts into.
-    ///   * writes stay confined to the workspace (unchanged guarantee).
-    ///   * **reads are default-DENY** with an explicit allow-list of the system
-    ///     roots + home toolchain subpaths dev tooling needs, plus the workspace.
-    ///     This inverts the prior deny-list (which leaked any not-yet-enumerated
-    ///     secret) into a fail-closed allow-list. Known credential/private-data
-    ///     stores remain explicitly denied as belt-and-suspenders in case a
-    ///     secret lives under an allow-listed root.
-    /// Seatbelt evaluates the first matching operation rule here, so narrow
-    /// denies must appear before the broader read allow-list, which in turn
-    /// appears before the terminal `(deny file-read*)` and the non-file
-    /// `(allow default)`.
+    ///   * default-deny operations, then explicitly allow only process/IPC/sysctl
+    ///     operations needed to launch local developer tools.
+    ///   * no network operation family is allowed, so ordinary exfiltration paths
+    ///     fail before connecting.
+    ///   * writes stay confined to the workspace.
+    ///   * file data outside the user's home directory remains readable so dyld
+    ///     and system tooling can start reliably on modern macOS; file data under
+    ///     home is denied by default and re-opened only for the active workspace
+    ///     plus narrowly scoped toolchain/cache roots.
     static func restrictedShellSandboxProfile(
         workspacePath: String,
         homePath: String = FileManager.default.homeDirectoryForCurrentUser.path
@@ -780,40 +757,20 @@ final class AgentToolBroker: Sendable {
         let canonicalWorkspacePath = canonicalSandboxPath(workspacePath)
         let canonicalHomePath = canonicalSandboxPath(homePath)
         let ws = escapeSandboxProfileString(canonicalWorkspacePath)
-        // High-value secret / private-data stores. Reads are denied even though
-        // general reads stay allowed (so dev tooling keeps reading system libs,
-        // configs, etc.). Defense-in-depth behind `(deny network*)`.
-        let secretSubpaths = [
-            "/.ssh", "/.aws", "/.gnupg", "/.config/gh", "/.config/gcloud",
-            "/.kube", "/.docker", "/.azure", "/.config/op",
-            "/.terraform.d", "/.cloudflared", "/.config/git",
-            "/Library/Keychains", "/Library/Messages", "/Library/Mail",
-            "/Library/Cookies", "/Library/HTTPStorages", "/Library/Safari",
-            "/Library/Application Support/Google/Chrome",
-            "/Library/Application Support/Firefox",
-            "/Library/Application Support/BraveSoftware",
-            "/Library/Application Support/Slack",
-            "/Library/Application Support/com.apple.sharedfilelist",
-            // F9: deny the restricted agent shell read access to OpenBurnBar's OWN
-            // on-disk state (encrypted DB, replay counters, audit chain, queued
-            // grants, cloud-vault fallbacks). A prompt-injected `shell_run` must not
-            // be able to read the app's secrets just because they're not Keychain
-            // items. Dev tooling never needs to read these.
-            "/Library/Application Support/com.openburnbar.AgentLens",
-            "/.openburnbar",
-            "/.config/openburnbar"
-        ].map { canonicalHomePath + $0 }
-        let secretLiterals = [
-            "/.netrc", "/.npmrc", "/.pypirc", "/.git-credentials",
-            // F9: common credential files that live at the home root.
-            "/.env", "/.envrc",
-            "/.cargo/credentials", "/.cargo/credentials.toml",
-            "/.gem/credentials", "/.config/configstore/firebase-tools.json"
-        ].map { canonicalHomePath + $0 }
+        let home = escapeSandboxProfileString(canonicalHomePath)
 
         var lines: [String] = [
             "(version 1)",
+            "(deny default)",
             "(deny network*)",
+            "(allow process*)",
+            "(allow mach*)",
+            "(allow sysctl*)",
+            "(allow ipc*)",
+            "(allow file-read-metadata)",
+            "(allow file-map-executable)",
+            "(allow file-read-data (require-not (subpath \"\(home)\")))",
+            "(allow file-read* (subpath \"\(ws)\"))",
             "(allow file-write* (subpath \"\(ws)\"))"
         ]
         // Re-allow only the null/stdio device nodes so ordinary redirects keep
@@ -827,38 +784,10 @@ final class AgentToolBroker: Sendable {
         }
         lines.append("(allow file-write* (subpath \"/dev/fd\"))")
 
-        // SECRET DENIES FIRST (first-match precedence): these win over any
-        // broader read allow that follows, so a secret living under an
-        // allow-listed root (e.g. ~/Library/Keychains under the /Library home
-        // subpath) is still denied. Belt-and-suspenders under default-deny read.
-        for path in secretSubpaths {
-            lines.append("(deny file-read* (subpath \"\(escapeSandboxProfileString(path))\"))")
-        }
-        for path in secretLiterals {
-            lines.append("(deny file-read* (literal \"\(escapeSandboxProfileString(path))\"))")
-        }
-
-        // T-TOOL-10: READ ALLOW-LIST. Only the workspace, the enumerated system
-        // roots, and the home toolchain subpaths are readable. Anything not
-        // matched here falls through to the terminal `(deny file-read*)`.
-        lines.append("(allow file-read* (subpath \"\(ws)\"))")
-        for root in restrictedShellReadAllowlistRoots {
-            lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(root))\"))")
-        }
         for subpath in restrictedShellHomeReadAllowlistSubpaths {
             let homeSubpath = canonicalHomePath + subpath
             lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(homeSubpath))\"))")
         }
-        // Root metadata stat of the home dir itself (so `cd ~`, `pwd` work) —
-        // a literal allow does not grant reads of children, only the node.
-        lines.append("(allow file-read-metadata (literal \"\(escapeSandboxProfileString(canonicalHomePath))\"))")
-
-        // Terminal read default-deny: any read not explicitly allowed above is
-        // refused. This is the fail-closed inversion of the old deny-list.
-        lines.append("(deny file-read*)")
-
-        lines.append("(deny file-write* (require-not (subpath \"\(ws)\")))")
-        lines.append("(allow default)")
         return lines.joined(separator: "\n")
     }
 

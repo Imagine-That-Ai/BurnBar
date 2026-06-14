@@ -551,20 +551,20 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK",
         "BURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK",
         "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG",
-        "BURNBAR_DAEMON_DISABLE_PEER_CODESIG",
+        "BURNBAR_DAEMON_DISABLE_PEER_CODESIG"
     ]
 
     /// Prefixes for any future daemon-scoped env vars.
     static let childEnvironmentDeniedKeyPrefixes: Set<String> = [
         "OPENBURNBAR_DAEMON_",
-        "BURNBAR_DAEMON_",
+        "BURNBAR_DAEMON_"
     ]
 
     private func sanitizedChildEnvironment(_ environment: [String: String]) -> [String: String] {
         environment.filter { key, _ in
             if Self.childEnvironmentDeniedKeys.contains(key) { return false }
-            for prefix in Self.childEnvironmentDeniedKeyPrefixes {
-                if key.hasPrefix(prefix) { return false }
+            for prefix in Self.childEnvironmentDeniedKeyPrefixes where key.hasPrefix(prefix) {
+                return false
             }
             return true
         }

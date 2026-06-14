@@ -1723,12 +1723,14 @@ final class CLIBridgeTests: XCTestCase {
             workspacePath: workspace.path,
             homePath: home.path
         )
+        XCTAssertTrue(profile.contains("(deny default)"))
         XCTAssertTrue(profile.contains("(deny network*)"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/Library/Keychains\"))"))
-        XCTAssertTrue(profile.contains("(deny file-write* (require-not (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(allow process*)"))
+        XCTAssertTrue(profile.contains("(allow mach*)"))
+        XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"\(homePath)\")))"))
         XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
         XCTAssertTrue(profile.contains("(allow file-write* (literal \"/dev/null\"))"))
+        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"\(homePath)/.cargo/bin\"))"))
     }
 
     func test_restrictedShellSandboxProfile_canonicalizesWorkspaceAndHomePaths() throws {
@@ -1748,7 +1750,7 @@ final class CLIBridgeTests: XCTestCase {
         let workspacePath = realpathString(workspace)
         let homePath = realpathString(home)
         XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
+        XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"\(homePath)\")))"))
     }
 
     func test_restrictedShellSandboxProfile_enforcesNetworkAndSecretDenial() throws {
