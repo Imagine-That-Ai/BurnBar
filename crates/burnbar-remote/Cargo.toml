@@ -39,3 +39,9 @@ burnbar-remote-observability = { path = "burnbar-remote-observability" }
 burnbar-remote-security = { path = "burnbar-remote-security" }
 burnbar-remote-media = { path = "burnbar-remote-media" }
 burnbar-remote-network = { path = "burnbar-remote-network" }
+
+# Fail closed on panic-prone APIs in library code. Tests use explicit `must*`
+# helpers and `panic!` with context instead of `unwrap`/`expect`.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

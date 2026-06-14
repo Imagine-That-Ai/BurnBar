@@ -237,7 +237,11 @@ struct QuotaCommandCenter: View {
                 }
                 settingsManager.miniMaxQuotaMode = localMiniMaxMode
             } catch {
-                // silently fail
+                AppLogger.dataStore.silentFailure(
+                    "ProviderQuotaCommandCenter.saveMiniMaxKey",
+                    error: error,
+                    context: ["provider": provider.providerID.rawValue]
+                )
             }
         case .zai:
             do {
@@ -248,7 +252,11 @@ struct QuotaCommandCenter: View {
                     try ks.setAPIKey(trimmed, for: "zai")
                 }
             } catch {
-                // silently fail
+                AppLogger.dataStore.silentFailure(
+                    "ProviderQuotaCommandCenter.saveZAIKey",
+                    error: error,
+                    context: ["provider": provider.providerID.rawValue]
+                )
             }
         case .cursor:
             do {
@@ -259,7 +267,11 @@ struct QuotaCommandCenter: View {
                     try ks.setAPIKey(trimmed, for: "cursor_cookie")
                 }
             } catch {
-                // silently fail
+                AppLogger.dataStore.silentFailure(
+                    "ProviderQuotaCommandCenter.saveCursorCookie",
+                    error: error,
+                    context: ["provider": provider.providerID.rawValue]
+                )
             }
         case .factory:
             settingsManager.factoryQuotaPlanTier = localFactoryTier
@@ -273,7 +285,11 @@ struct QuotaCommandCenter: View {
                 }
                 settingsManager.xaiQuotaPlanTier = localXaiTier
             } catch {
-                // silently fail
+                AppLogger.dataStore.silentFailure(
+                    "ProviderQuotaCommandCenter.saveXAIManagementKey",
+                    error: error,
+                    context: ["provider": provider.providerID.rawValue]
+                )
             }
         case .mimo:
             settingsManager.mimoTokenPlanRegion = localMimoRegion

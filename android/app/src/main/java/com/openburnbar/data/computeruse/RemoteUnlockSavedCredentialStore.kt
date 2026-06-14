@@ -96,7 +96,7 @@ class RemoteUnlockSavedCredentialStore(context: Context) {
         return generator.generateKey()
     }
 
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION") // reason: pre-R path calls the deprecated setUserAuthenticationValidityDurationSeconds; R+ uses setUserAuthenticationParameters.
     private fun KeyGenParameterSpec.Builder.applyUserAuthenticationParameters(): KeyGenParameterSpec.Builder =
         apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

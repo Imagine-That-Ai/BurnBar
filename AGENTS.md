@@ -39,6 +39,7 @@ Export `MEM0_BURNBAR_API_KEY` (the BurnBar mem0 project key) in your shell to re
 - **Architecture ADRs:** cross-cutting decisions live in [`docs/ARCHITECTURE/`](docs/ARCHITECTURE/README.md) (naming, actor isolation, errors, schema, sync).
 - **Ops SLOs:** [`docs/runbooks/slos.md`](docs/runbooks/slos.md) is the operator runbook for latency/availability/error budgets.
 - **Tech debt trends:** run `./scripts/ci/update-tech-debt-metrics.sh` before monthly debt reviews; commit updated [`docs/TECH_DEBT_METRICS.md`](docs/TECH_DEBT_METRICS.md) when baselines shift intentionally.
+- **No new suppressions:** `scripts/ci/check-no-suppressions.sh` (fail-closed CI meta-gate) blocks any new lint/type suppression (`eslint-disable`, `@ts-*`, `# noqa`, `@Suppress`, `swiftlint:disable`, `#[allow]`) or checked-in baseline (`budgets/*.json`, `*baseline*.{xml,yml,yaml}`) unless it carries an inline `reason:` token or is allowlisted in [`docs/LINT_RATIONALE.md`](docs/LINT_RATIONALE.md). Justify it inline or don't add it.
 - **Scope:** every line in a change should serve the request; avoid drive-by refactors and unrelated files.
 - **Mac CLI session paths (quota parsers):** Codex `~/.codex/sessions/`, Claude Code `~/.claude/projects/`, Grok Build `~/.grok/sessions/` (see [`GrokParser.swift`](AgentLens/Services/LogParser/GrokParser.swift) and [docs/PROVIDERS.md](docs/PROVIDERS.md)).
 - **Database schema:** SQLite schema reference lives in [`docs/SCHEMA_SQLITE.sql`](docs/SCHEMA_SQLITE.sql); update it alongside any GRDB migration.
