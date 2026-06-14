@@ -3,8 +3,9 @@
 #
 # The ratchet bucket (fixable escape hatches) is at ZERO and must stay there: any
 # new `@unchecked Sendable` conformance fails CI unless it is a genuinely-
-# irreducible exception carrying a `sendable-allowlist: <reason-id>` token from the
-# canonical registry below (documented in docs/security/UNCHECKED_SENDABLE_REMEDIATION.md).
+# irreducible exception carrying a `sendable-allowlist: <reason-id>` token (inline on
+# the line, or in the contiguous comment block directly above it) from the canonical
+# registry below (documented in docs/security/UNCHECKED_SENDABLE_REMEDIATION.md).
 #
 # There is intentionally no baseline file: the budget is asserted to be 0, not
 # ratcheted against a stored number.
@@ -53,7 +54,11 @@ if [[ "${ratchet}" -ne 0 ]]; then
         { line[NR] = $0 }
         /@unchecked[[:space:]]+Sendable/ && $0 !~ /^[[:space:]]*(\/\/|\/\*|\*)/ {
           allow = ($0 ~ /sendable-allowlist:/) ? 1 : 0
-          for (i = NR - 1; i >= NR - 8 && i >= 1; i--) if (line[i] ~ /sendable-allowlist:/) allow = 1
+          for (i = NR - 1; i >= 1; i--) {
+            if (line[i] ~ /^[[:space:]]*(\/\/|\/\*|\*)/) {
+              if (line[i] ~ /sendable-allowlist:/) { allow = 1; break }
+            } else break
+          }
           if (!allow) printf "  %s:%d: %s\n", FILENAME, NR, $0
         }
       ' "${repo_root}/${rel}" >&2

@@ -254,8 +254,15 @@ final class AgentToolBroker: Sendable {
                         runID: invocation.runID
                     )
                 )
-                browserSessionIDBox.write(response.sessionId)
-                sessionID = response.sessionId
+                // Publish atomically: if a concurrent first-call already created a
+                // session while we awaited, prefer the stored id and let our
+                // just-created session lapse via the daemon's idle-timeout GC. Keeps
+                // the cached id deterministic under the rare concurrent-init race.
+                sessionID = browserSessionIDBox.withLock { stored in
+                    if let stored { return stored }
+                    stored = response.sessionId
+                    return response.sessionId
+                }
             }
             let response = try await OpenBurnBarDaemonManager.shared.invokeComputerUse(
                 ComputerUseInvokeRequest(sessionId: sessionID, invocation: invocation)

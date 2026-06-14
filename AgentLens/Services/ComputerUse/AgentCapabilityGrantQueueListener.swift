@@ -23,7 +23,10 @@ final class AgentCapabilityGrantQueueListener {
     func start() {
         guard authHandle == nil else { return }
         authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
-            self?.restart(uid: user?.uid)
+            // The auth callback is not guaranteed to run on the main thread, and
+            // `restart` mutates main-actor-isolated state — marshal explicitly
+            // (mirrors the snapshot-listener hop below).
+            Task { @MainActor in self?.restart(uid: user?.uid) }
         }
         restart(uid: Auth.auth().currentUser?.uid)
     }
@@ -113,7 +116,7 @@ final class AgentCapabilityGrantQueueListener {
 
     /// F2: `signingKeyKind` mirrors the controller record. Absent ⇒ legacy
     /// Ed25519; present-but-unrecognized fails closed (no silent downgrade).
-    static func signingKeyKind(fromRecordValue kindRaw: String?) throws -> PhoneControlSigningKeyKind {
+    nonisolated static func signingKeyKind(fromRecordValue kindRaw: String?) throws -> PhoneControlSigningKeyKind {
         guard let kindRaw else { return .ed25519 }
         guard let parsed = PhoneControlSigningKeyKind(rawValue: kindRaw) else {
             throw QueueError.missingAuthority

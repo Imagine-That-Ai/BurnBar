@@ -45,9 +45,11 @@ exclude_re='(^|/)(Tests?|Mocks?|Fixtures?|Preview Content|\.build|\.build-codex|
 #                 toward zero; CI fails on any increase. This is the budget "total".
 #   * ALLOWLIST — a genuinely-irreducible exception (FFI handle, raw pointer,
 #                 Firebase/Foundation SDK type not yet Sendable-annotated), marked
-#                 with a `sendable-allowlist: <reason-id>` token in its AUDIT comment
-#                 (within 8 lines) or inline. Documented in docs/security/
-#                 UNCHECKED_SENDABLE_REMEDIATION.md, NOT counted against the budget.
+#                 with a `sendable-allowlist: <reason-id>` token EITHER inline on the
+#                 declaration line OR in the contiguous comment block directly above
+#                 it (a blank or code line between the token and the declaration
+#                 breaks the association — no spooky-action-at-a-distance). Documented
+#                 in docs/security/UNCHECKED_SENDABLE_REMEDIATION.md, NOT counted.
 # Comment-only lines (e.g. `// AUDIT(@unchecked Sendable): …`) are never counted.
 count_root() {
   local root="$1"
@@ -62,7 +64,12 @@ count_root() {
           { line[NR] = $0 }
           /@unchecked[[:space:]]+Sendable/ && $0 !~ /^[[:space:]]*(\/\/|\/\*|\*)/ {
             allow = ($0 ~ /sendable-allowlist:/) ? 1 : 0
-            for (i = NR - 1; i >= NR - 8 && i >= 1; i--) if (line[i] ~ /sendable-allowlist:/) allow = 1
+            # Walk up ONLY through the contiguous comment block immediately above.
+            for (i = NR - 1; i >= 1; i--) {
+              if (line[i] ~ /^[[:space:]]*(\/\/|\/\*|\*)/) {
+                if (line[i] ~ /sendable-allowlist:/) { allow = 1; break }
+              } else break
+            }
             if (allow) a++; else r++
           }
           END { print (r + 0), (a + 0) }
