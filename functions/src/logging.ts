@@ -56,7 +56,7 @@ function scrubString(value: string): string {
   return result;
 }
 
-export type LogFieldValue =
+type LogFieldValue =
   | string
   | number
   | boolean
@@ -98,7 +98,7 @@ function scrubFields(obj: { [key: string]: LogFieldValue }): { [key: string]: Lo
   return scrubbed;
 }
 
-export interface LogFields {
+interface LogFields {
   event: string;
   trace_id?: string;
   session_id?: string;

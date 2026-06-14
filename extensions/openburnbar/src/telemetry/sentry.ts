@@ -31,7 +31,7 @@ let _initialized = false;
 async function getSentry(): Promise<SentryNodeModule | undefined> {
   if (_sentry !== undefined) return _sentry;
   try {
-    _sentry = (await import('@sentry/node')) as SentryNodeModule;
+    _sentry = await import('@sentry/node');
     return _sentry;
   } catch {
     return undefined;

@@ -24,7 +24,7 @@ import org.junit.Test
  * negatives (forged sender, viewer swap).
  */
 class MediaFrameSealSessionTest {
-    private fun x963(keyPair: KeyPair): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as ECPublicKey)
+    private fun x963(keyPair: KeyPair): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as? ECPublicKey ?: error("expected EC public key"))
 
     private fun base64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
 

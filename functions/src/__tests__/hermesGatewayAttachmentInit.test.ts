@@ -131,8 +131,9 @@ const CLIENT_ID = "hgw_attach_client";
 const TOKEN = "obb_hgw_test_token_attachments";
 const TOKEN_HASH = hashHermesGatewayBearerToken(TOKEN);
 const { publicKey: AGENT_SIGNING_PUBLIC_KEY, privateKey: AGENT_SIGNING_PRIVATE_KEY } = generateKeyPairSync("ed25519");
+const exportedAgentSigningSpki = AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" });
 const AGENT_SIGNING_PUBLIC_KEY_BASE64 = Buffer.from(
-  AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" }) as Buffer,
+  Buffer.isBuffer(exportedAgentSigningSpki) ? exportedAgentSigningSpki : Buffer.from(exportedAgentSigningSpki),
 )
   .subarray(-32)
   .toString("base64");

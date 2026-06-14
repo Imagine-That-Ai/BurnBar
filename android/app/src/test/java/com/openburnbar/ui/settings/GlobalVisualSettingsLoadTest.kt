@@ -45,12 +45,12 @@ class GlobalVisualSettingsLoadTest {
         styleReads.set(0)
         prefs = mockk()
         every { prefs.getBoolean(any(), any()) } answers {
-            (backing[firstArg<String>()] ?: secondArg<Boolean>()) as Boolean
+            (backing[firstArg<String>()] ?: secondArg<Boolean>()) as? Boolean ?: false
         }
         every { prefs.getString(any(), any()) } answers {
             val key = firstArg<String>()
             if (key == "backgroundStyle") styleReads.incrementAndGet()
-            (backing[key] ?: secondArg<String?>()) as String?
+            backing[key] as? String ?: secondArg<String?>()
         }
         every { prefs.edit() } returns mockk(relaxed = true)
 
@@ -163,6 +163,6 @@ class GlobalVisualSettingsLoadTest {
     private fun resetState(fieldName: String, value: Any?) {
         val field = GlobalVisualSettings::class.java.getDeclaredField(fieldName)
         field.isAccessible = true
-        (field.get(GlobalVisualSettings) as MutableState<Any?>).value = value
+        (field.get(GlobalVisualSettings) as? MutableState<Any?>)?.value = value
     }
 }

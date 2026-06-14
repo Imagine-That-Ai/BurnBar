@@ -16,7 +16,7 @@ import { stripUndefinedObject } from "../guards.js";
 
 /** Sort fields the cockpit may order by; each is a plaintext facet stored on the manifest. */
 export const QUERY_CONVERSATION_SORT_FIELDS = ["updatedAt", "startTime", "endTime", "costUSD", "totalTokens"] as const;
-export type QueryConversationSortField = (typeof QUERY_CONVERSATION_SORT_FIELDS)[number];
+type QueryConversationSortField = (typeof QUERY_CONVERSATION_SORT_FIELDS)[number];
 
 function isQueryConversationSortField(value: string): value is QueryConversationSortField {
   for (const field of QUERY_CONVERSATION_SORT_FIELDS) {
@@ -36,7 +36,7 @@ export function manifestFieldToISO(value: unknown): string | undefined {
   return undefined;
 }
 
-export interface ConversationSortPlan {
+interface ConversationSortPlan {
   sortField: QueryConversationSortField;
   direction: "asc" | "desc";
 }
@@ -58,7 +58,7 @@ export function resolveConversationSort(
   return { sortField, direction };
 }
 
-export interface ConversationFacetInClauseFlags {
+interface ConversationFacetInClauseFlags {
   providerInClause: boolean;
   modelInClause: boolean;
 }
@@ -80,7 +80,7 @@ export function assertConversationFacetCombination(
   return { providerInClause, modelInClause };
 }
 
-export interface ConversationFacetFilters extends ConversationFacetInClauseFlags {
+interface ConversationFacetFilters extends ConversationFacetInClauseFlags {
   providers: readonly string[];
   models: readonly string[];
   deviceId?: string;

@@ -29,7 +29,7 @@ const SCHEMA_VERSION = 1;
  */
 const AUDIT_TTL_DAYS = 400;
 
-export interface AuditWriteInput {
+interface AuditWriteInput {
   uid: string;
   eventId: string;
   source: EntitlementEventDoc["source"];

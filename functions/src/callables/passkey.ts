@@ -92,19 +92,61 @@ function credentialFromStored(stored: StoredPasskeyCredential): WebAuthnCredenti
   };
 }
 
+function parseStoredPasskeyCredential(raw: unknown): StoredPasskeyCredential | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (typeof raw.credentialId !== "string" || typeof raw.publicKey !== "string") return undefined;
+  if (typeof raw.counter !== "number" || !Number.isFinite(raw.counter)) return undefined;
+  if (!(raw.createdAt instanceof Timestamp) || !(raw.updatedAt instanceof Timestamp)) return undefined;
+  const transports = Array.isArray(raw.transports)
+    ? raw.transports.filter((item): item is AuthenticatorTransportFuture => typeof item === "string")
+    : undefined;
+  return {
+    credentialId: raw.credentialId,
+    publicKey: raw.publicKey,
+    counter: raw.counter,
+    transports,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+function requireStoredPasskeyCredential(raw: unknown): StoredPasskeyCredential {
+  const parsed = parseStoredPasskeyCredential(raw);
+  if (!parsed) throw new HttpsError("internal", "Passkey credential is malformed.");
+  return parsed;
+}
+
 async function loadUserCredentials(uid: string): Promise<StoredPasskeyCredential[]> {
   const snap = await db.collection(`users/${uid}/passkey_credentials`).get();
-  return snap.docs.map((doc) => doc.data() as StoredPasskeyCredential);
+  return snap.docs
+    .map((doc) => parseStoredPasskeyCredential(doc.data()))
+    .filter((credential): credential is StoredPasskeyCredential => credential !== undefined);
+}
+
+function isRegistrationResponseJSON(value: unknown): value is RegistrationResponseJSON {
+  return (
+    isRecord(value) && typeof value.id === "string" && typeof value.rawId === "string" && isRecord(value.response)
+  );
+}
+
+function isAuthenticationResponseJSON(value: unknown): value is AuthenticationResponseJSON {
+  return (
+    isRecord(value) && typeof value.id === "string" && typeof value.rawId === "string" && isRecord(value.response)
+  );
 }
 
 function requireRegistrationResponse(raw: unknown): RegistrationResponseJSON {
-  if (!isRecord(raw)) throw new HttpsError("invalid-argument", "response must be an object.");
-  return raw as unknown as RegistrationResponseJSON;
+  if (!isRegistrationResponseJSON(raw)) {
+    throw new HttpsError("invalid-argument", "response must be an object.");
+  }
+  return raw;
 }
 
 function requireAuthenticationResponse(raw: unknown): AuthenticationResponseJSON {
-  if (!isRecord(raw)) throw new HttpsError("invalid-argument", "assertion must be an object.");
-  return raw as unknown as AuthenticationResponseJSON;
+  if (!isAuthenticationResponseJSON(raw)) {
+    throw new HttpsError("invalid-argument", "assertion must be an object.");
+  }
+  return raw;
 }
 
 export const registerPasskey = onCall(
@@ -240,7 +282,7 @@ export const verifyPasskeyAssertion = onCall(
     const credentialDoc = credentialSnap.docs[0];
     const uid = credentialDoc.ref.parent.parent?.id;
     if (!uid) throw new HttpsError("internal", "Passkey credential is not under a user namespace.");
-    const stored = credentialDoc.data() as StoredPasskeyCredential;
+    const stored = requireStoredPasskeyCredential(credentialDoc.data());
     const challengeRef = db.doc(`passkey_assertion_challenges/${challenge}`);
 
     const token = await db.runTransaction(async (tx) => {

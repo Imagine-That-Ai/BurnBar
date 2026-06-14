@@ -116,17 +116,24 @@ function scrubSentryRequest(request: NonNullable<ErrorEvent["request"]>): void {
 }
 
 function sanitizeSentryExtra(extra: NonNullable<ErrorEvent["extra"]>): ErrorEvent["extra"] {
-  return sanitizeSentryValue(extra);
+  const sanitized = sanitizeSentryValue(extra);
+  return isRecord(sanitized) ? sanitized : extra;
 }
 
 function sanitizeSentryContexts(
   contexts: NonNullable<ErrorEvent["contexts"]>,
 ): ErrorEvent["contexts"] {
-  return sanitizeSentryValue(contexts);
+  for (const key of Object.keys(contexts)) {
+    if (SENSITIVE_KEY_PATTERN.test(key) || REQUEST_BODY_KEY_PATTERN.test(key)) {
+      delete contexts[key];
+    }
+  }
+  return contexts;
 }
 
 function sanitizeBreadcrumbData(data: NonNullable<Breadcrumb["data"]>): Breadcrumb["data"] {
-  return sanitizeSentryValue(data);
+  const sanitized = sanitizeSentryValue(data);
+  return isRecord(sanitized) ? sanitized : data;
 }
 
 function sanitizeHeaders(headers: Record<string, unknown>) {
@@ -137,15 +144,15 @@ function sanitizeHeaders(headers: Record<string, unknown>) {
   return sanitized;
 }
 
-function sanitizeSentryValue<T>(value: T, depth = 0): T {
+function sanitizeSentryValue(value: unknown, depth = 0): unknown {
   if (depth > 8) {
-    return "[MaxDepth]" as T;
+    return "[MaxDepth]";
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeSentryValue(entry, depth + 1)) as T;
+    return value.map((entry) => sanitizeSentryValue(entry, depth + 1));
   }
   if (!isRecord(value)) {
-    return (typeof value === "string" ? redactURLSecrets(value) : value) as T;
+    return typeof value === "string" ? redactURLSecrets(value) : value;
   }
 
   const sanitized: Record<string, unknown> = {};
@@ -156,7 +163,7 @@ function sanitizeSentryValue<T>(value: T, depth = 0): T {
       sanitized[key] = sanitizeSentryValue(child, depth + 1);
     }
   }
-  return sanitized as T;
+  return sanitized;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

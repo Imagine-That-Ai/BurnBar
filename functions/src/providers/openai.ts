@@ -41,23 +41,6 @@ async function openAIFetch(
   }
 }
 
-interface OpenAIUsageBucket {
-  results?: Array<{
-    input_tokens?: number;
-    output_tokens?: number;
-    input_cached_tokens?: number;
-    num_model_requests?: number;
-    model?: string;
-    [k: string]: unknown;
-  }>;
-  [k: string]: unknown;
-}
-
-export interface OpenAIUsagePayload {
-  data?: OpenAIUsageBucket[];
-  [k: string]: unknown;
-}
-
 function usageURL(days: number): string {
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;

@@ -11,10 +11,7 @@ import {
   HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
   HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
 } from "../hermesGateway.js";
-import type {
-  GatewaySignalAtRestKeyDeliveryDoc,
-  GatewaySignalEnvelopeDoc,
-} from "../types/generated/hermes-gateway.js";
+import type { GatewaySignalEnvelopeDoc } from "../types/generated/hermes-gateway.js";
 
 const transportEnvelope: GatewaySignalEnvelopeDoc = {
   signalEnvelopeFormatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
@@ -88,15 +85,18 @@ describe("signalEnvelopeExport recognizers", () => {
   });
 
   it("at-rest envelopes export opaquely while nested plaintext-adjacent keys are stripped", () => {
-    const atRestKeyDelivery = atRestEnvelope.keyDelivery as GatewaySignalAtRestKeyDeliveryDoc;
-    const polluted = {
+    if (atRestEnvelope.keyDelivery.scheme !== HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION) {
+      throw new Error("expected at-rest key delivery fixture");
+    }
+    const atRestKeyDelivery = atRestEnvelope.keyDelivery;
+    const polluted: Record<string, unknown> = {
       ...atRestEnvelope,
       binding: { ...atRestEnvelope.binding, privateDocTitle: "secret" },
       keyDelivery: {
         ...atRestKeyDelivery,
         wraps: [{ ...atRestKeyDelivery.wraps[0], privateDeviceName: "Alice's MacBook" }],
       },
-    } as unknown as Record<string, unknown>;
+    };
     const { out, dropped } = sanitizeSignalEnvelopeForExport("signalEnvelope", polluted);
     expect(out).toEqual(atRestEnvelope);
     expect(dropped).toContain("signalEnvelope.binding.privateDocTitle");

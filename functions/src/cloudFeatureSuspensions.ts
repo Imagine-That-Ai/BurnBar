@@ -77,7 +77,7 @@ export function cloudFeatureSuspensionDeniesSurface(
   );
 }
 
-export async function loadActiveCloudFeatureSuspension(
+async function loadActiveCloudFeatureSuspension(
   firestore: Firestore,
   uid: string,
 ): Promise<ActiveCloudFeatureSuspension | null> {

@@ -12,7 +12,7 @@ import {
 } from "./resilience.js";
 import { assertOutboundFetchTarget } from "./ssrfGuard.js";
 
-export interface ResilientFetchOptions {
+interface ResilientFetchOptions {
   /** Permit private/link-local/metadata hosts (e.g. the GCP metadata identity fetch). */
   allowPrivateHosts?: boolean;
 }

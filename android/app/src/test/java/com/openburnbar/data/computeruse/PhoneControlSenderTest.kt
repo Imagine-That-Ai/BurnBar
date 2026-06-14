@@ -370,7 +370,7 @@ class PhoneControlSenderTest {
         val identity =
             PhoneControlSigningIdentity.SecureEnclaveP256(
                 pair.private,
-                pair.public as java.security.interfaces.ECPublicKey,
+                pair.public as? java.security.interfaces.ECPublicKey ?: error("expected EC public key"),
             )
         val peerNodeId = PhoneControlAuthorityDocumentFactory.peerNodeId(identity)
         val frames = mutableListOf<HermesRealtimeRelayFrame>()

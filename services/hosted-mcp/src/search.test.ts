@@ -122,7 +122,8 @@ function makeSearchFirestore(): Firestore {
       return query;
     }
   };
-  return db as unknown as Firestore;
+  // @ts-expect-error in-memory Firestore stub for hosted search tests
+  return db;
 }
 
 test("hosted search can find older per-document commits from posting indexes", async () => {

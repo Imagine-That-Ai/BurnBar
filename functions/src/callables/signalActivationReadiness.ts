@@ -29,17 +29,17 @@ const CALLABLE_OPTS = {
 // Mirrors packages/signal-envelope-contracts SIGNAL_AT_REST_ENCRYPTION + the rules.
 const SIGNAL_AT_REST_ENCRYPTION = "signal-hpke-identity-seal-v1";
 
-export interface ReadinessTrustedDevice {
+interface ReadinessTrustedDevice {
   deviceId: string;
   keyVersion: number | null;
 }
 
-export interface ReadinessIdentity {
+interface ReadinessIdentity {
   algorithm?: unknown;
   publicKeyData?: unknown;
 }
 
-export interface SignalActivationReadinessResult {
+interface SignalActivationReadinessResult {
   ready: boolean;
   total: number;
   published: number;
@@ -50,7 +50,7 @@ export interface SignalActivationReadinessResult {
  * Pure readiness computation — no Firestore. `ready` is true only when there is at least
  * one trusted device and EVERY trusted device has a valid published Signal identity.
  */
-export function computeSignalActivationReadiness(
+function computeSignalActivationReadiness(
   trusted: ReadinessTrustedDevice[],
   identityByKeyId: Map<string, ReadinessIdentity>,
 ): SignalActivationReadinessResult {
@@ -67,7 +67,7 @@ export function computeSignalActivationReadiness(
       !!identity &&
       identity.algorithm === SIGNAL_AT_REST_ENCRYPTION &&
       typeof identity.publicKeyData === "string" &&
-      (identity.publicKeyData as string).length > 0;
+      identity.publicKeyData.length > 0;
     if (valid) {
       published += 1;
     } else {

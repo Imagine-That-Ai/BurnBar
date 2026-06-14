@@ -37,7 +37,7 @@ import org.junit.Test
  * tamper, forged sender).
  */
 class ControlFrameSealSessionTest {
-    private fun x963(keyPair: KeyPair): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as ECPublicKey)
+    private fun x963(keyPair: KeyPair): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as? ECPublicKey ?: error("expected EC public key"))
 
     private fun base64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
 
@@ -344,7 +344,7 @@ class ControlFrameSealSessionTest {
         // recovers the signed intent intact.
         val opened =
             ControlFrameSealSession.openPayload(
-                payload = frame.control!!,
+                payload = frame.control ?: error("expected control frame"),
                 key = session.key,
                 peerNodeId = "android-phone-1",
                 frameType = "control.input.intent",

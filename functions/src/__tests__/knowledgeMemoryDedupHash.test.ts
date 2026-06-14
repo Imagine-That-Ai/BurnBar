@@ -384,7 +384,8 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     // The keyed filter column IS present.
     expect(typeof record.slugHmac).toBe("string");
 
-    const manifest = manifestRecord("userA", record.slugHmac as string);
+    const slugHmac = typeof record.slugHmac === "string" ? record.slugHmac : "";
+    const manifest = manifestRecord("userA", slugHmac);
     expect(manifest.sourceManifestId).toBe(record.slugHmac);
     expect(manifest.slugHmac).toBe(record.slugHmac);
     expect(manifest).not.toHaveProperty("sourceSlug");

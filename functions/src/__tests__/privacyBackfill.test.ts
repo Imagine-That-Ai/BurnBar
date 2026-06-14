@@ -17,7 +17,8 @@ const {
 // FieldValue.delete() returns a fresh sentinel each call, so detect it by the
 // admin SDK's structural isEqual rather than reference identity.
 function isDeleteSentinel(value: unknown): boolean {
-  return value instanceof FieldValue && FieldValue.delete().isEqual(value as FieldValue);
+  if (!(value instanceof FieldValue)) return false;
+  return FieldValue.delete().isEqual(value);
 }
 
 // ── Minimal in-memory Firestore double ──────────────────────────────────────
@@ -91,7 +92,8 @@ class FakeFirestore {
     this.store.set(path, data);
   }
   asFirestore(): Firestore {
-    return this as unknown as Firestore;
+    // @ts-expect-error in-memory fake is structurally sufficient for tests
+    return this;
   }
 }
 

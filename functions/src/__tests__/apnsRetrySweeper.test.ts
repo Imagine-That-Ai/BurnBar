@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Timestamp } from "firebase-admin/firestore";
-import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
+import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import {
   MAX_VOIP_RETRY_ATTEMPTS,
   nextVoIPRetryDelayMs,
@@ -38,8 +38,10 @@ function fakeSnapshot(
         updates.push(patch);
       }),
     },
-  } as unknown as QueryDocumentSnapshot;
-  return { snapshot, updates };
+  };
+  // @ts-expect-error test double for QueryDocumentSnapshot
+  const doc: QueryDocumentSnapshot = snapshot;
+  return { snapshot: doc, updates };
 }
 
 function pushReturning(result: SendResult) {
@@ -132,9 +134,10 @@ describe("processStuckVoIPPush", () => {
 
     expect(outcome).toBe("rescheduled");
     expect(updates[0]).toMatchObject({ status: "pending", attemptCount: 2 });
-    const retryAt = updates[0].retryAt as Timestamp;
+    const retryAt = updates[0].retryAt;
+    expect(retryAt).toBeInstanceOf(Timestamp);
     // attemptCount 2 → 60s backoff.
-    expect(retryAt.toMillis()).toBe(NOW.getTime() + 60_000);
+    expect(retryAt instanceof Timestamp ? retryAt.toMillis() : 0).toBe(NOW.getTime() + 60_000);
   });
 
   it("skips a doc whose status already advanced past 'pending' (double-processing guard)", async () => {
@@ -159,7 +162,11 @@ describe("sweepStuckVoIPPushes", () => {
    * chained `.where().where().orderBy().limit().get()` mirrors the real query
    * builder so we exercise the exact call shape the sweeper uses.
    */
-  function fakeDb(docs: QueryDocumentSnapshot[]) {
+  function fakeDb(docs: QueryDocumentSnapshot[]): {
+    db: Firestore;
+    collectionGroup: ReturnType<typeof vi.fn>;
+    query: { where: ReturnType<typeof vi.fn>; orderBy: ReturnType<typeof vi.fn>; limit: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+  } {
     const query = {
       where: vi.fn(() => query),
       orderBy: vi.fn(() => query),
@@ -167,7 +174,9 @@ describe("sweepStuckVoIPPushes", () => {
       get: vi.fn(async () => ({ docs })),
     };
     const collectionGroup = vi.fn(() => query);
-    return { db: { collectionGroup } as never, collectionGroup, query };
+    const db = { collectionGroup };
+    // @ts-expect-error partial Firestore stub for voip sweeper tests
+    return { db, collectionGroup, query };
   }
 
   it("(a) re-pushes a due pending doc to 'sent' and (c) leaves a not-yet-due doc untouched", async () => {
