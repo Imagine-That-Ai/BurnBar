@@ -160,7 +160,7 @@ Implement, mirroring `packages/libsignal-protocol/src/index.ts`:
 Exact one-line flips (verified locations):
 - `functions/src/hermesGateway.ts:130` — `HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>()` → `new Set([4])`.
 - `functions/src/hermesGateway.ts ~1046-1058` — allow `supportsSignalEnvelope: true` negotiation (remove the `PRODUCTION.size===0` rejection).
-- `functions/src/callables/computerUseSecurity.ts:100` — `ESCROW_DEVICE_FINGERPRINT_ENFORCEMENT_ENABLED = false` → `true` (Stream 6 enforcement; UI key-binding from Phase C must be live first).
+- ~~`functions/src/callables/computerUseSecurity.ts`~~ — `ESCROW_DEVICE_FINGERPRINT_ENFORCEMENT_ENABLED` is already `true` on `main` (C-2 closed 2026-06-13; see `docs/governance/PHASE1_SECURITY_REGISTER.md`).
 - `OpenBurnBarMobile/.../EscrowDeviceSafetyCode.swift ~202` + iPad/Mac — flip `EscrowDeviceTrustSafetyCheckFlag.defaultEnabled` true.
 - `packages/data-domains/registry.json:92` — `sealingScheme: "cloudvault-aesgcm-v2"` → `"signal-hpke-identity-seal-v1"` (per migrated domain; re-run `node packages/data-domains/codegen.mjs` and confirm `trust.generated.ts` change is intentional + driftcheck passes).
 

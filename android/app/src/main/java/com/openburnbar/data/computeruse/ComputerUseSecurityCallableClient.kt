@@ -179,7 +179,7 @@ class ComputerUseSecurityCallableClient(
         val uid = requireAuthenticatedUser()
         val trimmed = rotatingDeviceId.trim()
         if (trimmed.isEmpty()) return AndroidCloudVaultRevocationRotation.PickupResult()
-        val pending = listPendingCloudVaultRotationRequirements()
+        val pending = listPendingCloudVaultRotationRequirements(trimmed)
         return AndroidCloudVaultRevocationRotation.runPickup(
             uid = uid,
             rotatingDeviceId = trimmed,
@@ -194,11 +194,15 @@ class ComputerUseSecurityCallableClient(
      * Lists the user's pending Cloud Vault rotation requirements via the server-only callable, then
      * decodes them with [AndroidCloudVaultRevocationRotation.parsePendingRequirements].
      */
-    suspend fun listPendingCloudVaultRotationRequirements(): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
+    suspend fun listPendingCloudVaultRotationRequirements(
+        callerDeviceId: String,
+    ): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
+        val trimmed = callerDeviceId.trim()
+        require(trimmed.isNotEmpty()) { "Could not list pending Cloud Vault rotation requirements." }
         requireAuthenticatedUser()
         val result =
             functions.getHttpsCallable("listPendingCloudVaultRotationRequirements")
-                .call(emptyMap<String, Any>())
+                .call(AndroidCloudVaultRevocationRotation.listPendingCallablePayload(trimmed))
                 .await()
         val data = result.getData() as? Map<*, *> ?: error("Could not list pending Cloud Vault rotation requirements.")
         val rawRequirements = data["requirements"] as? List<*> ?: error("Could not list pending Cloud Vault rotation requirements.")

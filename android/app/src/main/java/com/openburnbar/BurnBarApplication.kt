@@ -198,6 +198,7 @@ class BurnBarApplication : Application() {
         // users/{uid}/devices/{deviceId}/fcm_token so triggerVoIPCall
         // can send a Mercury push to this device.
         AgentReplyNotificationState.installLifecycleTracking(this)
+        com.openburnbar.data.cloud.CloudVaultRotationPickupLifecycle.install(this)
         registerFcmToken()
     }
 
