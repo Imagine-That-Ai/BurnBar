@@ -910,7 +910,14 @@ final class AgentToolBroker: Sendable {
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
             process.currentDirectoryURL = workingDirectory
-            process.environment = environment
+            // M-040: do NOT inherit the full ambient parent environment. Both
+            // broker shells routed here — the restricted sandbox-exec shell
+            // (`shell_run`) and the unrestricted YOLO `/bin/zsh -f -lc`
+            // (`shell_run_unrestricted`) must never inherit every app/daemon-held
+            // secret from the parent process. Restricted sandbox invocations pass a
+            // tighter deterministic environment; unrestricted invocations default
+            // to the shared allowlisted baseline.
+            process.environment = environment ?? AgentChildProcessEnvironment.allowlistedBaseline()
             let stdout = Pipe()
             let stderr = Pipe()
             process.standardOutput = stdout
