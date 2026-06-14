@@ -48,18 +48,23 @@ assert_code() {
 log "Signal rollback drill — mode=$([[ $LIVE == true ]] && echo LIVE || echo DRY-RUN)"
 
 log "Step 1/5 — disable transport v4"
-# HONEST STATUS: the `signal_envelope_v4_enabled` Remote Config key is a PLANNED
-# Phase-E lever — it is read by ZERO runtime code today. The OPERATIVE current kill
-# lever is the compile-time fail-closed default below (empty production version Set);
-# reverting/keeping it empty is what actually stops new v4. Do not pretend the RC
-# key works until a future PR wires it.
+# HONEST STATUS (remediation B3): the `signal_envelope_v4_enabled` Remote Config key
+# is now WIRED — read fail-closed in functions/src/signalEnvelopeRollout.ts and used
+# by resolveActiveSignalEnvelopeVersions() to gate whether v4 is advertised as a NEW
+# production version (missing param / RC error / value != "true" => v4 disabled).
+# The compile-time fail-closed default below (empty production version Set) remains
+# the belt-and-suspenders baseline; the env hard kill (Step 3) overrides everything.
 if grep -REq "signal_envelope_v4_enabled" functions/src 2>/dev/null; then
   note "RC signal_envelope_v4_enabled is wired — $([[ $LIVE == true ]] && echo 'operator sets it false' || echo '[dry-run] would set it false')"
 else
-  note "RC signal_envelope_v4_enabled is PLANNED (Phase E) — not yet read in functions/src; relying on the compile-time lever below"
+  note "RC signal_envelope_v4_enabled NOT found in functions/src — regression: B3 wiring missing"
+  fail=$((fail + 1))
 fi
-# The compile-time fail-closed default that is the REAL current kill lever:
-assert_code "empty HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (REAL current lever)" \
+# Assert the RC ENABLE flag is actually read by runtime code (B3 wiring):
+assert_code "RC signal_envelope_v4_enabled read in runtime code (B3)" \
+  "signal_envelope_v4_enabled" functions/src/signalEnvelopeRollout.ts
+# The compile-time fail-closed default that remains the baseline production lever:
+assert_code "empty HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (baseline lever)" \
   "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS *= *new Set<number>\\(\\)" functions/src/hermesGateway.ts
 
 log "Step 2/5 — disable per-domain at-rest Signal (registry sealingScheme stays cloudvault)"
@@ -75,13 +80,21 @@ else
 fi
 
 log "Step 3/5 — set SIGNAL_ENVELOPE_V4_DISABLED for agents/clients/server capability"
-# HONEST STATUS: SIGNAL_ENVELOPE_V4_DISABLED (L35) is a PLANNED env kill switch. Until
-# a producer/capability path reads it, it is a no-op. The drill must NOT claim it works.
+# HONEST STATUS (remediation B3): SIGNAL_ENVELOPE_V4_DISABLED is now WIRED — read
+# synchronously in functions/src/hermesGateway.ts (gatewaySignalEnvelopeV4Disabled)
+# and short-circuits productionGatewaySignalEnvelopeVersions() to an EMPTY set,
+# overriding everything (RC flag + Signal-required mode). This is the authoritative
+# <60s hard kill: it needs no RC fetch and force-disables v4 on the server write /
+# capability-negotiation path the moment the env is set and the function redeploys.
 if grep -REq "SIGNAL_ENVELOPE_V4_DISABLED" functions/src 2>/dev/null; then
   note "SIGNAL_ENVELOPE_V4_DISABLED is wired — $([[ $LIVE == true ]] && echo 'operator exports =1 + redeploys' || echo '[dry-run] would export =1')"
 else
-  note "SIGNAL_ENVELOPE_V4_DISABLED is PLANNED (L35) — not yet read in functions/src; implement before relying on it in a live rollback"
+  note "SIGNAL_ENVELOPE_V4_DISABLED NOT found in functions/src — regression: B3 wiring missing"
+  fail=$((fail + 1))
 fi
+# Assert the env HARD kill is actually read by runtime code (B3 wiring):
+assert_code "SIGNAL_ENVELOPE_V4_DISABLED read in runtime code (B3)" \
+  "SIGNAL_ENVELOPE_V4_DISABLED" functions/src/hermesGateway.ts
 
 log "Step 4/5 — keep dual-read OPEN (do NOT delete Signal rows on rollback)"
 note "policy assertion only: rollback never deletes Signal-sealed rows; legacy + Signal both stay readable"

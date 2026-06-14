@@ -1669,9 +1669,10 @@ extension CloudSyncService {
     /// `CloudVaultAADContext`, so opening WITHOUT the matching AAD always fails. A failure
     /// here is a trust/verification signal (forgery / tamper / wrong key), not a recoverable
     /// read — so the caller rejects the whole hit rather than surfacing a placeholder entry.
-    // `nonisolated`: a pure AAD-bound decrypt with no `@MainActor` state, so it is
-    // callable off the main actor (the enclosing `CloudSyncService` is `@MainActor`,
-    // which would otherwise isolate this `static` helper).
+    ///
+    /// `nonisolated`: a pure AAD-bound decrypt with no `@MainActor` state, so it is
+    /// callable off the main actor (the enclosing `CloudSyncService` is `@MainActor`,
+    /// which would otherwise isolate this `static` helper).
     nonisolated static func decryptEncryptedSearchField(
         _ raw: Any?,
         vaultKey: Data,
@@ -1722,9 +1723,10 @@ extension CloudSyncService {
     /// (skipping the hit) whenever the hit is malformed or any present sealed field
     /// fails authentication. Never returns a record carrying an unauthenticated
     /// title/snippet, so a cloud-side forgery cannot masquerade as a real result.
-    // `nonisolated`: pure decode (delegates to `decryptEncryptedSearchField`), no
-    // `@MainActor` state — callable off the main actor despite the `@MainActor`
-    // `CloudSyncService` extension scope.
+    ///
+    /// `nonisolated`: pure decode (delegates to `decryptEncryptedSearchField`), no
+    /// `@MainActor` state — callable off the main actor despite the `@MainActor`
+    /// `CloudSyncService` extension scope.
     nonisolated static func decodeEncryptedSearchHit(
         _ hit: [String: Any],
         vaultKey: Data,

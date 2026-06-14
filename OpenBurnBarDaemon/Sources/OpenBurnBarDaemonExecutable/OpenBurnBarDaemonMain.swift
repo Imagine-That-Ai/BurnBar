@@ -20,7 +20,7 @@ struct OpenBurnBarDaemonExecutable {
         URLCache.shared = URLCache(memoryCapacity: 4 * 1024 * 1024, diskCapacity: 0)
 
         #if canImport(Sentry)
-        configureSentryIfAvailable()
+        try configureSentryIfAvailable(environment: ProcessInfo.processInfo.environment)
         #endif
         let configuration = try BurnBarDaemonCommandLine.makeConfiguration(
             arguments: Array(CommandLine.arguments.dropFirst()),
@@ -290,11 +290,59 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
 }
 
 #if canImport(Sentry)
-private func configureSentryIfAvailable() {
-    guard let dsn = ProcessInfo.processInfo.environment["OPENBURNBAR_SENTRY_DSN"],
-          !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+/// remediation(Sentry B2): crash reporting must not fail OPEN silently. When the
+/// `OPENBURNBAR_SENTRY_DSN` is missing the daemon runs with NO crash reporting —
+/// previously a release daemon could ship that way without any signal. We now
+/// mirror the fail-closed-in-prod / quiet-in-dev posture of
+/// `functions/src/config.ts`'s App Check handling:
+///
+///   * Release builds (production posture) emit a loud WARNING that crash
+///     reporting is DARK. If the operator has set the strict-observability flag
+///     (`OPENBURNBAR_STRICT_OBSERVABILITY=1`), the daemon refuses to start —
+///     fail-closed, matching App Check's `throw` in production.
+///   * DEBUG builds (developer posture) emit a single clear log line and keep
+///     running, so local development is never blocked by a missing DSN.
+///
+/// The prod-vs-dev decision comes from the existing `#if DEBUG` build signal
+/// already used in this function; no new configuration channel is introduced
+/// beyond the explicit strict opt-in.
+private func configureSentryIfAvailable(environment: [String: String]) throws {
+    let logger = BurnBarDaemonLogger(category: "observability")
+    let dsn = (environment["OPENBURNBAR_SENTRY_DSN"] ?? environment["BURNBAR_SENTRY_DSN"])?
+        .trimmingCharacters(in: .whitespaces)
+
+    guard let dsn, !dsn.isEmpty else {
+        #if DEBUG
+        // Developer build: a single clear line, never fatal.
+        logger.notice(
+            "sentry_disabled_no_dsn_dev",
+            metadata: ["reason": "OPENBURNBAR_SENTRY_DSN is empty; crash reporting is DARK (dev build)"]
+        )
+        #else
+        let strictObservability = environment["OPENBURNBAR_STRICT_OBSERVABILITY"] == "1"
+            || environment["BURNBAR_STRICT_OBSERVABILITY"] == "1"
+        if strictObservability {
+            // Production posture + strict opt-in: fail closed, refuse to start.
+            logger.error(
+                "sentry_disabled_no_dsn_strict",
+                metadata: ["reason": "OPENBURNBAR_SENTRY_DSN is empty and OPENBURNBAR_STRICT_OBSERVABILITY=1"]
+            )
+            throw BurnBarObservabilityError.crashReportingDark
+        }
+        // Production posture, no strict opt-in: loud WARNING, keep running so a
+        // user's daemon is not crashed, but the dark state is never silent.
+        logger.warning(
+            "sentry_disabled_no_dsn",
+            metadata: [
+                "reason": "OPENBURNBAR_SENTRY_DSN is empty; crash reporting is DARK for this release daemon. "
+                    + "Set OPENBURNBAR_SENTRY_DSN to enable, or OPENBURNBAR_STRICT_OBSERVABILITY=1 to refuse "
+                    + "to start without it."
+            ]
+        )
+        #endif
         return
     }
+
     SentrySDK.start { options in
         options.dsn = dsn
         options.environment = "daemon"
@@ -303,6 +351,20 @@ private func configureSentryIfAvailable() {
         #if DEBUG
         options.debug = false
         #endif
+    }
+}
+
+/// remediation(Sentry B2): fail-closed error used when strict observability is
+/// requested but crash reporting cannot be armed.
+private enum BurnBarObservabilityError: Error, LocalizedError {
+    case crashReportingDark
+
+    var errorDescription: String? {
+        switch self {
+        case .crashReportingDark:
+            return "Crash reporting is DARK: OPENBURNBAR_SENTRY_DSN is empty while OPENBURNBAR_STRICT_OBSERVABILITY=1. "
+                + "Provide a Sentry DSN or clear the strict-observability flag."
+        }
     }
 }
 #endif

@@ -1,0 +1,249 @@
+name: PR Native Fast Gate
+
+# remediation(ci-native-pr-gate): close the gap where a PR could merge green
+# while breaking 715K LOC of native code. Before this workflow, the
+# pull_request gate (fast-feedback.yml) covered only TS/Rust/Python/website,
+# and the full Swift/iOS/Android/Daemon suites (openburnbar-pr-harness.yml)
+# ran ONLY on push:main + cron — never on PRs.
+#
+# WHAT IS PR-GATED HERE (this workflow, runs on every PR):
+#   - SwiftLint --strict over the tree.
+#   - `swift build` + `swift test` on the two SwiftPM packages
+#     OpenBurnBarCore and OpenBurnBarDaemon. These are quick (no simulator)
+#     and catch the overwhelming majority of native compile/unit regressions.
+#   - `xcodegen generate` pbxproj drift check (committed project.pbxproj must
+#     match project.yml + the on-disk source globs).
+#
+# WHAT STAYS POST-MERGE / NIGHTLY (openburnbar-pr-harness.yml, unchanged):
+#   - Full iOS/macOS App XCTest suites (3000+ tests, simulator-bound).
+#   - Android build + instrumentation, Node evals, integration suites.
+#   These remain REQUIRED post-merge gates as today; running the multi-hour
+#   simulator matrix on every PR is intentionally NOT done here.
+#
+# To avoid burning scarce macOS runner minutes on non-native PRs, the macOS
+# jobs are gated behind a cheap ubuntu path-filter (detect-native-changes).
+# When a PR touches no native surface, those jobs skip and the aggregate gate
+# still reports success.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-native-fast-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ── Cheap detector: did this PR touch any native (Swift/XcodeGen) surface? ──
+  # Runs on ubuntu so we only spin up the (slow, costly) macOS jobs when a PR
+  # actually changes native code, project.yml, or the committed pbxproj.
+  # For merge_group (and any non-PR trigger) we always run the gates.
+  detect-native-changes:
+    name: Detect native changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Determine whether native paths changed
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Non-PR triggers (merge_group / manual) always run the native gate.
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "Event ${EVENT_NAME}: running native gate unconditionally."
+            exit 0
+          fi
+
+          # Diff the PR's effective changes against its merge base. Fall back to
+          # "native=true" (fail-safe: run the gate) if we cannot compute a diff.
+          base="${BASE_SHA}"
+          head="${HEAD_SHA}"
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null || \
+             ! git cat-file -e "${head}^{commit}" 2>/dev/null; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "Could not resolve base/head commits; running native gate to stay fail-safe."
+            exit 0
+          fi
+
+          merge_base="$(git merge-base "${base}" "${head}" || echo "${base}")"
+          changed="$(git diff --name-only "${merge_base}" "${head}")"
+          echo "Changed files:"
+          echo "${changed}"
+
+          # Any of these surfaces can change Swift compilation OR the generated
+          # pbxproj (XcodeGen globs source directories, so adding/removing a
+          # file under one of them rewrites project.pbxproj).
+          if echo "${changed}" | grep -Eq \
+            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift)'; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "Native surface changed: running SwiftPM + xcodegen-drift gates."
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
+            echo "No native surface changed: skipping macOS gates (aggregate still passes)."
+          fi
+
+  # ── PR-GATED: SwiftPM compile + unit gate (OpenBurnBarCore + Daemon) ────────
+  # Mirrors the "Swift Core" lane of openburnbar-pr-harness.yml but is wired to
+  # pull_request so it actually gates merges. `swift test` builds first, so a
+  # compile break in either package fails here. No simulator, no iOS app
+  # target — these are the fast SwiftPM packages.
+  swiftpm-native:
+    name: SwiftPM build + test (Core + Daemon)
+    needs: detect-native-changes
+    if: needs.detect-native-changes.outputs.native == 'true'
+    runs-on: macos-26
+    # `swift test` on both packages compiles the libsignal Swift FFI on a cold
+    # cache; the Swift Core lane uses 40 min for the same work.
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: recursive
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      # SwiftLint --strict over the tree. Same pinned binary + config the App
+      # XCTest lane uses; this is the PR-time copy of that gate so a lint
+      # regression cannot reach main only to be caught post-merge.
+      - name: SwiftLint
+        run: |
+          set -euo pipefail
+          VER="0.63.3"
+          SHA="fb045e85e7cb3374f42a4840b6b85a0106302afa69035c0c6f29af4a44c810b6"
+          curl -fsSL -o /tmp/swiftlint.zip "https://github.com/realm/SwiftLint/releases/download/${VER}/portable_swiftlint.zip"
+          echo "${SHA}  /tmp/swiftlint.zip" | shasum -a 256 -c -
+          unzip -oq /tmp/swiftlint.zip -d /tmp/swiftlint-bin
+          /tmp/swiftlint-bin/swiftlint version
+          /tmp/swiftlint-bin/swiftlint lint --quiet --strict
+
+      # Reuses scripts/test-openburnbar-swift.sh, which prepares the libsignal
+      # FFI then runs `swift test` (build + unit) on OpenBurnBarCore and
+      # OpenBurnBarDaemon. This is the SwiftPM-level compile+unit gate the task
+      # requires on PRs. Coverage is left off here (fast feedback); the post-
+      # merge Swift Core lane keeps the coverage + diff-coverage gates.
+      - name: Build + test OpenBurnBarCore and OpenBurnBarDaemon (SwiftPM)
+        run: ./scripts/test-openburnbar-swift.sh
+
+  # ── PR-GATED: XcodeGen pbxproj drift gate ──────────────────────────────────
+  # remediation(ci-xcodegen-drift): no workflow regenerated the project and
+  # diff-checked the committed project.pbxproj, so a missed `xcodegen generate`
+  # silently dropped OpenBurnBarDaemonTests/BurnBarCustomModelLiveCatalogTests.swift
+  # from the pbxproj (a whole test file compiled to nothing). This fails the PR
+  # when the committed pbxproj is stale vs project.yml + the on-disk globs.
+  xcodegen-drift:
+    name: XcodeGen pbxproj drift
+    needs: detect-native-changes
+    if: needs.detect-native-changes.outputs.native == 'true'
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      # Regenerate from the spec; the committed pbxproj must already match.
+      - name: Regenerate Xcode project from project.yml
+        run: xcodegen generate --spec project.yml
+
+      - name: Fail if committed project.pbxproj drifted from project.yml
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code OpenBurnBar.xcodeproj/project.pbxproj; then
+            {
+              echo "::error file=OpenBurnBar.xcodeproj/project.pbxproj::project.pbxproj is stale."
+              echo "The committed OpenBurnBar.xcodeproj/project.pbxproj does not match the"
+              echo "output of \`xcodegen generate --spec project.yml\`. Run"
+              echo "\`xcodegen generate --spec project.yml\` locally and commit the result so"
+              echo "no source/test file is silently dropped from the build."
+            } >&2
+            exit 1
+          fi
+          echo "project.pbxproj is in sync with project.yml."
+
+  # ── Aggregate gate ─────────────────────────────────────────────────────────
+  # Single required status. Passes when the native jobs succeed OR when they
+  # were skipped because the PR touched no native surface. Fails if any native
+  # job failed or was cancelled. Mirrors fast-feedback-gate semantics.
+  pr-native-gate:
+    name: PR Native Gate
+    needs:
+      - detect-native-changes
+      - swiftpm-native
+      - xcodegen-drift
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check native jobs passed (or were correctly skipped)
+        env:
+          DETECT_RESULT: ${{ needs.detect-native-changes.result }}
+          SWIFTPM_RESULT: ${{ needs.swiftpm-native.result }}
+          XCODEGEN_RESULT: ${{ needs.xcodegen-drift.result }}
+        run: |
+          set -euo pipefail
+          echo "detect-native-changes: ${DETECT_RESULT}"
+          echo "swiftpm-native: ${SWIFTPM_RESULT}"
+          echo "xcodegen-drift: ${XCODEGEN_RESULT}"
+
+          # The detector itself must have succeeded; a 'skipped' here would mean
+          # the path-filter never ran, so we cannot trust the downstream skips.
+          if [[ "${DETECT_RESULT}" != "success" ]]; then
+            echo "::error::detect-native-changes did not succeed (${DETECT_RESULT})."
+            exit 1
+          fi
+
+          # success and skipped are both acceptable for the macOS jobs (skipped
+          # == no native surface changed). Anything else (failure/cancelled) is
+          # a hard fail.
+          for result in "${SWIFTPM_RESULT}" "${XCODEGEN_RESULT}"; do
+            if [[ "${result}" != "success" && "${result}" != "skipped" ]]; then
+              echo "::error::A native PR gate job failed (result=${result})."
+              exit 1
+            fi
+          done
+
+          echo "### PR Native Gate: native compile/test + pbxproj drift checks passed" >> "$GITHUB_STEP_SUMMARY"
