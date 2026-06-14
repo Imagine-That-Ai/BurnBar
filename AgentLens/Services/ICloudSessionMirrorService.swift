@@ -406,9 +406,15 @@ final class ICloudSessionMirrorService {
     /// Uses minimal JSONL parsing — no full token extraction. fullText is always empty.
     func fetchConversations() async -> [ConversationRecord] {
         guard let mirrorRoot = mirrorRootDirectoryURL() else { return [] }
-        return await Task.detached(priority: .utility) {
-            Self.extractConversations(from: mirrorRoot)
-        }.value
+        return await Self.extractConversationsOffMain(from: mirrorRoot)
+    }
+
+    /// `nonisolated` async bridge so `fetchConversations` leaves the main actor
+    /// here (SE-0338); the synchronous `extractConversations` (which uses a
+    /// `FileManager` directory enumerator that is unavailable from async
+    /// contexts) then runs entirely off the main actor.
+    private nonisolated static func extractConversationsOffMain(from mirrorRoot: URL) async -> [ConversationRecord] {
+        extractConversations(from: mirrorRoot)
     }
 
     func exportHermesConversationsForMobile(_ conversations: [ConversationRecord]) async throws -> Int {

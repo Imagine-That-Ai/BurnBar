@@ -2057,10 +2057,11 @@ private struct MercuryRemoteAccessAgentClient: Sendable {
     private static let maximumResponseBytes = 16 * 1024
     private static let requestIOTimeoutSeconds: time_t = 3
 
+    /// Blocking socket send runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`), so callers leave the main actor at
+    /// the `await` (SE-0338).
     func wakeDisplay() async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try Self.send(MercuryRemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
-        }.value
+        try Self.send(MercuryRemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
     }
 
     private static func send(_ request: MercuryRemoteAccessAgentRequest) throws {

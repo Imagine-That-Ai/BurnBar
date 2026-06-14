@@ -21,58 +21,58 @@ struct CLIExecutableResolver: Sendable {
         self.homeDirectoryProvider = homeDirectoryProvider
     }
 
+    /// Blocking filesystem/login-shell probing runs off the main actor
+    /// (`nonisolated` `async`, SE-0338); cancellation propagates from the awaiter.
     func resolveExecutable(named name: String) async -> String? {
-        await Task.detached {
-            let env = environmentProvider()
-            let homeDirectory = homeDirectoryProvider()
-            let fileManager = FileManager.default
-            let cacheKey = CacheKey(
-                name: name,
-                homeDirectory: homeDirectory,
-                path: env["PATH"] ?? "",
-                shell: env["SHELL"] ?? ""
-            )
+        let env = environmentProvider()
+        let homeDirectory = homeDirectoryProvider()
+        let fileManager = FileManager.default
+        let cacheKey = CacheKey(
+            name: name,
+            homeDirectory: homeDirectory,
+            path: env["PATH"] ?? "",
+            shell: env["SHELL"] ?? ""
+        )
 
-            if let cachedPath = Self.cache.value(for: cacheKey),
-               fileManager.isExecutableFile(atPath: cachedPath) {
-                return cachedPath
-            }
+        if let cachedPath = Self.cache.value(for: cacheKey),
+           fileManager.isExecutableFile(atPath: cachedPath) {
+            return cachedPath
+        }
 
-            if let path = Self.resolveExecutable(
-                named: name,
-                searchDirectories: Self.baseExecutableSearchDirectories(
-                    environment: env,
-                    homeDirectory: homeDirectory
-                ),
-                fileManager: fileManager
-            ) {
-                Self.cache.set(path, for: cacheKey)
-                return path
-            }
-
-            if let path = Self.resolveExecutable(
-                named: name,
-                searchDirectories: Self.userManagedExecutableSearchDirectories(
-                    homeDirectory: homeDirectory,
-                    fileManager: fileManager
-                ),
-                fileManager: fileManager
-            ) {
-                Self.cache.set(path, for: cacheKey)
-                return path
-            }
-
-            if let path = Self.resolveExecutableFromLoginShell(
-                named: name,
+        if let path = Self.resolveExecutable(
+            named: name,
+            searchDirectories: Self.baseExecutableSearchDirectories(
                 environment: env,
-                fileManager: fileManager
-            ) {
-                Self.cache.set(path, for: cacheKey)
-                return path
-            }
+                homeDirectory: homeDirectory
+            ),
+            fileManager: fileManager
+        ) {
+            Self.cache.set(path, for: cacheKey)
+            return path
+        }
 
-            return nil
-        }.value
+        if let path = Self.resolveExecutable(
+            named: name,
+            searchDirectories: Self.userManagedExecutableSearchDirectories(
+                homeDirectory: homeDirectory,
+                fileManager: fileManager
+            ),
+            fileManager: fileManager
+        ) {
+            Self.cache.set(path, for: cacheKey)
+            return path
+        }
+
+        if let path = Self.resolveExecutableFromLoginShell(
+            named: name,
+            environment: env,
+            fileManager: fileManager
+        ) {
+            Self.cache.set(path, for: cacheKey)
+            return path
+        }
+
+        return nil
     }
 
     static func clearCache() {

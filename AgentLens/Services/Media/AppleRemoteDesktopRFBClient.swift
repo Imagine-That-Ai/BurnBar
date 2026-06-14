@@ -55,19 +55,20 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         self.timeoutSeconds = timeoutSeconds
     }
 
+    /// Blocking RFB socket work runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`, not actor-bound), so callers leave
+    /// the main actor at the `await` (SE-0338).
     func typeCredential(_ credentials: Credentials) async throws {
-        try await Task.detached(priority: .userInitiated) { [host, port, timeoutSeconds] in
-            var stream = try RFBStream(host: host, port: port, timeoutSeconds: timeoutSeconds)
-            defer { stream.close() }
+        var stream = try RFBStream(host: host, port: port, timeoutSeconds: timeoutSeconds)
+        defer { stream.close() }
 
-            try Self.performHandshake(stream: &stream, credentials: credentials)
-            let server = try Self.readServerInit(stream: &stream)
+        try Self.performHandshake(stream: &stream, credentials: credentials)
+        let server = try Self.readServerInit(stream: &stream)
 
-            try Self.focusLoginPasswordLane(stream: &stream, server: server)
-            try Self.sendText(credentials.password, stream: &stream)
-            usleep(90_000)
-            try Self.sendKey(stream: &stream, keysym: RFBKeysym.returnKey)
-        }.value
+        try Self.focusLoginPasswordLane(stream: &stream, server: server)
+        try Self.sendText(credentials.password, stream: &stream)
+        usleep(90_000)
+        try Self.sendKey(stream: &stream, keysym: RFBKeysym.returnKey)
     }
 
     private static func performHandshake(stream: inout RFBStream, credentials: Credentials) throws {

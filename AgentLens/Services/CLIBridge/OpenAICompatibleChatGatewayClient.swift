@@ -848,7 +848,7 @@ final class AgentToolBroker: @unchecked Sendable {
                 continuation.resume(throwing: error)
                 return
             }
-            Task.detached {
+            Task {
                 try? await Task.sleep(for: .seconds(timeoutSeconds))
                 if box.markTimedOutIfStillRunning(process) {
                     process.terminate()
@@ -932,7 +932,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         defer {
-            Task.detached { [runtime] in
+            Task { [runtime] in
                 await runtime.clearHTTPStreamTask(streamID: httpStreamID)
             }
         }
