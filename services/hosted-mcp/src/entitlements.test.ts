@@ -19,7 +19,6 @@ function stubDb(docs: Record<string, Record<string, unknown> | undefined>): Remo
       };
     },
   };
-  // @ts-expect-error in-memory Firestore stub for entitlement tier tests
   return firestore;
 }
 
