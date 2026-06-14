@@ -98,6 +98,12 @@ require_pattern "iOS mobile pickup lifecycle service" \
 require_pattern "iOS mobile post-revoke pickup trigger" \
   'openBurnBarDidRevokeDeviceTrust' \
   OpenBurnBarMobile/Services/LiveCloudReader.swift
+require_pattern "iOS mobile post-revoke pickup observer" \
+  'openBurnBarDidRevokeDeviceTrust' \
+  OpenBurnBarMobile/Services/CloudVaultRotationPickupLifecycle.swift
+require_pattern "iOS mobile list callable callerDeviceId" \
+  'callerDeviceId' \
+  OpenBurnBarMobile/Services/MobileCloudVaultRevocationRotation.swift
 require_pattern "iOS mobile rotation pickup tests" \
   'MobileCloudVaultRotationPickupTests' \
   OpenBurnBarMobileTests/MobileCloudVaultRotationPickupTests.swift
