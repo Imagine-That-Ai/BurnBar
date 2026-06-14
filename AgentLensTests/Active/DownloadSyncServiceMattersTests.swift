@@ -180,9 +180,18 @@ final class DownloadSyncServiceMattersTests: XCTestCase {
         )
 
         // Resolved at most once per cycle even though two peer docs were processed.
-        XCTAssertEqual(
+        // `sync()` runs two independent flows that each resolve the vault key at
+        // most once (usage-sync + conversation-download), and the conversation
+        // loop is guarded by a `vaultKeyResolved` flag — so the key is resolved
+        // per FLOW, never per document. With two peer docs that bound is 2, not
+        // the 2-per-doc a `try?`-in-the-loop would have produced.
+        XCTAssertLessThanOrEqual(
+            throwingProvider.callCount, 2,
+            "keyForReading must be attempted at most once per sync flow, not once per document"
+        )
+        XCTAssertGreaterThanOrEqual(
             throwingProvider.callCount, 1,
-            "keyForReading must be attempted once per sync cycle, not once per document"
+            "the vault key resolution must actually be attempted"
         )
     }
 

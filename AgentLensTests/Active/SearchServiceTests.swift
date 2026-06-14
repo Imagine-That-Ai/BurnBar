@@ -2116,11 +2116,15 @@ final class SearchServiceTests: XCTestCase {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_743_330_000)
 
+        // Fixture and search term must share NO FTS tokens: the occurrence count
+        // is tokenized, so a search term overlapping any word in `fullText` would
+        // report a non-zero count. "zzqwxplover" is a single nonsense token that
+        // does not appear and does not sub-tokenize into anything that appears.
         let conv = makeConversation(
             id: "conv-aggregate-zero",
             provider: .claudeCode,
             projectName: "AggregateZeroTest",
-            fullText: "This conversation never mentions the searched token.",
+            fullText: "This conversation discusses entirely unrelated subjects.",
             indexedAt: base,
             sourceType: .providerLog
         )
@@ -2128,7 +2132,7 @@ final class SearchServiceTests: XCTestCase {
 
         let service = SearchService(dataStore: store, nowProvider: { base })
         let result = await service.runBurnBarQuery(
-            RetrievalQuery(text: "how many times have I said \"absent-token-qwxz\"")
+            RetrievalQuery(text: "how many times have I said \"zzqwxplover\"")
         )
 
         XCTAssertEqual(

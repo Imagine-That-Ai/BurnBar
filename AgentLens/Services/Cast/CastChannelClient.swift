@@ -444,6 +444,17 @@ final class CastChannelClient {
     /// logging the failure so a dropped control message is observable rather
     /// than presenting only as a downstream timeout.
     static func serializedPayload(_ payload: [String: Any], namespace: String) -> String? {
+        // `JSONSerialization.data(withJSONObject:)` raises an ObjC `NSException`
+        // (NOT a Swift error) for non-finite numbers like NaN/Infinity, which a
+        // `do/catch` cannot intercept. Pre-validate so an unserializable payload
+        // fails closed (return nil, logged) instead of crashing the process.
+        guard JSONSerialization.isValidJSONObject(payload) else {
+            AppLogger.network.error(
+                "cast_send_payload_not_serializable",
+                metadata: ["namespace": namespace]
+            )
+            return nil
+        }
         do {
             let json = try JSONSerialization.data(withJSONObject: payload, options: [])
             guard let utf8 = String(data: json, encoding: .utf8) else {
