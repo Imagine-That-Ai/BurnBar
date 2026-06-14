@@ -220,6 +220,11 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         process.standardError = stderr
 
         try process.run()
+        // Reap the subprocess on every exit path — including the `CancellationError`
+        // thrown from `Task.sleep` below if the awaiting task is cancelled. The
+        // former detached task was cancellation-immune and reaped by running its
+        // orphan to the deadline; the structured version must clean up here.
+        defer { if process.isRunning { process.terminate() } }
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while process.isRunning && Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
