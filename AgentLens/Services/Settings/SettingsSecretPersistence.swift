@@ -41,6 +41,11 @@ struct SettingsSecretPersistence {
             // permanently lose the user's secret if the keychain is locked
             // (e.g. CI without keychain provisioning, or app updates that
             // momentarily reject writes).
+            AppLogger.dataStore.silentFailure(
+                "SettingsSecretPersistence.load.migrateLegacySecret",
+                error: error,
+                context: ["account": account, "legacyDefaultsKey": legacyDefaultsKey]
+            )
         }
 
         return legacy
@@ -58,6 +63,11 @@ struct SettingsSecretPersistence {
             // Same data-loss-protection rationale as `load(_:_:)`. Keep the
             // legacy value intact when keychain mutation fails so the user
             // can retry without re-entering credentials.
+            AppLogger.dataStore.silentFailure(
+                "SettingsSecretPersistence.persist.keychainMutation",
+                error: error,
+                context: ["account": account, "legacyDefaultsKey": legacyDefaultsKey]
+            )
         }
     }
 }
