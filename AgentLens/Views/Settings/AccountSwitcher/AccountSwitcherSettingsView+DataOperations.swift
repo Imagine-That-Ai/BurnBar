@@ -960,6 +960,11 @@ extension AccountSwitcherSettingsView {
                 }
             } catch {
                 // Ignore duplicate check errors
+                AppLogger.dataStore.silentFailure(
+                    "AccountSwitcherSettingsView.validateForm.duplicateCheck",
+                    error: error,
+                    context: ["excludingID": excludingID ?? "none"]
+                )
             }
         }
 

@@ -22,14 +22,17 @@ public actor BurnBarGatewayModelHealthStore {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let clock: @Sendable () -> Date
+    private let logger: BurnBarDaemonLogger
     private var loadedRecords: [String: BurnBarGatewayModelHealthRecord]?
 
     public init(
         fileURL: URL = BurnBarDaemonPaths.defaultGatewayModelHealthURL,
-        clock: @escaping @Sendable () -> Date = { Date() }
+        clock: @escaping @Sendable () -> Date = { Date() },
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "gateway-model-health")
     ) {
         self.fileURL = fileURL
         self.clock = clock
+        self.logger = logger
         self.encoder = JSONEncoder()
         self.encoder.dateEncodingStrategy = .iso8601
         self.encoder.outputFormatting = [.sortedKeys]
@@ -237,6 +240,11 @@ public actor BurnBarGatewayModelHealthStore {
         } catch {
             // Model health is a routing hint. A persistence miss must never
             // break the user's request path.
+            logger.silentFailure(
+                "BurnBarGatewayModelHealthStore.persist",
+                error: error,
+                context: ["recordCount": "\(records.count)"]
+            )
         }
     }
 
