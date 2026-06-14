@@ -413,8 +413,14 @@ export function coerceFirestoreDate(value: unknown): Date | undefined {
     return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
   if (isRecord(value)) {
-    const seconds = typeof value.seconds === "number" ? value.seconds : value._seconds;
-    const nanos = typeof value.nanoseconds === "number" ? value.nanoseconds : (value._nanoseconds ?? 0);
+    const seconds =
+      typeof value.seconds === "number" ? value.seconds : typeof value._seconds === "number" ? value._seconds : undefined;
+    const nanos =
+      typeof value.nanoseconds === "number"
+        ? value.nanoseconds
+        : typeof value._nanoseconds === "number"
+          ? value._nanoseconds
+          : 0;
     if (typeof seconds === "number") {
       const parsed = new Date(seconds * 1000 + Math.floor(Number(nanos) / 1_000_000));
       return Number.isNaN(parsed.getTime()) ? undefined : parsed;
@@ -523,11 +529,11 @@ export function stringField(raw: unknown, key: string): string | undefined {
 }
 
 export function isStripeSubscription(value: unknown): value is import("stripe").Stripe.Subscription {
-  return isRecord(value) && typeof value.id === "string";
+  return isRecord(value) && value.object === "subscription" && typeof value.id === "string";
 }
 
 export function isStripeCheckoutSession(value: unknown): value is import("stripe").Stripe.Checkout.Session {
-  return isRecord(value) && typeof value.id === "string";
+  return isRecord(value) && value.object === "checkout.session" && typeof value.id === "string";
 }
 
 export function stripUndefinedObject(value: object): DocumentData {

@@ -147,6 +147,28 @@ if [[ -f "${repo_root}/budgets/unsafe-cast-baseline.json" ]]; then
   unsafe_cast_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${repo_root}/budgets/unsafe-cast-baseline.json")"
 fi
 
+knip_functions_total="n/a"
+if [[ -f "${repo_root}/budgets/knip-baseline.json" ]]; then
+  knip_functions_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).functions ?? 'n/a')" "${repo_root}/budgets/knip-baseline.json")"
+fi
+
+schema_known_drift_total="n/a"
+if [[ -f "${repo_root}/tools/schema-sync/manifest.json" ]]; then
+  schema_known_drift_total="$(node -e "
+const fs=require('node:fs');
+const manifest=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+let total=0;
+for (const domain of manifest.domains ?? []) {
+  for (const key of ['tsHandMirror','swiftHandMirror','kotlinHandMirror']) {
+    for (const entry of domain[key] ?? []) {
+      if (typeof entry === 'object' && Array.isArray(entry.knownDrift)) total += entry.knownDrift.length;
+    }
+  }
+}
+console.log(total);
+" "${repo_root}/tools/schema-sync/manifest.json")"
+fi
+
 cat > "${metrics_doc}" <<EOF
 # Tech debt metrics snapshot
 
@@ -167,6 +189,8 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |
 | \`try?\` in \`AgentLens/Services/\` | ${try_optional_services} | ≤ 120 | ≤ 50 |
 | Unsafe cast budget (\`budgets/unsafe-cast-baseline.json\`) | ${unsafe_cast_total} | 0 | 0 |
+| Knip dead-code budget (\`budgets/knip-baseline.json\`, functions) | ${knip_functions_total} | 0 | 0 |
+| Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | ${top_four_total} | ≤ 5000 | ≤ 3500 |
 | \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
