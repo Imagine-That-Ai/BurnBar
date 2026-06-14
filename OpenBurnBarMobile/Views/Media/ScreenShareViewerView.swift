@@ -168,10 +168,17 @@ struct ScreenShareViewerView: View {
         onTrustControlDevice: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
     ) {
+        let resolvedControlInputEnabled = controlInputEnabled ?? controlStatus.isLive
+
         self.coordinator = coordinator
         self.resetToken = resetToken
         self.controlStatus = controlStatus
-        self.controlInputEnabled = controlInputEnabled ?? controlStatus.isLive
+        self.controlInputEnabled = resolvedControlInputEnabled
+        self._interactionMode = State(
+            initialValue: ScreenShareInteractionModePolicy.defaultMode(
+                controlInputEnabled: resolvedControlInputEnabled
+            )
+        )
         self.controlRoundTripMillis = controlRoundTripMillis
         self.displays = displays
         self.selectedDisplayId = selectedDisplayId
@@ -537,7 +544,9 @@ struct ScreenShareViewerView: View {
         .onChange(of: resetToken) { _, _ in
             withAnimation(.snappy) {
                 viewport.reset()
-                interactionMode = .view
+                interactionMode = ScreenShareInteractionModePolicy.defaultMode(
+                    controlInputEnabled: standardControlInputEnabled
+                )
                 isTyping = false
                 controlPanTranslation = .zero
                 tapFeedbackPoint = nil
@@ -1757,6 +1766,14 @@ enum ScreenShareInteractionMode: Equatable {
     case control
     case trackpad
     case coPilot
+}
+
+enum ScreenShareInteractionModePolicy {
+    /// Controller viewers should enter control mode immediately so direct taps
+    /// become signed Mac input intents. Watchers stay in view mode for pan/zoom.
+    static func defaultMode(controlInputEnabled: Bool) -> ScreenShareInteractionMode {
+        controlInputEnabled ? .control : .view
+    }
 }
 
 /// Orientation of the floating mirror-control tray: a vertical (upward) stack
