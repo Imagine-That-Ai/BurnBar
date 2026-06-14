@@ -216,7 +216,7 @@ struct CLIProcessStreamRunner: Sendable {
         if let grantStillActive {
             grantPollTask = Task(priority: .utility) { [runtime] in
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: .seconds(2)) // try?-ok(cancellation-only grant poll sleep)
                     if Task.isCancelled { return }
                     if await grantStillActive() == false {
                         await runtime.cancelRunningProcess(token: processToken)
