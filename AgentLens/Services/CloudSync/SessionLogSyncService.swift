@@ -1469,6 +1469,8 @@ protocol SessionLogEncryptedCloudClient {
     func deleteEncryptedSessionBlob(documentID: String, storagePath: String) async throws
 }
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase `Functions` instance;
+// the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient, @unchecked Sendable {
     private let injectedFunctions: Functions?
     private let urlSession: URLSession

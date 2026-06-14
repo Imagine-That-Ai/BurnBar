@@ -4,6 +4,9 @@ import Foundation
 // concurrent use. `UserDefaults` is thread-safe for value access/mutation, and
 // this module additionally funnels high-volume settings writes through
 // `SettingsPersistenceCoordinator`.
+// AUDIT(@unchecked Sendable): retroactive Sendable shims for Foundation types
+// that are documented thread-safe but not yet Sendable-annotated by Apple.
+// sendable-allowlist: foundation-sdk-shim
 extension FileManager: @retroactive @unchecked Sendable {}
 extension UserDefaults: @retroactive @unchecked Sendable {}
 extension NSDictionary: @retroactive @unchecked Sendable {}
