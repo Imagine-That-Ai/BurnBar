@@ -1,4 +1,5 @@
 import Foundation
+import os
 import OpenBurnBarCore
 
 /// Default device commit-queue directory the daemon writes prepared Pensieve
@@ -71,12 +72,7 @@ private final class PensieveWatcherGate: Sendable {
 /// FS event still gets reconciled (the daemon already runs that heartbeat loop;
 /// this watcher piggybacks on the same support directory + atomic-write pattern).
 ///
-/// AUDIT(@unchecked Sendable): lifecycle state (dispatch sources, descriptors,
-/// debounce/backstop work items, enqueued-ID set) is mutated only on the private
-/// serial `workQueue`. TODO(sendable-zero): box this plus the public status vars in
-/// `Locked<State>` (every field is Sendable) to make the type plainly Sendable and
-/// close the off-queue read race on `lastEnqueueDate`/`lastEnqueuedCount`/`lastError`.
-public final class PensieveKnowledgeWatcher: @unchecked Sendable {
+public final class PensieveKnowledgeWatcher: Sendable {
     private let roots: [PensieveWatchRoot]
     private let queueDirectoryURL: URL
     private let vaultKeyProvider: @Sendable () -> Data?
@@ -86,17 +82,27 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
 
     private let gate = PensieveWatcherGate()
     private let workQueue = DispatchQueue(label: "com.openburnbar.daemon.pensieve.watch", qos: .utility)
-    private var sources: [DispatchSourceFileSystemObject] = []
-    private var descriptors: [Int32] = []
-    private var debounceWorkItem: DispatchWorkItem?
-    private var backstopTimer: DispatchSourceTimer?
-    /// vectorId set already enqueued this process run — avoids re-writing
-    /// unchanged chunks (the server is idempotent too, but this trims IO).
-    private var enqueuedVectorIDs = Set<String>()
+    // All mutable state is confined to `workQueue`; an OSAllocatedUnfairLock makes
+    // that confinement compiler-verified (and closes the off-queue read race on the
+    // public status vars), so the watcher is plainly Sendable.
+    private struct State {
+        var sources: [DispatchSourceFileSystemObject] = []
+        var descriptors: [Int32] = []
+        var debounceWorkItem: DispatchWorkItem?
+        var backstopTimer: DispatchSourceTimer?
+        /// vectorId set already enqueued this process run — avoids re-writing
+        /// unchanged chunks (the server is idempotent too, but this trims IO).
+        var enqueuedVectorIDs = Set<String>()
+        var lastEnqueueDate: Date?
+        var lastEnqueuedCount = 0
+        var lastError: String?
+    }
 
-    public private(set) var lastEnqueueDate: Date?
-    public private(set) var lastEnqueuedCount = 0
-    public private(set) var lastError: String?
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
+
+    public var lastEnqueueDate: Date? { state.withLockUnchecked { $0.lastEnqueueDate } }
+    public var lastEnqueuedCount: Int { state.withLockUnchecked { $0.lastEnqueuedCount } }
+    public var lastError: String? { state.withLockUnchecked { $0.lastError } }
 
     public init(
         roots: [PensieveWatchRoot],
@@ -145,13 +151,15 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     public func stop() {
         workQueue.async { [weak self] in
             guard let self else { return }
-            self.debounceWorkItem?.cancel()
-            self.backstopTimer?.cancel()
-            self.backstopTimer = nil
-            for source in self.sources { source.cancel() }
-            self.sources.removeAll()
-            for fd in self.descriptors where fd >= 0 { close(fd) }
-            self.descriptors.removeAll()
+            self.state.withLockUnchecked { state in
+                state.debounceWorkItem?.cancel()
+                state.backstopTimer?.cancel()
+                state.backstopTimer = nil
+                for source in state.sources { source.cancel() }
+                state.sources.removeAll()
+                for fd in state.descriptors where fd >= 0 { close(fd) }
+                state.descriptors.removeAll()
+            }
         }
     }
 
@@ -172,8 +180,10 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             source.setEventHandler { [weak self] in self?.scheduleScan() }
             source.setCancelHandler { close(fd) }
             source.resume()
-            sources.append(source)
-            descriptors.append(fd)
+            state.withLockUnchecked { state in
+                state.sources.append(source)
+                state.descriptors.append(fd)
+            }
         }
     }
 
@@ -182,14 +192,16 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         timer.schedule(deadline: .now() + backstopInterval, repeating: backstopInterval)
         timer.setEventHandler { [weak self] in self?.scheduleScan() }
         timer.resume()
-        backstopTimer = timer
+        state.withLockUnchecked { $0.backstopTimer = timer }
     }
 
     /// Debounce a burst of FS events into one scan.
     private func scheduleScan() {
-        debounceWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.runScan() }
-        debounceWorkItem = work
+        state.withLockUnchecked { state in
+            state.debounceWorkItem?.cancel()
+            state.debounceWorkItem = work
+        }
         workQueue.asyncAfter(deadline: .now() + debounceInterval, execute: work)
     }
 
@@ -199,7 +211,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         guard gate.tryEnter() else { return }
         defer { gate.leave() }
         guard let vaultKey = vaultKeyProvider(), vaultKey.count == 32 else {
-            lastError = "Pensieve vault key unavailable; deferring knowledge ingest."
+            state.withLockUnchecked { $0.lastError = "Pensieve vault key unavailable; deferring knowledge ingest." }
             return
         }
 
@@ -216,9 +228,11 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         }
 
         if enqueued > 0 {
-            lastEnqueuedCount = enqueued
-            lastEnqueueDate = Date()
-            lastError = nil
+            state.withLockUnchecked { state in
+                state.lastEnqueuedCount = enqueued
+                state.lastEnqueueDate = Date()
+                state.lastError = nil
+            }
         }
     }
 
@@ -242,9 +256,13 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             ) else { continue }
 
             // Skip if every chunk in this file was already enqueued this run.
-            let novelVectors = batch.vectors.filter { !enqueuedVectorIDs.contains($0.vectorId) }
+            let novelVectors = state.withLockUnchecked { state in
+                batch.vectors.filter { !state.enqueuedVectorIDs.contains($0.vectorId) }
+            }
             guard !novelVectors.isEmpty else { continue }
-            for vector in novelVectors { enqueuedVectorIDs.insert(vector.vectorId) }
+            state.withLockUnchecked { state in
+                for vector in novelVectors { state.enqueuedVectorIDs.insert(vector.vectorId) }
+            }
 
             let trimmedBatch = PensieveKnowledgeBatch(
                 sourceSlug: batch.sourceSlug,
@@ -304,7 +322,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             try? fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
             return true
         } catch {
-            lastError = error.localizedDescription
+            state.withLockUnchecked { $0.lastError = error.localizedDescription }
             return false
         }
     }
