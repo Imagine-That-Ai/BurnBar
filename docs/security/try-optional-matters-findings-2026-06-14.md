@@ -8,8 +8,8 @@
 > **All matters-sites below — and the additional ~82 surfaced by the later
 > repo-wide sweep — were converted to tested fail-closed `do/catch` /
 > `AppLogger.silently` / `KeychainStore.credentialIfPresent` handling.** Untagged
-> `try?` in `AgentLens/Services` is now **0** (`budgets/try-optional-baseline.json`
-> `total: 0`, assert-zero gate). None were tagged `try?-ok`, and none were laundered
+> untagged `try?` in `AgentLens/Services` is now **0** (assert-zero gate, no
+> baseline file). None were tagged `try?-ok`, and none were laundered
 > through a `silently(fallback:)` that preserves a fail-open — verified by an
 > adversarial re-audit.
 >
@@ -484,4 +484,3 @@ Replace the try? with explicit error handling so the failure surfaces:
         return nil
     }
 ```
-
