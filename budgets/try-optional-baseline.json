@@ -1,6 +1,0 @@
-{
-  "total": 0,
-  "scope": "AgentLens/Services",
-  "generatedAt": "2026-06-14T08:29:39Z",
-  "note": "Untagged try? occurrences in AgentLens/Services. Now ZERO: every site is either fixed (do/catch + log, fail-closed, credentialIfPresent, or AppLogger.silently) or certified intentional best-effort with a `// try?-ok(<reason>)` justification (same line or the line directly above), recognized by tools/error-debt/count-error-debt.py. CI is now assert-zero: any new untagged try? fails the gate. The conservatively-flagged matters-sites in docs/security/try-optional-matters-findings-2026-06-14.md have been converted to fail-closed/observable handling."
-}

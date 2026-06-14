@@ -5,9 +5,8 @@
 # accumulated invisibly and the green check asserted nothing (diligence
 # 2026-06-11, quality-gate theater). Raw enforcement would flip the lane red
 # on ~119 pre-existing findings, so this uses the repo's established budget
-# idiom (cf. budgets/try-optional-baseline.json): the TOTAL finding count may
-# only go down. New debt fails the PR; paying debt down lets you lower the
-# baseline in budgets/knip-baseline.json.
+# idiom: the TOTAL finding count may only go down. New debt fails the PR;
+# paying debt down lets you lower the baseline in budgets/knip-baseline.json.
 #
 # Usage: scripts/ci/knip-ratchet.sh <package-dir> <baseline-key>
 set -euo pipefail
