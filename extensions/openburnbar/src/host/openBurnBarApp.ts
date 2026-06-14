@@ -6,9 +6,9 @@ import * as vscode from 'vscode';
 const execFileAsync = promisify(execFile);
 const OPENBURNBAR_MACOS_BUNDLE_ID = 'com.openburnbar.app';
 
-export type OpenBurnBarAppLaunchTarget = 'dashboard' | 'search';
+type OpenBurnBarAppLaunchTarget = 'dashboard' | 'search';
 
-export async function openBurnBarApp(target: OpenBurnBarAppLaunchTarget): Promise<void> {
+async function openBurnBarApp(target: OpenBurnBarAppLaunchTarget): Promise<void> {
   if (process.platform !== 'darwin') {
     throw new Error('OpenBurnBar app launching is currently supported on macOS only.');
   }
