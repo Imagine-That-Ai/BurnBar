@@ -20,6 +20,16 @@ public actor BurnBarDaemonServer {
     /// Defaults to `.full` for backward compatibility with the trusted controller
     /// app; less-trusted session types pass an attenuated profile.
     let capabilityProfile: BurnBarPeerCapabilityProfile
+    /// T-DMN-04: independent daemon-side re-verification of the single-use,
+    /// op-hash-bound Ed25519 local-auth proof that authorizes a high-risk
+    /// computer-use RPC (`computerUseSessionStart` / `computerUseInvoke`). When
+    /// non-`nil` the daemon FAILS CLOSED on those methods unless the request
+    /// carries a proof that verifies against the PINNED phone key — so the proof
+    /// binding survives a compromise of the first-party app that forwarded the
+    /// request. `nil` (the default) preserves existing behavior for in-process
+    /// tests and unsigned developer builds; production wires it enforcing on the
+    /// same flag as the peer-codesig gate.
+    let localAuthProofVerifier: DaemonLocalAuthProofVerifier?
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -47,12 +57,14 @@ public actor BurnBarDaemonServer {
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
-        capabilityProfile: BurnBarPeerCapabilityProfile = .full
+        capabilityProfile: BurnBarPeerCapabilityProfile = .full,
+        localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
         self.peerAuthenticator = peerAuthenticator
         self.capabilityProfile = capabilityProfile
+        self.localAuthProofVerifier = localAuthProofVerifier
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
