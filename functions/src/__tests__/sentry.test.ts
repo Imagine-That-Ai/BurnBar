@@ -40,7 +40,7 @@ describe("sentry sanitization", () => {
         },
       ],
     };
-    // @ts-expect-error partial ErrorEvent fixture for sanitization test
+    // @ts-expect-error reason: partial ErrorEvent fixture for sanitization test
     const event = sanitizeSentryEvent(rawEvent);
 
     expect(event.request?.data).toBeUndefined();

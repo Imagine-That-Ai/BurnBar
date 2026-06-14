@@ -117,7 +117,6 @@ object AndroidCloudVaultRevocationRotation {
     }
 
     /** Run one requirement's rotation under the in-flight reservation; returns a failure message or null. */
-    @Suppress("TooGenericExceptionCaught") // rotation must REPORT any failure (mirrors Swift `catch`), not swallow specific kinds.
     @Suppress("TooGenericExceptionCaught") // reason: rotation must REPORT any failure (mirrors Swift `catch`), not swallow specific kinds.
     private suspend fun runPickupForRequirement(
         uid: String,
@@ -284,7 +283,6 @@ object AndroidCloudVaultRevocationRotation {
         return (rotationDict["jobId"] as? String)?.takeIf { it.isNotEmpty() } ?: error("Cloud Vault key rotation was not queued.")
     }
 
-    @Suppress("LongParameterList", "TooGenericExceptionCaught") // mirrors Swift: any rewrap failure marks the job failed, then re-throws.
     @Suppress("LongParameterList", "TooGenericExceptionCaught") // reason: mirrors Swift: rewrap failure fails the job then re-throws; params are explicit DI.
     private suspend fun runRewrapOrMarkFailed(
         worker: CloudVaultRotationRewrapWorker,

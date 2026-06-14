@@ -97,15 +97,15 @@ function fakeRequest(): CallableRequest {
     rawRequest: { headers: {} },
     acceptsStreaming: false,
   };
-  // @ts-expect-error partial CallableRequest stub for attestation tests
+  // @ts-expect-error reason: partial CallableRequest stub for attestation tests
   return request;
 }
 
 describe("appCheckAttestation", () => {
   it("reads app id from callable App Check metadata", () => {
-    // @ts-expect-error partial CallableRequest stub
+    // @ts-expect-error reason: partial CallableRequest stub
     expect(readAppIdFromCallableRequest({ app: { appId: "1:123:ios:abc" } })).toBe("1:123:ios:abc");
-    // @ts-expect-error partial CallableRequest stub
+    // @ts-expect-error reason: partial CallableRequest stub
     expect(readAppIdFromCallableRequest({})).toBeUndefined();
   });
 

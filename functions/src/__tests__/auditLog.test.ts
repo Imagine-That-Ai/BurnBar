@@ -42,7 +42,7 @@ describe("auditActorLabel — self-reported platform hint is clamped", () => {
         ? {}
         : { "x-burnbar-platform": typeof v === "string" ? v : String(v) };
     const request = { rawRequest: { headers } };
-    // @ts-expect-error partial CallableRequest stub for auditActorLabel
+    // @ts-expect-error reason: partial CallableRequest stub for auditActorLabel
     return auditActorLabel(request);
   };
 
