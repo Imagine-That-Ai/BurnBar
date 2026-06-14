@@ -212,6 +212,7 @@ final class OpenBurnBarDatabase: Sendable {
 
     private func pruneOldBackups(in directory: URL, keeping max: Int) {
         let fileManager = FileManager.default
+        // try?-ok(skip prune on read fail)
         guard let contents = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey],
@@ -221,7 +222,7 @@ final class OpenBurnBarDatabase: Sendable {
         let backups = contents
             .filter { $0.lastPathComponent.contains(".backup.") }
             .compactMap { url -> (url: URL, date: Date)? in
-                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]), // try?-ok(skip undated backup)
                       let date = values.contentModificationDate else { return nil }
                 return (url, date)
             }
@@ -1756,7 +1757,7 @@ final class OpenBurnBarDatabase: Sendable {
 
     static func decodeJSONStringArray(_ string: String?) -> [String] {
         guard let string, !string.isEmpty, let data = string.data(using: .utf8),
-              let arr = try? JSONDecoder().decode([String].self, from: data) else {
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { // try?-ok(decode fallback empty)
             return []
         }
         return arr
@@ -1772,7 +1773,7 @@ final class OpenBurnBarDatabase: Sendable {
 
     static func decodeTranscriptPieces(_ string: String?) -> [ChatTranscriptPiece]? {
         guard let string, !string.isEmpty, let data = string.data(using: .utf8),
-              let arr = try? JSONDecoder().decode([ChatTranscriptPiece].self, from: data) else {
+              let arr = try? JSONDecoder().decode([ChatTranscriptPiece].self, from: data) else { // try?-ok(decode fallback nil)
             return nil
         }
         return arr
@@ -1786,7 +1787,7 @@ final class OpenBurnBarDatabase: Sendable {
         guard let string, !string.isEmpty, let data = string.data(using: .utf8) else {
             return nil
         }
-        return try? JSONDecoder().decode([HermesAttachment].self, from: data)
+        return try? JSONDecoder().decode([HermesAttachment].self, from: data) // try?-ok(decode fallback nil)
     }
 }
 
@@ -1854,13 +1855,13 @@ struct WorkingDirectoryBackfillService {
                     )
                 }
             }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            try? await Task.sleep(nanoseconds: 50_000_000) // try?-ok(cancellation only)
         }
     }
 
     static func inferWorkingDirectory(fromKeyFilesJSON json: String) -> String? {
         guard let data = json.data(using: .utf8),
-              let paths = try? JSONDecoder().decode([String].self, from: data),
+              let paths = try? JSONDecoder().decode([String].self, from: data), // try?-ok(decode fallback nil)
               let first = paths.first?.trimmingCharacters(in: .whitespacesAndNewlines),
               !first.isEmpty else {
             return nil

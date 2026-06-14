@@ -317,7 +317,7 @@ final class MacAgentReplyNotificationListener: NSObject {
         content.userInfo = payload.notificationUserInfo
 
         let request = UNNotificationRequest(identifier: payload.eventID, content: content, trigger: nil)
-        try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in // try?-ok(best-effort notification post)
             center.add(request) { error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -329,7 +329,7 @@ final class MacAgentReplyNotificationListener: NSObject {
     }
 
     private func requestNotificationAuthorization() async {
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) // try?-ok(optional permission prompt)
     }
 
     private func persistDeviceState(uid: String?) async {
@@ -346,7 +346,7 @@ final class MacAgentReplyNotificationListener: NSObject {
         ]
         if let runtime { payload["activeRuntime"] = runtime }
         if let threadID { payload["activeThreadId"] = threadID }
-        try? await Firestore.firestore()
+        try? await Firestore.firestore() // try?-ok(best-effort presence heartbeat)
             .collection("users").document(uid)
             .collection("devices").document(deviceID)
             .setData(payload, merge: true)
@@ -452,7 +452,7 @@ final class MacAgentReplyNotificationListener: NSObject {
                 await routeInlineReply(payload: command.payload, replyText: replyText, activate: false)
                 try await markReplyCommand(uid: uid, replyID: command.id, status: "sent", error: nil)
             } catch {
-                try? await markReplyCommand(uid: uid, replyID: command.id, status: "failed", error: error.localizedDescription)
+                try? await markReplyCommand(uid: uid, replyID: command.id, status: "failed", error: error.localizedDescription) // try?-ok(failure-path status marker)
             }
         }
     }

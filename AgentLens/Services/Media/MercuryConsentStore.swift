@@ -134,7 +134,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private static func decodeGrants(_ data: Data?) -> [MirrorAutoAcceptGrant] {
         guard let data else { return [] }
-        return (try? JSONDecoder().decode([MirrorAutoAcceptGrant].self, from: data)) ?? []
+        return (try? JSONDecoder().decode([MirrorAutoAcceptGrant].self, from: data)) ?? [] // try?-ok(fail-closed empty grants)
     }
 
     private static func grantKey(

@@ -29,14 +29,14 @@ final class GrokParser: LogParser, Sendable {
         let workspaceDirs = try fileManager.contentsOfDirectory(
             at: URL(fileURLWithPath: sessionsRoot),
             includingPropertiesForKeys: [.isDirectoryKey]
-        ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
 
         for workspaceDir in workspaceDirs {
             let projectName = decodedWorkspaceName(from: workspaceDir.lastPathComponent)
             let sessionDirs = try fileManager.contentsOfDirectory(
                 at: workspaceDir,
                 includingPropertiesForKeys: [.isDirectoryKey]
-            ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
 
             for sessionDir in sessionDirs {
                 let summaryURL = sessionDir.appendingPathComponent("summary.json")
@@ -65,9 +65,9 @@ final class GrokParser: LogParser, Sendable {
         summaryURL: URL,
         projectName: String
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date
-        guard let summaryData = try? Data(contentsOf: summaryURL),
-              let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else {
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
+        guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
+              let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else { // try?-ok(malformed JSON skipped)
             return nil
         }
 
@@ -160,8 +160,8 @@ final class GrokParser: LogParser, Sendable {
 
     private func loadSignals(at url: URL) -> GrokSignals? {
         guard FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let data = try? Data(contentsOf: url), // try?-ok(missing signals skipped)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON skipped)
             return nil
         }
         return GrokSignals(
@@ -208,15 +208,15 @@ final class GrokParser: LogParser, Sendable {
 
     private func maxTotalTokens(in url: URL) -> Int {
         guard FileManager.default.fileExists(atPath: url.path),
-              let handle = try? FileHandle(forReadingFrom: url) else {
+              let handle = try? FileHandle(forReadingFrom: url) else { // try?-ok(unreadable returns zero)
             return 0
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         var maxTokens = 0
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
                 continue
             }
             if let meta = json["_meta"] as? [String: Any],
@@ -237,15 +237,15 @@ final class GrokParser: LogParser, Sendable {
 
     private func parseChatHistory(at url: URL) -> [ChatTurn] {
         guard FileManager.default.fileExists(atPath: url.path),
-              let handle = try? FileHandle(forReadingFrom: url) else {
+              let handle = try? FileHandle(forReadingFrom: url) else { // try?-ok(unreadable returns empty)
             return []
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         var turns: [ChatTurn] = []
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
                 continue
             }
             let role = (json["type"] as? String)?.lowercased() ?? ""

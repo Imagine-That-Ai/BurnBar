@@ -274,7 +274,7 @@ private final class AwtrixBonjourCoordinator: NSObject, NetServiceBrowserDelegat
             browser.searchForServices(ofType: "_http._tcp.", inDomain: "local.")
 
             timeoutTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) // try?-ok(sleep cancellation only)
                 self?.finish()
             }
         }

@@ -177,11 +177,11 @@ actor RefreshOrchestrator {
         await sessionMirror?.syncIfNeeded()
 
         // 5. Projection compaction
-        var pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+        var pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
         if pendingProjectionJobs >= ProjectionWorkerPolicy.backlogCompactionThreshold {
             let removed = (try? dataStore.compactConversationProjectionBacklog()) ?? 0
             if removed > 0 {
-                pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs
+                pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs // try?-ok(opportunistic sweep gate)
             }
         }
         result.pendingProjectionJobs = pendingProjectionJobs

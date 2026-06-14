@@ -51,7 +51,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
                 )
             }
 
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON throws)
                 throw ProviderUsageAPIError.invalidResponse
             }
 

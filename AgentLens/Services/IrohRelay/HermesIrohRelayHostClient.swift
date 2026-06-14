@@ -216,7 +216,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             }
             heartbeatTask = Task { [weak self, pairingPublishInterval] in
                 while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: UInt64(pairingPublishInterval * 1_000_000_000))
+                    try? await Task.sleep(nanoseconds: UInt64(pairingPublishInterval * 1_000_000_000)) // try?-ok(cancellation only)
                     await self?.refreshPairingRecord(uid: uid, connectionID: connectionID)
                     if let self {
                         self.inboundPeerPolicy = await self.inboundPeerPolicyLoader(uid, connectionID)
@@ -387,7 +387,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     AppLogger.network.info(
                         "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) errorClass=\(Self.publicErrorClass(error))"
                     )
-                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    try? await Task.sleep(nanoseconds: 200_000_000) // try?-ok(cancellation only)
                     continue
                 }
                 consecutiveAcceptFailures += 1
@@ -404,7 +404,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     )
                     return
                 }
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
             }
         }
         await handleAcceptLoopTerminated(
@@ -533,7 +533,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         guard shouldRestart else { return }
         recoveryTask?.cancel()
         recoveryTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 750_000_000)
+            try? await Task.sleep(nanoseconds: 750_000_000) // try?-ok(cancellation only)
             guard !Task.isCancelled else { return }
             _ = await self?.start(uid: uid, connectionID: connectionID)
         }

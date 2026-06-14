@@ -131,7 +131,7 @@ final class CastChannelClient {
         // Brief settle: DashCast occasionally drops the very first
         // LOAD if it lands on the wire before the transport CONNECT
         // has been processed, leaving the Hub stuck on the splash.
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        try? await Task.sleep(nanoseconds: 250_000_000) // try?-ok(sleep cancellation only)
 
         // Send the LOAD three times with growing spacing. DashCast
         // treats duplicate LOADs to the same URL as a no-op once it
@@ -165,7 +165,7 @@ final class CastChannelClient {
         let delays: [UInt64] = [0, 600_000_000, 1_500_000_000]
         for (index, delay) in delays.enumerated() {
             if delay > 0 {
-                try? await Task.sleep(nanoseconds: delay)
+                try? await Task.sleep(nanoseconds: delay) // try?-ok(sleep cancellation only)
             }
             // First attempt uses force:false so existing pages survive;
             // retries use force:true so a wedged splash is forced to
@@ -283,7 +283,7 @@ final class CastChannelClient {
         // Brief settle so the receiver finishes tearing down before
         // we ask it to launch again. Without this the LAUNCH often
         // races the STOP and lands on a stale session.
-        try? await Task.sleep(nanoseconds: 800_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000) // try?-ok(sleep cancellation only)
 
         // Fresh LAUNCH of DashCast.
         let launch = await request(
@@ -306,7 +306,7 @@ final class CastChannelClient {
             "userAgent": "OpenBurnBar/1.0"
         ], destination: transportId)
 
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        try? await Task.sleep(nanoseconds: 250_000_000) // try?-ok(sleep cancellation only)
 
         // Repeat-send LOAD to defeat receiver-side message drop on a
         // fresh transport — same rationale as in `cast(url:)`.
@@ -326,7 +326,7 @@ final class CastChannelClient {
             switch connection.state {
             case .ready, .failed, .cancelled: return
             default:
-                try? await Task.sleep(nanoseconds: 80_000_000)
+                try? await Task.sleep(nanoseconds: 80_000_000) // try?-ok(sleep cancellation only)
             }
         }
     }
@@ -378,7 +378,7 @@ final class CastChannelClient {
             currentSessionId = nil
             currentTransportId = nil
             currentAppId = nil
-            try? await Task.sleep(nanoseconds: 600_000_000)
+            try? await Task.sleep(nanoseconds: 600_000_000) // try?-ok(sleep cancellation only)
         }
 
         // LAUNCH DashCast fresh.
@@ -410,7 +410,7 @@ final class CastChannelClient {
 
             // Timeout watchdog.
             Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) // try?-ok(sleep cancellation only)
                 guard let self else { return }
                 if let cb = self.pending.removeValue(forKey: id) {
                     cb(.timeout)
@@ -464,7 +464,7 @@ final class CastChannelClient {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // try?-ok(sleep cancellation only)
                 _ = await self?.ping()
             }
         }
@@ -474,7 +474,7 @@ final class CastChannelClient {
 
     private func handle(message: CastMessage) {
         guard let data = message.payloadUTF8.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return } // try?-ok(malformed inbound skipped)
 
         // requestId-based correlation.
         if let requestId = obj["requestId"] as? Int, let cb = pending.removeValue(forKey: requestId) {

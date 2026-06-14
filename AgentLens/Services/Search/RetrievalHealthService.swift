@@ -135,7 +135,7 @@ final class RetrievalHealthService {
 
         let details: ParserImportHealthDetails?
         if let json = row.detailsJSON?.data(using: .utf8) {
-            details = try? JSONDecoder().decode(ParserImportHealthDetails.self, from: json)
+            details = try? JSONDecoder().decode(ParserImportHealthDetails.self, from: json) // try?-ok(telemetry decode fallback)
         } else {
             details = nil
         }
@@ -160,7 +160,7 @@ final class RetrievalHealthService {
 
         let details: ProjectionHealthDetailsPayload?
         if let json = row.detailsJSON?.data(using: .utf8) {
-            details = try? JSONDecoder().decode(ProjectionHealthDetailsPayload.self, from: json)
+            details = try? JSONDecoder().decode(ProjectionHealthDetailsPayload.self, from: json) // try?-ok(telemetry decode fallback)
         } else {
             details = nil
         }
@@ -329,7 +329,7 @@ final class RetrievalHealthService {
 
     private func decodeJSONDictionary(from json: String?) -> [String: Any]? {
         guard let json, let data = json.data(using: .utf8) else { return nil }
-        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] // try?-ok(optional JSON parse)
     }
 
     private func stringValue(from raw: Any?) -> String? {

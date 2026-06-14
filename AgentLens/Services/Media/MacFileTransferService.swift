@@ -807,7 +807,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
             )
 
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(heartbeatInterval * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(heartbeatInterval * 1_000_000_000)) // try?-ok(cancellation-only sleep)
                 guard !Task.isCancelled else { return }
                 await Self.sendMirrorHealthHeartbeat(
                     sendGate: sendGate,

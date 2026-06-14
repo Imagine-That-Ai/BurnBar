@@ -165,7 +165,7 @@ final class CheckpointedParserWrapper: Sendable {
     /// Checkpoint is NOT advanced until commitCheckpoint() is called.
     func parseWithCheckpoint() async throws -> CheckpointAwareParseResult {
         // Load existing checkpoint to determine where to resume
-        let existingCheckpoint = try? checkpointStore.fetchCheckpoint(for: parser.provider)
+        let existingCheckpoint = try? checkpointStore.fetchCheckpoint(for: parser.provider) // try?-ok(nil = safe full reprocess)
 
         // Perform the actual parse
         let result = try await parser.parse()
@@ -219,7 +219,7 @@ final class CheckpointedParserWrapper: Sendable {
 
     /// Checks if checkpoint state exists for safe resume.
     func hasCheckpoint() -> Bool {
-        (try? checkpointStore.fetchCheckpoint(for: parser.provider)) != nil
+        (try? checkpointStore.fetchCheckpoint(for: parser.provider)) != nil // try?-ok(false = reprocess all)
     }
 
     private func makeCheckpointToken(processedFiles: [String]) -> String {

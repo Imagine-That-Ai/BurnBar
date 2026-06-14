@@ -29,7 +29,7 @@ final class OllamaUsageProbe: ProviderUsageAPI, Sendable {
         if let apiKey, !apiKey.isEmpty {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
-        if let (_, response) = try? await session.data(for: request),
+        if let (_, response) = try? await session.data(for: request), // try?-ok(probe returns false)
            let http = response as? HTTPURLResponse,
            http.statusCode == 200 {
             return true

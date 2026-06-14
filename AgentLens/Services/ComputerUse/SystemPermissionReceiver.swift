@@ -183,7 +183,7 @@ public final class SystemPermissionReceiver {
             connectionId: connectionId,
             control: payload
         )
-        try? await denyFrameSink(frame)
+        try? await denyFrameSink(frame) // try?-ok(fire-and-forget status notify)
     }
 
     private func emitStatus(
@@ -214,7 +214,7 @@ public final class SystemPermissionReceiver {
                 systemPermissionStatus: wireStatus
             )
         )
-        try? await statusFrameSink(frame)
+        try? await statusFrameSink(frame) // try?-ok(fire-and-forget status notify)
     }
 
     private func deniedReason(for error: PhoneControlAuthorityValidator.ValidationError) -> HermesRealtimeRelayControlDenied.Reason {

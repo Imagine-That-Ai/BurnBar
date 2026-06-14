@@ -1245,7 +1245,7 @@ final class SettingsManager {
     // MARK: JSON Helpers
     static func decodeJSONStringArray(_ json: String) -> [String] {
         guard let data = json.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+              let decoded = try? JSONDecoder().decode([String].self, from: data) else { // try?-ok(malformed JSON -> [])
             return []
         }
         return decoded.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }

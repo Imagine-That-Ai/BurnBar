@@ -92,12 +92,12 @@ struct PixelClockFirmwareFlasher {
     }
 
     static func hasSetupCandidateSerialDevice() async -> Bool {
-        let registry = (try? await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 5)) ?? ""
+        let registry = (try? await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 5)) ?? "" // try?-ok(empty registry fallback)
         return !setupCandidateSerialDevices(usbRegistry: registry).isEmpty
     }
 
     static func serialDiagnostics() async -> SerialDiagnostics {
-        let registry = (try? await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 5)) ?? ""
+        let registry = (try? await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 5)) ?? "" // try?-ok(empty registry fallback)
         return serialDiagnostics(
             serialDevices: serialDeviceCandidates(),
             usbRegistry: registry
@@ -131,7 +131,7 @@ struct PixelClockFirmwareFlasher {
     }
 
     private static func validatedSerialDevices() async throws -> [String] {
-        let registry = (try? await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 5)) ?? ""
+        let registry = (try? await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 5)) ?? "" // try?-ok(empty registry fallback)
         var devices: [String] = []
         for serialDevice in setupCandidateSerialDevices(usbRegistry: registry) {
             guard await isESP32SerialDevice(serialDevice) else { continue }
@@ -296,7 +296,7 @@ struct PixelClockFirmwareFlasher {
     }
 
     private static func ensureEsptool() async throws {
-        if (try? await run("/usr/bin/python3", ["-m", "esptool", "version"], timeout: 15)) != nil { return }
+        if (try? await run("/usr/bin/python3", ["-m", "esptool", "version"], timeout: 15)) != nil { return } // try?-ok(probe before install)
         _ = try await run("/usr/bin/python3", ["-m", "pip", "install", "--user", "esptool"], timeout: 120)
         _ = try await run("/usr/bin/python3", ["-m", "esptool", "version"], timeout: 15)
     }
@@ -404,7 +404,7 @@ struct PixelClockNetworkProvisioner {
         let ip = try await Self.postWiFi(credentials)
 
         if let originalSSID, originalSSID != setupSSID {
-            try? await Self.join(ssid: originalSSID, password: nil)
+            try? await Self.join(ssid: originalSSID, password: nil) // try?-ok(best-effort rejoin)
         }
         return ip
     }
@@ -420,7 +420,7 @@ struct PixelClockNetworkProvisioner {
     /// Blocking Wi-Fi scan runs off the main actor (`nonisolated` `async`, SE-0338).
     static func visibleSetupSSIDs() async -> [String] {
         guard let interface = primaryWiFiInterface() else { return [] }
-        let networks = (try? interface.scanForNetworks(withName: nil)) ?? []
+        let networks = (try? interface.scanForNetworks(withName: nil)) ?? [] // try?-ok(empty scan fallback)
         return setupSSIDs(fromNetworkNames: networks.compactMap { $0.ssid })
     }
 
@@ -471,10 +471,10 @@ struct PixelClockNetworkProvisioner {
     private static func waitForSetupPortal() async throws {
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
-            if (try? await run("/usr/bin/curl", ["-sS", "--max-time", "2", "http://192.168.4.1/ipaddress"], timeout: 4)) != nil {
+            if (try? await run("/usr/bin/curl", ["-sS", "--max-time", "2", "http://192.168.4.1/ipaddress"], timeout: 4)) != nil { // try?-ok(poll retry until deadline)
                 return
             }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // try?-ok(cancellation only)
         }
         throw ProvisionError.connectFailed("OpenBurnBar joined AWTRIX setup Wi-Fi, but the setup server at 192.168.4.1 did not answer.")
     }

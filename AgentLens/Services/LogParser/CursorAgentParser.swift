@@ -37,10 +37,10 @@ final class CursorAgentParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let sessionsURL = URL(fileURLWithPath: sessionsRoot)
-        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? [] // try?-ok(missing dir empty list)
 
         for item in contents {
-            let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(metadata read fallback)
             
             if isDirectory {
                 // Scenario 1: Nested Directory Mode
@@ -80,10 +80,10 @@ final class CursorAgentParser: LogParser, Sendable {
         sessionId: String,
         summaryURL: URL?
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open fail skip session)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime fallback Date)
 
         // Optional metadata from summary.json
         var summaryModel: String?
@@ -93,8 +93,8 @@ final class CursorAgentParser: LogParser, Sendable {
 
         if let summaryURL,
            FileManager.default.fileExists(atPath: summaryURL.path),
-           let data = try? Data(contentsOf: summaryURL),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let data = try? Data(contentsOf: summaryURL), // try?-ok(optional sidecar read)
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(optional summary decode)
             summaryModel = json["model"] as? String ?? (json["current_model_id"] as? String)
             summaryTitle = json["title"] as? String ?? (json["generated_title"] as? String) ?? (json["session_summary"] as? String)
             summaryProject = json["projectName"] as? String ?? (json["project"] as? String)
@@ -131,7 +131,7 @@ final class CursorAgentParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skip)
                 continue
             }
 

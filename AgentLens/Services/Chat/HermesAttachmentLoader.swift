@@ -51,7 +51,7 @@ enum HermesAttachmentLoader {
         let storedURL = workspaceURL.appendingPathComponent(storedRelative)
 
         if fm.fileExists(atPath: storedURL.path) {
-            try? fm.removeItem(at: storedURL)
+            try? fm.removeItem(at: storedURL) // try?-ok(stale collision cleanup)
         }
         try fm.copyItem(at: url, to: storedURL)
 
@@ -118,7 +118,7 @@ enum HermesAttachmentLoader {
         workspaceURL: URL
     ) -> Data? {
         let url = workspaceURL.appendingPathComponent(attachment.workspaceRelativePath)
-        return try? Data(contentsOf: url)
+        return try? Data(contentsOf: url) // try?-ok(missing file degrades to ref)
     }
 
     /// Absolute on-disk path for a stored attachment.
@@ -163,7 +163,7 @@ enum HermesAttachmentLoader {
 
     private static func makeTextPreview(forKind kind: HermesAttachmentKind, fileURL: URL) -> String? {
         guard kind == .textDocument else { return nil }
-        guard let data = try? Data(contentsOf: fileURL, options: [.alwaysMapped]) else { return nil }
+        guard let data = try? Data(contentsOf: fileURL, options: [.alwaysMapped]) else { return nil } // try?-ok(optional text preview)
         let head = data.prefix(HermesAttachmentLimits.textPreviewBytes)
         if let utf8 = String(data: head, encoding: .utf8) { return utf8 }
         if let latin1 = String(data: head, encoding: .isoLatin1) { return latin1 }

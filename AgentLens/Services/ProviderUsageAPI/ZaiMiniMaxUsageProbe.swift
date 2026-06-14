@@ -31,7 +31,7 @@ final class ZaiUsageProbe: ProviderUsageAPI, Sendable {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 5
 
-            if let (_, response) = try? await session.data(for: request),
+            if let (_, response) = try? await session.data(for: request), // try?-ok(speculative endpoint probe)
                let http = response as? HTTPURLResponse,
                http.statusCode == 200 {
                 return true
@@ -55,7 +55,7 @@ final class ZaiUsageProbe: ProviderUsageAPI, Sendable {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 5
 
-            guard let (data, response) = try? await session.data(for: request),
+            guard let (data, response) = try? await session.data(for: request), // try?-ok(speculative endpoint probe)
                   let http = response as? HTTPURLResponse,
                   http.statusCode == 200 else {
                 continue
@@ -70,7 +70,7 @@ final class ZaiUsageProbe: ProviderUsageAPI, Sendable {
     }
 
     private func parseUsageResponse(_ data: Data, since: Date) -> [ProviderUsageRecord]? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(best-effort JSON decode)
             return nil
         }
 
@@ -153,7 +153,7 @@ final class MiniMaxUsageProbe: ProviderUsageAPI, Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 5
 
-        if let (_, response) = try? await session.data(for: request),
+        if let (_, response) = try? await session.data(for: request), // try?-ok(speculative endpoint probe)
            let http = response as? HTTPURLResponse,
            http.statusCode == 200 {
             return true
@@ -175,7 +175,7 @@ final class MiniMaxUsageProbe: ProviderUsageAPI, Sendable {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 5
 
-            guard let (data, response) = try? await session.data(for: request),
+            guard let (data, response) = try? await session.data(for: request), // try?-ok(speculative endpoint probe)
                   let http = response as? HTTPURLResponse,
                   http.statusCode == 200 else {
                 continue
@@ -190,7 +190,7 @@ final class MiniMaxUsageProbe: ProviderUsageAPI, Sendable {
     }
 
     private func parseUsageResponse(_ data: Data, since: Date) -> [ProviderUsageRecord]? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(best-effort JSON decode)
             return nil
         }
 

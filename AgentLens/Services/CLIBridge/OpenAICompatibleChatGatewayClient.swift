@@ -294,7 +294,7 @@ final class AgentToolBroker: Sendable {
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey]
         if let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys)) {
             for case let fileURL as URL in enumerator {
-                let values = try? fileURL.resourceValues(forKeys: keys)
+                let values = try? fileURL.resourceValues(forKeys: keys) // try?-ok(metadata skip fallback)
                 rows.append([
                     "path": relativeWorkspacePath(for: fileURL),
                     "isDirectory": values?.isDirectory ?? false,
@@ -320,7 +320,7 @@ final class AgentToolBroker: Sendable {
         let data = Data(content.utf8)
         if append, FileManager.default.fileExists(atPath: url.path) {
             let handle = try FileHandle(forWritingTo: url)
-            defer { try? handle.close() }
+            defer { try? handle.close() } // try?-ok(handle teardown)
             try handle.seekToEnd()
             try handle.write(contentsOf: data)
         } else {
@@ -355,7 +355,7 @@ final class AgentToolBroker: Sendable {
             "ok": true,
             "sourcePath": sourcePath,
             "desktopPath": destinationURL.path,
-            "bytesCopied": (try? destinationURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            "bytesCopied": (try? destinationURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 // try?-ok(byte count fallback)
         ], detail: destinationURL.path)
     }
 
@@ -510,7 +510,7 @@ final class AgentToolBroker: Sendable {
     }
 
     private func jsonPayload(_ object: [String: Any], detail: String?) -> AgentToolExecutionPayload {
-        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
+        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) // try?-ok(JSON encode fallback)
             ?? Data("{}".utf8)
         return AgentToolExecutionPayload(content: String(decoding: data, as: UTF8.self), detail: detail)
     }
@@ -873,7 +873,7 @@ final class AgentToolBroker: Sendable {
                 return
             }
             Task {
-                try? await Task.sleep(for: .seconds(timeoutSeconds))
+                try? await Task.sleep(for: .seconds(timeoutSeconds)) // try?-ok(cancellation only)
                 if box.markTimedOutIfStillRunning(process) {
                     process.terminate()
                 }
@@ -1158,7 +1158,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                     return
                 }
 
-                let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+                let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:] // try?-ok(JSON parse fallback)
                 if let usage = OpenAICompatibleUsageParser.usage(from: obj) {
                     continuation.yield(.usage(usage))
                 }
@@ -1224,7 +1224,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             if let string = function["arguments"] as? String {
                 arguments = string
             } else if let object = function["arguments"] {
-                let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
+                let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8) // try?-ok(JSON encode fallback)
                 arguments = String(decoding: data, as: UTF8.self)
             } else {
                 arguments = "{}"
@@ -1260,7 +1260,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         if let data = trimmed.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(summary parse fallback)
             for key in ["path", "command", "url", "selector", "text", "key", "value"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(160))
@@ -1292,12 +1292,12 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             throw CLIBridgeError.hermesSSEError(Self.errorDetail(statusCode: http.statusCode, data: data))
         }
 
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(JSON parse fallback)
               let choices = obj["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String
         else {
-            let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+            let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:] // try?-ok(JSON parse fallback)
             return ("", OpenAICompatibleUsageParser.usage(from: obj))
         }
 
@@ -1338,7 +1338,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
     }
 
     private static func parsedErrorMessage(from data: Data) -> String? {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON parse fallback)
             return nil
         }
         if let error = obj["error"] as? String {

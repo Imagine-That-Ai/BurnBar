@@ -25,8 +25,8 @@ final class GeminiCLIParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let baseURL = URL(fileURLWithPath: basePath)
-        let projectDirs = (try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        let projectDirs = (try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter { // try?-ok(dir read, empty fallback)
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(nil-safe filter)
         } ?? []
 
         for projectDir in projectDirs {
@@ -35,7 +35,7 @@ final class GeminiCLIParser: LogParser, Sendable {
 
             guard fm.fileExists(atPath: chatsDir.path) else { continue }
 
-            let chatFiles = (try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter {
+            let chatFiles = (try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter { // try?-ok(dir read, empty fallback)
                 let name = $0.lastPathComponent
                 return name.hasPrefix("session-") && ($0.pathExtension == "json" || $0.pathExtension == "jsonl")
             } ?? []
@@ -67,15 +67,15 @@ final class GeminiCLIParser: LogParser, Sendable {
         sessionId: String,
         projectName: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open file, guard nil)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         let mtime = modificationDate(of: file)
         var acc = GeminiSessionAccumulator()
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional JSON decode, skip line)
                 continue
             }
             ingestLine(json, into: &acc)
@@ -91,19 +91,19 @@ final class GeminiCLIParser: LogParser, Sendable {
         sessionId: String,
         projectName: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let data = try? Data(contentsOf: file) else { return nil }
+        guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
 
         let mtime = modificationDate(of: file)
         var acc = GeminiSessionAccumulator()
 
         // Try array of messages
-        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { // try?-ok(optional JSON decode, fallback)
             for message in array {
                 ingestLine(message, into: &acc)
             }
         }
         // Try single object with messages array
-        else if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        else if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional JSON decode, fallback)
                 let messages = obj["messages"] as? [[String: Any]] {
             for message in messages {
                 ingestLine(message, into: &acc)
@@ -298,7 +298,7 @@ final class GeminiCLIParser: LogParser, Sendable {
     }
 
     private func modificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime read)
     }
 }
 

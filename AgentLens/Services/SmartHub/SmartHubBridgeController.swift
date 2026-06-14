@@ -357,7 +357,7 @@ final class SmartHubBridgeController {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if SmartHubBridgeServer.shared.isRunning { return }
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try? await Task.sleep(nanoseconds: 100_000_000) // try?-ok(sleep cancellation only)
         }
     }
 
@@ -367,7 +367,7 @@ final class SmartHubBridgeController {
             if SmartHubBridgeServer.shared.lastClientPollAt > baseline {
                 return true
             }
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000) // try?-ok(sleep cancellation only)
         }
         return false
     }
@@ -600,7 +600,7 @@ final class SmartHubBridgeController {
     ) -> [AgentProvider: ProviderRunCostTotals] {
         guard let dataStore else { return [:] }
         let range = Self.dateRange(for: period, now: now)
-        return (try? dataStore.usageStore.providerRunCostTotals(in: range)) ?? [:]
+        return (try? dataStore.usageStore.providerRunCostTotals(in: range)) ?? [:] // try?-ok(display metric, empty fallback)
     }
 
     /// Iterate the providers OpenBurnBar tracks; for each, populate a
@@ -1159,7 +1159,7 @@ final class SmartHubBridgeController {
                 guard let self, self.settingsManager.smartHubQuotaDisplayEnabled else { return }
                 Self.log.info("lifecycle: display woke — firing cast watchdog + auto-refresh after settle delay")
                 // Brief delay so the network stack reconnects after sleep.
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                try? await Task.sleep(nanoseconds: 3_000_000_000) // try?-ok(sleep cancellation only)
                 guard !Task.isCancelled else { return }
                 BackgroundCadenceCoordinator.shared.fireNow(id: Self.cadenceIDCastWatchdog)
                 BackgroundCadenceCoordinator.shared.fireNow(id: Self.cadenceIDAutoRefresh)

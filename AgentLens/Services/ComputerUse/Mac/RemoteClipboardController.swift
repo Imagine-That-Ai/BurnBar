@@ -702,9 +702,9 @@ final class RemoteUnlockCredentialController {
         // Re-wake the physical display so it redraws the (now hopefully unlocked) desktop instead of
         // lingering on a stale, asleep lock screen. The credential path can unlock the session while
         // the panel stays dark, which looks like "nothing happened" and forces a manual Touch ID.
-        try? await RemoteAccessAgentClient().wakeDisplay()
+        try? await RemoteAccessAgentClient().wakeDisplay() // try?-ok(best-effort display rewake)
 
-        try? await Task.sleep(nanoseconds: 700_000_000)
+        try? await Task.sleep(nanoseconds: 700_000_000) // try?-ok(sleep cancellation only)
         let state = context.readiness.currentState(
             sessionId: credential.sessionId,
             controlOwnerViewerId: context.authorizedPeerNodeId

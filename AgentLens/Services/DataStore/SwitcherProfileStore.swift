@@ -647,7 +647,7 @@ public final class SwitcherProfileStore: Sendable {
 
     private static func decodeJSON<T: Decodable>(_ string: String, as type: T.Type) -> T? {
         guard let data = string.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
+        return try? JSONDecoder().decode(type, from: data) // try?-ok(optional metadata decode)
     }
 
     private static func parseDateValue(_ value: Any?) -> Date? {

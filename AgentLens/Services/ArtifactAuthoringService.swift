@@ -270,7 +270,7 @@ final class ArtifactAuthoringService {
         let now = nowProvider()
         let sourceID = stableSourceID(for: canonicalPath)
         let existing = try dataStore.fetchSourceArtifact(id: sourceID, includeDeleted: true)
-        let attributes = try? fileManager.attributesOfItem(atPath: canonicalPath)
+        let attributes = try? fileManager.attributesOfItem(atPath: canonicalPath) // try?-ok(metadata fallback handled)
         let modifiedAt = attributes?[.modificationDate] as? Date
         let sizeBytes = (attributes?[.size] as? NSNumber)?.intValue ?? encoded.count
         let artifact = SourceArtifactRecord(

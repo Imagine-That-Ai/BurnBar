@@ -23,7 +23,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
             schemaVersion: 2,
             logLabel: "ClaudeCodeParser"
         )
-        _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+        _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
     }
 
     func parse() async throws -> ParseResult {
@@ -40,6 +40,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
         var activePaths = Set<String>()
         var cacheMutated = false
 
+        // try?-ok(dir read returns empty)
         guard let projectDirs = try? fileManager.contentsOfDirectory(
             at: projectsURL,
             includingPropertiesForKeys: [.isDirectoryKey]
@@ -52,7 +53,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
         for projectDir in filteredDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
 
-            guard let files = try? fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil) else {
+            guard let files = try? fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil) else { // try?-ok(dir read skip)
                 continue
             }
 
@@ -68,7 +69,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
                    cached.signature == signature {
                     appendCached(cached, includeConversation: true, usages: &usages, conversations: &conversations)
                 } else {
-                    let parsed = try? parseClaudeSession(
+                    let parsed = try? parseClaudeSession( // try?-ok(best-effort log parse)
                         file: jsonlFile,
                         sessionId: sessionId,
                         projectName: projectName
@@ -89,7 +90,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
                 let subagentsDir = projectDir
                     .appendingPathComponent(sessionId)
                     .appendingPathComponent("subagents")
-                if let subagentFiles = try? fileManager.contentsOfDirectory(
+                if let subagentFiles = try? fileManager.contentsOfDirectory( // try?-ok(optional dir skip)
                     at: subagentsDir,
                     includingPropertiesForKeys: nil
                 ) {
@@ -107,7 +108,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
                            cached.signature == signature {
                             appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
                         } else {
-                            let parsed = try? parseClaudeSession(
+                            let parsed = try? parseClaudeSession( // try?-ok(best-effort log parse)
                                 file: agentFile,
                                 sessionId: subSessionId,
                                 projectName: projectName
@@ -188,10 +189,10 @@ final class ClaudeCodeParser: LogParser, Sendable {
         sessionId: String,
         projectName: String
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { // try?-ok(unreadable file skip)
             return nil
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         let mtime = modificationDate(of: file)
 
@@ -201,7 +202,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skip)
                 continue
             }
 
@@ -311,7 +312,7 @@ final class ClaudeCodeParser: LogParser, Sendable {
     }
 
     private func modificationDate(of url: URL) -> Date? {
-        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime fallback)
     }
 
     private func cachePath(for file: URL) -> String {

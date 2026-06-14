@@ -147,6 +147,7 @@ final class AgentContextTargetReceiver: Sendable {
             ]
 
             let metadataString: String
+            // try?-ok(fallback to {} below)
             if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys, .withoutEscapingSlashes]),
                let str = String(data: data, encoding: .utf8) {
                 metadataString = str
@@ -227,7 +228,7 @@ final class AgentContextTargetReceiver: Sendable {
             connectionId: frame.connectionId,
             control: ackPayload
         )
-        try? await replyFrameSink(ackFrame)
+        try? await replyFrameSink(ackFrame) // try?-ok(fire-and-forget ack)
     }
 
     private func denormalize(_ nx: Double?, _ ny: Double?, displayId: String?) -> (Int, Int)? {
@@ -269,7 +270,7 @@ final class AgentContextTargetReceiver: Sendable {
             connectionId: connectionId,
             control: payload
         )
-        try? await replyFrameSink(frame)
+        try? await replyFrameSink(frame) // try?-ok(notify already-enforced deny)
     }
 
     private func deniedReason(for error: PhoneControlAuthorityValidator.ValidationError) -> HermesRealtimeRelayControlDenied.Reason {

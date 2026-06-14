@@ -229,7 +229,7 @@ final class BudgetRulesStore: Sendable {
         var fallbacks: [String] = []
         if let json = row["fallbackCredentialIDsJSON"] as? String,
            let data = json.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+           let decoded = try? JSONDecoder().decode([String].self, from: data) { // try?-ok(decode fallback empty)
             fallbacks = decoded
         }
 

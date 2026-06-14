@@ -280,7 +280,7 @@ final class SmartDisplayActionsListener {
         var payload = extra
         payload["status"] = PixelClockActionStatus.completed.rawValue
         payload["completedAt"] = ISO8601DateFormatter().string(from: Date())
-        try? await document.reference.setData(payload, merge: true)
+        try? await document.reference.setData(payload, merge: true) // try?-ok(pending re-fires on loss)
     }
 
     private func fail(document: QueryDocumentSnapshot, message: String, extra: [String: Any] = [:]) async {
@@ -290,7 +290,7 @@ final class SmartDisplayActionsListener {
             "errorMessage": message,
             "completedAt": ISO8601DateFormatter().string(from: Date())
         ]) { _, new in new }
-        try? await document.reference.setData(payload, merge: true)
+        try? await document.reference.setData(payload, merge: true) // try?-ok(pending re-fires on loss)
     }
 
     private func updateProgress(
@@ -298,6 +298,7 @@ final class SmartDisplayActionsListener {
         key: String,
         status: SmartDisplayDeviceRepairStatus
     ) async {
+        // try?-ok(best-effort progress update)
         try? await document.reference.setData([
             key: encode(status),
             "phase": status.phase.rawValue,
@@ -310,6 +311,7 @@ final class SmartDisplayActionsListener {
         document: QueryDocumentSnapshot,
         report: SmartDisplayRepairReport
     ) async {
+        // try?-ok(best-effort progress update)
         try? await document.reference.setData([
             "repair": encode(report),
             "updatedAt": ISO8601DateFormatter().string(from: Date())

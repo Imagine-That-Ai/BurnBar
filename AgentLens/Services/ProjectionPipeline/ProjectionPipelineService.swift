@@ -144,6 +144,7 @@ actor ProjectionPipelineService {
         // Before replacing chunks, fetch existing embeddings keyed by contentHash.
         // After replace, chunks with matching contentHash get their embeddings
         // copied to the new chunk ID instead of being regenerated (VAL-INDEX-004/006).
+        // try?-ok(reuse cache, falls back to [:])
         let embeddingByHash = (try? dataStore.fetchEmbeddingByContentHash(
             documentID: document.id,
             embeddingVersionID: embeddingVersionID
@@ -243,6 +244,7 @@ actor ProjectionPipelineService {
         // Before replacing chunks, fetch existing embeddings keyed by contentHash.
         // After replace, chunks with matching contentHash get their embeddings
         // copied to the new chunk ID instead of being regenerated (VAL-INDEX-004/006).
+        // try?-ok(reuse cache, falls back to [:])
         let embeddingByHash = (try? dataStore.fetchEmbeddingByContentHash(
             documentID: document.id,
             embeddingVersionID: embeddingVersionID

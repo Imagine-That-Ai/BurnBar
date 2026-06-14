@@ -53,7 +53,7 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         let bridgeSource = try resolveHelperBinary(named: "OpenBurnBarVirtualHIDBridge", fileManager: fileManager)
         let privilegedExecutionSource = try resolvePrivilegedInputExecutionSource(fileManager: fileManager)
         let stagingDirectory = URL(fileURLWithPath: "/tmp/openburnbar-virtual-hid-bridge-install-\(UUID().uuidString)", isDirectory: true)
-        defer { try? fileManager.removeItem(at: stagingDirectory) }
+        defer { try? fileManager.removeItem(at: stagingDirectory) } // try?-ok(temp staging cleanup)
 
         try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
         let stagingBridge = stagingDirectory.appendingPathComponent("openburnbar-virtual-hid-bridge", isDirectory: false)
@@ -206,7 +206,7 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         let domain = "gui/\(getuid())"
         _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", "\(domain)/\(executionLaunchLabel)"])
         _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", domain, plistURL.path])
-        try? fileManager.removeItem(at: plistURL)
+        try? fileManager.removeItem(at: plistURL) // try?-ok(atomic write overwrites)
 
         try plistData.write(to: plistURL, options: .atomic)
         try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: plistURL.path)
@@ -453,7 +453,7 @@ private enum RemoteUnlockVirtualHIDInputHealthProbe {
     static func health() throws -> Bool {
         let request = PrivilegedInputDispatchRequest(operation: "health")
         let envelope = PrivilegedInputDispatchEnvelope(request: request)
-        if (try? PrivilegedInputXPCClient(requestTimeout: .seconds(1)).perform(envelope).ok) == true {
+        if (try? PrivilegedInputXPCClient(requestTimeout: .seconds(1)).perform(envelope).ok) == true { // try?-ok(probe falls back)
             return true
         }
         return try RemoteUnlockVirtualHIDInputRawClient.send(operation: "health")

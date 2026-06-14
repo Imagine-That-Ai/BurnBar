@@ -241,7 +241,7 @@ private enum CrossEncoderPromptBuilder {
             let error: ErrorPayload?
         }
 
-        return try? JSONDecoder().decode(ErrorResponse.self, from: data).error?.message
+        return try? JSONDecoder().decode(ErrorResponse.self, from: data).error?.message // try?-ok(optional error-body decode)
     }
 
     static func parseChatCompletionText(from data: Data) throws -> String {

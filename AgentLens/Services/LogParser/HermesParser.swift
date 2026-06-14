@@ -70,7 +70,7 @@ final class HermesParser: LogParser, Sendable {
             }
 
             if fileManager.fileExists(atPath: sessionsDir.path) {
-                let contents = (try? fileManager.contentsOfDirectory(
+                let contents = (try? fileManager.contentsOfDirectory( // try?-ok(dir read, empty fallback)
                     at: sessionsDir,
                     includingPropertiesForKeys: [.isRegularFileKey]
                 )) ?? []
@@ -155,7 +155,7 @@ final class HermesParser: LogParser, Sendable {
         try fileManager.createDirectory(at: snapshotRoot, withIntermediateDirectories: true)
         let snapshotDir = snapshotRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: snapshotDir, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: snapshotDir) }
+        defer { try? fileManager.removeItem(at: snapshotDir) } // try?-ok(temp snapshot cleanup)
 
         let snapshotURL = snapshotDir.appendingPathComponent(dbURL.lastPathComponent)
         try fileManager.copyItem(at: dbURL, to: snapshotURL)
@@ -377,8 +377,8 @@ final class HermesParser: LogParser, Sendable {
         excluding seenSessionIds: Set<String>,
         scope: HermesHomeScope
     ) -> ParseResult {
-        guard let data = try? Data(contentsOf: indexURL),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let data = try? Data(contentsOf: indexURL), // try?-ok(optional index read)
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -507,8 +507,8 @@ final class HermesParser: LogParser, Sendable {
         excluding seenSessionIds: Set<String>,
         scope: HermesHomeScope
     ) -> ParseResult {
-        guard let data = try? Data(contentsOf: file),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -587,13 +587,13 @@ final class HermesParser: LogParser, Sendable {
     }
 
     private func parseLegacyTranscript(file: URL) -> TranscriptSummary? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(optional file open)
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         var events: [Any] = []
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) else {
+                  let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(per-line JSONL, skip malformed)
                 continue
             }
             events.append(json)
@@ -750,7 +750,7 @@ final class HermesParser: LogParser, Sendable {
 
         let profilesRoot = configuredHome.appendingPathComponent("profiles", isDirectory: true)
         guard fileManager.fileExists(atPath: profilesRoot.path),
-              let profileURLs = try? fileManager.contentsOfDirectory(
+              let profileURLs = try? fileManager.contentsOfDirectory( // try?-ok(dir read, guard-return)
                 at: profilesRoot,
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
@@ -760,7 +760,7 @@ final class HermesParser: LogParser, Sendable {
 
         let profileScopes = profileURLs
             .filter { url in
-                let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+                let values = try? url.resourceValues(forKeys: [.isDirectoryKey]) // try?-ok(attr read, false fallback)
                 return values?.isDirectory ?? false
             }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -790,11 +790,11 @@ final class HermesParser: LogParser, Sendable {
     }
 
     private func fileSize(at url: URL) -> UInt64 {
-        ((try? fileManager.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value) ?? 0
+        ((try? fileManager.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value) ?? 0 // try?-ok(file size, zero fallback)
     }
 
     private func modificationDate(of url: URL) -> Date? {
-        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(mtime read, nil fallback)
     }
 
     private func stringValue(_ row: Row, column: String) -> String? {

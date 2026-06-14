@@ -20,13 +20,13 @@ enum HermesDataFolder {
     /// Opens Finder at the Hermes data directory, creating it if needed.
     static func revealInFinder(settings: SettingsManager = .shared) {
         let url = resolvedHomeURL(settings: settings)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) // try?-ok(reveal-dir best-effort)
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     /// Opens Finder at a per-chat workspace (Application Support → OpenBurnBar → HermesChatWorkspaces → thread).
     static func revealChatWorkspace(at url: URL) {
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) // try?-ok(workspace-dir best-effort)
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }

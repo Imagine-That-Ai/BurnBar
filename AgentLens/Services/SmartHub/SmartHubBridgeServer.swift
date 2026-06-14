@@ -335,7 +335,7 @@ final class SmartHubBridgeServer {
            let parsed = SmartHubTimePeriod(rawValue: queryValue) {
             period = parsed
         } else if let body,
-                  let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+                  let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any], // try?-ok(malformed body 400)
                   let raw = json["period"] as? String,
                   let parsed = SmartHubTimePeriod(rawValue: raw) {
             period = parsed
