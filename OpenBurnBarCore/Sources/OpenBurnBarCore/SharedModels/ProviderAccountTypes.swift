@@ -403,6 +403,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
     public let modelCompatibility: ProviderRoutingModelCompatibility
     public let canonicalModelID: String?
     public var quotaState: ProviderRoutingQuotaState
+    public var quotaResetsAt: Date?
     public var cooldownUntil: Date?
     public let priority: Int
     public var routingEnabled: Bool
@@ -421,6 +422,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
         modelCompatibility: ProviderRoutingModelCompatibility = .unknown,
         canonicalModelID: String? = nil,
         quotaState: ProviderRoutingQuotaState = .unknown,
+        quotaResetsAt: Date? = nil,
         cooldownUntil: Date? = nil,
         priority: Int = 0,
         routingEnabled: Bool = true,
@@ -438,6 +440,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
             .map(ProviderRoutingPolicy.normalizedCanonicalModelID)
             .flatMap { $0.isEmpty ? nil : $0 }
         self.quotaState = quotaState
+        self.quotaResetsAt = quotaResetsAt
         self.cooldownUntil = cooldownUntil
         self.priority = priority
         self.routingEnabled = routingEnabled
@@ -1091,6 +1094,10 @@ public enum ProviderRoutingPolicy {
         let lhsProvider = providerRank(lhs.providerID, preferences: request.preferredProviderIDs)
         let rhsProvider = providerRank(rhs.providerID, preferences: request.preferredProviderIDs)
         if lhsProvider != rhsProvider { return lhsProvider < rhsProvider }
+        if lhs.providerID == rhs.providerID,
+           let quotaOrder = compareQuotaReset(lhs.quotaResetsAt, rhs.quotaResetsAt, now: now) {
+            return quotaOrder
+        }
         let lhsSelected = selectedAccountRank(lhs, request: request)
         let rhsSelected = selectedAccountRank(rhs, request: request)
         if lhsSelected != rhsSelected { return lhsSelected < rhsSelected }
@@ -1106,6 +1113,25 @@ public enum ProviderRoutingPolicy {
         if lhsLastUsed != rhsLastUsed { return lhsLastUsed < rhsLastUsed }
         if lhs.providerID.rawValue != rhs.providerID.rawValue { return lhs.providerID.rawValue < rhs.providerID.rawValue }
         return lhs.accountID < rhs.accountID
+    }
+
+    private static func compareQuotaReset(_ lhs: Date?, _ rhs: Date?, now: Date) -> Bool? {
+        switch (activeQuotaReset(lhs, now: now), activeQuotaReset(rhs, now: now)) {
+        case let (.some(lhsReset), .some(rhsReset)):
+            guard lhsReset != rhsReset else { return nil }
+            return lhsReset < rhsReset
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        case (.none, .none):
+            return nil
+        }
+    }
+
+    private static func activeQuotaReset(_ value: Date?, now: Date) -> Date? {
+        guard let value, value > now else { return nil }
+        return value
     }
 
     private static func providerFamilyConstraint(for request: ProviderRoutingRequest) -> ProviderID? {
