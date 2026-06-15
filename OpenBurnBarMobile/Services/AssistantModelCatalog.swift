@@ -142,6 +142,34 @@ enum AssistantModelIDCanonicalizer {
         let rawFamilyKey = familyKey(trimmed)
         return eligible.first { familyKey($0.modelID) == rawFamilyKey }?.modelID
     }
+
+    static func containsAdvertisedModelID(
+        _ raw: String,
+        in options: [HermesRuntimeModelOption]
+    ) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        if options.contains(where: { $0.modelID == trimmed }) {
+            return true
+        }
+        if options.contains(where: { $0.modelID.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return true
+        }
+
+        let canonical = canonicalized(trimmed)
+        if canonical != trimmed {
+            if options.contains(where: { $0.modelID == canonical }) {
+                return true
+            }
+            if options.contains(where: { $0.modelID.caseInsensitiveCompare(canonical) == .orderedSame }) {
+                return true
+            }
+        }
+
+        let rawFamilyKey = familyKey(trimmed)
+        return options.contains { familyKey($0.modelID) == rawFamilyKey }
+    }
 }
 
 // MARK: - Catalog store

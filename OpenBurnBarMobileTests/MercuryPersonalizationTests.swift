@@ -193,8 +193,7 @@ final class MercuryPersonalizationTests: XCTestCase {
     }
 
     func testWallpaperAccentSamplerReturnsAccentForRedSquare() throws {
-        let red = try makePixelImageBase64(red: 250, green: 40, blue: 40)
-        let accent = WallpaperAccentSampler.dominantAccent(fromBase64: red)
+        let accent = WallpaperAccentSampler.dominantAccent(fromBase64: Self.redPixelPNGBase64)
         XCTAssertNotNil(accent, "Should sample a color from a valid PNG payload")
     }
 
@@ -215,27 +214,6 @@ final class MercuryPersonalizationTests: XCTestCase {
         )
     }
 
-    private func makePixelImageBase64(red: UInt8, green: UInt8, blue: UInt8) throws -> String {
-        // 1×1 RGBA bitmap → CGImage → PNG → base64.
-        let pixels: [UInt8] = [red, green, blue, 255]
-        let provider = CGDataProvider(data: Data(pixels) as CFData)
-        let cgImage = CGImage(
-            width: 1,
-            height: 1,
-            bitsPerComponent: 8,
-            bitsPerPixel: 32,
-            bytesPerRow: 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-            provider: provider!,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent
-        )
-        guard let cgImage,
-              let image = UIImage(cgImage: cgImage).pngData() else {
-            throw NSError(domain: "MercuryPersonalizationTests", code: -1)
-        }
-        return image.base64EncodedString()
-    }
+    private static let redPixelPNGBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 }

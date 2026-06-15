@@ -19,6 +19,11 @@ import UIKit
 /// good enough. We trade a tiny amount of fidelity for fast, predictable
 /// results that play well with the personalization cache.
 enum WallpaperAccentSampler {
+    private static let areaAverageContext = CIContext(options: [
+        .workingColorSpace: NSNull(),
+        .useSoftwareRenderer: true
+    ])
+
     /// Returns a SwiftUI `Color` for the given base64 payload, or `nil`
     /// when the payload is empty/invalid. Callers should fall back to
     /// `MercuryAccent.blue.staticColor` in the nil case.
@@ -66,8 +71,7 @@ enum WallpaperAccentSampler {
         }
 
         var bitmap = [UInt8](repeating: 0, count: 4)
-        let context = CIContext(options: [.workingColorSpace: NSNull()])
-        context.render(
+        areaAverageContext.render(
             outputImage,
             toBitmap: &bitmap,
             rowBytes: 4,
