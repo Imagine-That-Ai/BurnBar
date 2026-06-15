@@ -8,19 +8,17 @@
 
 import type {
   InsightAnomalyRowDoc,
-  InsightDrilldownRowDoc,
-  InsightWidgetDataQuotaStateDoc,
-  InsightWidgetDataRankingDoc,
-  InsightWidgetDataTimeSeriesDoc,
-} from "./insights-data.js";
-import type {
   InsightCanvasDoc,
   InsightCitationDoc,
+  InsightDrilldownRowDoc,
   InsightEgressTier,
   InsightFilterDoc,
   InsightModelTagDoc,
   InsightTaxonomyDoc,
   InsightTimeWindowDoc,
+  InsightWidgetDataQuotaStateDoc,
+  InsightWidgetDataRankingDoc,
+  InsightWidgetDataTimeSeriesDoc,
   InsightWidgetDoc,
 } from "./insights-spec.js";
 

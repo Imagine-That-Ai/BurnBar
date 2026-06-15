@@ -15,6 +15,5 @@ export * from "./legacy/connections.js";
 export * from "./legacy/quota-usage.js";
 export * from "./legacy/config.js";
 export * from "./legacy/insights-spec.js";
-export * from "./legacy/insights-data.js";
 export * from "./legacy/insights-digest.js";
 export * from "./legacy/media.js";

@@ -108,7 +108,7 @@ export const TASK_CATEGORIES: Array<{
   { id: "general", label: "General", blurb: "Mixed-intent chat / one-shot questions / catch-all routing." },
 ];
 
-export const WEIGHTS = {
+const WEIGHTS = {
   benchmarkScore: 0.55,
   benchmarkFreshness: 0.14,
   sourceConfidence: 0.05,
@@ -477,4 +477,4 @@ export function favoriteSpecForModel(model: ModelMeta): FavoriteSpec | null {
   };
 }
 
-export type { ModelMeta, RuntimeMeta, RundownInput, PreviousTaskRanking, FavoriteSpec, TaskCategoryID };
+export type { ModelMeta, RuntimeMeta, RundownInput, PreviousTaskRanking, FavoriteSpec };

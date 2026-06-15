@@ -13,7 +13,7 @@
  *   - rollupJobs.ts         — attempt gate / breaker, refresh callable, writer
  */
 
-export { applyUsageCounterDelta, WINDOW_KEYS } from "./rollupCounters.js";
+export { applyUsageCounterDelta } from "./rollupCounters.js";
 export type { WindowKey, UsageCounterContribution, UsageCounterCandidate } from "./rollupCounters.js";
 
 export {
