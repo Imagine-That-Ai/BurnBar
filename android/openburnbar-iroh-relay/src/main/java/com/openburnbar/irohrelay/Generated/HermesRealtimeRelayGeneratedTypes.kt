@@ -42,6 +42,70 @@ data class HermesRealtimeRelayControlSealKeyEnvelope(
 )
 
 @Serializable
+data class HermesRealtimeRelayControlPayload(
+    val streamClass: String? = null,
+    val sessionId: String? = null,
+    val actionLogEntry: HermesRealtimeRelayActionLogEntry? = null,
+    val inputIntent: HermesRealtimeRelayInputIntent? = null,
+    val approvalRequest: HermesRealtimeRelayApprovalRequest? = null,
+    val approvalResponse: HermesRealtimeRelayApprovalResponse? = null,
+    val agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = null,
+    val agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = null,
+    val clipboardRequest: HermesRealtimeRelayClipboardRequest? = null,
+    val clipboardResponse: HermesRealtimeRelayClipboardResponse? = null,
+    val denied: HermesRealtimeRelayControlDenied? = null,
+    val authorityPeerNodeId: String? = null,
+    val authorityPublicKeyBase64: String? = null,
+    val agentContextTarget: HermesRealtimeRelayAgentContextTarget? = null,
+    val remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
+    val remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
+    val remoteUnlockInput: HermesRealtimeRelayRemoteUnlockInput? = null,
+    val remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope? = null,
+    val remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult? = null,
+    val systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = null,
+    val systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = null,
+    val controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = null,
+    val sealedFrameBase64: String? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayActionLogEntry(
+    val entryIndex: Int,
+    val gopOrdinal: Long? = null,
+    val timestamp: Double,
+    val actionKind: String,
+    val summary: String,
+    val status: Status,
+    val screenshotHashBlake3: String? = null,
+    val parentEntryBlake3: String? = null,
+    val errorCategory: String? = null,
+) {
+    @Serializable
+    enum class Status {
+        @SerialName("planned")
+        PLANNED,
+
+        @SerialName("awaiting_approval")
+        AWAITING_APPROVAL,
+
+        @SerialName("executing")
+        EXECUTING,
+
+        @SerialName("completed")
+        COMPLETED,
+
+        @SerialName("failed")
+        FAILED,
+
+        @SerialName("rejected")
+        REJECTED,
+
+        @SerialName("panic_halted")
+        PANIC_HALTED,
+    }
+}
+
+@Serializable
 data class HermesRealtimeRelayInputIntent(
     val kind: HermesRealtimeRelayInputIntentKind,
     val displayId: String? = null,
@@ -336,14 +400,26 @@ data class HermesRealtimeRelayRemoteUnlockCapabilities(
     val certifiedAt: String? = null,
     val certifiedOSBuild: String? = null,
     val activeBackend: HermesRealtimeRelayRemoteUnlockBackend,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val supportedBackends: List<HermesRealtimeRelayRemoteUnlockBackend> = emptyList(),
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val supportedLockStates: List<HermesRealtimeRelayMacLockState> = emptyList(),
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val blockers: List<String> = emptyList(),
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val allowsCredentialPaste: Boolean = false,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val allowsSavedCredentialUnlock: Boolean = false,
     val credentialRecipientKeyId: String? = null,
     val credentialRecipientPublicKeyBase64: String? = null,
     val credentialEnvelopeAlgorithm: String? = null,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val fileVaultSSHSupported: Boolean = false,
 )
 
@@ -682,6 +758,8 @@ data class HermesRealtimeRelayMediaAck(
 data class HermesRealtimeRelayAgentTerminalRequest(
     val runtimeId: String,
     val workingDirectory: String? = null,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val interactive: Boolean = true,
     val modelID: String? = null,
 )
@@ -708,8 +786,47 @@ data class HermesRealtimeRelayDisplayDescriptor(
     val name: String,
     val width: Int,
     val height: Int,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val isPrimary: Boolean = false,
 )
+
+@Serializable
+data class HermesRealtimeRelayMirrorAck(
+    val requestId: String,
+    val decision: Decision,
+    val detail: String? = null,
+    val cooldownSecondsRemaining: Int? = null,
+    val availableDisplays: List<HermesRealtimeRelayDisplayDescriptor>? = null,
+    val selectedDisplayId: String? = null,
+    val sessionId: String? = null,
+    val viewerId: String? = null,
+    val viewerRole: String? = null,
+    val viewerCount: Int? = null,
+    val maxViewers: Int? = null,
+    val controlOwnerViewerId: String? = null,
+    val remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
+    val remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = null,
+    val streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = null,
+) {
+    @Serializable
+    enum class Decision {
+        @SerialName("accepted")
+        ACCEPTED,
+
+        @SerialName("denied")
+        DENIED,
+
+        @SerialName("cooling_down")
+        COOLING_DOWN,
+
+        @SerialName("unsupported")
+        UNSUPPORTED,
+
+        @SerialName("busy")
+        BUSY,
+    }
+}
 
 @Serializable
 data class HermesRealtimeRelayMirrorDisplaySelection(
@@ -784,15 +901,27 @@ data class HermesRealtimeRelayVideoCodecCapability(
     val canEncode: Boolean,
     val canDecode: Boolean,
     val hardwareAccelerated: Boolean,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val lowLatencyEncode: Boolean = false,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val temporalLayering: Boolean = false,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val longTermReference: Boolean = false,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val screenContentCoding: Boolean = false,
 )
 
 @Serializable
 data class HermesRealtimeRelayMediaFrameVersionSupport(
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val supportsV1: Boolean = true,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val supportsV2: Boolean = false,
 )
 
@@ -804,7 +933,11 @@ data class HermesRealtimeRelayDatagramCapability(
 @Serializable
 data class HermesRealtimeRelayStreamingCapabilities(
     val codecCapabilities: List<HermesRealtimeRelayVideoCodecCapability>,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val mediaFrameVersions: HermesRealtimeRelayMediaFrameVersionSupport = HermesRealtimeRelayMediaFrameVersionSupport(),
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val videoDatagrams: HermesRealtimeRelayDatagramCapability = HermesRealtimeRelayDatagramCapability(),
     val source: String,
 )

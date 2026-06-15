@@ -146,20 +146,14 @@
           "serialName": null,
           "encodeDefault": false
         },
+        "actionLogEntry": {
+          "ktType": "HermesRealtimeRelayActionLogEntry?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
         "inputIntent": {
           "ktType": "HermesRealtimeRelayInputIntent?",
-          "default": "null",
-          "serialName": null,
-          "encodeDefault": false
-        },
-        "authorityPeerNodeId": {
-          "ktType": "String?",
-          "default": "null",
-          "serialName": null,
-          "encodeDefault": false
-        },
-        "authorityPublicKeyBase64": {
-          "ktType": "String?",
           "default": "null",
           "serialName": null,
           "encodeDefault": false
@@ -196,6 +190,24 @@
         },
         "clipboardResponse": {
           "ktType": "HermesRealtimeRelayClipboardResponse?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "denied": {
+          "ktType": "HermesRealtimeRelayControlDenied?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "authorityPeerNodeId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "authorityPublicKeyBase64": {
+          "ktType": "String?",
           "default": "null",
           "serialName": null,
           "encodeDefault": false
@@ -248,12 +260,6 @@
           "serialName": null,
           "encodeDefault": false
         },
-        "denied": {
-          "ktType": "HermesRealtimeRelayControlDenied?",
-          "default": "null",
-          "serialName": null,
-          "encodeDefault": false
-        },
         "controlSealKey": {
           "ktType": "HermesRealtimeRelayControlSealKeyEnvelope?",
           "default": "null",
@@ -270,15 +276,17 @@
       "fieldOrder": [
         "streamClass",
         "sessionId",
+        "actionLogEntry",
         "inputIntent",
-        "authorityPeerNodeId",
-        "authorityPublicKeyBase64",
         "approvalRequest",
         "approvalResponse",
         "agentGrantRequest",
         "agentGrantReceipt",
         "clipboardRequest",
         "clipboardResponse",
+        "denied",
+        "authorityPeerNodeId",
+        "authorityPublicKeyBase64",
         "agentContextTarget",
         "remoteUnlockSession",
         "remoteUnlockState",
@@ -287,7 +295,6 @@
         "remoteUnlockResult",
         "systemPermissionRequest",
         "systemPermissionStatus",
-        "denied",
         "controlSealKey",
         "sealedFrameBase64"
       ]
@@ -1107,31 +1114,31 @@
           "ktType": "List<HermesRealtimeRelayRemoteUnlockBackend>",
           "default": "emptyList()",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "supportedLockStates": {
           "ktType": "List<HermesRealtimeRelayMacLockState>",
           "default": "emptyList()",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "blockers": {
           "ktType": "List<String>",
           "default": "emptyList()",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "allowsCredentialPaste": {
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "allowsSavedCredentialUnlock": {
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "credentialRecipientKeyId": {
           "ktType": "String?",
@@ -1155,7 +1162,7 @@
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         }
       },
       "fieldOrder": [
@@ -2163,7 +2170,7 @@
           "ktType": "Boolean",
           "default": "true",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "modelID": {
           "ktType": "String?",
@@ -2293,7 +2300,7 @@
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         }
       },
       "fieldOrder": [
@@ -2388,6 +2395,12 @@
           "default": "null",
           "serialName": null,
           "encodeDefault": false
+        },
+        "streamingCapabilities": {
+          "ktType": "HermesRealtimeRelayStreamingCapabilities?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
         }
       },
       "fieldOrder": [
@@ -2404,7 +2417,8 @@
         "maxViewers",
         "controlOwnerViewerId",
         "remoteUnlockState",
-        "remoteUnlockCapabilities"
+        "remoteUnlockCapabilities",
+        "streamingCapabilities"
       ]
     },
     "HermesRealtimeRelayMirrorDisplaySelection": {
@@ -2662,25 +2676,25 @@
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "temporalLayering": {
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "longTermReference": {
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "screenContentCoding": {
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         }
       },
       "fieldOrder": [
@@ -2701,13 +2715,13 @@
           "ktType": "Boolean",
           "default": "true",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "supportsV2": {
           "ktType": "Boolean",
           "default": "false",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         }
       },
       "fieldOrder": [
@@ -2741,13 +2755,13 @@
           "ktType": "HermesRealtimeRelayMediaFrameVersionSupport",
           "default": "HermesRealtimeRelayMediaFrameVersionSupport()",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "videoDatagrams": {
           "ktType": "HermesRealtimeRelayDatagramCapability",
           "default": "HermesRealtimeRelayDatagramCapability()",
           "serialName": null,
-          "encodeDefault": false
+          "encodeDefault": true
         },
         "source": {
           "ktType": "String",
@@ -2990,6 +3004,71 @@
         "clientIntentId",
         "requestedAt",
         "authority"
+      ]
+    },
+    "HermesRealtimeRelayActionLogEntry": {
+      "kind": "data class",
+      "fields": {
+        "entryIndex": {
+          "ktType": "Int",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "gopOrdinal": {
+          "ktType": "Long?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "timestamp": {
+          "ktType": "Double",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "actionKind": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "summary": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "status": {
+          "ktType": "Status",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "screenshotHashBlake3": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "parentEntryBlake3": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "errorCategory": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        }
+      },
+      "fieldOrder": [
+        "entryIndex",
+        "gopOrdinal",
+        "timestamp",
+        "actionKind",
+        "summary",
+        "status",
+        "screenshotHashBlake3",
+        "parentEntryBlake3",
+        "errorCategory"
       ]
     }
   },

@@ -20,10 +20,11 @@ When creating or updating the matching `/goal`, include this ledger pointer in t
 
 - [done] Phase A: emitKotlinRelayTypes generates byte-faithful Kotlin for the ~52 safe types; kotlin-roundtrip prover reports faithful; generate-and-consume (hand-written replaced); `:openburnbar-iroh-relay:testDebugUnitTest` green + `:app:compileDebugKotlin` green.
 - [done] Phase B: 3 missing enum cases (RemoteUnlockBackend, SystemPermissionKind) generated + atomic consumer `when` arms; gradle green.
-- [todo] Phase C: 3 date-regime flips + producer/consumer migration + intent-hash-unchanged resign test; gradle green.
-- [todo] Phase D: @EncodeDefault breadth + encode-byte prover (Kotlin key-set == Swift key-set).
-- [todo] codegen idempotent (node codegen.mjs && git diff --exit-code) + drift gate wired (incl. Swift Generated dir gap).
-- [todo] Keep implementation-notes.html current at each phase checkpoint.
+- [done] Phase C: 3 date-regime flips + producer/consumer migration + intent-hash-unchanged resign test; gradle green.
+- [done] Phase D: @EncodeDefault breadth (16 always-emit fields, verified non-optional in Swift) + encode-byte prover (HermesRealtimeRelayGeneratedRoundTripTest); ControlPayload+ActionLogEntry and MirrorAck folded into codegen (56/60 generatable).
+- [done] codegen idempotent (drift-gate test compares disk == generateAll) + CI drift gate wired: fast-feedback.yml now diffs the real android Generated/ + Swift SharedModels/Generated/ dirs after codegen (the prior gate only covered gen/, so app-side drift was silent).
+- [done] Keep implementation-notes.html current at each phase checkpoint.
+- [done-by-design] 4 types intentionally not generated: PresenceHeartbeat (legacy `displayName` dual-key alias the schema deliberately omits; generating would drop it and break older peers), PhoneControlSigningKeyKind (app-domain type, not a relay-module wire type), AgentFocusFollowMode + ErrorCode (Kotlin models these as inline `String`). None are drift — all are deliberate representation choices.
 
 ## Escape Hatch
 

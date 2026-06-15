@@ -271,42 +271,6 @@ sealed class HermesStreamEvent {
 }
 
 @Serializable
-data class HermesRealtimeRelayMirrorAck(
-    val requestId: String,
-    val decision: Decision,
-    val detail: String? = null,
-    val cooldownSecondsRemaining: Int? = null,
-    val availableDisplays: List<HermesRealtimeRelayDisplayDescriptor>? = null,
-    val selectedDisplayId: String? = null,
-    val sessionId: String? = null,
-    val viewerId: String? = null,
-    val viewerRole: String? = null,
-    val viewerCount: Int? = null,
-    val maxViewers: Int? = null,
-    val controlOwnerViewerId: String? = null,
-    val remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
-    val remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = null,
-) {
-    @Serializable
-    enum class Decision {
-        @SerialName("accepted")
-        ACCEPTED,
-
-        @SerialName("denied")
-        DENIED,
-
-        @SerialName("cooling_down")
-        COOLING_DOWN,
-
-        @SerialName("unsupported")
-        UNSUPPORTED,
-
-        @SerialName("busy")
-        BUSY,
-    }
-}
-
-@Serializable
 data class HermesRealtimeRelayPresenceHeartbeat(
     val peerDeviceId: String? = null,
     val displayName: String? = null,
@@ -317,45 +281,6 @@ data class HermesRealtimeRelayPresenceHeartbeat(
     val remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = null,
     /** ISO-8601 string. Matches the Swift `Date` encoding via JSONEncoder default. */
     val sentAt: String,
-)
-
-@Serializable
-data class HermesRealtimeRelayControlPayload(
-    val streamClass: String? = null,
-    val sessionId: String? = null,
-    val inputIntent: HermesRealtimeRelayInputIntent? = null,
-    val authorityPeerNodeId: String? = null,
-    val authorityPublicKeyBase64: String? = null,
-    val approvalRequest: HermesRealtimeRelayApprovalRequest? = null,
-    val approvalResponse: HermesRealtimeRelayApprovalResponse? = null,
-    val agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = null,
-    val agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = null,
-    val clipboardRequest: HermesRealtimeRelayClipboardRequest? = null,
-    val clipboardResponse: HermesRealtimeRelayClipboardResponse? = null,
-    val agentContextTarget: HermesRealtimeRelayAgentContextTarget? = null,
-    val remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
-    val remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = null,
-    val remoteUnlockInput: HermesRealtimeRelayRemoteUnlockInput? = null,
-    val remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope? = null,
-    val remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult? = null,
-    val systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = null,
-    val systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = null,
-    val denied: HermesRealtimeRelayControlDenied? = null,
-    /**
-     * F10 — sealKeyV3-wrapped control-frame-seal session key, sent once on
-     * `control.classify` when both peers advertise `control_seal_v1`. Pre-F10
-     * receivers ignore the field. Mirrors the Swift control payload.
-     */
-    val controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = null,
-    /**
-     * F10 — when present, this payload's real content rides inside: a
-     * `ControlFrameSeal` envelope (OBCFS1) over the JSON of the inner
-     * `HermesRealtimeRelayControlPayload`, AAD-bound to (controller
-     * peerNodeId, frame type). `streamClass` stays visible for routing;
-     * everything else is confidential. Pre-F10 receivers see an empty payload
-     * and ignore it. Mirrors the Swift control payload.
-     */
-    val sealedFrameBase64: String? = null,
 )
 
 /**

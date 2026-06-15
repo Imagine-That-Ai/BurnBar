@@ -91,14 +91,14 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> Phases A + B DONE and verified. Phase C (date-regime flips) in progress.</li>
-    <li><strong>Current phase:</strong> Phase C — flip 3 date wire-types to match the canonical Swift schema: <code>SystemPermissionRequest.requestedAt</code> + <code>SystemPermissionStatus.lastChangedAt</code> Double→String (dateIso); <code>AttachmentManifest.createdAt</code> String→Double (synthesized=number). All 3 verified real drifts vs schema codable modes.</li>
-    <li><strong>Worktree/branch:</strong> <code>/private/tmp/bb-kotlin</code> @ <code>feature/relay-kotlin-codegen</code>.</li>
-    <li><strong>Generatable:</strong> 53/60 types. Deferred (7): ControlPayload (+actionLogEntry), ActionLogEntry, PhoneControlSigningKeyKind, AgentFocusFollowMode, MirrorAck, PresenceHeartbeat (dualKey), ErrorCode.</li>
+    <li><strong>Status:</strong> GOAL COMPLETE — Phases A, B, C, D all DONE and verified. Pending only: push branch + open PR (Alberto merges).</li>
+    <li><strong>Outcome:</strong> 56/60 relay payload types are schema-generated; the other 4 are deliberate non-generated representation choices (not drift). HermesRealtimeRelayFrame.kt 1349 → 362 LOC. CI drift gate now covers the real android + Swift Generated dirs, so Swift↔Kotlin payload drift is structurally impossible AND enforced.</li>
+    <li><strong>Worktree/branch:</strong> <code>/private/tmp/bb-kotlin</code> @ <code>feature/relay-kotlin-codegen</code> (commits: design doc, prover, Phase A, Phase B, Phase C, Phase D).</li>
+    <li><strong>Deliberately NOT generated (4):</strong> PresenceHeartbeat (legacy <code>displayName</code> dual-key the schema omits — generating would break older peers), PhoneControlSigningKeyKind (app-domain, not a relay wire type), AgentFocusFollowMode + ErrorCode (Kotlin models as inline <code>String</code>).</li>
     <li><strong>Blockers:</strong> None.</li>
-    <li><strong>Next action:</strong> Phase C — change override ktType (Double↔String) for the 3 date fields, regenerate, migrate producers/consumers (SystemPermissionConcierge, PhoneControlSignerCanonicalJson, MediaFileTransferService), add intent-hash-unchanged resign test, gradle verify, commit.</li>
-    <li><strong>Verify gauntlet:</strong> <code>node packages/hermes-wire-protocol/codegen.mjs &amp;&amp; git diff --exit-code</code> on Generated; <code>node --test packages/hermes-wire-protocol/</code> (15/15); <code>JAVA_HOME=/Users/albertonunez/.homebrew/opt/openjdk@21 ./gradlew :openburnbar-iroh-relay:testDebugUnitTest :app:compileDebugKotlin</code> (env: android/local.properties + app/google-services.json in place).</li>
-    <li><strong>Protected paths:</strong> Generated/*.kt and Swift Generated/*.swift are codegen output — edit the schema/overrides/emitter, never the generated files directly.</li>
+    <li><strong>Next action:</strong> <code>git push -u origin feature/relay-kotlin-codegen</code> and open a PR; Alberto merges.</li>
+    <li><strong>Verify gauntlet:</strong> <code>node --test packages/hermes-wire-protocol/</code> (15/15); <code>JAVA_HOME=/Users/albertonunez/.homebrew/opt/openjdk@21 ./gradlew :openburnbar-iroh-relay:testDebugUnitTest :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin</code> (env: android/local.properties + app/google-services.json in place).</li>
+    <li><strong>Protected paths:</strong> Generated/*.kt and Swift Generated/*.swift are codegen output — edit schema/overrides/emitter, never the generated files directly.</li>
   </ul>
 
   <h2>Progress Timeline</h2>
@@ -131,6 +131,22 @@
   </ul>
   <script>
     const progressEvents = [
+  {
+    ts: "2026-06-15T16:45:00Z",
+    status: "done",
+    phase: "phase-d-encodedefault-prover-driftgate",
+    actor: "agent",
+    summary: "Phase D complete + goal finished. (1) @EncodeDefault breadth: 16 always-emit fields (verified non-optional + unconditional container.encode in the Swift generated) annotated so Kotlin matches Swift's encode byte-for-byte. (2) Encode-byte prover HermesRealtimeRelayGeneratedRoundTripTest (3 tests): all-defaults encoding emits exactly the fields Swift always emits, a null optional is still omitted (non-vacuous), and types round-trip losslessly. (3) ControlPayload + new ActionLogEntry type (with nested Status enum, timestamp synthesized=Double) + MirrorAck.streamingCapabilities folded into codegen -> 56/60 generatable (the other 4 are deliberate: PresenceHeartbeat legacy dual-key, PhoneControlSigningKeyKind app-domain, AgentFocusFollowMode/ErrorCode inline-String). (4) CI drift gate FIXED in fast-feedback.yml: now git-diffs the real android Generated/ + Swift SharedModels/Generated/ after codegen (the prior gate only covered gen/, so app-side payload-type drift shipped silently). HermesRealtimeRelayFrame.kt 1349 -> 362 LOC across the goal. gradle :openburnbar-iroh-relay:testDebugUnitTest + :app:testDebugUnitTest + :app:compileDebugAndroidTestKotlin BUILD SUCCESSFUL; node gates 15/15; codegen idempotent.",
+    evidence: ["/private/tmp/claude-501/-Users-albertonunez/a62144a4-697f-4a8d-b66a-6374853aa991/tasks/ba2vf2ykf.output"]
+  },
+  {
+    ts: "2026-06-15T15:30:00Z",
+    status: "done",
+    phase: "phase-c-date-regime-flips",
+    actor: "agent",
+    summary: "Phase C complete: aligned 3 date wire-types with the canonical Swift schema. SystemPermissionStatus.lastChangedAt + SystemPermissionRequest.requestedAt Double->String (dateIso); AttachmentManifest.createdAt String->Double (synthesized=number). Verified Swift DateCodec ENCODEs ISO string / DECODEs tolerantly, and that the signature is computed over the reference-seconds NUMBER in the canonical JSON (re-derived by the Mac from the decoded Date) — so the wire-type flip provably does NOT change the signed intent hash (SignableSystemPermissionRequest{requestedAt: Date} -> JSONEncoder default = number). Migrated PhoneControlSender (emit ISO), SystemPermissionConcierge (parse ISO), MediaFileTransferService (emit number). SystemPermissionSenderTest strengthened into the intent-hash-unchanged resign test (ISO round-trips to signed millis; pinned hash 459cf094...). gradle :app:testDebugUnitTest + :openburnbar-iroh-relay:testDebugUnitTest + :app:compileDebugAndroidTestKotlin BUILD SUCCESSFUL; node gates 15/15; codegen idempotent.",
+    evidence: ["/private/tmp/claude-501/-Users-albertonunez/a62144a4-697f-4a8d-b66a-6374853aa991/tasks/b6tf07xrb.output"]
+  },
   {
     ts: "2026-06-15T14:30:00Z",
     status: "done",
