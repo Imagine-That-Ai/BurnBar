@@ -27,6 +27,15 @@ struct FusionImpactView: View {
     private let fusionQuotaBucket: ProviderQuotaBucket?
 
     @State private var model: FusionImpactModel
+    /// Self-loaded fusion-search bucket, used when the caller injects none. Read
+    /// once on appear from the `openburnbar_elder_wand_fusion` quota snapshot.
+    @State private var loadedQuotaBucket: ProviderQuotaBucket?
+
+    /// The bucket to render: an injected one wins (tests/previews), otherwise the
+    /// self-loaded snapshot; `nil` self-hides the ring.
+    private var effectiveQuotaBucket: ProviderQuotaBucket? {
+        fusionQuotaBucket ?? loadedQuotaBucket
+    }
 
     /// - Parameters:
     ///   - dataStore: the canonical store; the screen reads `token_usage`
@@ -58,12 +67,18 @@ struct FusionImpactView: View {
                 FusionImpactContent(
                     totals: totals,
                     period: model.period,
-                    fusionQuotaBucket: fusionQuotaBucket
+                    fusionQuotaBucket: effectiveQuotaBucket
                 )
             }
         }
         .task(id: model.period) {
             await model.reload()
+        }
+        .task {
+            // Self-load the fusion-search ring when the caller injected none.
+            if fusionQuotaBucket == nil {
+                loadedQuotaBucket = await FusionSearchQuotaReader.fetchBucket()
+            }
         }
     }
 }
