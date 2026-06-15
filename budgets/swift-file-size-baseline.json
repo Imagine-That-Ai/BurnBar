@@ -1,6 +1,6 @@
 {
   "target": 2000,
-  "total": 14,
+  "total": 11,
   "files": [
     {
       "path": "AgentLens/Views/Settings/ProviderPlanWizardView.swift",
@@ -13,10 +13,6 @@
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
       "lines": 3087
-    },
-    {
-      "path": "OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift",
-      "lines": 2801
     },
     {
       "path": "AgentLens/Views/Chat/ChatSessionController.swift",
@@ -39,16 +35,8 @@
       "lines": 2256
     },
     {
-      "path": "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift",
-      "lines": 2206
-    },
-    {
       "path": "AgentLens/Services/Media/MercuryRouter.swift",
       "lines": 2189
-    },
-    {
-      "path": "OpenBurnBarMobile/Views/Streams/StreamsView.swift",
-      "lines": 2174
     },
     {
       "path": "AgentLens/Views/Dashboard/DatabaseWorkspaceView.swift",
