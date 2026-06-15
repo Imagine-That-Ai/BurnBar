@@ -8,13 +8,12 @@ import OSLog
 import AppKit
 import ImageIO
 
-// Mercury remote-access agent client, request/response types, and sealing errors.
-// Extracted from MercuryRouter.swift (god-file decomposition) — same module, verbatim.
-
+// MARK: - Mercury remote-access agent client & supporting types
+// Split out of MercuryRouter.swift to satisfy the Swift file-size budget.
 struct MercuryRemoteAccessAgentClient: Sendable {
-    static let socketPath = "/var/run/openburnbar-remote-access-agent.sock"
-    static let maximumResponseBytes = 16 * 1024
-    static let requestIOTimeoutSeconds: time_t = 3
+    private static let socketPath = "/var/run/openburnbar-remote-access-agent.sock"
+    private static let maximumResponseBytes = 16 * 1024
+    private static let requestIOTimeoutSeconds: time_t = 3
 
     /// Blocking socket send runs off the main actor: this is a `nonisolated`
     /// `async` method (the type is `Sendable`), so callers leave the main actor at
@@ -23,7 +22,7 @@ struct MercuryRemoteAccessAgentClient: Sendable {
         try Self.send(MercuryRemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
     }
 
-    static func send(_ request: MercuryRemoteAccessAgentRequest) throws {
+    private static func send(_ request: MercuryRemoteAccessAgentRequest) throws {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw MercuryRemoteAccessAgentClientError.socketUnavailable }
         defer { close(fd) }
@@ -83,7 +82,7 @@ struct MercuryRemoteAccessAgentClient: Sendable {
         }
     }
 
-    static func configureSocket(_ fd: Int32) {
+    private static func configureSocket(_ fd: Int32) {
         var noSigPipe: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
         var timeout = timeval(tv_sec: requestIOTimeoutSeconds, tv_usec: 0)
