@@ -15,6 +15,8 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - ".github/workflows/deploy-firestore.yml"
+      - "scripts/ci/check-firestore-deploy-drift.mjs"
+      - "scripts/ci/deploy-firebase-rules-releases.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
   schedule:
     - cron: "15 11 * * 1"
@@ -90,21 +92,11 @@ jobs:
           # install would pull whatever the registry serves into a production
           # deploy step (diligence 2026-06-11 LB-3 residual).
           npm ci --prefix functions
-          deploy_log="$(mktemp)"
-          set +e
           npm --prefix functions exec -- firebase deploy \
-            --only firestore:rules,firestore:indexes,storage \
+            --only firestore:indexes \
             --project "$FIREBASE_PROJECT" \
-            --non-interactive 2>&1 | tee "$deploy_log"
-          deploy_status=${PIPESTATUS[0]}
-          set -e
-          if [ "$deploy_status" -ne 0 ]; then
-            if grep -Fq "HTTP Error: 409, Requested entity already exists" "$deploy_log"; then
-              echo "::notice::Firebase Rules release already exists; treating deploy as an idempotent success."
-            else
-              exit "$deploy_status"
-            fi
-          fi
+            --non-interactive
+          node scripts/ci/deploy-firebase-rules-releases.mjs "$FIREBASE_PROJECT"
 
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
