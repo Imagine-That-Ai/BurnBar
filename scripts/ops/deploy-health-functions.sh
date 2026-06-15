@@ -5,14 +5,43 @@ cd "$(dirname "$0")/../.."
 
 PROJECT="${FIREBASE_PROJECT:-burnbar}"
 TAG="${FUNCTION_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo "")}"
+SOURCE_COMMIT="${OPENBURNBAR_SOURCE_COMMIT:-$(git rev-parse HEAD)}"
+SOURCE_REPOSITORY="${OPENBURNBAR_SOURCE_REPOSITORY:-https://github.com/Imagine-That-Ai/BurnBar}"
+CORRESPONDING_SOURCE_URL="${OPENBURNBAR_CORRESPONDING_SOURCE_URL:-https://burnbar.ai/legal/source}"
 ENV_FILE="functions/.env.burnbar"
+PROD_CONFIG="functions/.env.burnbar.production"
 
-if [[ -n "$TAG" ]]; then
-  touch "$ENV_FILE"
-  { grep -v '^FUNCTION_VERSION=' "$ENV_FILE" || true; echo "FUNCTION_VERSION=${TAG}"; } > "${ENV_FILE}.tmp"
-  mv "${ENV_FILE}.tmp" "$ENV_FILE"
-  export FUNCTION_VERSION="$TAG"
+if [[ ! -f "$PROD_CONFIG" ]]; then
+  echo "ERROR: Missing $PROD_CONFIG — refusing to deploy health functions with empty production runtime config." >&2
+  exit 1
 fi
+
+if [[ "${HEALTH_GATE_REQUIRE_SENTRY:-0}" == "1" && -z "${SENTRY_DSN:-}" ]]; then
+  echo "ERROR: HEALTH_GATE_REQUIRE_SENTRY=1 but SENTRY_DSN is unset." >&2
+  echo "       Provide the production functions DSN or use the full deploy-production workflow." >&2
+  exit 1
+fi
+
+touch "$ENV_FILE"
+{
+  cat "$PROD_CONFIG"
+  echo ""
+  if [[ -n "$TAG" ]]; then
+    echo "FUNCTION_VERSION=${TAG}"
+  fi
+  echo "OPENBURNBAR_SOURCE_COMMIT=${SOURCE_COMMIT}"
+  echo "OPENBURNBAR_SOURCE_REPOSITORY=${SOURCE_REPOSITORY}"
+  echo "OPENBURNBAR_CORRESPONDING_SOURCE_URL=${CORRESPONDING_SOURCE_URL}"
+  if [[ -n "${SENTRY_DSN:-}" ]]; then
+    echo "SENTRY_DSN=${SENTRY_DSN}"
+    echo "SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}"
+  fi
+} > "$ENV_FILE"
+
+export FUNCTION_VERSION="$TAG"
+export OPENBURNBAR_SOURCE_COMMIT="$SOURCE_COMMIT"
+export OPENBURNBAR_SOURCE_REPOSITORY="$SOURCE_REPOSITORY"
+export OPENBURNBAR_CORRESPONDING_SOURCE_URL="$CORRESPONDING_SOURCE_URL"
 
 npm run build --prefix functions
 firebase deploy \
