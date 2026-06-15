@@ -318,6 +318,66 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertTrue(decision.lastSwitchReason.contains("Client is active"))
     }
 
+    func test_routingPolicy_prefersEarliestQuotaResetOverSelectedAccount() {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let soonerReset = now.addingTimeInterval(24 * 60 * 60)
+        let laterReset = now.addingTimeInterval(6 * 24 * 60 * 60)
+
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "codex-pro",
+                preferredProviderIDs: [.codex],
+                routerMode: .providerFamilyFailover,
+                selectedProviderID: .codex,
+                selectedAccountID: "codex_work"
+            ),
+            candidates: [
+                routingCandidate(
+                    "codex_work",
+                    providerID: .codex,
+                    label: "Codex Work",
+                    quotaResetsAt: laterReset
+                ),
+                routingCandidate(
+                    "codex_personal",
+                    providerID: .codex,
+                    label: "Codex Personal",
+                    quotaResetsAt: soonerReset
+                )
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(decision.selected?.accountID, "codex_personal")
+        XCTAssertEqual(decision.nextFallback?.accountID, "codex_work")
+    }
+
+    func test_routingPolicy_prefersKnownQuotaResetBeforeUnknownQuotaWindow() {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "codex-pro",
+                preferredProviderIDs: [.codex],
+                routerMode: .providerFamilyFailover,
+                selectedProviderID: .codex,
+                selectedAccountID: "codex_unknown"
+            ),
+            candidates: [
+                routingCandidate("codex_unknown", providerID: .codex, label: "Unknown Window"),
+                routingCandidate(
+                    "codex_known",
+                    providerID: .codex,
+                    label: "Known Weekly Window",
+                    quotaResetsAt: now.addingTimeInterval(2 * 24 * 60 * 60)
+                )
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(decision.selected?.accountID, "codex_known")
+        XCTAssertEqual(decision.nextFallback?.accountID, "codex_unknown")
+    }
+
     func test_routingPolicy_skipsExhaustedAccountUntilCooldownClears() {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         let exhausted = routingCandidate(
@@ -699,6 +759,7 @@ final class ProviderAccountContractTests: XCTestCase {
         cooldownUntil: Date? = nil,
         priority: Int = 0,
         canonicalModelID: String? = nil,
+        quotaResetsAt: Date? = nil,
         lastUsedAt: Date? = nil,
         lastFailureCode: String? = nil,
         localCredentialAvailable: Bool = true
@@ -712,6 +773,7 @@ final class ProviderAccountContractTests: XCTestCase {
             modelCompatibility: .compatible,
             canonicalModelID: canonicalModelID,
             quotaState: quotaState,
+            quotaResetsAt: quotaResetsAt,
             cooldownUntil: cooldownUntil,
             priority: priority,
             routingEnabled: true,

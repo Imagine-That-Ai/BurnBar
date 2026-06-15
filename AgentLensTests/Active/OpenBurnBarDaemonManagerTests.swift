@@ -491,6 +491,110 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(refreshedSlot.lastQuotaRemainingPercent, 0.42)
     }
 
+    @MainActor
+    func test_providerQuotaRefreshStoresWeeklyResetForRouterDrainOrdering() async throws {
+        let harness = try makeRuntimePathsHarness(name: "weekly-quota-reset-router")
+        defer { harness.cleanup() }
+
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let hourlyReset = now.addingTimeInterval(2 * 60 * 60)
+        let monthlyReset = now.addingTimeInterval(10 * 60 * 60)
+        let weeklyReset = now.addingTimeInterval(2 * 24 * 60 * 60)
+        let configSnapshot = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "kimi",
+                    isEnabled: true,
+                    baseURL: "https://api.moonshot.ai/v1",
+                    preferredModelIDs: ["kimi-k2"],
+                    preferredCredentialSlotID: "kimi-work",
+                    credentialSlots: [
+                        BurnBarProviderCredentialSlot(
+                            slotID: "kimi-work",
+                            label: "Kimi Work",
+                            isEnabled: true,
+                            status: .ready
+                        )
+                    ]
+                )
+            ]
+        )
+        let manager = OpenBurnBarDaemonManager(
+            settingsManager: makeSettingsManager(),
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+        var refreshedSnapshot = configSnapshot
+
+        let didMutate = try await manager.applyProviderCredentialSlotQuotaRefresh(
+            to: &refreshedSnapshot,
+            providerID: "kimi",
+            secretLookup: { account in
+                XCTAssertEqual(account, "provider.kimi.slot.kimi-work.apiKey")
+                return "kimi-api-key"
+            },
+            fetchSnapshot: { provider, apiKey in
+                XCTAssertEqual(provider, .kimi)
+                XCTAssertEqual(apiKey, "kimi-api-key")
+                return ProviderQuotaSnapshot(
+                    provider: .kimi,
+                    fetchedAt: now,
+                    source: .officialAPI,
+                    confidence: .exact,
+                    managementURL: nil,
+                    statusMessage: "fresh",
+                    buckets: [
+                        ProviderQuotaBucket(
+                            key: "kimi-primary",
+                            label: "5-hour window",
+                            windowKind: .rollingHours,
+                            usedValue: 65,
+                            limitValue: 100,
+                            remainingValue: 35,
+                            usedPercent: 65,
+                            resetsAt: hourlyReset,
+                            unit: .requests,
+                            isEstimated: false
+                        ),
+                        ProviderQuotaBucket(
+                            key: "kimi-monthly",
+                            label: "30-day quota",
+                            windowKind: .rollingDays,
+                            usedValue: 30,
+                            limitValue: 100,
+                            remainingValue: 70,
+                            usedPercent: 30,
+                            resetsAt: monthlyReset,
+                            unit: .requests,
+                            isEstimated: false
+                        ),
+                        ProviderQuotaBucket(
+                            key: "kimi-secondary",
+                            label: "Weekly quota",
+                            windowKind: .rollingDays,
+                            usedValue: 20,
+                            limitValue: 100,
+                            remainingValue: 80,
+                            usedPercent: 20,
+                            resetsAt: weeklyReset,
+                            unit: .requests,
+                            isEstimated: false
+                        )
+                    ]
+                )
+            },
+            now: { now }
+        )
+
+        XCTAssertTrue(didMutate)
+        let configuration = try XCTUnwrap(refreshedSnapshot.providerSettings(id: "kimi"))
+        let refreshedSlot = try XCTUnwrap(configuration.credentialSlots.first)
+        XCTAssertEqual(refreshedSlot.lastQuotaRemainingPercent, 35)
+        XCTAssertEqual(refreshedSlot.lastQuotaResetsAt, weeklyReset)
+        XCTAssertEqual(refreshedSlot.status, .ready)
+    }
+
     func test_usageSync_importsDaemonUsageIntoLocalShape() throws {
         let harness = try makeRuntimePathsHarness(name: "usage-import")
         defer { harness.cleanup() }

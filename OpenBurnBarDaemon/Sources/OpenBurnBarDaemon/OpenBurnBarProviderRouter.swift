@@ -704,6 +704,13 @@ public struct BurnBarProviderRouter: Sendable {
 
             if activeSlots.isEmpty == false {
                 let sortedSlots = activeSlots.sorted { lhs, rhs in
+                    if let quotaOrder = Self.compareQuotaReset(
+                        lhs.slot.lastQuotaResetsAt,
+                        rhs.slot.lastQuotaResetsAt,
+                        now: now
+                    ) {
+                        return quotaOrder
+                    }
                     let lhsPreferred = configuration.settings.preferredCredentialSlotID == lhs.slot.slotID ? 0 : 1
                     let rhsPreferred = configuration.settings.preferredCredentialSlotID == rhs.slot.slotID ? 0 : 1
                     if lhsPreferred != rhsPreferred {
@@ -1441,10 +1448,19 @@ extension BurnBarProviderRouter {
 
         let benchmarkIndex = benchmarkSnapshotsByModelAndTask(benchmarkSnapshots)
 
-        // Sort by composite score (desc), then deterministic tie-breaks.
-        // When scores tie inside one provider, prefer the least-recently selected
-        // slot so unpinned provider plans rotate instead of sticking to one key.
+        // Sort by composite score (desc), then deterministic tie-breaks. Inside
+        // one provider/model pool, drain the slot whose known quota window resets
+        // first before falling back to least-recently-selected rotation.
+        let rankingNow = Date()
         rankedRoutes.sort { lhs, rhs in
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+               ) {
+                return quotaOrder
+            }
             let lhsScore = rankedCompositeScore(
                 lhs,
                 routerMode: effectiveRouterMode,
@@ -1465,6 +1481,14 @@ extension BurnBarProviderRouter {
             let rhsProvider = rhs.breakdown.providerID
             if lhsProvider != rhsProvider {
                 return lhsProvider < rhsProvider
+            }
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+            ) {
+                return quotaOrder
             }
             let lhsLastSelected = slotInfoMap[lhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
             let rhsLastSelected = slotInfoMap[rhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
@@ -1545,7 +1569,16 @@ extension BurnBarProviderRouter {
         }
 
         let benchmarkIndex = benchmarkSnapshotsByModelAndTask([])
+        let rankingNow = Date()
         ranked.sort { lhs, rhs in
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+               ) {
+                return quotaOrder
+            }
             let lhsScore = rankedCompositeScore(
                 lhs,
                 routerMode: .providerFamilyFailover,
@@ -1563,6 +1596,14 @@ extension BurnBarProviderRouter {
             }
             if lhs.route.providerID != rhs.route.providerID {
                 return lhs.route.providerID < rhs.route.providerID
+            }
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+            ) {
+                return quotaOrder
             }
             return (lhs.route.credentialSlotID ?? "legacy") < (rhs.route.credentialSlotID ?? "legacy")
         }
@@ -1621,53 +1662,6 @@ extension BurnBarProviderRouter {
     }
 
     // MARK: - Private Scoring Helpers
-
-    private struct SlotInfo {
-        let status: BurnBarProviderCredentialSlotStatus
-        let cooldownUntil: Date?
-        let lastSelectedAt: Date?
-        let latencyMs: Double
-        let isPreferredSlot: Bool
-    }
-
-    private func buildSlotInfoMap(
-        for routes: [BurnBarProviderRoute],
-        configurations: [BurnBarResolvedProviderConfiguration]
-    ) -> [String: SlotInfo] {
-        var slotMap: [String: SlotInfo] = [:]
-
-        for route in routes {
-            guard let slotID = route.credentialSlotID else { continue }
-            let key = routeKey(providerID: route.providerID, slotID: slotID)
-
-            if slotMap[key] != nil { continue }
-
-            for config in configurations where config.provider.id == route.providerID {
-                if let resolvedSlot = config.credentialSlots.first(where: { $0.slot.slotID == slotID }) {
-                    let slot = resolvedSlot.slot
-                    let latencyMs = estimateLatencyMs(for: resolvedSlot)
-                    let isPreferred = config.settings.preferredCredentialSlotID == slotID
-                    slotMap[key] = SlotInfo(
-                        status: slot.status,
-                        cooldownUntil: slot.cooldownUntil,
-                        lastSelectedAt: slot.lastSelectedAt,
-                        latencyMs: latencyMs,
-                        isPreferredSlot: isPreferred
-                    )
-                }
-            }
-        }
-
-        return slotMap
-    }
-
-    private func estimateLatencyMs(for slot: BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot) -> Double {
-        _ = slot
-        // The router does not yet persist measured upstream RTT per slot. Keep
-        // latency neutral so route recency is handled by the explicit LRU
-        // tie-break instead of being conflated with network performance.
-        return 100.0
-    }
 
     private struct CostRange {
         let minCost: Double

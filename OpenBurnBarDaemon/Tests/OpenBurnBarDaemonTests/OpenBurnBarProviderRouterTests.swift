@@ -954,6 +954,122 @@ final class BurnBarProviderRouterTests: XCTestCase {
         }
     }
 
+    func testRouterPrefersSlotWhoseQuotaResetsFirstOverPreferredSlot() async throws {
+        let harness = try makeHarness(name: "slot-quota-reset-priority")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"],
+                preferredCredentialSlotID: "slot-later"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-later",
+            label: "Later Reset",
+            apiKey: "zai-key-later"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-sooner",
+            label: "Sooner Reset",
+            apiKey: "zai-key-sooner"
+        )
+
+        let now = Date()
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-later",
+            remainingPercent: 80,
+            resetsAt: now.addingTimeInterval(6 * 24 * 60 * 60),
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-sooner",
+            remainingPercent: 80,
+            resetsAt: now.addingTimeInterval(24 * 60 * 60),
+            message: nil
+        )
+
+        let candidates = try await harness.router.candidateRoutes(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(candidates.map(\.credentialSlotID), ["slot-sooner", "slot-later"])
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(ranking.winner?.credentialSlotID, "slot-sooner")
+
+        let route = try await harness.router.route(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(route.credentialSlotID, "slot-sooner")
+    }
+
+    func testRouterDoesNotDrainQuotaAcrossEndpointProfiles() async throws {
+        let harness = try makeHarness(name: "slot-quota-reset-profile-boundary")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "minimax",
+                isEnabled: true,
+                baseURL: "https://api.minimax.io/v1",
+                preferredModelIDs: ["minimax-m2.7-highspeed"],
+                preferredCredentialSlotID: "z-token-later"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "minimax",
+            slotID: "z-token-later",
+            label: "Token Plan Later Reset",
+            apiKey: "sk-cp-test-key",
+            authMethodID: "minimax-coding-plan"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "minimax",
+            slotID: "a-payg-sooner",
+            label: "Payg Sooner Reset",
+            apiKey: "sk-api-test-key"
+        )
+
+        let now = Date()
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "minimax",
+            slotID: "z-token-later",
+            remainingPercent: 80,
+            resetsAt: now.addingTimeInterval(6 * 24 * 60 * 60),
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "minimax",
+            slotID: "a-payg-sooner",
+            remainingPercent: 80,
+            resetsAt: now.addingTimeInterval(24 * 60 * 60),
+            message: nil
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "minimax-m2.7-highspeed",
+            preferredProviderID: "minimax"
+        )
+
+        XCTAssertEqual(ranking.winner?.credentialSlotID, "z-token-later")
+        XCTAssertEqual(ranking.winner?.endpointProfileID, "minimax.token-plan")
+
+        let route = try await harness.router.route(
+            modelName: "minimax-m2.7-highspeed",
+            preferredProviderID: "minimax"
+        )
+        XCTAssertEqual(route.credentialSlotID, "z-token-later")
+        XCTAssertEqual(route.endpointProfileID, "minimax.token-plan")
+    }
+
     func test_VAL_DAEMON_012_tieBreakUsesProviderIDAscending() async throws {
         // VAL-DAEMON-012: Deterministic tie-break via providerID ascending
         let harness = try makeHarness(name: "scorecard-tiebreak")

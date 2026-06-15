@@ -551,13 +551,25 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
         displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .rollingHours }
     }
 
-    /// Returns the bucket representing the weekly window (windowKind == .weekly or .rollingDays)
+    /// Returns the bucket representing the weekly quota window.
     var weeklyBucket: ProviderQuotaBucket? {
         weeklyBucket(relativeTo: Date())
     }
 
     func weeklyBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
-        displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
+        displayableQuotaBuckets(relativeTo: now).first(where: isWeeklyQuotaBucket)
+    }
+
+    private func isWeeklyQuotaBucket(_ bucket: ProviderQuotaBucket) -> Bool {
+        if bucket.windowKind == .weekly { return true }
+        guard bucket.windowKind == .rollingDays else { return false }
+
+        let marker = "\(bucket.key) \(bucket.label)".lowercased()
+        return marker.contains("week")
+            || marker.contains("7 day")
+            || marker.contains("7-day")
+            || marker.contains("7d")
+            || marker.contains("seven day")
     }
 
     var displayableQuotaBuckets: [ProviderQuotaBucket] {
@@ -604,7 +616,11 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     }
 
     var primaryDisplayableBucket: ProviderQuotaBucket? {
-        displayableQuotaBuckets.min {
+        primaryDisplayableBucket(relativeTo: Date())
+    }
+
+    func primaryDisplayableBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(relativeTo: now).min {
             let lhsPriority = primaryBucketPriority(for: $0)
             let rhsPriority = primaryBucketPriority(for: $1)
             if lhsPriority != rhsPriority {
