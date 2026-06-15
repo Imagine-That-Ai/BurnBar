@@ -3,23 +3,15 @@ import CryptoKit
 import Foundation
 import Network
 
-/// HTTP gateway server exposing OpenAI-compatible endpoints for external clients.
-/// Binds to configurable host:port (default 127.0.0.1:8317) and routes requests
-/// through the daemon's existing provider router and config store.
-///
-/// Built on `Network.framework` (`NWListener`/`NWConnection`) for safe, reliable
-/// TCP handling — no hand-rolled `socket()`/`bind()`/`listen()`/`accept()` calls.
+/// HTTP gateway server exposing OpenAI-compatible endpoints through the daemon
+/// provider router. Built on `Network.framework`, not raw sockets.
 public actor BurnBarHTTPGatewayServer {
     static let maxHeaderBytes = 16 * 1024
 
     static let maxBodyBytes = 64 * 1024 * 1024
 
-    /// remediation(B1): default short-TTL for the live model-catalog cache used
-    /// by the production daemon wiring. The catalog `snapshot()` fan-out hits
-    /// live HTTP on every credentialed provider (and spawns `droid exec --help`
-    /// for Factory), so an uncached snapshot per request — on BOTH `/v1/models`
-    /// and the routing path — was the cost the finding flagged. 45s keeps the
-    /// catalog fresh while collapsing repeated fan-outs.
+    /// Short TTL for production live-model catalog snapshots; collapses repeated
+    /// provider fan-out while keeping `/v1/models` fresh.
     public static let defaultModelCatalogCacheTTL: TimeInterval = 45
 
     let configuration: BurnBarGatewayConfiguration
@@ -56,7 +48,7 @@ public actor BurnBarHTTPGatewayServer {
     /// session / droid runner / cache-TTL / cached-snapshot fields.
     let catalogSource: GatewayModelCatalogSource
 
-    let logger: BurnBarDaemonLogger
+    let logger: any BurnBarDaemonLogging
 
     let rateLimiter: BurnBarRateLimiter?
 
@@ -85,7 +77,7 @@ public actor BurnBarHTTPGatewayServer {
         modelCatalogSession: URLSession = .shared,
         modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
         modelCatalogCacheTTL: TimeInterval = 0,
-        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
+        logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
         self.configuration = configuration
@@ -110,12 +102,8 @@ public actor BurnBarHTTPGatewayServer {
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
         }
-        // remediation(loopback-c): bound the tokenless-loopback escape hatch with
-        // its own tight limiter. `effectiveUnauthenticatedLoopbackRateLimit` is
-        // non-nil only when the gateway is serving with no enforced auth token,
-        // so authenticated callers never touch this path. This is independent of
-        // the optional general `rateLimiter`, so the bound holds even where (as
-        // in the production daemon wiring) no general gateway limiter exists.
+        // Bound the tokenless-loopback escape hatch independently of the
+        // optional general limiter.
         self.unauthenticatedLoopbackRateLimiter = configuration
             .effectiveUnauthenticatedLoopbackRateLimit
             .map { BurnBarRateLimiter(configuration: $0) }

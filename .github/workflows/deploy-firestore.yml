@@ -15,6 +15,8 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - ".github/workflows/deploy-firestore.yml"
+      - "scripts/ci/check-firestore-deploy-drift.mjs"
+      - "scripts/ci/deploy-firebase-rules-releases.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
   schedule:
     - cron: "15 11 * * 1"
@@ -91,12 +93,20 @@ jobs:
           # deploy step (diligence 2026-06-11 LB-3 residual).
           npm ci --prefix functions
           npm --prefix functions exec -- firebase deploy \
-            --only firestore:rules,firestore:indexes,storage \
+            --only firestore:indexes \
             --project "$FIREBASE_PROJECT" \
             --non-interactive
+          node scripts/ci/deploy-firebase-rules-releases.mjs "$FIREBASE_PROJECT"
 
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
+
+      # run-09 F-RR09-001 / F-RR09-007: prove every declared ttl:true override is
+      # actually a LIVE Firestore TTL policy (ephemeral uid+token docs must
+      # auto-expire). This is the automated "B3 deploy readback".
+      - name: Verify Firestore TTL policies are live
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT"
 
       - name: Firestore deploy summary
         if: always()

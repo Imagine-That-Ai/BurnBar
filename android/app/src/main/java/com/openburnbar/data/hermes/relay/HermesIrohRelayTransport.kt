@@ -27,6 +27,7 @@ import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
 import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
@@ -522,19 +523,19 @@ class FirestoreIrohPairingPublicKeyProvider(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : IrohPairingPublicKeyProviding {
     override suspend fun fetchPublicKey(uid: String): ByteArray {
-        val snap =
-            try {
-                firestore.collection("users").document(uid)
-                    .collection("iroh_pairing_keys")
-                    .document("host")
-                    .get(Source.SERVER)
-                    .await()
-            } catch (err: Exception) {
-                throw HermesRelayException(
-                    "Unable to fetch iroh pairing host key from server.",
-                    err,
-                )
-            }
+        val snap = runCatching {
+            firestore.collection("users").document(uid)
+                .collection("iroh_pairing_keys")
+                .document("host")
+                .get(Source.SERVER)
+                .await()
+        }.getOrElse { err ->
+            if (err is CancellationException) throw err
+            throw HermesRelayException(
+                "Unable to fetch iroh pairing host key from server.",
+                err,
+            )
+        }
         return decodeIrohPairingPublicKey(snap.data.orEmpty())
     }
 }

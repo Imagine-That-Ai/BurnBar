@@ -550,39 +550,42 @@ struct VisualChart: View {
     }
 
     var body: some View {
-        Chart {
-            switch visual.kind {
-            case .timeline:
-                ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, point in
-                    LineMark(
-                        x: .value("Bucket", idx),
-                        y: .value("Value", point.value)
-                    )
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                    .interpolationMethod(.catmullRom)
-                    PointMark(
-                        x: .value("Bucket", idx),
-                        y: .value("Value", point.value)
-                    )
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                    .annotation(position: .top, alignment: .center, spacing: 2) {
-                        Text(Int(point.value).formatAsTokenVolume())
-                            .font(DesignSystem.Typography.monoTiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+        Group {
+            if visual.kind == .timeline {
+                Chart {
+                    ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, point in
+                        LineMark(
+                            x: .value("Bucket", idx),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .interpolationMethod(.catmullRom)
+                        PointMark(
+                            x: .value("Bucket", idx),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .annotation(position: .top, alignment: .center, spacing: 2) {
+                            Text(Int(point.value).formatAsTokenVolume())
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        }
                     }
                 }
-            case .providerMix, .hotspots, .cover:
-                ForEach(Array(points.enumerated()), id: \.offset) { idx, point in
-                    BarMark(
-                        x: .value("Label", point.label),
-                        y: .value("Value", point.value)
-                    )
-                    .foregroundStyle(barColor(at: idx))
-                    .cornerRadius(4)
-                    .annotation(position: .top, alignment: .center, spacing: 2) {
-                        Text(valueLabel(point))
-                            .font(DesignSystem.Typography.monoTiny)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            } else {
+                Chart {
+                    ForEach(Array(points.enumerated()), id: \.offset) { idx, point in
+                        BarMark(
+                            x: .value("Label", point.label),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(barColor(at: idx))
+                        .cornerRadius(4)
+                        .annotation(position: .top, alignment: .center, spacing: 2) {
+                            Text(valueLabel(point))
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        }
                     }
                 }
             }

@@ -1166,7 +1166,7 @@ final class CLIAgentMissionRequestListener {
         }
     }
 
-    private nonisolated func runVisibleTerminalProcess(
+    nonisolated func runVisibleTerminalProcess(
         sessionID: String,
         executable: String,
         executableName: String,
@@ -1179,36 +1179,13 @@ final class CLIAgentMissionRequestListener {
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
         let fileManager = FileManager.default
-        let rootURL = fileManager.temporaryDirectory
-            .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
-        let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
-        
-        defer {
-            if fileManager.fileExists(atPath: sessionURL.path) {
-                do {
-                    try fileManager.removeItem(at: sessionURL)
-                } catch {
-                    AppLogger.sync.error(
-                        "mission_visible_terminal_cleanup_failed",
-                        metadata: [
-                            "sessionID": sessionID,
-                            "errorClass": "\(String(describing: type(of: error)))"
-                        ]
-                    )
-                }
-            }
-        }
-        
-        try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let workspace = try VisibleTerminalSessionWorkspace.prepare(sessionID: sessionID, fileManager: fileManager)
+        defer { workspace.cleanup() }
 
-        let scriptURL = sessionURL.appendingPathComponent("run.command")
-        let logURL = sessionURL.appendingPathComponent("terminal.log")
-        
-        // Pre-create log file with strict 0o600 permissions so tee respects it
-        fileManager.createFile(atPath: logURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
-
-        let exitURL = sessionURL.appendingPathComponent("exit.status")
-        let pidURL = sessionURL.appendingPathComponent("terminal.pid")
+        let logURL = workspace.logURL
+        let scriptURL = workspace.scriptURL
+        let exitURL = workspace.exitURL
+        let pidURL = workspace.pidURL
         let command = ([executable] + arguments)
             .map(Self.shellQuoted)
             .joined(separator: " ")

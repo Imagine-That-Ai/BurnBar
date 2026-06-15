@@ -160,6 +160,17 @@ paths = [
 ]
 
 [[allowlists]]
+description = "ElderWand preset UserDefaults key constants ('elderWand.presets.v1') are local-storage identifiers, not credential material"
+regexTarget = "match"
+regexes = [
+  '''presets(Storage|Defaults)(Key|Name)\s*=\s*"[A-Za-z0-9_.:-]+"''',
+]
+paths = [
+  '''AgentLens/Services/Settings/Stores/ElderWandSettings\.swift''',
+  '''OpenBurnBarMobile/Services/Hermes/ElderWandSettings\.swift''',
+]
+
+[[allowlists]]
 description = "Console escrow documentation and interoperability vectors contain public wrapped-key fixtures only"
 regexTarget = "match"
 regexes = [
@@ -243,4 +254,35 @@ regexes = [
 paths = [
   '''functions/src/callables/signalPrekeyDirectory\.ts''',
   '''functions/src/__tests__/signalPrekeyDirectory\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Firestore rules negative tests intentionally use forbidden credential field names with non-secret sentinel values"
+regexTarget = "match"
+regexes = [
+  '''encryptedPayload:\s*\["not",\s*"allowed"\]''',
+]
+paths = [
+  '''firestore-rules-tests/escrow-grants\.test\.js''',
+]
+
+[[allowlists]]
+description = "Elder Wand UserDefaults storage keys are local preference names, not credential material"
+regexTarget = "match"
+regexes = [
+  '''static let presets(Storage|Defaults)Name\s*=\s*"elderWand\.presets\.v1"''',
+]
+paths = [
+  '''AgentLens/Services/Settings/Stores/ElderWandSettings\.swift''',
+  '''OpenBurnBarMobile/Services/Hermes/ElderWandSettings\.swift''',
+]
+
+[[allowlists]]
+description = "Hermes wire-protocol schema: `\"key\": \"…\"` entries are JSON codable field names in the type definitions, not credential material"
+regexTarget = "match"
+regexes = [
+  '''"key"\s*:\s*"[A-Za-z0-9_]+"''',
+]
+paths = [
+  '''packages/hermes-wire-protocol/relay-message-types\.json''',
 ]

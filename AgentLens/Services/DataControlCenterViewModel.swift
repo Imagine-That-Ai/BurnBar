@@ -218,7 +218,7 @@ final class DataControlCenterViewModel {
         actionError = nil
         defer { isExporting = false }
         do {
-            var payload: [String: Any] = [:]
+            var payload: [String: any Sendable] = [:]
             if let domains, domains.isEmpty == false { payload["domains"] = domains }
             let deviceId = ComputerUseSecurityCallableClient.loadOrCreateLocalDeviceId()
             let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(

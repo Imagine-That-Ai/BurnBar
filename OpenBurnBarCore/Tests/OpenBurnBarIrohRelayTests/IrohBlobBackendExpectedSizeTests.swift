@@ -186,16 +186,20 @@ private class DefaultExpectedSizeBackend: IrohBlobBackend, @unchecked Sendable {
     func shutdown() async {}
 }
 
-private final class ExpectedSizeOverrideBackend: DefaultExpectedSizeBackend {
-    init() {
-        super.init(writeBytes: 0, reportedBytes: 0)
+private final class ExpectedSizeOverrideBackend: IrohBlobBackend, @unchecked Sendable {
+    func bootstrap(secret: Data, storeDirectoryPath: String, relayURL: String?) async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(nodeId: "test", rawPublicKey: Data(repeating: 1, count: 32))
     }
 
-    override func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
+    func publishBlob(localPath: String) async throws -> String {
+        "blob1"
+    }
+
+    func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
         throw IrohBlobBackendError.fetchFailed("old fetch path should not be used")
     }
 
-    override func fetchBlob(
+    func fetchBlob(
         ticketText: String,
         destination: String,
         expectedSizeBytes: UInt64
@@ -213,4 +217,10 @@ private final class ExpectedSizeOverrideBackend: DefaultExpectedSizeBackend {
             didResume: false
         )
     }
+
+    func identity() async throws -> IrohEndpointIdentity {
+        IrohEndpointIdentity(nodeId: "test", rawPublicKey: Data(repeating: 1, count: 32))
+    }
+
+    func shutdown() async {}
 }

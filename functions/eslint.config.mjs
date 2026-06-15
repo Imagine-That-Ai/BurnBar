@@ -4,7 +4,11 @@ import prettier from "eslint-config-prettier";
 
 export default [
   {
-    ignores: ["lib/**", "node_modules/**"],
+    ignores: [
+      "lib/**",
+      "node_modules/**",
+      "src/**/*.generated.ts",
+    ],
   },
   {
     files: ["src/**/*.ts"],

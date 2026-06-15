@@ -1,6 +1,7 @@
 import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
 import Darwin
+import os
 import Foundation
 import XCTest
 
@@ -4651,6 +4652,111 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         }
         return ""
     }
+
+}
+
+extension BurnBarHTTPGatewayServerTests {
+    // MARK: - Non-loopback bind warning (F-RR06-003 remediation test)
+
+    func testGatewayConfigurationIsLoopbackClassification() {
+        // Verify isLoopback correctly classifies hosts so the warning fires
+        // only for genuinely non-loopback binds.
+        XCTAssertTrue(BurnBarGatewayConfiguration(isEnabled: true, host: "127.0.0.1", port: 8317, authToken: "t").isLoopback)
+        XCTAssertTrue(BurnBarGatewayConfiguration(isEnabled: true, host: "localhost", port: 8317, authToken: "t").isLoopback)
+        XCTAssertTrue(BurnBarGatewayConfiguration(isEnabled: true, host: "::1", port: 8317, authToken: "t").isLoopback)
+        XCTAssertFalse(BurnBarGatewayConfiguration(isEnabled: true, host: "192.168.1.100", port: 8317, authToken: "t").isLoopback)
+        XCTAssertFalse(BurnBarGatewayConfiguration(isEnabled: true, host: "10.0.0.5", port: 8317, authToken: "t").isLoopback)
+    }
+
+    func testGatewayLoopbackBindDoesNotEmitNonLoopbackWarning() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-gateway-loopback-warn-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let capturingLogger = CapturingDaemonLogger()
+        let configStore = BurnBarConfigStore(
+            fileURL: tempDirectory.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
+        let server = BurnBarHTTPGatewayServer(
+            configuration: BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: GatewayHarness.nextPortCandidate(),
+                authToken: "test-token"
+            ),
+            configStore: configStore,
+            logger: capturingLogger
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        // NWListener enters .ready asynchronously; poll for gateway_started.
+        let entries = try await waitForLogEntry(event: "gateway_started", in: capturingLogger, timeoutSeconds: 5)
+        XCTAssertFalse(entries.contains { $0.event == "gateway_non_loopback_bind" },
+                       "loopback bind must not emit non-loopback warning")
+    }
+
+    #if DEBUG
+    func testGatewayLoopbackAuthDisabledEmitsWarning() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-gateway-authdisabled-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let capturingLogger = CapturingDaemonLogger()
+        let configStore = BurnBarConfigStore(
+            fileURL: tempDirectory.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
+        let server = BurnBarHTTPGatewayServer(
+            configuration: BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: GatewayHarness.nextPortCandidate(),
+                authToken: nil,
+                allowUnauthenticatedLoopback: true
+            ),
+            configStore: configStore,
+            logger: capturingLogger
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        _ = try await waitForLogEntry(event: "gateway_auth_disabled_loopback", in: capturingLogger, timeoutSeconds: 5)
+        XCTAssertTrue(capturingLogger.captured.contains { $0.event == "gateway_auth_disabled_loopback" },
+                      "gateway_auth_disabled_loopback warning must be emitted when auth is off")
+    }
+    #endif
+
+    /// Polls a `CapturingDaemonLogger` until the expected event appears or the
+    /// timeout expires. NWListener's `.ready` state fires asynchronously on the
+    /// Network.framework queue, so tests must wait for the log emission rather
+    /// than reading it immediately after `start()`.
+    private func waitForLogEntry(
+        event: String,
+        in logger: CapturingDaemonLogger,
+        timeoutSeconds: TimeInterval = 5
+    ) async throws -> [CapturingDaemonLogger.Entry] {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            let entries = logger.captured
+            if entries.contains(where: { $0.event == event }) {
+                return entries
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let entries = logger.captured
+        XCTFail("Timed out waiting for log event '\(event)'. Captured: \(entries.map(\.event))")
+        return entries
+    }
 }
 
 private final class GatewayHarness: @unchecked Sendable {
@@ -4901,7 +5007,7 @@ private final class GatewayHarness: @unchecked Sendable {
         throw lastError ?? POSIXError(.EADDRINUSE)
     }
 
-    private static func nextPortCandidate() -> Int {
+    fileprivate static func nextPortCandidate() -> Int {
         portLock.lock()
         defer { portLock.unlock() }
 
@@ -4971,6 +5077,49 @@ private final class GatewayHarness: @unchecked Sendable {
         guard connectResult == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .ECONNREFUSED)
         }
+    }
+}
+
+/// Test-only logger that captures all log emissions for assertion. Conforms to
+/// `BurnBarDaemonLogging` so it can be injected anywhere the gateway accepts a
+/// logger. Uses `OSAllocatedUnfairLock` for lock-free thread safety with native
+/// `Sendable` conformance — no `@unchecked Sendable` needed.
+struct CapturingDaemonLogger: BurnBarDaemonLogging {
+    struct Entry: Sendable {
+        let level: String
+        let event: String
+        let metadata: [String: String]
+    }
+
+    private let entries = OSAllocatedUnfairLock(initialState: [Entry]())
+
+    var captured: [Entry] {
+        entries.withLock { $0 }
+    }
+
+    func debug(_ event: String, metadata: [String: String] = [:]) {
+        entries.withLock { $0.append(Entry(level: "debug", event: event, metadata: metadata)) }
+    }
+
+    func info(_ event: String, metadata: [String: String] = [:]) {
+        entries.withLock { $0.append(Entry(level: "info", event: event, metadata: metadata)) }
+    }
+
+    func notice(_ event: String, metadata: [String: String] = [:]) {
+        entries.withLock { $0.append(Entry(level: "notice", event: event, metadata: metadata)) }
+    }
+
+    func warning(_ event: String, metadata: [String: String] = [:]) {
+        entries.withLock { $0.append(Entry(level: "warning", event: event, metadata: metadata)) }
+    }
+
+    func error(_ event: String, metadata: [String: String] = [:]) {
+        entries.withLock { $0.append(Entry(level: "error", event: event, metadata: metadata)) }
+    }
+
+    func silentFailure(_ operation: String, error: Error, context: [String: String] = [:]) {
+        let metadata = context.merging(["error": String(describing: error)]) { _, new in new }
+        entries.withLock { $0.append(Entry(level: "warning", event: operation, metadata: metadata)) }
     }
 }
 

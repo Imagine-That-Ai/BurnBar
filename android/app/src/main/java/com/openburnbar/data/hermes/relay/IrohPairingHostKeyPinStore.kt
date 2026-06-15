@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.io.IOException
+import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
@@ -53,41 +55,12 @@ class SharedPreferencesIrohPairingHostKeyPinStore internal constructor(
     override fun requireTrustedHostKey(uid: String, publicKey: ByteArray): ByteArray {
         val observedFingerprint = IrohPairingHostKeyPinning.fingerprint(publicKey)
         val key = pinPreferenceKey(uid)
-        val expectedFingerprint =
-            try {
-                persistence.getString(key)
-            } catch (err: Exception) {
-                throw IrohPairingHostKeyPinPersistenceException(
-                    "Unable to read iroh pairing host key pin.",
-                    err,
-                )
-            }
+        val expectedFingerprint = readPinnedFingerprint(key)
         if (expectedFingerprint == null) {
-            val stored =
-                try {
-                    persistence.putPin(
-                        pinKey = key,
-                        fingerprint = observedFingerprint,
-                        firstSeenKey = firstSeenPreferenceKey(uid),
-                        firstSeenMillis = System.currentTimeMillis(),
-                    )
-                } catch (err: Exception) {
-                    throw IrohPairingHostKeyPinPersistenceException(
-                        "Unable to persist iroh pairing host key pin.",
-                        err,
-                    )
-                }
-            if (!stored) {
-                throw IrohPairingHostKeyPinPersistenceException("Unable to persist iroh pairing host key pin.")
-            }
+            storeFirstSeenPin(uid, key, observedFingerprint)
             return publicKey.copyOf()
         }
-        if (expectedFingerprint != observedFingerprint) {
-            throw IrohPairingHostKeyChangedException(
-                expectedFingerprint = expectedFingerprint,
-                observedFingerprint = observedFingerprint,
-            )
-        }
+        requireMatchingPin(expectedFingerprint, observedFingerprint)
         return publicKey.copyOf()
     }
 
@@ -99,6 +72,44 @@ class SharedPreferencesIrohPairingHostKeyPinStore internal constructor(
     private fun pinPreferenceKey(uid: String): String = "host_key_pin_v1.${IrohPairingHostKeyPinning.scopedUid(uid)}"
 
     private fun firstSeenPreferenceKey(uid: String): String = "host_key_first_seen_v1.${IrohPairingHostKeyPinning.scopedUid(uid)}"
+
+    private fun readPinnedFingerprint(key: String): String? = try {
+        persistence.getString(key)
+    } catch (err: IllegalStateException) {
+        pinPersistenceFailure("Unable to read iroh pairing host key pin.", err)
+    } catch (err: SecurityException) {
+        pinPersistenceFailure("Unable to read iroh pairing host key pin.", err)
+    }
+
+    private fun storeFirstSeenPin(uid: String, key: String, observedFingerprint: String) {
+        val stored =
+            try {
+                persistence.putPin(
+                    pinKey = key,
+                    fingerprint = observedFingerprint,
+                    firstSeenKey = firstSeenPreferenceKey(uid),
+                    firstSeenMillis = System.currentTimeMillis(),
+                )
+            } catch (err: IllegalStateException) {
+                pinPersistenceFailure("Unable to persist iroh pairing host key pin.", err)
+            } catch (err: SecurityException) {
+                pinPersistenceFailure("Unable to persist iroh pairing host key pin.", err)
+            }
+        if (!stored) {
+            pinPersistenceFailure("Unable to persist iroh pairing host key pin.")
+        }
+    }
+
+    private fun requireMatchingPin(expectedFingerprint: String, observedFingerprint: String) {
+        if (expectedFingerprint != observedFingerprint) {
+            throw IrohPairingHostKeyChangedException(
+                expectedFingerprint = expectedFingerprint,
+                observedFingerprint = observedFingerprint,
+            )
+        }
+    }
+
+    private fun pinPersistenceFailure(message: String, cause: Throwable? = null): Nothing = throw IrohPairingHostKeyPinPersistenceException(message, cause)
 
     companion object {
         private const val PREFS_NAME = "iroh_pairing_host_key_pins"
@@ -152,11 +163,14 @@ internal class EncryptedSharedPreferencesPinPersistence(
                 .build()
         return try {
             createEncryptedPrefs(masterKey)
-        } catch (_: Exception) {
+        } catch (_: GeneralSecurityException) {
             // A corrupt keyset or a Keystore migration can make the existing
             // encrypted store unreadable. Drop it once and recreate so we never
             // silently fall back to an unencrypted/forged pin file; the next
             // first-use pin re-establishes trust.
+            context.deleteSharedPreferences(prefsName)
+            createEncryptedPrefs(masterKey)
+        } catch (_: IOException) {
             context.deleteSharedPreferences(prefsName)
             createEncryptedPrefs(masterKey)
         }

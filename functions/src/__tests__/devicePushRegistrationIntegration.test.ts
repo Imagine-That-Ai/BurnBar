@@ -155,9 +155,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   it("rejects registration for a non-existent escrow device", async () => {
     state.escrowDevice = null;
     await expect(
-      runRegisterDevicePushEndpoint(
-        authedRequest({ deviceId: "orphan-1", apnsToken: "a".repeat(64) }),
-      ),
+      runRegisterDevicePushEndpoint(authedRequest({ deviceId: "orphan-1", apnsToken: "a".repeat(64) })),
     ).rejects.toThrow(/registered escrow device/);
     expect(state.storedDocs).toHaveLength(0);
   });
@@ -165,9 +163,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   it("rejects registration for a revoked device", async () => {
     state.escrowDevice = { ...trustedIOSDevice, trustState: "revoked" };
     await expect(
-      runRegisterDevicePushEndpoint(
-        authedRequest({ deviceId: "iphone-1", apnsToken: "a".repeat(64) }),
-      ),
+      runRegisterDevicePushEndpoint(authedRequest({ deviceId: "iphone-1", apnsToken: "a".repeat(64) })),
     ).rejects.toThrow(/trusted devices may register/);
     expect(state.storedDocs).toHaveLength(0);
   });
@@ -175,18 +171,14 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   it("rejects registration for a pending device", async () => {
     state.escrowDevice = { ...trustedIOSDevice, trustState: "pending" };
     await expect(
-      runRegisterDevicePushEndpoint(
-        authedRequest({ deviceId: "iphone-1", apnsToken: "a".repeat(64) }),
-      ),
+      runRegisterDevicePushEndpoint(authedRequest({ deviceId: "iphone-1", apnsToken: "a".repeat(64) })),
     ).rejects.toThrow(/trusted devices may register/);
     expect(state.storedDocs).toHaveLength(0);
   });
 
   it("rejects registration when the platform does not match the escrow device", async () => {
     await expect(
-      runRegisterDevicePushEndpoint(
-        authedRequest({ deviceId: "iphone-1", platform: "android", fcmToken: "token" }),
-      ),
+      runRegisterDevicePushEndpoint(authedRequest({ deviceId: "iphone-1", platform: "android", fcmToken: "token" })),
     ).rejects.toThrow(/does not match escrow device platform/);
     expect(state.storedDocs).toHaveLength(0);
   });

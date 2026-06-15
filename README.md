@@ -49,6 +49,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [OpenBurnBar Roadmap](docs/ROADMAP.md)
 - [OpenBurnBar + Cursor Agent Onboarding](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md)
 - [OpenBurnBar Current Release Architecture](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md)
+- [The Elder Wand model-fusion router](docs/ELDER_WAND.md)
 - [Threat Model and Permission Model](docs/THREAT_MODEL.md)
 - [Governance and Maintainer Expectations](docs/GOVERNANCE.md)
 - [Technical readiness & diligence scorecard](docs/TECHNICAL_READINESS.md)

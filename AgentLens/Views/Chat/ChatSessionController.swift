@@ -693,6 +693,24 @@ final class ChatSessionController {
             ?? URL(string: "http://127.0.0.1:8642")!
     }
 
+    /// Base URL of the BurnBar **daemon** gateway (default port 8317). The Elder
+    /// Wand model-fusion orchestrator lives in the daemon, not the Hermes CLI, so
+    /// when a fusion preset is active the chat send path redirects here instead of
+    /// `hermesGatewayBaseURL` (8642). Host/port mirror the daemon launch config.
+    var burnBarGatewayBaseURL: URL {
+        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        return URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+    }
+
+    /// Bearer token the daemon gateway enforces (fail-closed by default). Used
+    /// when an Elder Wand request is redirected to `burnBarGatewayBaseURL`.
+    var burnBarGatewayBearerToken: String? {
+        let t = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
     var openClawBearerToken: String? {
         let t = settingsManager.openClawBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t

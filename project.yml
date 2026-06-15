@@ -103,9 +103,6 @@ targets:
           - Resources/GoogleService-Info.plist
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
-      - path: AgentLens/Resources/GoogleService-Info.plist
-        buildPhase: resources
-        optional: true
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar
@@ -119,24 +116,42 @@ targets:
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
     postBuildScripts:
       - name: Configure Firebase Auth Resources
-        # GoogleService-Info.plist is bundled via the regular Copy Resources phase
-        # (it lives in AgentLens/Resources). This step only patches Info.plist's
-        # CFBundleURLTypes with the REVERSED_CLIENT_ID extracted from the plist.
+        # GoogleService-Info.plist is gitignored and may be absent on fresh
+        # checkouts. Copy it into the built bundle only when local/CI config
+        # injection has provided it, then patch URL schemes from that plist.
         script: |
           set -euo pipefail
           SOURCE_PLIST="${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist"
+          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
           INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
 
           if [[ ! -f "${SOURCE_PLIST}" ]]; then
+            rm -f "${BUILT_GOOGLE_PLIST}"
             echo "warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled."
             exit 0
           fi
+
+          mkdir -p "$(dirname "${BUILT_GOOGLE_PLIST}")"
+          cp "${SOURCE_PLIST}" "${BUILT_GOOGLE_PLIST}"
 
           REVERSED_CLIENT_ID="$(
             /usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "${SOURCE_PLIST}" 2>/dev/null || true
           )"
           if [[ -n "${REVERSED_CLIENT_ID}" ]]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 ${REVERSED_CLIENT_ID}" "${INFO_PLIST}"
+          fi
+
+          # F-RR09-003: land sentry.dsn (injected by inject-firebase-config.sh into
+          # GoogleService-Info.plist) into the app Info.plist — the PRIMARY read
+          # path resolveSentryDSN() checks first. Previously only the
+          # GoogleService-Info.plist fallback carried it, so client crash
+          # reporting worked only when that resource happened to be bundled.
+          SENTRY_DSN="$(
+            /usr/libexec/PlistBuddy -c "Print :sentry.dsn" "${SOURCE_PLIST}" 2>/dev/null || true
+          )"
+          if [[ -n "${SENTRY_DSN}" ]]; then
+            /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "${INFO_PLIST}" >/dev/null 2>&1 || true
+            /usr/libexec/PlistBuddy -c "Add :sentry.dsn string ${SENTRY_DSN}" "${INFO_PLIST}"
           fi
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
@@ -393,18 +408,21 @@ targets:
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift" "MenuBarPopoverView.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift" "AccountSettingsView.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift" "CloudStoreSettingsView.txt"
+          copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift" "MacCloudStoreLegalLinks.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift" "SettingsView.txt"
           copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift" "CloudStoreView.txt"
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Views/Popover/MenuBarPopoverView.swift
           - $(PROJECT_DIR)/AgentLens/Views/Settings/AccountSettingsView.swift
           - $(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView.swift
+          - $(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift
           - $(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift
           - $(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MenuBarPopoverView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AccountSettingsView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt
     settings:
@@ -464,9 +482,6 @@ targets:
           - "Resources/GoogleService-Info.plist"
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
-      - path: OpenBurnBarMobile/Resources/GoogleService-Info.plist
-        buildPhase: resources
-        optional: true
       # Mermaid is shipped as a folder reference so `index.html` and
       # `mermaid.min.js` keep their relative paths inside the bundle.
       - path: OpenBurnBarMobile/Resources/Mermaid
@@ -501,6 +516,46 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     postBuildScripts:
+      - name: Copy Firebase Config If Present
+        script: |
+          set -euo pipefail
+
+          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
+          finish() {
+            if [[ -n "${STAMP}" ]]; then
+              mkdir -p "$(dirname "${STAMP}")"
+              touch "${STAMP}"
+            fi
+          }
+          trap finish EXIT
+
+          SOURCE_PLIST="${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
+          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+
+          if [[ ! -f "${SOURCE_PLIST}" ]]; then
+            rm -f "${BUILT_GOOGLE_PLIST}"
+            echo "warning: GoogleService-Info.plist not found; Firebase auth remains disabled."
+            exit 0
+          fi
+
+          mkdir -p "$(dirname "${BUILT_GOOGLE_PLIST}")"
+          cp "${SOURCE_PLIST}" "${BUILT_GOOGLE_PLIST}"
+
+          # F-RR09-003: land sentry.dsn into the app Info.plist (the PRIMARY read
+          # path AppDelegate checks first), not just the GoogleService-Info.plist
+          # fallback. Runs in release builds too (this block is unconditional).
+          BUILT_INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          SENTRY_DSN="$(
+            /usr/libexec/PlistBuddy -c "Print :sentry.dsn" "${SOURCE_PLIST}" 2>/dev/null || true
+          )"
+          if [[ -n "${SENTRY_DSN}" && -f "${BUILT_INFO_PLIST}" ]]; then
+            /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "${BUILT_INFO_PLIST}" >/dev/null 2>&1 || true
+            /usr/libexec/PlistBuddy -c "Add :sentry.dsn string ${SENTRY_DSN}" "${BUILT_INFO_PLIST}"
+          fi
+        inputFiles:
+          - $(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/CopyFirebaseConfigIfPresent.stamp
       - name: Inject Internal App Check Debug Token
         script: |
           set -euo pipefail

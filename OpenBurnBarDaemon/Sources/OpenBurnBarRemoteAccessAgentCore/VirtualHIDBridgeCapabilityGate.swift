@@ -213,8 +213,8 @@ private extension VirtualHIDBridgeCapabilityGate.PresenterBinding {
         attestationHashBlake3: String?
     ) -> Self {
         Self(
-            escrowDeviceId: Self.normalized(escrowDeviceId) ?? self.escrowDeviceId,
-            attestationHashBlake3: Self.normalized(attestationHashBlake3) ?? self.attestationHashBlake3,
+            escrowDeviceId: self.escrowDeviceId ?? Self.normalized(escrowDeviceId),
+            attestationHashBlake3: self.attestationHashBlake3 ?? Self.normalized(attestationHashBlake3),
             scopeHash: self.scopeHash
         )
     }

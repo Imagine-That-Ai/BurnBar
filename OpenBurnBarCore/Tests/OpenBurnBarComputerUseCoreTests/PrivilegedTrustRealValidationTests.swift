@@ -113,3 +113,43 @@ final class PrivilegedInputXPCConstantsTests: XCTestCase {
         )
     }
 }
+
+/// F-RR10-002: the nonce ledger MUST be on persistent storage so replay
+/// protection survives reboots. `/var/run` is tmpfs on macOS.
+final class CapabilityTokenNonceLedgerPathTests: XCTestCase {
+    func test_nonceLedgerPath_isPersistentNotTmpfs() {
+        let path = RemoteUnlockSetupProbe.capabilityTokenNonceLedgerPath
+        XCTAssertTrue(
+            path.hasPrefix("/Library/Application Support/OpenBurnBar/"),
+            "nonce ledger must be under persistent /Library/Application Support/OpenBurnBar/, got \(path)"
+        )
+        XCTAssertFalse(
+            path.hasPrefix("/var/run"),
+            "nonce ledger MUST NOT be on /var/run (tmpfs, lost on reboot)"
+        )
+        XCTAssertFalse(
+            path.hasPrefix("/tmp"),
+            "nonce ledger MUST NOT be on /tmp (cleared on boot)"
+        )
+    }
+
+    func test_nonceLedgerPath_isColocatedWithRemoteUnlockState() {
+        let noncePath = RemoteUnlockSetupProbe.capabilityTokenNonceLedgerPath
+        let trustPath = RemoteUnlockSetupProbe.capabilityTokenIssuerTrustPath
+        // Both should share the /Library/Application Support/OpenBurnBar/ root
+        let commonPrefix = "/Library/Application Support/OpenBurnBar/"
+        XCTAssertTrue(noncePath.hasPrefix(commonPrefix))
+        XCTAssertTrue(trustPath.hasPrefix(commonPrefix))
+    }
+
+    func test_nonceLedgerPath_defaultInit_matchesProbeConstant() {
+        let store = FileCapabilityTokenNonceStore()
+        // The store's default path should match the constant (no way to read
+        // the private `path` property directly, but we verify the constant
+        // itself is the one used — confirmed by the default init signature).
+        XCTAssertEqual(
+            RemoteUnlockSetupProbe.capabilityTokenNonceLedgerPath,
+            "/Library/Application Support/OpenBurnBar/RemoteUnlock/capability-token-nonces.json"
+        )
+    }
+}

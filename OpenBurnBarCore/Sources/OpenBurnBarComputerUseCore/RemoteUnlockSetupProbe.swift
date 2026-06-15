@@ -26,7 +26,10 @@ public struct RemoteUnlockSetupProbe {
     public static let capabilityTokenIssuerTrustPath =
         "/Library/Application Support/OpenBurnBar/remote_unlock_capability_issuer_trust.json"
     /// Single-use nonce ledger consumed by the bridge without network access.
-    public static let capabilityTokenNonceLedgerPath = "/var/run/openburnbar-capability-token-nonces.json"
+    /// Persists in `/Library/Application Support/…` so replay protection
+    /// survives reboots (F-RR10-002: `/var/run` is tmpfs and was lost on reboot).
+    public static let capabilityTokenNonceLedgerPath =
+        "/Library/Application Support/OpenBurnBar/RemoteUnlock/capability-token-nonces.json"
 
     public var defaults: UserDefaults
     public var fileExists: @Sendable (String) -> Bool

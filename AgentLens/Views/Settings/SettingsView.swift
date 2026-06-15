@@ -250,6 +250,12 @@ struct SettingsView: View {
                 cloudSyncService: cloudSyncService,
                 iCloudSessionMirrorService: iCloudSessionMirrorService
             )
+        case .analysisConfigurator:
+            // Settings has no `ChatSessionController` in scope, so the
+            // configurator renders its empty-state (the live picker needs a
+            // chat's advertised-model catalog). The chat-header entry point
+            // (`ChatPanel`) passes a real controller.
+            ElderWandConfiguratorView(controller: nil, settingsManager: settingsManager)
         case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
              .agentsRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,

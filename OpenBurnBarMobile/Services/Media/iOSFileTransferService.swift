@@ -158,7 +158,11 @@ final class iOSFileTransferService: ObservableObject {
                 ticketText: ticket,
                 manifest: manifest
             )
-            try? MobileMediaInboxFileProtection.apply(to: destination)
+            do {
+                try MobileMediaInboxFileProtection.apply(to: destination)
+            } catch {
+                print("warning: MobileMediaInboxFileProtection failed for \(destination.lastPathComponent): \(error.localizedDescription)")
+            }
             lastReceivedAttachment = ReceivedAttachment(
                 id: manifest.manifestId,
                 manifest: manifest,

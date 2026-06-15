@@ -31,8 +31,9 @@ describe("computer use monitoring rollup guards", () => {
         "computer_use_actions",
       ),
     ).toBeNull();
-    expect(__testing__.uidFromComputerUseCollectionPath("users//computer_use_actions/action-1", "computer_use_actions"))
-      .toBeNull();
+    expect(
+      __testing__.uidFromComputerUseCollectionPath("users//computer_use_actions/action-1", "computer_use_actions"),
+    ).toBeNull();
   });
 
   it("caps per-user daily vision spend before writing global operator rollups", () => {

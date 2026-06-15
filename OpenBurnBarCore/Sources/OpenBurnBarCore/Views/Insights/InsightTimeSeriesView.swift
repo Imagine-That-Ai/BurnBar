@@ -45,12 +45,31 @@ public struct InsightTimeSeriesView: View {
 
     // MARK: - Chart
 
+    // MARK: - Chart
+
     private var chart: some View {
-        Chart {
-            primaryMarks
-            highlightPoints
-            annotationMarks
-            selectionMarks
+        Group {
+            if style == .line {
+                Chart {
+                    lineMarks
+                    highlightPoints(symbolSize: 36)
+                    annotationMarks
+                    selectionMarks
+                }
+            } else if style == .area || style == .stackedArea || style == .stream {
+                Chart {
+                    areaMarks
+                    highlightPoints(symbolSize: 24)
+                    annotationMarks
+                    selectionMarks
+                }
+            } else {
+                Chart {
+                    barMarks
+                    annotationMarks
+                    selectionMarks
+                }
+            }
         }
         .chartForegroundStyleScale(
             domain: data.series.map(\.name),
@@ -98,51 +117,61 @@ public struct InsightTimeSeriesView: View {
     // MARK: - Mark families
 
     @ChartContentBuilder
-    private var primaryMarks: some ChartContent {
+    private var lineMarks: some ChartContent {
         ForEach(data.series) { series in
             ForEach(series.points, id: \.self) { point in
-                if isLineFamily {
-                    LineMark(
-                        x: .value("Date", point.date),
-                        y: .value(data.yAxisLabel, point.value)
-                    )
-                    .interpolationMethod(.monotone)
-                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                    .foregroundStyle(by: .value("Series", series.name))
-                } else if isAreaFamily {
-                    AreaMark(
-                        x: .value("Date", point.date),
-                        y: .value(data.yAxisLabel, point.value),
-                        stacking: stacking
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(by: .value("Series", series.name))
-                    .opacity(0.75)
-                } else {
-                    BarMark(
-                        x: .value("Date", point.date),
-                        y: .value(data.yAxisLabel, point.value),
-                        stacking: style == .stackedBar ? .standard : .unstacked
-                    )
-                    .cornerRadius(3)
-                    .foregroundStyle(by: .value("Series", series.name))
-                }
+                LineMark(
+                    x: .value("Date", point.date),
+                    y: .value(data.yAxisLabel, point.value)
+                )
+                .interpolationMethod(.monotone)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .foregroundStyle(by: .value("Series", series.name))
             }
         }
     }
 
     @ChartContentBuilder
-    private var highlightPoints: some ChartContent {
-        if isLineFamily || isAreaFamily {
-            ForEach(data.series) { series in
-                ForEach(series.points, id: \.self) { point in
-                    PointMark(
-                        x: .value("Date", point.date),
-                        y: .value(data.yAxisLabel, point.value)
-                    )
-                    .symbolSize(isLineFamily ? 36 : 24)
-                    .foregroundStyle(by: .value("Series", series.name))
-                }
+    private var areaMarks: some ChartContent {
+        ForEach(data.series) { series in
+            ForEach(series.points, id: \.self) { point in
+                AreaMark(
+                    x: .value("Date", point.date),
+                    y: .value(data.yAxisLabel, point.value),
+                    stacking: stacking
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(by: .value("Series", series.name))
+                .opacity(0.75)
+            }
+        }
+    }
+
+    @ChartContentBuilder
+    private var barMarks: some ChartContent {
+        ForEach(data.series) { series in
+            ForEach(series.points, id: \.self) { point in
+                BarMark(
+                    x: .value("Date", point.date),
+                    y: .value(data.yAxisLabel, point.value),
+                    stacking: style == .stackedBar ? .standard : .unstacked
+                )
+                .cornerRadius(3)
+                .foregroundStyle(by: .value("Series", series.name))
+            }
+        }
+    }
+
+    @ChartContentBuilder
+    private func highlightPoints(symbolSize: CGFloat) -> some ChartContent {
+        ForEach(data.series) { series in
+            ForEach(series.points, id: \.self) { point in
+                PointMark(
+                    x: .value("Date", point.date),
+                    y: .value(data.yAxisLabel, point.value)
+                )
+                .symbolSize(symbolSize)
+                .foregroundStyle(by: .value("Series", series.name))
             }
         }
     }
@@ -163,7 +192,7 @@ public struct InsightTimeSeriesView: View {
 
     @ChartContentBuilder
     private var selectionMarks: some ChartContent {
-        if let selectedDate, let snapshot = nearestSnapshot(to: selectedDate) {
+        ForEach(activeSelection, id: \.date) { snapshot in
             RuleMark(x: .value("Selected", snapshot.date))
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted.opacity(0.55))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
@@ -258,6 +287,12 @@ public struct InsightTimeSeriesView: View {
         let series: InsightWidgetData.TimeSeries.Series
         let seriesName: String
         let value: Double
+    }
+    private var activeSelection: [SelectionSnapshot] {
+        if let selectedDate, let snapshot = nearestSnapshot(to: selectedDate) {
+            return [snapshot]
+        }
+        return []
     }
 
     private func nearestSnapshot(to date: Date) -> SelectionSnapshot? {

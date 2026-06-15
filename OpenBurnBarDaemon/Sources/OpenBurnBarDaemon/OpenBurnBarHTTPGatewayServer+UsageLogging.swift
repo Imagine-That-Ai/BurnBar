@@ -12,7 +12,8 @@ extension BurnBarHTTPGatewayServer {
     func recordUsageIfAvailable(
         _ usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute,
-        idempotencyKey: String
+        idempotencyKey: String,
+        parentRequestID: String? = nil
     ) async {
         guard let usage, let usageRecorder else { return }
         let event = BurnBarUsageEvent(
@@ -31,7 +32,8 @@ extension BurnBarHTTPGatewayServer {
             ),
             recordedAt: Date(),
             projectName: "OpenBurnBar Gateway",
-            confidence: usage.confidence
+            confidence: usage.confidence,
+            parentRequestID: parentRequestID
         )
         do {
             // A stable, content-derived key means a client that retries the
@@ -211,7 +213,8 @@ extension BurnBarHTTPGatewayServer {
         httpStatus: Int? = nil,
         attempts: [BurnBarProxyRouteAttempt],
         usage: BurnBarProviderProxyUsage? = nil,
-        failureMessage: String? = nil
+        failureMessage: String? = nil,
+        parentRequestID: String? = nil
     ) async {
         let completedAt = Date()
         let routeUsage = route.flatMap { proxyRouteUsage(from: usage, route: $0) }
@@ -251,7 +254,8 @@ extension BurnBarHTTPGatewayServer {
             httpStatus: httpStatus,
             attempts: attempts,
             usage: routeUsage,
-            failureMessage: Self.sanitizedFailureMessage(failureMessage)
+            failureMessage: Self.sanitizedFailureMessage(failureMessage),
+            parentRequestID: parentRequestID
         )
         await appendProxyRouteLog(entry)
     }

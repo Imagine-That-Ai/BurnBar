@@ -701,6 +701,19 @@ enum SettingsManifest {
             subtitle: "Reach Pi from the cloud relay endpoint (now under Agents → Runtimes)",
             keywords: ["pi", "raspberry", "relay", "remote", "tunnel", "cloud"],
             logoProviders: [.piAgent]
+        ),
+
+        // MARK: The Elder Wand — analysis-model fusion configurator (Cloud Pro)
+
+        SettingsItem(
+            id: "agents.analysisConfigurator",
+            tab: .agents,
+            pageRoute: .analysisConfigurator,
+            anchorID: SettingsAnchor.analysisConfigurator,
+            title: "Analysis Models",
+            subtitle: "Build a panel of models and a judge for The Elder Wand",
+            keywords: ["elder wand", "fusion", "panel", "judge", "analysis models"],
+            helpText: "Opens The Elder Wand configurator: pick the analysis panel and judge model, set a tool-call budget, and save named presets."
         )
     ]
 
@@ -776,7 +789,8 @@ enum SettingsManifest {
         SettingsAnchor.hermesGatewayToken,
         SettingsAnchor.hermesPiHosts,
         SettingsAnchor.hermesRelay,
-        SettingsAnchor.hermesPiRelay
+        SettingsAnchor.hermesPiRelay,
+        SettingsAnchor.analysisConfigurator
     ]).union(providerItems.map(\.anchorID))
 
     private static let providerItems: [SettingsItem] = {

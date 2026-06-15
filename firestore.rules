@@ -137,6 +137,66 @@ service cloud.firestore {
         && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
     }
 
+    function validComputerUseSessionUpdate(userId, sessionId) {
+      return request.resource.data.keys().hasOnly([
+          "id",
+          "sessionId",
+          "userId",
+          "mode",
+          "trustMode",
+          "startedAt",
+          "endedAt",
+          "endReason",
+          "actionCount",
+          "approvalCount",
+          "rejectionCount",
+          "panicHaltCount",
+          "visionSpendUSD",
+          "manifestHashHex",
+          "auditHeadHashHex",
+          "macAppVersion",
+          "schemaVersion",
+          "updatedAt"
+        ])
+        && (!("id" in request.resource.data) || request.resource.data.id == sessionId)
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.userId == userId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.mode == resource.data.mode
+        && request.resource.data.trustMode == resource.data.trustMode
+        && request.resource.data.startedAt == resource.data.startedAt
+        && request.resource.data.manifestHashHex == resource.data.manifestHashHex
+        && request.resource.data.macAppVersion == resource.data.macAppVersion
+        && request.resource.data.schemaVersion == resource.data.schemaVersion
+        && (!("endedAt" in request.resource.data) || request.resource.data.endedAt is timestamp)
+        && (!("endReason" in request.resource.data) || request.resource.data.endReason in [
+          "completed",
+          "user_halt",
+          "panic_hotkey",
+          "panic_phone_gesture",
+          "panic_mac_lock",
+          "panic_remote_config",
+          "panic_accessibility_revoked",
+          "timeout",
+          "entitlement_lost",
+          "budget_soft_cap",
+          "budget_hard_cap",
+          "error"
+        ])
+        && request.resource.data.actionCount is int
+        && request.resource.data.actionCount >= 0
+        && request.resource.data.approvalCount is int
+        && request.resource.data.approvalCount >= 0
+        && request.resource.data.rejectionCount is int
+        && request.resource.data.rejectionCount >= 0
+        && request.resource.data.panicHaltCount is int
+        && request.resource.data.panicHaltCount >= 0
+        && request.resource.data.visionSpendUSD is number
+        && request.resource.data.visionSpendUSD >= 0
+        && (!("auditHeadHashHex" in request.resource.data) || (request.resource.data.auditHeadHashHex is string && request.resource.data.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
+    }
+
     function validComputerUseActionDocument(actionId) {
       return request.resource.data.keys().hasOnly([
           "id",
@@ -681,63 +741,8 @@ service cloud.firestore {
         && value.matches("^OpenBurnBar-CloudVault-aad-v2\\|[^|]+\\|[^|]+\\|[^|]+\\|[^|]+\\|[2-9][0-9]*\\|[^|]+$");
     }
 
-    function validCloudSealedText(value) {
-      return value is map
-        && value.keys().hasAll([
-          "algorithm",
-          "keyVersion",
-          "nonce",
-          "ciphertext",
-          "tag"
-        ])
-        && value.keys().hasOnly([
-          "schemaVersion",
-          "algorithm",
-          "keyVersion",
-          "nonce",
-          "ciphertext",
-          "tag",
-          "aad"
-        ])
-        && (!("schemaVersion" in value) || (value.schemaVersion is int && value.schemaVersion >= 1 && value.schemaVersion <= 10))
-        && value.algorithm == "AES-256-GCM"
-        && value.keyVersion is int
-        && value.keyVersion >= 1
-        && value.keyVersion <= 100
-        && value.nonce is string
-        && value.nonce.size() <= 128
-        && value.nonce.matches("^[A-Za-z0-9+/=]+$")
-        && value.ciphertext is string
-        && value.ciphertext.size() <= 8192
-        && value.ciphertext.matches("^[A-Za-z0-9+/=]+$")
-        && value.tag is string
-        && value.tag.size() <= 128
-        && value.tag.matches("^[A-Za-z0-9+/=]+$")
-        && (
-          (!("schemaVersion" in value) && !("aad" in value))
-          || (value.schemaVersion == 1 && !("aad" in value))
-          || (value.schemaVersion >= 2 && validCloudVaultAAD(value.aad))
-        );
-    }
-
     function validCloudSealedTextAt(userId, collection, docID, field, value) {
-      return validCloudSealedText(value)
-        && value.schemaVersion is int
-        && value.schemaVersion >= 2
-        && value.aad == cloudVaultAADContext(userId, collection, docID, field);
-    }
-
-    function validPathBoundCloudSealedText(value, expectedAAD) {
       return value is map
-        && value.keys().hasAll([
-          "schemaVersion",
-          "algorithm",
-          "keyVersion",
-          "nonce",
-          "ciphertext",
-          "tag",
-          "aad"
-        ])
         && value.keys().hasOnly([
           "schemaVersion",
           "algorithm",
@@ -763,7 +768,7 @@ service cloud.firestore {
         && value.tag is string
         && value.tag.size() <= 128
         && value.tag.matches("^[A-Za-z0-9+/=]+$")
-        && value.aad == expectedAAD;
+        && value.aad == cloudVaultAADContext(userId, collection, docID, field);
     }
 
     // CloudVaultBlobEnvelopeDoc (sealed binary blob, larger than sealed text).
@@ -972,10 +977,10 @@ service cloud.firestore {
         && request.resource.data.sourceDeviceID.size() <= 160
         && request.resource.data.triggerHash is string
         && request.resource.data.triggerHash.size() <= 128
-        && validPathBoundCloudSealedText(request.resource.data.sealedTitle, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedTitle"))
-        && validPathBoundCloudSealedText(request.resource.data.sealedTrigger, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedTrigger"))
-        && validPathBoundCloudSealedText(request.resource.data.sealedBody, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedBody"))
-        && validPathBoundCloudSealedText(request.resource.data.sealedScope, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedScope"))
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedTitle", request.resource.data.sealedTitle)
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedTrigger", request.resource.data.sealedTrigger)
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedBody", request.resource.data.sealedBody)
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedScope", request.resource.data.sealedScope)
         && hasValidEscrowPublicKey(userId, request.resource.data.sourceDeviceID, request.resource.data.sealedTitle.keyVersion)
         && request.resource.data.mode in ["static", "llm_rewrite"]
         && request.resource.data.isEnabled is bool
@@ -1022,7 +1027,7 @@ service cloud.firestore {
       ]);
     }
 
-    function validChatThreadSealedContent(userId, threadId) {
+    function validChatThreadSealedContent(userId) {
       return !chatThreadHasPlaintextContent()
         && validChatThreadKeys()
         && forbidsDirectSignalEnvelope()
@@ -1034,9 +1039,9 @@ service cloud.firestore {
           ));
     }
 
-    function ownerWritableChatThread(userId, threadId) {
+    function ownerWritableChatThread(userId) {
       return ownerWritableNonSecret(userId)
-        && validChatThreadSealedContent(userId, threadId)
+        && validChatThreadSealedContent(userId)
         && (!chatThreadIncludesBackedUpContent()
           || hasActiveHostedQuotaEntitlement(userId));
     }
@@ -1177,30 +1182,6 @@ service cloud.firestore {
         && !("error" in request.resource.data)
         && request.resource.data.ciphertext is string
         && request.resource.data.ciphertext.size() <= 131072;
-    }
-
-    function hermesGatewayDestinationWrite(userId, destinationId) {
-      return ownerWritableNonSecret(userId)
-        && destinationId is string
-        && hasActiveHostedQuotaEntitlement(userId)
-        && request.resource.data.keys().hasOnly([
-          "id",
-          "displayName",
-          "kind",
-          "status",
-          "isDefault",
-          "createdAt",
-          "updatedAt",
-          "schemaVersion"
-        ])
-        && request.resource.data.id is string
-        && request.resource.data.id.size() <= 160
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() <= 80
-        && request.resource.data.kind in ["home", "chat", "thread"]
-        && request.resource.data.status in ["active", "archived"]
-        && request.resource.data.isDefault is bool
-        && request.resource.data.schemaVersion is int;
     }
 
     function piRelayConnectionWrite(userId, connectionId) {
@@ -1468,10 +1449,10 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && !("projectName" in request.resource.data)
-        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "usage", usageId, "sealedProjectName")));
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "usage", usageId, "sealedProjectName", request.resource.data.sealedProjectName));
       allow update: if ownerWritableNonSecret(userId)
         && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
-        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "usage", usageId, "sealedProjectName")));
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "usage", usageId, "sealedProjectName", request.resource.data.sealedProjectName));
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1486,13 +1467,13 @@ service cloud.firestore {
       allow create: if ownerWritableNonSecret(userId)
         && !("projectName" in request.resource.data)
         && !("label" in request.resource.data)
-        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedProjectName")))
-        && (!("sealedLabel" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedLabel, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedLabel")));
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedProjectName", request.resource.data.sealedProjectName))
+        && (!("sealedLabel" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedLabel", request.resource.data.sealedLabel));
       allow update: if ownerWritableNonSecret(userId)
         && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
         && (!("label" in request.resource.data) || ("label" in resource.data))
-        && (!("sealedProjectName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedProjectName, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedProjectName")))
-        && (!("sealedLabel" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedLabel, cloudVaultAADContext(userId, "budgetRules", ruleId, "sealedLabel")));
+        && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedProjectName", request.resource.data.sealedProjectName))
+        && (!("sealedLabel" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedLabel", request.resource.data.sealedLabel));
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1590,7 +1571,7 @@ service cloud.firestore {
 
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableChatThread(userId, threadId);
+      allow create, update: if ownerWritableChatThread(userId);
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -2152,8 +2133,8 @@ service cloud.firestore {
 	        ])
 	        && request.resource.data.sessionID is string
 	        && request.resource.data.sessionID.size() <= 256
-	        && validPathBoundCloudSealedText(request.resource.data.sealedScope, cloudVaultAADContext(userId, "rollback_requests", requestId, "sealedScope"))
-	        && (!("sealedErrorMessage" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedErrorMessage, cloudVaultAADContext(userId, "rollback_requests", requestId, "sealedErrorMessage")))
+	        && validCloudSealedTextAt(userId, "rollback_requests", requestId, "sealedScope", request.resource.data.sealedScope)
+	        && (!("sealedErrorMessage" in request.resource.data) || validCloudSealedTextAt(userId, "rollback_requests", requestId, "sealedErrorMessage", request.resource.data.sealedErrorMessage))
 	        && request.resource.data.status in ["pending", "in_flight", "completed", "failed", "cancelled"];
       }
       allow read: if ownsUserNamespace(userId);
@@ -2178,9 +2159,9 @@ service cloud.firestore {
 	        ])
 	        && request.resource.data.sequence is int
 	        && request.resource.data.sequence >= 0
-	        && validPathBoundCloudSealedText(request.resource.data.sealedActionLabel, cloudVaultAADContext(userId, "snapshots", snapshotId, "sealedActionLabel"))
-	        && (!("sealedTouchedFiles" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedTouchedFiles, cloudVaultAADContext(userId, "snapshots", snapshotId, "sealedTouchedFiles")))
-	        && (!("sealedMacSnapshotPath" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedMacSnapshotPath, cloudVaultAADContext(userId, "snapshots", snapshotId, "sealedMacSnapshotPath")));
+	        && validCloudSealedTextAt(userId, "snapshots", snapshotId, "sealedActionLabel", request.resource.data.sealedActionLabel)
+	        && (!("sealedTouchedFiles" in request.resource.data) || validCloudSealedTextAt(userId, "snapshots", snapshotId, "sealedTouchedFiles", request.resource.data.sealedTouchedFiles))
+	        && (!("sealedMacSnapshotPath" in request.resource.data) || validCloudSealedTextAt(userId, "snapshots", snapshotId, "sealedMacSnapshotPath", request.resource.data.sealedMacSnapshotPath));
       }
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validRollbackSnapshot();
@@ -2203,9 +2184,9 @@ service cloud.firestore {
           "lastSevenDays", "lastRefreshedAt",
           "sealedDisplayName", "sealedTagline", "sealedPersonas", "updatedAt"
         ])
-        && (!("sealedDisplayName" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedDisplayName, cloudVaultAADContext(userId, "agent_identities", identityId, "sealedDisplayName")))
-        && (!("sealedTagline" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedTagline, cloudVaultAADContext(userId, "agent_identities", identityId, "sealedTagline")))
-        && (!("sealedPersonas" in request.resource.data) || validPathBoundCloudSealedText(request.resource.data.sealedPersonas, cloudVaultAADContext(userId, "agent_identities", identityId, "sealedPersonas")))
+        && (!("sealedDisplayName" in request.resource.data) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedDisplayName", request.resource.data.sealedDisplayName))
+        && (!("sealedTagline" in request.resource.data) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedTagline", request.resource.data.sealedTagline))
+        && (!("sealedPersonas" in request.resource.data) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedPersonas", request.resource.data.sealedPersonas))
         && !("displayName" in request.resource.data)
         && !("tagline" in request.resource.data)
         && !("personas" in request.resource.data);
@@ -2231,10 +2212,10 @@ service cloud.firestore {
 	          "cadence", "consentGivenAt", "isMuted", "deliveryMode",
 	          "minimumEventImportance", "deliveryCountThisMonth", "lastDeliveredAt", "updatedAt"
 	        ])
-	        && validPathBoundCloudSealedText(request.resource.data.sealedAgentURI, cloudVaultAADContext(userId, "subscription_topics", topicId, "sealedAgentURI"))
-	        && validPathBoundCloudSealedText(request.resource.data.sealedTopicID, cloudVaultAADContext(userId, "subscription_topics", topicId, "sealedTopicID"))
-	        && validPathBoundCloudSealedText(request.resource.data.sealedDisplayName, cloudVaultAADContext(userId, "subscription_topics", topicId, "sealedDisplayName"))
-	        && validPathBoundCloudSealedText(request.resource.data.sealedDescription, cloudVaultAADContext(userId, "subscription_topics", topicId, "sealedDescription"))
+	        && validCloudSealedTextAt(userId, "subscription_topics", topicId, "sealedAgentURI", request.resource.data.sealedAgentURI)
+	        && validCloudSealedTextAt(userId, "subscription_topics", topicId, "sealedTopicID", request.resource.data.sealedTopicID)
+	        && validCloudSealedTextAt(userId, "subscription_topics", topicId, "sealedDisplayName", request.resource.data.sealedDisplayName)
+	        && validCloudSealedTextAt(userId, "subscription_topics", topicId, "sealedDescription", request.resource.data.sealedDescription)
 	        && (!("cadence" in request.resource.data) || request.resource.data.cadence in ["on_demand", "daily", "weekly", "monthly"])
         && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
         && (!("minimumEventImportance" in request.resource.data) || request.resource.data.minimumEventImportance in ["quiet", "normal", "action_required", "terminal"])
@@ -2326,8 +2307,8 @@ service cloud.firestore {
         && request.resource.data.uid == userId
         && request.resource.data.documentID == documentId
         && validCloudSessionStoragePath(userId, documentId, request.resource.data.bodyHash, request.resource.data.storagePath)
-        && validPathBoundCloudSealedText(request.resource.data.sealedTitle, cloudVaultAADContext(userId, "cloud_search_documents", documentId, "sealedTitle"))
-        && validPathBoundCloudSealedText(request.resource.data.sealedBodyPreview, cloudVaultAADContext(userId, "cloud_search_documents", documentId, "sealedBodyPreview"))
+        && validCloudSealedTextAt(userId, "cloud_search_documents", documentId, "sealedTitle", request.resource.data.sealedTitle)
+        && validCloudSealedTextAt(userId, "cloud_search_documents", documentId, "sealedBodyPreview", request.resource.data.sealedBodyPreview)
         && request.resource.data.byteCount is int
         && request.resource.data.byteCount >= 0
         && request.resource.data.encryptedByteCount is int
@@ -2461,7 +2442,7 @@ service cloud.firestore {
             || (request.resource.data.sourceManifestId is string
                 && request.resource.data.sourceManifestId.matches("^[a-f0-9]{64}$")))
         && (!("sealedRepoFullName" in request.resource.data)
-            || validPathBoundCloudSealedText(request.resource.data.sealedRepoFullName, cloudVaultAADContext(userId, "knowledge_repos", repoId, "sealedRepoFullName")));
+            || validCloudSealedTextAt(userId, "knowledge_repos", repoId, "sealedRepoFullName", request.resource.data.sealedRepoFullName));
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -3150,54 +3131,11 @@ service cloud.firestore {
     // Phone/iPad/Android -> Mac agent desktop permission grants. These
     // documents carry only signed capability metadata and public keys.
     match /users/{userId}/agent_grant_authorities/{deviceId} {
-      function validAgentGrantAuthorityDocument() {
-        return request.resource.data.keys().hasOnly([
-          "sourceDeviceId",
-          "peerNodeId",
-          "publicKeyBase64",
-          "publishedAtMillis",
-          "schemaVersion",
-          "updatedAt"
-        ])
-        && request.resource.data.sourceDeviceId == deviceId
-        && request.resource.data.peerNodeId is string
-        && request.resource.data.peerNodeId.size() <= 160
-        && request.resource.data.publicKeyBase64 is string
-        && request.resource.data.publicKeyBase64.size() >= 32
-        && request.resource.data.publicKeyBase64.size() <= 256
-        && (!("publishedAtMillis" in request.resource.data) || request.resource.data.publishedAtMillis is int)
-        && (!("schemaVersion" in request.resource.data) || request.resource.data.schemaVersion is int)
-        && request.resource.data.updatedAt is timestamp
-        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId))
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId)).data.trustState == "trusted"
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId)).data.platform in ["iOS", "iPadOS", "Android"];
-      }
-
       allow read: if ownsUserNamespace(userId);
       allow create, update, delete: if false;
     }
 
     match /users/{userId}/agent_capability_grant_requests/{requestId} {
-      function validAgentGrantAuthorityEnvelope() {
-        return request.resource.data.authority is map
-          && request.resource.data.authority.keys().hasOnly([
-            "peerNodeId",
-            "counter",
-            "timestamp",
-            "intentHashBlake3",
-            "signatureEd25519"
-          ])
-          && request.resource.data.authority.peerNodeId is string
-          && request.resource.data.authority.peerNodeId.size() <= 160
-          && request.resource.data.authority.counter is number
-          && request.resource.data.authority.counter >= 0
-          && request.resource.data.authority.timestamp is number
-          && request.resource.data.authority.intentHashBlake3 is string
-          && request.resource.data.authority.intentHashBlake3.matches("^[a-fA-F0-9]{64}$")
-          && request.resource.data.authority.signatureEd25519 is string
-          && request.resource.data.authority.signatureEd25519.size() <= 256;
-      }
-
       function validAgentGrantReceipt(receipt) {
         return receipt is map
           && receipt.keys().hasOnly([
@@ -3244,108 +3182,20 @@ service cloud.firestore {
           && (!("message" in receipt) || (receipt.message is string && receipt.message.size() <= 2048));
       }
 
-      function validAgentGrantLocalAuthProof(proof) {
-        return proof is map
-          && proof.keys().hasOnly([
-            "proofId",
-            "deviceId",
-            "signedIntentHash",
-            "authenticatedAt",
-            "expiresAt",
-            "signatureEd25519"
-          ])
-          && proof.proofId is string
-          && proof.proofId.size() <= 160
-          && proof.deviceId is string
-          && proof.deviceId.size() <= 160
-          && proof.signedIntentHash.matches("^[a-f0-9]{64}$")
-          && proof.authenticatedAt is number
-          && proof.expiresAt is number
-          && proof.expiresAt > proof.authenticatedAt
-          && proof.signatureEd25519 is string
-          && proof.signatureEd25519.size() <= 256;
-      }
-
-      function validAgentCapabilityGrantDocument() {
-        return request.resource.data.keys().hasOnly([
-          "requestId",
-          "runtime",
-          "threadId",
-          "preset",
-          "capabilities",
-          "trustMode",
-          "deliveryMode",
-          "requestedAt",
-          "expiresAt",
-          "grantDurationSeconds",
-          "sourceDeviceId",
-          "clientIntentId",
-          "localAuthenticationSatisfied",
-          "localAuthProof",
-          "localAuthProofVerifiedAt",
-          "authority",
-          "status",
-          "canonicalRequestHashSha256",
-          "createdAt",
-          "updatedAt",
-          "receipt"
-        ])
-        && request.resource.data.requestId == requestId
-        && request.resource.data.runtime in ["hermes", "pi", "codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
-        && request.resource.data.threadId is string
-        && request.resource.data.threadId.size() <= 240
-        && request.resource.data.preset in ["off", "low", "workspace", "desktop", "all", "yolo"]
-        && request.resource.data.capabilities is list
-        && request.resource.data.capabilities.size() <= 16
-        && request.resource.data.capabilities.hasOnly([
-          "desktop_browser",
-          "desktop_screenshot",
-          "accessibility_inspect",
-          "desktop_system_input",
-          "workspace_read",
-          "workspace_write",
-          "shell",
-          "desktop_file_export",
-          "shell_unrestricted"
-        ])
-        && request.resource.data.trustMode in ["manual", "step", "trusted"]
-        && request.resource.data.deliveryMode in ["live", "queued", "live_then_queued"]
-        && request.resource.data.status in ["queued", "applied", "revoked", "denied", "expired"]
-        && request.resource.data.requestedAt is number
-        && request.resource.data.expiresAt is number
-        && request.resource.data.grantDurationSeconds is number
-        && request.resource.data.grantDurationSeconds > 0
-        && request.resource.data.grantDurationSeconds <= 86400
-        && request.resource.data.sourceDeviceId is string
-        && request.resource.data.sourceDeviceId.size() <= 160
-        && request.resource.data.clientIntentId is string
-        && request.resource.data.clientIntentId.size() <= 160
-        && request.resource.data.localAuthenticationSatisfied is bool
-        && (!("localAuthProof" in request.resource.data) || validAgentGrantLocalAuthProof(request.resource.data.localAuthProof))
-        && (!("localAuthProofVerifiedAt" in request.resource.data) || request.resource.data.localAuthProofVerifiedAt is timestamp)
-        && (!("canonicalRequestHashSha256" in request.resource.data) || request.resource.data.canonicalRequestHashSha256.matches("^[a-f0-9]{64}$"))
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp
-        && validAgentGrantAuthorityEnvelope()
-        && (!("receipt" in request.resource.data) || validAgentGrantReceipt(request.resource.data.receipt))
-        && exists(/databases/$(database)/documents/users/$(userId)/agent_grant_authorities/$(request.resource.data.sourceDeviceId))
-        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted"
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.platform in ["iOS", "iPadOS", "Android"];
-      }
-
       allow read: if ownsUserNamespace(userId);
       allow create: if false;
       allow update: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
-        && validAgentCapabilityGrantDocument()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "status",
           "receipt",
           "updatedAt"
         ])
+        && request.resource.data.requestId == resource.data.requestId
+        && request.resource.data.sourceDeviceId == resource.data.sourceDeviceId
         && request.resource.data.status in ["applied", "revoked", "denied", "expired"]
-        && ("receipt" in request.resource.data);
+        && ("receipt" in request.resource.data)
+        && validAgentGrantReceipt(request.resource.data.receipt);
       allow delete: if false;
     }
 
@@ -3359,54 +3209,9 @@ service cloud.firestore {
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
         && validComputerUseSessionDocument(userId, sessionId);
-      // End-of-session updates may set the audit tail/counters only. Identity,
-      // mode, trust mode, and manifest binding are immutable after create.
-      allow update: if ownerWritableNonSecret(userId)
+      allow update: if ownsUserNamespace(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
-        && validComputerUseSessionDocument(userId, sessionId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "endedAt",
-          "endReason",
-          "actionCount",
-          "approvalCount",
-          "rejectionCount",
-          "panicHaltCount",
-          "visionSpendUSD",
-          "auditHeadHashHex",
-          "updatedAt"
-        ])
-        && request.resource.data.sessionId == sessionId
-        && request.resource.data.sessionId == resource.data.sessionId
-        && request.resource.data.userId == userId
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.mode == resource.data.mode
-        && request.resource.data.trustMode == resource.data.trustMode
-        && request.resource.data.startedAt == resource.data.startedAt
-        && request.resource.data.manifestHashHex == resource.data.manifestHashHex
-        && request.resource.data.macAppVersion == resource.data.macAppVersion
-        && request.resource.data.schemaVersion == resource.data.schemaVersion
-        && (!("endedAt" in request.resource.data) || request.resource.data.endedAt is timestamp)
-        && (!("endReason" in request.resource.data) || request.resource.data.endReason in [
-          "completed",
-          "user_halt",
-          "panic_hotkey",
-          "panic_phone_gesture",
-          "panic_mac_lock",
-          "panic_remote_config",
-          "panic_accessibility_revoked",
-          "timeout",
-          "entitlement_lost",
-          "budget_soft_cap",
-          "budget_hard_cap",
-          "error"
-        ])
-        && (!("actionCount" in request.resource.data) || (request.resource.data.actionCount is int && request.resource.data.actionCount >= 0))
-        && (!("approvalCount" in request.resource.data) || (request.resource.data.approvalCount is int && request.resource.data.approvalCount >= 0))
-        && (!("rejectionCount" in request.resource.data) || (request.resource.data.rejectionCount is int && request.resource.data.rejectionCount >= 0))
-        && (!("panicHaltCount" in request.resource.data) || (request.resource.data.panicHaltCount is int && request.resource.data.panicHaltCount >= 0))
-        && (!("visionSpendUSD" in request.resource.data) || (request.resource.data.visionSpendUSD is number && request.resource.data.visionSpendUSD >= 0))
-        && (!("auditHeadHashHex" in request.resource.data) || (request.resource.data.auditHeadHashHex is string && request.resource.data.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
-        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
+        && validComputerUseSessionUpdate(userId, sessionId);
       allow delete: if false;
     }
 
@@ -3474,7 +3279,7 @@ service cloud.firestore {
     //
     // Fork F = SEAL (privacy-leak-remediation-2026-06-02 §6): the human-readable
     // filename is PRIVATE TEXT and is sealed into `sealedFilename`
-    // (validCloudSealedText). FLAG-DAY (hermes-gateway-e2e-rearchitecture): the
+    // (validCloudSealedTextAt). FLAG-DAY (hermes-gateway-e2e-rearchitecture): the
     // sealing iOS writer of record ships clean — no native code ever wrote this
     // collection in plaintext — so the legacy plaintext `filename` branch is
     // hard-dropped from the allowlist. `sealedFilename` is now MANDATORY; a
@@ -3509,7 +3314,7 @@ service cloud.firestore {
         // is no longer in the allowlist, so a co-emitted cleartext name is
         // impossible.
         && ("sealedFilename" in request.resource.data)
-        && validPathBoundCloudSealedText(request.resource.data.sealedFilename, cloudVaultAADContext(userId, "media_attachment_manifests", manifestId, "sealedFilename"))
+        && validCloudSealedTextAt(userId, "media_attachment_manifests", manifestId, "sealedFilename", request.resource.data.sealedFilename)
         && !("body" in request.resource.data)
         && !("ciphertext" in request.resource.data);
       allow update: if false;
@@ -4459,10 +4264,54 @@ service cloud.firestore {
     }
 
     match /users/{userId}/escrow_grants/{grantId} {
+      // F-RR07-006: allowlist the exact fields the Mac writer emits on create
+      // and the server revoke callable sets on update, so no extra keys can
+      // ride in on either path.
+      function validEscrowGrantCreate() {
+        return request.resource.data.keys().hasOnly([
+          "sourceDeviceId",
+          "targetDeviceId",
+          "providerId",
+          "credentialKind",
+          "status",
+          "grantedAt"
+        ])
+        && request.resource.data.sourceDeviceId is string
+        && request.resource.data.sourceDeviceId.size() > 0
+        && request.resource.data.sourceDeviceId.size() <= 160
+        && request.resource.data.targetDeviceId is string
+        && request.resource.data.targetDeviceId.size() > 0
+        && request.resource.data.targetDeviceId.size() <= 160
+        && request.resource.data.providerId is string
+        && request.resource.data.providerId.size() > 0
+        && request.resource.data.providerId.size() <= 80
+        && request.resource.data.credentialKind in [
+          "api_key", "oauth_token", "bearer_token", "unknown"
+        ]
+        && request.resource.data.status == "granted"
+        && request.resource.data.grantedAt is timestamp;
+      }
+      // Revoke is a server-side merge patch that touches only status + revokedAt.
+      // The affectedKeys() check confines what the client can change on update;
+      // once status is revoked, no further updates are allowed.
+      function validEscrowGrantUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "revokedAt"
+        ])
+        && resource.data.status == "granted"
+        && request.resource.data.status == "revoked"
+        && (!("revokedAt" in request.resource.data) || request.resource.data.revokedAt is timestamp);
+      }
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
+      allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFields()
+        && validEscrowGrantCreate();
+      allow update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields()
+        && validEscrowGrantUpdate();
       allow delete: if ownsUserNamespace(userId);
     }
 

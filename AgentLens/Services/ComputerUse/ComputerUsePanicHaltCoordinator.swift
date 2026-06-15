@@ -51,20 +51,20 @@ public final class ComputerUsePanicHaltCoordinator: NSObject {
         lastAccessibilityTrusted = accessibilityTrustProvider()
         installHotkey()
         installAuthGateListeners()
-        
+
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.pollAccessibilityTrustNow()
             }
         }
-        
+
         isInstalled = true
     }
 
     public func uninstall() {
         accessibilityTimer?.invalidate()
         accessibilityTimer = nil
-        
+
         if let monitor = globalMonitor {
             NSEvent.removeMonitor(monitor)
             globalMonitor = nil
@@ -166,7 +166,7 @@ public final class ComputerUsePanicHaltCoordinator: NSObject {
         case NSWorkspace.didActivateApplicationNotification:
             // Check accessibility trust whenever application activation changes (e.g. settings app).
             pollAccessibilityTrustNow()
-            
+
             // If loginwindow / SecurityAgent activates we treat that
             // as a lock-equivalent. `activatedBundleID` is the bundle id of
             // the `NSRunningApplication` that just became frontmost.

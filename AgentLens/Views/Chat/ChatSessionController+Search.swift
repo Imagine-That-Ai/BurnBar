@@ -546,61 +546,63 @@ extension ChatSessionController {
                 var pieces: [ChatTranscriptPiece] = []
                 var usageSnapshot: CLIUsageSnapshot?
                 let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
+                    // The Elder Wand: when a model-fusion preset is active, the
+                    // OpenAI-compatible chat backends carry the `plugins:[{id:"fusion",…}]`
+                    // block AND redirect to the BurnBar daemon gateway (8317), where the
+                    // fusion orchestrator lives — not the Hermes CLI gateway (8642).
+                    let elderWandPlugins = self.settingsManager.elderWandPluginsPayload()
+                    let fusionActive = elderWandPlugins != nil
                     switch self.chatBackend {
                     case .hermes:
-                        // Compose Hermes' system prompt via the shared
-                        // builder so the atom directive stays in lockstep
-                        // with iOS. The dashboard/RAG context block lives
-                        // in `augmentedSystem` and is fed in as the
-                        // builder's `dashboardContext`.
+                        // Keep Hermes system-prompt construction shared with iOS.
                         let hermesPrompt = HermesSystemPromptBuilder(
                             dashboardContext: augmentedSystem,
                             includesAtomDirective: true
                         ).build()
                         return self.cliBridge.chatHermes(
-                            baseURL: self.hermesGatewayBaseURL,
+                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : self.hermesGatewayBaseURL,
                             systemPrompt: hermesPrompt,
                             history: multiTurnHistory,
-                            bearerToken: self.hermesBearerToken,
+                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.hermesBearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker
+                            toolBroker: activeToolBroker,
+                            plugins: elderWandPlugins
                         )
                     case .openclaw:
                         let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
                             ?? URL(string: "http://127.0.0.1:18789")!
                         return self.cliBridge.chatOpenClaw(
-                            baseURL: base,
+                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : base,
                             systemPrompt: augmentedSystem,
                             history: multiTurnHistory,
-                            bearerToken: self.openClawBearerToken,
+                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.openClawBearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker
+                            toolBroker: activeToolBroker,
+                            plugins: elderWandPlugins
                         )
                     case .piAgent:
-                        // Inject the selected Pi instance ID into the system
-                        // prompt so the responder can be attributed to the
-                        // active Pi agent without leaking it into the user's
-                        // visible message body.
+                        // Attribute the responder to the active Pi agent without user-visible leakage.
                         let piPrompt = Self.piSystemPrompt(
                             base: augmentedSystem,
                             instanceID: self.settingsManager.piAgentSelectedInstanceID
                         )
                         return self.cliBridge.chatPiAgent(
-                            baseURL: self.piAgentGatewayBaseURL,
+                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : self.piAgentGatewayBaseURL,
                             systemPrompt: piPrompt,
                             history: multiTurnHistory,
-                            bearerToken: self.piAgentBearerToken,
+                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.piAgentBearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker
+                            toolBroker: activeToolBroker,
+                            plugins: elderWandPlugins
                         )
                     case .codex:
                         return self.cliBridge.chatCodexStream(

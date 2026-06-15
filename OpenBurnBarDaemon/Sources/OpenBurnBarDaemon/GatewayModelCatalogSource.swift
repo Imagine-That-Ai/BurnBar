@@ -25,7 +25,7 @@ actor GatewayModelCatalogSource {
     private let droidProcessRunner: any FactoryDroidProcessRunning
     private let modelHealthStore: BurnBarGatewayModelHealthStore
     private let cacheTTL: TimeInterval
-    private let logger: BurnBarDaemonLogger
+    private let logger: any BurnBarDaemonLogging
     private var cachedSnapshot: CachedSnapshot?
 
     init(
@@ -34,7 +34,7 @@ actor GatewayModelCatalogSource {
         droidProcessRunner: any FactoryDroidProcessRunning,
         modelHealthStore: BurnBarGatewayModelHealthStore,
         cacheTTL: TimeInterval,
-        logger: BurnBarDaemonLogger
+        logger: any BurnBarDaemonLogging
     ) {
         self.configStore = configStore
         self.session = session

@@ -282,16 +282,16 @@ assertRulesAllowlistExcludes("match /users/{userId}/agent_notification_replies",
 for (const field of ["title", "snippet", "terms", "projectName", "workingDirectory"]) {
   assertSectionIncludes(
     "firestore.rules",
-    "function ownerWritableSessionLogManifest(",
-    "function validSessionLogFacetCount(",
-    `!("${field}" in request.resource.data)`,
+    "function sessionLogPostWriteHasNoPlaintextFields(data)",
+    "function validSessionLogManifestCore(",
+    `"${field}"`,
     `session-log manifest rejects ${field}`,
   );
 }
 assertSectionIncludes(
   "firestore.rules",
-  "function ownerWritableSessionLogManifest(",
-  "function validSessionLogFacetCount(",
+  "function validSessionLogManifestCore(",
+  "function ownerWritableSessionLogManifestCreate(",
   'request.resource.data.inferredTaskTitle == "Encrypted session"',
   "session-log manifest only accepts the generic inferredTaskTitle placeholder",
 );
@@ -385,7 +385,7 @@ assertSectionNotIncludes(
 assertSectionIncludes(
   "firestore.rules",
   "function relayChunkWrite(",
-  "function hermesGatewayDestinationWrite(",
+  "function piRelayConnectionWrite(",
   "request.resource.data.schemaVersion >= 2",
   "hosted relay chunks require encrypted schema",
 );
@@ -393,7 +393,7 @@ for (const field of ["data", "text", "error"]) {
   assertSectionIncludes(
     "firestore.rules",
     "function relayChunkWrite(",
-    "function hermesGatewayDestinationWrite(",
+    "function piRelayConnectionWrite(",
     `!("${field}" in request.resource.data)`,
     `hosted relay chunk rejects plaintext ${field}`,
   );
@@ -401,7 +401,7 @@ for (const field of ["data", "text", "error"]) {
 assertSectionNotIncludes(
   "firestore.rules",
   "function relayChunkWrite(",
-  "function hermesGatewayDestinationWrite(",
+  "function piRelayConnectionWrite(",
   "request.resource.data.schemaVersion < 2",
   "hosted relay chunk legacy plaintext schema branch",
 );
@@ -637,12 +637,12 @@ assertIncludes(
 );
 
 assertIncludes(
-  "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
+  "AgentLens/Services/CloudSync/CLIAgentMissionEventFactory.swift",
   "static func sealedEvent",
   "Mac mission sealed event helper",
 );
 assertIncludes(
-  "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
+  "AgentLens/Services/CloudSync/CLIAgentMissionEventFactory.swift",
   "sealed.removeValue(forKey: key)",
   "Mac mission removes private event fields",
 );
@@ -696,7 +696,7 @@ for (const [section, note, allowlistHelperName] of [
   ["function relayRequestWrite(", "relayRequestWrite lacks keys().hasOnly allowlist"],
   ["function relayChunkWrite(", "relayChunkWrite lacks keys().hasOnly allowlist"],
   [
-    "function ownerWritableSessionLogManifest(",
+    "function validSessionLogManifestCore(",
     "session-log manifest lacks keys().hasOnly allowlist",
     "validSessionLogManifestKeys",
   ],
@@ -1400,7 +1400,7 @@ assertSectionIncludes(
   "firestore.rules",
   "function validMediaAttachmentManifestKeys()",
   "match /users/{userId}/pi_agent_connections",
-  "validCloudSealedText(request.resource.data.sealedFilename)",
+  "validCloudSealedTextAt(userId, \"media_attachment_manifests\", manifestId, \"sealedFilename\", request.resource.data.sealedFilename)",
   "media_attachment_manifests must validate sealedFilename as a sealed envelope",
 );
 assertSectionIncludes(

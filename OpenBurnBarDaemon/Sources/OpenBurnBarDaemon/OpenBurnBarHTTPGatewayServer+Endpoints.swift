@@ -14,7 +14,25 @@ extension BurnBarHTTPGatewayServer {
         connection: NWConnection,
         corsHeaders: [String: String]
     ) async -> GatewayRouteOutcome {
-        await routeModelRequest(
+        // The Elder Wand: short-circuit to the model-fusion orchestrator when an
+        // active `fusion` plugin is present AND the recursion marker is absent.
+        // Inner panel/judge/synthesis sub-calls carry the marker so they fall
+        // through to the normal single-route pipeline (no re-trigger).
+        if let body, let bodyData = body.data(using: .utf8),
+           !Self.bodyCarriesFusionRecursionMarker(bodyData),
+           let request = try? JSONDecoder().decode(ChatCompletionsRequest.self, from: bodyData),
+           let plugin = request.activeFusionPlugin {
+            return await runElderWandFusion(
+                bodyData: bodyData,
+                plugin: plugin,
+                originatingModel: request.model,
+                wantsStream: request.stream == true,
+                connection: connection,
+                corsHeaders: corsHeaders
+            )
+        }
+
+        return await routeModelRequest(
             body: body,
             connection: connection,
             corsHeaders: corsHeaders,

@@ -53,6 +53,7 @@ final class SettingsManager {
     let artifactDiscovery: ArtifactDiscoverySettings
     let routedClientWiring: RoutedClientWiringSettings
     let textExpansion: TextExpansionSettings
+    let elderWand: ElderWandSettings
     private var computerUseRemoteConfigTask: Task<Void, Never>?
 
     // MARK: - Init
@@ -100,6 +101,7 @@ final class SettingsManager {
         self.artifactDiscovery = ArtifactDiscoverySettings(persistence: coordinator)
         self.routedClientWiring = RoutedClientWiringSettings(persistence: coordinator)
         self.textExpansion = TextExpansionSettings(persistence: coordinator)
+        self.elderWand = ElderWandSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
@@ -503,6 +505,18 @@ final class SettingsManager {
     var gatewayAuthToken: String {
         get { gateway.gatewayAuthToken }
         set { gateway.gatewayAuthToken = newValue }
+    }
+
+    /// The user's saved **The Elder Wand** model-fusion presets.
+    var elderWandPresets: [ElderWandPreset] { elderWand.presets }
+
+    /// The active (default) Elder Wand preset, or `nil` when none is configured.
+    var activeElderWandPreset: ElderWandPreset? { elderWand.activePreset }
+
+    /// Lowers the active Elder Wand preset into the OpenRouter "Fusion"-compatible
+    /// `plugins` block the daemon gateway reads. `nil` when no preset is configured.
+    func elderWandPluginsPayload() -> [[String: any Sendable]]? {
+        elderWand.elderWandPluginsPayload()
     }
 
     /// Opt-in escape hatch: bind the gateway on loopback without a bearer token.

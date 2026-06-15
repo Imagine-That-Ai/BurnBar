@@ -12,6 +12,7 @@
     "lib/**",
     "node_modules/**",
     "src/types/generated/**",
+    "src/__tests__/bola/bolaVictimSeeds.generated.ts",
     ".dependency-cruiser.cjs"
   ],
   "ignoreDependencies": [

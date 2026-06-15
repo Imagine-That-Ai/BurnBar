@@ -121,6 +121,7 @@ struct SettingsSearchResultsView: View {
         case .hermesPiAgent: return "Pi Agent Instances"
         case .hermesRelay: return "Hermes Remote Relay"
         case .hermesPiRelay: return "Pi Remote Relay"
+        case .analysisConfigurator: return "Analysis Models"
         }
     }
 }

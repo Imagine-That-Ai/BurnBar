@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   PUSH_DISPLAY_NAME_MAX_CHARS,
+  buildFcmCallPayload,
+  buildVoipApnsPayload,
+  ephemeralCallCorrelationId,
   parseTriggerRequest,
   pushCallerInitial,
   sanitizePushDisplayName,
@@ -54,5 +57,52 @@ describe("VoIP/FCM push metadata minimization", () => {
       displayName: "Mac Book",
       isVideo: true,
     });
+  });
+
+  it("omits connectionId, pairedDeviceId, and real displayName in APNs and FCM payloads (F-RR09-008)", () => {
+    const correlationId = ephemeralCallCorrelationId();
+
+    const apnsPayload = buildVoipApnsPayload({
+      callId: "call-123",
+      isVideo: true,
+      correlationId,
+    });
+
+    const fcmPayload = buildFcmCallPayload({
+      callId: "call-123",
+      isVideo: true,
+      correlationId,
+    });
+
+    // Verify APNs payload shape and omissions
+    expect(apnsPayload).toHaveProperty("callId", "call-123");
+    expect(apnsPayload).toHaveProperty("correlationId", correlationId);
+    expect(apnsPayload).toHaveProperty("isVideo", true);
+    expect(apnsPayload).not.toHaveProperty("connectionId");
+    expect(apnsPayload).not.toHaveProperty("connection_id");
+    expect(apnsPayload).not.toHaveProperty("pairedDeviceId");
+    expect(apnsPayload).not.toHaveProperty("paired_device_id");
+    expect(apnsPayload).not.toHaveProperty("displayName");
+    expect(apnsPayload).not.toHaveProperty("display_name");
+
+    // Verify FCM payload shape and omissions
+    expect(fcmPayload).toHaveProperty("call_id", "call-123");
+    expect(fcmPayload).toHaveProperty("correlation_id", correlationId);
+    expect(fcmPayload).toHaveProperty("caller_name", "Incoming call"); // generic display name
+    expect(fcmPayload).not.toHaveProperty("connectionId");
+    expect(fcmPayload).not.toHaveProperty("connection_id");
+    expect(fcmPayload).not.toHaveProperty("pairedDeviceId");
+    expect(fcmPayload).not.toHaveProperty("paired_device_id");
+    expect(fcmPayload).not.toHaveProperty("displayName");
+    expect(fcmPayload).not.toHaveProperty("display_name");
+  });
+
+  it("ephemeralCallCorrelationId returns a fresh UUID on every invocation", () => {
+    const ids = Array.from({ length: 20 }, () => ephemeralCallCorrelationId());
+    const unique = new Set(ids);
+    expect(unique.size).toBe(ids.length);
+    for (const id of ids) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    }
   });
 });
