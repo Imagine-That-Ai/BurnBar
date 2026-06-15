@@ -1,6 +1,7 @@
 /**
  * BOLA negative coverage — consumeCredentialTransfer cross-tenant denial.
  */
+import "./bolaSetup.js";
 import { Timestamp } from "firebase-admin/firestore";
 import { describe, it, vi } from "vitest";
 

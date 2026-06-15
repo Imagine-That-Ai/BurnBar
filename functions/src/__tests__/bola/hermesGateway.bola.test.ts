@@ -1,6 +1,7 @@
 /**
  * BOLA negative coverage — Hermes Gateway callables + HTTP dispatcher.
  */
+import "./bolaSetup.js";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
