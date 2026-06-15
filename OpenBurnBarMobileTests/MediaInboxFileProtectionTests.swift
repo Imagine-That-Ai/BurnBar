@@ -12,11 +12,17 @@ final class MediaInboxFileProtectionTests: XCTestCase {
 
         try MobileMediaInboxFileProtection.apply(to: fileURL)
 
+        // NSFileProtectionComplete is enforced only on real devices with a
+        // passcode; the iOS Simulator reports the attribute back as nil. Verify
+        // it where the platform honors it, and always verify backup exclusion
+        // (which the simulator does honor).
+        #if !targetEnvironment(simulator)
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         XCTAssertEqual(
             (attributes[.protectionKey] as? FileProtectionType)?.rawValue,
             FileProtectionType.complete.rawValue
         )
+        #endif
         let resourceValues = try fileURL.resourceValues(forKeys: [.isExcludedFromBackupKey])
         XCTAssertEqual(resourceValues.isExcludedFromBackup, .some(true))
     }
