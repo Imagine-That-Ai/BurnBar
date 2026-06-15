@@ -489,6 +489,7 @@ for (const name of [
 const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
 for (const collection of [
   "hermes_gateway_clients",
+  "hermes_gateway_destinations",
   "hermes_gateway_events",
   "hermes_gateway_messages",
   "hermes_gateway_typing",
@@ -501,7 +502,6 @@ for (const collection of [
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow write: if false;/, `${collection} writes must stay server-owned`);
 }
-assert.match(rules, /function hermesGatewayDestinationWrite\(userId, destinationId\)/);
 assert.match(rules, /match \/users\/\{userId\}\/hermes_gateway_destinations\/\{destinationId\}/);
 assert.match(rules, /hasActiveHostedQuotaEntitlement\(userId\)/);
 assert.match(rules, /match \/hermes_gateway_device_sessions\/\{sessionId\}/);
