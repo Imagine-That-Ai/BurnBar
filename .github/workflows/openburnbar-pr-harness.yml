@@ -165,7 +165,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
           packages: "platforms;android-35 build-tools;35.0.0 ndk;29.0.14206865"
 
@@ -837,7 +837,7 @@ jobs:
         with:
           java-version: "21"
           distribution: temurin
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - name: Android iroh-relay JVM tests
         run: cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon
 
@@ -856,7 +856,7 @@ jobs:
         with:
           java-version: "21"
           distribution: temurin
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - name: Inject Android Firebase config
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -920,7 +920,7 @@ jobs:
         with:
           java-version: "21"
           distribution: temurin
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       # gradle's processDebugGoogleServices needs google-services.json; this job
       # previously had no inject step, so it failed before any test ran.
       - name: Inject Android Firebase config
