@@ -1,6 +1,6 @@
 {
   "target": 2000,
-  "total": 21,
+  "total": 20,
   "files": [
     {
       "path": "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift",
@@ -41,10 +41,6 @@
     {
       "path": "AgentLens/Views/Chat/ChatSessionController.swift",
       "lines": 2545
-    },
-    {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
-      "lines": 2490
     },
     {
       "path": "AgentLens/Views/Settings/ConnectionsSettingsView.swift",
