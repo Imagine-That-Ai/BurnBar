@@ -23,10 +23,6 @@
       "lines": 3383
     },
     {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
-      "lines": 3281
-    },
-    {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView.swift",
       "lines": 3267
     },
@@ -37,6 +33,10 @@
     {
       "path": "OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift",
       "lines": 2801
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
+      "lines": 2606
     },
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
