@@ -39,6 +39,8 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
   ultraAnnual: "com.openburnbar.ultra.annual.v2",
   agentControlActions100: "com.openburnbar.agentControl.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
+  elderWandSearches100: "com.openburnbar.elderWand.searches100",
+  elderWandSearches500: "com.openburnbar.elderWand.searches500",
 });
 export const GOOGLE_PLAY_PRODUCTS = Object.freeze({
   cloudMonthly: "com.openburnbar.pro.monthly",
@@ -49,6 +51,8 @@ export const GOOGLE_PLAY_PRODUCTS = Object.freeze({
   ultraAnnual: "com.openburnbar.ultra.annual",
   agentControlActions100: "com.openburnbar.agentcontrol.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
+  elderWandSearches100: "com.openburnbar.elderwand.searches100",
+  elderWandSearches500: "com.openburnbar.elderwand.searches500",
 });
 const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.cloudMonthly,
@@ -61,6 +65,8 @@ const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
 const REQUIRED_TOP_UP_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.agentControlActions100,
   COMMERCIAL_PRODUCTS.flooRelay50GB,
+  COMMERCIAL_PRODUCTS.elderWandSearches100,
+  COMMERCIAL_PRODUCTS.elderWandSearches500,
 ];
 const REQUIRED_COMMERCIAL_PRODUCT_IDS = [
   ...REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS,
@@ -175,6 +181,10 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
   AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
     COMMERCIAL_PRODUCTS.agentControlActions100,
   FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
+  ELDER_WAND_SEARCHES_100_PRODUCT_ID:
+    COMMERCIAL_PRODUCTS.elderWandSearches100,
+  ELDER_WAND_SEARCHES_500_PRODUCT_ID:
+    COMMERCIAL_PRODUCTS.elderWandSearches500,
   GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudMonthly,
   GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudAnnual,
   GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID:
@@ -185,6 +195,10 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
   GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
     GOOGLE_PLAY_PRODUCTS.agentControlActions100,
   GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.flooRelay50GB,
+  GOOGLE_PLAY_ELDER_WAND_SEARCHES_100_PRODUCT_ID:
+    GOOGLE_PLAY_PRODUCTS.elderWandSearches100,
+  GOOGLE_PLAY_ELDER_WAND_SEARCHES_500_PRODUCT_ID:
+    GOOGLE_PLAY_PRODUCTS.elderWandSearches500,
 };
 const REQUIRED_COMMERCIAL_ENV_PRESENT = [
   "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",

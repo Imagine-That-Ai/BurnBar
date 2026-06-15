@@ -87,6 +87,22 @@ const TOP_UPS = [
     reviewNote:
       'Consumable top-up for BurnBar Cloud Pro subscribers. Adds 50 GB of Floo relay bandwidth allowance to the signed-in user ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Floo Relay top-ups.',
   },
+  {
+    productId: 'com.openburnbar.elderWand.searches100',
+    name: 'Elder Wand Search 100',
+    description: 'Adds 100 hosted Elder Wand Fusion web_search credits.',
+    priceUSD: '4.99',
+    reviewNote:
+      'Consumable top-up for BurnBar Cloud Pro or Ultra subscribers. Adds 100 hosted web_search credits for Elder Wand Fusion to the signed-in user allowance ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Elder Wand Search top-ups.',
+  },
+  {
+    productId: 'com.openburnbar.elderWand.searches500',
+    name: 'Elder Wand Search 500',
+    description: 'Adds 500 hosted Elder Wand Fusion web_search credits.',
+    priceUSD: '19.99',
+    reviewNote:
+      'Consumable top-up for BurnBar Cloud Pro or Ultra subscribers. Adds 500 hosted web_search credits for Elder Wand Fusion to the signed-in user allowance ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Elder Wand Search top-ups.',
+  },
 ];
 
 function b64u(value) {

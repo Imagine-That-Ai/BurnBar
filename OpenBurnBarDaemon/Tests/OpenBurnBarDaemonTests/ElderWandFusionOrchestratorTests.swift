@@ -332,8 +332,19 @@ final class ElderWandToolLoopTests: XCTestCase {
 
     func testSearchBackendResolvesFromEnvironment() {
         XCTAssertEqual(
-            ElderWandSearchBackend.resolve(environment: ["BURNBAR_BRAVE_SEARCH_API_KEY": "x"]),
-            .brave(apiKey: "x")
+            ElderWandSearchBackend.resolve(environment: [
+                "BURNBAR_PERPLEXITY_SEARCH_API_KEY": "x",
+                "TAVILY_API_KEY": "y",
+                "BURNBAR_BRAVE_SEARCH_API_KEY": "z"
+            ]),
+            .perplexity(apiKey: "x")
+        )
+        XCTAssertEqual(
+            ElderWandSearchBackend.resolveAll(environment: [
+                "PERPLEXITY_API_KEY": "x",
+                "TAVILY_API_KEY": "y"
+            ]),
+            [.perplexity(apiKey: "x"), .tavily(apiKey: "y")]
         )
         XCTAssertEqual(
             ElderWandSearchBackend.resolve(environment: ["TAVILY_API_KEY": "y"]),

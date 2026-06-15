@@ -18,6 +18,7 @@ export { evaluateMediaBudget } from "./mediaBudget.js";
 export { evaluateComputerUseBudget } from "./computerUseBudget.js";
 export { computeTierCogsDaily } from "./tierCogs.js";
 export { reserveAgentControlActionBudget, reserveFlooRelayBudget } from "./cloudProAllowance.js";
+export { performElderWandHostedSearch } from "./elderWandHostedSearch.js";
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";

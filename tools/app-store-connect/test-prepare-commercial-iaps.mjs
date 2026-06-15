@@ -43,9 +43,13 @@ for (const subscription of SUBSCRIPTIONS) {
 assert.deepEqual([...topUpByProduct.keys()], [
   'com.openburnbar.agentControl.actions100',
   'com.openburnbar.floo.relay50gb',
+  'com.openburnbar.elderWand.searches100',
+  'com.openburnbar.elderWand.searches500',
 ]);
 assert.equal(topUpByProduct.get('com.openburnbar.agentControl.actions100').priceUSD, '4.99');
 assert.equal(topUpByProduct.get('com.openburnbar.floo.relay50gb').priceUSD, '4.99');
+assert.equal(topUpByProduct.get('com.openburnbar.elderWand.searches100').priceUSD, '4.99');
+assert.equal(topUpByProduct.get('com.openburnbar.elderWand.searches500').priceUSD, '19.99');
 
 const source = readFileSync(new URL('./prepare-commercial-iaps.js', import.meta.url), 'utf8');
 assert.doesNotMatch(

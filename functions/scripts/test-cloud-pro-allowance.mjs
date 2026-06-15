@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import {
   allowanceDocPath,
   CLOUD_PRO_ACTION_TOP_UP_UNIT,
+  CLOUD_PRO_FUSION_SEARCH_LARGE_TOP_UP_UNIT,
+  CLOUD_PRO_FUSION_SEARCH_TOP_UP_UNIT,
   CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY,
   CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP,
   CLOUD_PRO_RELAY_TOP_UP_UNIT_GB,
@@ -61,6 +63,14 @@ assert.deepEqual(unitsForCloudProTopUp("floo_relay_50gb", 2), {
   meter: "relay_gb",
   units: CLOUD_PRO_RELAY_TOP_UP_UNIT_GB * 2,
 });
+assert.deepEqual(unitsForCloudProTopUp("elder_wand_searches_100"), {
+  meter: "fusion_searches",
+  units: CLOUD_PRO_FUSION_SEARCH_TOP_UP_UNIT,
+});
+assert.deepEqual(unitsForCloudProTopUp("elder_wand_searches_500", 2), {
+  meter: "fusion_searches",
+  units: CLOUD_PRO_FUSION_SEARCH_LARGE_TOP_UP_UNIT * 2,
+});
 
 const tunedConfig = normalizeCloudProAllowanceConfig({
   includedHostedActionsMonthly: "250",
@@ -69,10 +79,20 @@ const tunedConfig = normalizeCloudProAllowanceConfig({
   includedRelayGBMonthly: "25",
   relayTopUpUnitGB: "25",
   monthlyRelayGBCap: "150",
+  includedFusionSearchesMonthly: "75",
+  includedUltraFusionSearchesMonthly: "225",
+  fusionSearchTopUpUnit: "75",
+  fusionSearchLargeTopUpUnit: "375",
+  monthlyFusionSearchCap: "600",
+  monthlyUltraFusionSearchCap: "1200",
 });
 assert.deepEqual(unitsForCloudProTopUp("agent_control_actions_100", 2, tunedConfig), {
   meter: "hosted_actions",
   units: 100,
+});
+assert.deepEqual(unitsForCloudProTopUp("elder_wand_searches_500", 1, tunedConfig), {
+  meter: "fusion_searches",
+  units: 375,
 });
 
 const invalidConfig = normalizeCloudProAllowanceConfig({

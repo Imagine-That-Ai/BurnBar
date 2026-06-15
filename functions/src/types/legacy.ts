@@ -28,6 +28,7 @@ export const SUPPORTED_PROVIDERS = [
   "antigravity",
   "xai",
   "mimo",
+  "openburnbar",
 ] as const;
 
 export type Provider = (typeof SUPPORTED_PROVIDERS)[number];

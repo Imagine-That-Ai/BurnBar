@@ -11,16 +11,17 @@ import OpenBurnBarCore
 // SSRF-safe `OpenBurnBarBrowserTargetPolicy` + redirect guard the browser
 // subsystem uses) and returns stripped page text.
 //
-// `web_search` is a configurable HTTP backend (Brave or Tavily) keyed from the
-// daemon environment. When NO key is configured the tool returns a graceful
+// `web_search` is a configurable HTTP backend (Perplexity or Tavily) keyed from
+// the daemon environment. When NO key is configured the tool returns a graceful
 // "search unavailable" tool result instead of crashing — the model simply
 // proceeds without web search.
 
 /// Which search provider `web_search` talks to, resolved from the environment.
 enum ElderWandSearchBackend: Sendable, Equatable {
-    /// Brave Search API (`https://api.search.brave.com`). Key from
-    /// `BURNBAR_BRAVE_SEARCH_API_KEY` (or legacy `BRAVE_SEARCH_API_KEY`).
-    case brave(apiKey: String)
+    /// Perplexity Search API (`https://api.perplexity.ai/search`). Key from
+    /// `BURNBAR_PERPLEXITY_SEARCH_API_KEY`, `PERPLEXITY_SEARCH_API_KEY`, or
+    /// `PERPLEXITY_API_KEY`.
+    case perplexity(apiKey: String)
     /// Tavily Search API (`https://api.tavily.com`). Key from
     /// `BURNBAR_TAVILY_API_KEY` (or legacy `TAVILY_API_KEY`).
     case tavily(apiKey: String)
@@ -29,16 +30,22 @@ enum ElderWandSearchBackend: Sendable, Equatable {
 
     var isAvailable: Bool {
         switch self {
-        case .brave, .tavily: return true
+        case .perplexity, .tavily: return true
         case .unavailable: return false
         }
     }
 
-    /// Resolve the backend from a process environment. Brave wins when both
-    /// keys are present (it is the cheaper/default backend).
+    /// Resolve the primary backend from a process environment. Perplexity wins
+    /// when multiple keys are present; Tavily is fallback.
     static func resolve(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> ElderWandSearchBackend {
+        resolveAll(environment: environment).first ?? .unavailable
+    }
+
+    static func resolveAll(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [ElderWandSearchBackend] {
         func value(_ keys: [String]) -> String? {
             for key in keys {
                 if let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -48,13 +55,14 @@ enum ElderWandSearchBackend: Sendable, Equatable {
             }
             return nil
         }
-        if let key = value(["BURNBAR_BRAVE_SEARCH_API_KEY", "BRAVE_SEARCH_API_KEY"]) {
-            return .brave(apiKey: key)
+        var backends: [ElderWandSearchBackend] = []
+        if let key = value(["BURNBAR_PERPLEXITY_SEARCH_API_KEY", "PERPLEXITY_SEARCH_API_KEY", "PERPLEXITY_API_KEY"]) {
+            backends.append(.perplexity(apiKey: key))
         }
         if let key = value(["BURNBAR_TAVILY_API_KEY", "TAVILY_API_KEY"]) {
-            return .tavily(apiKey: key)
+            backends.append(.tavily(apiKey: key))
         }
-        return .unavailable
+        return backends
     }
 }
 
@@ -77,7 +85,7 @@ struct ElderWandTool: Sendable {
 
 /// Builds the `web_fetch` + `web_search` tools backed by URLSession.
 struct ElderWandWebTools: Sendable {
-    private let searchBackend: ElderWandSearchBackend
+    private let searchBackends: [ElderWandSearchBackend]
     private let logger: BurnBarDaemonLogger
     /// Injectable fetcher so the SSRF + strip path is unit-testable without
     /// real network. Defaults to the same posture as the browser subsystem.
@@ -87,12 +95,12 @@ struct ElderWandWebTools: Sendable {
     private let searchRunner: @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
     init(
-        searchBackend: ElderWandSearchBackend = ElderWandSearchBackend.resolve(),
+        searchBackend: ElderWandSearchBackend? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "elder-wand-web-tools"),
         fetcher: (@Sendable (URL) async throws -> (Data, HTTPURLResponse))? = nil,
         searchRunner: (@Sendable (URLRequest) async throws -> (Data, HTTPURLResponse))? = nil
     ) {
-        self.searchBackend = searchBackend
+        self.searchBackends = searchBackend.map { [$0] } ?? ElderWandSearchBackend.resolveAll()
         self.logger = logger
         self.fetcher = fetcher ?? { url in
             let delegate = BurnBarBrowserRedirectGuard()
@@ -197,11 +205,11 @@ struct ElderWandWebTools: Sendable {
                 ])
             ])
         ])
-        let backend = self.searchBackend
+        let backends = self.searchBackends.filter(\.isAvailable)
         let runner = self.searchRunner
         let logger = self.logger
         return ElderWandTool(name: "web_search", schema: schema) { arguments in
-            guard backend.isAvailable else {
+            guard !backends.isEmpty else {
                 return "web_search unavailable: no search provider API key is configured on this server. "
                     + "Proceed using your own knowledge and any pages you can reach with web_fetch."
             }
@@ -210,24 +218,30 @@ struct ElderWandWebTools: Sendable {
                   !query.isEmpty else {
                 return "web_search error: missing required \"query\" argument."
             }
-            do {
-                let request = try Self.makeSearchRequest(backend: backend, query: query)
-                let (data, response) = try await runner(request)
-                guard (200..<300).contains(response.statusCode) else {
-                    return "web_search error: provider returned HTTP \(response.statusCode)."
+            var providerErrors: [String] = []
+            for backend in backends {
+                do {
+                    let request = try Self.makeSearchRequest(backend: backend, query: query)
+                    let (data, response) = try await runner(request)
+                    guard (200..<300).contains(response.statusCode) else {
+                        providerErrors.append("HTTP \(response.statusCode)")
+                        continue
+                    }
+                    let results = Self.parseSearchResults(backend: backend, data: data)
+                    guard !results.isEmpty else {
+                        providerErrors.append("no results")
+                        continue
+                    }
+                    let rendered = results.prefix(8).enumerated().map { index, result in
+                        "\(index + 1). \(result.title)\n   \(result.url)\n   \(result.snippet)"
+                    }.joined(separator: "\n")
+                    return "web_search results for \"\(query)\":\n\(rendered)"
+                } catch {
+                    providerErrors.append(error.localizedDescription)
+                    logger.silentFailure("elder_wand_web_search", error: error)
                 }
-                let results = Self.parseSearchResults(backend: backend, data: data)
-                guard !results.isEmpty else {
-                    return "web_search: no results for \"\(query)\"."
-                }
-                let rendered = results.prefix(8).enumerated().map { index, result in
-                    "\(index + 1). \(result.title)\n   \(result.url)\n   \(result.snippet)"
-                }.joined(separator: "\n")
-                return "web_search results for \"\(query)\":\n\(rendered)"
-            } catch {
-                logger.silentFailure("elder_wand_web_search", error: error)
-                return "web_search error: \(error.localizedDescription)"
             }
+            return "web_search error: all configured providers failed (\(providerErrors.prefix(3).joined(separator: "; ")))."
         }
     }
 
@@ -242,26 +256,27 @@ struct ElderWandWebTools: Sendable {
         query: String
     ) throws -> URLRequest {
         switch backend {
-        case .brave(let apiKey):
-            var components = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")
-            components?.queryItems = [
-                URLQueryItem(name: "q", value: query),
-                URLQueryItem(name: "count", value: "8")
-            ]
-            guard let url = components?.url else { throw URLError(.badURL) }
+        case .perplexity(let apiKey):
+            guard let url = URL(string: "https://api.perplexity.ai/search") else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-            request.setValue(apiKey, forHTTPHeaderField: "X-Subscription-Token")
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            let payload: [String: Any] = [
+                "query": query,
+                "max_results": 8
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             return request
         case .tavily(let apiKey):
             guard let url = URL(string: "https://api.tavily.com/search") else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             let payload: [String: Any] = [
-                "api_key": apiKey,
                 "query": query,
+                "search_depth": "basic",
                 "max_results": 8
             ]
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
@@ -279,15 +294,19 @@ struct ElderWandWebTools: Sendable {
             return []
         }
         switch backend {
-        case .brave:
-            guard let web = object["web"] as? [String: Any],
-                  let results = web["results"] as? [[String: Any]] else {
-                return []
-            }
+        case .perplexity:
+            let results =
+                (object["results"] as? [[String: Any]])
+                ?? (object["search_results"] as? [[String: Any]])
+                ?? []
+            guard !results.isEmpty else { return [] }
             return results.compactMap { item in
                 guard let url = item["url"] as? String else { return nil }
                 let title = (item["title"] as? String) ?? url
-                let snippet = (item["description"] as? String) ?? ""
+                let snippet = (item["snippet"] as? String)
+                    ?? (item["description"] as? String)
+                    ?? (item["content"] as? String)
+                    ?? ""
                 return SearchResult(title: title, url: url, snippet: Self.condense(snippet))
             }
         case .tavily:

@@ -18,6 +18,7 @@ export const REQUIRED_SUSPENDED_USER_DENIED_SURFACES = [
   "remote_mcp",
   "floo_relay",
   "hosted_agent_control",
+  "elder_wand_search",
 ] as const;
 
 type RequiredSuspendedUserDeniedSurface = (typeof REQUIRED_SUSPENDED_USER_DENIED_SURFACES)[number];
@@ -73,7 +74,7 @@ export function cloudFeatureSuspensionDeniesSurface(
   if (suspension.deniedSurfaces.includes("burnbar_cloud")) return true;
   return (
     suspension.deniedSurfaces.includes("burnbar_cloud_pro") &&
-    (surface === "floo_relay" || surface === "hosted_agent_control")
+    (surface === "floo_relay" || surface === "hosted_agent_control" || surface === "elder_wand_search")
   );
 }
 
@@ -122,6 +123,7 @@ function isCloudFeatureSurface(raw: unknown): raw is CloudFeatureSurface {
     raw === "remote_mcp" ||
     raw === "floo_relay" ||
     raw === "hosted_agent_control" ||
+    raw === "elder_wand_search" ||
     raw === "burnbar_cloud" ||
     raw === "burnbar_cloud_pro"
   );
