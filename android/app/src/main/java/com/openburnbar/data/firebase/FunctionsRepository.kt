@@ -389,7 +389,7 @@ internal fun buildHermesGatewayDeviceGrantPayload(
     return payload
 }
 
-private fun Any?.asStringAnyMap(): Map<String, Any>? {
+internal fun Any?.asStringAnyMap(): Map<String, Any>? {
     val raw = this as? Map<*, *> ?: return null
     val typed = LinkedHashMap<String, Any>(raw.size)
     for ((key, value) in raw) {

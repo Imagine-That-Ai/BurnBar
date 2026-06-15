@@ -38,7 +38,7 @@ describe("check-collection-group-coverage.mjs", () => {
     try {
       writeFileSync(
         file,
-        'declare const db: { collectionGroup(name: string): { where(...args: unknown[]): { get(): unknown } } };\n' +
+        "declare const db: { collectionGroup(name: string): { where(...args: unknown[]): { get(): unknown } } };\n" +
           'export const q = db.collectionGroup("cg_guard_unindexed").where("nope", "==", true).get();\n',
         "utf8",
       );
@@ -72,9 +72,7 @@ describe("check-collection-group-coverage.mjs", () => {
       ["entitlement_bindings", "id"],
     ];
     for (const [group, field] of required) {
-      const override = declared.fieldOverrides?.find(
-        (o) => o.collectionGroup === group && o.fieldPath === field,
-      );
+      const override = declared.fieldOverrides?.find((o) => o.collectionGroup === group && o.fieldPath === field);
       expect(override, `${group}.${field} fieldOverride`).toBeDefined();
       const scopes = (override?.indexes ?? []).map((i) => `${i.queryScope}:${i.order}`);
       // Overrides replace the default single-field indexes, so the

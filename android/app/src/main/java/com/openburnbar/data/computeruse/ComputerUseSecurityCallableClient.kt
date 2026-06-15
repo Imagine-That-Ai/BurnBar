@@ -5,9 +5,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
-import com.openburnbar.data.cloud.AndroidCloudVaultRevocationRotation
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
+import com.openburnbar.data.cloud.AndroidCloudVaultRevocationRotation
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
+import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProof
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofPayload
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofSigner
@@ -319,6 +320,7 @@ class ComputerUseSecurityCallableClient(
             identity = identity,
             firestore = firestore,
         )
+        val identityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(identity.publicKeyData)
         val issuedAtMillis = System.currentTimeMillis()
         val proofPayload =
             CloudVaultTrustedDeviceActionProofPayload(
@@ -330,13 +332,13 @@ class ComputerUseSecurityCallableClient(
                 nonce = nonce,
                 issuedAtMillis = issuedAtMillis,
                 deviceSignalIdentityKeyId = identity.identityKeyId,
-                deviceSignalIdentityPublicKeyFingerprint = identity.publicKeyFingerprint,
+                deviceSignalIdentityPublicKeyFingerprint = identityPublicKeyFingerprint,
             )
         val signature = CloudVaultTrustedDeviceActionProofSigner.sign(proofPayload, identity)
         val actionProof =
             CloudVaultTrustedDeviceActionProof(
                 deviceSignalIdentityKeyId = identity.identityKeyId,
-                deviceSignalIdentityPublicKeyFingerprint = identity.publicKeyFingerprint,
+                deviceSignalIdentityPublicKeyFingerprint = identityPublicKeyFingerprint,
                 issuedAtMillis = issuedAtMillis,
                 signature = signature,
             ).asMap()

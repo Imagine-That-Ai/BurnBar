@@ -261,4 +261,3 @@ export async function destroyCredential(secretVersionName: string): Promise<void
   const sm = await getSecretManager();
   await sm.projects.secrets.versions.destroy({ name: secretVersionName });
 }
-

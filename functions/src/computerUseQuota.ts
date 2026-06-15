@@ -70,7 +70,7 @@ async function recomputeForUser(uid: string, dayKey: string): Promise<void> {
   await firestore.doc(`users/${uid}/computer_use_quota_usage/${dayKey}`).set(counters, { merge: true });
 }
 
-export function uidFromComputerUseSessionPath(path: string): string | null {
+function uidFromComputerUseSessionPath(path: string): string | null {
   const parts = path.split("/");
   if (parts.length === 4 && parts[0] === "users" && parts[2] === "computer_use_sessions" && parts[1] && parts[3]) {
     return parts[1];

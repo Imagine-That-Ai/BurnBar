@@ -4,7 +4,10 @@ type HeaderWriter = {
 
 const PUBLIC_JSON_SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
   ["Content-Security-Policy", "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"],
-  ["Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"],
+  [
+    "Permissions-Policy",
+    "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+  ],
   ["Referrer-Policy", "no-referrer"],
   ["X-Content-Type-Options", "nosniff"],
 ];

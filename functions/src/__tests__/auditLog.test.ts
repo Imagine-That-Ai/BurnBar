@@ -38,9 +38,7 @@ function headFor(chain: Array<AuditEventCore & { hash: string }>, anchoredSeq?: 
 describe("auditActorLabel — self-reported platform hint is clamped", () => {
   const withHeader = (v: unknown) => {
     const headers =
-      v === undefined || v === null
-        ? {}
-        : { "x-burnbar-platform": typeof v === "string" ? v : String(v) };
+      v === undefined || v === null ? {} : { "x-burnbar-platform": typeof v === "string" ? v : String(v) };
     const request = { rawRequest: { headers } };
     // @ts-expect-error reason: partial CallableRequest stub for auditActorLabel
     return auditActorLabel(request);

@@ -168,7 +168,9 @@ private final class VirtualHIDBridgeSocketAdapter {
             let envelope = PrivilegedInputDispatchEnvelope(
                 request: dispatchRequest,
                 peerAuditToken: peerToken,
-                capabilityToken: legacy.capabilityToken
+                capabilityToken: legacy.capabilityToken,
+                presentingEscrowDeviceId: legacy.presentingEscrowDeviceId,
+                requiredAttestationHashBlake3: legacy.requiredAttestationHashBlake3
             )
             let response = try performInput(envelope)
             try write(
@@ -296,6 +298,8 @@ private struct LegacyBridgeRequest: Decodable {
     var key: String?
     var modifiers: [String]?
     var capabilityToken: CapabilityToken?
+    var presentingEscrowDeviceId: String?
+    var requiredAttestationHashBlake3: String?
 }
 
 private struct BridgeResponse: Encodable {

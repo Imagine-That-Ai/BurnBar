@@ -65,7 +65,6 @@ function buildConfig(): EnvConfig {
     return s === "true";
   };
 
-
   const toNum = (v: unknown, def: number): number => {
     if (v === undefined || v === null) return def;
     const n = Number(v);

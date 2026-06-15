@@ -254,9 +254,7 @@ export function parseEntitlementBindingDoc(raw: unknown): EntitlementBindingDoc 
     return undefined;
   }
   const appAccountToken =
-    typeof raw.appAccountToken === "string" && raw.appAccountToken.trim()
-      ? raw.appAccountToken
-      : raw.id;
+    typeof raw.appAccountToken === "string" && raw.appAccountToken.trim() ? raw.appAccountToken : raw.id;
   return {
     id: raw.id,
     uid: raw.uid,
@@ -414,7 +412,11 @@ export function coerceFirestoreDate(value: unknown): Date | undefined {
   }
   if (isRecord(value)) {
     const seconds =
-      typeof value.seconds === "number" ? value.seconds : typeof value._seconds === "number" ? value._seconds : undefined;
+      typeof value.seconds === "number"
+        ? value.seconds
+        : typeof value._seconds === "number"
+          ? value._seconds
+          : undefined;
     const nanos =
       typeof value.nanoseconds === "number"
         ? value.nanoseconds

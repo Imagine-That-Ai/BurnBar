@@ -45,8 +45,9 @@ describe("callable shared entitlement predicates", () => {
     expect(isActivePremiumEntitlement({ ...activeEntitlement("com.openburnbar.pro.monthly"), active: false })).toBe(
       false,
     );
-    expect(isActivePremiumEntitlement(activeEntitlement("com.openburnbar.pro.monthly", "2000-01-01T00:00:00.000Z")))
-      .toBe(false);
+    expect(
+      isActivePremiumEntitlement(activeEntitlement("com.openburnbar.pro.monthly", "2000-01-01T00:00:00.000Z")),
+    ).toBe(false);
   });
 
   it("preserves the legacy expiry sentinel while delegating date math", () => {

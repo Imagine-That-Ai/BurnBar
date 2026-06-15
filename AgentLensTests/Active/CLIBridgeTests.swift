@@ -815,6 +815,54 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(dirs.contains("/Users/test/.factory/bin"))
     }
 
+    func test_cliExecutableResolver_agentProcessEnvironmentDropsInheritedSecrets() {
+        let env = CLIExecutableResolver.agentProcessEnvironment(
+            executablePath: "/Users/test/.local/bin/codex",
+            baseEnvironment: [
+                "PATH": "/custom/bin:/usr/bin",
+                "SHELL": "/bin/zsh",
+                "TMPDIR": "/tmp/openburnbar",
+                "LANG": "en_US.UTF-8",
+                "USER": "tester",
+                "LOGNAME": "tester",
+                "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "daemon-token",
+                "OPENBURNBAR_GATEWAY_AUTH_TOKEN": "gateway-token",
+                "AWS_SECRET_ACCESS_KEY": "aws-secret",
+                "GITHUB_TOKEN": "github-secret",
+                "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
+            ],
+            homeDirectory: "/Users/test"
+        )
+
+        XCTAssertNil(env["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"])
+        XCTAssertNil(env["OPENBURNBAR_GATEWAY_AUTH_TOKEN"])
+        XCTAssertNil(env["AWS_SECRET_ACCESS_KEY"])
+        XCTAssertNil(env["GITHUB_TOKEN"])
+        XCTAssertNil(env["SSH_AUTH_SOCK"])
+        XCTAssertEqual(env["HOME"], "/Users/test")
+        XCTAssertEqual(env["SHELL"], "/bin/zsh")
+        XCTAssertEqual(env["TMPDIR"], "/tmp/openburnbar")
+        XCTAssertEqual(env["USER"], "tester")
+        XCTAssertEqual(env["LOGNAME"], "tester")
+    }
+
+    func test_cliExecutableResolver_agentProcessEnvironmentPreservesRunnablePathOnly() {
+        let env = CLIExecutableResolver.agentProcessEnvironment(
+            executablePath: "/Users/test/.local/bin/codex",
+            baseEnvironment: ["PATH": "/custom/bin:/usr/bin"],
+            homeDirectory: "/Users/test"
+        )
+        let path = env["PATH"] ?? ""
+        let entries = path.split(separator: ":").map(String.init)
+
+        XCTAssertEqual(entries.first, "/Users/test/.local/bin")
+        XCTAssertTrue(entries.contains("/opt/homebrew/bin"))
+        XCTAssertTrue(entries.contains("/usr/local/bin"))
+        XCTAssertTrue(entries.contains("/usr/bin"))
+        XCTAssertTrue(entries.contains("/custom/bin"))
+        XCTAssertFalse(entries.contains(""))
+    }
+
     func test_cliExecutableResolver_checksUserManagedBinsBeforeLoginShell() async throws {
         CLIExecutableResolver.clearCache()
 
@@ -1723,12 +1771,14 @@ final class CLIBridgeTests: XCTestCase {
             workspacePath: workspace.path,
             homePath: home.path
         )
+        XCTAssertTrue(profile.contains("(deny default)"))
         XCTAssertTrue(profile.contains("(deny network*)"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/Library/Keychains\"))"))
-        XCTAssertTrue(profile.contains("(deny file-write* (require-not (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(allow process*)"))
+        XCTAssertTrue(profile.contains("(allow mach*)"))
+        XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"\(homePath)\")))"))
         XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
         XCTAssertTrue(profile.contains("(allow file-write* (literal \"/dev/null\"))"))
+        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"\(homePath)/.cargo/bin\"))"))
     }
 
     func test_restrictedShellSandboxProfile_canonicalizesWorkspaceAndHomePaths() throws {
@@ -1748,7 +1798,7 @@ final class CLIBridgeTests: XCTestCase {
         let workspacePath = realpathString(workspace)
         let homePath = realpathString(home)
         XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
+        XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"\(homePath)\")))"))
     }
 
     func test_restrictedShellSandboxProfile_enforcesNetworkAndSecretDenial() throws {

@@ -776,6 +776,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -804,6 +808,10 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_iroh_fn_method_irohblobnode_bootstrap(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`storeDir`: RustBuffer.ByValue,`relayUrl`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob(`ptr`: Pointer,`ticketText`: RustBuffer.ByValue,`destination`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob_internal(`ptr`: Pointer,`ticketText`: RustBuffer.ByValue,`destination`: RustBuffer.ByValue,`expectedSizeBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob_with_expected_size(`ptr`: Pointer,`ticketText`: RustBuffer.ByValue,`destination`: RustBuffer.ByValue,`expectedSizeBytes`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_iroh_fn_method_irohblobnode_identity(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -999,6 +1007,10 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob(
     ): Short
+    fun uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob_internal(
+    ): Short
+    fun uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob_with_expected_size(
+    ): Short
     fun uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity(
     ): Short
     fun uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob(
@@ -1080,6 +1092,12 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob() != 53241.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob_internal() != 21118.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob_with_expected_size() != 19302.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity() != 12806.toShort()) {
@@ -1521,6 +1539,14 @@ public interface IrohBlobNodeInterface {
      */
     fun `fetchBlob`(`ticketText`: kotlin.String, `destination`: kotlin.String): BlobTransferStats
 
+    fun `fetchBlobInternal`(`ticketText`: kotlin.String, `destination`: kotlin.String, `expectedSizeBytes`: kotlin.ULong?): BlobTransferStats
+
+    /**
+     * Same as `fetch_blob`, but fails before export when the downloaded byte
+     * stream exceeds the receiver's manifest-advertised size.
+     */
+    fun `fetchBlobWithExpectedSize`(`ticketText`: kotlin.String, `destination`: kotlin.String, `expectedSizeBytes`: kotlin.ULong): BlobTransferStats
+
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
@@ -1668,6 +1694,36 @@ open class IrohBlobNode: Disposable, AutoCloseable, IrohBlobNodeInterface {
     uniffiRustCallWithError(IrohFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob(
         it, FfiConverterString.lower(`ticketText`),FfiConverterString.lower(`destination`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(IrohFfiException::class)override fun `fetchBlobInternal`(`ticketText`: kotlin.String, `destination`: kotlin.String, `expectedSizeBytes`: kotlin.ULong?): BlobTransferStats {
+            return FfiConverterTypeBlobTransferStats.lift(
+    callWithPointer {
+    uniffiRustCallWithError(IrohFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob_internal(
+        it, FfiConverterString.lower(`ticketText`),FfiConverterString.lower(`destination`),FfiConverterOptionalULong.lower(`expectedSizeBytes`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Same as `fetch_blob`, but fails before export when the downloaded byte
+     * stream exceeds the receiver's manifest-advertised size.
+     */
+    @Throws(IrohFfiException::class)override fun `fetchBlobWithExpectedSize`(`ticketText`: kotlin.String, `destination`: kotlin.String, `expectedSizeBytes`: kotlin.ULong): BlobTransferStats {
+            return FfiConverterTypeBlobTransferStats.lift(
+    callWithPointer {
+    uniffiRustCallWithError(IrohFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob_with_expected_size(
+        it, FfiConverterString.lower(`ticketText`),FfiConverterString.lower(`destination`),FfiConverterULong.lower(`expectedSizeBytes`),_status)
 }
     }
     )
@@ -3184,6 +3240,38 @@ public object FfiConverterTypeIrohFfiError : FfiConverterRustBuffer<IrohFfiExcep
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalULong: FfiConverterRustBuffer<kotlin.ULong?> {
+    override fun read(buf: ByteBuffer): kotlin.ULong? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterULong.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ULong?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterULong.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.ULong?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterULong.write(value, buf)
+        }
+    }
 }
 
 

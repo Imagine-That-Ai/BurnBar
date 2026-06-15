@@ -1,17 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  assertRemoteMcpIssuerTokenPosture,
-  isRemoteMcpProductionIssuerRuntime,
-} from "../remoteMcpOAuth.js";
+import { assertRemoteMcpIssuerTokenPosture, isRemoteMcpProductionIssuerRuntime } from "../remoteMcpOAuth.js";
 
 describe("Remote MCP Functions issuer token posture", () => {
   it("allows local/test HMAC fallback for emulator compatibility", () => {
     expect(() =>
-      assertRemoteMcpIssuerTokenPosture(
-        { tokenSecret: "local-secret" },
-        { NODE_ENV: "test" },
-      ),
+      assertRemoteMcpIssuerTokenPosture({ tokenSecret: "local-secret" }, { NODE_ENV: "test" }),
     ).not.toThrow();
   });
 
@@ -28,12 +22,9 @@ describe("Remote MCP Functions issuer token posture", () => {
   });
 
   it("requires Ed25519 signing in production", () => {
-    expect(() =>
-      assertRemoteMcpIssuerTokenPosture(
-        {},
-        { REMOTE_MCP_RUNTIME_ENVIRONMENT: "production" },
-      ),
-    ).toThrow(/REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64/u);
+    expect(() => assertRemoteMcpIssuerTokenPosture({}, { REMOTE_MCP_RUNTIME_ENVIRONMENT: "production" })).toThrow(
+      /REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64/u,
+    );
   });
 
   it("detects production Cloud Run/Functions runtime", () => {

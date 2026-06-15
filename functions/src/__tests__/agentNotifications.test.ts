@@ -144,8 +144,10 @@ describe("M-023 agent-reply sweeper never logs a raw Firebase UID", () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
     const raw = errorSpy.mock.calls[0]?.[0];
     const payload: unknown = JSON.parse(String(raw));
-    expect(isRecord(payload)).toBe(true);
-    const record = payload as Record<string, unknown>;
+    if (!isRecord(payload)) {
+      throw new Error("expected structured log payload");
+    }
+    const record = payload;
 
     expect(record.event).toBe("agent_reply_sweeper_event_failed");
     // The fix logs the bare event document id.

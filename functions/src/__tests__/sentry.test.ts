@@ -15,28 +15,28 @@ describe("sentry sanitization", () => {
         headers: {
           authorization: "Bearer auth-secret",
           cookie: "session=cookie-secret",
-          "x-request-id": "request-123"
+          "x-request-id": "request-123",
         },
-        query_string: "token=secret-token&ok=1"
+        query_string: "token=secret-token&ok=1",
       },
       extra: {
         statusCode: 500,
         requestBody: {
           accessToken: "extra-access-token",
-          nested: { apiKey: "extra-api-key" }
+          nested: { apiKey: "extra-api-key" },
         },
         nested: {
           credential: "nested-credential",
-          url: "https://example.test/path?api_key=query-secret"
-        }
+          url: "https://example.test/path?api_key=query-secret",
+        },
       },
       breadcrumbs: [
         {
           type: "http",
           data: {
             url: "https://example.test/path?refresh_token=breadcrumb-secret",
-            authorization: "Bearer breadcrumb-secret"
-          }
+            authorization: "Bearer breadcrumb-secret",
+          },
         },
       ],
     };
@@ -53,7 +53,7 @@ describe("sentry sanitization", () => {
     expect(event.extra?.requestBody).toBe("[REDACTED]");
     expect(isRecord(event.extra?.nested) ? event.extra.nested.credential : undefined).toBe("[REDACTED]");
     expect(isRecord(event.extra?.nested) ? event.extra.nested.url : undefined).toBe(
-      "https://example.test/path?api_key=[REDACTED]"
+      "https://example.test/path?api_key=[REDACTED]",
     );
     expect(event.breadcrumbs?.[0]?.data?.authorization).toBe("[REDACTED]");
     expect(event.breadcrumbs?.[0]?.data?.url).toBe("https://example.test/path?refresh_token=[REDACTED]");

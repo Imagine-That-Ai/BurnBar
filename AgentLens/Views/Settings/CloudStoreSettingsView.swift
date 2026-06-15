@@ -8,17 +8,6 @@ import FirebaseFunctions
 import OpenBurnBarCore
 
 // MARK: - Cloud Store Settings View (macOS)
-//
-// Aurora-language parity with the iOS `CloudStoreView`. Warm
-// `EmberSurfaceBackground`, glass cards with ember-tinted hairlines,
-// primary-gradient capsule CTAs, SF-Rounded display, the user-selectable
-// `CloudBadge` as the hero brand mark, an aurora-burst member card that
-// matches the iOS YouTab certificate row exactly.
-//
-private enum MacCloudStoreLegalURLs {
-    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
-    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
-}
 
 struct CloudStoreSettingsView: View {
 
@@ -1727,21 +1716,6 @@ private struct TierHolographicAccent: View {
             angle: .degrees(reduceMotion ? 0 : Double(phase) * 360)
         )
         .saturation(1.2)
-    }
-}
-
-private struct MacCloudStoreLegalLinks: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            Link("Privacy Policy", destination: MacCloudStoreLegalURLs.privacy)
-            Text("·")
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-            Link("Terms of Use (EULA)", destination: MacCloudStoreLegalURLs.terms)
-        }
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(DesignSystem.Colors.ember)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("macCloudStore.legalLinks")
     }
 }
 

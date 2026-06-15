@@ -15,7 +15,10 @@ type EndpointAuthorizationEntry = {
   notes?: string;
 };
 
-type MatrixDefaults = Omit<EndpointAuthorizationEntry, "exportedName" | "objectIdsFromClient" | "highRiskComputerUse" | "actionKind"> & {
+type MatrixDefaults = Omit<
+  EndpointAuthorizationEntry,
+  "exportedName" | "objectIdsFromClient" | "highRiskComputerUse" | "actionKind"
+> & {
   objectIdsFromClient?: string[];
   highRiskComputerUse?: boolean;
   actionKind?: string;
@@ -266,7 +269,8 @@ const outboundServiceJobs = entries(["sendVoIPOutbound", "sendFcmOutbound"], {
   tenantSource: "request.auth.uid and registered device token owner",
   objectIdsFromClient: ["deviceId", "notificationId"],
   ownershipCheck: "push target must be owned by authenticated uid or server-generated event",
-  negativeBolaTest: "functions/src/__tests__/voipPushMetadata.test.ts; functions/src/__tests__/submitAgentNotificationReply.test.ts",
+  negativeBolaTest:
+    "functions/src/__tests__/voipPushMetadata.test.ts; functions/src/__tests__/submitAgentNotificationReply.test.ts",
 });
 
 const HIGH_RISK_ENDPOINTS: Record<string, string> = {
@@ -295,13 +299,15 @@ export const endpointAuthorizationMatrix: EndpointAuthorizationEntry[] = [
   ...gatewayHttp,
   ...authScopedCallables,
   ...outboundServiceJobs,
-].map((entry) => {
-  const actionKind = HIGH_RISK_ENDPOINTS[entry.exportedName];
-  if (actionKind) {
-    return { ...entry, highRiskComputerUse: true, actionKind };
-  }
-  return entry;
-}).sort((left, right) => left.exportedName.localeCompare(right.exportedName));
+]
+  .map((entry) => {
+    const actionKind = HIGH_RISK_ENDPOINTS[entry.exportedName];
+    if (actionKind) {
+      return { ...entry, highRiskComputerUse: true, actionKind };
+    }
+    return entry;
+  })
+  .sort((left, right) => left.exportedName.localeCompare(right.exportedName));
 
 export function endpointAuthorizationByName(): Map<string, (typeof endpointAuthorizationMatrix)[number]> {
   return new Map(endpointAuthorizationMatrix.map((entry) => [entry.exportedName, entry]));

@@ -36,10 +36,10 @@ import {
   type SweepDocRef,
   type SweepMarkerSnapshot,
   type SweepQuery,
-  type SweepQuerySnapshot,
 } from "../quotaRefreshSweep.js";
 
 type Doc = Record<string, unknown>;
+type FakeQuerySnapshot<Doc> = { readonly docs: readonly Doc[] };
 
 /**
  * Minimal in-memory model of the `provider_accounts` /
@@ -166,7 +166,7 @@ class FakeQuery implements SweepQuery<FakeSweepDoc> {
     return new FakeQuery(this.db, this.group, this.filters, this.orderField, this.limitCount, path);
   }
 
-  async get(): Promise<SweepQuerySnapshot<FakeSweepDoc>> {
+  async get(): Promise<FakeQuerySnapshot<FakeSweepDoc>> {
     this.db.queryLog.push({
       group: this.group,
       filters: this.filters.map((f) => `${f.field}${f.op}${JSON.stringify(f.value)}`),

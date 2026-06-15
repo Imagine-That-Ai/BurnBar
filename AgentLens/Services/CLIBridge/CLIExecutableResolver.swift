@@ -220,6 +220,57 @@ struct CLIExecutableResolver: Sendable {
         return env
     }
 
+    /// Environment handed to spawned third-party CLI agents.
+    ///
+    /// Executable resolution may inspect the user's login environment so common
+    /// version-manager installs can be found, but the agent process itself must
+    /// not inherit OpenBurnBar daemon tokens, cloud credentials, SSH agent
+    /// sockets, or CI secrets from the parent process. Profiles can still pass
+    /// explicit overrides (for example `CODEX_HOME`) at the call site.
+    static func agentProcessEnvironment(
+        executablePath: String? = nil,
+        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: String = NSHomeDirectory()
+    ) -> [String: String] {
+        var pathEntries = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            "\(homeDirectory)/.local/bin"
+        ]
+
+        if let executablePath {
+            let executableDirectory = URL(fileURLWithPath: executablePath)
+                .deletingLastPathComponent()
+                .standardizedFileURL
+                .path
+            pathEntries.insert(executableDirectory, at: 0)
+        }
+
+        pathEntries.append(contentsOf: userManagedExecutableSearchDirectories(homeDirectory: homeDirectory))
+        pathEntries.append(contentsOf: (baseEnvironment["PATH"] ?? "").split(separator: ":").map(String.init))
+
+        var env: [String: String] = [
+            "PATH": deduplicatedDirectories(pathEntries, homeDirectory: homeDirectory).joined(separator: ":"),
+            "HOME": homeDirectory,
+            "SHELL": baseEnvironment["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh",
+            "TMPDIR": baseEnvironment["TMPDIR"].flatMap { $0.isEmpty ? nil : $0 } ?? NSTemporaryDirectory(),
+            "LANG": baseEnvironment["LANG"].flatMap { $0.isEmpty ? nil : $0 } ?? "en_US.UTF-8",
+            "TERM": baseEnvironment["TERM"].flatMap { $0.isEmpty ? nil : $0 } ?? "dumb"
+        ]
+
+        for key in ["LC_ALL", "LC_CTYPE", "USER", "LOGNAME"] {
+            if let value = baseEnvironment[key], !value.isEmpty {
+                env[key] = value
+            }
+        }
+
+        return env
+    }
+
     private static func contentsOfDirectory(
         atPath path: String,
         appending suffix: String,

@@ -50,14 +50,10 @@ enum CLIArgumentBuilder {
             if !allowed.isEmpty {
                 arguments.append(contentsOf: ["--allowedTools", allowed.joined(separator: ",")])
             }
-            // T-TOOL-02(a): the dangerous-autonomy flag is gated behind the
-            // distribution-build check + a fresh local-auth proof. When gated off
-            // in a distribution build we fall back to the same bounded mode a
-            // workspace-write grant uses, never the unrestricted skip.
-            if isYOLOGrant(capabilityGrant),
-               AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
-                arguments.append("--dangerously-skip-permissions")
-            } else if capabilityGrant.capabilities.contains(.workspaceWrite) {
+            _ = hasFreshLocalAuthProof
+            // T-TOOL-02(a): never pass vendor full-autonomy bypass arguments.
+            // Trusted grants use Claude's bounded edit-acceptance mode instead.
+            if capabilityGrant.capabilities.contains(.workspaceWrite) {
                 arguments.append(contentsOf: ["--permission-mode", "acceptEdits"])
             }
         } else {
@@ -91,13 +87,10 @@ enum CLIArgumentBuilder {
             arguments.insert(contentsOf: ["-m", normalizedModel], at: 4)
         }
         if let capabilityGrant, capabilityGrant.isActive() {
-            // T-TOOL-02(a): bypass-approvals-and-sandbox is gated behind the
-            // distribution-build check + a fresh local-auth proof; otherwise the
-            // grant runs in the bounded workspace-write sandbox.
-            if isYOLOGrant(capabilityGrant),
-               AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
-                arguments.insert("--dangerously-bypass-approvals-and-sandbox", at: arguments.count - 1)
-            } else if capabilityGrant.capabilities.contains(.workspaceWrite) ||
+            _ = hasFreshLocalAuthProof
+            // T-TOOL-02(a): never pass vendor full-autonomy bypass arguments.
+            // Trusted grants stay inside Codex's workspace-write sandbox.
+            if capabilityGrant.capabilities.contains(.workspaceWrite) ||
                 capabilityGrant.capabilities.contains(.shell) {
                 arguments.insert(contentsOf: ["--sandbox", "workspace-write"], at: arguments.count - 1)
             } else if capabilityGrant.capabilities.contains(.workspaceRead) {
@@ -177,14 +170,10 @@ enum CLIArgumentBuilder {
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
-        // T-TOOL-02(a): the dangerous flag is distribution-gated + fresh-auth gated;
-        // otherwise antigravity runs sandboxed.
-        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant),
-           AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
-            arguments.append("--dangerously-skip-permissions")
-        } else {
-            arguments.append("--sandbox")
-        }
+        _ = capabilityGrant
+        _ = hasFreshLocalAuthProof
+        // T-TOOL-02(a): antigravity always runs sandboxed from OpenBurnBar.
+        arguments.append("--sandbox")
         arguments.append(contentsOf: [
             "--print",
             sanitizedPrompt(prompt)
@@ -202,14 +191,10 @@ enum CLIArgumentBuilder {
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
-        // T-TOOL-02(a): the dangerous flag is distribution-gated + fresh-auth gated;
-        // otherwise cursor-agent runs sandboxed.
-        if let capabilityGrant, capabilityGrant.isActive(), isYOLOGrant(capabilityGrant),
-           AgentDistributionGate.allowsDangerousAutonomyFlag(hasFreshLocalAuthProof: hasFreshLocalAuthProof) {
-            arguments.append("--dangerously-skip-permissions")
-        } else {
-            arguments.append("--sandbox")
-        }
+        _ = capabilityGrant
+        _ = hasFreshLocalAuthProof
+        // T-TOOL-02(a): cursor-agent always runs sandboxed from OpenBurnBar.
+        arguments.append("--sandbox")
         arguments.append(contentsOf: [
             "--print",
             sanitizedPrompt(prompt)

@@ -16,13 +16,18 @@ vi.mock("../callables/computerUseSecurity.js", () => ({
 
 import { enforceHighRiskOwnerAction } from "../callables/highRiskOwnerAction.js";
 
-function request(data: Record<string, unknown>): CallableRequest {
+function inertRawRequest(): CallableRequest["rawRequest"] {
+  return Object.create(null);
+}
+
+function request(data: Record<string, unknown>) {
   return {
-    auth: { uid: "u1", token: {} },
-    app: { appId: "app-1" },
-    rawRequest: { headers: {} },
+    auth: { uid: "u1", token: Object.create(null), rawToken: "test-id-token" },
+    app: { appId: "app-1", token: Object.create(null) },
+    rawRequest: inertRawRequest(),
+    acceptsStreaming: false,
     data,
-  } as unknown as CallableRequest;
+  };
 }
 
 describe("enforceHighRiskOwnerAction", () => {

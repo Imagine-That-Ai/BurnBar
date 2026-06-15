@@ -197,7 +197,10 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
 
   beforeEach(() => {
     vi.resetModules();
-    for (const k of KEYS) { saved[k] = process.env[k]; delete process.env[k]; }
+    for (const k of KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
   });
   afterEach(() => {
     for (const k of KEYS) {

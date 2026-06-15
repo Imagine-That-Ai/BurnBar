@@ -44,7 +44,12 @@ class FakeQuery {
 
 function query(ids: string[]) {
   const stats = { getCalls: 0 };
-  const q = new FakeQuery(ids.map((id) => new FakeDoc(id)), 0, Number.POSITIVE_INFINITY, stats);
+  const q = new FakeQuery(
+    ids.map((id) => new FakeDoc(id)),
+    0,
+    Number.POSITIVE_INFINITY,
+    stats,
+  );
   return { q, stats };
 }
 
@@ -52,9 +57,14 @@ describe("forEachInPages", () => {
   it("streams every document in order across pages", async () => {
     const { q } = query(["a", "b", "c", "d", "e"]);
     const seen: string[] = [];
-    const total = await forEachInPages(q, "startedAt", (doc) => {
-      seen.push(doc.id);
-    }, 2);
+    const total = await forEachInPages(
+      q,
+      "startedAt",
+      (doc) => {
+        seen.push(doc.id);
+      },
+      2,
+    );
     expect(seen).toEqual(["a", "b", "c", "d", "e"]);
     expect(total).toBe(5);
   });
@@ -77,9 +87,14 @@ describe("forEachInPages", () => {
   it("handles an empty range without invoking the callback", async () => {
     const { q, stats } = query([]);
     let calls = 0;
-    const total = await forEachInPages(q, "startedAt", () => {
-      calls += 1;
-    }, 2);
+    const total = await forEachInPages(
+      q,
+      "startedAt",
+      () => {
+        calls += 1;
+      },
+      2,
+    );
     expect(total).toBe(0);
     expect(calls).toBe(0);
     expect(stats.getCalls).toBe(1);

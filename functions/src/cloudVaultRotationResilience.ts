@@ -71,11 +71,17 @@ interface PendingRotationRequirementSummary {
 async function requireCallerTrustedDevice(uid: string, deviceId: string): Promise<void> {
   const snap = await db.doc(`users/${uid}/escrow_devices/${deviceId}`).get();
   if (!snap.exists || snap.get("trustState") !== "trusted") {
-    throw new HttpsError("permission-denied", "Listing CloudVault rotation requirements requires a trusted escrow device.");
+    throw new HttpsError(
+      "permission-denied",
+      "Listing CloudVault rotation requirements requires a trusted escrow device.",
+    );
   }
 }
 
-function summarizeRequirement(id: string, raw: Record<string, unknown> | undefined): PendingRotationRequirementSummary | undefined {
+function summarizeRequirement(
+  id: string,
+  raw: Record<string, unknown> | undefined,
+): PendingRotationRequirementSummary | undefined {
   if (!raw) return undefined;
   if (raw.status !== "pending") return undefined;
   const currentVaultKeyID = typeof raw.currentVaultKeyID === "string" ? raw.currentVaultKeyID : "";
@@ -114,7 +120,10 @@ export const listPendingCloudVaultRotationRequirements = onCallProduction(
     const callerDeviceId = boundedTrimmedString(request.data.callerDeviceId, "callerDeviceId", 256, true);
     await requireCallerTrustedDevice(uid, callerDeviceId);
 
-    const snap = await db.collection(`users/${uid}/${ROTATION_REQUIREMENT_COLLECTION}`).where("status", "==", "pending").get();
+    const snap = await db
+      .collection(`users/${uid}/${ROTATION_REQUIREMENT_COLLECTION}`)
+      .where("status", "==", "pending")
+      .get();
     const requirements: PendingRotationRequirementSummary[] = [];
     for (const doc of snap.docs) {
       const summary = summarizeRequirement(doc.id, recordOrUndefined(doc.data()));

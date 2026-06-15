@@ -6,32 +6,32 @@ import XCTest
 /// Security-decision tests for the agentic remediation (2026-06-13):
 /// T-TOOL-02 (distribution gate + per-N re-auth), T-AI-01 (default-deny wrap),
 /// T-AI-06 (secret scrubbing + no-retention header), T-TOOL-01/05/07 (CLI lane
-/// content tagging), T-TOOL-10 (default-deny read allow-list).
+/// content tagging), T-TOOL-10 (home-data deny for restricted shell).
 final class AgentSecurityPolicyTests: XCTestCase {
 
-    // MARK: - T-TOOL-02(a): local-auth gate for dangerous-autonomy flags
+    // MARK: - T-TOOL-02(a): spawned CLI bypass flags are never emitted
 
-    func test_dangerousFlagGate_requiresFreshLocalAuthInEveryBuild() {
+    func test_dangerousFlagGate_neverAllowsVendorBypassFlags() {
         XCTAssertFalse(
             AgentDistributionGate.allowsDangerousAutonomyFlag(
                 isDistributionBuild: false,
                 hasFreshLocalAuthProof: false
             ),
-            "developer/debug builds must not get an unauthenticated YOLO flag bypass"
+            "developer/debug builds must not get a vendor bypass flag"
         )
         XCTAssertFalse(
             AgentDistributionGate.allowsDangerousAutonomyFlag(
                 isDistributionBuild: true,
                 hasFreshLocalAuthProof: false
             ),
-            "distribution build must fail closed without a fresh local-auth proof"
+            "distribution builds must fail closed"
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             AgentDistributionGate.allowsDangerousAutonomyFlag(
                 isDistributionBuild: true,
                 hasFreshLocalAuthProof: true
             ),
-            "fresh local-auth proof is the only condition that allows dangerous flags"
+            "fresh local-auth proof gates OpenBurnBar broker actions, not vendor process bypasses"
         )
     }
 
@@ -141,9 +141,9 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertFalse((parts?.first?["text"] as? String)?.contains("ghp_0123456789") ?? true)
     }
 
-    // MARK: - T-TOOL-02(a): arg builders accept the fresh-auth proof + gate
+    // MARK: - T-TOOL-02(a): arg builders never emit vendor bypasses
 
-    func test_claudeArguments_yoloFlagGatedByDistributionAndFreshAuth() {
+    func test_claudeArguments_trustedGrantNeverEmitsVendorBypass() {
         let yolo = AgentCapabilityGrant.sessionGrant(
             runtimeID: .claude,
             threadID: "t",
@@ -157,7 +157,8 @@ final class AgentSecurityPolicyTests: XCTestCase {
             capabilityGrant: yolo,
             hasFreshLocalAuthProof: true
         )
-        XCTAssertTrue(withProof.contains("--dangerously-skip-permissions"))
+        XCTAssertFalse(withProof.contains("--dangerously-skip-permissions"))
+        XCTAssertEqual(value(after: "--permission-mode", in: withProof), "acceptEdits")
 
         let withoutProof = CLIArgumentBuilder.claudeArguments(
             prompt: "p",
@@ -168,7 +169,7 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertEqual(value(after: "--permission-mode", in: withoutProof), "acceptEdits")
     }
 
-    func test_codexArguments_acceptsFreshAuthProofParameter() {
+    func test_codexArguments_trustedGrantNeverEmitsVendorBypass() {
         let yolo = AgentCapabilityGrant.sessionGrant(
             runtimeID: .codex,
             threadID: "t",
@@ -182,26 +183,23 @@ final class AgentSecurityPolicyTests: XCTestCase {
             capabilityGrant: yolo,
             hasFreshLocalAuthProof: true
         )
-        XCTAssertTrue(args.contains("--dangerously-bypass-approvals-and-sandbox"))
+        XCTAssertFalse(args.contains("--dangerously-bypass-approvals-and-sandbox"))
+        XCTAssertEqual(value(after: "--sandbox", in: args), "workspace-write")
     }
 
-    // MARK: - T-TOOL-10: default-deny read allow-list
+    // MARK: - T-TOOL-10: restricted shell home-data deny
 
-    func test_restrictedShellProfile_readsAreDefaultDenyWithAllowlist() {
+    func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {
         let profile = AgentToolBroker.restrictedShellSandboxProfile(
             workspacePath: "/Users/probe/project",
             homePath: "/Users/probe"
         )
-        // Terminal read default-deny present.
-        XCTAssertTrue(profile.contains("(deny file-read*)"))
-        // Workspace + key system roots are read-allowed.
+        XCTAssertTrue(profile.contains("(deny default)"))
+        XCTAssertFalse(profile.contains("(allow default)"))
+        XCTAssertTrue(profile.contains("(allow file-read-data (require-not (subpath \"/Users/probe\")))"))
         XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/Users/probe/project\"))"))
-        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/usr\"))"))
-        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/System\"))"))
-        // The home directory itself is NOT broadly read-allowed (only listed
-        // toolchain subpaths), so a generic ~/Documents read is denied by default.
+        XCTAssertTrue(profile.contains("(allow file-read* (subpath \"/Users/probe/.cargo/bin\"))"))
         XCTAssertFalse(profile.contains("(allow file-read* (subpath \"/Users/probe\"))"))
-        // Network + write confinement still hold.
         XCTAssertTrue(profile.contains("(deny network*)"))
         XCTAssertTrue(profile.contains("(allow file-write* (subpath \"/Users/probe/project\"))"))
     }

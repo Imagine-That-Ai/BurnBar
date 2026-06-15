@@ -68,12 +68,8 @@ function truncateUidSegment(prefix: string, id: string): string {
 /** Redact UIDs embedded inside Firestore-path-shaped string values. */
 function redactUidPaths(value: string): string {
   let result = value;
-  result = result.replace(/\busers\/([A-Za-z0-9_-]{9,})/g, (_m, id: string) =>
-    truncateUidSegment("users/", id),
-  );
-  result = result.replace(/\bworkspace-([A-Za-z0-9_-]{9,})/g, (_m, id: string) =>
-    truncateUidSegment("workspace-", id),
-  );
+  result = result.replace(/\busers\/([A-Za-z0-9_-]{9,})/g, (_m, id: string) => truncateUidSegment("users/", id));
+  result = result.replace(/\bworkspace-([A-Za-z0-9_-]{9,})/g, (_m, id: string) => truncateUidSegment("workspace-", id));
   return result;
 }
 
@@ -108,14 +104,7 @@ function scrubString(value: string): string {
   return result;
 }
 
-type LogFieldValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | LogFieldValue[]
-  | { [key: string]: LogFieldValue };
+type LogFieldValue = string | number | boolean | null | undefined | LogFieldValue[] | { [key: string]: LogFieldValue };
 
 function isLogFieldRecord(value: LogFieldValue): value is { [key: string]: LogFieldValue } {
   return typeof value === "object" && value !== null && !Array.isArray(value);

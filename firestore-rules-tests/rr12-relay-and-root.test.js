@@ -27,9 +27,13 @@ import {
   setDoc,
   Timestamp,
 } from "firebase/firestore";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const PROJECT_ID = "burnbar-test";
-const RULES_PATH = "../firestore.rules";
+const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
+const RULES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
+const FIRESTORE_HOST = process.env.FIRESTORE_TEST_HOST || "127.0.0.1";
+const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080", 10);
 
 const aliceUid = "alice-uid";
 
@@ -128,8 +132,8 @@ async function main() {
     projectId: PROJECT_ID,
     firestore: {
       rules: readFileSync(RULES_PATH, "utf8"),
-      host: "127.0.0.1",
-      port: 8080,
+      host: FIRESTORE_HOST,
+      port: FIRESTORE_PORT,
     },
   });
 

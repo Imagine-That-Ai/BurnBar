@@ -107,6 +107,52 @@ final class CapabilityTokenVerifierTests: XCTestCase {
         }
     }
 
+    func test_offlineVerification_allowsBoundTokenWhenPresenterBindingOmitted() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let verifier = CapabilityTokenLeafVerifier(nonceStore: InMemoryCapabilityTokenNonceStore()) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "click",
+            boundEscrowDeviceId: "iphone-a",
+            attestationHashBlake3: "attest-a"
+        )
+        let request = CapabilityTokenLeafVerifier.Request(
+            token: token,
+            expectedDomain: .remoteUnlock,
+            actionKind: "click"
+        )
+
+        if case .failure(let reason) = verifier.verify(request: request) {
+            XCTFail("Expected bound token to validate without explicit presenter binding, got \(reason)")
+        }
+    }
+
+    func test_offlineVerification_normalizesBlankPresenterBindingsToNil() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let verifier = CapabilityTokenLeafVerifier(nonceStore: InMemoryCapabilityTokenNonceStore()) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "click"
+        )
+        let request = CapabilityTokenLeafVerifier.Request(
+            token: token,
+            expectedDomain: .remoteUnlock,
+            actionKind: "click",
+            requiredAttestationHashBlake3: " \n ",
+            boundEscrowDeviceId: "   "
+        )
+
+        if case .failure(let reason) = verifier.verify(request: request) {
+            XCTFail("Expected blank presenter bindings to be ignored, got \(reason)")
+        }
+    }
+
     func test_issuerTrustMaterial_roundTrip() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let material = CapabilityTokenIssuerTrustMaterial(
