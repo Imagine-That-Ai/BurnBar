@@ -365,7 +365,7 @@ function selectPrekeyToClaim<T extends { numericId: number; id: string }>(candid
  * never re-issued to a second device. Extracted as a pure builder so the consume semantics
  * (status flip + session attribution) are unit-testable independent of the transaction.
  */
-export function buildPrekeyClaimStamp(sessionId: string): {
+function buildPrekeyClaimStamp(sessionId: string): {
   status: "claimed";
   claimedBySessionId: string;
   claimedAt: FieldValue;
