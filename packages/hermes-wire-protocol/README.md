@@ -68,10 +68,55 @@ in any language fails the PR.
 | `npm run parity` | Verify every hand-written language surface matches canon. |
 | `npm test` | Drift gate + parity gate + validation + parser tests. |
 
+## Payload message types — generated-and-consumed (the second source of truth)
+
+`protocol.json` owns the frame/transport layer. The **rich relay payload types**
+(~60 Codable structs/enums — control, remote-unlock, system-permission, media,
+mirror, streaming, envelope) used to be hand-mirrored across Swift / Kotlin / Rust
+and were only *parity-checked* for drift. They are now defined ONCE in
+[`relay-message-types.json`](./relay-message-types.json) and **generated and
+consumed**: `OpenBurnBarCore` compiles the emitted Swift directly (the 2590-line
+hand-written `HermesRealtimeRelayTypes.swift` was retired). Drift is now
+structurally impossible for these types, not merely detected.
+
+Three wire concerns are first-class in the schema, each **per-field** (never a
+global default — a global date setting would silently flip ~10 synthesized structs
+between a JSON number and an ISO string):
+
+- **date regimes** — `iso` (ISO-8601 ms via `HermesRealtimeRelayDateCodec`),
+  `numeric` (Swift-synthesized JSON number), `numericEncodeIsoDecode` (tolerate an
+  ISO string on decode, re-emit a number).
+- **multi-key aliases** — one field, several wire keys (e.g. the legacy Android
+  `displayName` ⇄ `deviceDisplayName`), with a decode fallback literal.
+- **forward-compat defaults** — `decodeDefault` (decode-only `?? …`) distinct from
+  the memberwise-init default, and `containsGuard` optional dates.
+
+Three-tier model: most types are **generated** (data + Codable); the
+parity-gated **frame/protocol layer** stays hand-written in
+`HermesRealtimeRelayFrameType.swift`; irreducible **behavior** (computed members,
+factories, the shared `DateCodec`) is hand-written in
+`HermesRealtimeRelayTypes+Behavior.swift`. **Rust is intentionally absent** — the
+iroh transport carries frames as opaque bytes and has no payload types.
+
+Edit `relay-message-types.json`, run `node codegen.mjs`, and the Swift files under
+`OpenBurnBarCore/.../SharedModels/Generated/` regenerate; the drift gate
+(`node --test`) fails CI if they are stale. The migration provenance (the
+extractor + round-trip prover that derived the schema byte-faithfully from the
+original) lives in `migrate/`.
+
+> **Kotlin / Android:** the schema is language-agnostic and the Kotlin emitter is
+> a designed next step (kotlinx.serialization with the three date regimes + alias
+> support). It needs an Android/Gradle environment to verify the byte-identical
+> round-trip against the Android iroh-relay module, so it is intentionally not
+> landed here — the schema makes it "add an emitter," not "re-derive the types."
+
 ## Files
 
 - `protocol.json` — the canonical spec (frames + constants + per-frame docs).
-- `codegen.mjs` — emitters (TS, Swift, Kotlin, Rust) + `validateProtocol`.
-- `parity.mjs` — parsers + `checkParity` over the hand-written surfaces.
-- `protocol.test.mjs` — drift + parity + validation tests.
-- `gen/` — generated reference outputs (DO NOT EDIT).
+- `relay-message-types.json` — the canonical spec for the rich payload message types.
+- `codegen.mjs` — emitters (TS, Swift, Kotlin, Rust frames) + Swift payload types + validation.
+- `relay-types.mjs` — payload-type schema loader, validator, and Swift emitter.
+- `parity.mjs` — parsers + `checkParity` over the hand-written frame surfaces.
+- `protocol.test.mjs` — drift + parity + validation + payload-schema-integrity tests.
+- `migrate/` — one-time migration provenance (Swift→schema extractor + round-trip prover).
+- `gen/` — generated reference outputs for the frame layer (DO NOT EDIT).

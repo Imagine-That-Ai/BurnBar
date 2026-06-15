@@ -39,10 +39,6 @@
       "lines": 2801
     },
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
-      "lines": 2590
-    },
-    {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
       "lines": 2576
     },

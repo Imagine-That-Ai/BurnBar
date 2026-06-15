@@ -32,6 +32,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadRelayTypes, validateRelayTypes, emitSwiftRelayTypes } from "./relay-types.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GEN = join(HERE, "gen");
@@ -244,26 +245,32 @@ function emitRust(proto) {
   return out.join("\n");
 }
 
-export function generateAll(proto) {
+export function generateAll(proto, relayTypes) {
   return {
     [RELAY_TS_PATH]: emitTs(proto),
     [join(GEN, "HermesWireProtocol.swift")]: emitSwift(proto),
     [join(GEN, "HermesWireProtocol.kt")]: emitKotlin(proto),
     [join(GEN, "wire_protocol.rs")]: emitRust(proto),
+    // Rich relay PAYLOAD types — the second source-of-truth file, generated and
+    // CONSUMED by OpenBurnBarCore (the hand-written monolith was retired). Rust
+    // is intentionally absent: it carries frames as opaque bytes, no payload types.
+    ...emitSwiftRelayTypes(relayTypes),
   };
 }
 
 function main() {
   const proto = validateProtocol(loadProtocol());
+  const relayTypes = validateRelayTypes(loadRelayTypes());
   mkdirSync(GEN, { recursive: true });
   mkdirSync(dirname(RELAY_TS_PATH), { recursive: true });
-  const files = generateAll(proto);
+  const files = generateAll(proto, relayTypes);
   for (const [abs, content] of Object.entries(files)) {
+    mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, content);
   }
   console.log(
-    `[hermes-wire-protocol] generated ${Object.keys(files).length} files for ${proto.frames.length} frame types ` +
-      `(${relayFrames(proto).length} relay-accepted, ${proto.frames.length - relayFrames(proto).length} iroh-only).`,
+    `[hermes-wire-protocol] generated ${Object.keys(files).length} files: ${proto.frames.length} frame types ` +
+      `(${relayFrames(proto).length} relay-accepted) + ${relayTypes.types.length} relay payload types across 5 Swift domain files.`,
   );
 }
 
