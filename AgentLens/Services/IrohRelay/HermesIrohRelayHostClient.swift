@@ -354,8 +354,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         let revokedNodeId = publishedIdentity?.nodeId
         publishedIdentity = nil
 
+<<<<<<< HEAD
         let revokeAttempts = revokeRetryAttempts
         let revokeSleep = revokeRetrySleep
+=======
+>>>>>>> origin/pr-410
         Task { [directory, auditLogger, serveTaskTeardownRegistry] in
             // RR-18 — drain the per-peer teardown index through the same
             // cancel-all path `stop()` already runs over `serveTasks`.
@@ -397,6 +400,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             do {
                 let stream = try await transport.accept(timeout: 30)
                 if !inboundPeerPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
+<<<<<<< HEAD
                     // remediation(handshake-before-allowlist DoS amplifier): close
                     // the rejected stream immediately, and only emit the audit
                     // record when this source has not been rejected within the
@@ -406,6 +410,18 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     // bookkeeping of repeat rejections, not the rejection.
                     let shouldAudit = registerAllowlistRejection(
                         remotePeerNodeId: stream.remotePeerNodeId
+=======
+                    await auditLogger.record(
+                        event: .pairingRejected,
+                        uid: uid,
+                        connectionId: connectionID,
+                        transport: .irohDirect,
+                        rttMillis: nil,
+                        detail: [
+                            "reason": "inbound_peer_not_allowlisted",
+                            "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
+                        ]
+>>>>>>> origin/pr-410
                     )
                     if shouldAudit {
                         await auditLogger.record(
@@ -539,6 +555,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         await serveTaskTeardownRegistry.release(serveID: id)
     }
 
+<<<<<<< HEAD
     /// remediation(handshake-before-allowlist DoS amplifier): records an
     /// allowlist rejection for `remotePeerNodeId` and reports whether the
     /// caller should emit an audit record. Returns `true` (audit) the first
@@ -566,6 +583,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         return true
     }
 
+=======
+>>>>>>> origin/pr-410
     /// RR-18 — tear down any serve task or persistent media-control stream whose
     /// remote peer is no longer in the freshly-refreshed inbound allowlist.
     /// Called from the heartbeat right after `inboundPeerPolicy` is reloaded, so

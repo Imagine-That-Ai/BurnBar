@@ -39,7 +39,11 @@ Use this checklist before marketing or investor diligence claims **“SOTA secur
 - [x] OSV scanner in `security-pr.yml`
 - [x] `run-ecosystem-deny-checks.sh` (npm audit + optional `cargo-deny`)
 - [x] Cosign attest SBOM, VEX, checksums, **DMG, ZIP** in `release.yml`
+<<<<<<< HEAD
 - [ ] **Ops:** Verify published release attestations with `scripts/ci/verify-release-attestations.sh <tag>` (release lane cosign wiring verified by `scripts/ci/verify-phase1-security-gates.sh`)
+=======
+- [ ] **Ops:** Verify published release attestations with `scripts/ci/verify-release-attestations.sh <tag>`
+>>>>>>> origin/pr-410
 
 ## Phase 5 — Trust & launch
 

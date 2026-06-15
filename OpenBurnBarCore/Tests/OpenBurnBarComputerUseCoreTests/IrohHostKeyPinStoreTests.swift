@@ -25,10 +25,14 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         let key = newKeyBase64()
 
         let result = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", roleId: "host")
+<<<<<<< HEAD
         guard case .pinnedFirstUse = result else {
             XCTFail("expected pinnedFirstUse, got \(result)")
             return
         }
+=======
+        guard case .pinnedFirstUse = result else { return XCTFail("expected pinnedFirstUse, got \(result)") }
+>>>>>>> origin/pr-410
         XCTAssertTrue(result.admits(requireConfirmation: false), "first use admits with the safety-number gate off")
         XCTAssertFalse(result.admits(requireConfirmation: true), "first use must be confirmed when the gate is on")
         XCTAssertNotNil(result.safetyCodeForConfirmation, "first use surfaces a code to compare")
@@ -43,10 +47,14 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         let key = newKeyBase64()
         _ = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", roleId: "host")
         let again = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", roleId: "host")
+<<<<<<< HEAD
         guard case .matchesPendingConfirmation = again else {
             XCTFail("expected matchesPendingConfirmation, got \(again)")
             return
         }
+=======
+        guard case .matchesPendingConfirmation = again else { return XCTFail("expected matchesPendingConfirmation, got \(again)") }
+>>>>>>> origin/pr-410
         XCTAssertTrue(again.admits(requireConfirmation: false))
         XCTAssertFalse(again.admits(requireConfirmation: true))
     }
@@ -72,10 +80,14 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         _ = store.verifyOrPin(advertisedKeyBase64: pinned, uid: "u1", roleId: "host")
         // A malicious cloud now serves a different host key for the same account.
         let result = store.verifyOrPin(advertisedKeyBase64: attacker, uid: "u1", roleId: "host")
+<<<<<<< HEAD
         guard case .mismatch = result else {
             XCTFail("expected mismatch, got \(result)")
             return
         }
+=======
+        guard case .mismatch = result else { return XCTFail("expected mismatch, got \(result)") }
+>>>>>>> origin/pr-410
         XCTAssertTrue(result.isRefusal)
         XCTAssertFalse(result.admits(requireConfirmation: false), "a key change is refused even with the gate off")
         XCTAssertFalse(result.admits(requireConfirmation: true))
@@ -91,10 +103,14 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         _ = store.verifyOrPin(advertisedKeyBase64: first, uid: "u1", roleId: "host")
         store.clearPin(uid: "u1", roleId: "host") // deliberate operator re-pair
         let result = store.verifyOrPin(advertisedKeyBase64: second, uid: "u1", roleId: "host")
+<<<<<<< HEAD
         guard case .pinnedFirstUse = result else {
             XCTFail("re-pair should pin the new key, got \(result)")
             return
         }
+=======
+        guard case .pinnedFirstUse = result else { return XCTFail("re-pair should pin the new key, got \(result)") }
+>>>>>>> origin/pr-410
         XCTAssertEqual(store.pinnedRecord(uid: "u1", roleId: "host")?.keyBase64, second)
     }
 
@@ -116,10 +132,14 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         backing.failWrites(with: -25300) // errSecItemNotFound-class write failure
         let store = makeStore(backing)
         let result = store.verifyOrPin(advertisedKeyBase64: newKeyBase64(), uid: "u1", roleId: "host")
+<<<<<<< HEAD
         guard case .unknownKeychainError = result else {
             XCTFail("expected unknownKeychainError, got \(result)")
             return
         }
+=======
+        guard case .unknownKeychainError = result else { return XCTFail("expected unknownKeychainError, got \(result)") }
+>>>>>>> origin/pr-410
         XCTAssertFalse(result.admits(requireConfirmation: false), "an unpersisted pin must not admit")
     }
 
@@ -128,10 +148,14 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         backing.failReads(with: -25295) // errSecInteractionNotAllowed-class read failure
         let store = makeStore(backing)
         let result = store.verifyOrPin(advertisedKeyBase64: newKeyBase64(), uid: "u1", roleId: "host")
+<<<<<<< HEAD
         guard case .unknownKeychainError = result else {
             XCTFail("expected unknownKeychainError, got \(result)")
             return
         }
+=======
+        guard case .unknownKeychainError = result else { return XCTFail("expected unknownKeychainError, got \(result)") }
+>>>>>>> origin/pr-410
         XCTAssertFalse(result.admits(requireConfirmation: false))
     }
 
@@ -144,9 +168,13 @@ final class IrohHostKeyPinStoreTests: XCTestCase {
         _ = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", roleId: "host")
         // A different signed-in user has no pin yet — same key is a fresh first use.
         let other = store.verifyOrPin(advertisedKeyBase64: key, uid: "u2", roleId: "host")
+<<<<<<< HEAD
         guard case .pinnedFirstUse = other else {
             XCTFail("expected per-uid isolation, got \(other)")
             return
         }
+=======
+        guard case .pinnedFirstUse = other else { return XCTFail("expected per-uid isolation, got \(other)") }
+>>>>>>> origin/pr-410
     }
 }

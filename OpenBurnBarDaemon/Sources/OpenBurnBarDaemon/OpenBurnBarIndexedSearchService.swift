@@ -9,7 +9,10 @@ private let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
 // are serialized through dbQueue DispatchQueue; manual thread safety is correct.
 /// Indexed search for the OpenBurnBar daemon.
 /// Supports both lexical FTS and semantic vector search with hybrid RRF fusion.
+<<<<<<< HEAD
 /// sendable-allowlist: sqlite-raw-pointer
+=======
+>>>>>>> origin/pr-410
 final class BurnBarIndexedSearchService: @unchecked Sendable {
     private struct SnapshotContext {
         let embeddingVersionID: String

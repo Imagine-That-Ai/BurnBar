@@ -102,6 +102,7 @@ private fun sealedMissionEventPayloadMap(payload: AndroidMissionEventPrivatePayl
 // cross-language KAT CloudVaultAadParityTest). They are nil-safe: when the ids are
 // unavailable the readers fall back to legacy global-AAD docs (openPayload branches on
 // envelope.aad, so a path context is ignored for a global-AAD document).
+<<<<<<< HEAD
 private fun missionRequestAadContext(uid: String?, requestID: String): CloudVaultAADContext? = uid?.let {
     runCatching {
         CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedPayload")
@@ -113,6 +114,21 @@ private fun missionStateAadContext(uid: String?, requestID: String): CloudVaultA
         CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedStatePayload")
     }.getOrNull()
 }
+=======
+private fun missionRequestAadContext(uid: String?, requestID: String): CloudVaultAADContext? =
+    uid?.let {
+        runCatching {
+            CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedPayload")
+        }.getOrNull()
+    }
+
+private fun missionStateAadContext(uid: String?, requestID: String): CloudVaultAADContext? =
+    uid?.let {
+        runCatching {
+            CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedStatePayload")
+        }.getOrNull()
+    }
+>>>>>>> origin/pr-410
 
 private fun missionEventAadContext(uid: String?, requestID: String?, eventID: String?): CloudVaultAADContext? =
     if (uid != null && requestID != null && eventID != null) {
@@ -955,6 +971,7 @@ fun DocumentSnapshot.toMissionSnapshotOrNull(
     uid: String? = null,
     signalIdentity: AndroidSignalIdentityKeypair? = null,
     trustedSenderPublicKeys: Map<String, ByteArray> = emptyMap(),
+<<<<<<< HEAD
 ): CLIAgentMissionSnapshot? = toMissionSnapshot(
     fallbackID = id,
     vaultKey = vaultKey,
@@ -962,6 +979,16 @@ fun DocumentSnapshot.toMissionSnapshotOrNull(
     signalIdentity = signalIdentity,
     trustedSenderPublicKeys = trustedSenderPublicKeys,
 )
+=======
+): CLIAgentMissionSnapshot? =
+    toMissionSnapshot(
+        fallbackID = id,
+        vaultKey = vaultKey,
+        uid = uid,
+        signalIdentity = signalIdentity,
+        trustedSenderPublicKeys = trustedSenderPublicKeys,
+    )
+>>>>>>> origin/pr-410
 
 /**
  * Signal-first open of a mission request doc's private payload. Returns null when no envelope is
@@ -1046,8 +1073,14 @@ private fun DocumentSnapshot.requestPrivatePayload(
     signalIdentity: AndroidSignalIdentityKeypair?,
     vaultKey: ByteArray?,
     trustedSenderPublicKeys: Map<String, ByteArray>,
+<<<<<<< HEAD
 ): AndroidMissionPrivatePayload? = openSignalMissionPayload(uid, missionDocId, signalIdentity, trustedSenderPublicKeys)
     ?: openMissionPayload(get("sealedPayload"), vaultKey, missionRequestAadContext(uid, missionDocId))
+=======
+): AndroidMissionPrivatePayload? =
+    openSignalMissionPayload(uid, missionDocId, signalIdentity, trustedSenderPublicKeys)
+        ?: openMissionPayload(get("sealedPayload"), vaultKey, missionRequestAadContext(uid, missionDocId))
+>>>>>>> origin/pr-410
 
 private fun DocumentSnapshot.missionSnapshotTitle(requestPrivate: AndroidMissionPrivatePayload?): String? = requestPrivate?.title ?: getString("title")
 
@@ -1075,8 +1108,16 @@ private fun DocumentSnapshot.missionSnapshotText(
     else -> getString(field)
 }
 
+<<<<<<< HEAD
 private fun DocumentSnapshot.toMissionEvent(vaultKey: ByteArray? = null, uid: String? = null, requestID: String? = null): CLIAgentMissionEvent? =
     data?.toMissionEvent(vaultKey, uid, requestID, id)
+=======
+private fun DocumentSnapshot.toMissionEvent(
+    vaultKey: ByteArray? = null,
+    uid: String? = null,
+    requestID: String? = null,
+): CLIAgentMissionEvent? = data?.toMissionEvent(vaultKey, uid, requestID, id)
+>>>>>>> origin/pr-410
 
 private fun Map<*, *>.toMissionEvent(
     vaultKey: ByteArray? = null,

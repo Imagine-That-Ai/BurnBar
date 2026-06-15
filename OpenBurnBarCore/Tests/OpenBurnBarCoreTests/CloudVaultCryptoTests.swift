@@ -526,6 +526,7 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(unwrapped, vaultKey)
         XCTAssertEqual(wrapped.verificationHash, try CloudVaultCrypto.recoveryVerificationHash(for: recoveryKey))
         XCTAssertNotNil(wrapped.verificationHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
+<<<<<<< HEAD
     }
 
     // MARK: - T-CVS-06: enforced v1 (global) AAD cutover
@@ -649,5 +650,7 @@ final class CloudVaultCryptoTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return defaults
+=======
+>>>>>>> origin/pr-410
     }
 }

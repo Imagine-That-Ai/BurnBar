@@ -75,6 +75,7 @@ actor SearchService {
 
     /// `nonisolated` because `dataStore` is an immutable `let` and `fetchConversations`
     /// uses GRDB's synchronous `read` — no actor isolation needed.
+<<<<<<< HEAD
     ///
     /// A real DB/GRDB read failure here is recoverable (callers degrade to an empty
     /// list), but it must be **observable**: a swallowed `try?` makes a genuine read
@@ -82,6 +83,8 @@ actor SearchService {
     /// the failure and only then falls back to `[]`. (This is `nonisolated`, so the
     /// actor-scoped `setLastHealthWriteError` cannot be called from here; logging is
     /// the available observability seam.)
+=======
+>>>>>>> origin/pr-410
     nonisolated func recentConversations(limit: Int = 80) -> [ConversationRecord] {
         let bounded = max(1, min(limit, 1_000))
         return AppLogger.search.silently(

@@ -17,7 +17,11 @@
  *      onRequest end-to-end over an in-memory Firestore double (mirrors the
  *      harness in hermesGatewaySealedEvent.test.ts).
  */
+<<<<<<< HEAD
 import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+=======
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+>>>>>>> origin/pr-410
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -1,0 +1,69 @@
+name: Daemon PR Gate (Swift)
+
+# Focused, merge-blocking lane for the OpenBurnBar daemon: the :8317
+# OpenAI-compatible proxy (OpenBurnBarHTTPGatewayServer), the provider
+# router/executor, and quota gating all live in the OpenBurnBarDaemon package.
+#
+# The FULL Swift suite (Core + Daemon + app XCTest) runs post-merge / nightly in
+# openburnbar-pr-harness.yml, which is deliberately off the PR path for velocity.
+# That left daemon correctness with no merge-blocking signal. This lane runs ONLY
+# the daemon package on every PR (Core suite skipped) so a routing / quota /
+# proxy regression cannot merge, without paying for the whole Swift suite per PR.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+concurrency:
+  group: daemon-pr-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  daemon-swift:
+    name: Daemon Swift tests (proxy + router + quota)
+    runs-on: macos-26
+    # Cold cache + libsignal FFI build on a slow runner needs headroom; the
+    # daemon package alone is far lighter than the full Swift suite (~40 min cap).
+    timeout-minutes: 40
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: recursive
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Run daemon Swift tests (Core suite skipped)
+        # OPENBURNBAR_SKIP_CORE_SWIFT_TESTS=1 runs only the OpenBurnBarDaemon
+        # package; the script still builds the host libsignal FFI the daemon needs.
+        env:
+          OPENBURNBAR_SKIP_CORE_SWIFT_TESTS: "1"
+        run: ./scripts/test-openburnbar-swift.sh

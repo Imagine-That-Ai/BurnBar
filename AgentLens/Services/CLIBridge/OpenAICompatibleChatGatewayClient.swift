@@ -609,12 +609,17 @@ final class AgentToolBroker: Sendable {
     }
 
     private static func shouldWrapUntrustedComputerUseResult(toolName: String) -> Bool {
+<<<<<<< HEAD
         // T-AI-01: default-deny. Every content-returning computer-use result is
         // wrapped unless the tool is on the tiny control-only allow-list. This
         // replaces the prior 2-tool allowlist (browser extract + AX inspect),
         // which failed open for any new content-returning tool (screenshot OCR,
         // clipboard, file reads, shell stdout/stderr).
         UntrustedToolOutputPolicy.shouldWrap(toolName: toolName)
+=======
+        toolName == BurnBarToolKind.browserExtract.rawValue
+            || toolName == BurnBarToolKind.macInspectAccessibility.rawValue
+>>>>>>> origin/pr-410
     }
 
     private static func wrappedUntrustedComputerUseResult(_ result: Any, toolName: String) -> [String: Any] {

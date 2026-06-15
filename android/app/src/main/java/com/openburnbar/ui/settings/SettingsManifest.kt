@@ -116,9 +116,15 @@ object SettingsManifest {
                     "browser driving",
                 ),
                 helpText =
+<<<<<<< HEAD
                 "Android mirrors the Mac stream and can signal a panic halt. " +
                     "Approving or rejecting individual agent actions and trust changes is confirmed on the Mac; " +
                     "over-the-wire approval from Android is not yet enabled.",
+=======
+                    "Android mirrors the Mac stream and can signal a panic halt. " +
+                        "Approving or rejecting individual agent actions and trust changes is confirmed on the Mac; " +
+                        "over-the-wire approval from Android is not yet enabled.",
+>>>>>>> origin/pr-410
             ),
             SettingsItem(
                 id = "root.textExpansion",

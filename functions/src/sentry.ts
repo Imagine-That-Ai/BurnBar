@@ -81,6 +81,7 @@ export function sentryStatus(): { enabled: boolean; environment: string } {
 
 export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   if (event.request) {
+<<<<<<< HEAD
     scrubSentryRequest(event.request);
   }
 
@@ -89,11 +90,33 @@ export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   }
   if (event.contexts) {
     event.contexts = sanitizeSentryContexts(event.contexts);
+=======
+    const request = event.request as ErrorEvent["request"] & Record<string, unknown>;
+    request.url = typeof request.url === "string" ? redactURLSecrets(request.url) : request.url;
+    delete request.data;
+    delete request.cookies;
+    delete request.env;
+    delete request.query_string;
+    if (request.headers && isRecord(request.headers)) {
+      request.headers = sanitizeHeaders(request.headers);
+    }
+  }
+
+  if (event.extra) {
+    event.extra = sanitizeSentryValue(event.extra) as ErrorEvent["extra"];
+  }
+  if (event.contexts) {
+    event.contexts = sanitizeSentryValue(event.contexts) as ErrorEvent["contexts"];
+>>>>>>> origin/pr-410
   }
   if (event.breadcrumbs) {
     event.breadcrumbs = event.breadcrumbs.map((breadcrumb) => {
       if (breadcrumb.data) {
+<<<<<<< HEAD
         breadcrumb.data = sanitizeBreadcrumbData(breadcrumb.data);
+=======
+        breadcrumb.data = sanitizeSentryValue(breadcrumb.data) as Breadcrumb["data"];
+>>>>>>> origin/pr-410
       }
       return breadcrumb;
     });
@@ -102,6 +125,7 @@ export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   return event;
 }
 
+<<<<<<< HEAD
 function scrubSentryRequest(request: NonNullable<ErrorEvent["request"]>): void {
   if (typeof request.url === "string") {
     request.url = redactURLSecrets(request.url);
@@ -136,6 +160,8 @@ function sanitizeBreadcrumbData(data: NonNullable<Breadcrumb["data"]>): Breadcru
   return isRecord(sanitized) ? sanitized : data;
 }
 
+=======
+>>>>>>> origin/pr-410
 function sanitizeHeaders(headers: Record<string, unknown>) {
   const sanitized: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers ?? {})) {
@@ -201,6 +227,14 @@ export function captureException(err: unknown, context?: Record<string, unknown>
 export function setSentryUser(uid: string): void {
   if (!dsn) return;
   Sentry.setUser({ id: sentryUserIdForUID(uid) });
+<<<<<<< HEAD
+=======
+}
+
+export function sentryUserIdForUID(uid: string): string {
+  const digest = createHash("sha256").update(uid, "utf8").digest("hex").slice(0, 16);
+  return `uid:${digest}`;
+>>>>>>> origin/pr-410
 }
 
 export function sentryUserIdForUID(uid: string): string {

@@ -43,8 +43,11 @@ node --test scripts/lib/ops-alerts-gate.test.mjs
 
 echo "==> release attestation verifier"
 bash -n scripts/ci/verify-release-attestations.sh
+<<<<<<< HEAD
 
 echo "==> Phase 1 security register structural gates"
 bash scripts/ci/verify-phase1-security-gates.sh
+=======
+>>>>>>> origin/pr-410
 
 echo "PASS: ops readiness"

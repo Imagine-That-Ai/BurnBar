@@ -103,12 +103,22 @@ internal class HermesServiceMessageLaunch(
         }
     }
 
+<<<<<<< HEAD
     private fun sendFailureHandler(modelName: String): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
         val message = error.hermesSendFailureMessage()
         runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
         service.runtimeErrorTextInternal.value = message
         messageActions.appendAssistantError(message, modelName)
     }
+=======
+    private fun sendFailureHandler(modelName: String): CoroutineExceptionHandler =
+        CoroutineExceptionHandler { _, error ->
+            val message = error.hermesSendFailureMessage()
+            runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
+            service.runtimeErrorTextInternal.value = message
+            messageActions.appendAssistantError(message, modelName)
+        }
+>>>>>>> origin/pr-410
 
     private fun Throwable.hermesSendFailureMessage(): String = message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
 

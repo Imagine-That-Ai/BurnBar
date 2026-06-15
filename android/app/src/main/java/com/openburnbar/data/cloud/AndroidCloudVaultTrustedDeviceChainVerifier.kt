@@ -53,7 +53,12 @@ object AndroidCloudVaultTrustedDeviceChainVerifier {
         firestore: FirebaseFirestore,
         deviceId: String,
         localIdentity: AndroidSignalIdentityKeypair,
+<<<<<<< HEAD
     ): AndroidCloudVaultVerifiedTrustedDevice = verifyTrustedDeviceChain(uid, firestore, deviceId, localIdentity, emptySet())
+=======
+    ): AndroidCloudVaultVerifiedTrustedDevice =
+        verifyTrustedDeviceChain(uid, firestore, deviceId, localIdentity, emptySet())
+>>>>>>> origin/pr-410
 }
 
 private suspend fun verifyTrustedDeviceChain(

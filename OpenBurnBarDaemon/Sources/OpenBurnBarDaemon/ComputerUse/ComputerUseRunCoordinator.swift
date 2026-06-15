@@ -783,11 +783,16 @@ public actor ComputerUseRunCoordinator {
             guard let url = action.url else {
                 throw DispatchError.invalidArguments("goto requires url")
             }
+<<<<<<< HEAD
             // T-AI-04: validate the navigation target host AND its post-DNS
             // resolved IPs (anti-rebind) before navigating, so a hostname that
             // resolves to a loopback/private/metadata address is refused.
             let validatedURL = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(url, allowDataURL: true)
             response = try await driver.goto(url: validatedURL.absoluteString, timeoutMillis: action.timeoutMillis)
+=======
+            let validatedURL = try OpenBurnBarBrowserTargetPolicy.validatedURL(url, allowDataURL: true)
+            return try await driver.goto(url: validatedURL.absoluteString, timeoutMillis: action.timeoutMillis)
+>>>>>>> origin/pr-410
         case .key:
             guard let key = action.key else {
                 throw DispatchError.invalidArguments("key requires key")

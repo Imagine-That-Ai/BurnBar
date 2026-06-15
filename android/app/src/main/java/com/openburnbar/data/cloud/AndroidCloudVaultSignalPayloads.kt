@@ -133,7 +133,15 @@ object AndroidCloudVaultSignalPayloads {
      * [SignalAtRestFallbackPolicy] with `senderSetComplete = false`). After the readiness gate (all
      * trusted devices published) this returns the full set, activating cross-device sender-auth.
      */
+<<<<<<< HEAD
     suspend fun trustedSenderPublicKeys(uid: String, firestore: FirebaseFirestore, localIdentity: AndroidSignalIdentityKeypair): Map<String, ByteArray> {
+=======
+    suspend fun trustedSenderPublicKeys(
+        uid: String,
+        firestore: FirebaseFirestore,
+        localIdentity: AndroidSignalIdentityKeypair,
+    ): Map<String, ByteArray> {
+>>>>>>> origin/pr-410
         val map = LinkedHashMap<String, ByteArray>()
         map[localIdentity.identityKeyId] = localIdentity.publicKeyData
         runCatching { atRestRecipients(uid = uid, firestore = firestore, localIdentity = localIdentity) }

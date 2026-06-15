@@ -55,6 +55,7 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     /// in-process tests and unsigned builds so the socket round-trip still works.
     public static let disabled = BurnBarDaemonPeerAuthenticator(enforced: false)
 
+<<<<<<< HEAD
     /// T-DMN-05: pure, build-mode-aware decision for whether the launch
     /// environment may disable the first-party code-signature gate.
     ///
@@ -89,6 +90,8 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         #endif
     }
 
+=======
+>>>>>>> origin/pr-410
     /// Validate the accepted client socket. When enforcement is off this is a
     /// no-op. When on, the peer's audit token must satisfy the first-party
     /// designated requirement; any failure (token unreadable, signature invalid,

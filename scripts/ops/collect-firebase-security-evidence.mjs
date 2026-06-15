@@ -159,6 +159,7 @@ function redactString(value) {
     .replace(
       /(AIza[0-9A-Za-z_-]{20,})/g,
       "[REDACTED_FIREBASE_WEB_API_KEY]",
+<<<<<<< HEAD
     )
     // IAM members (user:/serviceAccount:/group:/domain:) — redact the principal,
     // keep the member type so the policy shape stays auditable without leaking PII.
@@ -180,6 +181,8 @@ function redactString(value) {
     .replace(
       /projects\/[^/\s"]+\/secrets\/[^/\s",}\]]+/g,
       "projects/[REDACTED]/secrets/[REDACTED]",
+=======
+>>>>>>> origin/pr-410
     );
 }
 

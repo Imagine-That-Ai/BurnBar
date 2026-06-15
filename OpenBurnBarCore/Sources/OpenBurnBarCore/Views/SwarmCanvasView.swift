@@ -245,6 +245,143 @@ public struct SwarmCanvasView: View {
 
 // MARK: - Simulation Core
 
+<<<<<<< HEAD
+=======
+public enum SwarmFormationMode: Equatable {
+    case swarm
+    case shapeDollar
+    case shapeCode
+    case shapeBurnBarLogo
+    case shapeRings
+    case shapeRouterFlow
+    case shapeProviderLogo([AgentProvider])
+    case shapeGrok
+    case shapeSkillet
+    case shapeApple
+    case shapeChefHat
+    case shapeChili
+
+    static let showcaseProviders: [AgentProvider] = AgentProvider.swarmGlyphProviders
+
+    static var providerLogoGroups: [[AgentProvider]] {
+        providerLogoGroups(for: showcaseProviders)
+    }
+
+    static var defaultCycle: [SwarmFormationMode] {
+        defaultCycle(for: showcaseProviders)
+    }
+
+    static var inspectionCycle: [SwarmFormationMode] {
+        inspectionCycle(for: showcaseProviders)
+    }
+
+    static func providerLogoGroups(for providers: [AgentProvider]) -> [[AgentProvider]] {
+        grouped(SwarmProviderGlyphSelection.normalized(providers), size: 2)
+    }
+
+    static func defaultCycle(for providers: [AgentProvider], excludeBrandShapes: Bool = false, uiMode: UIMode = .standard) -> [SwarmFormationMode] {
+        if uiMode == .cooking {
+            return [
+                .swarm,
+                .shapeSkillet,
+                .swarm,
+                .shapeApple,
+                .swarm,
+                .shapeChefHat,
+                .swarm,
+                .shapeChili
+            ]
+        }
+
+        let enabledProviders = SwarmProviderGlyphSelection.normalized(providers)
+        let providerCycle = providerLogoGroups(for: enabledProviders).flatMap { group in
+            [
+                SwarmFormationMode.swarm,
+                SwarmFormationMode.shapeProviderLogo(group)
+            ]
+        }
+        let grokCycle: [SwarmFormationMode] = enabledProviders.contains(.xAI)
+            ? [.swarm, .shapeGrok]
+            : []
+
+        if excludeBrandShapes {
+            return [.swarm] + providerCycle + grokCycle
+        }
+
+        return [
+            .swarm,
+            .shapeDollar,
+            .swarm,
+            .shapeCode,
+            .swarm,
+            .shapeBurnBarLogo
+        ] + providerCycle + grokCycle + [
+            .swarm,
+            .shapeRings,
+            .swarm,
+            .shapeRouterFlow
+        ]
+    }
+
+    static func inspectionCycle(for providers: [AgentProvider], excludeBrandShapes: Bool = false, uiMode: UIMode = .standard) -> [SwarmFormationMode] {
+        if uiMode == .cooking {
+            return [
+                .swarm,
+                .shapeSkillet,
+                .shapeApple,
+                .shapeChefHat,
+                .shapeChili
+            ]
+        }
+
+        let enabledProviders = SwarmProviderGlyphSelection.normalized(providers)
+        let grokCycle: [SwarmFormationMode] = enabledProviders.contains(.xAI) ? [.shapeGrok] : []
+
+        if excludeBrandShapes {
+            return [.swarm] + enabledProviders.map { provider in
+                .shapeProviderLogo([provider])
+            } + grokCycle + providerLogoGroups(for: enabledProviders).map { group in
+                .shapeProviderLogo(group)
+            }
+        }
+
+        return [
+            .swarm,
+            .shapeDollar,
+            .shapeCode,
+            .shapeBurnBarLogo,
+            .shapeRings,
+            .shapeRouterFlow
+        ] + enabledProviders.map { provider in
+            .shapeProviderLogo([provider])
+        } + grokCycle + providerLogoGroups(for: enabledProviders).map { group in
+            .shapeProviderLogo(group)
+        }
+    }
+
+    var requiresSettledAdmireHold: Bool {
+        switch self {
+        case .shapeDollar, .shapeCode, .shapeBurnBarLogo, .shapeRings, .shapeProviderLogo, .shapeGrok,
+             .shapeSkillet, .shapeApple, .shapeChefHat, .shapeChili:
+            return true
+        case .swarm, .shapeRouterFlow:
+            return false
+        }
+    }
+
+    private static func grouped(_ providers: [AgentProvider], size: Int) -> [[AgentProvider]] {
+        guard size > 0 else { return [] }
+        var groups: [[AgentProvider]] = []
+        var index = 0
+        while index < providers.count {
+            groups.append(Array(providers[index..<min(index + size, providers.count)]))
+            index += size
+        }
+        return groups
+    }
+}
+
+>>>>>>> origin/pr-410
 @MainActor
 public final class SwarmSimulation {
     private struct ProviderLogoSlot {

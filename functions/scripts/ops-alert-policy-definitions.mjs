@@ -184,6 +184,36 @@ export const OPS_SLO_ALERT_POLICIES = [
     ],
   },
   {
+    displayName: "OpenBurnBar Hermes relay 5xx spike",
+    documentation: {
+      content:
+        "The Hermes realtime relay (hermes-realtime-relay Cloud Run service) is returning 5xx responses. Most likely Memorystore/Redis unreachability or relay overload — check Redis connectivity and the relay revision; fail over or roll back if it persists. This was the one prod relay service with no error alerting.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["run.googleapis.com/request_count"],
+    conditions: [
+      {
+        displayName: "hermes-realtime-relay 5xx rate",
+        conditionThreshold: {
+          filter:
+            'resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx" AND resource.labels.service_name=monitoring.regex.full_match("hermes-realtime-relay")',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_RATE",
+              crossSeriesReducer: "REDUCE_SUM",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 1,
+          duration: "300s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
     displayName: "OpenBurnBar Hosted MCP 5xx spike",
     documentation: {
       content: "Hosted MCP Cloud Run 5xx spike. See docs/REMOTE_MCP_RUNBOOK.md.",

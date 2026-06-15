@@ -49,6 +49,7 @@ enum OpenBurnBarBrowserTargetPolicy {
         return url
     }
 
+<<<<<<< HEAD
     /// T-AI-04 — post-DNS (anti-rebind) enforcement.
     ///
     /// `validatedURL`/`isBlockedHost` reject a *literal* private/metadata host,
@@ -143,6 +144,8 @@ enum OpenBurnBarBrowserTargetPolicy {
         #endif
     }
 
+=======
+>>>>>>> origin/pr-410
     static func isBlockedHost(_ host: String) -> Bool {
         let normalized = host
             .trimmingCharacters(in: .whitespacesAndNewlines)

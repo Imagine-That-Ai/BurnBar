@@ -50,6 +50,7 @@ jobs:
       - name: Check Rust panic debt budget (unwrap/expect)
         run: ./scripts/debt/check-rust-panic-budget.sh
 
+<<<<<<< HEAD
       - name: Check service SwiftUI import budget
         run: ./scripts/debt/check-service-swiftui-import-budget.sh
 
@@ -58,6 +59,10 @@ jobs:
           set -euo pipefail
           python3 tools/error-debt/test_count_error_debt.py
           python3 tools/concurrency-debt/test_count_task_detached.py
+=======
+      - name: Check Swift file-size debt budget (shrink-only)
+        run: ./scripts/debt/check-swift-file-size-budget.sh
+>>>>>>> origin/pr-410
 
       - name: Refresh tech debt metrics snapshot
         run: |
@@ -450,6 +455,13 @@ jobs:
           XCODEBUILD_RETRY_ON_FAILURE: "YES"
           XCODEBUILD_TEST_ITERATIONS: "3"
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+
+      - name: Guard against "Executed 0 tests" false-green
+        # An unregistered Xcode test file (missing project.pbxproj membership)
+        # compiles to nothing and runs zero tests while the lane stays green.
+        # Assert the app xcresult actually recorded executed tests.
+        if: success()
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh

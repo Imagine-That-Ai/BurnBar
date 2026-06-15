@@ -137,7 +137,11 @@ class ComputerUseSecurityCallableClient(
         if (requirementId.isNullOrEmpty() || rotatingDeviceId.isNullOrEmpty()) {
             return revocation.copy(
                 cloudVaultRotationFailureMessage =
+<<<<<<< HEAD
                 "Cloud Vault rotation is required, but this device's trusted device identity is unavailable.",
+=======
+                    "Cloud Vault rotation is required, but this device's trusted device identity is unavailable.",
+>>>>>>> origin/pr-410
             )
         }
         return runCatching {
@@ -175,7 +179,11 @@ class ComputerUseSecurityCallableClient(
         val uid = requireAuthenticatedUser()
         val trimmed = rotatingDeviceId.trim()
         if (trimmed.isEmpty()) return AndroidCloudVaultRevocationRotation.PickupResult()
+<<<<<<< HEAD
         val pending = listPendingCloudVaultRotationRequirements(trimmed)
+=======
+        val pending = listPendingCloudVaultRotationRequirements()
+>>>>>>> origin/pr-410
         return AndroidCloudVaultRevocationRotation.runPickup(
             uid = uid,
             rotatingDeviceId = trimmed,
@@ -190,6 +198,7 @@ class ComputerUseSecurityCallableClient(
      * Lists the user's pending Cloud Vault rotation requirements via the server-only callable, then
      * decodes them with [AndroidCloudVaultRevocationRotation.parsePendingRequirements].
      */
+<<<<<<< HEAD
     suspend fun listPendingCloudVaultRotationRequirements(callerDeviceId: String): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
         val trimmed = callerDeviceId.trim()
         require(trimmed.isNotEmpty()) { "Could not list pending Cloud Vault rotation requirements." }
@@ -197,6 +206,13 @@ class ComputerUseSecurityCallableClient(
         val result =
             functions.getHttpsCallable("listPendingCloudVaultRotationRequirements")
                 .call(AndroidCloudVaultRevocationRotation.listPendingCallablePayload(trimmed))
+=======
+    suspend fun listPendingCloudVaultRotationRequirements(): List<AndroidCloudVaultRevocationRotation.PendingRequirement> {
+        requireAuthenticatedUser()
+        val result =
+            functions.getHttpsCallable("listPendingCloudVaultRotationRequirements")
+                .call(emptyMap<String, Any>())
+>>>>>>> origin/pr-410
                 .await()
         val data = result.getData() as? Map<*, *> ?: error("Could not list pending Cloud Vault rotation requirements.")
         val rawRequirements = data["requirements"] as? List<*> ?: error("Could not list pending Cloud Vault rotation requirements.")

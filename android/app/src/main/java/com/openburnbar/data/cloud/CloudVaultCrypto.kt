@@ -220,6 +220,7 @@ object CloudVaultCrypto {
     // `CloudVaultCrypto.signalAtRestSenderAuthVersion` / `...Domain`. Bump only on a breaking change.
     const val SIGNAL_AT_REST_SENDER_AUTH_VERSION: Int = 1
     const val SIGNAL_AT_REST_SENDER_AUTH_DOMAIN: String = "OpenBurnBar-Signal-AtRest-SenderAuth-v1"
+<<<<<<< HEAD
 
     // HPKE `info` prefix the signed message embeds — byte-parity with Swift
     // `OpenBurnBarSignalAtRest.atRestInfoPrefix` and `CloudVaultCryptoSupport.atRestSeal`.
@@ -235,6 +236,22 @@ object CloudVaultCrypto {
     const val CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION: Int = 2
     const val TOKEN_HASH_VERSION: Int = 1
     const val SEMANTIC_HASH_VERSION: Int = 1
+=======
+    // HPKE `info` prefix the signed message embeds — byte-parity with Swift
+    // `OpenBurnBarSignalAtRest.atRestInfoPrefix` and `CloudVaultCryptoSupport.atRestSeal`.
+    const val SIGNAL_AT_REST_INFO_PREFIX: String = "OpenBurnBar-Signal-AtRest-v1|"
+    const val aadContextPrefix: String = "OpenBurnBar-CloudVault-aad-v2"
+    const val legacyAADContextPrefix: String = "OpenBurnBar-CloudVault-aad-v1"
+    const val currentSealedTextSchemaVersion: Int = 2
+    const val currentBlobEnvelopeSchemaVersion: Int = 2
+    const val blobIntegrityHashVersion: Int = 1
+    const val sessionBodyHashVersion: Int = 2
+    const val sessionChunkHashVersion: Int = 2
+    const val projectMemoryContentHashVersion: Int = 2
+    const val currentSealedPayloadSchemaVersion: Int = 2
+    const val tokenHashVersion: Int = 1
+    const val semanticHashVersion: Int = 1
+>>>>>>> origin/pr-410
 
     fun sealText(text: String, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultSealedText {
         val plaintext = text.toByteArray(Charsets.UTF_8)
@@ -427,6 +444,7 @@ object CloudVaultCrypto {
         val signature = senderPrivateKey.calculateSignature(signedMessage)
         return CloudVaultSignalEnvelope(
             ciphertextLayer =
+<<<<<<< HEAD
             CloudVaultSignalCiphertextLayer(
                 payloadCiphertextB64 = payloadCiphertextB64,
                 payloadAADLabel = signalPayloadAadLabel(canonicalAAD),
@@ -440,6 +458,21 @@ object CloudVaultCrypto {
                 senderIdentityKeyB64 = senderPublicKeyB64,
                 signatureB64 = CloudVaultCryptoSupport.encodeBase64(signature),
             ),
+=======
+                CloudVaultSignalCiphertextLayer(
+                    payloadCiphertextB64 = payloadCiphertextB64,
+                    payloadAADLabel = signalPayloadAadLabel(canonicalAAD),
+                    schemaVersion = SIGNAL_PAYLOAD_SCHEMA_VERSION,
+                ),
+            keyDelivery = CloudVaultSignalAtRestKeyDelivery(wraps = wraps),
+            binding = binding,
+            senderAuth =
+                CloudVaultSignalSenderAuth(
+                    senderIdentityKeyId = senderIdentityKeyId,
+                    senderIdentityKeyB64 = senderPublicKeyB64,
+                    signatureB64 = CloudVaultCryptoSupport.encodeBase64(signature),
+                ),
+>>>>>>> origin/pr-410
         )
     }
 
@@ -456,8 +489,18 @@ object CloudVaultCrypto {
      * Kotlin's locale/Unicode `String.<`), so the bytes are identical to the Swift side even for
      * non-ASCII device ids.
      */
+<<<<<<< HEAD
     fun senderAuthSignedMessage(info: String, payloadCiphertextB64: String, wraps: List<CloudVaultSignalAtRestWrap>): ByteArray {
         fun normalizedBytes(value: String): ByteArray = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFC).toByteArray(Charsets.UTF_8)
+=======
+    fun senderAuthSignedMessage(
+        info: String,
+        payloadCiphertextB64: String,
+        wraps: List<CloudVaultSignalAtRestWrap>,
+    ): ByteArray {
+        fun normalizedBytes(value: String): ByteArray =
+            java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFC).toByteArray(Charsets.UTF_8)
+>>>>>>> origin/pr-410
         val out = java.io.ByteArrayOutputStream()
         fun frame(value: String) {
             val bytes = normalizedBytes(value)
@@ -693,6 +736,7 @@ object CloudVaultCrypto {
         return CloudVaultDocumentRewrapResult(updated.toMap(), changedFields)
     }
 
+<<<<<<< HEAD
     fun signalEnvelopeMap(envelope: CloudVaultSignalEnvelope): Map<String, Any> = mapOf(
         "signalEnvelopeFormatVersion" to envelope.signalEnvelopeFormatVersion,
         "mode" to envelope.mode,
@@ -734,15 +778,64 @@ object CloudVaultCrypto {
             base +
                 (
                     "senderAuth" to
+=======
+    fun signalEnvelopeMap(envelope: CloudVaultSignalEnvelope): Map<String, Any> =
+        mapOf(
+            "signalEnvelopeFormatVersion" to envelope.signalEnvelopeFormatVersion,
+            "mode" to envelope.mode,
+            "relayEncryption" to envelope.relayEncryption,
+            "ciphertextLayer" to
+                mapOf(
+                    "payloadCiphertextB64" to envelope.ciphertextLayer.payloadCiphertextB64,
+                    "payloadAADLabel" to envelope.ciphertextLayer.payloadAADLabel,
+                    "schemaVersion" to envelope.ciphertextLayer.schemaVersion,
+                ),
+            "keyDelivery" to
+                mapOf(
+                    "scheme" to envelope.keyDelivery.scheme,
+                    "contentKeyLength" to envelope.keyDelivery.contentKeyLength,
+                    "wraps" to
+                        envelope.keyDelivery.wraps.map { wrap ->
+                            mapOf(
+                                "recipientKind" to wrap.recipientKind,
+                                "recipientIdentityKeyId" to wrap.recipientIdentityKeyId,
+                                "recipientIdentityKeyB64" to wrap.recipientIdentityKeyB64,
+                                "sealedContentKeyB64" to wrap.sealedContentKeyB64,
+                            )
+                        },
+                ),
+            "binding" to
+                mapOf(
+                    "uid" to envelope.binding.uid,
+                    "scope" to envelope.binding.scope,
+                    "collection" to envelope.binding.collection,
+                    "docId" to envelope.binding.docId,
+                    "field" to envelope.binding.field,
+                    "mode" to envelope.binding.mode,
+                    "formatVersion" to envelope.binding.formatVersion,
+                ),
+        ).let { base ->
+            // Key order is map-insensitive on the wire; the senderAuth keys mirror the Swift
+            // Codable property names so a Swift reader decodes the Android-sealed block.
+            envelope.senderAuth?.let { senderAuth ->
+                base +
+                    ("senderAuth" to
+>>>>>>> origin/pr-410
                         mapOf(
                             "senderIdentityKeyId" to senderAuth.senderIdentityKeyId,
                             "senderIdentityKeyB64" to senderAuth.senderIdentityKeyB64,
                             "signatureB64" to senderAuth.signatureB64,
                             "signatureVersion" to senderAuth.signatureVersion,
+<<<<<<< HEAD
                         )
                     )
         } ?: base
     }
+=======
+                        ))
+            } ?: base
+        }
+>>>>>>> origin/pr-410
 
     fun signalEnvelopeFromMap(raw: Map<*, *>?): CloudVaultSignalEnvelope? {
         val parts = signalEnvelopeParts(raw) ?: return null
@@ -978,6 +1071,7 @@ object CloudVaultCrypto {
         }
     }
 
+<<<<<<< HEAD
     private fun signalPayloadAadLabel(canonicalAAD: String): String = "bindingToAAD-sha256:${sha256Hex(canonicalAAD.toByteArray(Charsets.UTF_8)).take(32)}"
 
     /** 4-byte big-endian length prefix, matching the Swift `UInt32(...).bigEndian` framing. */
@@ -987,6 +1081,19 @@ object CloudVaultCrypto {
         (value ushr 8 and BYTE_MASK).toByte(),
         (value and BYTE_MASK).toByte(),
     )
+=======
+    private fun signalPayloadAadLabel(canonicalAAD: String): String =
+        "bindingToAAD-sha256:${sha256Hex(canonicalAAD.toByteArray(Charsets.UTF_8)).take(32)}"
+
+    /** 4-byte big-endian length prefix, matching the Swift `UInt32(...).bigEndian` framing. */
+    private fun uint32BigEndian(value: Int): ByteArray =
+        byteArrayOf(
+            (value ushr 24 and BYTE_MASK).toByte(),
+            (value ushr 16 and BYTE_MASK).toByte(),
+            (value ushr 8 and BYTE_MASK).toByte(),
+            (value and BYTE_MASK).toByte(),
+        )
+>>>>>>> origin/pr-410
 
     /** Unsigned byte-wise lexicographic compare, matching Swift's `lexicographicallyPrecedes` on UTF-8. */
     private fun compareByteArraysLexicographically(lhs: ByteArray, rhs: ByteArray): Int {

@@ -1,4 +1,13 @@
+<<<<<<< HEAD
 type EndpointTrigger = "callable" | "http" | "scheduled" | "firestore-trigger" | "provider-webhook";
+=======
+type EndpointTrigger =
+  | "callable"
+  | "http"
+  | "scheduled"
+  | "firestore-trigger"
+  | "provider-webhook";
+>>>>>>> origin/pr-410
 
 type EndpointAuthorizationEntry = {
   exportedName: string;
@@ -73,7 +82,15 @@ const scheduledJobs = entries(
 );
 
 const firestoreTriggers = entries(
+<<<<<<< HEAD
   ["onCliSessionAgentReplyNotification", "onMobileAssistantAgentReplyNotification", "onKnowledgeRepoPush"],
+=======
+  [
+    "onCliSessionAgentReplyNotification",
+    "onMobileAssistantAgentReplyNotification",
+    "onKnowledgeRepoPush",
+  ],
+>>>>>>> origin/pr-410
   {
     trigger: "firestore-trigger",
     authMethod: "Firestore event trigger",
@@ -91,6 +108,7 @@ const providerWebhooks = entries(["stripeBurnBarProWebhook", "appStoreServerNoti
   tenantSource: "provider-signed account token or transaction payload",
   ownershipCheck: "server maps verified provider account token to uid/entitlement",
   negativeBolaTest: "provider-webhook-signature-and-account-token-tests",
+<<<<<<< HEAD
   publicJustification:
     "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
 });
@@ -105,6 +123,13 @@ const codePairingCallables = entries(
     "createPiAgentPairing",
     "completePiAgentPairing",
   ],
+=======
+  publicJustification: "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
+});
+
+const codePairingCallables = entries(
+  ["startCliLink", "pollCliLink", "completeCliLink", "createHermesPairing", "completeHermesPairing", "createPiAgentPairing", "completePiAgentPairing"],
+>>>>>>> origin/pr-410
   {
     trigger: "callable",
     authMethod: "Firebase Auth/App Check plus one-time pairing or link code",
@@ -174,7 +199,10 @@ const authScopedCallables = entries(
     "listEncryptedProjectMemorySnapshots",
     "searchEncryptedConversationIndex",
     "queryConversations",
+<<<<<<< HEAD
     "getProfileAvatarDownloadUrl",
+=======
+>>>>>>> origin/pr-410
     "commitKnowledgeBatch",
     "configureKnowledgeSource",
     "deleteKnowledgeSource",
@@ -241,10 +269,15 @@ const authScopedCallables = entries(
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "deviceId", "documentID", "providerAccountId", "sourceId", "attachmentId"],
+<<<<<<< HEAD
     ownershipCheck:
       "handler must derive uid from request.auth.uid and validate object path or owner uid before Admin SDK access",
     negativeBolaTest:
       "endpoint-specific BOLA tests required; matrix drift is enforced by endpointAuthorizationMatrix.test.ts",
+=======
+    ownershipCheck: "handler must derive uid from request.auth.uid and validate object path or owner uid before Admin SDK access",
+    negativeBolaTest: "endpoint-specific BOLA tests required; matrix drift is enforced by endpointAuthorizationMatrix.test.ts",
+>>>>>>> origin/pr-410
   },
 );
 

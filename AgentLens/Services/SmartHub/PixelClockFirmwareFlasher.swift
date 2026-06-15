@@ -458,6 +458,7 @@ struct PixelClockNetworkProvisioner {
 
     /// Blocking Wi-Fi scan/associate runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func join(ssid: String, password: String?) async throws {
+<<<<<<< HEAD
         guard let interface = primaryWiFiInterface() else {
             throw ProvisionError.connectFailed("Wi-Fi is not available on this Mac.")
         }
@@ -466,6 +467,18 @@ struct PixelClockNetworkProvisioner {
             throw ProvisionError.joinFailed(ssid)
         }
         try interface.associate(to: network, password: password)
+=======
+        try await Task.detached(priority: .userInitiated) {
+            guard let interface = primaryWiFiInterface() else {
+                throw ProvisionError.connectFailed("Wi-Fi is not available on this Mac.")
+            }
+            let networks = try interface.scanForNetworks(withName: ssid)
+            guard let network = networks.min(by: { $0.rssiValue > $1.rssiValue }) else {
+                throw ProvisionError.joinFailed(ssid)
+            }
+            try interface.associate(to: network, password: password)
+        }.value
+>>>>>>> origin/pr-410
     }
 
     private static func waitForSetupPortal() async throws {

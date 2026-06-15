@@ -22,12 +22,15 @@ disabled_rules:
 #   * size/complexity thresholds are RATCHETS set just above the measured
 #     codebase maximum — they block regression now and must be tightened as
 #     the tracked debt below is burned down;
+<<<<<<< HEAD
 #   * 2026-06-14: tightened each size/complexity ERROR threshold down to just
 #     above today's measured maximum (was certifying the ceiling, e.g. error
 #     700 vs max 612). These are deliberately set with only a small margin over
 #     the current max so they ratchet DOWN as code improves — once the in-flight
 #     god-file decomposition lands and re-measures the maxima, tighten again.
 #     Do NOT raise any error threshold to "make room"; lower the code instead.
+=======
+>>>>>>> origin/pr-410
 #   * brownfield-refactor opt-ins that require API-changing rewrites were
 #     removed with their measured debt recorded:
 #       force_unwrapping               715 sites
@@ -181,6 +184,7 @@ line_length:
 
 # Ratchet: max measured body 612 lines (1,030 functions exceeded the previous
 # warning of 50; p50=67, p90=124). Tighten as functions are decomposed.
+<<<<<<< HEAD
 # remediation(swiftlint-ratchets): error 700->650, warning 620->615 (both just
 # above the measured 612 max). Was certifying the ceiling. NOTE: CI runs
 # `swiftlint lint --quiet --strict`, which promotes WARNINGS to errors — so the
@@ -208,6 +212,25 @@ type_body_length:
 file_length:
   warning: 5950
   error: 6200
+=======
+function_body_length:
+  warning: 620
+  error: 700
+
+# Ratchet: max measured type body 4,659 lines (360 types over the previous 300).
+type_body_length:
+  warning: 4700
+  error: 5000
+
+# Coarse absolute ceiling only. The REAL shrink-only constraint on file bloat is
+# the count+size ratchet in budgets/swift-file-size-baseline.json (target 2000
+# lines), enforced merge-blocking by scripts/debt/check-swift-file-size-budget.sh:
+# no new file may cross the target and no baselined file may grow. Lower these
+# thresholds toward the target as the giant views are decomposed (Phase 3).
+file_length:
+  warning: 6000
+  error: 6500
+>>>>>>> origin/pr-410
 
 identifier_name:
   min_length:
@@ -269,6 +292,7 @@ type_name:
     - DS
 
 # Ratchet: max measured complexity 66 (129 functions over the previous 15).
+<<<<<<< HEAD
 # remediation(swiftlint-ratchets): error 80->70, warning 70->67 (both just above
 # the measured 66 max). CI `--strict` promotes warnings to errors, so the warning
 # level must stay above max too. Tighten DOWN (warning+error together) toward 15
@@ -285,6 +309,16 @@ cyclomatic_complexity:
 function_parameter_count:
   warning: 15
   error: 16
+=======
+cyclomatic_complexity:
+  warning: 70
+  error: 80
+
+# Ratchet: max measured parameter count 15 (218 functions over the default 5).
+function_parameter_count:
+  warning: 16
+  error: 20
+>>>>>>> origin/pr-410
 
 # 3-member tuples are accepted in this codebase; 5+ must become structs.
 large_tuple:

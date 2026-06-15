@@ -2433,12 +2433,15 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
   await assertSucceeds(
     setDoc(doc(db, wrapperPath), wrapperPayload)
   );
+<<<<<<< HEAD
   // T-PTR-06: the same trusted-device payload under a NON-deterministic doc ID is
   // rejected — a stolen-session owner cannot mint extra same-generation wrappers
   // under arbitrary doc IDs.
   await assertFails(
     setDoc(doc(db, wrapperMismatchedIdPath), wrapperPayload)
   );
+=======
+>>>>>>> origin/pr-410
   await assertFails(deleteDoc(doc(db, wrapperPath)));
 });
 

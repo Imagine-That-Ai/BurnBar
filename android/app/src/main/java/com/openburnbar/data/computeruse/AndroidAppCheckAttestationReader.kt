@@ -87,7 +87,13 @@ object AndroidAppCheckAttestationReader {
      * @return the fresh attestation digest to attach when strict mode is on, or `null` when the ramp
      *   is off (caller falls back to its best-effort [attestationDigestProvider]).
      */
+<<<<<<< HEAD
     suspend fun ensureAttestationDigestOrThrow(securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient()): String? {
+=======
+    suspend fun ensureAttestationDigestOrThrow(
+        securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
+    ): String? {
+>>>>>>> origin/pr-410
         if (!PhoneControlAttestationPolicy.attestationRequired()) return null
         currentAttestationDigestForEnvelope()?.let { return it }
         runCatching { securityCallables.bindAppCheckAttestation() }

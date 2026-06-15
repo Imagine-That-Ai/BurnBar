@@ -12,21 +12,29 @@ import org.junit.Test
  */
 class AndroidCloudVaultRevocationRotationTest {
     @Test
+<<<<<<< HEAD
     fun listPendingCallablePayloadIncludesCallerDeviceId() {
         val payload = AndroidCloudVaultRevocationRotation.listPendingCallablePayload("  dev-a  ")
         assertEquals("dev-a", payload["callerDeviceId"])
     }
 
     @Test
+=======
+>>>>>>> origin/pr-410
     fun parsePendingRequirementsAcceptsRequirementIdOrId() {
         val raw =
             listOf(
                 mapOf("requirementId" to "req-1", "survivorDeviceIds" to listOf("dev-a", "dev-b")),
                 mapOf("id" to "req-2", "survivorDeviceIds" to listOf(" dev-c ", "")),
+<<<<<<< HEAD
                 // no id => dropped
                 mapOf("survivorDeviceIds" to listOf("dev-x")),
                 // empty id => dropped
                 mapOf("requirementId" to "", "survivorDeviceIds" to listOf("dev-y")),
+=======
+                mapOf("survivorDeviceIds" to listOf("dev-x")), // no id => dropped
+                mapOf("requirementId" to "", "survivorDeviceIds" to listOf("dev-y")), // empty id => dropped
+>>>>>>> origin/pr-410
             )
 
         val parsed = AndroidCloudVaultRevocationRotation.parsePendingRequirements(raw)
@@ -58,8 +66,12 @@ class AndroidCloudVaultRevocationRotationTest {
         val requirements =
             listOf(
                 AndroidCloudVaultRevocationRotation.PendingRequirement("req-1", listOf("dev-a")),
+<<<<<<< HEAD
                 // repeat
                 AndroidCloudVaultRevocationRotation.PendingRequirement("req-1", listOf("dev-a")),
+=======
+                AndroidCloudVaultRevocationRotation.PendingRequirement("req-1", listOf("dev-a")), // repeat
+>>>>>>> origin/pr-410
                 AndroidCloudVaultRevocationRotation.PendingRequirement("req-2", listOf("dev-a")),
             )
 

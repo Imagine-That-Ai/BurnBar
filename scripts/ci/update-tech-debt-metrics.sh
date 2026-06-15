@@ -83,7 +83,7 @@ task_detached_services="$(python3 "${repo_root}/tools/concurrency-debt/count-tas
 
 swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services")"
 
-try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
+try_optional_total="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
 
 empty_catch_blocks="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric empty-catch --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).emptyCatch.total))")"
 
@@ -120,6 +120,7 @@ if [[ -s "${unsafe_cast_report}" ]]; then
   unsafe_cast_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${unsafe_cast_report}")"
 fi
 
+<<<<<<< HEAD
 knip_functions_total="n/a"
 if [[ -f "${repo_root}/budgets/knip-baseline.json" ]]; then
   knip_functions_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).functions ?? 'n/a')" "${repo_root}/budgets/knip-baseline.json")"
@@ -173,6 +174,8 @@ PY
 )"
 fi
 
+=======
+>>>>>>> origin/pr-410
 rust_panic_debt="$(python3 - "${repo_root}" <<'PY'
 import pathlib
 import re
@@ -216,17 +219,26 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`@MainActor\` on I/O facades (listed set) | ${main_actor_io_services} | 4 | 0 |
 | Empty \`catch {}\` blocks (app + daemon) | ${empty_catch_blocks} | 0 | 0 |
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |
+<<<<<<< HEAD
 | \`try?\` in \`AgentLens/Services/\` | ${try_optional_services} | ≤ 120 | ≤ 50 |
 | Unsafe cast assert-zero gate | ${unsafe_cast_total} | 0 | 0 |
 | Knip dead-code budget (\`budgets/knip-baseline.json\`, functions) | ${knip_functions_total} | 0 | 0 |
 | Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
 | \`@unchecked Sendable\` ratchet (assert-zero gate; ${unchecked_sendable_allowlist} documented allowlist exceptions) | ${unchecked_sendable_total} | 0 | 0 |
+=======
+| \`try?\` (all production Swift) | ${try_optional_total} | ≤ baseline | ≤ 800 |
+| Unsafe cast budget (\`budgets/unsafe-cast-baseline.json\`) | ${unsafe_cast_total} | 0 | 0 |
+>>>>>>> origin/pr-410
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | ${top_four_total} | ≤ 5000 | ≤ 3500 |
 | \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
 | \`functions/src/index.ts\` LOC | ${index_ts_lines} | modularize | — |
+<<<<<<< HEAD
 | \`import SwiftUI\` in Services/ | ${swiftui_services} | 0 | 0 |
 | Phase 1 security register open items (\`docs/governance/PHASE1_SECURITY_REGISTER.md\`) | ${phase1_security_open} | ≤ 3 | 0 |
+=======
+| \`import SwiftUI\` in Services/ + DataStore/ | ${swiftui_services} | ≤ 3 | 0 |
+>>>>>>> origin/pr-410
 | Rust \`unwrap()\`/\`expect()\` in \`crates/{burnbar-remote,openburnbar-iroh}\` | ${rust_panic_debt} | 0 | 0 |
 
 ## Top service files (lines)

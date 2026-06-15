@@ -434,8 +434,12 @@ public enum CloudVaultCrypto {
     public static let recoverySalt = Data("OpenBurnBar-Recovery-Salt-v1".utf8)
     public static let recoveryWrapInfo = Data("OpenBurnBar-Recovery-Wrap-v1".utf8)
 
+<<<<<<< HEAD
     // Test-only injection seam: production never reassigns this (stays the pure C `SecRandomCopyBytes`); only one XCTest swaps a stub in and restores the original via `defer` within a single synchronous test, so there is no concurrent mutation.
     nonisolated(unsafe) internal static var secureRandomCopyBytes: (SecRandomRef?, Int, UnsafeMutableRawPointer) -> OSStatus = SecRandomCopyBytes
+=======
+    internal static var secureRandomCopyBytes: (SecRandomRef?, Int, UnsafeMutableRawPointer) -> OSStatus = SecRandomCopyBytes
+>>>>>>> origin/pr-410
 
     private static func randomBytes(count: Int) throws -> [UInt8] {
         var bytes = [UInt8](repeating: 0, count: count)

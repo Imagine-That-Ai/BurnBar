@@ -13,8 +13,16 @@ import os
 ///
 /// `Locked` is reference-typed so that in-place mutation is visible to all
 /// owners of the box, similar to a `class`-based container.
+<<<<<<< HEAD
 public final class Locked<T: Sendable>: Sendable {
     private let storage: OSAllocatedUnfairLock<T>
+=======
+///
+/// Thread safety guaranteed by NSLock; the compiler cannot verify lock-based invariants.
+public final class Locked<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: T
+>>>>>>> origin/pr-410
 
     public init(_ value: T) {
         storage = OSAllocatedUnfairLock(initialState: value)

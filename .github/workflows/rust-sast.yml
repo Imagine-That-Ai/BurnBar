@@ -39,6 +39,20 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+<<<<<<< HEAD
+=======
+  advisory-single-source:
+    name: advisory ignore single-source guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      # Fails if the accepted-advisory set is hand-duplicated in this workflow
+      # instead of derived from crates/openburnbar-iroh/deny.toml (the one source).
+      - name: Verify advisory ignores are single-sourced from deny.toml
+        run: bash scripts/ci/check-advisory-ignore-single-source.sh
+
+>>>>>>> origin/pr-410
   cargo-audit:
     name: cargo-audit (${{ matrix.crate }})
     runs-on: ubuntu-latest
@@ -90,12 +104,24 @@ jobs:
       - name: cargo audit (${{ matrix.crate }})
         working-directory: ${{ matrix.path }}
         run: |
+<<<<<<< HEAD
           cargo audit \
             --deny warnings \
             --ignore RUSTSEC-2023-0089 \
             --ignore RUSTSEC-2025-0141 \
             --ignore RUSTSEC-2024-0436 \
             --ignore RUSTSEC-2024-0370
+=======
+          # Accepted-advisory set is single-sourced from
+          # crates/openburnbar-iroh/deny.toml (with per-id rationale); derive the
+          # --ignore flags so cargo-audit and cargo-deny can never drift apart.
+          args=(--deny warnings)
+          while IFS= read -r id; do
+            [[ -n "$id" ]] && args+=(--ignore "$id")
+          done < <("${GITHUB_WORKSPACE}/scripts/ci/rust-advisory-ignores.sh")
+          echo "cargo audit ${args[*]}"
+          cargo audit "${args[@]}"
+>>>>>>> origin/pr-410
 
   clippy-security:
     name: clippy security lints (${{ matrix.crate }})

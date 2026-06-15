@@ -32,6 +32,7 @@ struct OpenBurnBarDaemonExecutable {
             environment: ProcessInfo.processInfo.environment,
             logger: logger
         )
+<<<<<<< HEAD
 
         // T-DMN-03: before binding the control socket, re-verify the daemon's own
         // on-disk image against the first-party designated requirement. Enforced
@@ -83,6 +84,12 @@ struct OpenBurnBarDaemonExecutable {
             logger: logger,
             peerAuthenticator: peerAuthenticator,
             localAuthProofVerifier: localAuthProofVerifier
+=======
+        let server = BurnBarDaemonServer(
+            configuration: configuration,
+            logger: logger,
+            peerAuthenticator: peerAuthenticator
+>>>>>>> origin/pr-410
         )
         let pensieveWatcher = makePensieveKnowledgeWatcher(
             environment: ProcessInfo.processInfo.environment,
@@ -107,6 +114,7 @@ struct OpenBurnBarDaemonExecutable {
     }
 }
 
+<<<<<<< HEAD
 /// RR-3 / T-DMN-05: build the control-socket peer authenticator for this process.
 ///
 /// Enforcement of the first-party code-signature gate is ON by default — a
@@ -120,10 +128,22 @@ struct OpenBurnBarDaemonExecutable {
 /// the gate by exporting the variable: in a release build the env value is never
 /// read, so the authenticator is unconditionally `enforced: true`. In DEBUG the
 /// opt-out remains and is logged loudly so a misconfiguration is never silent.
+=======
+/// RR-3: build the control-socket peer authenticator for this process.
+///
+/// Enforcement of the first-party code-signature gate is ON by default — a
+/// production daemon refuses any accepted peer that does not satisfy the
+/// canonical designated requirement. Unsigned developer builds (where no binary
+/// can carry the first-party identity) opt out with
+/// `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1`, mirroring the fail-closed-by-default
+/// escape hatch the HTTP gateway uses for unauthenticated loopback binds. The
+/// opt-out is logged loudly so a misconfiguration is never silent.
+>>>>>>> origin/pr-410
 private func makePeerAuthenticator(
     environment: [String: String],
     logger: BurnBarDaemonLogger
 ) -> BurnBarDaemonPeerAuthenticator {
+<<<<<<< HEAD
     let enforced = BurnBarDaemonPeerAuthenticator.resolveEnforcementForCurrentBuild(
         environment: environment
     )
@@ -135,6 +155,14 @@ private func makePeerAuthenticator(
         logger.warning(
             "rpc_peer_code_signature_enforcement_disabled",
             metadata: ["reason": "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1 (DEBUG-only opt-out)"]
+=======
+    let disabled = environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
+        || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
+    if disabled {
+        logger.warning(
+            "rpc_peer_code_signature_enforcement_disabled",
+            metadata: ["reason": "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1"]
+>>>>>>> origin/pr-410
         )
         return .disabled
     }

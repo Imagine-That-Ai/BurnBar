@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { createHmac, createPrivateKey, randomBytes, sign as signDetached } from "node:crypto";
+=======
+import { createHash, createHmac, createPrivateKey, randomBytes, sign as signDetached } from "node:crypto";
+>>>>>>> origin/pr-410
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
@@ -22,6 +26,26 @@ interface RemoteMcpAccessClaims {
 
 function privateKeyFromBase64PEM(value: string) {
   return createPrivateKey(Buffer.from(value, "base64").toString("utf8"));
+<<<<<<< HEAD
+=======
+}
+
+export function signRemoteMcpAccessToken(
+  claims: RemoteMcpAccessClaims,
+  secret?: string,
+  ed25519PrivateKeyBase64PEM?: string,
+): { token: string; algorithm: "ed25519" | "hmac-sha256" } {
+  const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  if (ed25519PrivateKeyBase64PEM) {
+    const sig = signDetached(null, Buffer.from(body), privateKeyFromBase64PEM(ed25519PrivateKeyBase64PEM)).toString("base64url");
+    return { token: `ed25519.${body}.${sig}`, algorithm: "ed25519" };
+  }
+  if (!secret) {
+    throw new HttpsError("failed-precondition", "Remote MCP token signer is not configured.");
+  }
+  const sig = createHmac("sha256", secret).update(body).digest("base64url");
+  return { token: `${body}.${sig}`, algorithm: "hmac-sha256" };
+>>>>>>> origin/pr-410
 }
 
 function signRemoteMcpAccessToken(

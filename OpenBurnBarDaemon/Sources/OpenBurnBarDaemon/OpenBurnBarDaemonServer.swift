@@ -13,6 +13,7 @@ public actor BurnBarDaemonServer {
     /// Enforced in production (wired by `OpenBurnBarDaemonMain`); `.disabled` for
     /// in-process tests and unsigned developer builds.
     let peerAuthenticator: BurnBarDaemonPeerAuthenticator
+<<<<<<< HEAD
     /// T-DMN-01: per-operation capability attenuation. Every authenticated peer is
     /// scoped to this set of capability groups; any RPC whose group is outside the
     /// set is refused (fail closed) before dispatch, so a compromised first-party
@@ -30,6 +31,8 @@ public actor BurnBarDaemonServer {
     /// tests and unsigned developer builds; production wires it enforcing on the
     /// same flag as the peer-codesig gate.
     let localAuthProofVerifier: DaemonLocalAuthProofVerifier?
+=======
+>>>>>>> origin/pr-410
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -56,15 +59,22 @@ public actor BurnBarDaemonServer {
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
+<<<<<<< HEAD
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil
+=======
+        peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled
+>>>>>>> origin/pr-410
     ) {
         self.configuration = configuration
         self.logger = logger
         self.peerAuthenticator = peerAuthenticator
+<<<<<<< HEAD
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
+=======
+>>>>>>> origin/pr-410
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,

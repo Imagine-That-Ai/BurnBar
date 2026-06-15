@@ -89,11 +89,14 @@ final class CloudVaultRotationPickupTests: XCTestCase {
         XCTAssertEqual(parsed.first?.survivorDeviceIds, [])
     }
 
+<<<<<<< HEAD
     func test_listPendingCallablePayload_includesCallerDeviceId() {
         let payload = ComputerUseSecurityCallableClient.listPendingCallablePayload(callerDeviceId: "  mac-1  ")
         XCTAssertEqual(payload["callerDeviceId"] as? String, "mac-1")
     }
 
+=======
+>>>>>>> origin/pr-410
     // MARK: - Filter composes with decode end-to-end (no Firebase)
 
     func test_decodeThenFilter_endToEnd() {

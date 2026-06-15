@@ -94,6 +94,7 @@ function makeDb(opts: {
                         ref: {
                           async set(value: unknown) {
                             grantState.sets.push(value);
+<<<<<<< HEAD
                             if (
                               value &&
                               typeof value === "object" &&
@@ -102,6 +103,10 @@ function makeDb(opts: {
                             ) {
                               grantState.refreshTokenHash = (value as { refreshTokenHash: string }).refreshTokenHash;
                             }
+=======
+                            const v = value as { refreshTokenHash?: string };
+                            if (typeof v.refreshTokenHash === "string") {grantState.refreshTokenHash = v.refreshTokenHash;}
+>>>>>>> origin/pr-410
                           },
                         },
                       },

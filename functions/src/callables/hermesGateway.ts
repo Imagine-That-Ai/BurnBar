@@ -1727,6 +1727,7 @@ export async function handleHermesGatewayAttachmentDownloadUrl(
   }
 
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+<<<<<<< HEAD
   // T-ATT-08: force the browser/OS to DOWNLOAD the (sealed, opaque) blob rather
   // than render it inline. A malicious actor who managed to seal an HTML/SVG/JS
   // payload into an attachment must not be able to get it executed in the app's
@@ -1735,12 +1736,17 @@ export async function handleHermesGatewayAttachmentDownloadUrl(
   // `responseDisposition: attachment` forces a save dialog with a fixed, inert
   // filename. The signed-URL query params are tamper-evident (they are part of
   // the V4 signature), so a caller cannot strip them to coax inline rendering.
+=======
+>>>>>>> origin/pr-410
   const [downloadURL] = await file.getSignedUrl({
     version: "v4",
     action: "read",
     expires: expiresAt,
+<<<<<<< HEAD
     responseType: "application/octet-stream",
     responseDisposition: `attachment; filename="${attachmentId}.bin"`,
+=======
+>>>>>>> origin/pr-410
   });
 
   return {

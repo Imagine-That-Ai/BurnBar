@@ -58,10 +58,17 @@ needed (`RUF100`). A **bare `# noqa`** is rejected; add the code(s) or a `reason
 
 **2. Allowlist an exact path (for whole-file or generated artifacts).**
 Use this only for generated lint baselines, tracked debt-budget files, and genuine
+<<<<<<< HEAD
 file-level suppressions. **Exact paths only — globs are rejected**. A stale path warns
 and grants no amnesty, so deleting the underlying artifact still removes the waiver in
 practice. For a source file, scope the entry to the permitted token kind with
 `path | kind[,kind]`; any *other* suppression kind in that file is still gated.
+=======
+file-level suppressions. **Exact paths only — globs are rejected**, and every entry must
+match a currently-tracked file (a stale entry fails the build closed, forcing cleanup
+when the artifact is deleted). For a source file, scope the entry to the permitted token
+kind with `path | kind[,kind]`; any *other* suppression kind in that file is still gated.
+>>>>>>> origin/pr-410
 Kinds: `eslint-disable`, `ts-suppress`, `noqa`, `kotlin-suppress`, `detekt`,
 `swiftlint-disable`, `rust-allow`.
 
@@ -73,6 +80,17 @@ Kinds: `eslint-disable`, `ts-suppress`, `noqa`, `kotlin-suppress`, `detekt`,
 # --- Debt-budget ratchets: deleted at zero; CI fails on increase (docs/TECH_DEBT_METRICS.md) ---
 budgets/hand-maintained-ts-baseline.json
 budgets/knip-baseline.json
+<<<<<<< HEAD
+=======
+budgets/swift-file-size-baseline.json
+budgets/try-optional-baseline.json
+budgets/unchecked-sendable-baseline.json
+budgets/unsafe-cast-baseline.json
+
+# --- Generated ktlint baselines: plan D7 burn-down (ktlintFormat + delete) ---
+android/app/config/ktlint/baseline.xml
+android/openburnbar-iroh-relay/config/ktlint/baseline.xml
+>>>>>>> origin/pr-410
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable
@@ -92,13 +110,19 @@ crates/openburnbar-iroh/src/lib.rs | rust-allow
 
 - Each entry above is **debt with a deletion plan**, not a permanent exception. When the
   underlying work lands (TypeSpec strangler, ktlint burn-down, debt budgets hitting
+<<<<<<< HEAD
   zero), delete the entry **and** the artifact in the same PR. A stale path no longer
   suppresses anything and is reported so cleanup is visible.
+=======
+  zero), delete the entry **and** the artifact in the same PR — the gate fails closed on a
+  stale entry, so this is enforced, not aspirational.
+>>>>>>> origin/pr-410
 - New entries require a one-line rationale and should be rare. Prefer the inline `reason:`
   mechanism, which keeps the justification next to the code.
 - The gate reads only the FIRST `BEGIN…END:suppression-allowlist` block (markers must be
   whole-line HTML comments); a second BEGIN anywhere fails the build closed.
 
+<<<<<<< HEAD
 ## Per-rule strictness rationale
 
 The suppression gate blocks waivers and baselines. This section is the companion contract
@@ -161,14 +185,24 @@ Sources of truth: each `eslint.config.mjs` and `tsconfig*.json`.
 | `apps/console` | `@typescript-eslint/no-explicit-any` at `warn` | Console tooling still has brownfield dynamic payloads. Promote to `error` after schemas or validators cover those payloads. |
 
 ### Python, schema drift, and generated contracts
+=======
+## Deliberately out of scope (no silent caps)
+>>>>>>> origin/pr-410
 
 Owned by dedicated workstreams and folded in when each reaches zero, so the boundary is a
 known decision rather than a blind spot:
 
+<<<<<<< HEAD
 - **`# type: ignore` (Python, ~38 sites)** - mypy/ruff strictness workstream (plan D12).
   Coded `# noqa` is already governed by ruff; bare `# noqa` is rejected.
 - **`knownDrift` schema tokens** - gated by `tools/schema-sync` (plan D10). The schema
   checker fails on new drift and stale grandfathered drift.
+=======
+- **`# type: ignore` (Python, ~38 sites)** — mypy/ruff strictness workstream (plan D12).
+- **`knownDrift` schema tokens** — gated by `tools/schema-sync` (plan D10).
+- **Per-rule lint config (rules left off)** — lives in each linter's config + plan Phase 4;
+  this gate governs *suppressions and baselines*, not which rules are enabled.
+>>>>>>> origin/pr-410
 
 ## Known limitations (recoverable, fail-closed)
 

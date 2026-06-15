@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+<<<<<<< HEAD
 import { isRecord } from "../guards.js";
+=======
+import type { ErrorEvent } from "@sentry/core";
+>>>>>>> origin/pr-410
 
 describe("sentry sanitization", () => {
   it("strips request bodies, cookies, auth headers, query strings, and nested secret extras", async () => {
@@ -37,10 +41,16 @@ describe("sentry sanitization", () => {
             url: "https://example.test/path?refresh_token=breadcrumb-secret",
             authorization: "Bearer breadcrumb-secret"
           }
+<<<<<<< HEAD
         },
       ],
     };
     // @ts-expect-error reason: partial ErrorEvent fixture for sanitization test
+=======
+        }
+      ]
+    } as unknown as ErrorEvent;
+>>>>>>> origin/pr-410
     const event = sanitizeSentryEvent(rawEvent);
 
     expect(event.request?.data).toBeUndefined();
@@ -51,8 +61,13 @@ describe("sentry sanitization", () => {
     expect(event.request?.headers?.["x-request-id"]).toBe("request-123");
     expect(event.request?.url).toBe("https://functions.example.test/call?token=[REDACTED]&ok=1");
     expect(event.extra?.requestBody).toBe("[REDACTED]");
+<<<<<<< HEAD
     expect(isRecord(event.extra?.nested) ? event.extra.nested.credential : undefined).toBe("[REDACTED]");
     expect(isRecord(event.extra?.nested) ? event.extra.nested.url : undefined).toBe(
+=======
+    expect((event.extra?.nested as Record<string, unknown>).credential).toBe("[REDACTED]");
+    expect((event.extra?.nested as Record<string, unknown>).url).toBe(
+>>>>>>> origin/pr-410
       "https://example.test/path?api_key=[REDACTED]"
     );
     expect(event.breadcrumbs?.[0]?.data?.authorization).toBe("[REDACTED]");
@@ -79,4 +94,8 @@ describe("sentry sanitization", () => {
     expect(sentryUserId).not.toContain(uid.slice(0, 8));
     expect(sentryUserIdForUID(uid)).toBe(sentryUserId);
   });
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> origin/pr-410

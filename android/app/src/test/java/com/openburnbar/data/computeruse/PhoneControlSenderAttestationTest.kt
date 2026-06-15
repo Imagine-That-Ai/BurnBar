@@ -32,7 +32,14 @@ class PhoneControlSenderAttestationTest {
         frameSink = { frames += it },
     )
 
+<<<<<<< HEAD
     private fun enforcingSender(frames: MutableList<HermesRealtimeRelayFrame>, attestationEnforcer: suspend () -> String?) = PhoneControlSender(
+=======
+    private fun enforcingSender(
+        frames: MutableList<HermesRealtimeRelayFrame>,
+        attestationEnforcer: suspend () -> String?,
+    ) = PhoneControlSender(
+>>>>>>> origin/pr-410
         uid = "uid-1",
         connectionId = "conn-1",
         peerNodeId = "android-phone-1",

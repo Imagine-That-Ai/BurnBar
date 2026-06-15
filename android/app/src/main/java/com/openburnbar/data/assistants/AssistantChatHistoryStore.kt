@@ -631,9 +631,17 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
             return out.ifEmpty { "_thread" }
         }
 
+<<<<<<< HEAD
         private fun isSafeThreadFileChar(ch: Char): Boolean = isAsciiAlphanumeric(ch) || ch == '_' || ch == '-'
 
         private fun isAsciiAlphanumeric(ch: Char): Boolean = ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9'
+=======
+        private fun isSafeThreadFileChar(ch: Char): Boolean =
+            isAsciiAlphanumeric(ch) || ch == '_' || ch == '-'
+
+        private fun isAsciiAlphanumeric(ch: Char): Boolean =
+            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9'
+>>>>>>> origin/pr-410
     }
 }
 
@@ -688,7 +696,15 @@ internal class AssistantChatFirestoreMirror(
         collection(uid).document(thread.id).set(payload).await()
     }
 
+<<<<<<< HEAD
     private fun firestorePayload(thread: AssistantChatThread, vaultKeyID: String, sealedPayload: CloudVaultSealedPayload): MutableMap<String, Any?> {
+=======
+    private fun firestorePayload(
+        thread: AssistantChatThread,
+        vaultKeyID: String,
+        sealedPayload: CloudVaultSealedPayload,
+    ): MutableMap<String, Any?> {
+>>>>>>> origin/pr-410
         val payload =
             mutableMapOf<String, Any?>(
                 "id" to thread.id,
@@ -713,7 +729,16 @@ internal class AssistantChatFirestoreMirror(
         return payload
     }
 
+<<<<<<< HEAD
     private suspend fun addSignalEnvelopeIfAvailable(uid: String, threadID: String, plaintextBytes: ByteArray, payload: MutableMap<String, Any?>) {
+=======
+    private suspend fun addSignalEnvelopeIfAvailable(
+        uid: String,
+        threadID: String,
+        plaintextBytes: ByteArray,
+        payload: MutableMap<String, Any?>,
+    ) {
+>>>>>>> origin/pr-410
         // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM "sealedPayload" already
         // in `payload` is the FLOOR; the additive "signalEnvelope" is gated by the
         // conversations_chat sealingScheme and is BEST-EFFORT. On ANY seal failure (e.g. a

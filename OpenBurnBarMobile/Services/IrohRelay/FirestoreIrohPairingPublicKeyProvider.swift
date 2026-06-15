@@ -17,7 +17,11 @@ import OpenBurnBarIrohRelay
 /// attacker endpoint). A deliberate operator re-pair clears the pin. The in-memory
 /// `cache` is only a per-session fast path over the pin check, never a substitute
 /// for it.
+<<<<<<< HEAD
 final class FirestoreIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding, Sendable {
+=======
+final class FirestoreIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding, @unchecked Sendable {
+>>>>>>> origin/pr-410
     static let shared = FirestoreIrohPairingPublicKeyProvider()
 
     private let firestoreProvider: @Sendable () -> Firestore
