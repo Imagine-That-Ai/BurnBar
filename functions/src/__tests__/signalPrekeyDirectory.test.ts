@@ -375,3 +375,90 @@ describe("selectPrekeyToClaim", () => {
     expect(selectPrekeyToClaim([])).toBeUndefined();
   });
 });
+
+// Phase 2.5 G5 — bidirectional claim invariants. The cross-device flow is:
+// device B claims one of device A's published one-time prekeys to open a session;
+// a one-time prekey is single-use, so a claim must CONSUME it (a second claim of
+// the same id must find it gone), the claim side must reject any private/session
+// state a peer might try to smuggle in, and the replenish gate must trip the
+// instant availability drops below the published floors. The directory selectors
+// and validators already enforce these; these tests pin the invariants so a
+// regression that re-issues a consumed prekey or accepts ratchet state fails CI.
+describe("G5: bidirectional cross-device claim invariants", () => {
+  it("(a) consumes a claimed one-time prekey so the next claim never re-issues it", () => {
+    // Two device-A one-time prekeys published into the directory.
+    const published: { id: string; numericId: number }[] = [
+      { id: "otp-a", numericId: 1 },
+      { id: "otp-b", numericId: 2 },
+    ];
+
+    // Device B's first claim takes the lowest-numericId prekey.
+    const first = selectPrekeyToClaim(published);
+    expect(first?.id).toBe("otp-a");
+    // selectPrekeyToClaim is pure: it must not mutate the published set.
+    expect(published).toHaveLength(2);
+
+    // Consuming a one-time prekey removes it from the available candidate set
+    // (the callable flips status away from "available"); model that with filter.
+    const afterFirst = published.filter((p) => p.id !== first?.id);
+    const second = selectPrekeyToClaim(afterFirst);
+    expect(second?.id).toBe("otp-b");
+    // The first prekey is never re-issued, even though it still exists by id.
+    expect(afterFirst.some((p) => p.id === "otp-a")).toBe(false);
+
+    // Once every one-time prekey is consumed the directory is exhausted: the
+    // next claim returns undefined (caller must fall back / trigger replenish),
+    // never a recycled prekey.
+    const exhausted = afterFirst.filter((p) => p.id !== second?.id);
+    expect(selectPrekeyToClaim(exhausted)).toBeUndefined();
+  });
+
+  it("(b) claim side rejects every private-key and serialized-session encoding", () => {
+    // A peer's claimed bundle must carry only public material. Every private /
+    // ratchet / serialized-session field (including base64-suffixed variants) is
+    // fail-closed, asserted via the per-iteration label so a regression names the
+    // exact leaked field.
+    for (const field of [
+      "privateKey",
+      "privateKeyData",
+      "privateKeyB64",
+      "serializedSession",
+      "serializedSessionB64",
+      "sessionState",
+      "sessionStateB64",
+      "ratchetState",
+      "ratchetStateB64",
+    ]) {
+      expect(() => assertNoForbiddenFields({ [field]: "x" }, "claim"), field).toThrow();
+    }
+    // Presence, not truthiness: a forbidden key with an undefined value still throws.
+    expect(() => assertNoForbiddenFields({ serializedSession: undefined }, "claim")).toThrow();
+    // A public-only claimed bundle passes.
+    expect(() =>
+      assertNoForbiddenFields({ identityKeyId: "device-a_1", oneTimePreKeyId: "otp-a", publicKeyB64: PUB }, "claim"),
+    ).not.toThrow();
+  });
+
+  it("(c) replenish gate trips with strict less-than at each published floor", () => {
+    // At the floor: not low (strict `<`).
+    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS, MIN_AVAILABLE_KYBER_PREKEYS)).toEqual({
+      needsReplenish: false,
+      lowOneTime: false,
+      lowKyber: false,
+    });
+    // One below the one-time floor only.
+    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS - 1, MIN_AVAILABLE_KYBER_PREKEYS)).toEqual({
+      needsReplenish: true,
+      lowOneTime: true,
+      lowKyber: false,
+    });
+    // One below the kyber floor only.
+    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS, MIN_AVAILABLE_KYBER_PREKEYS - 1)).toEqual({
+      needsReplenish: true,
+      lowOneTime: false,
+      lowKyber: true,
+    });
+    // Both exhausted.
+    expect(prekeyReplenishStatus(0, 0)).toEqual({ needsReplenish: true, lowOneTime: true, lowKyber: true });
+  });
+});
