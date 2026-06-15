@@ -106,6 +106,14 @@ usage:
   searches** for Ultra.
 - Monthly cap: **1,000 hosted searches** for Cloud Pro, **2,000 hosted searches**
   for Ultra, including top-ups.
+- Remote Config overrides are read by
+  `functions/src/cloudProAllowanceRemoteConfig.ts`:
+  `cloud_pro_included_fusion_searches_monthly`,
+  `cloud_ultra_included_fusion_searches_monthly`,
+  `cloud_pro_monthly_fusion_search_cap`,
+  `cloud_ultra_monthly_fusion_search_cap`,
+  `cloud_pro_fusion_search_topup_unit`, and
+  `cloud_pro_fusion_search_large_topup_unit`.
 - Top-ups:
   - Apple: `com.openburnbar.elderWand.searches100` ($4.99),
     `com.openburnbar.elderWand.searches500` ($19.99).
