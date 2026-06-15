@@ -4,6 +4,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionAction
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionKind
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -51,5 +52,21 @@ class SystemPermissionSenderTest {
         assertEquals("screencapture", request?.originatingToolName)
         assertEquals("android-phone-1", request?.authority?.peerNodeId)
         assertEquals(signedWire.authority.intentHashBlake3, request?.authority?.intentHashBlake3)
+
+        // Phase C: requestedAt is now the canonical Swift dateIso STRING on the wire (was a
+        // Double of reference-seconds). It must round-trip to the exact millis we signed over.
+        val requestedAt = request?.requestedAt
+        assertNotNull(requestedAt)
+        assertEquals("2023-11-14T22:13:20.000Z", requestedAt)
+        assertEquals(1_700_000_000_000L, Instant.parse(requestedAt).toEpochMilli())
+
+        // Intent-hash-unchanged guard: the signature is computed over the reference-seconds
+        // NUMBER in the canonical JSON, which the Mac re-derives from the decoded Date — so
+        // flipping the wire field from Double to ISO string must NOT change the signed hash.
+        // Pinning the hash makes any future canonical-form drift a hard failure.
+        assertEquals(
+            "459cf09494046a8584642d4ddd7daff9e4430e09410a88106b84f7166f36087d",
+            request?.authority?.intentHashBlake3,
+        )
     }
 }

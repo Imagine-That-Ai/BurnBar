@@ -1659,7 +1659,7 @@
           "encodeDefault": false
         },
         "requestedAt": {
-          "ktType": "Double",
+          "ktType": "String",
           "serialName": null,
           "encodeDefault": false
         },
@@ -1731,7 +1731,7 @@
           "encodeDefault": false
         },
         "lastChangedAt": {
-          "ktType": "Double",
+          "ktType": "String",
           "serialName": null,
           "encodeDefault": false
         }
@@ -2104,7 +2104,7 @@
           "encodeDefault": false
         },
         "createdAt": {
-          "ktType": "String",
+          "ktType": "Double",
           "serialName": null,
           "encodeDefault": false
         }

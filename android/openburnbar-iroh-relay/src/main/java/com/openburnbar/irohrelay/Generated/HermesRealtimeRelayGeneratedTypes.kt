@@ -556,7 +556,7 @@ data class HermesRealtimeRelaySystemPermissionRequest(
     val originatingToolCallId: String? = null,
     val originatingToolName: String? = null,
     val action: HermesRealtimeRelaySystemPermissionAction,
-    val requestedAt: Double,
+    val requestedAt: String,
     val authority: HermesRealtimeRelayAuthorityEnvelope,
 )
 
@@ -570,7 +570,7 @@ data class HermesRealtimeRelaySystemPermissionStatus(
     val deepLink: String? = null,
     val instructions: String? = null,
     val failureCategory: String? = null,
-    val lastChangedAt: Double,
+    val lastChangedAt: String,
 )
 
 @Serializable
@@ -659,7 +659,7 @@ data class HermesRealtimeRelayAttachmentManifest(
     val mime: String,
     val size: Long,
     val peerDeviceId: String? = null,
-    val createdAt: String,
+    val createdAt: Double,
 )
 
 @Serializable

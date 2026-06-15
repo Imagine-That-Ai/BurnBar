@@ -59,7 +59,8 @@ class AndroidFileTransferServiceTest {
                 filename = "test.txt",
                 mime = "text/plain",
                 size = 7,
-                createdAt = "2026-05-16T00:00:00Z",
+                // Swift synthesizes createdAt as a Date -> NUMBER of reference-seconds.
+                createdAt = 800_582_400.0, // 2026-05-16T00:00:00Z
             )
         val frame =
             HermesRealtimeRelayFrame(
