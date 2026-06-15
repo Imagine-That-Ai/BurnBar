@@ -92,9 +92,9 @@ export function validateBolaCoverageRef(
           .replace(/'/gu, '"');
       // eslint-disable-next-line no-control-regex -- reason: strip trailing commas before closing brace
       const TRAILING_COMMA_RE = /,\s*\x7d/gu;
-      const manifest = JSON.parse(
+      const manifest: Record<string, string[]> = JSON.parse(
         manifestText.replace(TRAILING_COMMA_RE, "}"),
-      ) as Record<string, string[]>;
+      );
       const listed = manifest[entry.exportedName] ?? [];
       if (!listed.includes(ref.test)) {
         errors.push(`${entry.exportedName}: BOLA_MANIFEST missing test "${ref.test}"`);

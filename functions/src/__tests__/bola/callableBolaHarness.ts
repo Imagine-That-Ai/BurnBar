@@ -8,12 +8,14 @@ export function callableRequest<T extends Record<string, unknown>>(
   uid: string,
   data: T,
 ): CallableRequest<T> {
-  return {
+  const stub = {
     auth: { uid, token: {} },
     app: { appId: "openburnbar-test" },
     rawRequest: { headers: {} },
     data,
-  } as CallableRequest<T>;
+  };
+  // @ts-expect-error reason: partial CallableRequest stub for BOLA harness; mocks only the fields handlers read
+  return stub;
 }
 
 export function callableRunner(candidate: unknown): (request: unknown) => Promise<unknown> {
@@ -97,13 +99,16 @@ export function pathKeyedFirestore(store: PathKeyedStore) {
       const ops: Array<() => void> = [];
       return {
         delete: (ref: { path?: string }) => {
-          if (ref.path) ops.push(() => store.delete(ref.path!));
+          const path = ref.path;
+          if (path) ops.push(() => store.delete(path));
         },
         set: (ref: { path?: string }, data: Record<string, unknown>) => {
-          if (ref.path) ops.push(() => store.set(ref.path!, data));
+          const path = ref.path;
+          if (path) ops.push(() => store.set(path, data));
         },
         update: (ref: { path?: string }, data: Record<string, unknown>) => {
-          if (ref.path) ops.push(() => store.set(ref.path!, { ...(store.get(ref.path!) ?? {}), ...data }));
+          const path = ref.path;
+          if (path) ops.push(() => store.set(path, { ...(store.get(path) ?? {}), ...data }));
         },
         commit: async () => {
           for (const op of ops) op();
@@ -119,7 +124,7 @@ export function pathKeyedFirestore(store: PathKeyedStore) {
           ref.update(data),
         delete: (ref: { delete: () => Promise<void> }) => ref.delete(),
       };
-      return fn(tx as never);
+      return fn(tx);
     },
   };
 }
