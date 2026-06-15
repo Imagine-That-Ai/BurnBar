@@ -90,10 +90,21 @@ jobs:
           # install would pull whatever the registry serves into a production
           # deploy step (diligence 2026-06-11 LB-3 residual).
           npm ci --prefix functions
+          deploy_log="$(mktemp)"
+          set +e
           npm --prefix functions exec -- firebase deploy \
             --only firestore:rules,firestore:indexes,storage \
             --project "$FIREBASE_PROJECT" \
-            --non-interactive
+            --non-interactive 2>&1 | tee "$deploy_log"
+          deploy_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$deploy_status" -ne 0 ]; then
+            if grep -Fq "HTTP Error: 409, Requested entity already exists" "$deploy_log"; then
+              echo "::notice::Firebase Rules release already exists; treating deploy as an idempotent success."
+            else
+              exit "$deploy_status"
+            fi
+          fi
 
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
