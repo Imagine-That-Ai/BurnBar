@@ -84,7 +84,7 @@ final class PiPairingAPI: PiPairingServicing {
     }
 
     func completePiAgentPairing(_ request: PiAgentPairingCompletionRequest) async throws -> PiConnectionRecord {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "pairingId": request.pairingId,
             "code": request.code,
             "displayName": request.displayName,
@@ -177,10 +177,27 @@ final class PiPairingAPI: PiPairingServicing {
         return try JSONDecoder().decode(type, from: data)
     }
 
-    private func encodedFunctionValue<T: Encodable>(_ value: T) throws -> Any {
+    private func encodedFunctionValue<T: Encodable>(_ value: T) throws -> any Sendable {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(value)
-        return try JSONSerialization.jsonObject(with: data)
+        return try Self.sendableJSONValue(JSONSerialization.jsonObject(with: data))
+    }
+
+    private static func sendableJSONValue(_ value: Any) throws -> any Sendable {
+        if let dictionary = value as? [String: Any] {
+            var converted: [String: any Sendable] = [:]
+            for (key, value) in dictionary {
+                converted[key] = try sendableJSONValue(value)
+            }
+            return converted
+        }
+        if let array = value as? [Any] {
+            return try array.map { try sendableJSONValue($0) }
+        }
+        if let string = value as? String { return string }
+        if let number = value as? NSNumber { return number }
+        if value is NSNull { return NSNull() }
+        throw FunctionsError.decodingFailed
     }
 }

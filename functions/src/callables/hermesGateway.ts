@@ -97,6 +97,7 @@ import {
   recordCallableApprovalFailure,
 } from "./publicRateLimit.js";
 import {
+  assertActiveBurnBarCloudProEntitlement,
   boundedTrimmedString,
   isActiveBurnBarCloudProEntitlement,
   isActiveHostedQuotaEntitlement,
@@ -168,6 +169,11 @@ interface GatewayHttpError {
   status: number;
   error: string;
   detail?: string;
+  // Extra top-level fields merged into the JSON error body by the dispatch
+  // writer. Used by structured gates (e.g. the Elder Wand entitlement gate)
+  // that must return machine-readable hints — `requiredTier`, `feature` —
+  // alongside the canonical `error` string.
+  extra?: Record<string, unknown>;
 }
 
 type StorageBucket = ReturnType<ReturnType<typeof getStorage>["bucket"]>;
@@ -181,8 +187,13 @@ const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
 const ED25519_SPKI_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const GATEWAY_POP_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
-function httpError(status: number, error: string, detail?: string): GatewayHttpError {
-  return { status, error, detail };
+function httpError(
+  status: number,
+  error: string,
+  detail?: string,
+  extra?: Record<string, unknown>,
+): GatewayHttpError {
+  return { status, error, detail, extra };
 }
 
 function isGatewayHttpError(error: unknown): error is GatewayHttpError {
@@ -595,6 +606,36 @@ function gatewayPath(req: HttpRequest): string {
 
 function requestBody(req: HttpRequest): Record<string, unknown> {
   return recordOrUndefined(req.body) ?? {};
+}
+
+/**
+ * The Elder Wand (wire-compatible plugin id `"fusion"`) is BurnBar's
+ * multi-model analysis router. A forwarded chat-completions request opts into it
+ * with an OpenRouter-Fusion-shaped plugin block:
+ *
+ *   { "plugins": [{ "id": "fusion", "enabled": true, "analysis_models": [...],
+ *                   "model": "<judge>", "max_tool_calls": 8 }] }
+ *
+ * This predicate mirrors `ChatCompletionsRequest.activeFusionPlugin` in the
+ * Swift daemon gateway: a fusion plugin is ACTIVE when an entry's `id` is
+ * `"fusion"` and `enabled` is not explicitly `false` (absent ⇒ on). It reads
+ * only the unsealed top-level `plugins` routing block — never the sealed message
+ * body — so the gate works on the relay write without opening any ciphertext.
+ *
+ * HONESTY: this functions gateway is the relay control-plane. A purely-local
+ * daemon fusion run over the user's OWN provider keys is licensing-gated
+ * client-side and is NOT cryptographically bypass-proof on a Mac the user
+ * controls. This server gate covers the relay/hosted path — the boundary where
+ * BurnBar-authorized spend actually happens — and nothing more.
+ */
+function requestCarriesActiveFusionPlugin(body: Record<string, unknown>): boolean {
+  const plugins = body.plugins;
+  if (!Array.isArray(plugins)) return false;
+  return plugins.some((entry) => {
+    const plugin = recordOrUndefined(entry);
+    if (!plugin || plugin.id !== "fusion") return false;
+    return plugin.enabled !== false;
+  });
 }
 
 function header(req: HttpRequest, name: string): string | undefined {
@@ -1189,6 +1230,24 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   await checkHermesGatewayBearerRateLimit(grant.uid, grant.client.id, "hermes_gateway_message_send");
   const body = requestBody(req);
+  // Elder Wand (plugin id "fusion"): a forwarded chat-completions request that
+  // opts into the multi-model analysis router must additionally hold Cloud Pro
+  // ("Pro Max"). Gate BEFORE any persistence/forward so a non-Pro caller spends
+  // nothing downstream. assertActiveBurnBarCloudProEntitlement throws a
+  // permission-denied HttpsError; re-raise it as the structured 403 the clients
+  // key off (so the body carries requiredTier/feature, not just the generic
+  // permission-denied message). See requestCarriesActiveFusionPlugin's honesty
+  // note: this covers the relay/hosted spend path, not local-only daemon fusion.
+  if (requestCarriesActiveFusionPlugin(body)) {
+    try {
+      await assertActiveBurnBarCloudProEntitlement(grant.uid);
+    } catch {
+      throw httpError(403, "entitlement_required", "BurnBar Cloud Pro is required for The Elder Wand.", {
+        requiredTier: "pro",
+        feature: "elderWand",
+      });
+    }
+  }
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
   const attachmentIds = sanitizedAttachmentIds(body.attachmentIds);
   if (grant.client.relayCapable !== true) {
@@ -1881,7 +1940,7 @@ export async function dispatchHermesGatewayRequest(req: HttpRequest, res: HttpRe
     sendJSON(res, 404, { error: "not_found" });
   } catch (err) {
     if (isGatewayHttpError(err)) {
-      sendJSON(res, err.status, stripUndefinedObject({ error: err.error, detail: err.detail }));
+      sendJSON(res, err.status, stripUndefinedObject({ ...err.extra, error: err.error, detail: err.detail }));
       return;
     }
     if (err instanceof HttpsError) {

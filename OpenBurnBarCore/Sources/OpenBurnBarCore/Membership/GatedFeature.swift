@@ -75,6 +75,7 @@ public enum GatedFeatureID: String, CaseIterable, Sendable, Codable, Hashable {
     case floo
     case hostedMCP
     case dataVault
+    case elderWand
     case tenXMemory
 }
 
@@ -242,6 +243,22 @@ public extension GatedFeature {
                 "Sources, chunks, and storage you control, with one tap to delete any source or purge it all"
             ],
             iconSystemName: "brain.head.profile",
+            crestAssetName: CloudTier.pro.crestAssetName
+        ),
+
+        // MARK: elderWand — The Elder Wand (model-fusion router) — cloud_pro
+        GatedFeature(
+            id: .elderWand,
+            publicName: "The Elder Wand",
+            requiredTier: .pro,
+            oneLineBenefit: "Put your hardest question to a panel of the best models at once — they deliberate, a judge weighs them, and you get the answer worth trusting.",
+            benefitBullets: [
+                "Send one prompt to a panel of up to eight models — the frontier and local models you've connected — all answering in parallel",
+                "A judge model cross-examines their answers: where they agree, where they clash, what only one of them caught, and what they all missed",
+                "Your own model writes the final answer from that deliberation, so you get a reasoned synthesis instead of a single model's guess",
+                "Save named panels for different jobs — a research bench, a code-review bench — and set your default with a tap"
+            ],
+            iconSystemName: "wand.and.stars",
             crestAssetName: CloudTier.pro.crestAssetName
         ),
 

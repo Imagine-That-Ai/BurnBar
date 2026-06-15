@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security & Launch Readiness Hardening
+
+- Hardened Firestore `escrow_grants` validation rules: enforced `status == "granted"` on creation and restricted status updates to transition only from `"granted"` to `"revoked"`, completely blocking client-side reactivation of revoked credentials.
+- Added comprehensive unit tests in `escrow-grants.test.js` validating unauthorized field creation, status smuggling, and revoked status update rejections.
+- Resolved Swift compiler and SwiftUI layout warnings under Xcode 27.0-Beta: refactored conditional charts in `InsightTimeSeriesView` and `ProjectMemoryEditorialPrimitives` to view-level `if-else` blocks wrapping separate `Chart` containers.
+- Enhanced Sentry DSN configuration: added fallback lookup from `GoogleService-Info.plist` inside `AgentLensApp` and `AppDelegate` if the main Info.plist DSN is unpopulated.
+- Refactored subject fragment sanitization in `ComputerUseSecurityCallableClient` to utilize Unicode scalar parsing instead of Regex matching, ensuring broad Swift version compatibility.
+- Fixed Firebase config injection script to apply PlistBuddy updates across all build targets in the loop.
+
 ### Changed
 
 - The macOS Mercury incoming screen-mirror / call sheet now shows the requesting account's profile photo in the avatar circle (cross-fading in over a pulsing ring), falling back to the name monogram — or a generic person glyph when no name is available (e.g. Sign in with Apple) — instead of always showing only the name initial.

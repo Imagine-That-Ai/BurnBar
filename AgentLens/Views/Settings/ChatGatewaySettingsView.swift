@@ -14,6 +14,10 @@ struct ChatGatewaySettingsView: View {
     @State private var inventoryImportService: HermesInventoryImportService
     @State private var hermesRuntimeLauncher: HermesRuntimeLauncher
     @State private var piAgentRuntimeAdapter: PiAgentRuntimeAdapter
+    /// Live Cloud tier so the Elder Wand row gates against the member's real
+    /// entitlement (`.gatedFeature(.elderWand, tier:)`).
+    @StateObject private var cloudEntitlement = MacCloudEntitlementStore.shared
+    @State private var isShowingElderWand = false
 
     init(
         settingsManager: SettingsManager,
@@ -65,6 +69,27 @@ struct ChatGatewaySettingsView: View {
                 Text("Engines")
             } footer: {
                 Text("Toggle the engines you want OpenBurnBar to surface. Configuration for each engine lives in its own row below.")
+                    .font(DesignSystem.Typography.tiny)
+            }
+
+            Section {
+                SettingsDrillRow(
+                    icon: "wand.and.stars",
+                    iconTint: DesignSystem.Colors.whimsy,
+                    title: "Analysis Models",
+                    subtitle: "Build a panel of models and a judge for The Elder Wand",
+                    value: elderWandPresetValue
+                )
+                .contentShape(Rectangle())
+                .gatedFeature(.elderWand, tier: cloudEntitlement.cloudTier) {
+                    isShowingElderWand = true
+                }
+                .tierLockBadge(.elderWand, tier: cloudEntitlement.cloudTier)
+                .settingsAnchor(SettingsAnchor.analysisConfigurator)
+            } header: {
+                Text("The Elder Wand")
+            } footer: {
+                Text("Send one prompt to a panel of models, let a judge weigh their answers, and your own model writes the final reply.")
                     .font(DesignSystem.Typography.tiny)
             }
 
@@ -199,6 +224,22 @@ struct ChatGatewaySettingsView: View {
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
         .navigationTitle("AI Environments")
+        .onAppear { cloudEntitlement.start() }
+        .sheet(isPresented: $isShowingElderWand) {
+            // Settings has no live chat session, so the configurator renders
+            // its empty-state (the live picker needs a chat's advertised-model
+            // catalog). The chat-header entry point passes a real controller.
+            ElderWandConfiguratorView(controller: nil, settingsManager: settingsManager)
+        }
+    }
+
+    private var elderWandPresetValue: String {
+        let count = settingsManager.elderWandPresets.count
+        switch count {
+        case 0: return "Set up"
+        case 1: return "1 preset"
+        default: return "\(count) presets"
+        }
     }
 
     private var openClawHostDisplay: String {

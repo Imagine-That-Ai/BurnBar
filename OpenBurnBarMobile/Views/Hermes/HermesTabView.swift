@@ -1299,6 +1299,8 @@ struct HermesChatView: View {
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
     @State private var showPretextPlayground = false
     @State private var showThinkingStylePicker = false
+    @State private var showElderWandConfigurator = false
+    @State private var showElderWandPaywall = false
     @State private var atomRouter = HermesAtomRouter()
     @State private var pendingAttachments: [HermesAttachment] = []
     @State private var attachmentImportError: String?
@@ -1581,6 +1583,8 @@ struct HermesChatView: View {
                 modelName: service.selectedModelID ?? service.selectedConnection.advertisedModel
             )
         }
+        .elderWandConfiguratorSheet(isPresented: $showElderWandConfigurator, service: service)
+        .elderWandPaywallSheet(isPresented: $showElderWandPaywall)
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: chatFileImporterTypes,
@@ -1779,6 +1783,13 @@ struct HermesChatView: View {
                 } label: {
                     Label("Text Layout Playground", systemImage: "textformat.size")
                 }
+            }
+
+            Section {
+                ElderWandChatMenuButton(
+                    showConfigurator: $showElderWandConfigurator,
+                    showPaywall: $showElderWandPaywall
+                )
             }
 
             Section {

@@ -898,6 +898,14 @@ public struct BurnBarProviderRouter: Sendable {
         return wireModel(for: matchedModel, requestedModel: modelName)
     }
 
+    /// Whether a (local) provider's base URL is a queryable HTTP(S) endpoint.
+    /// Subprocess-backed local providers use a non-HTTP sentinel scheme (e.g.
+    /// `codex-cli://local`) and serve only their static catalog models.
+    static func isHTTPLocalEndpoint(_ baseURL: String) -> Bool {
+        guard let scheme = URL(string: baseURL)?.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+
     private func dynamicDiscoveredProviderModel(
         named modelName: String,
         in configuration: BurnBarResolvedProviderConfiguration
@@ -915,6 +923,16 @@ public struct BurnBarProviderRouter: Sendable {
         // static catalog rows, so any installed model the server serves must be
         // routable as a free, zero-priced passthrough. Non-local providers still
         // require a template to anchor pricing/capability metadata.
+        // Subprocess-backed local providers (e.g. codex via `codex-cli://`) serve
+        // ONLY their static catalog models and must NEVER synthesize a dynamic
+        // route — otherwise (since they carry a static template) they would shadow
+        // every other provider's models. Only HTTP-backed local providers (a local
+        // Ollama daemon) act as a dynamic catch-all for arbitrary installed models.
+        if configuration.provider.local,
+           !Self.isHTTPLocalEndpoint(configuration.settings.baseURL) {
+            return nil
+        }
+
         guard template != nil || configuration.provider.local else {
             return nil
         }

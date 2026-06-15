@@ -4264,10 +4264,54 @@ service cloud.firestore {
     }
 
     match /users/{userId}/escrow_grants/{grantId} {
+      // F-RR07-006: allowlist the exact fields the Mac writer emits on create
+      // and the server revoke callable sets on update, so no extra keys can
+      // ride in on either path.
+      function validEscrowGrantCreate() {
+        return request.resource.data.keys().hasOnly([
+          "sourceDeviceId",
+          "targetDeviceId",
+          "providerId",
+          "credentialKind",
+          "status",
+          "grantedAt"
+        ])
+        && request.resource.data.sourceDeviceId is string
+        && request.resource.data.sourceDeviceId.size() > 0
+        && request.resource.data.sourceDeviceId.size() <= 160
+        && request.resource.data.targetDeviceId is string
+        && request.resource.data.targetDeviceId.size() > 0
+        && request.resource.data.targetDeviceId.size() <= 160
+        && request.resource.data.providerId is string
+        && request.resource.data.providerId.size() > 0
+        && request.resource.data.providerId.size() <= 80
+        && request.resource.data.credentialKind in [
+          "api_key", "oauth_token", "bearer_token", "unknown"
+        ]
+        && request.resource.data.status == "granted"
+        && request.resource.data.grantedAt is timestamp;
+      }
+      // Revoke is a server-side merge patch that touches only status + revokedAt.
+      // The affectedKeys() check confines what the client can change on update;
+      // once status is revoked, no further updates are allowed.
+      function validEscrowGrantUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "revokedAt"
+        ])
+        && resource.data.status == "granted"
+        && request.resource.data.status == "revoked"
+        && (!("revokedAt" in request.resource.data) || request.resource.data.revokedAt is timestamp);
+      }
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
+      allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFields()
+        && validEscrowGrantCreate();
+      allow update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields()
+        && validEscrowGrantUpdate();
       allow delete: if ownsUserNamespace(userId);
     }
 

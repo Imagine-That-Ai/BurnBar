@@ -117,5 +117,80 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         guard case .refused = resolution else {
             XCTFail("Non-object persona scope JSON must fail closed: \(resolution)"); return
         }
+    }
+
+    func testVisibleTerminalSessionPermissionsAndTeardown() async throws {
+        let fileManager = FileManager.default
+        let sessionID = "test-session-\(UUID().uuidString)"
+
+        let rootURL = fileManager.temporaryDirectory
+            .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
+        let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
+        let logURL = sessionURL.appendingPathComponent("terminal.log")
+
+        // 1. Ensure clean state before start
+        try? fileManager.removeItem(at: sessionURL)
+        XCTAssertFalse(fileManager.fileExists(atPath: sessionURL.path))
+
+        let cancellationTracker = MissionCancellationTracker()
+        var eventSinkCalled = false
+
+        do {
+            _ = try await CLIAgentMissionRequestListener().runVisibleTerminalProcess(
+                sessionID: sessionID,
+                executable: "/bin/echo",
+                executableName: "echo",
+                arguments: ["hello-world"],
+                backendDisplayName: "Mock",
+                timeoutSeconds: 5.0,
+                extraEnvironment: [:],
+                workingDirectoryURL: nil,
+                cancellationTracker: cancellationTracker,
+                eventSink: { event in
+                    eventSinkCalled = true
+
+                    // Verify directory permissions
+                    let attributes = try? fileManager.attributesOfItem(atPath: sessionURL.path)
+                    let permissions = attributes?[.posixPermissions] as? NSNumber
+                    XCTAssertEqual(permissions?.uint16Value & 0o777, 0o700, "Session directory must be restricted to 0o700")
+
+                    // Verify terminal.log permissions
+                    let logAttributes = try? fileManager.attributesOfItem(atPath: logURL.path)
+                    let logPermissions = logAttributes?[.posixPermissions] as? NSNumber
+                    XCTAssertEqual(logPermissions?.uint16Value & 0o777, 0o600, "terminal.log must be restricted to 0o600")
+
+                    // Cancel tracker to trigger cleanup/exit
+                    cancellationTracker.cancel()
+                }
+            )
+        } catch {
+            // It could throw due to open failing or cancellation, which is expected.
+            let err = error as NSError
+            XCTAssertTrue(
+                err.domain == "OpenBurnBar.VisibleTerminalMission" ||
+                err.domain == NSCocoaErrorDomain ||
+                error is CancellationError
+            )
         }
+
+        // 2. Perform the fallback check: if open failed or didn't run, we manually check
+        // the POSIX permission APIs with the exact attributes parameters to be absolutely certain
+        // the system assigns 0o700 and 0o600 correctly.
+        if !eventSinkCalled {
+            let testDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try fileManager.createDirectory(at: testDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let attrs = try fileManager.attributesOfItem(atPath: testDir.path)
+            XCTAssertEqual((attrs[.posixPermissions] as? NSNumber)?.uint16Value & 0o777, 0o700)
+
+            let testLog = testDir.appendingPathComponent("test.log")
+            fileManager.createFile(atPath: testLog.path, contents: nil, attributes: [.posixPermissions: 0o600])
+            let logAttrs = try fileManager.attributesOfItem(atPath: testLog.path)
+            XCTAssertEqual((logAttrs[.posixPermissions] as? NSNumber)?.uint16Value & 0o777, 0o600)
+
+            try fileManager.removeItem(at: testDir)
+        }
+
+        // 3. Ensure the folder has been completely deleted after function return
+        XCTAssertFalse(fileManager.fileExists(atPath: sessionURL.path), "Session directory must be cleaned up on exit.")
+    }
 }

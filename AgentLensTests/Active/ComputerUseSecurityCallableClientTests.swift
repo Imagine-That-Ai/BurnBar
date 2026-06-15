@@ -6,6 +6,30 @@ import OpenBurnBarSignalCore
 @testable import OpenBurnBar
 
 final class ComputerUseSecurityCallableClientTests: XCTestCase {
+    func testProviderAccountSubjectIdSanitizesOwnerActionSubject() {
+        XCTAssertEqual(
+            ComputerUseSecurityCallableClient.providerAccountSubjectId(
+                provider: "OpenAI",
+                accountID: " Primary Account!! "
+            ),
+            "primary-account"
+        )
+        XCTAssertEqual(
+            ComputerUseSecurityCallableClient.providerAccountSubjectId(
+                provider: "OpenAI",
+                accountID: "!!!"
+            ),
+            "openai_default"
+        )
+        XCTAssertEqual(
+            ComputerUseSecurityCallableClient.providerAccountSubjectId(
+                provider: "Anthropic",
+                accountID: nil
+            ),
+            "anthropic_default"
+        )
+    }
+
     func testRevocationResultParsingAndCompletionState() throws {
         let result = try ComputerUseSecurityCallableClient.parseEscrowDeviceTrustRevocationResult([
             "ok": true,

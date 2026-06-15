@@ -601,6 +601,24 @@ final class ChatSessionController {
             ?? URL(string: "http://127.0.0.1:8642")!
     }
 
+    /// Base URL of the BurnBar **daemon** gateway (default port 8317). The Elder
+    /// Wand model-fusion orchestrator lives in the daemon, not the Hermes CLI, so
+    /// when a fusion preset is active the chat send path redirects here instead of
+    /// `hermesGatewayBaseURL` (8642). Host/port mirror the daemon launch config.
+    private var burnBarGatewayBaseURL: URL {
+        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        return URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+    }
+
+    /// Bearer token the daemon gateway enforces (fail-closed by default). Used
+    /// when an Elder Wand request is redirected to `burnBarGatewayBaseURL`.
+    private var burnBarGatewayBearerToken: String? {
+        let t = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
     private var openClawBearerToken: String? {
         let t = settingsManager.openClawBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
@@ -1626,6 +1644,12 @@ final class ChatSessionController {
                 var pieces: [ChatTranscriptPiece] = []
                 var usageSnapshot: CLIUsageSnapshot?
                 let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
+                    // The Elder Wand: when a model-fusion preset is active, the
+                    // OpenAI-compatible chat backends carry the `plugins:[{id:"fusion",…}]`
+                    // block AND redirect to the BurnBar daemon gateway (8317), where the
+                    // fusion orchestrator lives — not the Hermes CLI gateway (8642).
+                    let elderWandPlugins = self.settingsManager.elderWandPluginsPayload()
+                    let fusionActive = elderWandPlugins != nil
                     switch self.chatBackend {
                     case .hermes:
                         // Keep Hermes system-prompt construction shared with iOS.
@@ -1634,29 +1658,31 @@ final class ChatSessionController {
                             includesAtomDirective: true
                         ).build()
                         return self.cliBridge.chatHermes(
-                            baseURL: self.hermesGatewayBaseURL,
+                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : self.hermesGatewayBaseURL,
                             systemPrompt: hermesPrompt,
                             history: multiTurnHistory,
-                            bearerToken: self.hermesBearerToken,
+                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.hermesBearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker
+                            toolBroker: activeToolBroker,
+                            plugins: elderWandPlugins
                         )
                     case .openclaw:
                         let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
                             ?? URL(string: "http://127.0.0.1:18789")!
                         return self.cliBridge.chatOpenClaw(
-                            baseURL: base,
+                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : base,
                             systemPrompt: augmentedSystem,
                             history: multiTurnHistory,
-                            bearerToken: self.openClawBearerToken,
+                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.openClawBearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker
+                            toolBroker: activeToolBroker,
+                            plugins: elderWandPlugins
                         )
                     case .piAgent:
                         // Attribute the responder to the active Pi agent without user-visible leakage.
@@ -1665,15 +1691,16 @@ final class ChatSessionController {
                             instanceID: self.settingsManager.piAgentSelectedInstanceID
                         )
                         return self.cliBridge.chatPiAgent(
-                            baseURL: self.piAgentGatewayBaseURL,
+                            baseURL: fusionActive ? self.burnBarGatewayBaseURL : self.piAgentGatewayBaseURL,
                             systemPrompt: piPrompt,
                             history: multiTurnHistory,
-                            bearerToken: self.piAgentBearerToken,
+                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.piAgentBearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker
+                            toolBroker: activeToolBroker,
+                            plugins: elderWandPlugins
                         )
                     case .codex:
                         return self.cliBridge.chatCodexStream(

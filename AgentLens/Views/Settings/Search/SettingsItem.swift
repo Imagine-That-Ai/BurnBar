@@ -145,6 +145,9 @@ enum SettingsPageRoute: Hashable, Codable {
 
     // Computer Use
     case computerUseRoot
+
+    // The Elder Wand (analysis-model fusion configurator)
+    case analysisConfigurator
 }
 
 // MARK: - Anchor IDs
@@ -260,6 +263,9 @@ enum SettingsAnchor {
     // Computer Use
     static let computerUseReadiness = "computerUse.readiness"
     static let computerUsePermissionsSetup = "computerUse.permissionsSetup"
+
+    // The Elder Wand (analysis-model fusion configurator)
+    static let analysisConfigurator = "agents.analysisConfigurator"
 
     // Switcher
     static let switcherBrowser = "switcher.browser"
