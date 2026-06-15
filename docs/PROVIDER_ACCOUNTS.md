@@ -182,6 +182,13 @@ failure has turned into a hard account-health state. For OpenAI specifically,
 usage totals alone do not prove hard exhaustion; runtime 429, insufficient quota,
 or auth failures must update account health before the account is blocked.
 
+When multiple eligible accounts can serve the same provider/model route, routing
+drains the quota window that expires first. Future weekly reset metadata beats
+unknown reset metadata, earlier future resets beat later future resets, and past
+reset dates are ignored as stale. This ordering only applies within the same
+provider/model/canonical-route pool; it does not resurrect exhausted, auth-failed,
+rate-limited, or cooling-down accounts, and it does not silently swap models.
+
 Every route decision produces a UI-readable event with the active account, next
 fallback, skipped accounts, and a plain-language reason. Events intentionally omit
 raw API keys, bearer tokens, cookies, Secret Manager version names, and credential

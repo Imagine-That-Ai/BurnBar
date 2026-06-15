@@ -765,7 +765,9 @@ extension OpenBurnBarDaemonManager {
                 if let apiKey, !apiKey.isEmpty {
                     do {
                         let quotaSnapshot = try await fetchSnapshot(quotaProvider, apiKey)
-                        let bucket = quotaSnapshot.primaryDisplayableBucket
+                        let refreshDate = now()
+                        let bucket = quotaSnapshot.primaryDisplayableBucket(relativeTo: refreshDate)
+                        let routingResetBucket = quotaSnapshot.weeklyBucket(relativeTo: refreshDate) ?? bucket
                         if quotaProvider == .xAI,
                            bucket?.key == "xai-prepaid-credit-balance",
                            let remainingDollars = bucket?.remainingValue {
@@ -775,7 +777,7 @@ extension OpenBurnBarDaemonManager {
                         } else {
                             slot.lastQuotaRemainingPercent = bucket?.remainingPercent
                         }
-                        slot.lastQuotaResetsAt = bucket?.resetsAt
+                        slot.lastQuotaResetsAt = routingResetBucket?.resetsAt
                         slot.lastStatusMessage = quotaSnapshot.statusMessage
                         if slot.isEnabled {
                             if let remaining = bucket?.remainingPercent, remaining <= 0 {
