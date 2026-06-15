@@ -1,0 +1,45 @@
+name: Signal cross-device KATs
+
+# Phase 2.5 — permanence gate for the cross-device + bidirectional E2EE correctness proof.
+#
+# Runs the Node/Linux-enforceable legs (reverse-direction interop fixture structure + byte-identity,
+# the crypto-proof harness incl. the transport-binding parity section, and the signal-envelope
+# contract directory cases). The native cross-device OPEN (Swift `OBBSignalInteropKatTests` decrypts
+# the Android-produced bytes; Android JVM suites) runs on the macOS/Android PR harness — a different
+# lane — exactly as the crypto-proof-harness convention documents; this lane pins what Linux can.
+#
+# Authored as a NEW workflow file rather than appended to fast-feedback.yml because that file is on
+# the AGPL Rule-0 avoid-list (docs/signalification/SWARM_RUNBOOK.md: "wire a NEW workflow file
+# instead"). A handoff note in docs/signalification/REMAINING_SIGNAL_WORK_HANDOFF.md asks the AGPL
+# owner to optionally fold `signal-cross-device-kats` into the fast-feedback-gate needs: list.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  signal-cross-device-kats:
+    name: Signal cross-device KATs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/libsignal-bridge/package-lock.json
+            packages/libsignal-protocol/package-lock.json
+            packages/signal-envelope-contracts/package-lock.json
+
+      - name: Phase 2.5 cross-device + bidirectional E2EE Node KATs
+        run: bash scripts/ci/verify-signal-cross-device-kats.sh
