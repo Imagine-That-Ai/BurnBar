@@ -174,16 +174,28 @@ private struct FusionImpactContent: View {
     let period: FusionImpactPeriod
     let fusionQuotaBucket: ProviderQuotaBucket?
 
+    /// A resolved-but-empty period: no fusion spend and no fusion runs. The
+    /// headline/chart/stats skeleton would render a hollow "$0.00" here, so we
+    /// show a genuine empty state instead and keep only the quota meter (still a
+    /// useful "how much allowance do I have" read).
+    private var isEmpty: Bool {
+        totals.totalCost == 0 && totals.fusionRuns == 0
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            FusionHeadlineCard(totals: totals, period: period)
+            if isEmpty {
+                FusionImpactEmptyCard(period: period)
+            } else {
+                FusionHeadlineCard(totals: totals, period: period)
 
-            FusionComparisonChartCard(totals: totals)
+                FusionComparisonChartCard(totals: totals)
 
-            FusionRunStatsCard(totals: totals)
+                FusionRunStatsCard(totals: totals)
 
-            if !totals.fusionCostByModel.isEmpty {
-                FusionModelContributionCard(totals: totals)
+                if !totals.fusionCostByModel.isEmpty {
+                    FusionModelContributionCard(totals: totals)
+                }
             }
 
             if let bucket = fusionQuotaBucket {
@@ -191,6 +203,43 @@ private struct FusionImpactContent: View {
             }
         }
         .animation(DesignSystem.Animation.gentle, value: totals)
+    }
+}
+
+// MARK: - Empty state
+
+/// Shown when the period resolves with zero fusion runs. Mirrors the iOS impact
+/// screen's tone — name the absence plainly, point at where spend will appear,
+/// and never render a hollow "$0.00" skeleton. The period picker stays visible
+/// above this (it lives outside the phase switch) and the quota meter still
+/// renders below when a bucket is available.
+private struct FusionImpactEmptyCard: View {
+    let period: FusionImpactPeriod
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.whimsy)
+                        .accessibilityHidden(true)
+                    Text("No fusion runs this period")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
+
+                Text("When The Elder Wand fuses a panel of models to answer you, what it spent over \(period.title.lowercased()) will appear here.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(DesignSystem.Spacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("No fusion runs this period")
+        .accessibilityValue("The Elder Wand spend for \(period.title) will appear here once a fusion run records.")
     }
 }
 
@@ -207,22 +256,30 @@ private struct FusionHeadlineCard: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-                Text(CurrencyFormatting.usd(totals.fusionCost))
+                Text(CurrencyFormatting.usd(totals.fusionCost, estimated: totals.isEstimated))
                     .font(DesignSystem.Typography.monoLarge)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .contentTransition(.numericText())
 
-                Text("\(Self.percent(totals.fusionShareFraction)) of your \(CurrencyFormatting.usd(totals.totalCost)) total spend this period.")
+                Text("\(Self.percent(totals.fusionShareFraction)) of your \(CurrencyFormatting.usd(totals.totalCost, estimated: totals.isEstimated)) total spend this period.")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if totals.isEstimated {
+                    Text("Estimated — some providers report usage approximately.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("This total is estimated; some providers report usage approximately.")
+                }
             }
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Fusion spend \(period.title)")
-        .accessibilityValue("\(CurrencyFormatting.usd(totals.fusionCost)), \(Self.percent(totals.fusionShareFraction)) of total spend")
+        .accessibilityValue("\(CurrencyFormatting.usd(totals.fusionCost, estimated: totals.isEstimated)), \(Self.percent(totals.fusionShareFraction)) of total spend")
     }
 
     private static func percent(_ fraction: Double) -> String {
@@ -285,6 +342,8 @@ private struct FusionComparisonChartCard: View {
                     .font(DesignSystem.Typography.monoTiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
+            .accessibilityLabel("\(bar.category) spend")
+            .accessibilityValue(CurrencyFormatting.usd(bar.cost))
         }
         .chartForegroundStyleScale([
             "Fusion": DesignSystem.Colors.whimsy,
@@ -360,7 +419,7 @@ private struct FusionRunStatsCard: View {
                 Divider()
                 FusionStatTile(
                     label: "Avg / run",
-                    value: totals.averageCostPerFusionRun.map(CurrencyFormatting.usd) ?? "—",
+                    value: totals.averageCostPerFusionRun.map { CurrencyFormatting.usd($0) } ?? "—",
                     caption: "across the period"
                 )
                 Divider()
@@ -650,13 +709,17 @@ private struct FusionImpactErrorCard: View {
 // MARK: - Currency formatting
 
 private enum CurrencyFormatting {
-    static func usd(_ value: Double) -> String {
+    /// Formats `value` as USD. When `estimated` is true the result is prefixed
+    /// with an approximately sign ("≈ ") so a period total sourced from any
+    /// estimated row reads honestly without altering the number itself.
+    static func usd(_ value: Double, estimated: Bool = false) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencySymbol = "$"
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = value >= 100 ? 0 : 2
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        let formatted = formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        return estimated ? "≈ \(formatted)" : formatted
     }
 
     /// Compact axis form: "$1.2K", "$340", "$0.40".

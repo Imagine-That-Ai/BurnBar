@@ -294,6 +294,9 @@ public struct FusionVsNormalTotals: Sendable, Hashable {
     public let normalTokens: Int
     /// Per-model fusion spend (model id → summed cost), for the contribution view.
     public let fusionCostByModel: [String: Double]
+    /// The weakest confidence across the window's rows, so the impact screen can
+    /// mark a period total an estimate when any contributing row was estimated.
+    public let aggregateConfidence: BurnBarUsageConfidence
 
     public init(
         fusionCost: Double,
@@ -301,7 +304,8 @@ public struct FusionVsNormalTotals: Sendable, Hashable {
         fusionRuns: Int,
         fusionTokens: Int,
         normalTokens: Int,
-        fusionCostByModel: [String: Double]
+        fusionCostByModel: [String: Double],
+        aggregateConfidence: BurnBarUsageConfidence = .exact
     ) {
         self.fusionCost = fusionCost
         self.normalCost = normalCost
@@ -309,9 +313,14 @@ public struct FusionVsNormalTotals: Sendable, Hashable {
         self.fusionTokens = fusionTokens
         self.normalTokens = normalTokens
         self.fusionCostByModel = fusionCostByModel
+        self.aggregateConfidence = aggregateConfidence
     }
 
     public var totalCost: Double { fusionCost + normalCost }
+
+    /// `true` when any contributing row was an estimate, so the UI qualifies the
+    /// period total honestly (e.g. "≈ $1.23").
+    public var isEstimated: Bool { !aggregateConfidence.isExact }
 
     /// Fusion's share of total spend over the window (0…1).
     public var fusionShareFraction: Double {
@@ -386,7 +395,11 @@ public enum FusionSpendAggregator {
         var fusionTokens = 0, normalTokens = 0
         var fusionParents = Set<String>()
         var byModel: [String: Double] = [:]
+        // Only rows that actually contribute spend influence the displayed total's
+        // confidence — a zero-cost row never makes a non-zero total an estimate.
+        var contributingConfidences: [BurnBarUsageConfidence] = []
         for row in rows {
+            if row.cost != 0 { contributingConfidences.append(row.confidence) }
             if row.isFusion {
                 fusionCost += row.cost
                 fusionTokens += row.totalTokens
@@ -403,7 +416,8 @@ public enum FusionSpendAggregator {
             fusionRuns: fusionParents.count,
             fusionTokens: fusionTokens,
             normalTokens: normalTokens,
-            fusionCostByModel: byModel
+            fusionCostByModel: byModel,
+            aggregateConfidence: contributingConfidences.isEmpty ? .exact : BurnBarUsageConfidence.weakest(contributingConfidences)
         )
     }
 }

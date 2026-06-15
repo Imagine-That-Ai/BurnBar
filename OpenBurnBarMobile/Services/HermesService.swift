@@ -916,9 +916,12 @@ final class HermesService {
     var capturedFusionSpend: FusionSessionSpend?
 
     /// Stash the itemized fusion session decoded from the daemon's final SSE
-    /// frame. The frame arrives just after the synthesis stream's `[DONE]`, so a
-    /// receipt already presented in quota-only mode upgrades to itemized
-    /// reactively (`HermesService` is `@Observable`).
+    /// frame. The streaming engine captures the frame and calls this BEFORE it
+    /// mints the receipt token (`HermesStreamingEngine.finishFusionReceipt`), so
+    /// the session is already present when the sheet reads `capturedFusionSpend`
+    /// at presentation. When no frame arrives (a buffered / non-streaming route,
+    /// or the iroh relay before it forwards the frame), the sheet shows the
+    /// authoritative quota-only receipt instead.
     func captureFusionSpend(_ session: FusionSessionSpend) {
         capturedFusionSpend = session
     }

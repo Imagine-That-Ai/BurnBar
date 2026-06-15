@@ -72,6 +72,7 @@ extension BurnBarHTTPGatewayServer {
         usageFormat: GatewayStreamUsageFormat,
         route: BurnBarProviderRoute,
         idempotencyKey: String,
+        parentRequestID: String? = nil,
         openStream: () async throws -> BurnBarProviderProxyStream
     ) async throws -> GatewayStreamRelayResult {
         let stream = try await openStream()
@@ -103,7 +104,7 @@ extension BurnBarHTTPGatewayServer {
         }
 
         let usage = accumulator.finalize()
-        await recordUsageIfAvailable(usage, route: route, idempotencyKey: idempotencyKey)
+        await recordUsageIfAvailable(usage, route: route, idempotencyKey: idempotencyKey, parentRequestID: parentRequestID)
         return GatewayStreamRelayResult(
             outcome: .streamed,
             usage: usage,

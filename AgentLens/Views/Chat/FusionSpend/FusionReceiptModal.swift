@@ -111,21 +111,31 @@ struct FusionReceiptModal: View {
                 glyph: "exclamationmark.triangle"
             )
         case .empty:
-            FusionReceiptUnavailableView(
-                title: "No fusion spend to show",
-                detail: "This run didn't record any Elder Wand sub-calls yet.",
-                glyph: "wand.and.stars.inverse"
-            )
+            emptyBody
         case .loaded:
             if let session = model.session {
                 loadedBody(session)
             } else {
-                FusionReceiptUnavailableView(
-                    title: "No fusion spend to show",
-                    detail: "This run didn't record any Elder Wand sub-calls yet.",
-                    glyph: "wand.and.stars.inverse"
-                )
+                emptyBody
             }
+        }
+    }
+
+    /// No fusion run to itemize — but the period allowance ring is still useful
+    /// (this is exactly the "how much of my quota is left" check), so show it
+    /// whenever a quota snapshot loaded.
+    @ViewBuilder
+    private var emptyBody: some View {
+        FusionReceiptUnavailableView(
+            title: "No fusion spend to show",
+            detail: "This run didn't record any Elder Wand sub-calls yet.",
+            glyph: "wand.and.stars.inverse"
+        )
+        if model.quotaBucket != nil {
+            FusionReceiptPeriodSection(
+                bucket: model.quotaBucket,
+                monthToDateModelTokens: model.monthToDateModelTokens
+            )
         }
     }
 

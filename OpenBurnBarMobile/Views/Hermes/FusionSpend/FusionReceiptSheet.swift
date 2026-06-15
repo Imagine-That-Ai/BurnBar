@@ -57,8 +57,8 @@ struct FusionReceiptSheet: View {
                     }
 
                     FusionSearchQuotaRingCard(
-                        bucket: model.fusionBucket,
-                        isLoading: model.isLoadingQuota
+                        state: model.quotaLoadState,
+                        retry: { Task { await model.loadQuota() } }
                     )
 
                     if model.mode == .quotaOnly {
@@ -375,8 +375,8 @@ private struct FusionReceiptLineRow: View {
 /// quota snapshot. This is the one number the server is fully truthful about on
 /// iOS, so it anchors the receipt in both render modes.
 private struct FusionSearchQuotaRingCard: View {
-    let bucket: ProviderQuotaBucket?
-    let isLoading: Bool
+    let state: FusionReceiptSheetModel.QuotaLoadState
+    let retry: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -409,7 +409,8 @@ private struct FusionSearchQuotaRingCard: View {
 
     @ViewBuilder
     private var content: some View {
-        if let bucket {
+        switch state {
+        case .loaded(let bucket):
             HStack(spacing: MobileTheme.Spacing.lg) {
                 FusionSearchRing(fraction: remainingFraction(of: bucket))
                     .frame(width: 72, height: 72)
@@ -426,17 +427,43 @@ private struct FusionSearchQuotaRingCard: View {
                 }
                 Spacer(minLength: 0)
             }
-        } else if isLoading {
+        case .loading:
             HStack(spacing: MobileTheme.Spacing.sm) {
                 ProgressView()
                 Text("Loading your search quota…")
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
             }
-        } else {
+        case .empty:
             Text("No hosted searches used yet this month.")
                 .font(MobileTheme.Typography.caption)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
+        case .failed:
+            failedContent
+        }
+    }
+
+    /// Distinct read-error state — never "0 used". Names the failure plainly and
+    /// offers Retry, matching the macOS modal's `.failed` honesty.
+    private var failedContent: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(MobileTheme.warning)
+                    .accessibilityHidden(true)
+                Text("Couldn't load your hosted-search allowance")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button(action: retry) {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .font(MobileTheme.Typography.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .tint(MobileTheme.ember)
+            .accessibilityHint("Reloads your hosted-search allowance")
         }
     }
 
@@ -462,11 +489,17 @@ private struct FusionSearchQuotaRingCard: View {
     }
 
     private var accessibilityLabel: String {
-        guard let bucket else {
-            return isLoading ? "Loading your hosted search quota" : "No hosted searches used yet this month"
+        switch state {
+        case .loaded(let bucket):
+            let pct = Int((remainingFraction(of: bucket) * 100).rounded())
+            return "Hosted searches this month, \(usedOfLimit(bucket)), \(pct) percent remaining. \(resetLine(bucket))"
+        case .loading:
+            return "Loading your hosted search quota"
+        case .empty:
+            return "No hosted searches used yet this month"
+        case .failed:
+            return "Couldn't load your hosted-search allowance. Retry available."
         }
-        let pct = Int((remainingFraction(of: bucket) * 100).rounded())
-        return "Hosted searches this month, \(usedOfLimit(bucket)), \(pct) percent remaining. \(resetLine(bucket))"
     }
 }
 
