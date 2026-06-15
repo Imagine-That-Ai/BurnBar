@@ -415,10 +415,25 @@ enum ComputerUseSecurityCallableClient {
             ? accountID!
             : "\(provider)_default"
         let lowered = raw.lowercased()
-        let sanitized = lowered
-            .replacingOccurrences(of: /[^a-z0-9_-]/, with: "-")
-            .replacingOccurrences(of: /-+/, with: "-")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        var slug = ""
+        var previousWasDash = false
+        for scalar in lowered.unicodeScalars {
+            let isAllowed = (scalar.value >= 97 && scalar.value <= 122)
+                || (scalar.value >= 48 && scalar.value <= 57)
+                || scalar == "_"
+                || scalar == "-"
+            let next = isAllowed ? String(scalar) : "-"
+            if next == "-" {
+                if previousWasDash {
+                    continue
+                }
+                previousWasDash = true
+            } else {
+                previousWasDash = false
+            }
+            slug.append(next)
+        }
+        let sanitized = slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         return sanitized.isEmpty ? "\(provider)_default" : sanitized
     }
 
@@ -478,7 +493,26 @@ enum ComputerUseSecurityCallableClient {
         payload: [String: Any] = [:],
         approve: Bool = true
     ) async throws -> HTTPSCallableResult {
-        var merged = payload
+        try await callHighRiskOwnerAction(
+            callableName,
+            deviceId: deviceId,
+            actionKind: actionKind,
+            subjectId: subjectId,
+            payload: FirebaseCallablePayload(payload),
+            approve: approve
+        )
+    }
+
+    @discardableResult
+    static func callHighRiskOwnerAction(
+        _ callableName: String,
+        deviceId: String,
+        actionKind: String,
+        subjectId: String,
+        payload: FirebaseCallablePayload,
+        approve: Bool = true
+    ) async throws -> HTTPSCallableResult {
+        var merged = payload.rawValue as? [String: Any] ?? [:]
         let envelope = try await highRiskOwnerActionEnvelope(
             actionKind: actionKind,
             subjectId: subjectId,

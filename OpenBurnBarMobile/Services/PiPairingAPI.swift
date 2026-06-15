@@ -117,13 +117,14 @@ final class PiPairingAPI: PiPairingServicing {
         }
         if let deviceId = request.deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
 
+        let callablePayload = FirebaseCallablePayload(payload)
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
         let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
             "completePiAgentPairing",
             deviceId: deviceId,
             actionKind: "pi_agent_pairing_complete",
             subjectId: request.pairingId,
-            payload: payload
+            payload: callablePayload
         )
         return try decodeHermesValue(PiConnectionRecord.self, from: result.data)
     }
