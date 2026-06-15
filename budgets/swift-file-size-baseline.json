@@ -1,11 +1,7 @@
 {
   "target": 2000,
-  "total": 22,
+  "total": 21,
   "files": [
-    {
-      "path": "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift",
-      "lines": 4308
-    },
     {
       "path": "OpenBurnBarMobile/Views/Hermes/HermesTabView.swift",
       "lines": 3976
