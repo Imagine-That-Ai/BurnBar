@@ -162,7 +162,7 @@ final class SignalEnvelopeTransportAADParityTests: XCTestCase {
         let injections: [SignalEnvelopeAAD.Binding] = [
             SignalEnvelopeAAD.Binding(uid: "uid-1", scope: .gateway, clientId: "client|evil", slotId: "event-1", mode: .transport, formatVersion: 1),
             SignalEnvelopeAAD.Binding(uid: "uid-1", scope: .gateway, clientId: "client-1", slotId: "slot\nevil", mode: .transport, formatVersion: 1),
-            SignalEnvelopeAAD.Binding(uid: "uid-1", scope: .gateway, clientId: "client\revil", slotId: "event-1", mode: .transport, formatVersion: 1),
+            SignalEnvelopeAAD.Binding(uid: "uid-1", scope: .gateway, clientId: "client\revil", slotId: "event-1", mode: .transport, formatVersion: 1)
         ]
         for binding in injections {
             XCTAssertThrowsError(try signalEnvelopeBindingToAAD(binding)) { error in

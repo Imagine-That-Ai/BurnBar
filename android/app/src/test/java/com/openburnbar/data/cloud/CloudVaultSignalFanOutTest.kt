@@ -32,23 +32,21 @@ class CloudVaultSignalFanOutTest {
     private val recovery = AndroidSignalIdentityKeypair.generate("recovery", 1)
 
     // The full device list: two user devices, an escrow recipient, a recovery recipient.
-    private fun fanOutRecipients() =
-        listOf(
-            deviceA.asRecipient(),
-            deviceB.asRecipient(),
-            CloudVaultSignalRecipient("escrow", escrow.identityKeyId, escrow.publicKeyData),
-            CloudVaultSignalRecipient("recovery", recovery.identityKeyId, recovery.publicKeyData),
-        )
+    private fun fanOutRecipients() = listOf(
+        deviceA.asRecipient(),
+        deviceB.asRecipient(),
+        CloudVaultSignalRecipient("escrow", escrow.identityKeyId, escrow.publicKeyData),
+        CloudVaultSignalRecipient("recovery", recovery.identityKeyId, recovery.publicKeyData),
+    )
 
-    private fun seal(recipients: List<CloudVaultSignalRecipient>): CloudVaultSignalEnvelope =
-        CloudVaultCrypto.sealSignalPayload(
-            "cross-device fan-out payload".toByteArray(),
-            recipients = recipients,
-            binding = binding,
-            senderIdentityKeyId = deviceA.identityKeyId,
-            senderIdentityPrivateKey = deviceA.privateKeyData,
-            senderIdentityPublicKey = deviceA.publicKeyData,
-        )
+    private fun seal(recipients: List<CloudVaultSignalRecipient>): CloudVaultSignalEnvelope = CloudVaultCrypto.sealSignalPayload(
+        "cross-device fan-out payload".toByteArray(),
+        recipients = recipients,
+        binding = binding,
+        senderIdentityKeyId = deviceA.identityKeyId,
+        senderIdentityPrivateKey = deviceA.privateKeyData,
+        senderIdentityPublicKey = deviceA.publicKeyData,
+    )
 
     private val trusted = mapOf(deviceA.identityKeyId to deviceA.publicKeyData)
 

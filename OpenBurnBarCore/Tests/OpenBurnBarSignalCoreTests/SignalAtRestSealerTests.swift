@@ -232,7 +232,7 @@ final class SignalAtRestSealerTests: XCTestCase {
             ("device", "deviceA_1", deviceA),
             ("device", "deviceB_1", deviceB),
             ("escrow", "escrow_1", escrow),
-            ("recovery", "recovery_1", recovery),
+            ("recovery", "recovery_1", recovery)
         ]
 
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(

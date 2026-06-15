@@ -257,6 +257,18 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Deterministic libsignal prekey record KATs used only in checked-in cross-language test fixtures"
+regexTarget = "match"
+regexes = [
+  '''"bob(Signed)?PreKeyRecordB64"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/android-alice-to-swift-bob\.json''',
+  '''android/app/src/test/resources/signal-interop/android-alice-to-swift-bob\.json''',
+  '''tests/fixtures/signal-interop/android-alice-to-swift-bob\.json''',
+]
+
+[[allowlists]]
 description = "Firestore rules negative tests intentionally use forbidden credential field names with non-secret sentinel values"
 regexTarget = "match"
 regexes = [

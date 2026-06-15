@@ -42,7 +42,7 @@ final class CloudVaultRotationHandoffKATTests: XCTestCase {
             "sealedSnapshot": try CloudVaultCrypto.firestoreDictionary(
                 CloudVaultCrypto.sealBlob(blobPlaintext, keyData: oldKey)
             ),
-            "plainStatus": "active",
+            "plainStatus": "active"
         ]
 
         // REWRAP — exactly what the rotation worker performs per document on handoff.
