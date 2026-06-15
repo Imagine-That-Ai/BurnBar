@@ -2,10 +2,32 @@
  * BOLA negative coverage — src/__tests__/bola/providerAccounts.bola.test.ts
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData } from "./callableBolaHarness.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  ALICE_UID,
+  BOB_UID,
+  callableRequest,
+  callableRunner,
+  expectCallableDenial,
+  bolaCrossUserData,
+  pathKeyedFirestore,
+  seedDoc,
+  snapshotTenantPaths,
+  expectTenantPathsUnchanged,
+} from "./callableBolaHarness.js";
+import { providerAccountSecretRefPath } from "../../quota.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
+
+const bolaStore = vi.hoisted(() => new Map());
+vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("firebase-admin/firestore", async () => {
+  const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
+  return {
+    ...actual,
+    getFirestore: () => pathKeyedFirestore(bolaStore),
+  };
+});
 
 vi.mock("../../auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
@@ -21,8 +43,10 @@ vi.mock("../../appCheckAttestation.js", async () => {
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   };
 });
-vi.mock("../../adminRuntime.js", () => ({ db: { doc: vi.fn(() => ({ get: async () => ({ exists: false }) })) } }));
-
+vi.mock("../../secrets.js", () => ({
+  destroyCredential: vi.fn(async () => undefined),
+  storeCredential: vi.fn(async () => "projects/test/secrets/x/versions/1"),
+}));
 export const BOLA_MANIFEST = {
   "connectProviderAccount": [
     "connectProviderAccount rejects cross-user object access"
@@ -111,11 +135,27 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("deleteProviderCredential rejects cross-user object access", async () => {
+    bolaStore.clear();
+    const accountID = "openai_default";
+    seedDoc(bolaStore, providerAccountSecretRefPath(BOB_UID, accountID), {
+      secretVersionName: "projects/test/secrets/bob/versions/1",
+    });
+    seedDoc(bolaStore, `users/${BOB_UID}/provider_accounts/${accountID}`, {
+      status: "connected",
+      provider: "openai",
+    });
+    seedDoc(bolaStore, `users/${BOB_UID}/provider_connections/openai`, {
+      status: "connected",
+    });
+    const bobBefore = snapshotTenantPaths(bolaStore, BOB_UID);
+
     const mod = await import("../../callables/providerAccounts.js");
-    const exported = mod.deleteProviderCredential;
-    if (!exported) throw new Error("missing export deleteProviderCredential");
-    const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+    const run = callableRunner(mod.deleteProviderCredential);
+    await run(callableRequest(ALICE_UID, { provider: "openai" }));
+
+    // Catalog expectedOutcome: no-side-effect — credential delete is scoped to request.auth.uid only.
+    expectTenantPathsUnchanged(bolaStore, bobBefore);
+    expect(bolaStore.get(`users/${BOB_UID}/provider_accounts/${accountID}`)?.status).toBe("connected");
   });
 
   it("refreshProviderAccountQuota rejects cross-user object access", async () => {

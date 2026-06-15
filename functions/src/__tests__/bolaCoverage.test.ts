@@ -25,6 +25,15 @@ function exportedFunctionNames(): string[] {
   return names.sort((left, right) => left.localeCompare(right));
 }
 
+/** Endpoints with handler-level cross-tenant proofs (not scaffold smoke). */
+const P0_RUNTIME_PROOFS = new Set([
+  "burnBarHermesGateway",
+  "consumeCredentialTransfer",
+  "pollCliLink",
+  "triggerVoIPCall",
+  "validateOpenTimestampsProof",
+]);
+
 describe("bola coverage registry", () => {
   it("matrix covers every exported Cloud Function from index.ts", () => {
     const exported = exportedFunctionNames();
@@ -57,5 +66,15 @@ describe("bola coverage registry", () => {
         `${entry.exportedName} handler missing`,
       ).toBe(true);
     }
+  });
+
+  it("tracks P0 cross-tenant runtime proofs separately from scaffold smoke", () => {
+    const runtimeEndpoints = endpointAuthorizationMatrix.filter((entry) =>
+      entry.bolaCoverage.some((ref) => ref.kind === "runtime-cross-user"),
+    );
+    for (const name of P0_RUNTIME_PROOFS) {
+      expect(runtimeEndpoints.map((entry) => entry.exportedName)).toContain(name);
+    }
+    expect(P0_RUNTIME_PROOFS.size).toBeGreaterThanOrEqual(5);
   });
 });

@@ -1,11 +1,24 @@
 /**
- * BOLA negative coverage — src/__tests__/bola/pairing.bola.test.ts
- * Generated scaffold; implements cross-user denial at callable trust boundary.
+ * BOLA negative coverage — pairing callables + CLI link HTTP poll.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData } from "./callableBolaHarness.js";
+import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
+import { Timestamp } from "firebase-admin/firestore";
+import { describe, expect, it, vi } from "vitest";
+
+import { ALICE_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData, pathKeyedFirestore, seedDoc } from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
+
+const bolaStore = vi.hoisted(() => new Map());
+vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("firebase-admin/firestore", async () => {
+  const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
+  return {
+    ...actual,
+    getFirestore: () => pathKeyedFirestore(bolaStore),
+  };
+});
 
 vi.mock("../../auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
@@ -21,86 +34,109 @@ vi.mock("../../appCheckAttestation.js", async () => {
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   };
 });
-vi.mock("../../adminRuntime.js", () => ({ db: { doc: vi.fn(() => ({ get: async () => ({ exists: false }) })) } }));
 
 export const BOLA_MANIFEST = {
-  "startCliLink": [
-    "startCliLink rejects cross-user object access"
-  ],
-  "pollCliLink": [
-    "pollCliLink rejects cross-user object access"
-  ],
-  "completeCliLink": [
-    "completeCliLink rejects cross-user object access"
-  ],
-  "createHermesPairing": [
-    "createHermesPairing rejects cross-user object access"
-  ],
-  "completeHermesPairing": [
-    "completeHermesPairing rejects cross-user object access"
-  ],
-  "createPiAgentPairing": [
-    "createPiAgentPairing rejects cross-user object access"
-  ],
-  "completePiAgentPairing": [
-    "completePiAgentPairing rejects cross-user object access"
-  ]
+  pollCliLink: ["pollCliLink rejects cross-user object access"],
+  completeCliLink: ["completeCliLink rejects cross-user object access"],
+  createHermesPairing: ["createHermesPairing rejects cross-user object access"],
+  completeHermesPairing: ["completeHermesPairing rejects cross-user object access"],
+  createPiAgentPairing: ["createPiAgentPairing rejects cross-user object access"],
+  completePiAgentPairing: ["completePiAgentPairing rejects cross-user object access"],
 } as const;
 
-describe("BOLA — pairing", () => {
-  it("startCliLink rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliLink.js");
-    const exported = mod.startCliLink;
-    if (!exported) throw new Error("missing export startCliLink");
-    const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
-  });
+class FakeRes extends EventEmitter {
+  statusCode = 0;
+  body: unknown;
+  private headers: Record<string, string> = {};
+  status(code: number): this {
+    this.statusCode = code;
+    return this;
+  }
+  json(payload: unknown): void {
+    this.body = payload;
+    this.emit("finish");
+  }
+  setHeader(name: string, value: string): void {
+    this.headers[name.toLowerCase()] = value;
+  }
+  getHeader(name: string): string | undefined {
+    return this.headers[name.toLowerCase()];
+  }
+  end(): void {
+    this.emit("finish");
+  }
+}
 
+async function runHttpHandler(handler: unknown, req: unknown, res: unknown): Promise<void> {
+  const run = Reflect.get(Object(handler), "run");
+  const callable = typeof run === "function" ? run.bind(handler) : handler;
+  if (typeof callable !== "function") {
+    throw new Error("Expected HTTP handler to be callable");
+  }
+  await callable(req, res);
+}
+
+describe("BOLA — pairing", () => {
   it("pollCliLink rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliLink.js");
-    const exported = mod.pollCliLink;
-    if (!exported) throw new Error("missing export pollCliLink");
-    const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+    const bobSecret = "bob-device-secret";
+    const bobSecretHash = createHash("sha256").update(bobSecret).digest("hex");
+    bolaStore.clear();
+    seedDoc(bolaStore, "cli_link_sessions/bob-device-code", {
+      userCode: "ABCDEFGHJKMN",
+      deviceSecretHash: bobSecretHash,
+      status: "approved",
+      expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
+      accessToken: "bob-access",
+      refreshToken: "bob-refresh",
+      expiresIn: 3600,
+      clientId: "bob-client",
+      scopes: ["cli"],
+      grantMode: "device",
+    });
+
+    const res = new FakeRes();
+    const req = {
+      method: "POST",
+      body: { deviceCode: "bob-device-code", deviceSecret: "wrong-secret" },
+      headers: {},
+      socket: { remoteAddress: "127.0.0.1" },
+    };
+
+    const { pollCliLink } = await import("../../callables/cliLink.js");
+    await runHttpHandler(pollCliLink, req, res);
+
+    // Catalog expectedCode: permission-denied — HTTP 403 when deviceSecret does not match session.
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toMatchObject({ error: "invalid_secret" });
   });
 
   it("completeCliLink rejects cross-user object access", async () => {
     const mod = await import("../../callables/cliLink.js");
-    const exported = mod.completeCliLink;
-    if (!exported) throw new Error("missing export completeCliLink");
-    const run = callableRunner(exported);
+    const run = callableRunner(mod.completeCliLink);
     await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
   });
 
   it("createHermesPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermes.js");
-    const exported = mod.createHermesPairing;
-    if (!exported) throw new Error("missing export createHermesPairing");
-    const run = callableRunner(exported);
+    const run = callableRunner(mod.createHermesPairing);
     await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
   });
 
   it("completeHermesPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermes.js");
-    const exported = mod.completeHermesPairing;
-    if (!exported) throw new Error("missing export completeHermesPairing");
-    const run = callableRunner(exported);
+    const run = callableRunner(mod.completeHermesPairing);
     await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
   });
 
   it("createPiAgentPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/piAgent.js");
-    const exported = mod.createPiAgentPairing;
-    if (!exported) throw new Error("missing export createPiAgentPairing");
-    const run = callableRunner(exported);
+    const run = callableRunner(mod.createPiAgentPairing);
     await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
   });
 
   it("completePiAgentPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/piAgent.js");
-    const exported = mod.completePiAgentPairing;
-    if (!exported) throw new Error("missing export completePiAgentPairing");
-    const run = callableRunner(exported);
+    const run = callableRunner(mod.completePiAgentPairing);
     await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
   });
 });

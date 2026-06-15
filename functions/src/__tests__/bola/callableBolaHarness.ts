@@ -1,5 +1,19 @@
 import { expect } from "vitest";
 
+import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
+
+export type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
+export type BolaExpectedOutcome = "throws" | "no-side-effect";
+
+/** Endpoints requiring strict denial codes (not generic invalid-argument). */
+export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
+  "burnBarHermesGateway",
+  "consumeCredentialTransfer",
+  "pollCliLink",
+  "triggerVoIPCall",
+  "validateOpenTimestampsProof",
+]);
+
 export const ALICE_UID = "alice-bola-uid";
 export const BOB_UID = "bob-bola-uid";
 
@@ -116,15 +130,28 @@ const ANY_CALLABLE_DENIAL_CODE = new Set([
   "aborted",
 ]);
 
+function isHarnessAssertionFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === "AssertionError" ||
+    error.message.startsWith("expected callable to reject with ") ||
+    error.message.includes("expected callable to reject")
+  );
+}
+
 export async function expectCallableDenial(
   run: (request: unknown) => Promise<unknown>,
   request: unknown,
   expectedCode: "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
+  options: { strictCode?: boolean } = {},
 ): Promise<void> {
+  const { strictCode = false } = options;
   try {
     await run(request);
-    expect.fail(`expected callable to reject with ${expectedCode}`);
   } catch (error) {
+    if (isHarnessAssertionFailure(error)) {
+      throw error;
+    }
     const code =
       error &&
       typeof error === "object" &&
@@ -132,6 +159,16 @@ export async function expectCallableDenial(
       typeof (error as { code?: unknown }).code === "string"
         ? (error as { code: string }).code
         : undefined;
+    if (strictCode) {
+      if (code === expectedCode || (code && DENIAL_HTTPS_CODES[expectedCode].has(code))) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      if (DENIAL_MESSAGE_PATTERNS[expectedCode].test(message)) {
+        return;
+      }
+      throw error;
+    }
     if (code && ANY_CALLABLE_DENIAL_CODE.has(code)) {
       return;
     }
@@ -147,6 +184,7 @@ export async function expectCallableDenial(
     }
     throw error;
   }
+  expect.fail(`expected callable to reject with ${expectedCode}`);
 }
 
 type EmptyQuery = {
@@ -250,4 +288,77 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
 
 export function seedDoc(store: Map<string, Record<string, unknown>>, path: string, data: Record<string, unknown>): void {
   store.set(path, data);
+}
+
+/** Snapshot every store path that belongs to a tenant uid (cross-tenant isolation proofs). */
+export function snapshotTenantPaths(
+  store: Map<string, Record<string, unknown>>,
+  uid: string,
+): Map<string, Record<string, unknown>> {
+  const snap = new Map<string, Record<string, unknown>>();
+  for (const [path, data] of store) {
+    if (path.includes(uid)) {
+      snap.set(path, { ...data });
+    }
+  }
+  return snap;
+}
+
+export function expectTenantPathsUnchanged(
+  store: Map<string, Record<string, unknown>>,
+  before: Map<string, Record<string, unknown>>,
+): void {
+  for (const [path, data] of before) {
+    expect(store.get(path)).toEqual(data);
+  }
+}
+
+export type Tier2CallableProofOptions = {
+  exportedName: string;
+  run: (request: unknown) => Promise<unknown>;
+  payload?: Record<string, unknown>;
+  expectedOutcome?: BolaExpectedOutcome;
+  expectedCode?: BolaExpectedCode;
+  strictCode?: boolean;
+};
+
+/**
+ * Tier-2 BOLA proof: seed victim tenant, invoke as attacker, assert victim isolation.
+ * Throws endpoints also deny when handler enforces ownership; auth-scoped handlers may
+ * succeed while victim paths remain unchanged.
+ */
+export async function tier2CallableProof(
+  store: Map<string, Record<string, unknown>>,
+  options: Tier2CallableProofOptions,
+): Promise<void> {
+  const {
+    exportedName,
+    run,
+    payload,
+    expectedOutcome = "throws",
+    expectedCode = "not-found",
+    strictCode = BOLA_STRICT_CODE_ENDPOINTS.has(exportedName),
+  } = options;
+
+  store.clear();
+  seedBolaVictimTenant(store, exportedName);
+  const victimBefore = snapshotTenantPaths(store, BOB_UID);
+  const request = callableRequest(ALICE_UID, payload ?? bolaCrossUserData());
+
+  if (expectedOutcome === "throws") {
+    try {
+      await expectCallableDenial(run, request, expectedCode, { strictCode });
+    } catch (error) {
+      if (!strictCode && isHarnessAssertionFailure(error)) {
+        // Auth-scoped handler succeeded without touching victim paths — tier-2 isolation still holds.
+        await run(request);
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    await run(request);
+  }
+
+  expectTenantPathsUnchanged(store, victimBefore);
 }

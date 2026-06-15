@@ -244,3 +244,24 @@ paths = [
   '''functions/src/callables/signalPrekeyDirectory\.ts''',
   '''functions/src/__tests__/signalPrekeyDirectory\.test\.ts''',
 ]
+
+[[allowlists]]
+description = "Firestore rules negative tests intentionally use forbidden credential field names with non-secret sentinel values"
+regexTarget = "match"
+regexes = [
+  '''encryptedPayload:\s*\["not",\s*"allowed"\]''',
+]
+paths = [
+  '''firestore-rules-tests/escrow-grants\.test\.js''',
+]
+
+[[allowlists]]
+description = "Elder Wand UserDefaults storage keys are local preference names, not credential material"
+regexTarget = "match"
+regexes = [
+  '''static let presets(Storage|Defaults)Name\s*=\s*"elderWand\.presets\.v1"''',
+]
+paths = [
+  '''AgentLens/Services/Settings/Stores/ElderWandSettings\.swift''',
+  '''OpenBurnBarMobile/Services/Hermes/ElderWandSettings\.swift''',
+]

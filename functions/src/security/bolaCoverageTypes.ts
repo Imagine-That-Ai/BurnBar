@@ -35,31 +35,3 @@ export type EndpointAuthorizationEntry = {
   publicJustification?: string;
   notes?: string;
 };
-
-export type EndpointCatalogDefaults = {
-  trigger: EndpointTrigger;
-  authMethod: string;
-  appCheck: EndpointAuthorizationEntry["appCheck"];
-  tenantSource: string;
-  ownershipCheck: string;
-  objectIdsFromClient?: string[];
-  clientFirestoreSurface?: boolean;
-  handlerModule?: string;
-  bolaCoverage: BolaCoverageRef[];
-  publicJustification?: string;
-  notes?: string;
-};
-
-export type EndpointCatalogOverride = Partial<
-  Pick<
-    EndpointAuthorizationEntry,
-    | "objectIdsFromClient"
-    | "ownershipCheck"
-    | "bolaCoverage"
-    | "clientFirestoreSurface"
-    | "handlerModule"
-    | "authMethod"
-    | "tenantSource"
-    | "notes"
-  >
->;

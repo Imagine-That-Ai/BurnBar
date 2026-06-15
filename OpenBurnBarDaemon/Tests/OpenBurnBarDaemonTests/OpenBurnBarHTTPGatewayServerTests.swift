@@ -5082,8 +5082,8 @@ private final class GatewayHarness: @unchecked Sendable {
 
 /// Test-only logger that captures all log emissions for assertion. Conforms to
 /// `BurnBarDaemonLogging` so it can be injected anywhere the gateway accepts a
-/// logger. Uses a small lock-backed state holder so tests do not depend on the
-/// availability of the OS module in SwiftPM dependency scanning.
+/// logger. Uses `OSAllocatedUnfairLock` for lock-free thread safety with native
+/// `Sendable` conformance — no `@unchecked Sendable` needed.
 struct CapturingDaemonLogger: BurnBarDaemonLogging {
     struct Entry: Sendable {
         let level: String
@@ -5091,49 +5091,35 @@ struct CapturingDaemonLogger: BurnBarDaemonLogging {
         let metadata: [String: String]
     }
 
-    private final class State: @unchecked Sendable {
-        private let lock = NSLock()
-        private var entries: [Entry] = []
-
-        var captured: [Entry] {
-            lock.withLock { entries }
-        }
-
-        func append(_ entry: Entry) {
-            lock.withLock { entries.append(entry) }
-        }
-    }
-
-    private let state = State()
+    private let entries = OSAllocatedUnfairLock(initialState: [Entry]())
 
     var captured: [Entry] {
-        state.captured
+        entries.withLock { $0 }
     }
 
     func debug(_ event: String, metadata: [String: String] = [:]) {
-        state.append(Entry(level: "debug", event: event, metadata: metadata))
+        entries.withLock { $0.append(Entry(level: "debug", event: event, metadata: metadata)) }
     }
 
     func info(_ event: String, metadata: [String: String] = [:]) {
-        state.append(Entry(level: "info", event: event, metadata: metadata))
+        entries.withLock { $0.append(Entry(level: "info", event: event, metadata: metadata)) }
     }
 
     func notice(_ event: String, metadata: [String: String] = [:]) {
-        state.append(Entry(level: "notice", event: event, metadata: metadata))
+        entries.withLock { $0.append(Entry(level: "notice", event: event, metadata: metadata)) }
     }
 
     func warning(_ event: String, metadata: [String: String] = [:]) {
-        state.append(Entry(level: "warning", event: event, metadata: metadata))
+        entries.withLock { $0.append(Entry(level: "warning", event: event, metadata: metadata)) }
     }
 
     func error(_ event: String, metadata: [String: String] = [:]) {
-        state.append(Entry(level: "error", event: event, metadata: metadata))
+        entries.withLock { $0.append(Entry(level: "error", event: event, metadata: metadata)) }
     }
 
     func silentFailure(_ operation: String, error: Error, context: [String: String] = [:]) {
-        var merged = context
-        merged["error"] = String(describing: error)
-        state.append(Entry(level: "warning", event: operation, metadata: merged))
+        let metadata = context.merging(["error": String(describing: error)]) { _, new in new }
+        entries.withLock { $0.append(Entry(level: "warning", event: operation, metadata: metadata)) }
     }
 }
 

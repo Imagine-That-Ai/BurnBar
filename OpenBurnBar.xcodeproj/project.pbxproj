@@ -928,6 +928,7 @@
 		8216F88657712626917F15AC /* XAIQuotaAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 637BCC04B1CD3D8D95269822 /* XAIQuotaAdapterTests.swift */; };
 		825E0B0EF2F31762E2CCFD99 /* DashboardActivityLaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB62D297736054C4CE279585 /* DashboardActivityLaneView.swift */; };
 		8265E12B16507841034B60BC /* AXTypedAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9ECAE1574256DF242A0C551 /* AXTypedAccess.swift */; };
+		828E19EEB9D8293E2A30136B /* BurnBarDaemonTokenFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADAB99B19BF21D458E38743F /* BurnBarDaemonTokenFile.swift */; };
 		82A9BDD478925F755BAF6DEB /* BurnBarAtomOpenTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF6B9766F5E810480884F036 /* BurnBarAtomOpenTool.swift */; };
 		82C3D695DF62FC69CFBDC1A3 /* KiloCodeQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E188A15FEDEC88CFCB0E0E /* KiloCodeQuotaAdapter.swift */; };
 		82F81C03529D2D6A0C2F6EF8 /* MissionFABResurrectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E31C7935DA33313B5F85EFD2 /* MissionFABResurrectionController.swift */; };
@@ -1324,6 +1325,7 @@
 		BAC0F6F353204AA15B6959A3 /* FakeHostedQuotaSubscriptionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B42D195CF20A88242A5CB524 /* FakeHostedQuotaSubscriptionStore.swift */; };
 		BAC1C4337C7794D97491A785 /* CLIBridgeGrantRevocationKillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71930487BB8B0D7C64E506C5 /* CLIBridgeGrantRevocationKillTests.swift */; };
 		BAF2211B948A1ABA7E3D21C0 /* test_hermesToolCard_geometry.hermesToolCard-geometry-light.png in Resources */ = {isa = PBXBuildFile; fileRef = 9469DA11C037461B120CA4ED /* test_hermesToolCard_geometry.hermesToolCard-geometry-light.png */; };
+		BAFB36653B46FC923E8D2F16 /* BurnBarDaemonTokenFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E708DF04210925DA14D7147 /* BurnBarDaemonTokenFileTests.swift */; };
 		BB235B3A4B1C37D21D800EA3 /* QuotaArcDial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5032E2061D7ABB4DDBFBCFA6 /* QuotaArcDial.swift */; };
 		BB2C6CAD3B6C64FB36753498 /* FoilCTAButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A5678F769CE3CFF0C57435 /* FoilCTAButton.swift */; };
 		BB466B0D386753818494BD0C /* SmartDisplayOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC96924A9E2F2A9AAD47B3C /* SmartDisplayOrderTests.swift */; };
@@ -2812,6 +2814,7 @@
 		7DB5DEC273BF91F5B47045DF /* test_miniSparkline_falling.miniSparkline-falling-light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_miniSparkline_falling.miniSparkline-falling-light.png"; sourceTree = "<group>"; };
 		7E0C1F6A57B32AC05B8AEB22 /* OpenBurnBarClientRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarClientRegistry.swift; sourceTree = "<group>"; };
 		7E4CA2E172C8C6B7F35A6EB4 /* HermesRealtimeRelayHostClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesRealtimeRelayHostClient.swift; sourceTree = "<group>"; };
+		7E708DF04210925DA14D7147 /* BurnBarDaemonTokenFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarDaemonTokenFileTests.swift; sourceTree = "<group>"; };
 		7EA49F3A2C78F6AAF2F281C3 /* ProjectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionStore.swift; sourceTree = "<group>"; };
 		7ECE39EC677A1AD74C279A0D /* LiquidGlassButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassButtonStyle.swift; sourceTree = "<group>"; };
 		7EE96DD93EBCD6CC572E976C /* DatabaseWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseWorkspaceView.swift; sourceTree = "<group>"; };
@@ -3137,6 +3140,7 @@
 		AD2B5094E9BB6A9FE57E86B9 /* WarpParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WarpParser.swift; sourceTree = "<group>"; };
 		ADA3DA5EB43692AB2982A2B6 /* PiAgentRedisDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAgentRedisDiscovery.swift; sourceTree = "<group>"; };
 		ADA9B3A1D5923CFBA13B0761 /* RecentSessionsStripCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSessionsStripCard.swift; sourceTree = "<group>"; };
+		ADAB99B19BF21D458E38743F /* BurnBarDaemonTokenFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarDaemonTokenFile.swift; sourceTree = "<group>"; };
 		ADB09D71338A6D9E24C0D315 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AE0D48D65FE52593A962059C /* ComputerUseApprovalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseApprovalSheet.swift; sourceTree = "<group>"; };
 		AE4DB86246873888AF04F7A7 /* HermesStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesStatusWidget.swift; sourceTree = "<group>"; };
@@ -5103,6 +5107,7 @@
 				EE6B106C12C93A0044FFBAC4 /* BurnBarDaemonDatabaseCipher.swift */,
 				343BD0E70CC51D0FB4D77B05 /* BurnBarDaemonHeartbeat.swift */,
 				12D9A3D71F225C73EB2D72E0 /* BurnBarDaemonPeerAuthenticator.swift */,
+				ADAB99B19BF21D458E38743F /* BurnBarDaemonTokenFile.swift */,
 				2860ACD3B5566EB1FA89F668 /* BurnBarGatewayMetrics.swift */,
 				1B306C3C7D47F7DC76625BB2 /* BurnBarGatewayModelHealthStore.swift */,
 				FA88C9FD50FFF1AAD5DD5BD4 /* BurnBarProviderExecutorError.swift */,
@@ -5406,6 +5411,7 @@
 				CF184D78E4F746D4976DE23E /* BurnBarDaemonServerPeerAuthEnforcementTests.swift */,
 				F63D411EC85A7AF0301E9BCC /* BurnBarDaemonServerPRLifecycleTests.swift */,
 				4754C2A0D8267BE5672321A4 /* BurnBarDaemonSocketRPCCoverageTests.swift */,
+				7E708DF04210925DA14D7147 /* BurnBarDaemonTokenFileTests.swift */,
 				75C17843DFF3A89674F42663 /* BurnBarGatewayMetricsTests.swift */,
 				24BE011EABAA4BC74D424168 /* BurnBarHNSWIntegrationTests.swift */,
 				372DECD7983A122B43D10A13 /* BurnBarIndexedSearchServiceMinimalTests.swift */,
@@ -7640,6 +7646,7 @@
 				"$(PROJECT_DIR)/AgentLens/Views/Popover/MenuBarPopoverView.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/AccountSettingsView.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView.swift",
+				"$(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift",
 				"$(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
 			);
@@ -7650,12 +7657,13 @@
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MenuBarPopoverView.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AccountSettingsView.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsView.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\n";
+			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift\" \"MacCloudStoreLegalLinks.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\n";
 		};
 		28EBBA77E00C3687E1B9DAD1 /* Copy Firebase Config If Present */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -7675,7 +7683,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  rm -f \"${BUILT_GOOGLE_PLIST}\"\n  echo \"warning: GoogleService-Info.plist not found; Firebase auth remains disabled.\"\n  exit 0\nfi\n\nmkdir -p \"$(dirname \"${BUILT_GOOGLE_PLIST}\")\"\ncp \"${SOURCE_PLIST}\" \"${BUILT_GOOGLE_PLIST}\"\n";
+			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  rm -f \"${BUILT_GOOGLE_PLIST}\"\n  echo \"warning: GoogleService-Info.plist not found; Firebase auth remains disabled.\"\n  exit 0\nfi\n\nmkdir -p \"$(dirname \"${BUILT_GOOGLE_PLIST}\")\"\ncp \"${SOURCE_PLIST}\" \"${BUILT_GOOGLE_PLIST}\"\n\n# F-RR09-003: land sentry.dsn into the app Info.plist (the PRIMARY read\n# path AppDelegate checks first), not just the GoogleService-Info.plist\n# fallback. Runs in release builds too (this block is unconditional).\nBUILT_INFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nSENTRY_DSN=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :sentry.dsn\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${SENTRY_DSN}\" && -f \"${BUILT_INFO_PLIST}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Delete :sentry.dsn\" \"${BUILT_INFO_PLIST}\" >/dev/null 2>&1 || true\n  /usr/libexec/PlistBuddy -c \"Add :sentry.dsn string ${SENTRY_DSN}\" \"${BUILT_INFO_PLIST}\"\nfi\n";
 		};
 		2FF71114694A1CECACA080FE /* Block App Check Debug Token In Release */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -7810,7 +7818,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nSOURCE_PLIST=\"${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist\"\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  rm -f \"${BUILT_GOOGLE_PLIST}\"\n  echo \"warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled.\"\n  exit 0\nfi\n\nmkdir -p \"$(dirname \"${BUILT_GOOGLE_PLIST}\")\"\ncp \"${SOURCE_PLIST}\" \"${BUILT_GOOGLE_PLIST}\"\n\nREVERSED_CLIENT_ID=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :REVERSED_CLIENT_ID\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${REVERSED_CLIENT_ID}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 ${REVERSED_CLIENT_ID}\" \"${INFO_PLIST}\"\nfi\n";
+			shellScript = "set -euo pipefail\nSOURCE_PLIST=\"${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist\"\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  rm -f \"${BUILT_GOOGLE_PLIST}\"\n  echo \"warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled.\"\n  exit 0\nfi\n\nmkdir -p \"$(dirname \"${BUILT_GOOGLE_PLIST}\")\"\ncp \"${SOURCE_PLIST}\" \"${BUILT_GOOGLE_PLIST}\"\n\nREVERSED_CLIENT_ID=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :REVERSED_CLIENT_ID\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${REVERSED_CLIENT_ID}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 ${REVERSED_CLIENT_ID}\" \"${INFO_PLIST}\"\nfi\n\n# F-RR09-003: land sentry.dsn (injected by inject-firebase-config.sh into\n# GoogleService-Info.plist) into the app Info.plist — the PRIMARY read\n# path resolveSentryDSN() checks first. Previously only the\n# GoogleService-Info.plist fallback carried it, so client crash\n# reporting worked only when that resource happened to be bundled.\nSENTRY_DSN=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :sentry.dsn\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${SENTRY_DSN}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Delete :sentry.dsn\" \"${INFO_PLIST}\" >/dev/null 2>&1 || true\n  /usr/libexec/PlistBuddy -c \"Add :sentry.dsn string ${SENTRY_DSN}\" \"${INFO_PLIST}\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -7837,6 +7845,7 @@
 				62E11D27C6178DD74A8C25E2 /* BurnBarDaemonServer+RPCTooling.swift in Sources */,
 				104BDA9DC01A0A061A49B8A9 /* BurnBarDaemonServer+RPCUsage.swift in Sources */,
 				FE5CF3D4D23D416E07A10183 /* BurnBarDaemonSocketRPCCoverage.swift in Sources */,
+				828E19EEB9D8293E2A30136B /* BurnBarDaemonTokenFile.swift in Sources */,
 				F29BBE23F107650D4E409E94 /* BurnBarGatewayMetrics.swift in Sources */,
 				B953F43910EB755525330403 /* BurnBarGatewayModelHealthStore.swift in Sources */,
 				B349302D49E09D5854507F97 /* BurnBarParallelDAGScheduler.swift in Sources */,
@@ -8049,6 +8058,7 @@
 				DA6A14D1F083F209BC11E31A /* BurnBarDaemonServerPRLifecycleTests.swift in Sources */,
 				8CF5526016CC1ABB5AFFAAA0 /* BurnBarDaemonServerPeerAuthEnforcementTests.swift in Sources */,
 				D93B4F374E52D760A570E632 /* BurnBarDaemonSocketRPCCoverageTests.swift in Sources */,
+				BAFB36653B46FC923E8D2F16 /* BurnBarDaemonTokenFileTests.swift in Sources */,
 				BCC835E65F8F7CBE706D3E94 /* BurnBarGatewayMetricsTests.swift in Sources */,
 				4CA7B147755682B1C25A40D6 /* BurnBarHNSWIntegrationTests.swift in Sources */,
 				A4A709BB1F11D53DA8E47207 /* BurnBarIndexedSearchServiceMinimalTests.swift in Sources */,
@@ -9632,11 +9642,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_60898695-C2F2-44D5-BE8D-F00407EB3E68" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_A9763AA9-DE21-4150-BCDD-6E3FAC5F72ED" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_0B816AE7-14A5-40C6-A08D-97246DEFDF43" /* OpenBurnBarCore */;
+			productRef = "TEMP_F05F3B3C-C30F-44D2-B05D-240BC01DD762" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -9689,7 +9699,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_89EF8B68-8349-43B4-9979-48616C692181" /* OpenBurnBarCore */;
+			productRef = "TEMP_76CBF513-8013-4150-9856-CC4D34ABFF3F" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -9703,15 +9713,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_4AEEA408-24CA-4E05-A917-8F20076BCC2D" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_C93F9F9A-05FA-4BC7-8A92-1E9FF42F5A73" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_DEEF6AD2-C7ED-42B2-B5EC-C688EEDE87E0" /* OpenBurnBarMedia */;
+			productRef = "TEMP_11B85701-D1B5-4732-8ADE-96EA81EF65F0" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_D9CD22D6-2C12-4BFE-B606-7CDCC0F73348" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_27D1C509-7845-41A7-9D25-714CD058BEC8" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -10854,29 +10864,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_0B816AE7-14A5-40C6-A08D-97246DEFDF43" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_4AEEA408-24CA-4E05-A917-8F20076BCC2D" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_60898695-C2F2-44D5-BE8D-F00407EB3E68" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_89EF8B68-8349-43B4-9979-48616C692181" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_D9CD22D6-2C12-4BFE-B606-7CDCC0F73348" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_DEEF6AD2-C7ED-42B2-B5EC-C688EEDE87E0" /* OpenBurnBarMedia */ = {
+		"TEMP_11B85701-D1B5-4732-8ADE-96EA81EF65F0" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
+		};
+		"TEMP_27D1C509-7845-41A7-9D25-714CD058BEC8" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_76CBF513-8013-4150-9856-CC4D34ABFF3F" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_A9763AA9-DE21-4150-BCDD-6E3FAC5F72ED" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_C93F9F9A-05FA-4BC7-8A92-1E9FF42F5A73" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_F05F3B3C-C30F-44D2-B05D-240BC01DD762" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
