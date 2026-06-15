@@ -11,11 +11,10 @@ vi.mock("../providers/httpClient.js", () => ({
 import { mimoAdapter } from "../providers/mimo.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
+  return new Response(JSON.stringify(body), {
     status,
-    json: async () => body,
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 describe("mimo parseRemainsBuckets (characterization via fetchQuota)", () => {

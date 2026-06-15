@@ -191,7 +191,7 @@ export function legacyAttachmentContentTypeAllowed(contentType: string): boolean
 // Canonical id length + charset for gateway HTTP identifiers. attachments/finalize
 // validates `attachmentId` with this exact contract (cap 160, [A-Za-z0-9_.:-]).
 export const HERMES_GATEWAY_HTTP_ID_MAX_LENGTH = 160;
-export const HERMES_GATEWAY_HTTP_ID_PATTERN = /^[A-Za-z0-9_.:-]+$/u;
+const HERMES_GATEWAY_HTTP_ID_PATTERN = /^[A-Za-z0-9_.:-]+$/u;
 
 export function requiredHttpIdentifier(raw: unknown, fieldName: string): string {
   const value = boundedTrimmedString(raw, fieldName, HERMES_GATEWAY_HTTP_ID_MAX_LENGTH, true);

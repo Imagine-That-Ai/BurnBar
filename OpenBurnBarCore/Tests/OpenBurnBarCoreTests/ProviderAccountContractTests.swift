@@ -16,7 +16,7 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertEqual(AgentProvider.fromProviderID(.openBurnBar), .openBurnBar)
         XCTAssertTrue(AgentProvider.openBurnBar.isQuotaSignalProvider)
         XCTAssertFalse(AgentProvider.mobileAccountConnectableProviders.contains(.openBurnBar))
-        XCTAssertFalse(AgentProvider.swarmGlyphProviders.contains(.openBurnBar))
+        XCTAssertTrue(AgentProvider.swarmGlyphProviders.contains(.openBurnBar))
         XCTAssertEqual(AgentProvider.fromProviderID(.codex), .codex)
         XCTAssertEqual(AgentProvider.fromProviderID(.openCode), .openCode)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("open code go"), .openCode)

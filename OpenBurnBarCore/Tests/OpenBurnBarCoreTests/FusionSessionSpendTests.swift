@@ -31,10 +31,10 @@ final class FusionSessionSpendTests: XCTestCase {
     private func canonicalRun(parent: String = "elderwand-AAA") -> [FusionUsageRow] {
         [
             row(parent: parent, stage: "panel[0]", model: "claude-opus", input: 1000, output: 500, cost: 0.10, at: 10),
-            row(parent: parent, stage: "panel[1]", model: "gpt-5",       input: 1000, output: 500, cost: 0.08, at: 11),
-            row(parent: parent, stage: "panel[2]", model: "gemini-pro",  input: 1000, output: 500, cost: 0.06, at: 12),
-            row(parent: parent, stage: "judge",     model: "claude-opus", input: 2000, output: 300, cost: 0.05, at: 13),
-            row(parent: parent, stage: "synthesis", model: "gpt-5",       input: 1500, output: 800, cost: 0.04, at: 14),
+            row(parent: parent, stage: "panel[1]", model: "gpt-5", input: 1000, output: 500, cost: 0.08, at: 11),
+            row(parent: parent, stage: "panel[2]", model: "gemini-pro", input: 1000, output: 500, cost: 0.06, at: 12),
+            row(parent: parent, stage: "judge", model: "claude-opus", input: 2000, output: 300, cost: 0.05, at: 13),
+            row(parent: parent, stage: "synthesis", model: "gpt-5", input: 1500, output: 800, cost: 0.04, at: 14)
         ]
     }
 
@@ -50,7 +50,7 @@ final class FusionSessionSpendTests: XCTestCase {
     }
 
     func test_sessionTotals_sumTokens() throws {
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
         XCTAssertEqual(session.totalInputTokens, 6500)
         XCTAssertEqual(session.totalOutputTokens, 2600)
         XCTAssertEqual(session.totalTokens, 9100)
@@ -59,7 +59,7 @@ final class FusionSessionSpendTests: XCTestCase {
     // MARK: - Itemization + stage ordering
 
     func test_lineItems_orderedPanelsThenJudgeThenSynthesis() throws {
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
         XCTAssertEqual(session.lineItems.count, 5)
         XCTAssertEqual(session.lineItems[0].stage, .panel(index: 0))
         XCTAssertEqual(session.lineItems[1].stage, .panel(index: 1))
@@ -85,7 +85,7 @@ final class FusionSessionSpendTests: XCTestCase {
     // MARK: - Multiplier ("cost of certainty")
 
     func test_multiplier_isTotalOverSynthesisBaseline() throws {
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
         // synthesis baseline = 0.04, total = 0.33 → 8.25×
         XCTAssertEqual(session.soloBaselineCost, 0.04, accuracy: 1e-9)
         XCTAssertEqual(try XCTUnwrap(session.costMultiplier), 8.25, accuracy: 1e-9)
@@ -95,7 +95,7 @@ final class FusionSessionSpendTests: XCTestCase {
         // Degraded run: synthesis failed, so no synthesis row. Baseline → judge.
         var rows = canonicalRun(parent: "elderwand-BBB")
         rows.removeLast() // drop synthesis
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
         XCTAssertNil(session.synthesisItem)
         XCTAssertEqual(session.soloBaselineCost, 0.05, accuracy: 1e-9) // judge cost
         XCTAssertEqual(try XCTUnwrap(session.costMultiplier), 0.29 / 0.05, accuracy: 1e-9)
@@ -104,9 +104,9 @@ final class FusionSessionSpendTests: XCTestCase {
     func test_multiplier_nilWhenNoPositiveBaseline() throws {
         let rows = [
             row(parent: "elderwand-CCC", stage: "panel[0]", model: "m", cost: 0.0),
-            row(parent: "elderwand-CCC", stage: "judge", model: "m", cost: 0.0),
+            row(parent: "elderwand-CCC", stage: "judge", model: "m", cost: 0.0)
         ]
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
         XCTAssertNil(session.costMultiplier, "No positive baseline → no multiplier (never divide by zero).")
     }
 
@@ -117,13 +117,13 @@ final class FusionSessionSpendTests: XCTestCase {
         // One sub-call is a low-confidence estimate → whole session is an estimate.
         rows[2] = row(parent: "elderwand-DDD", stage: "panel[2]", model: "gemini-pro",
                       cost: 0.06, confidence: .lowConfidenceEstimate, at: 12)
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
         XCTAssertEqual(session.aggregateConfidence, .lowConfidenceEstimate)
         XCTAssertFalse(session.aggregateConfidence.isExact)
     }
 
     func test_aggregateConfidence_exactWhenAllExact() throws {
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
         XCTAssertEqual(session.aggregateConfidence, .exact)
         XCTAssertTrue(session.aggregateConfidence.isExact)
     }
@@ -134,16 +134,16 @@ final class FusionSessionSpendTests: XCTestCase {
         let older = canonicalRun(parent: "elderwand-OLD") // ends at t=14
         let newer = [
             row(parent: "elderwand-NEW", stage: "panel[0]", model: "m", cost: 0.2, at: 100),
-            row(parent: "elderwand-NEW", stage: "synthesis", model: "m", cost: 0.1, at: 101),
+            row(parent: "elderwand-NEW", stage: "synthesis", model: "m", cost: 0.1, at: 101)
         ]
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: older + newer))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: older + newer))
         XCTAssertEqual(session.parentRequestID, "elderwand-NEW")
         XCTAssertEqual(session.totalCost, 0.30, accuracy: 1e-9)
     }
 
     func test_session_byExplicitParentID() throws {
         let rows = canonicalRun(parent: "elderwand-OLD") + [
-            row(parent: "elderwand-NEW", stage: "synthesis", model: "m", cost: 0.1, at: 100),
+            row(parent: "elderwand-NEW", stage: "synthesis", model: "m", cost: 0.1, at: 100)
         ]
         let session = FusionSpendAggregator.session(parentRequestID: "elderwand-OLD", from: rows)
         XCTAssertEqual(session?.parentRequestID, "elderwand-OLD")
@@ -153,7 +153,7 @@ final class FusionSessionSpendTests: XCTestCase {
     func test_newestSession_nilWhenNoFusionRows() throws {
         let rows = [
             row(parent: nil, stage: nil, model: "m", cost: 0.5),
-            row(parent: "session-123", stage: nil, model: "m", cost: 0.3), // not elderwand- prefix
+            row(parent: "session-123", stage: nil, model: "m", cost: 0.3) // not elderwand- prefix
         ]
         XCTAssertNil(FusionSpendAggregator.newestSession(from: rows))
     }
@@ -166,7 +166,7 @@ final class FusionSessionSpendTests: XCTestCase {
             canonicalRun(parent: "elderwand-R2") +              // fusion: 0.33
             [
                 row(parent: nil, stage: nil, model: "claude", input: 100, output: 100, cost: 0.50),       // normal
-                row(parent: "session-xyz", stage: nil, model: "gpt", input: 50, output: 50, cost: 0.20),  // normal (no prefix)
+                row(parent: "session-xyz", stage: nil, model: "gpt", input: 50, output: 50, cost: 0.20) // normal (no prefix)
             ]
         let totals = FusionSpendAggregator.partition(rows)
         XCTAssertEqual(totals.fusionCost, 0.66, accuracy: 1e-9)
@@ -177,7 +177,7 @@ final class FusionSessionSpendTests: XCTestCase {
 
     func test_partition_fusionShareAndAverage() throws {
         let rows = canonicalRun(parent: "elderwand-R1") + [
-            row(parent: nil, stage: nil, model: "m", cost: 0.67),
+            row(parent: nil, stage: nil, model: "m", cost: 0.67)
         ]
         let totals = FusionSpendAggregator.partition(rows)
         // fusion 0.33 of total 1.00 = 0.33 share; 1 run → avg 0.33
@@ -207,9 +207,9 @@ final class FusionSessionSpendTests: XCTestCase {
     func test_singlePanelRun() throws {
         let rows = [
             row(parent: "elderwand-SOLO", stage: "panel[0]", model: "m", cost: 0.10, at: 1),
-            row(parent: "elderwand-SOLO", stage: "synthesis", model: "m", cost: 0.05, at: 2),
+            row(parent: "elderwand-SOLO", stage: "synthesis", model: "m", cost: 0.05, at: 2)
         ]
-        let session = try! XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
+        let session = try XCTUnwrap(FusionSpendAggregator.newestSession(from: rows))
         XCTAssertEqual(session.panelCount, 1)
         XCTAssertEqual(session.totalCost, 0.15, accuracy: 1e-9)
         XCTAssertEqual(try XCTUnwrap(session.costMultiplier), 3.0, accuracy: 1e-9) // 0.15 / 0.05

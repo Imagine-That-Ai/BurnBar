@@ -775,39 +775,38 @@ private data class TopUpPresentation(
     val drawableRes: Int,
 )
 
-private fun topUpPresentation(productID: String): TopUpPresentation =
-    when (productID) {
-        HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID ->
-            TopUpPresentation(
-                title = "100 Agent Control actions",
-                detail = "One-time Cloud Pro top-up",
-                drawableRes = R.drawable.cloud_chip_agent,
-            )
-        HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID ->
-            TopUpPresentation(
-                title = "50 GB Floo relay",
-                detail = "One-time Cloud Pro top-up",
-                drawableRes = R.drawable.cloud_chip_floo,
-            )
-        HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID ->
-            TopUpPresentation(
-                title = "100 Elder Wand searches",
-                detail = "Hosted web_search credits for Fusion",
-                drawableRes = R.drawable.cloud_cap_session_search,
-            )
-        HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID ->
-            TopUpPresentation(
-                title = "500 Elder Wand searches",
-                detail = "Hosted web_search credits for Fusion",
-                drawableRes = R.drawable.cloud_cap_session_search,
-            )
-        else ->
-            TopUpPresentation(
-                title = "Cloud Pro top-up",
-                detail = "One-time Cloud Pro top-up",
-                drawableRes = R.drawable.cloud_badge_brass_coin,
-            )
-    }
+private fun topUpPresentation(productID: String): TopUpPresentation = when (productID) {
+    HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID ->
+        TopUpPresentation(
+            title = "100 Agent Control actions",
+            detail = "One-time Cloud Pro top-up",
+            drawableRes = R.drawable.cloud_chip_agent,
+        )
+    HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID ->
+        TopUpPresentation(
+            title = "50 GB Floo relay",
+            detail = "One-time Cloud Pro top-up",
+            drawableRes = R.drawable.cloud_chip_floo,
+        )
+    HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID ->
+        TopUpPresentation(
+            title = "100 Elder Wand searches",
+            detail = "Hosted web_search credits for Fusion",
+            drawableRes = R.drawable.cloud_cap_session_search,
+        )
+    HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID ->
+        TopUpPresentation(
+            title = "500 Elder Wand searches",
+            detail = "Hosted web_search credits for Fusion",
+            drawableRes = R.drawable.cloud_cap_session_search,
+        )
+    else ->
+        TopUpPresentation(
+            title = "Cloud Pro top-up",
+            detail = "One-time Cloud Pro top-up",
+            drawableRes = R.drawable.cloud_badge_brass_coin,
+        )
+}
 
 @Composable
 internal fun TopUpPurchaseRow(

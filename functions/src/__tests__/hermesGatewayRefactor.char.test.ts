@@ -14,6 +14,7 @@
  * identical return values and identical thrown HttpsError codes/messages.
  */
 import { describe, expect, it, vi } from "vitest";
+import type { HttpRequest, HttpResponse } from "../callables/hermesGatewayHttp.js";
 
 vi.mock("firebase-functions/logger", () => ({
   info: vi.fn(),
@@ -46,9 +47,9 @@ interface CapturedResponse {
   body?: unknown;
 }
 
-function makeRes(): { res: unknown; captured: CapturedResponse } {
+function makeRes(): { res: HttpResponse; captured: CapturedResponse } {
   const captured: CapturedResponse = {};
-  const res = {
+  const res: HttpResponse = {
     status(code: number) {
       captured.status = code;
       return res;
@@ -66,7 +67,7 @@ function makeRes(): { res: unknown; captured: CapturedResponse } {
   return { res, captured };
 }
 
-function makeReq(method: string, path: string): unknown {
+function makeReq(method: string, path: string): HttpRequest {
   return {
     method,
     path,
@@ -77,6 +78,15 @@ function makeReq(method: string, path: string): unknown {
     socket: { remoteAddress: "127.0.0.1" },
     get: () => undefined,
   };
+}
+
+function errorProperty(error: unknown, key: string): unknown {
+  if (error === null || typeof error !== "object") return undefined;
+  return Reflect.get(error, key);
+}
+
+function responseError(body: unknown): unknown {
+  return errorProperty(body, "error");
 }
 
 describe("hermesGateway refactor characterization — id-contract helpers", () => {
@@ -90,8 +100,8 @@ describe("hermesGateway refactor characterization — id-contract helpers", () =
       requiredHttpIdentifier("bad id!", "attachmentId");
       throw new Error("expected throw");
     } catch (err) {
-      expect((err as { status?: number }).status).toBe(400);
-      expect((err as { error?: string }).error).toBe("invalid_attachmentId");
+      expect(errorProperty(err, "status")).toBe(400);
+      expect(errorProperty(err, "error")).toBe("invalid_attachmentId");
     }
   });
 
@@ -124,8 +134,8 @@ describe("hermesGateway refactor characterization — content-type guard", () =>
       assertSafeAttachmentContentType("text/html");
       throw new Error("expected throw");
     } catch (err) {
-      expect((err as { status?: number }).status).toBe(400);
-      expect((err as { error?: string }).error).toBe("unsafe_content_type");
+      expect(errorProperty(err, "status")).toBe(400);
+      expect(errorProperty(err, "error")).toBe("unsafe_content_type");
     }
   });
 });
@@ -134,31 +144,31 @@ describe("hermesGateway refactor characterization — route method guards", () =
   it("handleDeviceStart returns 405 on a non-POST request (pre-DB short-circuit)", async () => {
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
     const { res, captured } = makeRes();
-    await dispatchHermesGatewayRequest(makeReq("GET", "/device/start") as never, res as never);
+    await dispatchHermesGatewayRequest(makeReq("GET", "/device/start"), res);
     expect(captured.status).toBe(405);
-    expect((captured.body as { error?: string }).error).toBe("method_not_allowed");
+    expect(responseError(captured.body)).toBe("method_not_allowed");
   });
 
   it("handleRuntimeStatus returns 405 on a non-POST request", async () => {
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
     const { res, captured } = makeRes();
-    await dispatchHermesGatewayRequest(makeReq("GET", "/runtime") as never, res as never);
+    await dispatchHermesGatewayRequest(makeReq("GET", "/runtime"), res);
     expect(captured.status).toBe(405);
-    expect((captured.body as { error?: string }).error).toBe("method_not_allowed");
+    expect(responseError(captured.body)).toBe("method_not_allowed");
   });
 
   it("handleAttachmentFinalize returns 405 on a non-POST request", async () => {
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
     const { res, captured } = makeRes();
-    await dispatchHermesGatewayRequest(makeReq("GET", "/attachments/finalize") as never, res as never);
+    await dispatchHermesGatewayRequest(makeReq("GET", "/attachments/finalize"), res);
     expect(captured.status).toBe(405);
-    expect((captured.body as { error?: string }).error).toBe("method_not_allowed");
+    expect(responseError(captured.body)).toBe("method_not_allowed");
   });
 
   it("an OPTIONS preflight short-circuits with 204", async () => {
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
     const { res, captured } = makeRes();
-    await dispatchHermesGatewayRequest(makeReq("OPTIONS", "/runtime") as never, res as never);
+    await dispatchHermesGatewayRequest(makeReq("OPTIONS", "/runtime"), res);
     expect(captured.status).toBe(204);
   });
 });

@@ -22,11 +22,13 @@ import type {
 
 const GENERATED_AT = "2026-06-14T12:00:00.000Z";
 const FRESH_FETCHED_AT = "2026-06-14T06:00:00.000Z"; // 6h old → freshness 1.0
+const CODING_TASK: ModelBenchmarkTaskCategory = "coding";
+const ARTIFICIAL_ANALYSIS_SOURCE: ModelBenchmarkSource = "artificial_analysis";
 
 function codingSnapshot(
   modelID: string,
   score: number,
-  source: ModelBenchmarkSource = "artificial_analysis",
+  source: ModelBenchmarkSource = ARTIFICIAL_ANALYSIS_SOURCE,
 ): ModelBenchmarkSnapshotDoc {
   return {
     id: `${modelID}:${source}:coding`,
@@ -34,7 +36,7 @@ function codingSnapshot(
     sourceURL: "https://example.test/benchmark",
     fetchedAt: FRESH_FETCHED_AT,
     modelID,
-    taskCategory: "coding" as ModelBenchmarkTaskCategory,
+    taskCategory: CODING_TASK,
     score,
     confidence: 0.9,
     reliabilitySignal: 0.9,
@@ -88,9 +90,10 @@ describe("buildRouterRundown characterization", () => {
     expect(rundown.generatedAt).toBe(GENERATED_AT);
     expect(rundown.schemaVersion).toBe(1);
 
-    const coding = rundown.taskRankings.find((t) => t.taskID === "coding");
+    const coding = rundown.taskRankings.find((t) => t.taskID === CODING_TASK);
     expect(coding).toBeDefined();
-    const recs = coding!.recommendations;
+    if (!coding) throw new Error("coding task ranking missing");
+    const recs = coding.recommendations;
     expect(recs).toHaveLength(2);
 
     // Favorite policy: gpt-5-5 (favorite rank #1) stays on top even though the
@@ -117,15 +120,15 @@ describe("buildRouterRundown characterization", () => {
     expect(recs[0].signals.contextWindowTokens).toBe(256_000);
 
     // Top-pick rationale names the chosen favorite and its runner-up.
-    expect(coding!.topPickRationale).toContain("GPT-5.5 xhigh");
-    expect(coding!.topPickRationale).toContain("stable favorite rank #1");
-    expect(coding!.note).toBeUndefined();
+    expect(coding.topPickRationale).toContain("GPT-5.5 xhigh");
+    expect(coding.topPickRationale).toContain("stable favorite rank #1");
+    expect(coding.note).toBeUndefined();
   });
 
   it("suppresses a task with no benchmark evidence and redacts source-status secrets", () => {
     const statuses: ModelBenchmarkSourceStatusDoc[] = [
       {
-        source: "artificial_analysis" as ModelBenchmarkSource,
+        source: ARTIFICIAL_ANALYSIS_SOURCE,
         status: "error",
         fetchedAt: FRESH_FETCHED_AT,
         message: "fetch failed authorization: Bearer abcdef0123456789",

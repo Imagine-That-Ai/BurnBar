@@ -111,6 +111,8 @@ let signalBinaryTargets: [Target] = hasSignalFfiXCFramework ? [
     )
 ] : []
 
+let swiftTestingDependency: Target.Dependency = .product(name: "Testing", package: "swift-testing")
+
 let firstPartyTargets: [Target] = [
         .target(
             name: "OpenBurnBarCore",
@@ -183,7 +185,7 @@ let firstPartyTargets: [Target] = [
             dependencies: [
                 "OpenBurnBarCore",
                 "OpenBurnBarFirestoreModels",
-                .product(name: "Testing", package: "swift-testing")
+                swiftTestingDependency
             ],
             resources: [
                 .process("Fixtures")
@@ -194,14 +196,14 @@ let firstPartyTargets: [Target] = [
         ),
         .testTarget(
             name: "OpenBurnBarIrohRelayTests",
-            dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore"],
+            dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore", swiftTestingDependency],
             // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
             // checker has known gaps (Task hand-off) that would contort correct tests.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "OpenBurnBarMediaTests",
-            dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay"],
+            dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay", swiftTestingDependency],
             resources: [
                 .process("Fixtures")
             ],
@@ -214,7 +216,8 @@ let firstPartyTargets: [Target] = [
             dependencies: [
                 "OpenBurnBarComputerUseCore",
                 "OpenBurnBarCore",
-                "OpenBurnBarMedia"
+                "OpenBurnBarMedia",
+                swiftTestingDependency
             ],
             resources: [
                 .process("Fixtures")
@@ -228,7 +231,8 @@ let firstPartyTargets: [Target] = [
             dependencies: [
                 "OpenBurnBarSignalCore",
                 "OpenBurnBarCore",
-                .product(name: "LibSignalClient", package: "LibSignalClient")
+                .product(name: "LibSignalClient", package: "LibSignalClient"),
+                swiftTestingDependency
             ],
             resources: [
                 .process("Fixtures")
@@ -244,7 +248,8 @@ let firstPartyTargets: [Target] = [
                 "OpenBurnBarSignalCore",
                 "OpenBurnBarIrohRelay",
                 "OpenBurnBarCore",
-                .product(name: "LibSignalClient", package: "LibSignalClient")
+                .product(name: "LibSignalClient", package: "LibSignalClient"),
+                swiftTestingDependency
             ],
             // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
             // checker has known gaps (Task hand-off) that would contort correct tests.

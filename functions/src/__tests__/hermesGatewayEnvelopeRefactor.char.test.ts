@@ -44,6 +44,13 @@ const validV3Envelope = {
   senderPublicKey: PUBKEY65,
 };
 
+function expectHttpsError(error: unknown, code: HttpsError["code"], message: string): void {
+  expect(error).toBeInstanceOf(HttpsError);
+  if (!(error instanceof HttpsError)) throw new Error("expected HttpsError");
+  expect(error.code).toBe(code);
+  expect(error.message).toBe(message);
+}
+
 describe("requireGatewayRelayEnvelope (characterization)", () => {
   it("returns the canonical v2 envelope for a valid v2 input", () => {
     expect(requireGatewayRelayEnvelope(validV2Envelope, "relayEnvelope")).toEqual({
@@ -73,9 +80,7 @@ describe("requireGatewayRelayEnvelope (characterization)", () => {
     } catch (error) {
       captured = error;
     }
-    expect(captured).toBeInstanceOf(HttpsError);
-    expect((captured as HttpsError).code).toBe("invalid-argument");
-    expect((captured as HttpsError).message).toBe("relayEnvelope must be a relay envelope.");
+    expectHttpsError(captured, "invalid-argument", "relayEnvelope must be a relay envelope.");
   });
 
   it("throws invalid-argument for an unsupported relayKeyVersion", () => {
@@ -85,9 +90,7 @@ describe("requireGatewayRelayEnvelope (characterization)", () => {
     } catch (error) {
       captured = error;
     }
-    expect(captured).toBeInstanceOf(HttpsError);
-    expect((captured as HttpsError).code).toBe("invalid-argument");
-    expect((captured as HttpsError).message).toBe("relayEnvelope.relayKeyVersion must be one of 1, 2, 3.");
+    expectHttpsError(captured, "invalid-argument", "relayEnvelope.relayKeyVersion must be one of 1, 2, 3.");
   });
 
   it("throws invalid-argument when a v2 envelope omits senderPublicKey", () => {
@@ -98,9 +101,9 @@ describe("requireGatewayRelayEnvelope (characterization)", () => {
     } catch (error) {
       captured = error;
     }
-    expect(captured).toBeInstanceOf(HttpsError);
-    expect((captured as HttpsError).code).toBe("invalid-argument");
-    expect((captured as HttpsError).message).toBe(
+    expectHttpsError(
+      captured,
+      "invalid-argument",
       "relayEnvelope.senderPublicKey must be a base64 X9.63 P-256 public key (65 bytes, 0x04-prefixed) for relayKeyVersion 2.",
     );
   });
@@ -112,9 +115,7 @@ describe("requireGatewayRelayEnvelope (characterization)", () => {
     } catch (error) {
       captured = error;
     }
-    expect(captured).toBeInstanceOf(HttpsError);
-    expect((captured as HttpsError).code).toBe("invalid-argument");
-    expect((captured as HttpsError).message).toBe("relayEnvelope.enc is only valid for relayKeyVersion 3.");
+    expectHttpsError(captured, "invalid-argument", "relayEnvelope.enc is only valid for relayKeyVersion 3.");
   });
 });
 
@@ -189,9 +190,7 @@ describe("sanitizeGatewayRelayEnvelopeCapabilities (characterization)", () => {
     } catch (error) {
       captured = error;
     }
-    expect(captured).toBeInstanceOf(HttpsError);
-    expect((captured as HttpsError).code).toBe("invalid-argument");
-    expect((captured as HttpsError).message).toBe("supportsHpkeV3 must be a boolean.");
+    expectHttpsError(captured, "invalid-argument", "supportsHpkeV3 must be a boolean.");
   });
 });
 

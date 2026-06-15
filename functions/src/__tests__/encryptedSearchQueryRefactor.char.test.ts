@@ -43,21 +43,22 @@ vi.mock("../callables/shared.js", async () => {
 
 type Runnable = { run: (request: unknown) => Promise<unknown> };
 
+function hasCallableRun(candidate: unknown): candidate is Runnable {
+  if (candidate === null || (typeof candidate !== "object" && typeof candidate !== "function")) {
+    return false;
+  }
+  return Reflect.get(candidate, "run") instanceof Function;
+}
+
 function asRunnable(candidate: unknown): Runnable {
   // firebase-functions v2 `onCall(...)` returns a CallableFunction, which is a *function* value
   // that also carries a `.run(request)` method (`CallableFunction extends HttpsFunction`). Guarding
   // on `typeof candidate === "object"` alone would reject it (a function is `"function"`), so accept
   // both shapes and require `run` to be callable — matching the repo's other callable-runner seams.
-  if (
-    candidate === null ||
-    (typeof candidate !== "object" && typeof candidate !== "function") ||
-    !("run" in candidate) ||
-    typeof (candidate as { run?: unknown }).run !== "function"
-  ) {
+  if (!hasCallableRun(candidate)) {
     throw new Error("callable target is missing run()");
   }
-  const target = candidate as Runnable;
-  return { run: (request: unknown) => target.run(request) };
+  return { run: (request: unknown) => candidate.run(request) };
 }
 
 function callableRequest(uid: string | undefined, data: Record<string, unknown>): unknown {
@@ -82,9 +83,10 @@ describe("searchEncryptedConversationIndex characterization (U8 split)", () => {
     }
 
     expect(thrown).toBeTruthy();
-    const err = thrown as { code?: unknown; message?: unknown };
-    expect(err.code).toBe("unauthenticated");
-    expect(err.message).toBe("Sign in before searching session logs.");
+    expect(thrown).toBeInstanceOf(Error);
+    if (!(thrown instanceof Error)) throw new Error("expected HttpsError-compatible Error");
+    expect(Reflect.get(thrown, "code")).toBe("unauthenticated");
+    expect(thrown.message).toBe("Sign in before searching session logs.");
     expect(collectionSpy).not.toHaveBeenCalled();
   });
 

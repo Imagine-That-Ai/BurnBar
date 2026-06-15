@@ -53,9 +53,9 @@ export async function assertActiveBurnBarProEntitlement(uid: string): Promise<vo
   );
 }
 
-export type BurnBarCloudProEntitlementTier = "cloud_pro" | "ultra";
+type BurnBarCloudProEntitlementTier = "cloud_pro" | "ultra";
 
-export async function activeBurnBarCloudProEntitlementTier(uid: string): Promise<BurnBarCloudProEntitlementTier> {
+async function activeBurnBarCloudProEntitlementTier(uid: string): Promise<BurnBarCloudProEntitlementTier> {
   await assertCloudFeatureNotSuspended(db, uid, "burnbar_cloud_pro");
   const [ultraSnap, proMaxSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),

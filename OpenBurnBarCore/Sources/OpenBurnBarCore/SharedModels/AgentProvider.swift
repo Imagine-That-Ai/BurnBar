@@ -51,6 +51,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .geminiCLI,
         .antigravity,
         .openAI,
+        .openBurnBar,
         .deepSeek,
         .minimax,
         .zai,

@@ -25,11 +25,8 @@ import { loadCloudProAllowanceConfig } from "./cloudProAllowanceRemoteConfig.js"
 import { errorMessage, isRecord, isTimestampWithToMillis, stripUndefinedObject } from "./guards.js";
 import {
   HOSTED_SEARCH_SECRETS,
-  type HostedSearchProvider,
-  type HostedSearchResult,
   normalizeProviderResults,
   performProviderSearch,
-  type ProviderSearchPayload,
 } from "./elderWandHostedSearchProviders.js";
 import { logWarn, onCallProduction } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
@@ -49,6 +46,9 @@ const PENDING_POLL_MS = 250;
 const PENDING_WAIT_MS = 3_000;
 
 type ElderWandTier = "cloud_pro" | "ultra";
+type ProviderSearchPayload = Awaited<ReturnType<typeof performProviderSearch>>;
+type HostedSearchProvider = ProviderSearchPayload["provider"];
+type HostedSearchResult = ReturnType<typeof normalizeProviderResults>[number];
 
 interface HostedSearchRequest {
   query?: unknown;

@@ -10,7 +10,7 @@ export const STRIPE_TOP_UP_KINDS = [
   "elder_wand_searches_500",
 ] as const;
 
-export type StripeTopUpKind = (typeof STRIPE_TOP_UP_KINDS)[number];
+type StripeTopUpKind = (typeof STRIPE_TOP_UP_KINDS)[number];
 
 function requireConfiguredPriceID(priceID: string, label: string): string {
   if (!priceID) throw new HttpsError("failed-precondition", `${label} Stripe price is not configured.`);

@@ -84,7 +84,6 @@ export {
   BURNBAR_ULTRA_ENTITLEMENT_ID,
   assertActiveHostedQuotaEntitlement,
   assertActiveBurnBarProEntitlement,
-  activeBurnBarCloudProEntitlementTier,
   assertActiveBurnBarCloudProEntitlement,
   isActiveHostedQuotaEntitlement,
   isActivePremiumEntitlement,
@@ -95,7 +94,6 @@ export {
   paidEntitlementWriteWouldDowngrade,
   creditCloudProTopUp,
 } from "./shared/entitlements.js";
-export type { BurnBarCloudProEntitlementTier } from "./shared/entitlements.js";
 
 export {
   STRIPE_API_SECRETS,

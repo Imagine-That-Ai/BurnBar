@@ -1,7 +1,7 @@
 import { HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 
-import { errorMessage, isRecord, stripUndefinedObject } from "./guards.js";
+import { errorMessage, isRecord } from "./guards.js";
 import { providerFetch } from "./providers/httpClient.js";
 import { boundedTrimmedString } from "./callables/shared.js";
 
@@ -12,16 +12,16 @@ const TAVILY_BASIC_SEARCH_COST_USD = 0.008;
 
 export const HOSTED_SEARCH_SECRETS = [PERPLEXITY_API_KEY, TAVILY_API_KEY];
 
-export type HostedSearchProvider = "perplexity" | "tavily";
+type HostedSearchProvider = "perplexity" | "tavily";
 
-export interface HostedSearchResult {
+interface HostedSearchResult {
   title: string;
   url: string;
   snippet?: string;
   publishedAt?: string;
 }
 
-export interface ProviderSearchPayload {
+interface ProviderSearchPayload {
   provider: HostedSearchProvider;
   results: HostedSearchResult[];
   costUSD: number;
@@ -52,7 +52,10 @@ export function normalizeProviderResults(raw: unknown[]): HostedSearchResult[] {
       boundedTrimmedString(item.date, "result.date", 80, false) ??
       boundedTrimmedString(item.published_date, "result.published_date", 80, false) ??
       boundedTrimmedString(item.last_updated, "result.last_updated", 80, false);
-    return [stripUndefinedObject({ title, url, snippet, publishedAt }) as HostedSearchResult];
+    const result: HostedSearchResult = { title, url };
+    if (snippet !== undefined) result.snippet = snippet;
+    if (publishedAt !== undefined) result.publishedAt = publishedAt;
+    return [result];
   });
 }
 
@@ -68,7 +71,7 @@ async function searchPerplexity(query: string, maxResults: number): Promise<Prov
     body: JSON.stringify({ query, max_results: maxResults }),
   });
   if (!response.ok) throw new HttpsError("unavailable", `Perplexity search returned HTTP ${response.status}.`);
-  const json = (await response.json()) as unknown;
+  const json: unknown = await response.json();
   const root = isRecord(json) ? json : {};
   const rawResults = Array.isArray(root.results)
     ? root.results
@@ -101,7 +104,7 @@ async function searchTavily(query: string, maxResults: number): Promise<Provider
     }),
   });
   if (!response.ok) throw new HttpsError("unavailable", `Tavily search returned HTTP ${response.status}.`);
-  const json = (await response.json()) as unknown;
+  const json: unknown = await response.json();
   const root = isRecord(json) ? json : {};
   const rawResults = Array.isArray(root.results) ? root.results : [];
   return {

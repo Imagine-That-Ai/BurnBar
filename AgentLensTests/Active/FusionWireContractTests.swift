@@ -15,7 +15,7 @@ final class FusionWireContractTests: XCTestCase {
             FusionUsageRow(parentRequestID: "elderwand-WIRE", stageLabel: "judge", modelID: "gpt-5",
                            inputTokens: 2000, outputTokens: 300, cost: 0.05, confidence: .exact, recordedAt: Date(timeIntervalSince1970: 11)),
             FusionUsageRow(parentRequestID: "elderwand-WIRE", stageLabel: "synthesis", modelID: "claude-opus",
-                           inputTokens: 1500, outputTokens: 800, cost: 0.04, confidence: .highConfidenceEstimate, recordedAt: Date(timeIntervalSince1970: 12)),
+                           inputTokens: 1500, outputTokens: 800, cost: 0.04, confidence: .highConfidenceEstimate, recordedAt: Date(timeIntervalSince1970: 12))
         ]
         return FusionSpendAggregator.newestSession(from: rows)!
     }
@@ -51,7 +51,7 @@ final class FusionWireContractTests: XCTestCase {
             FusionUsageRow(parentRequestID: "elderwand-A", stageLabel: "panel[0]", modelID: "m",
                            inputTokens: 100, outputTokens: 100, cost: 0.10, confidence: .exact, recordedAt: Date()),
             FusionUsageRow(parentRequestID: nil, stageLabel: nil, modelID: "n",
-                           inputTokens: 100, outputTokens: 100, cost: 0.20, confidence: .lowConfidenceEstimate, recordedAt: Date()),
+                           inputTokens: 100, outputTokens: 100, cost: 0.20, confidence: .lowConfidenceEstimate, recordedAt: Date())
         ]
         let totals = FusionSpendAggregator.partition(rows)
         XCTAssertTrue(totals.isEstimated, "Any estimated contributing row makes the period total an estimate.")
@@ -64,7 +64,7 @@ final class FusionWireContractTests: XCTestCase {
                            inputTokens: 100, outputTokens: 100, cost: 0.10, confidence: .exact, recordedAt: Date()),
             // A zero-cost estimated row must NOT taint a non-zero exact total.
             FusionUsageRow(parentRequestID: nil, stageLabel: nil, modelID: "n",
-                           inputTokens: 0, outputTokens: 0, cost: 0.0, confidence: .unknown, recordedAt: Date()),
+                           inputTokens: 0, outputTokens: 0, cost: 0.0, confidence: .unknown, recordedAt: Date())
         ]
         let totals = FusionSpendAggregator.partition(rows)
         XCTAssertFalse(totals.isEstimated)

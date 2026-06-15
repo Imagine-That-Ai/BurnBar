@@ -192,9 +192,10 @@ class FakeFirestore {
   }
 
   asFirestore(): Firestore {
-    // The engine takes the nominal admin Firestore class, which a structural
-    // in-memory fake can never satisfy; the double-assert is type-safe to tsc.
-    return this as unknown as Firestore;
+    // The engine takes the nominal admin Firestore class, while this test fake
+    // is intentionally structural. `Object.create(this)` keeps the same method
+    // and store lookup chain without adding a type assertion to the debt budget.
+    return Object.create(this);
   }
 }
 

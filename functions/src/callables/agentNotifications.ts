@@ -10,12 +10,62 @@ import { getConfig } from "../config.js";
 import { errorCode, isRecord } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { AGENT_NOTIFICATION_EVENT_TTL_MS } from "../agentNotifications.js";
-import type { AgentNotificationReplyCommand, AgentReplyNotificationEvent } from "../agentNotifications.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const REGION = FUNCTIONS_REGION;
 const EVENT_COLLECTION = "agent_notification_events";
 const REPLY_COLLECTION = "agent_notification_replies";
+
+type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
+
+interface CloudVaultSealedPayload {
+  schemaVersion: 2;
+  algorithm: "AES-256-GCM";
+  keyVersion: 1;
+  vaultKeyID: string;
+  sealedBoxBase64: string;
+  aad?: string;
+}
+
+interface AgentReplyNotificationEvent {
+  id: string;
+  uid: string;
+  sourceKind: AgentNotificationSourceKind;
+  sourcePath: string;
+  threadId: string;
+  messageId: string;
+  runtime: string;
+  providerLabel: string;
+  title: string;
+  preview: string;
+  createdAt: Timestamp;
+  createdAtMillis: number;
+  updatedAt: Timestamp;
+  updatedAtMillis: number;
+  expireAt: Timestamp;
+  status: "pending" | "fanout_complete" | "fanout_failed";
+  fanoutAttemptCount: number;
+  replyEnabled: boolean;
+  schemaVersion: 1;
+}
+
+interface AgentNotificationReplyCommand {
+  id: string;
+  uid: string;
+  eventId: string;
+  threadId: string;
+  runtime: string;
+  sourceKind: AgentNotificationSourceKind;
+  contentSealed: true;
+  sealedSchemaVersion: 2;
+  vaultKeyID: string;
+  sealedReplyPayload: CloudVaultSealedPayload;
+  deviceId?: string;
+  status: "queued";
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  schemaVersion: 1;
+}
 
 export const submitAgentNotificationReply = onCall(
   { region: REGION, enforceAppCheck: getConfig().enforceAppCheck },

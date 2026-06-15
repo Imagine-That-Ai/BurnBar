@@ -48,7 +48,7 @@ interface AgentReplyMessage {
   isError?: boolean;
 }
 
-export interface AgentReplyNotificationEvent {
+interface AgentReplyNotificationEvent {
   id: string;
   uid: string;
   sourceKind: AgentNotificationSourceKind;
@@ -82,33 +82,6 @@ interface DeviceNotificationState {
   activeRuntime?: string;
   lastSeenAtMillis: number;
   invalidatedAtMillis?: number;
-}
-
-interface CloudVaultSealedPayload {
-  schemaVersion: number;
-  algorithm: "AES-256-GCM";
-  keyVersion: number;
-  vaultKeyID: string;
-  sealedBoxBase64: string;
-  aad?: string;
-}
-
-export interface AgentNotificationReplyCommand {
-  id: string;
-  uid: string;
-  eventId: string;
-  threadId: string;
-  runtime: string;
-  sourceKind: AgentNotificationSourceKind;
-  contentSealed: true;
-  sealedSchemaVersion: 1 | 2;
-  vaultKeyID: string;
-  sealedReplyPayload: CloudVaultSealedPayload;
-  deviceId?: string;
-  status: "queued";
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
-  schemaVersion: 1;
 }
 
 function sealedAssistantReply(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {

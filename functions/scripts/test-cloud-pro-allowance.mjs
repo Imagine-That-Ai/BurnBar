@@ -107,15 +107,17 @@ assert.match(stripeCallableSource, /purchases\.products\.get/);
 assert.match(stripeCallableSource, /purchases\.products\.consume/);
 assert.match(stripeCallableSource, /creditCloudProTopUp/);
 
-const sharedCallableSource = readFileSync(join(root, "src/callables/shared.ts"), "utf8");
-assert.match(sharedCallableSource, /isActiveBurnBarCloudProEntitlement/);
-assert.match(sharedCallableSource, /isActiveBurnBarUltraEntitlement\(ultraSnap\.data\(\)\)/);
-assert.match(sharedCallableSource, /ensureCloudProAllowanceLedger/);
-assert.match(sharedCallableSource, /entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID \|\| entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID/);
-assert.match(sharedCallableSource, /cloudProAllowanceTierForEntitlement\(entitlementID, args\.productID\)/);
-assert.match(sharedCallableSource, /return lineItems\.find\(\(item\) => item\.productId === productID\);/);
-assert.doesNotMatch(sharedCallableSource, /assertActiveBurnBarCloudProEntitlement[\s\S]*isActivePremiumEntitlement\(proMaxSnap\.data\(\)\)/);
-assert.doesNotMatch(sharedCallableSource, /lineItems\.find\(\(item\) => item\.productId === productID\) \?\? lineItems\[0\]/);
+const entitlementSource = readFileSync(join(root, "src/callables/shared/entitlements.ts"), "utf8");
+assert.match(entitlementSource, /isActiveBurnBarCloudProEntitlement/);
+assert.match(entitlementSource, /isActiveBurnBarUltraEntitlement\(ultraSnap\.data\(\)\)/);
+assert.match(entitlementSource, /ensureCloudProAllowanceLedger/);
+assert.match(entitlementSource, /entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID \|\| entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID/);
+assert.match(entitlementSource, /cloudProAllowanceTierForEntitlement\(entitlementID, args\.productID\)/);
+assert.doesNotMatch(entitlementSource, /assertActiveBurnBarCloudProEntitlement[\s\S]*isActivePremiumEntitlement\(proMaxSnap\.data\(\)\)/);
+
+const sharedStripeSource = readFileSync(join(root, "src/callables/shared/stripe.ts"), "utf8");
+assert.match(sharedStripeSource, /return lineItems\.find\(\(item\) => item\.productId === productID\);/);
+assert.doesNotMatch(sharedStripeSource, /lineItems\.find\(\(item\) => item\.productId === productID\) \?\? lineItems\[0\]/);
 
 const mediaSkuSource = readFileSync(join(root, "src/callables/mediaSku.ts"), "utf8");
 assert.match(mediaSkuSource, /standalone media subscription is retired/i);

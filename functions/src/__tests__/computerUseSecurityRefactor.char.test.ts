@@ -22,22 +22,17 @@ const {
   canonicalAgentGrantRequestJSON,
   evaluateEscrowFingerprintBinding,
   parseTrustedDeviceActionProof,
-} = __testing__ as unknown as {
-  queuedAgentGrantRequiresLocalAuthProof: (capabilities: string[], trustMode: string) => boolean;
-  queuedAgentGrantRequiresMacApproval: (capabilities: string[], trustMode: string) => boolean;
-  queuedAgentGrantDeliveryRequiresMacApproval: (
-    capabilities: string[],
-    trustMode: string,
-    deliveryMode: string,
-  ) => boolean;
-  agentGrantRequestHashHex: (request: Record<string, unknown>) => string;
-  canonicalAgentGrantRequestJSON: (request: Record<string, unknown>) => string;
-  evaluateEscrowFingerprintBinding: (
-    storedFingerprint: unknown,
-    publicKeyDataBase64: unknown,
-  ) => { ok: boolean; reason: string };
-  parseTrustedDeviceActionProof: (raw: unknown) => unknown;
-};
+} = __testing__;
+
+function errorProperty(error: unknown, key: string): unknown {
+  if (error === null || typeof error !== "object") return undefined;
+  return Reflect.get(error, key);
+}
+
+function expectHttpsError(error: unknown, code: string, message: string): void {
+  expect(errorProperty(error, "code")).toBe(code);
+  expect(errorProperty(error, "message")).toBe(message);
+}
 
 // --- approveEscrowDeviceTrust decision surface --------------------------------
 
@@ -67,8 +62,7 @@ describe("parseTrustedDeviceActionProof (respondMissionApproval / action-proof g
       parseTrustedDeviceActionProof(undefined);
       throw new Error("expected parseTrustedDeviceActionProof to throw");
     } catch (error) {
-      expect((error as { code?: string }).code).toBe("invalid-argument");
-      expect((error as { message?: string }).message).toBe("actionProof is required.");
+      expectHttpsError(error, "invalid-argument", "actionProof is required.");
     }
   });
 
@@ -84,8 +78,7 @@ describe("parseTrustedDeviceActionProof (respondMissionApproval / action-proof g
       });
       throw new Error("expected parseTrustedDeviceActionProof to throw");
     } catch (error) {
-      expect((error as { code?: string }).code).toBe("invalid-argument");
-      expect((error as { message?: string }).message).toBe("actionProof.algorithm is unsupported.");
+      expectHttpsError(error, "invalid-argument", "actionProof.algorithm is unsupported.");
     }
   });
 });

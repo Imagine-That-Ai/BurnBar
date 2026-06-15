@@ -14,7 +14,7 @@
  */
 
 export { applyUsageCounterDelta } from "./rollupCounters.js";
-export type { WindowKey, UsageCounterContribution, UsageCounterCandidate } from "./rollupCounters.js";
+export type { WindowKey, UsageCounterCandidate } from "./rollupCounters.js";
 
 export {
   isPendingCounterDelta,

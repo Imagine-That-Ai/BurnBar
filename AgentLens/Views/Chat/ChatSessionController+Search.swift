@@ -749,9 +749,7 @@ extension ChatSessionController {
                                 usage: mirrorUsage
                             )
                         }
-                        if didRouteThroughFusion {
-                            self.completedFusionSessionToken = UUID().uuidString
-                        }
+                        self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion)
                     }
                     self.selectedContext = nil
                 }.value
@@ -773,12 +771,16 @@ extension ChatSessionController {
                             self.messages[idx].content = self.streamError ?? "Error"
                         }
                     }
-                    if didRouteThroughFusion, !(error is CancellationError) {
-                        self.completedFusionSessionToken = UUID().uuidString
-                    }
+                    self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion, error: error)
                 }.value
             }
         }
+    }
+
+    private func completeFusionSessionReceiptIfNeeded(_ didRouteThroughFusion: Bool, error: Error? = nil) {
+        guard didRouteThroughFusion else { return }
+        guard !(error is CancellationError) else { return }
+        completedFusionSessionToken = UUID().uuidString
     }
 
     func hermesUnavailableMessage() async -> String {

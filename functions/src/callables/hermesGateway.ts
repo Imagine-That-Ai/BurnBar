@@ -17,7 +17,6 @@
 
 export {
   HERMES_GATEWAY_HTTP_ID_MAX_LENGTH,
-  HERMES_GATEWAY_HTTP_ID_PATTERN,
   adoptedGatewayDocId,
   assertSafeAttachmentContentType,
   legacyAttachmentContentTypeAllowed,

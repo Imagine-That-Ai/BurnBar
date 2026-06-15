@@ -100,7 +100,25 @@ export function isProviderAccountStorageScope(value: unknown): value is Provider
   );
 }
 
-function hasValidProviderAccountRequiredFields(raw: Record<string, unknown>): boolean {
+type ProviderAccountRequiredFields = Pick<
+  ProviderAccountDoc,
+  | "id"
+  | "providerID"
+  | "label"
+  | "status"
+  | "credentialKind"
+  | "storageScope"
+  | "redactedLabel"
+  | "isDefault"
+  | "sortKey"
+  | "schemaVersion"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+function hasValidProviderAccountRequiredFields(
+  raw: Record<string, unknown>,
+): raw is Record<string, unknown> & ProviderAccountRequiredFields {
   return (
     typeof raw.id === "string" &&
     typeof raw.providerID === "string" &&
@@ -135,18 +153,18 @@ export function parseProviderAccountDoc(raw: unknown): ProviderAccountDoc | unde
     return undefined;
   }
   return {
-    id: raw.id as string,
-    providerID: raw.providerID as string,
-    label: raw.label as string,
-    status: raw.status as ProviderAccountDoc["status"],
-    credentialKind: raw.credentialKind as ProviderAccountDoc["credentialKind"],
-    storageScope: raw.storageScope as ProviderAccountStorageScope,
-    redactedLabel: raw.redactedLabel as string,
-    isDefault: raw.isDefault as boolean,
-    sortKey: raw.sortKey as number,
-    schemaVersion: raw.schemaVersion as number,
-    createdAt: raw.createdAt as string,
-    updatedAt: raw.updatedAt as string,
+    id: raw.id,
+    providerID: raw.providerID,
+    label: raw.label,
+    status: raw.status,
+    credentialKind: raw.credentialKind,
+    storageScope: raw.storageScope,
+    redactedLabel: raw.redactedLabel,
+    isDefault: raw.isDefault,
+    sortKey: raw.sortKey,
+    schemaVersion: raw.schemaVersion,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
     identityHint: optionalStringField(raw.identityHint),
     sourceDeviceID: optionalStringField(raw.sourceDeviceID),
     linkedSwitcherProfileID: optionalStringField(raw.linkedSwitcherProfileID),
