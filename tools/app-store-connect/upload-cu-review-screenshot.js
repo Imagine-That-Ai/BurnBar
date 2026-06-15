@@ -55,6 +55,16 @@ const TOP_UP_PRODUCTS = [
     name: 'Floo Relay 50 GB',
     description: 'Adds 50 GB of Floo relay bandwidth.',
   },
+  {
+    productId: 'com.openburnbar.elderWand.searches100',
+    name: 'Elder Wand Search 100',
+    description: 'Adds 100 hosted Elder Wand Fusion web_search credits.',
+  },
+  {
+    productId: 'com.openburnbar.elderWand.searches500',
+    name: 'Elder Wand Search 500',
+    description: 'Adds 500 hosted Elder Wand Fusion web_search credits.',
+  },
 ];
 const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.pro.monthly': 'review-final/burnbar-cloud-review.jpg',
@@ -63,6 +73,8 @@ const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.proMax.annual': 'review-final/burnbar-cloud-pro-review.jpg',
   'com.openburnbar.agentControl.actions100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
   'com.openburnbar.floo.relay50gb': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.elderWand.searches100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.elderWand.searches500': 'review-final/burnbar-cloud-pro-topups-review.jpg',
 };
 const TRUSTED_UPLOAD_HOST_SUFFIXES = [
   '.apple.com',

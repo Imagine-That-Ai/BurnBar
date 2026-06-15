@@ -266,6 +266,8 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("com.openburnbar.proMax.annual"))
         XCTAssertTrue(source.contains("com.openburnbar.agentControl.actions100"))
         XCTAssertTrue(source.contains("com.openburnbar.floo.relay50gb"))
+        XCTAssertTrue(source.contains("com.openburnbar.elderWand.searches100"))
+        XCTAssertTrue(source.contains("com.openburnbar.elderWand.searches500"))
         XCTAssertTrue(source.contains("legacyHostedQuotaProductID"))
         XCTAssertTrue(source.contains("legacyHostedComputerUseProductID"))
         XCTAssertTrue(source.contains("legacyProMaxProductID"))

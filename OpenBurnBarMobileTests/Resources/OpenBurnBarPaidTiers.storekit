@@ -31,6 +31,36 @@
       "productID": "com.openburnbar.floo.relay50gb",
       "referenceName": "Floo Relay 50 GB",
       "type": "Consumable"
+    },
+    {
+      "displayPrice": "4.99",
+      "familyShareable": false,
+      "internalID": "ELDERWANDSEARCH100",
+      "localizations": [
+        {
+          "description": "Adds 100 hosted web_search credits for Elder Wand Fusion to the current BurnBar Cloud Pro or Ultra month.",
+          "displayName": "Elder Wand Search 100",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.openburnbar.elderWand.searches100",
+      "referenceName": "Elder Wand Search 100",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "19.99",
+      "familyShareable": false,
+      "internalID": "ELDERWANDSEARCH500",
+      "localizations": [
+        {
+          "description": "Adds 500 hosted web_search credits for Elder Wand Fusion to the current BurnBar Cloud Pro or Ultra month.",
+          "displayName": "Elder Wand Search 500",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.openburnbar.elderWand.searches500",
+      "referenceName": "Elder Wand Search 500",
+      "type": "Consumable"
     }
   ],
   "settings": {},

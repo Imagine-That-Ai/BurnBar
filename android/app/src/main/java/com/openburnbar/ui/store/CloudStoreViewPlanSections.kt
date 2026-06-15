@@ -755,11 +755,11 @@ internal fun TopUpPlanRail(
             color = CloudStorePal.textMuted,
         )
         products.forEach { product ->
-            val agentControl = product.id == HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID
+            val metadata = topUpPresentation(product.id)
             TopUpPurchaseRow(
-                title = if (agentControl) "100 Agent Control actions" else "50 GB Floo relay",
-                detail = "One-time Cloud Pro top-up",
-                drawableRes = if (agentControl) R.drawable.cloud_chip_agent else R.drawable.cloud_chip_floo,
+                title = metadata.title,
+                detail = metadata.detail,
+                drawableRes = metadata.drawableRes,
                 price = prices[product.id]?.formattedPrice ?: product.fallbackPrice,
                 enabled = enabled,
                 purchaseTestTag = cloudStorePurchaseTag(product.id),
@@ -768,6 +768,46 @@ internal fun TopUpPlanRail(
         }
     }
 }
+
+private data class TopUpPresentation(
+    val title: String,
+    val detail: String,
+    val drawableRes: Int,
+)
+
+private fun topUpPresentation(productID: String): TopUpPresentation =
+    when (productID) {
+        HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID ->
+            TopUpPresentation(
+                title = "100 Agent Control actions",
+                detail = "One-time Cloud Pro top-up",
+                drawableRes = R.drawable.cloud_chip_agent,
+            )
+        HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID ->
+            TopUpPresentation(
+                title = "50 GB Floo relay",
+                detail = "One-time Cloud Pro top-up",
+                drawableRes = R.drawable.cloud_chip_floo,
+            )
+        HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID ->
+            TopUpPresentation(
+                title = "100 Elder Wand searches",
+                detail = "Hosted web_search credits for Fusion",
+                drawableRes = R.drawable.cloud_cap_session_search,
+            )
+        HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID ->
+            TopUpPresentation(
+                title = "500 Elder Wand searches",
+                detail = "Hosted web_search credits for Fusion",
+                drawableRes = R.drawable.cloud_cap_session_search,
+            )
+        else ->
+            TopUpPresentation(
+                title = "Cloud Pro top-up",
+                detail = "One-time Cloud Pro top-up",
+                drawableRes = R.drawable.cloud_badge_brass_coin,
+            )
+    }
 
 @Composable
 internal fun TopUpPurchaseRow(

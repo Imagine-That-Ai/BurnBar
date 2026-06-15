@@ -37,7 +37,11 @@ assert.equal(
   GOOGLE_PLAY_PRODUCTS.agentControlActions100,
   "com.openburnbar.agentcontrol.actions100",
 );
+assert.equal(GOOGLE_PLAY_PRODUCTS.elderWandSearches100, "com.openburnbar.elderwand.searches100");
+assert.equal(GOOGLE_PLAY_PRODUCTS.elderWandSearches500, "com.openburnbar.elderwand.searches500");
 assert.equal(COMMERCIAL_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual.v2");
+assert.equal(COMMERCIAL_PRODUCTS.elderWandSearches100, "com.openburnbar.elderWand.searches100");
+assert.equal(COMMERCIAL_PRODUCTS.elderWandSearches500, "com.openburnbar.elderWand.searches500");
 assert.equal(GOOGLE_PLAY_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual");
 assert.notEqual(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
@@ -140,6 +144,8 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.ultraAnnual,
       COMMERCIAL_PRODUCTS.agentControlActions100,
       COMMERCIAL_PRODUCTS.flooRelay50GB,
+      COMMERCIAL_PRODUCTS.elderWandSearches100,
+      COMMERCIAL_PRODUCTS.elderWandSearches500,
     ],
     [
       COMMERCIAL_PRODUCTS.cloudMonthly,
@@ -150,6 +156,8 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.ultraAnnual,
       COMMERCIAL_PRODUCTS.agentControlActions100,
       COMMERCIAL_PRODUCTS.flooRelay50GB,
+      COMMERCIAL_PRODUCTS.elderWandSearches100,
+      COMMERCIAL_PRODUCTS.elderWandSearches500,
     ],
   );
   assert.equal(coverage.ok, true);
@@ -195,6 +203,12 @@ function passingChecks(overrides = {}) {
           name: "Agent Control 100 Actions",
           state: "WAITING_FOR_REVIEW",
         },
+        {
+          id: "iap_elder_wand_100",
+          productId: COMMERCIAL_PRODUCTS.elderWandSearches100,
+          name: "Elder Wand Search 100",
+          state: "WAITING_FOR_REVIEW",
+        },
       ],
     },
     [
@@ -202,6 +216,7 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.cloudProMonthly,
       COMMERCIAL_PRODUCTS.ultraMonthly,
       COMMERCIAL_PRODUCTS.agentControlActions100,
+      COMMERCIAL_PRODUCTS.elderWandSearches100,
     ],
   );
   assert.equal(readiness.ok, true);

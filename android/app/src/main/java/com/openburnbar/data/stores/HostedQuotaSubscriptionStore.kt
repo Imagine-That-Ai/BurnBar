@@ -80,6 +80,8 @@ class HostedQuotaSubscriptionStore(
 
         const val AGENT_CONTROL_TOP_UP_PRODUCT_ID = "com.openburnbar.agentcontrol.actions100"
         const val FLOO_RELAY_TOP_UP_PRODUCT_ID = "com.openburnbar.floo.relay50gb"
+        const val FUSION_SEARCH_100_TOP_UP_PRODUCT_ID = "com.openburnbar.elderwand.searches100"
+        const val FUSION_SEARCH_500_TOP_UP_PRODUCT_ID = "com.openburnbar.elderwand.searches500"
 
         val STORE_PRODUCTS =
             listOf(
@@ -116,6 +118,18 @@ class HostedQuotaSubscriptionStore(
                     "$4.99",
                 ),
                 HostedQuotaStoreProduct(FLOO_RELAY_TOP_UP_PRODUCT_ID, BillingClient.ProductType.INAPP, HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP, "$4.99"),
+                HostedQuotaStoreProduct(
+                    FUSION_SEARCH_100_TOP_UP_PRODUCT_ID,
+                    BillingClient.ProductType.INAPP,
+                    HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP,
+                    "$4.99",
+                ),
+                HostedQuotaStoreProduct(
+                    FUSION_SEARCH_500_TOP_UP_PRODUCT_ID,
+                    BillingClient.ProductType.INAPP,
+                    HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP,
+                    "$19.99",
+                ),
             )
         private val STORE_PRODUCT_BY_ID = STORE_PRODUCTS.associateBy { it.id }
         private val SUBSCRIPTION_PRODUCT_IDS =
@@ -547,7 +561,7 @@ class HostedQuotaSubscriptionStore(
     }
 
     private suspend fun handlePurchases(purchases: List<Purchase>) {
-        verifyHostedQuotaTopUpPurchase(purchases, TOP_UP_PRODUCT_IDS, functions)?.let { _lastTopUpCredit.value = it }
+        verifyHostedQuotaTopUpPurchases(purchases, TOP_UP_PRODUCT_IDS, functions).lastOrNull()?.let { _lastTopUpCredit.value = it }
 
         var lastInactiveSubscription: VerifiedSubscription? = null
         var lastVerificationError: Throwable? = null
@@ -688,20 +702,29 @@ private fun parseTimestampMs(value: Any?): Long? = when (value) {
     else -> null
 }
 
-private suspend fun verifyHostedQuotaTopUpPurchase(
+private suspend fun verifyHostedQuotaTopUpPurchases(
     purchases: List<Purchase>,
     topUpProductIds: Set<String>,
     functions: FunctionsRepository,
-): Map<String, Any>? {
-    val topUpPurchase =
-        purchases.firstOrNull {
-            it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.any { productID -> productID in topUpProductIds }
-        } ?: return null
-    val productID = topUpPurchase.products.first { it in topUpProductIds }
-    return functions.verifyGooglePlayCloudProTopUp(
-        purchaseToken = topUpPurchase.purchaseToken,
-        productID = productID,
-    )
+): List<Map<String, Any>> {
+    val credits = mutableListOf<Map<String, Any>>()
+    purchases
+        .filter { purchase ->
+            purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
+                purchase.products.any { productID -> productID in topUpProductIds }
+        }
+        .forEach { purchase ->
+            purchase.products
+                .filter { it in topUpProductIds }
+                .forEach { productID ->
+                    credits +=
+                        functions.verifyGooglePlayCloudProTopUp(
+                            purchaseToken = purchase.purchaseToken,
+                            productID = productID,
+                        )
+                }
+        }
+    return credits
 }
 
 private fun purchaseProductSummary(purchases: List<Purchase>): List<String> {

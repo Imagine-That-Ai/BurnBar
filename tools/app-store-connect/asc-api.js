@@ -53,6 +53,8 @@ const APP = {
 const COMMERCIAL_TOP_UP_PRODUCT_IDS = [
   "com.openburnbar.agentControl.actions100",
   "com.openburnbar.floo.relay50gb",
+  "com.openburnbar.elderWand.searches100",
+  "com.openburnbar.elderWand.searches500",
 ];
 
 function currentMobileBuildVersion() {
