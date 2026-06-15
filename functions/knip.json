@@ -15,6 +15,9 @@
     "src/__tests__/bola/bolaVictimSeeds.generated.ts",
     ".dependency-cruiser.cjs"
   ],
+  "ignoreIssues": {
+    "src/types/legacy/{connections,insights-digest,insights-spec,media,quota-usage}.ts": ["exports", "types"]
+  },
   "ignoreDependencies": [
     "@openburnbar/entitlements",
     "@openburnbar/signal-envelope-contracts"
