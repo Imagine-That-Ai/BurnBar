@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
@@ -529,7 +530,7 @@ class FirestoreIrohPairingPublicKeyProvider(
                     .document("host")
                     .get(Source.SERVER)
                     .await()
-            } catch (err: Exception) {
+            } catch (err: FirebaseFirestoreException) {
                 throw HermesRelayException(
                     "Unable to fetch iroh pairing host key from server.",
                     err,
