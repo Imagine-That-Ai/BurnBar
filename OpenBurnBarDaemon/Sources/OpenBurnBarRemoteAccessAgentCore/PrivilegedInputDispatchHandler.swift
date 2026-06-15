@@ -142,8 +142,8 @@ public final class PrivilegedInputDispatchHandler: Sendable {
     private func sessionContext(for envelope: PrivilegedInputDispatchEnvelope) -> RemoteUnlockSessionContext {
         let fallback = sessionContextProvider()
         return RemoteUnlockSessionContext(
-            escrowDeviceId: normalizedBinding(envelope.presentingEscrowDeviceId) ?? fallback.escrowDeviceId,
-            attestationHashBlake3: normalizedBinding(envelope.requiredAttestationHashBlake3) ?? fallback.attestationHashBlake3,
+            escrowDeviceId: fallback.escrowDeviceId ?? normalizedBinding(envelope.presentingEscrowDeviceId),
+            attestationHashBlake3: fallback.attestationHashBlake3 ?? normalizedBinding(envelope.requiredAttestationHashBlake3),
             scopeHash: fallback.scopeHash
         )
     }

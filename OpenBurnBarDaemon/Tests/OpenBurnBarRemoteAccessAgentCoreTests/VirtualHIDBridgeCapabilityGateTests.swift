@@ -217,6 +217,66 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
         }
     }
 
+    func test_presenterBindingTakesPrecedenceOverRequestEscrowDeviceForInput() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let nonceStore = InMemoryCapabilityTokenNonceStore()
+        let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "click",
+            boundEscrowDeviceId: "iphone-b"
+        )
+        let request = VirtualHIDBridgeCapabilityGate.Request(
+            kind: "click",
+            text: nil,
+            key: nil,
+            modifiers: nil,
+            capabilityToken: token,
+            presentingEscrowDeviceId: "iphone-b"
+        )
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(escrowDeviceId: "iphone-a")
+
+        guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validate(
+            request,
+            verifier: leafVerifier,
+            presenterBinding: binding
+        ) else {
+            XCTFail("Expected active presenter binding to reject request-carried escrow override")
+            return
+        }
+    }
+
+    func test_presenterBindingTakesPrecedenceOverRequestEscrowDeviceForCredentialTyping() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let nonceStore = InMemoryCapabilityTokenNonceStore()
+        let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "type_credential",
+            boundEscrowDeviceId: "iphone-b"
+        )
+        let request = VirtualHIDBridgeCapabilityGate.CredentialRequest(
+            capabilityToken: token,
+            presentingEscrowDeviceId: "iphone-b"
+        )
+        let binding = VirtualHIDBridgeCapabilityGate.PresenterBinding(escrowDeviceId: "iphone-a")
+
+        guard case .failure(.capabilityTokenEscrowMismatch) = VirtualHIDBridgeCapabilityGate.validateCredentialType(
+            request,
+            verifier: leafVerifier,
+            presenterBinding: binding
+        ) else {
+            XCTFail("Expected active presenter binding to reject credential request escrow override")
+            return
+        }
+    }
+
     func test_bindingRejectsMismatchedAttestationHash() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let nonceStore = InMemoryCapabilityTokenNonceStore()
