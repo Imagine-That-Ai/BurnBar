@@ -129,7 +129,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         }
 
         // Stage 3 — JUDGE.
-        let verdict = await runJudge(
+        let judged = await runJudge(
             judgeModel: judgeModel,
             originatingPrompt: originatingPrompt,
             panelAnswers: panelAnswers,
@@ -138,13 +138,19 @@ struct ElderWandFusionOrchestrator: Sendable {
             parentRequestID: parentRequestID
         )
 
+        // The panel + judge receipt line items, in pipeline order, carried into
+        // the streaming result so the gateway can emit the full itemized session
+        // to clients with no local ledger (iOS over the relay).
+        let priorLineItems = panelAnswers.compactMap(\.spend) + [judged.spend].compactMap { $0 }
+
         // Stage 4 — SYNTHESIS on the originating model.
         return await runSynthesis(
             originatingModel: originatingModel,
             originatingMessagesJSON: originatingMessagesJSON,
-            verdict: verdict,
+            verdict: judged.verdict,
             wantsStream: wantsStream,
-            parentRequestID: parentRequestID
+            parentRequestID: parentRequestID,
+            priorLineItems: priorLineItems
         )
     }
 
@@ -153,6 +159,9 @@ struct ElderWandFusionOrchestrator: Sendable {
     private struct PanelAnswer: Sendable {
         let model: String
         let text: String
+        /// The panel member's receipt line item, carried so the streaming path
+        /// can emit the full itemized session to clients with no local ledger.
+        let spend: FusionSubCallSpend?
     }
 
     private func runPanel(
@@ -215,16 +224,21 @@ struct ElderWandFusionOrchestrator: Sendable {
                 maxToolCalls: maxToolCalls,
                 chat: { body in try await self.bufferedCompletion(body, route) }
             )
+            let signature = Self.signature(parentRequestID, "panel", model, index)
             await recordSubCall(.success(
                 stage: .panel(index: index),
                 route: route,
                 parentRequestID: parentRequestID,
                 usage: result.usage,
-                requestSignature: Self.signature(parentRequestID, "panel", model, index)
+                requestSignature: signature
             ))
             let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
-            return PanelAnswer(model: model, text: text)
+            return PanelAnswer(
+                model: model,
+                text: text,
+                spend: Self.lineItem(stage: .panel(index: index), route: route, requestSignature: signature, usage: result.usage)
+            )
         } catch {
             logger.warning("elder_wand_panel_failed", metadata: ["model": model, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -247,7 +261,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         maxToolCalls: Int,
         loop: ElderWandToolLoop,
         parentRequestID: String
-    ) async -> String {
+    ) async -> (verdict: String, spend: FusionSubCallSpend?) {
         let panelBlock = panelAnswers.enumerated().map { index, answer in
             "### Analysis answer \(index + 1) — model `\(answer.model)`\n\(answer.text)"
         }.joined(separator: "\n\n")
@@ -271,7 +285,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         guard let judgeSlug, let route = await resolveRoute(judgeSlug) else {
             logger.warning("elder_wand_judge_no_route", metadata: ["model": judgeModel ?? "nil"])
             // Degrade: hand synthesis the raw panel answers if the judge cannot run.
-            return Self.fallbackVerdict(panelBlock: panelBlock)
+            return (Self.fallbackVerdict(panelBlock: panelBlock), nil)
         }
         do {
             let result = try await loop.run(
@@ -281,15 +295,17 @@ struct ElderWandFusionOrchestrator: Sendable {
                 maxToolCalls: maxToolCalls,
                 chat: { body in try await self.bufferedCompletion(body, route) }
             )
+            let signature = Self.signature(parentRequestID, "judge", judgeSlug, 0)
             await recordSubCall(.success(
                 stage: .judge,
                 route: route,
                 parentRequestID: parentRequestID,
                 usage: result.usage,
-                requestSignature: Self.signature(parentRequestID, "judge", judgeSlug, 0)
+                requestSignature: signature
             ))
             let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? Self.fallbackVerdict(panelBlock: panelBlock) : text
+            let spend = Self.lineItem(stage: .judge, route: route, requestSignature: signature, usage: result.usage)
+            return (text.isEmpty ? Self.fallbackVerdict(panelBlock: panelBlock) : text, spend)
         } catch {
             logger.warning("elder_wand_judge_failed", metadata: ["model": judgeSlug, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -299,7 +315,7 @@ struct ElderWandFusionOrchestrator: Sendable {
                 parentRequestID: parentRequestID,
                 message: error.localizedDescription
             ))
-            return Self.fallbackVerdict(panelBlock: panelBlock)
+            return (Self.fallbackVerdict(panelBlock: panelBlock), nil)
         }
     }
 
@@ -310,7 +326,8 @@ struct ElderWandFusionOrchestrator: Sendable {
         originatingMessagesJSON: Data,
         verdict: String,
         wantsStream: Bool,
-        parentRequestID: String
+        parentRequestID: String,
+        priorLineItems: [FusionSubCallSpend]
     ) async -> ElderWandFusionResult {
         guard let route = await resolveRoute(originatingModel) else {
             return .failed(.init(
@@ -355,7 +372,8 @@ struct ElderWandFusionOrchestrator: Sendable {
                 route: route,
                 requestSignature: requestSignature,
                 parentRequestID: parentRequestID,
-                requestBody: body
+                requestBody: body,
+                priorLineItems: priorLineItems
             ))
         }
 
@@ -466,6 +484,37 @@ struct ElderWandFusionOrchestrator: Sendable {
         "\(parentRequestID)|\(stage)|\(model)|\(index)"
     }
 
+    /// Build a receipt line item from a recorded sub-call's resolved route + usage.
+    /// Cost is computed with the same pricing the ledger uses, so the emitted
+    /// session reconciles to the recorded usage events. Returns `nil` when the
+    /// sub-call produced no usage (so it never fabricates a zero-token line).
+    static func lineItem(
+        stage: FusionStage,
+        route: ElderWandResolvedRoute,
+        requestSignature: String,
+        usage: BurnBarProviderProxyUsage?
+    ) -> FusionSubCallSpend? {
+        guard let usage else { return nil }
+        let cost = route.route.pricing.cost(
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
+            cacheReadTokens: usage.cacheReadTokens
+        )
+        return FusionSubCallSpend(
+            id: requestSignature,
+            stage: stage,
+            modelID: route.wireModelSlug,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            reasoningTokens: usage.reasoningTokens,
+            cost: cost,
+            confidence: usage.confidence
+        )
+    }
+
     static func fallbackVerdict(panelBlock: String) -> String {
         """
         {"consensus":"(judge unavailable — raw analysis answers follow)","contradictions":"","partial_coverage":"","unique_insights":"","blind_spots":""}
@@ -539,6 +588,9 @@ enum ElderWandFusionResult: Sendable {
         let requestSignature: String
         let parentRequestID: String
         let requestBody: Data
+        /// Panel + judge receipt line items (synthesis is added after the stream
+        /// completes), so the gateway can emit the full itemized fusion session.
+        let priorLineItems: [FusionSubCallSpend]
     }
 
     struct Failure: Sendable {

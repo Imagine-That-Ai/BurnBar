@@ -38,6 +38,14 @@ protocol HermesStreamingCoordinating: AnyObject {
     /// the coordinator mints a fresh receipt token so the chat surface presents
     /// the end-of-session `FusionReceiptSheet`. A no-op for non-fusion turns.
     func presentFusionReceiptIfFusionRun()
+    /// The itemized fusion session decoded from the daemon's final SSE frame
+    /// (`openburnbar_fusion_spend`), or `nil` when the run produced none (the
+    /// receipt then shows the authoritative quota ring only).
+    var capturedFusionSpend: FusionSessionSpend? { get }
+    /// Stash the itemized fusion session from the daemon's final SSE frame so the
+    /// presented receipt upgrades from quota-only to itemized reactively (the
+    /// frame arrives after the synthesis stream's `[DONE]`).
+    func captureFusionSpend(_ session: FusionSessionSpend)
     func activeModelIDForRequest() throws -> String
     func makeRequest(path: String, timeout: TimeInterval) throws -> URLRequest
     func relayPayload(
@@ -93,6 +101,11 @@ final class HermesStreamingEngine {
     private let setLastError: (String) -> Void
     private let recordUsage: (HermesTokenUsageStats, Int?) -> Void
 
+    /// Itemized fusion session decoded from the daemon's final SSE frame during
+    /// the stream; handed to the coordinator at the completion point (which holds
+    /// the coordinator) so the receipt shows the breakdown. Reset per stream.
+    private var pendingFusionSpend: FusionSessionSpend?
+
     init(
         commitMessage: @escaping (HermesChatMessage) -> Void,
         setLastError: @escaping (String) -> Void,
@@ -110,6 +123,19 @@ final class HermesStreamingEngine {
     /// it did when it lived on the service.
     func beginStream() {
         streamEventParser = HermesOpenAICompatibleStreamParser()
+        pendingFusionSpend = nil
+    }
+
+    /// Hand any captured fusion spend to the coordinator, then trigger the
+    /// receipt presentation. Called at every stream-completion exit so the
+    /// itemized session (when present) is stashed before the receipt token is
+    /// minted; a non-fusion turn is a no-op (no spend, present is a no-op too).
+    private func finishFusionReceipt(_ coordinator: HermesStreamingCoordinating) {
+        if let fusionSpend = pendingFusionSpend {
+            coordinator.captureFusionSpend(fusionSpend)
+            pendingFusionSpend = nil
+        }
+        coordinator.presentFusionReceiptIfFusionRun()
     }
 
     func processSSEPayload(_ payload: String, into message: inout HermesChatMessage) {
@@ -232,6 +258,18 @@ final class HermesStreamingEngine {
 
         guard let jsonData = data.data(using: .utf8) else { return }
         guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
+
+        // The Elder Wand emits a final SSE frame carrying the itemized fusion
+        // session spend (after the synthesis stream's `[DONE]`), so iOS — which
+        // runs fusion on the Mac over the relay with no local ledger — can show
+        // the receipt. Capture it and stop: the frame carries no message content.
+        if let spendValue = json[FusionSessionSpend.wireKey] {
+            if let spendData = try? JSONSerialization.data(withJSONObject: spendValue),
+               let session = try? JSONDecoder().decode(FusionSessionSpend.self, from: spendData) {
+                pendingFusionSpend = session
+            }
+            return
+        }
 
         if let modelName = modelNameValue(item: json) {
             message.applyResponseModelID(modelName)
@@ -946,7 +984,7 @@ final class HermesStreamingEngine {
         coordinator.isStreaming = false
         // End-of-session receipt: when this was a fusion run, present the Elder
         // Wand receipt. No-op otherwise.
-        coordinator.presentFusionReceiptIfFusionRun()
+        finishFusionReceipt(coordinator)
     }
 
     private func ensureRelayModelCatalogLoadedBeforeSend(coordinator: HermesStreamingCoordinating) async {
@@ -975,13 +1013,13 @@ final class HermesStreamingEngine {
             // otherwise. Fires once per run because the tool-use loop re-enters
             // `streamCompletion` and only returns to a terminal exit here when
             // the run is truly finished.
-            coordinator.presentFusionReceiptIfFusionRun()
+            finishFusionReceipt(coordinator)
             return
         }
         guard iteration < coordinator.toolUseIterationCap else {
             // Cap exceeded — leave the pills as "done" but stop looping.
             coordinator.isStreaming = false
-            coordinator.presentFusionReceiptIfFusionRun()
+            finishFusionReceipt(coordinator)
             return
         }
 

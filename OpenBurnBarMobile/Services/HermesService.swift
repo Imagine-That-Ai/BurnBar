@@ -718,6 +718,9 @@ final class HermesService {
         // Allow attachment-only messages (no text) so users can send a photo
         // and let the model describe / OCR it.
         guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
+        // Clear any prior run's itemized spend so a new fusion run's receipt never
+        // shows stale line items before its own SSE frame lands.
+        capturedFusionSpend = nil
 
         #if DEBUG
         print("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
@@ -904,6 +907,20 @@ final class HermesService {
     func presentFusionReceiptIfFusionRun() {
         guard activeElderWandPlugins != nil else { return }
         fusionReceiptToken = UUID()
+    }
+
+    /// The itemized fusion session captured from the daemon's final SSE frame
+    /// (`openburnbar_fusion_spend`). `nil` when the run emitted none (a buffered /
+    /// non-streaming synthesis route) — the receipt then shows the authoritative
+    /// `fusion_searches` quota ring only. Reset at the start of each send.
+    var capturedFusionSpend: FusionSessionSpend?
+
+    /// Stash the itemized fusion session decoded from the daemon's final SSE
+    /// frame. The frame arrives just after the synthesis stream's `[DONE]`, so a
+    /// receipt already presented in quota-only mode upgrades to itemized
+    /// reactively (`HermesService` is `@Observable`).
+    func captureFusionSpend(_ session: FusionSessionSpend) {
+        capturedFusionSpend = session
     }
 
     /// True when a usable Elder Wand preset is active, so the chat send-path
