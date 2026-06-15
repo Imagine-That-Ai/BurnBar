@@ -270,7 +270,7 @@ public enum BurnBarProviderExecutorError: Error, LocalizedError {
 }
 
 public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting {
-    private let session: URLSession
+    let session: URLSession
 
     public init(session: URLSession = .shared) {
         self.session = session
@@ -337,7 +337,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
-    private static func executionResult(
+    static func executionResult(
         fromOpenAICompletionBody data: Data,
         promptRequest: BurnBarStructuredPromptRequest
     ) throws -> BurnBarProviderExecutionResult {
@@ -497,7 +497,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
-    private func proxyResponsesViaChatCompletions(
+    func proxyResponsesViaChatCompletions(
         body: Data,
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
@@ -527,7 +527,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
-    private func proxyOllamaNativeChatCompletions(
+    func proxyOllamaNativeChatCompletions(
         body: Data,
         route: BurnBarProviderRoute,
         baseURL: URL,
@@ -574,7 +574,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
-    private static func rewritingModel(
+    static func rewritingModel(
         in body: Data,
         to modelID: String,
         variant: BurnBarModelVariant? = nil
@@ -592,7 +592,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return try JSONSerialization.data(withJSONObject: object, options: [])
     }
 
-    private static func rewritingChatCompletionsBody(
+    static func rewritingChatCompletionsBody(
         in body: Data,
         to modelID: String,
         variant: BurnBarModelVariant? = nil,
@@ -677,12 +677,12 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     /// when the caller set a larger one we clamp down to the variant, and when
     /// the caller set nothing we leave the field unset (returning `nil`) so we
     /// never inflate a request that had no explicit limit.
-    private static func clampedMaxTokens(variantMax: Int, callerMax: Int?) -> Int? {
+    static func clampedMaxTokens(variantMax: Int, callerMax: Int?) -> Int? {
         guard let callerMax, callerMax > 0 else { return nil }
         return min(callerMax, variantMax)
     }
 
-    private static func normalizeOpenAICompatibleMessages(in object: inout [String: Any]) {
+    static func normalizeOpenAICompatibleMessages(in object: inout [String: Any]) {
         guard let messages = object["messages"] as? [[String: Any]] else { return }
         object["messages"] = messages.map { message in
             var normalized = message
@@ -697,1039 +697,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
     }
 
-    private static func chatCompletionsBodyFromResponsesRequest(
-        _ body: Data,
-        modelID: String
-    ) throws -> (Data, Bool) {
-        let json = try JSONSerialization.jsonObject(with: body)
-        guard let object = json as? [String: Any] else {
-            throw BurnBarProviderExecutorError.invalidResponse
-        }
-
-        let streamRequested = object["stream"] as? Bool ?? false
-        var messages: [[String: Any]] = []
-        if let instructions = object["instructions"] as? String,
-           !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            messages.append(["role": "system", "content": instructions])
-        }
-
-        if let existingMessages = object["messages"] as? [[String: Any]], !existingMessages.isEmpty {
-            messages.append(contentsOf: sanitizedChatMessages(existingMessages))
-        } else if let input = object["input"] {
-            messages.append(contentsOf: messagesFromResponsesInput(input))
-        }
-        messages = coalescedSystemMessages(messages)
-
-        if messages.isEmpty {
-            throw BurnBarProviderExecutorError.upstreamError(
-                400,
-                "Responses request must include input text or messages for chat-completions fallback."
-            )
-        }
-
-        var chatObject: [String: Any] = [
-            "model": modelID,
-            "messages": messages
-        ]
-        for compatibleKey in [
-            "temperature",
-            "top_p",
-            "stop",
-            "stream",
-            "presence_penalty",
-            "frequency_penalty",
-            "logit_bias",
-            "seed",
-            "user",
-            "response_format",
-            "max_tokens",
-            "tools",
-            "tool_choice"
-        ] {
-            if let value = object[compatibleKey] {
-                chatObject[compatibleKey] = value
-            }
-        }
-        if chatObject["max_tokens"] == nil, let maxOutputTokens = object["max_output_tokens"] {
-            chatObject["max_tokens"] = maxOutputTokens
-        }
-        if chatObject["response_format"] == nil,
-           let text = object["text"] as? [String: Any],
-           let format = text["format"] as? [String: Any] {
-            chatObject["response_format"] = format
-        }
-        normalizeResponsesToolsForChatCompletions(&chatObject)
-
-        return (try JSONSerialization.data(withJSONObject: chatObject, options: []), streamRequested)
-    }
-
-    private static func normalizeResponsesToolsForChatCompletions(_ object: inout [String: Any]) {
-        if let responseTools = object["tools"] as? [[String: Any]] {
-            let chatTools = responseTools.compactMap(chatCompletionsTool)
-            if chatTools.isEmpty {
-                object.removeValue(forKey: "tools")
-            } else {
-                object["tools"] = chatTools
-            }
-        }
-
-        guard let toolChoice = object["tool_choice"] as? [String: Any] else {
-            return
-        }
-        guard let toolName = (toolChoice["name"] as? String)
-                ?? ((toolChoice["function"] as? [String: Any])?["name"] as? String),
-              !toolName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            object.removeValue(forKey: "tool_choice")
-            return
-        }
-        object["tool_choice"] = [
-            "type": "function",
-            "function": ["name": toolName]
-        ]
-    }
-
-    private static func chatCompletionsTool(_ tool: [String: Any]) -> [String: Any]? {
-        let function = tool["function"] as? [String: Any]
-        if let type = tool["type"] as? String,
-           type.lowercased() != "function",
-           function == nil {
-            return nil
-        }
-        guard let name = (function?["name"] as? String) ?? (tool["name"] as? String),
-              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-
-        let description = (function?["description"] as? String) ?? (tool["description"] as? String)
-        let parameters = (function?["parameters"] as? [String: Any])
-            ?? (function?["input_schema"] as? [String: Any])
-            ?? (tool["parameters"] as? [String: Any])
-            ?? (tool["input_schema"] as? [String: Any])
-            ?? [
-                "type": "object",
-                "properties": [:]
-            ]
-
-        var chatFunction: [String: Any] = [
-            "name": name,
-            "parameters": parameters
-        ]
-        if let description, !description.isEmpty {
-            chatFunction["description"] = description
-        }
-        if let strict = (function?["strict"] as? Bool) ?? (tool["strict"] as? Bool) {
-            chatFunction["strict"] = strict
-        }
-
-        return [
-            "type": "function",
-            "function": chatFunction
-        ]
-    }
-
-    private static func sanitizedChatMessages(_ messages: [[String: Any]]) -> [[String: Any]] {
-        messages.compactMap(sanitizedChatMessage)
-    }
-
-    private static func coalescedSystemMessages(_ messages: [[String: Any]]) -> [[String: Any]] {
-        var systemText: [String] = []
-        var orderedNonSystemMessages: [[String: Any]] = []
-
-        for message in messages {
-            if (message["role"] as? String) == "system",
-               let content = message["content"] as? String,
-               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                systemText.append(content)
-            } else {
-                orderedNonSystemMessages.append(message)
-            }
-        }
-
-        guard !systemText.isEmpty else {
-            return orderedNonSystemMessages
-        }
-
-        return [["role": "system", "content": systemText.joined(separator: "\n\n")]]
-            + orderedNonSystemMessages
-    }
-
-    private static func sanitizedChatMessage(_ message: [String: Any]) -> [String: Any]? {
-        guard let content = chatCompletionsContent(from: message["content"] ?? message["text"]),
-              !chatCompletionsContentIsEmpty(content) else {
-            return nil
-        }
-
-        var sanitized: [String: Any] = [
-            "role": chatCompletionsRole(message["role"] as? String),
-            "content": content
-        ]
-        if let name = message["name"] as? String, !name.isEmpty {
-            sanitized["name"] = name
-        }
-        if let toolCallID = message["tool_call_id"] as? String, !toolCallID.isEmpty {
-            sanitized["tool_call_id"] = toolCallID
-        }
-        if let toolCalls = message["tool_calls"] {
-            sanitized["tool_calls"] = toolCalls
-        }
-        return sanitized
-    }
-
-    private static func chatCompletionsRole(_ role: String?) -> String {
-        switch role?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "system", "developer":
-            return "system"
-        case "assistant":
-            return "assistant"
-        case "tool":
-            return "tool"
-        default:
-            return "user"
-        }
-    }
-
-    private static func messagesFromResponsesInput(_ input: Any) -> [[String: Any]] {
-        if let string = input as? String {
-            return [["role": "user", "content": string]]
-        }
-
-        guard let items = input as? [[String: Any]] else {
-            return []
-        }
-
-        return items.compactMap { item in
-            guard let content = chatCompletionsContent(from: item["content"] ?? item["text"]),
-                  !chatCompletionsContentIsEmpty(content) else {
-                return nil
-            }
-            return ["role": chatCompletionsRole(item["role"] as? String), "content": content]
-        }
-    }
-
-    private static func chatCompletionsContent(from value: Any?) -> Any? {
-        if let string = value as? String {
-            return string
-        }
-        guard let parts = value as? [[String: Any]] else {
-            return nil
-        }
-        let convertedParts = parts.compactMap(chatCompletionsContentPart)
-        if !convertedParts.isEmpty {
-            return convertedParts
-        }
-        let text = responsesContentText(value)
-        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
-    }
-
-    private static func chatCompletionsContentPart(_ part: [String: Any]) -> [String: Any]? {
-        let type = (part["type"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-
-        switch type {
-        case "text":
-            guard let text = part["text"] as? String else { return nil }
-            return ["type": "text", "text": text]
-        case "input_text", "output_text":
-            guard let text = (part["text"] as? String)
-                ?? (part["input_text"] as? String)
-                ?? (part["output_text"] as? String) else { return nil }
-            return ["type": "text", "text": text]
-        case "image_url":
-            if let imageURL = part["image_url"] as? [String: Any] {
-                return ["type": "image_url", "image_url": imageURL]
-            }
-            if let imageURL = part["image_url"] as? String {
-                return ["type": "image_url", "image_url": ["url": imageURL]]
-            }
-            return nil
-        case "input_image":
-            if let imageURL = (part["image_url"] as? String) ?? (part["url"] as? String) {
-                return ["type": "image_url", "image_url": ["url": imageURL]]
-            }
-            if let imageURL = part["image_url"] as? [String: Any] {
-                return ["type": "image_url", "image_url": imageURL]
-            }
-            return nil
-        case "input_audio":
-            guard part["input_audio"] != nil else { return nil }
-            return part
-        case "file":
-            return part
-        default:
-            if part["image_url"] != nil {
-                var normalized = part
-                normalized["type"] = "image_url"
-                return normalized
-            }
-            if part["input_audio"] != nil {
-                var normalized = part
-                normalized["type"] = "input_audio"
-                return normalized
-            }
-            if let text = part["text"] as? String {
-                return ["type": "text", "text": text]
-            }
-            return nil
-        }
-    }
-
-    private static func chatCompletionsContentIsEmpty(_ value: Any) -> Bool {
-        if let string = value as? String {
-            return string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        if let parts = value as? [[String: Any]] {
-            return parts.isEmpty
-        }
-        return false
-    }
-
-    private static func responsesContentText(_ value: Any?) -> String {
-        if let string = value as? String {
-            return string
-        }
-        if let parts = value as? [[String: Any]] {
-            return parts.compactMap { part in
-                if let text = part["text"] as? String {
-                    return text
-                }
-                if let text = part["input_text"] as? String {
-                    return text
-                }
-                if let text = part["output_text"] as? String {
-                    return text
-                }
-                return nil
-            }
-            .joined(separator: "\n")
-        }
-        return ""
-    }
-
-    private static func responsesBodyFromChatCompletion(
-        _ chatBody: Data,
-        modelID: String
-    ) throws -> Data {
-        let decoded = try JSONDecoder().decode(ProviderCompletionResponse.self, from: chatBody)
-        let outputText = decoded.choices.first?.message.content ?? ""
-        let usage = decoded.usage?.normalized(
-            inputHint: max(1, chatBody.count / 4),
-            outputHint: max(1, outputText.count / 4)
-        )
-        return try responseBody(
-            id: "resp_\(UUID().uuidString)",
-            modelID: modelID,
-            outputText: outputText,
-            usage: usage
-        )
-    }
-
-    private static func responsesStreamFromChatCompletionStream(
-        _ chatResponse: BurnBarProviderProxyResponse,
-        modelID: String
-    ) throws -> BurnBarProviderProxyResponse {
-        let responseID = "resp_\(UUID().uuidString)"
-        let itemID = "msg_\(UUID().uuidString)"
-        let created = Int(Date().timeIntervalSince1970)
-        var outputText = ""
-        var didEmitDelta = false
-        var sse = Data()
-
-        try appendResponseServerSentEvent(
-            event: "response.created",
-            payload: [
-                "type": "response.created",
-                "response": baseResponsesObject(
-                    id: responseID,
-                    itemID: itemID,
-                    modelID: modelID,
-                    created: created,
-                    status: "in_progress",
-                    outputText: "",
-                    usage: nil
-                )
-            ],
-            to: &sse
-        )
-        try appendResponseServerSentEvent(
-            event: "response.output_item.added",
-            payload: [
-                "type": "response.output_item.added",
-                "response_id": responseID,
-                "output_index": 0,
-                "item": responseMessageItem(
-                    itemID: itemID,
-                    status: "in_progress",
-                    outputText: ""
-                )
-            ],
-            to: &sse
-        )
-        try appendResponseServerSentEvent(
-            event: "response.content_part.added",
-            payload: [
-                "type": "response.content_part.added",
-                "response_id": responseID,
-                "item_id": itemID,
-                "output_index": 0,
-                "content_index": 0,
-                "part": [
-                    "type": "output_text",
-                    "text": "",
-                    "annotations": []
-                ]
-            ],
-            to: &sse
-        )
-
-        let lines = String(decoding: chatResponse.body, as: UTF8.self)
-            .split(whereSeparator: \.isNewline)
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.hasPrefix("data:") else { continue }
-            let payload = trimmed.dropFirst("data:".count).trimmingCharacters(in: .whitespacesAndNewlines)
-            if payload == "[DONE]" {
-                break
-            }
-            guard let data = payload.data(using: .utf8),
-                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = object["choices"] as? [[String: Any]],
-                  let firstChoice = choices.first else {
-                continue
-            }
-            let delta = firstChoice["delta"] as? [String: Any]
-            let content = (delta?["content"] as? String)
-                ?? ((firstChoice["message"] as? [String: Any])?["content"] as? String)
-                ?? ""
-            guard !content.isEmpty else { continue }
-            outputText += content
-            didEmitDelta = true
-            try appendResponseServerSentEvent(
-                event: "response.output_text.delta",
-                payload: [
-                    "type": "response.output_text.delta",
-                    "response_id": responseID,
-                    "item_id": itemID,
-                    "output_index": 0,
-                    "content_index": 0,
-                    "delta": content
-                ],
-                to: &sse
-            )
-        }
-
-        if !didEmitDelta,
-           let decoded = try? JSONDecoder().decode(ProviderCompletionResponse.self, from: chatResponse.body) {
-            let content = decoded.choices.first?.message.content ?? ""
-            if !content.isEmpty {
-                outputText = content
-                try appendResponseServerSentEvent(
-                    event: "response.output_text.delta",
-                    payload: [
-                        "type": "response.output_text.delta",
-                        "response_id": responseID,
-                        "item_id": itemID,
-                        "output_index": 0,
-                        "content_index": 0,
-                        "delta": content
-                    ],
-                    to: &sse
-                )
-            }
-        }
-
-        try appendResponseServerSentEvent(
-            event: "response.output_text.done",
-            payload: [
-                "type": "response.output_text.done",
-                "response_id": responseID,
-                "item_id": itemID,
-                "output_index": 0,
-                "content_index": 0,
-                "text": outputText
-            ],
-            to: &sse
-        )
-        try appendResponseServerSentEvent(
-            event: "response.content_part.done",
-            payload: [
-                "type": "response.content_part.done",
-                "response_id": responseID,
-                "item_id": itemID,
-                "output_index": 0,
-                "content_index": 0,
-                "part": [
-                    "type": "output_text",
-                    "text": outputText,
-                    "annotations": []
-                ]
-            ],
-            to: &sse
-        )
-        try appendResponseServerSentEvent(
-            event: "response.output_item.done",
-            payload: [
-                "type": "response.output_item.done",
-                "response_id": responseID,
-                "output_index": 0,
-                "item": responseMessageItem(
-                    itemID: itemID,
-                    status: "completed",
-                    outputText: outputText
-                )
-            ],
-            to: &sse
-        )
-        try appendResponseServerSentEvent(
-            event: "response.completed",
-            payload: [
-                "type": "response.completed",
-                "response": baseResponsesObject(
-                    id: responseID,
-                    itemID: itemID,
-                    modelID: modelID,
-                    created: created,
-                    status: "completed",
-                    outputText: outputText,
-                    usage: chatResponse.usage
-                )
-            ],
-            to: &sse
-        )
-        sse.append(Data("data: [DONE]\n\n".utf8))
-
-        return BurnBarProviderProxyResponse(
-            statusCode: 200,
-            contentType: "text/event-stream",
-            body: sse,
-            usage: chatResponse.usage
-        )
-    }
-
-    private static func responseBody(
-        id: String,
-        modelID: String,
-        outputText: String,
-        usage: ProviderCompletionResponse.Usage.NormalizedUsage?
-    ) throws -> Data {
-        let object = baseResponsesObject(
-            id: id,
-            modelID: modelID,
-            created: Int(Date().timeIntervalSince1970),
-            status: "completed",
-            outputText: outputText,
-            usage: usage.map {
-                BurnBarProviderProxyUsage(
-                    inputTokens: $0.promptTokens,
-                    outputTokens: $0.completionTokens,
-                    cacheCreationTokens: $0.cacheCreationTokens,
-                    cacheReadTokens: $0.cacheReadTokens,
-                    reasoningTokens: $0.reasoningTokens,
-                    confidence: .exact
-                )
-            }
-        )
-        return try JSONSerialization.data(withJSONObject: object, options: [])
-    }
-
-    private static func baseResponsesObject(
-        id: String,
-        itemID: String = "msg_\(UUID().uuidString)",
-        modelID: String,
-        created: Int,
-        status: String,
-        outputText: String,
-        usage: BurnBarProviderProxyUsage?
-    ) -> [String: Any] {
-        var object: [String: Any] = [
-            "id": id,
-            "object": "response",
-            "created_at": created,
-            "model": modelID,
-            "status": status,
-            "output": [
-                [
-                    "id": itemID,
-                    "type": "message",
-                    "status": status,
-                    "role": "assistant",
-                    "content": [
-                        [
-                            "type": "output_text",
-                            "text": outputText,
-                            "annotations": []
-                        ]
-                    ]
-                ]
-            ],
-            "output_text": outputText
-        ]
-        if let usage {
-            object["usage"] = [
-                "input_tokens": usage.inputTokens,
-                "output_tokens": usage.outputTokens,
-                "total_tokens": usage.inputTokens + usage.outputTokens + usage.cacheCreationTokens + usage.cacheReadTokens,
-                "reasoning_tokens": usage.reasoningTokens
-            ]
-        }
-        return object
-    }
-
-    private static func responseMessageItem(
-        itemID: String,
-        status: String,
-        outputText: String
-    ) -> [String: Any] {
-        [
-            "id": itemID,
-            "type": "message",
-            "status": status,
-            "role": "assistant",
-            "content": outputText.isEmpty ? [] : [
-                [
-                    "type": "output_text",
-                    "text": outputText,
-                    "annotations": []
-                ]
-            ]
-        ]
-    }
-
-    private static func appendResponseServerSentEvent(
-        event: String,
-        payload: [String: Any],
-        to data: inout Data
-    ) throws {
-        let payloadData = try JSONSerialization.data(withJSONObject: payload, options: [])
-        data.append(Data("event: \(event)\n".utf8))
-        data.append(Data("data: ".utf8))
-        data.append(payloadData)
-        data.append(Data("\n\n".utf8))
-    }
-
-    private static func shouldUseOllamaNativeAPI(route: BurnBarProviderRoute, baseURL: URL) -> Bool {
-        guard route.providerID.lowercased() == "ollama" else { return false }
-        return !baseURL.path.lowercased().hasSuffix("/v1")
-    }
-
-    private static func ollamaNativeChatEndpoint(baseURL: URL) -> URL {
-        let normalizedPath = baseURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
-        if normalizedPath == "api" || normalizedPath.hasSuffix("/api") {
-            return baseURL.appending(path: "chat")
-        }
-        return baseURL.appending(path: "api").appending(path: "chat")
-    }
-
-    private static func ollamaNativeRequestBody(
-        from body: Data,
-        modelID: String
-    ) throws -> (Data, Bool) {
-        let json = try JSONSerialization.jsonObject(with: body)
-        guard var object = json as? [String: Any] else {
-            throw BurnBarProviderExecutorError.invalidResponse
-        }
-
-        let streamRequested = object["stream"] as? Bool ?? false
-        object["model"] = modelID
-        object["stream"] = streamRequested
-
-        if let responseFormat = object.removeValue(forKey: "response_format") as? [String: Any] {
-            if (responseFormat["type"] as? String) == "json_object" {
-                object["format"] = "json"
-            } else if let jsonSchema = responseFormat["json_schema"] as? [String: Any],
-                      let schema = jsonSchema["schema"] {
-                object["format"] = schema
-            }
-        }
-
-        var options = object["options"] as? [String: Any] ?? [:]
-        moveOpenAIOption("max_completion_tokens", to: "num_predict", from: &object, options: &options)
-        moveOpenAIOption("max_tokens", to: "num_predict", from: &object, options: &options)
-        moveOpenAIOption("temperature", to: "temperature", from: &object, options: &options)
-        moveOpenAIOption("top_p", to: "top_p", from: &object, options: &options)
-        if !options.isEmpty {
-            object["options"] = options
-        }
-
-        if let reasoning = object.removeValue(forKey: "reasoning") as? [String: Any],
-           let effort = reasoning["effort"] as? String {
-            applyOllamaThinkValue(effort, to: &object)
-        }
-        if let effort = object.removeValue(forKey: "reasoning_effort") as? String {
-            applyOllamaThinkValue(effort, to: &object)
-        }
-
-        for unsupportedKey in ["n", "user", "logit_bias", "presence_penalty", "frequency_penalty", "stream_options", "tool_choice"] {
-            object.removeValue(forKey: unsupportedKey)
-        }
-
-        normalizeOllamaNativeMessages(in: &object)
-
-        return (try JSONSerialization.data(withJSONObject: object, options: []), streamRequested)
-    }
-
-    private static func normalizeOllamaNativeMessages(in object: inout [String: Any]) {
-        guard let messages = object["messages"] as? [[String: Any]] else { return }
-        object["messages"] = messages.map { message in
-            var normalized = message
-            normalizeOllamaNativeToolCalls(at: "tool_calls", in: &normalized)
-            normalizeOllamaNativeToolCalls(at: "toolCalls", in: &normalized)
-            if normalized["content"] is NSNull {
-                normalized["content"] = ""
-            } else if let content = normalized["content"],
-                      !(content is String) {
-                normalized["content"] = responsesContentText(content)
-            }
-            return normalized
-        }
-    }
-
-    private static func normalizeOllamaNativeToolCalls(at key: String, in message: inout [String: Any]) {
-        guard let calls = message[key] as? [[String: Any]] else { return }
-        message[key] = calls.map { call in
-            var normalizedCall = call
-            guard var function = normalizedCall["function"] as? [String: Any] else {
-                return normalizedCall
-            }
-            if let arguments = function["arguments"] as? String {
-                function["arguments"] = ollamaNativeArgumentsObject(from: arguments)
-                normalizedCall["function"] = function
-            }
-            return normalizedCall
-        }
-    }
-
-    private static func ollamaNativeArgumentsObject(from string: String) -> Any {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let data = trimmed.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) else {
-            return [:] as [String: Any]
-        }
-        return object
-    }
-
-    private static func moveOpenAIOption(
-        _ sourceKey: String,
-        to targetKey: String,
-        from object: inout [String: Any],
-        options: inout [String: Any]
-    ) {
-        guard let value = object.removeValue(forKey: sourceKey) else { return }
-        options[targetKey] = value
-    }
-
-    private static func applyOllamaThinkValue(_ rawEffort: String, to object: inout [String: Any]) {
-        switch rawEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "high", "medium", "low":
-            object["think"] = rawEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        case "none", "off", "false":
-            object["think"] = false
-        default:
-            break
-        }
-    }
-
-    private static func openAIProxyResponseFromOllama(
-        requestBody: Data,
-        responseBody: Data,
-        modelID: String,
-        streamRequested: Bool
-    ) throws -> BurnBarProviderProxyResponse {
-        if streamRequested {
-            return try openAIStreamResponseFromOllama(
-                requestBody: requestBody,
-                responseBody: responseBody,
-                modelID: modelID
-            )
-        }
-
-        let decoded = try JSONDecoder().decode(OllamaNativeChatResponse.self, from: responseBody)
-        try validateOllamaNativeChatResponse(decoded, modelID: modelID)
-        let body = try openAICompletionBodyFromOllama(decoded, modelID: modelID)
-        return BurnBarProviderProxyResponse(
-            statusCode: 200,
-            contentType: "application/json",
-            body: body,
-            usage: ollamaProxyUsage(requestBody: requestBody, response: decoded)
-        )
-    }
-
-    private static func validateOllamaNativeChatResponse(
-        _ response: OllamaNativeChatResponse,
-        modelID: String
-    ) throws {
-        let content = response.message?.content?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard content.isEmpty else { return }
-
-        let doneReason = response.doneReason?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard doneReason == "length" || doneReason == "max_tokens" else {
-            return
-        }
-
-        let thinking = response.message?.thinking?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let detail: String
-        if thinking.isEmpty {
-            detail = "Upstream returned no assistant text for \(modelID) because it hit the output token limit before producing final content. Increase max_tokens/max_output_tokens or choose a non-reasoning model."
-        } else {
-            detail = "Upstream returned reasoning-only output for \(modelID) and hit the output token limit before final assistant text. Increase max_tokens/max_output_tokens or choose a non-reasoning model."
-        }
-
-        throw BurnBarProviderExecutorError.upstreamError(
-            502,
-            Self.openAICompatibleErrorBody(message: detail, code: "empty_assistant_content")
-        )
-    }
-
-    private static func openAIStreamResponseFromOllama(
-        requestBody: Data,
-        responseBody: Data,
-        modelID: String
-    ) throws -> BurnBarProviderProxyResponse {
-        let responseID = "chatcmpl-\(UUID().uuidString)"
-        let created = Int(Date().timeIntervalSince1970)
-        var sse = Data()
-        var finalResponse: OllamaNativeChatResponse?
-        var streamedToolCalls = false
-
-        let lines = String(decoding: responseBody, as: UTF8.self)
-            .split(whereSeparator: \.isNewline)
-        for line in lines {
-            guard let data = line.data(using: .utf8), !data.isEmpty else { continue }
-            let decoded = try JSONDecoder().decode(OllamaNativeChatResponse.self, from: data)
-            finalResponse = decoded
-
-            let content = decoded.message?.content ?? ""
-            if !content.isEmpty {
-                try appendServerSentEvent(
-                    chunk: openAIStreamChunk(
-                        id: responseID,
-                        created: created,
-                        modelID: modelID,
-                        content: content,
-                        toolCalls: nil,
-                        finishReason: nil
-                    ),
-                    to: &sse
-                )
-            }
-
-            let toolCalls = openAIToolCalls(from: decoded, includeIndex: true)
-            if let toolCalls, !toolCalls.isEmpty {
-                streamedToolCalls = true
-                try appendServerSentEvent(
-                    chunk: openAIStreamChunk(
-                        id: responseID,
-                        created: created,
-                        modelID: modelID,
-                        content: nil,
-                        toolCalls: toolCalls,
-                        finishReason: nil
-                    ),
-                    to: &sse
-                )
-            }
-
-            if decoded.done == true {
-                try appendServerSentEvent(
-                    chunk: openAIStreamChunk(
-                        id: responseID,
-                        created: created,
-                        modelID: modelID,
-                        content: nil,
-                        toolCalls: nil,
-                        finishReason: finishReason(
-                            from: decoded.doneReason,
-                            hasToolCalls: streamedToolCalls
-                        )
-                    ),
-                    to: &sse
-                )
-            }
-        }
-
-        sse.append(Data("data: [DONE]\n\n".utf8))
-
-        return BurnBarProviderProxyResponse(
-            statusCode: 200,
-            contentType: "text/event-stream",
-            body: sse,
-            usage: finalResponse.map { ollamaProxyUsage(requestBody: requestBody, response: $0) }
-        )
-    }
-
-    private static func openAICompletionBodyFromOllama(
-        _ response: OllamaNativeChatResponse,
-        modelID: String
-    ) throws -> Data {
-        let content = response.message?.content ?? ""
-        var message: [String: Any] = [
-            "role": response.message?.role ?? "assistant",
-            "content": content
-        ]
-        let toolCalls = openAIToolCalls(from: response, includeIndex: false)
-        if let toolCalls, !toolCalls.isEmpty {
-            message["tool_calls"] = toolCalls
-        }
-        let choice: [String: Any] = [
-            "index": 0,
-            "message": message,
-            "finish_reason": finishReason(
-                from: response.doneReason,
-                hasToolCalls: toolCalls?.isEmpty == false
-            )
-        ]
-        let body: [String: Any] = [
-            "id": "chatcmpl-\(UUID().uuidString)",
-            "object": "chat.completion",
-            "created": Int(Date().timeIntervalSince1970),
-            "model": response.model ?? modelID,
-            "choices": [choice],
-            "usage": openAIUsageFromOllama(response)
-        ]
-        return try JSONSerialization.data(withJSONObject: body, options: [])
-    }
-
-    private static func openAIUsageFromOllama(_ response: OllamaNativeChatResponse) -> [String: Any] {
-        let promptTokens = max(response.promptEvalCount ?? 0, 0)
-        let completionTokens = max(response.evalCount ?? 0, 0)
-        return [
-            "prompt_tokens": promptTokens,
-            "completion_tokens": completionTokens,
-            "total_tokens": promptTokens + completionTokens
-        ]
-    }
-
-    private static func openAIStreamChunk(
-        id: String,
-        created: Int,
-        modelID: String,
-        content: String?,
-        toolCalls: [[String: Any]]?,
-        finishReason: String?
-    ) -> [String: Any] {
-        var delta: [String: Any] = [:]
-        if let content {
-            delta["content"] = content
-        }
-        if let toolCalls, !toolCalls.isEmpty {
-            delta["tool_calls"] = toolCalls
-        }
-        if finishReason == nil {
-            delta["role"] = "assistant"
-        }
-        return [
-            "id": id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": modelID,
-            "choices": [
-                [
-                    "index": 0,
-                    "delta": delta,
-                    "finish_reason": finishReason.map { $0 as Any } ?? NSNull()
-                ]
-            ]
-        ]
-    }
-
-    private static func appendServerSentEvent(chunk: [String: Any], to data: inout Data) throws {
-        let payload = try JSONSerialization.data(withJSONObject: chunk, options: [])
-        data.append(Data("data: ".utf8))
-        data.append(payload)
-        data.append(Data("\n\n".utf8))
-    }
-
-    private static func openAIToolCalls(
-        from response: OllamaNativeChatResponse,
-        includeIndex: Bool
-    ) -> [[String: Any]]? {
-        guard let calls = response.message?.toolCalls, !calls.isEmpty else {
-            return nil
-        }
-        let mapped = calls.enumerated().compactMap { index, call in
-            openAIToolCall(from: call, index: index, includeIndex: includeIndex)
-        }
-        return mapped.isEmpty ? nil : mapped
-    }
-
-    private static func openAIToolCall(
-        from call: OllamaNativeToolCall,
-        index: Int,
-        includeIndex: Bool
-    ) -> [String: Any]? {
-        guard let function = call.function,
-              let name = function.name?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !name.isEmpty else {
-            return nil
-        }
-        let id = call.id?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let type = call.type?.trimmingCharacters(in: .whitespacesAndNewlines)
-        var mapped: [String: Any] = [
-            "id": id?.isEmpty == false ? id! : "call_ollama_\(index)",
-            "type": type?.isEmpty == false ? type! : "function",
-            "function": [
-                "name": name,
-                "arguments": openAIToolArguments(function.arguments)
-            ]
-        ]
-        if includeIndex {
-            mapped["index"] = index
-        }
-        return mapped
-    }
-
-    private static func openAIToolArguments(_ arguments: BurnBarJSONValue?) -> String {
-        guard let arguments else { return "{}" }
-        if case .string(let string) = arguments {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "{}" : string
-        }
-        guard let data = try? JSONEncoder().encode(arguments),
-              let string = String(data: data, encoding: .utf8),
-              !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "{}"
-        }
-        return string
-    }
-
-    private static func finishReason(from doneReason: String?, hasToolCalls: Bool = false) -> String {
-        if hasToolCalls {
-            return "tool_calls"
-        }
-        switch doneReason?.lowercased() {
-        case "length":
-            return "length"
-        case "tool_calls":
-            return "tool_calls"
-        default:
-            return "stop"
-        }
-    }
-
-    private static func ollamaProxyUsage(
-        requestBody: Data,
-        response: OllamaNativeChatResponse
-    ) -> BurnBarProviderProxyUsage {
-        let outputText = response.message?.content ?? ""
-        let inputHint = max(1, requestBody.count / 4)
-        let outputHint = max(1, outputText.count / 4)
-        let hasExplicitUsage = response.promptEvalCount != nil || response.evalCount != nil
-        return BurnBarProviderProxyUsage(
-            inputTokens: max(response.promptEvalCount ?? inputHint, 0),
-            outputTokens: max(response.evalCount ?? outputHint, 0),
-            cacheCreationTokens: 0,
-            cacheReadTokens: 0,
-            reasoningTokens: 0,
-            confidence: hasExplicitUsage ? .exact : .lowConfidenceEstimate
-        )
-    }
-
-    private static func extractProxyUsage(
+    static func extractProxyUsage(
         requestBody: Data,
         responseBody: Data
     ) -> BurnBarProviderProxyUsage? {
@@ -1763,7 +731,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
-    private static func validateOpenAICompatibleChatResponse(
+    static func validateOpenAICompatibleChatResponse(
         _ data: Data,
         modelID: String
     ) throws {
@@ -1797,7 +765,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
-    private static func openAICompatibleErrorBody(message: String, code: String) -> String {
+    static func openAICompatibleErrorBody(message: String, code: String) -> String {
         let body: [String: Any] = [
             "error": [
                 "message": message,
@@ -1812,53 +780,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return string
     }
 
-    private static func extractResponsesUsage(responseBody: Data) -> BurnBarProviderProxyUsage? {
-        guard let object = try? JSONSerialization.jsonObject(with: responseBody) as? [String: Any],
-              let usage = object["usage"] as? [String: Any] else {
-            return nil
-        }
-
-        var inputTokens = intValue(usage["input_tokens"])
-            ?? intValue(usage["prompt_tokens"])
-            ?? 0
-        let outputTokens = intValue(usage["output_tokens"])
-            ?? intValue(usage["completion_tokens"])
-            ?? 0
-        let cacheCreationTokens = intValue(usage["cache_creation_input_tokens"])
-            ?? intValue(usage["cache_creation_tokens"])
-            ?? 0
-        let exclusiveCacheReadTokens = intValue(usage["cache_read_input_tokens"])
-            ?? intValue(usage["cache_read_tokens"])
-            ?? 0
-        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
-        let inputDetails = usage["input_tokens_details"] as? [String: Any]
-        let inclusiveCacheReadTokens = intValue(usage["input_cached_tokens"])
-            ?? intValue(usage["cached_input_tokens"])
-            ?? intValue(usage["cached_tokens"])
-            ?? intValue(promptDetails?["cached_tokens"])
-            ?? intValue(inputDetails?["cached_tokens"])
-            ?? 0
-        let cacheReadTokens = exclusiveCacheReadTokens > 0 ? exclusiveCacheReadTokens : inclusiveCacheReadTokens
-        if inclusiveCacheReadTokens > 0 && exclusiveCacheReadTokens == 0 {
-            inputTokens = max(inputTokens - inclusiveCacheReadTokens, 0)
-        }
-        let reasoningTokens = intValue(usage["reasoning_tokens"]) ?? 0
-
-        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 || reasoningTokens > 0 else {
-            return nil
-        }
-
-        return BurnBarProviderProxyUsage(
-            inputTokens: inputTokens,
-            outputTokens: outputTokens,
-            cacheCreationTokens: cacheCreationTokens,
-            cacheReadTokens: cacheReadTokens,
-            reasoningTokens: reasoningTokens,
-            confidence: .exact
-        )
-    }
-
-    private static func intValue(_ value: Any?) -> Int? {
+    static func intValue(_ value: Any?) -> Int? {
         if let int = value as? Int {
             return int
         }
@@ -1870,6 +792,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
         return nil
     }
+
 }
 
 private enum BurnBarFakeProviderExecution {
@@ -2244,7 +1167,7 @@ private struct BurnBarClaudeOAuthRouteCredential {
     }
 }
 
-private extension String {
+extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
     }
@@ -2271,7 +1194,7 @@ private struct ProviderCompletionRequest: Encodable {
     }
 }
 
-private struct ProviderCompletionResponse: Decodable {
+struct ProviderCompletionResponse: Decodable {
     struct Choice: Decodable {
         struct Message: Decodable {
             let content: String
@@ -2520,7 +1443,7 @@ private struct ProviderCompletionResponse: Decodable {
     let usage: Usage?
 }
 
-private struct OllamaNativeChatResponse: Decodable {
+struct OllamaNativeChatResponse: Decodable {
     struct Message: Decodable {
         let role: String?
         let content: String?
@@ -2564,7 +1487,7 @@ private struct OllamaNativeChatResponse: Decodable {
     }
 }
 
-private struct OllamaNativeToolCall: Decodable {
+struct OllamaNativeToolCall: Decodable {
     struct Function: Decodable {
         let name: String?
         let arguments: BurnBarJSONValue?

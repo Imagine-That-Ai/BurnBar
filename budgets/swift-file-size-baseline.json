@@ -1,6 +1,6 @@
 {
   "target": 2000,
-  "total": 20,
+  "total": 17,
   "files": [
     {
       "path": "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift",
@@ -23,20 +23,12 @@
       "lines": 3383
     },
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView.swift",
-      "lines": 3267
-    },
-    {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
       "lines": 3087
     },
     {
       "path": "OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift",
       "lines": 2801
-    },
-    {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
-      "lines": 2576
     },
     {
       "path": "AgentLens/Views/Chat/ChatSessionController.swift",
@@ -73,10 +65,6 @@
     {
       "path": "AgentLens/Views/Dashboard/DatabaseWorkspaceView.swift",
       "lines": 2119
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/IntelligenceBriefView.swift",
-      "lines": 2067
     },
     {
       "path": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
