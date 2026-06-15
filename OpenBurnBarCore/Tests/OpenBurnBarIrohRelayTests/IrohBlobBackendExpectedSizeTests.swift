@@ -199,7 +199,7 @@ private final class ExpectedSizeOverrideBackend: IrohBlobBackend, @unchecked Sen
         throw IrohBlobBackendError.fetchFailed("old fetch path should not be used")
     }
 
-    override func fetchBlob(
+    func fetchBlob(
         ticketText: String,
         destination: String,
         expectedSizeBytes: UInt64
