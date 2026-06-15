@@ -36,7 +36,7 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: bootstrap preflight build build-signed release-mas release-website install uninstall clean test test-full lint debt-check ci release-checksums sbom
+.PHONY: bootstrap preflight build build-signed release-mas release-website install uninstall clean test test-full lint debt-check signal-cross-device-kats ci release-checksums sbom
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
@@ -251,6 +251,9 @@ debt-check: ## Enforce debt budgets + refresh tech-debt metrics
 	@python3 tools/error-debt/test_count_error_debt.py
 	@python3 tools/concurrency-debt/test_count_task_detached.py
 	@./scripts/ci/update-tech-debt-metrics.sh
+
+signal-cross-device-kats: ## Phase 2.5 cross-device + bidirectional E2EE Node KAT gate
+	@bash scripts/ci/verify-signal-cross-device-kats.sh
 
 ops-check: ## Callable logging, resilience wiring, ops manifest sanity
 	@bash scripts/ci/verify-ops-readiness.sh

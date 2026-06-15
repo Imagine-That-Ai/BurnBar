@@ -359,6 +359,26 @@ function selectPrekeyToClaim<T extends { numericId: number; id: string }>(candid
   return [...candidates].sort((a, b) => a.numericId - b.numericId || a.id.localeCompare(b.id))[0];
 }
 
+/**
+ * The single-use claim mutation. Marking a one-time / Kyber prekey `status: "claimed"`
+ * is what removes it from future `status == "available"` queries, so a claimed prekey is
+ * never re-issued to a second device. Extracted as a pure builder so the consume semantics
+ * (status flip + session attribution) are unit-testable independent of the transaction.
+ */
+function buildPrekeyClaimStamp(sessionId: string): {
+  status: "claimed";
+  claimedBySessionId: string;
+  claimedAt: FieldValue;
+  updatedAt: FieldValue;
+} {
+  return {
+    status: "claimed",
+    claimedBySessionId: sessionId,
+    claimedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Firestore glue (callable bodies).
 // ---------------------------------------------------------------------------
@@ -616,13 +636,9 @@ export const claimSignalPrekeyBundle = onCall(
           })),
         );
 
-        // --- writes: mark claimed ---
-        const claimStamp = {
-          status: "claimed",
-          claimedBySessionId: sessionId,
-          claimedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        };
+        // --- writes: mark claimed (single-use: removes the prekey from future
+        // `status == "available"` queries so it is never re-issued) ---
+        const claimStamp = buildPrekeyClaimStamp(sessionId);
         tx.update(kyberPick.ref, claimStamp);
         if (oneTimePick) tx.update(oneTimePick.ref, claimStamp);
 
@@ -829,6 +845,7 @@ export const __testing__ = {
   buildSessionDoc,
   buildRotationEventDoc,
   selectPrekeyToClaim,
+  buildPrekeyClaimStamp,
   prekeyReplenishStatus,
   FORBIDDEN_FIELDS,
   MAX_ONE_TIME_PREKEYS_PER_CALL,

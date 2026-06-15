@@ -12,6 +12,7 @@ const {
   buildSessionDoc,
   buildRotationEventDoc,
   selectPrekeyToClaim,
+  buildPrekeyClaimStamp,
   prekeyReplenishStatus,
   MIN_AVAILABLE_ONE_TIME_PREKEYS,
   MIN_AVAILABLE_KYBER_PREKEYS,
@@ -373,5 +374,105 @@ describe("selectPrekeyToClaim", () => {
   });
   it("returns undefined for an empty candidate set", () => {
     expect(selectPrekeyToClaim([])).toBeUndefined();
+  });
+});
+
+// Phase 2.5 G5 — bidirectional claim invariants. The cross-device flow is:
+// device B claims one of device A's published one-time prekeys to open a session;
+// a one-time prekey is single-use, so a claim must CONSUME it (a second claim of
+// the same id must find it gone), the claim side must reject any private/session
+// state a peer might try to smuggle in, and the replenish gate must trip the
+// instant availability drops below the published floors. The directory selectors
+// and validators already enforce these; these tests pin the invariants so a
+// regression that re-issues a consumed prekey or accepts ratchet state fails CI.
+describe("G5: bidirectional cross-device claim invariants", () => {
+  it("(a) selecting + the claim mutation make a one-time prekey single-use (never re-issued)", () => {
+    // Both production pieces of the single-use guarantee are exercised here against the real
+    // exported functions: selectPrekeyToClaim (pick the lowest-numericId available prekey) and
+    // buildPrekeyClaimStamp (the mutation that flips status to "claimed"). The directory is
+    // modelled exactly as the claimSignalPrekeyBundle transaction sees it — a claim queries
+    // `status == "available"`, selects, then writes the claim stamp. The remaining piece, the
+    // Firestore `status == "available"` query + tx.update plumbing itself, is covered by the
+    // emulator integration test tracked in the Phase 2.5 handoff (out of pure-unit scope).
+    type DirectoryPrekey = { id: string; numericId: number; status: string };
+    const directory: DirectoryPrekey[] = [
+      { id: "otp-a", numericId: 1, status: "available" },
+      { id: "otp-b", numericId: 2, status: "available" },
+    ];
+    const available = () => directory.filter((p) => p.status === "available");
+    const markClaimed = (id: string, sessionId: string) => {
+      const doc = directory.find((p) => p.id === id);
+      if (doc) doc.status = buildPrekeyClaimStamp(sessionId).status;
+    };
+
+    // The claim mutation IS the single-use mechanism: it marks the prekey "claimed" and
+    // attributes the consuming session, removing it from future `status == "available"` queries.
+    const stamp = buildPrekeyClaimStamp("session-1");
+    expect(stamp.status).toBe("claimed");
+    expect(stamp.claimedBySessionId).toBe("session-1");
+
+    // First claim: lowest-numericId available prekey, then mark it claimed.
+    const first = selectPrekeyToClaim(available());
+    expect(first?.id).toBe("otp-a");
+    if (first) markClaimed(first.id, "session-1");
+
+    // Second claim sees only the remaining available prekey — the claimed one is excluded.
+    const second = selectPrekeyToClaim(available());
+    expect(second?.id).toBe("otp-b");
+    if (second) markClaimed(second.id, "session-2");
+
+    // Directory exhausted: no available prekey → claim returns undefined, never a recycled
+    // (already-claimed) prekey.
+    expect(selectPrekeyToClaim(available())).toBeUndefined();
+    expect(directory.every((p) => p.status === "claimed")).toBe(true);
+  });
+
+  it("(b) claim side rejects every private-key and serialized-session encoding", () => {
+    // A peer's claimed bundle must carry only public material. Every private /
+    // ratchet / serialized-session field (including base64-suffixed variants) is
+    // fail-closed, asserted via the per-iteration label so a regression names the
+    // exact leaked field.
+    for (const field of [
+      "privateKey",
+      "privateKeyData",
+      "privateKeyB64",
+      "serializedSession",
+      "serializedSessionB64",
+      "sessionState",
+      "sessionStateB64",
+      "ratchetState",
+      "ratchetStateB64",
+    ]) {
+      expect(() => assertNoForbiddenFields({ [field]: "x" }, "claim"), field).toThrow();
+    }
+    // Presence, not truthiness: a forbidden key with an undefined value still throws.
+    expect(() => assertNoForbiddenFields({ serializedSession: undefined }, "claim")).toThrow();
+    // A public-only claimed bundle passes.
+    expect(() =>
+      assertNoForbiddenFields({ identityKeyId: "device-a_1", oneTimePreKeyId: "otp-a", publicKeyB64: PUB }, "claim"),
+    ).not.toThrow();
+  });
+
+  it("(c) replenish gate trips with strict less-than at each published floor", () => {
+    // At the floor: not low (strict `<`).
+    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS, MIN_AVAILABLE_KYBER_PREKEYS)).toEqual({
+      needsReplenish: false,
+      lowOneTime: false,
+      lowKyber: false,
+    });
+    // One below the one-time floor only.
+    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS - 1, MIN_AVAILABLE_KYBER_PREKEYS)).toEqual({
+      needsReplenish: true,
+      lowOneTime: true,
+      lowKyber: false,
+    });
+    // One below the kyber floor only.
+    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS, MIN_AVAILABLE_KYBER_PREKEYS - 1)).toEqual({
+      needsReplenish: true,
+      lowOneTime: false,
+      lowKyber: true,
+    });
+    // Both exhausted.
+    expect(prekeyReplenishStatus(0, 0)).toEqual({ needsReplenish: true, lowOneTime: true, lowKyber: true });
   });
 });

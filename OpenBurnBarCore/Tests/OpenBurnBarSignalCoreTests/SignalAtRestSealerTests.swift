@@ -205,6 +205,141 @@ final class SignalAtRestSealerTests: XCTestCase {
         }
     }
 
+    func testCrossDeviceFanOutAndRevokeFailClosedMatrix() throws {
+        // Phase 2.5 G3 — one at-rest envelope sealed for a multi-device recipient list
+        // must open on EVERY listed device (cross-device fan-out), while a device dropped
+        // from the list (revoked/removed) and a foreign-uid device both fail closed.
+        let deviceA = IdentityKeyPair.generate()
+        let deviceB = IdentityKeyPair.generate()
+        let escrow = IdentityKeyPair.generate()
+        let recovery = IdentityKeyPair.generate()
+        // A device of a DIFFERENT account that is never a recipient.
+        let foreign = IdentityKeyPair.generate()
+
+        let binding = CloudVaultSignalBinding(
+            uid: "uid-1",
+            collection: "pensieve",
+            docId: "doc-fanout",
+            field: "body"
+        )
+        let plaintext = Data("cross-device fan-out payload".utf8)
+
+        // deviceA is the writing device: it is the sender and signs the envelope.
+        let trusted = ["deviceA_1": deviceA.publicKey.serialize()]
+
+        // The full device list: two user devices, an escrow recipient, a recovery recipient.
+        let fanOut: [(kind: String, id: String, keypair: IdentityKeyPair)] = [
+            ("device", "deviceA_1", deviceA),
+            ("device", "deviceB_1", deviceB),
+            ("escrow", "escrow_1", escrow),
+            ("recovery", "recovery_1", recovery)
+        ]
+
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
+            plaintext,
+            recipients: fanOut.map {
+                OpenBurnBarSignalAtRestRecipient(
+                    recipientKind: $0.kind,
+                    recipientIdentityKeyId: $0.id,
+                    publicKeyData: $0.keypair.publicKey.serialize()
+                )
+            },
+            binding: binding,
+            senderIdentityKeyId: "deviceA_1",
+            senderIdentityPrivateKey: deviceA.privateKey.serialize()
+        )
+
+        // FAN-OUT: one wrap per listed recipient, and EVERY listed recipient opens to the
+        // exact same plaintext off the SAME sealed envelope.
+        XCTAssertEqual(envelope.keyDelivery.wraps.count, fanOut.count)
+        for recipient in fanOut {
+            XCTAssertEqual(
+                try OpenBurnBarSignalAtRest.openPayload(
+                    envelope,
+                    recipientIdentityKeyId: recipient.id,
+                    recipientIdentityPrivateKey: recipient.keypair.privateKey.serialize(),
+                    expectedBinding: binding,
+                    trustedSenderPublicKeys: trusted
+                ),
+                plaintext,
+                "listed recipient \(recipient.id) must open the fan-out envelope"
+            )
+        }
+
+        // FOREIGN-UID, case 1 — a device that is not on the list has no wrap, so open fails
+        // closed with missingRecipientWrap (sender-auth passes first: deviceA is pinned).
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                envelope,
+                recipientIdentityKeyId: "foreign_1",
+                recipientIdentityPrivateKey: foreign.privateKey.serialize(),
+                expectedBinding: binding,
+                trustedSenderPublicKeys: trusted
+            )
+        ) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .missingRecipientWrap("foreign_1"))
+        }
+
+        // FOREIGN-UID, case 2 — claiming a LISTED id ("deviceB_1") with the wrong (foreign)
+        // private key fails closed with the key-binding guard, not a silent wrong-plaintext.
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                envelope,
+                recipientIdentityKeyId: "deviceB_1",
+                recipientIdentityPrivateKey: foreign.privateKey.serialize(),
+                expectedBinding: binding,
+                trustedSenderPublicKeys: trusted
+            )
+        ) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .recipientPrivateKeyMismatch)
+        }
+
+        // REVOKE / REMOVE — re-seal the SAME payload with deviceB dropped from the list.
+        // The revoked device's wrap is absent and it can no longer open the new envelope.
+        let afterRevoke = try OpenBurnBarSignalAtRest.sealPayload(
+            plaintext,
+            recipients: fanOut.filter { $0.id != "deviceB_1" }.map {
+                OpenBurnBarSignalAtRestRecipient(
+                    recipientKind: $0.kind,
+                    recipientIdentityKeyId: $0.id,
+                    publicKeyData: $0.keypair.publicKey.serialize()
+                )
+            },
+            binding: binding,
+            senderIdentityKeyId: "deviceA_1",
+            senderIdentityPrivateKey: deviceA.privateKey.serialize()
+        )
+        XCTAssertEqual(afterRevoke.keyDelivery.wraps.count, fanOut.count - 1)
+        XCTAssertNil(
+            afterRevoke.keyDelivery.wraps.first { $0.recipientIdentityKeyId == "deviceB_1" },
+            "the revoked device's wrap must be absent from the re-sealed envelope"
+        )
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                afterRevoke,
+                recipientIdentityKeyId: "deviceB_1",
+                recipientIdentityPrivateKey: deviceB.privateKey.serialize(),
+                expectedBinding: binding,
+                trustedSenderPublicKeys: trusted
+            )
+        ) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .missingRecipientWrap("deviceB_1"))
+        }
+        // The surviving devices still open the post-revocation envelope.
+        for recipient in fanOut where recipient.id != "deviceB_1" {
+            XCTAssertEqual(
+                try OpenBurnBarSignalAtRest.openPayload(
+                    afterRevoke,
+                    recipientIdentityKeyId: recipient.id,
+                    recipientIdentityPrivateKey: recipient.keypair.privateKey.serialize(),
+                    expectedBinding: binding,
+                    trustedSenderPublicKeys: trusted
+                ),
+                plaintext
+            )
+        }
+    }
+
     func testServerForgedEnvelopeIsRejectedBySenderAuth() throws {
         // Models the P0-1 attack: a malicious server holds the victim's PUBLIC identity
         // key (recipient) and forges an envelope sealed to it, signed by the server's OWN
