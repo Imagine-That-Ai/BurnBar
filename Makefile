@@ -247,6 +247,7 @@ debt-check: ## Enforce debt budgets + refresh tech-debt metrics
 	@./scripts/debt/check-unsafe-cast-budget.sh
 	@./scripts/debt/check-empty-catch-budget.sh
 	@./scripts/debt/check-try-optional-budget.sh
+	@./scripts/debt/check-swift-file-size-budget.sh
 	@python3 tools/error-debt/test_count_error_debt.py
 	@python3 tools/concurrency-debt/test_count_task_detached.py
 	@./scripts/ci/update-tech-debt-metrics.sh

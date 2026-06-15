@@ -276,3 +276,13 @@ paths = [
   '''AgentLens/Services/Settings/Stores/ElderWandSettings\.swift''',
   '''OpenBurnBarMobile/Services/Hermes/ElderWandSettings\.swift''',
 ]
+
+[[allowlists]]
+description = "Hermes wire-protocol schema: `\"key\": \"…\"` entries are JSON codable field names in the type definitions, not credential material"
+regexTarget = "match"
+regexes = [
+  '''"key"\s*:\s*"[A-Za-z0-9_]+"''',
+]
+paths = [
+  '''packages/hermes-wire-protocol/relay-message-types\.json''',
+]

@@ -1,0 +1,546 @@
+import Foundation
+@preconcurrency import FirebaseFirestore
+import OpenBurnBarComputerUseCore
+import OpenBurnBarCore
+import OSLog
+
+// Mission runtime planner, live device-trust checker, cancellation tracker.
+// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
+
+enum CLIAgentMissionRuntimePlanner {
+    static func resolve(
+        requestedRuntime: String?,
+        missionKind: String?,
+        enabledBackends: [ChatBackendID]
+    ) -> CLIAgentMissionBackend {
+        if let requestedRuntime,
+           requestedRuntime != "auto" {
+            let normalizedRuntime = requestedRuntime.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            switch normalizedRuntime {
+            case "pi", "piagent", "pi-agent":
+                return CLIAgentMissionBackend(chatBackend: .piAgent)
+            case "claude-code", "claudecode":
+                return CLIAgentMissionBackend(chatBackend: .claude)
+            case "open-claw":
+                return CLIAgentMissionBackend(chatBackend: .openclaw)
+            case "droid", "factory", "factory-droid", "factorydroid":
+                return CLIAgentMissionBackend(chatBackend: .droid)
+            case "forge", "forge-dev", "forgedev":
+                return CLIAgentMissionBackend(chatBackend: .forge)
+            case "antigravity", "agy", "google-antigravity", "googleantigravity":
+                return CLIAgentMissionBackend(chatBackend: .antigravity)
+            case "cursoragent", "cursor-agent":
+                return CLIAgentMissionBackend(chatBackend: .cursorAgent)
+            case "grok", "grok-build", "xai", "grok-agent":
+                return CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build")
+            case "opencode":
+                return CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode")
+            case "ollama":
+                return CLIAgentMissionBackend(rawValue: "ollama", displayName: "Ollama")
+            default:
+                if let direct = ChatBackendID(rawValue: normalizedRuntime) {
+                    return CLIAgentMissionBackend(chatBackend: direct)
+                }
+            }
+        }
+
+        func firstEnabled(_ ordered: [ChatBackendID]) -> ChatBackendID? {
+            ordered.first { enabledBackends.contains($0) }
+        }
+
+        switch missionKind {
+        case "diligence", "security":
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
+        case "creative", "accretive", "ui_improvement", "custom":
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid]) ?? .hermes)
+        case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
+        default:
+            return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
+        }
+    }
+
+    static func prompt(
+        title: String,
+        prompt: String,
+        backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> String {
+        let source = (data["source"] as? String) ?? "mobile-insights"
+        let targetProject = (data["targetProject"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "Mac current workspace"
+        let depth = (data["depth"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "standard"
+        let approvalMode = (data["approvalMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "existing_policy"
+        let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+        let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+        let missionKind = (data["missionKind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if source == "ios-chat" || missionKind == "chat" {
+            return """
+            You are \(backend.displayName), continuing a normal chat that the user started from OpenBurnBar mobile.
+
+            Source: \(source)
+            Target project: \(targetProject)
+            Commands allowed: \(commandsAllowed ? "yes" : "no")
+            File edits allowed: \(fileEditsAllowed ? "yes" : "no")
+
+            Reply directly to the user's message. Use available local context when the granted permissions allow it; ask for the specific missing context when they do not. Keep the filesystem unchanged unless file edits are granted.
+
+            \(prompt)
+            """
+        }
+        return """
+        You are OpenBurnBar Mission Control running from \(backend.displayName) on the user's Mac.
+
+        Mission: \(title)
+        Source: \(source)
+        Target project: \(targetProject)
+        Depth: \(depth)
+        Approval mode: \(approvalMode)
+        Commands allowed: \(commandsAllowed ? "yes" : "no")
+        File edits allowed: \(fileEditsAllowed ? "yes" : "no")
+
+        Execute this as a concrete, useful mission packet. Inspect the repo or local data before making claims when commands are allowed. Produce actionable findings, acceptance criteria, validation commands, risks, and a mobile-readable result summary. \
+        If file edits are not allowed, do not modify files; return a patch plan instead. If code changes are warranted and file edits are allowed, keep them scoped and preserve unrelated work.
+
+        \(prompt)
+        """
+    }
+
+    static func presentationMode(from data: [String: Any]) -> CLIAgentChatPresentationMode {
+        let raw = (data["presentationMode"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
+    }
+
+    static func mobileChatClientThreadID(from data: [String: Any]) -> String? {
+        let source = ((data["source"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let missionKind = ((data["missionKind"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard source == "ios-chat" || source == "android-chat" || missionKind == "chat" else {
+            return nil
+        }
+        guard let raw = (data["clientThreadID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty,
+            raw.count <= 512
+        else { return nil }
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        guard raw.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            return nil
+        }
+        return raw
+    }
+
+    static func directLaunchPlan(
+        title: String,
+        prompt: String,
+        backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> CLIAgentMissionDirectLaunchPlan? {
+        let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
+        let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        switch backend.rawValue {
+        case ChatBackendID.piAgent.rawValue:
+            let modelCommand = """
+            model_args=()
+            if [ -n "${OPENBURNBAR_MISSION_MODEL:-}" ]; then
+              model_args=(--model "$OPENBURNBAR_MISSION_MODEL")
+            fi
+            pi --no-session --no-tools --mode json "${model_args[@]}" -p "$OPENBURNBAR_MISSION_PROMPT"
+            """
+            var env = ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            if let requestedModelID {
+                env["OPENBURNBAR_MISSION_MODEL"] = requestedModelID
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "zsh",
+                arguments: [
+                    "-lc",
+                    modelCommand
+                ],
+                extraEnvironment: env
+            )
+        case ChatBackendID.openclaw.rawValue:
+            let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+            let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+            var arguments = [
+                "-p",
+                hostPrompt,
+                "--no-session-persistence",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--verbose"
+            ]
+            if commandsAllowed || fileEditsAllowed {
+                arguments += ["--permission-mode", "auto"]
+                var disallowedTools: [String] = []
+                if !commandsAllowed {
+                    disallowedTools.append("Bash")
+                }
+                if !fileEditsAllowed {
+                    disallowedTools += ["Edit", "MultiEdit", "Write", "NotebookEdit"]
+                }
+                if !disallowedTools.isEmpty {
+                    arguments += ["--disallowedTools", disallowedTools.joined(separator: ",")]
+                }
+            } else {
+                arguments += ["--permission-mode", "plan", "--tools", ""]
+            }
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "openclaude",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.droid.rawValue:
+            let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+            let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+            var arguments = [
+                "exec",
+                "--output-format",
+                "json"
+            ]
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
+            if commandsAllowed {
+                arguments += ["--auto", "medium"]
+            } else if fileEditsAllowed {
+                arguments += ["--auto", "low", "--disabled-tools", "execute-cli"]
+            }
+            arguments.append(hostPrompt)
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "droid",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.forge.rawValue:
+            var arguments = ["--prompt", hostPrompt]
+            if let requestedModelID,
+               ["forge", "muse", "sage"].contains(requestedModelID.lowercased()) {
+                arguments = ["--agent", requestedModelID] + arguments
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "forge",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.antigravity.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "agy",
+                arguments: CLIArgumentBuilder.antigravityArguments(prompt: hostPrompt),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.cursorAgent.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "cursor-agent",
+                arguments: CLIArgumentBuilder.cursorAgentArguments(prompt: hostPrompt),
+                extraEnvironment: [:]
+            )
+        case "opencode":
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "zsh",
+                arguments: [
+                    "-lc",
+                    "opencode run \"$OPENBURNBAR_MISSION_PROMPT\""
+                ],
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            )
+        case "ollama":
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "zsh",
+                arguments: [
+                    "-lc",
+                    """
+                    model="${OPENBURNBAR_OLLAMA_MODEL:-$(ollama list | awk 'NR==2 { print $1 }')}"
+                    if [ -z "$model" ]; then
+                      echo "No local Ollama model is installed. Pull a model or set OPENBURNBAR_OLLAMA_MODEL." >&2
+                      exit 66
+                    fi
+                    printf "%s" "$OPENBURNBAR_MISSION_PROMPT" | ollama run "$model"
+                    """
+                ],
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            )
+        case ChatBackendID.hermes.rawValue:
+            var arguments = [
+                "chat",
+                "--query",
+                hostPrompt,
+                "--source",
+                "openburnbar-mobile-cli",
+                "--accept-hooks"
+            ]
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "hermes",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue:
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    static func visibleTerminalLaunchPlan(
+        title: String,
+        prompt: String,
+        backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> CLIAgentMissionDirectLaunchPlan? {
+        let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
+        let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let grant = capabilityGrant(for: backend, data: data)
+        let workingDirectory = workingDirectoryPath(from: data).map { URL(fileURLWithPath: $0, isDirectory: true) }
+
+        switch backend.rawValue {
+        case ChatBackendID.codex.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "codex",
+                arguments: CLIArgumentBuilder.codexArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.claude.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "claude",
+                arguments: CLIArgumentBuilder.claudeArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.droid.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "droid",
+                arguments: CLIArgumentBuilder.droidArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.forge.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "forge",
+                arguments: CLIArgumentBuilder.forgeArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.antigravity.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "agy",
+                arguments: CLIArgumentBuilder.antigravityArguments(
+                    prompt: hostPrompt,
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.cursorAgent.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "cursor-agent",
+                arguments: CLIArgumentBuilder.cursorAgentArguments(
+                    prompt: hostPrompt,
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.openclaw.rawValue,
+            ChatBackendID.hermes.rawValue,
+            ChatBackendID.piAgent.rawValue,
+            "opencode",
+            "ollama":
+            return directLaunchPlan(title: title, prompt: prompt, backend: backend, data: data)
+        default:
+            return nil
+        }
+    }
+
+    static func capabilityGrant(
+        for backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> AgentCapabilityGrant {
+        let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+        let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+        var capabilities: Set<AgentDesktopCapability> = [.workspaceRead]
+        if commandsAllowed {
+            capabilities.insert(.shell)
+        }
+        if fileEditsAllowed {
+            capabilities.insert(.workspaceWrite)
+        }
+        return AgentCapabilityGrant.sessionGrant(
+            runtimeID: assistantRuntimeID(for: backend),
+            threadID: (data["clientThreadID"] as? String)?.nilIfEmpty ?? "visible-terminal-\(UUID().uuidString)",
+            capabilities: capabilities,
+            trustMode: .manual,
+            workspaceRootPath: workingDirectoryPath(from: data),
+            duration: 60 * 60
+        )
+    }
+
+    static func assistantRuntimeID(for backend: CLIAgentMissionBackend) -> AssistantRuntimeID {
+        if let chatBackend = backend.chatBackend {
+            switch chatBackend {
+            case .codex: return .codex
+            case .claude: return .claude
+            case .openclaw: return .openClaw
+            case .droid: return .droid
+            case .forge: return .forge
+            case .antigravity: return .antigravity
+            case .cursorAgent: return .cursorAgent
+            case .hermes: return .hermes
+            case .piAgent: return .pi
+            }
+        }
+        switch backend.rawValue {
+        case "openclaw", "open-claw": return .openClaw
+        case "droid", "factory": return .droid
+        case "forge": return .forge
+        case "antigravity", "agy", "google-antigravity": return .antigravity
+        case "cursor-agent", "cursoragent": return .cursorAgent
+        case "grok", "grok-build", "xai", "grok-agent": return .grok
+        case "pi", "piagent", "pi-agent": return .pi
+        default: return .codex
+        }
+    }
+
+    static func workingDirectoryPath(from data: [String: Any]) -> String? {
+        guard let rawPath = (data["targetProject"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        else { return nil }
+        return NSString(string: rawPath).expandingTildeInPath
+    }
+}
+
+@MainActor
+final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChecking {
+    let db: Firestore
+    var preparedDeviceIDs = Set<String>()
+
+    init(db: Firestore = Firestore.firestore()) {
+        self.db = db
+    }
+
+    func prepareAndValidateTrustedExecutor(uid: String, deviceID: String) async -> CLIAgentMissionDeviceTrustResult {
+        let deviceRef = db.collection("users").document(uid)
+            .collection("escrow_devices")
+            .document(deviceID)
+        do {
+            let snapshot = try await deviceRef.getDocument()
+            if snapshot.exists {
+                return validate(snapshot: snapshot, deviceID: deviceID)
+            }
+
+            try await registerPendingMac(deviceRef: deviceRef, deviceID: deviceID)
+            preparedDeviceIDs.insert(deviceID)
+            return .untrusted("This Mac is registered but not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
+        } catch {
+            return .untrusted("Mac trust could not be verified before mission execution: \(error.localizedDescription)")
+        }
+    }
+
+    func validate(snapshot: DocumentSnapshot, deviceID: String) -> CLIAgentMissionDeviceTrustResult {
+        guard let data = snapshot.data() else {
+            return .untrusted("This Mac is not registered for trusted device execution.")
+        }
+        let trustState = (data["trustState"] as? String) ?? EscrowDeviceTrustState.pending.rawValue
+        guard trustState == EscrowDeviceTrustState.trusted.rawValue else {
+            if !preparedDeviceIDs.contains(deviceID) {
+                Task { @MainActor in
+                    // Best-effort metadata refresh (deviceName/appVersion/updatedAt)
+                    // for an already-untrusted device. The trust verdict is fixed
+                    // (untrusted) above regardless of this write — so failing here
+                    // does not flip a security decision — but losing the write
+                    // silently would hide Firestore faults from operators, so log.
+                    do {
+                        try await self.registerPendingMac(
+                            deviceRef: snapshot.reference,
+                            deviceID: deviceID,
+                            mergeOnly: true
+                        )
+                    } catch {
+                        AppLogger.sync.error(
+                            "mission_pending_mac_refresh_failed",
+                            metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                        )
+                    }
+                }
+            }
+            return .untrusted("This Mac is not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
+        }
+
+        let platform = (data["platform"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard platform?.contains("mac") == true || platform == nil else {
+            return .untrusted("The trusted executor record for this device is not a macOS device.")
+        }
+        return .trusted
+    }
+
+    func registerPendingMac(
+        deviceRef: DocumentReference,
+        deviceID: String,
+        mergeOnly: Bool = false
+    ) async throws {
+        let now = FieldValue.serverTimestamp()
+        var payload: [String: Any] = [
+            "deviceId": deviceID,
+            "platform": "macOS",
+            "deviceName": Host.current().localizedName ?? "OpenBurnBar Mac",
+            "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "updatedAt": now
+        ]
+        if !mergeOnly {
+            payload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+            payload["createdAt"] = now
+        }
+        try await deviceRef.setData(payload, merge: true)
+    }
+}
+
+//
+// Mac-side remote-control listener. iOS/iPadOS/Android publish pending
+// mission requests at:
+//
+//   users/{uid}/cli_agent_mission_requests/{requestID}
+//
+// The Mac claims each request, runs it through the same local ChatSessionController
+// used by the desktop chat surface, and the existing CLIAgentSessionMirror writes
+// Codex / Claude / OpenClaw transcripts back to `cli_sessions` for mobile viewing.
+final class MissionCancellationTracker: Sendable {
+    let _isCancelled = Locked(false)
+    var isCancelled: Bool { _isCancelled.read() }
+    func cancel() { _isCancelled.write(true) }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}

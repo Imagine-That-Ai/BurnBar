@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { generateAll, loadProtocol, screamingSnake, validateProtocol } from "./codegen.mjs";
 import { checkParity, parseKotlinFrames, parseSwiftFrames } from "./parity.mjs";
+import { loadRelayTypes, validateRelayTypes } from "./relay-types.mjs";
 
 const proto = validateProtocol(loadProtocol());
+const relayTypes = validateRelayTypes(loadRelayTypes());
 
 test("protocol.json is structurally valid", () => {
   assert.equal(proto.schemaVersion, 1);
@@ -43,10 +45,36 @@ test("relay-accepted subset is exactly the session chat-multiplexing frames", ()
 });
 
 test("generated files on disk are up to date with protocol.json (drift gate)", () => {
-  const files = generateAll(proto);
+  const files = generateAll(proto, relayTypes);
   for (const [abs, content] of Object.entries(files)) {
     const onDisk = readFileSync(abs, "utf8");
     assert.equal(onDisk, content, `${abs} is stale — regenerate with: node packages/hermes-wire-protocol/codegen.mjs`);
+  }
+});
+
+test("relay-message-types.json is structurally valid", () => {
+  assert.equal(relayTypes.schemaVersion, 1);
+  assert.ok(relayTypes.types.length >= 60, "expected the full relay payload type set");
+  // names unique across top-level + nested
+  const names = new Set();
+  for (const t of relayTypes.types) {
+    assert.ok(!names.has(t.name), `duplicate type ${t.name}`);
+    names.add(t.name);
+  }
+});
+
+test("every relay date field declares an explicit per-field regime (no global default)", () => {
+  // Guards the adversarially-verified hazard: a single global date setting would
+  // silently flip ~10 synthesized structs number↔string. Custom-Codable date
+  // fields MUST name a date decode mode; synthesized ones encode as numbers.
+  const REGIMES = new Set(["dateIso", "dateIsoContainsGuard"]);
+  for (const t of relayTypes.types.filter((x) => x.kind === "struct" && x.hasCustomCodable)) {
+    for (const f of t.fields) {
+      if (/\bDate\b/.test(f.swiftType) && f.codable && f.codable.decode) {
+        assert.ok(REGIMES.has(f.codable.decode.mode),
+          `${t.name}.${f.name}: custom-Codable Date must declare a date regime, got ${f.codable.decode.mode}`);
+      }
+    }
   }
 });
 
@@ -80,7 +108,7 @@ test("screamingSnake derives Kotlin enum constants correctly", () => {
 
 test("Swift parser round-trips ping/pong implicit raw values", () => {
   const swift = parseSwiftFrames(
-    readFileSync(new URL("../../OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift", import.meta.url), "utf8"),
+    readFileSync(new URL("../../OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayFrameType.swift", import.meta.url), "utf8"),
   );
   const ping = swift.find((f) => f.id === "ping");
   assert.ok(ping, "ping case not parsed");

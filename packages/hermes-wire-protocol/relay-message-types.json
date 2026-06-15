@@ -1,0 +1,6316 @@
+{
+  "$generated": "Canonical Hermes relay payload message types — single source of truth for Swift/Kotlin codegen.",
+  "schemaVersion": 1,
+  "types": [
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayFrame",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "type",
+          "swiftType": "HermesRealtimeRelayFrameType",
+          "codable": {
+            "key": "type"
+          }
+        },
+        {
+          "name": "uid",
+          "swiftType": "String",
+          "codable": {
+            "key": "uid"
+          }
+        },
+        {
+          "name": "connectionId",
+          "swiftType": "String",
+          "codable": {
+            "key": "connectionId"
+          }
+        },
+        {
+          "name": "requestId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "protocolVersion",
+          "swiftType": "Int",
+          "codable": {
+            "key": "protocolVersion"
+          }
+        },
+        {
+          "name": "runtime",
+          "swiftType": "String?",
+          "codable": {
+            "key": "runtime"
+          }
+        },
+        {
+          "name": "payload",
+          "swiftType": "HermesRealtimeRelayPayload?",
+          "codable": {
+            "key": "payload"
+          }
+        },
+        {
+          "name": "media",
+          "swiftType": "HermesRealtimeRelayMediaPayload?",
+          "doc": [
+            "    // Optional sibling to `payload`. Carries Mercury media metadata",
+            "    // (stream-class negotiation, blob advertisement, ack). Encoded only",
+            "    // when non-nil so chat-only traffic stays byte-identical to the",
+            "    // pre-rollout wire form."
+          ],
+          "codable": {
+            "key": "media"
+          }
+        },
+        {
+          "name": "control",
+          "swiftType": "HermesRealtimeRelayControlPayload?",
+          "doc": [
+            "    // Optional sibling to `payload` and `media`. Carries Computer Use",
+            "    // control-plane metadata. Encoded only when non-nil so pre-Computer",
+            "    // Use traffic stays byte-identical to the existing wire form."
+          ],
+          "codable": {
+            "key": "control"
+          }
+        },
+        {
+          "name": "signalSessionCiphertextB64",
+          "swiftType": "String?",
+          "codable": {
+            "key": "signalSessionCiphertextB64"
+          }
+        },
+        {
+          "name": "signalMessageType",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "signalMessageType"
+          }
+        }
+      ],
+      "initDefaults": {
+        "requestId": "nil",
+        "protocolVersion": "HermesRealtimeRelayProtocol.version",
+        "runtime": "nil",
+        "payload": "nil",
+        "media": "nil",
+        "control": "nil",
+        "signalSessionCiphertextB64": "nil",
+        "signalMessageType": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayControlSealKeyEnvelope",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// Computer Use control-plane payload — see Phase 8/9/12 of",
+        "/// `plans/2026-05-16-computer-use-master-plan.md`. Fields are mutually",
+        "/// optional so a single struct can carry any of the four control frame",
+        "/// types without forcing receivers to learn about cases they don't yet",
+        "/// support. The `kind` discriminator pairs with the outer frame's",
+        "/// `HermesRealtimeRelayFrameType` for explicit dispatch.",
+        "/// F10 — the sealKeyV3-wrapped control-frame-seal session key, carried once on",
+        "/// `control.classify` when both peers advertise `control_seal_v1`. The Mac",
+        "/// opens it with its relay private key + the phone's PINNED relay sender key",
+        "/// (same pinning as the chat lane) and both sides derive the AES-GCM seal key",
+        "/// via `ControlFrameSeal.deriveSessionKey`. Pre-F10 receivers ignore the field."
+      ],
+      "fields": [
+        {
+          "name": "encBase64",
+          "swiftType": "String",
+          "codable": {
+            "key": "encBase64"
+          }
+        },
+        {
+          "name": "wrappedKeyBase64",
+          "swiftType": "String",
+          "codable": {
+            "key": "wrappedKeyBase64"
+          }
+        },
+        {
+          "name": "senderDeviceId",
+          "swiftType": "String",
+          "codable": {
+            "key": "senderDeviceId"
+          }
+        },
+        {
+          "name": "senderPeerNodeId",
+          "swiftType": "String",
+          "doc": [
+            "    /// The peerNodeId the phone PUBLISHED in `relay_sender_keys/{deviceId}` —",
+            "    /// the Mac's trust resolver matches it during pinned-key lookup. This is",
+            "    /// the relay sender identity, NOT the phone-control controller peerNodeId",
+            "    /// (which is bound separately into the wrap AAD)."
+          ],
+          "codable": {
+            "key": "senderPeerNodeId"
+          }
+        },
+        {
+          "name": "senderKeyId",
+          "swiftType": "String",
+          "codable": {
+            "key": "senderKeyId"
+          }
+        },
+        {
+          "name": "senderCounter",
+          "swiftType": "Int64",
+          "codable": {
+            "key": "senderCounter"
+          }
+        },
+        {
+          "name": "relayKeyVersion",
+          "swiftType": "Int",
+          "codable": {
+            "key": "relayKeyVersion"
+          }
+        }
+      ],
+      "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayControlPayload",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "streamClass",
+          "swiftType": "String?",
+          "codable": {
+            "key": "streamClass"
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId"
+          }
+        },
+        {
+          "name": "actionLogEntry",
+          "swiftType": "HermesRealtimeRelayActionLogEntry?",
+          "codable": {
+            "key": "actionLogEntry"
+          }
+        },
+        {
+          "name": "inputIntent",
+          "swiftType": "HermesRealtimeRelayInputIntent?",
+          "codable": {
+            "key": "inputIntent"
+          }
+        },
+        {
+          "name": "approvalRequest",
+          "swiftType": "HermesRealtimeRelayApprovalRequest?",
+          "codable": {
+            "key": "approvalRequest"
+          }
+        },
+        {
+          "name": "approvalResponse",
+          "swiftType": "HermesRealtimeRelayApprovalResponse?",
+          "codable": {
+            "key": "approvalResponse"
+          }
+        },
+        {
+          "name": "agentGrantRequest",
+          "swiftType": "HermesRealtimeRelayAgentGrantRequest?",
+          "codable": {
+            "key": "agentGrantRequest"
+          }
+        },
+        {
+          "name": "agentGrantReceipt",
+          "swiftType": "HermesRealtimeRelayAgentGrantReceipt?",
+          "codable": {
+            "key": "agentGrantReceipt"
+          }
+        },
+        {
+          "name": "clipboardRequest",
+          "swiftType": "HermesRealtimeRelayClipboardRequest?",
+          "codable": {
+            "key": "clipboardRequest"
+          }
+        },
+        {
+          "name": "clipboardResponse",
+          "swiftType": "HermesRealtimeRelayClipboardResponse?",
+          "codable": {
+            "key": "clipboardResponse"
+          }
+        },
+        {
+          "name": "denied",
+          "swiftType": "HermesRealtimeRelayControlDenied?",
+          "codable": {
+            "key": "denied"
+          }
+        },
+        {
+          "name": "authorityPeerNodeId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "authorityPeerNodeId"
+          }
+        },
+        {
+          "name": "authorityPublicKeyBase64",
+          "swiftType": "String?",
+          "codable": {
+            "key": "authorityPublicKeyBase64"
+          }
+        },
+        {
+          "name": "agentContextTarget",
+          "swiftType": "HermesRealtimeRelayAgentContextTarget?",
+          "codable": {
+            "key": "agentContextTarget"
+          }
+        },
+        {
+          "name": "remoteUnlockSession",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockSession?",
+          "codable": {
+            "key": "remoteUnlockSession"
+          }
+        },
+        {
+          "name": "remoteUnlockState",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockState?",
+          "codable": {
+            "key": "remoteUnlockState"
+          }
+        },
+        {
+          "name": "remoteUnlockInput",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockInput?",
+          "codable": {
+            "key": "remoteUnlockInput"
+          }
+        },
+        {
+          "name": "remoteUnlockCredential",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockCredentialEnvelope?",
+          "codable": {
+            "key": "remoteUnlockCredential"
+          }
+        },
+        {
+          "name": "remoteUnlockResult",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockResult?",
+          "codable": {
+            "key": "remoteUnlockResult"
+          }
+        },
+        {
+          "name": "systemPermissionRequest",
+          "swiftType": "HermesRealtimeRelaySystemPermissionRequest?",
+          "codable": {
+            "key": "systemPermissionRequest"
+          }
+        },
+        {
+          "name": "systemPermissionStatus",
+          "swiftType": "HermesRealtimeRelaySystemPermissionStatus?",
+          "codable": {
+            "key": "systemPermissionStatus"
+          }
+        },
+        {
+          "name": "controlSealKey",
+          "swiftType": "HermesRealtimeRelayControlSealKeyEnvelope?",
+          "doc": [
+            "    /// F10 — sealKeyV3-wrapped seal-session key, sent once on `control.classify`."
+          ],
+          "codable": {
+            "key": "controlSealKey"
+          }
+        },
+        {
+          "name": "sealedFrameBase64",
+          "swiftType": "String?",
+          "doc": [
+            "    /// F10 — when present, this payload's real content rides inside: a",
+            "    /// `ControlFrameSeal` envelope (OBCFS1) over the JSON of the inner",
+            "    /// `HermesRealtimeRelayControlPayload`, AAD-bound to (peerNodeId,",
+            "    /// frame type). `streamClass` stays visible for routing; everything else",
+            "    /// is confidential. Pre-F10 receivers see an empty payload and ignore it."
+          ],
+          "codable": {
+            "key": "sealedFrameBase64"
+          }
+        }
+      ],
+      "initDefaults": {
+        "streamClass": "nil",
+        "sessionId": "nil",
+        "actionLogEntry": "nil",
+        "inputIntent": "nil",
+        "approvalRequest": "nil",
+        "approvalResponse": "nil",
+        "agentGrantRequest": "nil",
+        "agentGrantReceipt": "nil",
+        "clipboardRequest": "nil",
+        "clipboardResponse": "nil",
+        "denied": "nil",
+        "authorityPeerNodeId": "nil",
+        "authorityPublicKeyBase64": "nil",
+        "agentContextTarget": "nil",
+        "remoteUnlockSession": "nil",
+        "remoteUnlockState": "nil",
+        "remoteUnlockInput": "nil",
+        "remoteUnlockCredential": "nil",
+        "remoteUnlockResult": "nil",
+        "systemPermissionRequest": "nil",
+        "systemPermissionStatus": "nil",
+        "controlSealKey": "nil",
+        "sealedFrameBase64": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayActionLogEntry",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "entryIndex",
+          "swiftType": "Int",
+          "codable": {
+            "key": "entryIndex"
+          }
+        },
+        {
+          "name": "gopOrdinal",
+          "swiftType": "UInt32?",
+          "codable": {
+            "key": "gopOrdinal"
+          }
+        },
+        {
+          "name": "timestamp",
+          "swiftType": "Date",
+          "codable": {
+            "key": "timestamp"
+          }
+        },
+        {
+          "name": "actionKind",
+          "swiftType": "String",
+          "codable": {
+            "key": "actionKind"
+          }
+        },
+        {
+          "name": "summary",
+          "swiftType": "String",
+          "codable": {
+            "key": "summary"
+          }
+        },
+        {
+          "name": "status",
+          "swiftType": "Status",
+          "codable": {
+            "key": "status"
+          }
+        },
+        {
+          "name": "screenshotHashBlake3",
+          "swiftType": "String?",
+          "codable": {
+            "key": "screenshotHashBlake3"
+          }
+        },
+        {
+          "name": "parentEntryBlake3",
+          "swiftType": "String?",
+          "codable": {
+            "key": "parentEntryBlake3"
+          }
+        },
+        {
+          "name": "errorCategory",
+          "swiftType": "String?",
+          "codable": {
+            "key": "errorCategory"
+          }
+        }
+      ],
+      "initDefaults": {
+        "gopOrdinal": "nil",
+        "screenshotHashBlake3": "nil",
+        "parentEntryBlake3": "nil",
+        "errorCategory": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Status",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "planned"
+              },
+              {
+                "id": "awaitingApproval",
+                "wire": "awaiting_approval"
+              },
+              {
+                "id": "executing"
+              },
+              {
+                "id": "completed"
+              },
+              {
+                "id": "failed"
+              },
+              {
+                "id": "rejected"
+              },
+              {
+                "id": "panicHalted",
+                "wire": "panic_halted"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayInputIntent",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "kind",
+          "swiftType": "Kind",
+          "codable": {
+            "key": "kind"
+          }
+        },
+        {
+          "name": "displayId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "displayId"
+          }
+        },
+        {
+          "name": "normalizedX",
+          "swiftType": "Double?",
+          "codable": {
+            "key": "normalizedX"
+          }
+        },
+        {
+          "name": "normalizedY",
+          "swiftType": "Double?",
+          "codable": {
+            "key": "normalizedY"
+          }
+        },
+        {
+          "name": "normalizedX2",
+          "swiftType": "Double?",
+          "codable": {
+            "key": "normalizedX2"
+          }
+        },
+        {
+          "name": "normalizedY2",
+          "swiftType": "Double?",
+          "codable": {
+            "key": "normalizedY2"
+          }
+        },
+        {
+          "name": "text",
+          "swiftType": "String?",
+          "codable": {
+            "key": "text"
+          }
+        },
+        {
+          "name": "key",
+          "swiftType": "String?",
+          "codable": {
+            "key": "key"
+          }
+        },
+        {
+          "name": "modifiers",
+          "swiftType": "[String]?",
+          "codable": {
+            "key": "modifiers"
+          }
+        },
+        {
+          "name": "mouseButton",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "mouseButton"
+          }
+        },
+        {
+          "name": "clientIntentId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "clientIntentId"
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority"
+          }
+        }
+      ],
+      "initDefaults": {
+        "displayId": "nil",
+        "normalizedX": "nil",
+        "normalizedY": "nil",
+        "normalizedX2": "nil",
+        "normalizedY2": "nil",
+        "text": "nil",
+        "key": "nil",
+        "modifiers": "nil",
+        "mouseButton": "nil",
+        "clientIntentId": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Kind",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "tap"
+              },
+              {
+                "id": "dragStart",
+                "wire": "drag_start"
+              },
+              {
+                "id": "dragMove",
+                "wire": "drag_move"
+              },
+              {
+                "id": "dragEnd",
+                "wire": "drag_end"
+              },
+              {
+                "id": "type"
+              },
+              {
+                "id": "shortcut"
+              },
+              {
+                "id": "scroll"
+              },
+              {
+                "id": "pointerMove",
+                "wire": "pointer_move"
+              },
+              {
+                "id": "pointerClick",
+                "wire": "pointer_click"
+              },
+              {
+                "id": "panic"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "PhoneControlSigningKeyKind",
+      "conformances": [
+        "String",
+        "Codable",
+        "Sendable",
+        "Equatable",
+        "CaseIterable"
+      ],
+      "namespace": false,
+      "doc": [
+        "/// Which signing-key custody class produced an authority envelope's signature",
+        "/// (F2 hardware-bind). `ed25519` (or an absent `keyKind` on the wire, for",
+        "/// backward compatibility with pre-F2 controllers) is the legacy software",
+        "/// CryptoKit Curve25519 key. `secureEnclaveP256` is a non-exportable NIST",
+        "/// P-256 key held in the iOS Secure Enclave / Android StrongBox Keystore; its",
+        "/// `signatureEd25519` field carries a raw (r‖s) 64-byte ECDSA-over-SHA256",
+        "/// signature instead of an Ed25519 signature. The field name is historical —",
+        "/// it is the signature carrier regardless of algorithm, mirroring the",
+        "/// `intentHashBlake3`/`attestationHashBlake3` naming."
+      ],
+      "cases": [
+        {
+          "id": "ed25519"
+        },
+        {
+          "id": "secureEnclaveP256",
+          "wire": "se-p256"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayAuthorityEnvelope",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "peerNodeId",
+          "swiftType": "String",
+          "codable": {
+            "key": "peerNodeId"
+          }
+        },
+        {
+          "name": "counter",
+          "swiftType": "UInt64",
+          "codable": {
+            "key": "counter"
+          }
+        },
+        {
+          "name": "timestamp",
+          "swiftType": "Date",
+          "codable": {
+            "key": "timestamp"
+          }
+        },
+        {
+          "name": "intentHashBlake3",
+          "swiftType": "String",
+          "codable": {
+            "key": "intentHashBlake3"
+          }
+        },
+        {
+          "name": "signatureEd25519",
+          "swiftType": "String",
+          "codable": {
+            "key": "signatureEd25519"
+          }
+        },
+        {
+          "name": "attestationHashBlake3",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Optional App Attest / Play Integrity digest bound into capability-token minting (WS2)."
+          ],
+          "codable": {
+            "key": "attestationHashBlake3"
+          }
+        },
+        {
+          "name": "keyKind",
+          "swiftType": "PhoneControlSigningKeyKind?",
+          "doc": [
+            "    /// F2: which key-custody class signed this envelope. Absent ⇒ `.ed25519`",
+            "    /// (legacy software key). Present `se-p256` ⇒ the signature is a raw",
+            "    /// P-256 ECDSA signature from a Secure Enclave / StrongBox key."
+          ],
+          "codable": {
+            "key": "keyKind"
+          }
+        }
+      ],
+      "initDefaults": {
+        "attestationHashBlake3": "nil",
+        "keyKind": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayClipboardAction",
+      "conformances": [
+        "String",
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "pasteToMac",
+          "wire": "paste_to_mac"
+        },
+        {
+          "id": "grabFromMac",
+          "wire": "grab_from_mac"
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayClipboardStatus",
+      "conformances": [
+        "String",
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "accepted"
+        },
+        {
+          "id": "denied"
+        },
+        {
+          "id": "empty"
+        },
+        {
+          "id": "tooLarge",
+          "wire": "too_large"
+        },
+        {
+          "id": "unsupported"
+        },
+        {
+          "id": "error"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayClipboardRequest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "action",
+          "swiftType": "HermesRealtimeRelayClipboardAction",
+          "codable": {
+            "key": "action"
+          }
+        },
+        {
+          "name": "contentType",
+          "swiftType": "String",
+          "codable": {
+            "key": "contentType"
+          }
+        },
+        {
+          "name": "text",
+          "swiftType": "String?",
+          "codable": {
+            "key": "text"
+          }
+        },
+        {
+          "name": "maxBytes",
+          "swiftType": "Int",
+          "codable": {
+            "key": "maxBytes"
+          }
+        },
+        {
+          "name": "clientIntentId",
+          "swiftType": "String",
+          "codable": {
+            "key": "clientIntentId"
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority"
+          }
+        }
+      ],
+      "initDefaults": {
+        "text": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayClipboardResponse",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "action",
+          "swiftType": "HermesRealtimeRelayClipboardAction",
+          "codable": {
+            "key": "action"
+          }
+        },
+        {
+          "name": "status",
+          "swiftType": "HermesRealtimeRelayClipboardStatus",
+          "codable": {
+            "key": "status"
+          }
+        },
+        {
+          "name": "contentType",
+          "swiftType": "String?",
+          "codable": {
+            "key": "contentType"
+          }
+        },
+        {
+          "name": "text",
+          "swiftType": "String?",
+          "codable": {
+            "key": "text"
+          }
+        },
+        {
+          "name": "byteCount",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "byteCount"
+          }
+        },
+        {
+          "name": "detail",
+          "swiftType": "String?",
+          "codable": {
+            "key": "detail"
+          }
+        }
+      ],
+      "initDefaults": {
+        "contentType": "nil",
+        "text": "nil",
+        "byteCount": "nil",
+        "detail": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayAgentGrantLocalAuthProof",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable",
+        "Hashable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "proofId",
+          "swiftType": "String",
+          "codable": {
+            "key": "proofId"
+          }
+        },
+        {
+          "name": "deviceId",
+          "swiftType": "String",
+          "codable": {
+            "key": "deviceId"
+          }
+        },
+        {
+          "name": "signedIntentHash",
+          "swiftType": "String",
+          "codable": {
+            "key": "signedIntentHash"
+          }
+        },
+        {
+          "name": "authenticatedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "authenticatedAt"
+          }
+        },
+        {
+          "name": "expiresAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "expiresAt"
+          }
+        },
+        {
+          "name": "signatureEd25519",
+          "swiftType": "String",
+          "codable": {
+            "key": "signatureEd25519"
+          }
+        }
+      ],
+      "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayAgentGrantRequest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "runtime",
+          "swiftType": "String",
+          "codable": {
+            "key": "runtime"
+          }
+        },
+        {
+          "name": "threadId",
+          "swiftType": "String",
+          "codable": {
+            "key": "threadId"
+          }
+        },
+        {
+          "name": "preset",
+          "swiftType": "String",
+          "codable": {
+            "key": "preset"
+          }
+        },
+        {
+          "name": "capabilities",
+          "swiftType": "[String]",
+          "codable": {
+            "key": "capabilities"
+          }
+        },
+        {
+          "name": "trustMode",
+          "swiftType": "String",
+          "codable": {
+            "key": "trustMode"
+          }
+        },
+        {
+          "name": "deliveryMode",
+          "swiftType": "String",
+          "codable": {
+            "key": "deliveryMode"
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt"
+          }
+        },
+        {
+          "name": "expiresAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "expiresAt"
+          }
+        },
+        {
+          "name": "grantDurationSeconds",
+          "swiftType": "Double",
+          "codable": {
+            "key": "grantDurationSeconds"
+          }
+        },
+        {
+          "name": "sourceDeviceId",
+          "swiftType": "String",
+          "codable": {
+            "key": "sourceDeviceId"
+          }
+        },
+        {
+          "name": "clientIntentId",
+          "swiftType": "String",
+          "codable": {
+            "key": "clientIntentId"
+          }
+        },
+        {
+          "name": "localAuthenticationSatisfied",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "localAuthenticationSatisfied"
+          }
+        },
+        {
+          "name": "localAuthProof",
+          "swiftType": "HermesRealtimeRelayAgentGrantLocalAuthProof?",
+          "codable": {
+            "key": "localAuthProof"
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority"
+          }
+        }
+      ],
+      "initDefaults": {
+        "localAuthProof": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayAgentGrantReceipt",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "receiptId",
+          "swiftType": "String",
+          "codable": {
+            "key": "receiptId"
+          }
+        },
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "runtime",
+          "swiftType": "String",
+          "codable": {
+            "key": "runtime"
+          }
+        },
+        {
+          "name": "threadId",
+          "swiftType": "String",
+          "codable": {
+            "key": "threadId"
+          }
+        },
+        {
+          "name": "status",
+          "swiftType": "String",
+          "codable": {
+            "key": "status"
+          }
+        },
+        {
+          "name": "appliedGrantId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "appliedGrantId"
+          }
+        },
+        {
+          "name": "capabilities",
+          "swiftType": "[String]",
+          "codable": {
+            "key": "capabilities"
+          }
+        },
+        {
+          "name": "trustMode",
+          "swiftType": "String",
+          "codable": {
+            "key": "trustMode"
+          }
+        },
+        {
+          "name": "receivedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "receivedAt"
+          }
+        },
+        {
+          "name": "grantExpiresAt",
+          "swiftType": "Date?",
+          "codable": {
+            "key": "grantExpiresAt"
+          }
+        },
+        {
+          "name": "sourceDeviceId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sourceDeviceId"
+          }
+        },
+        {
+          "name": "denialReason",
+          "swiftType": "String?",
+          "codable": {
+            "key": "denialReason"
+          }
+        },
+        {
+          "name": "message",
+          "swiftType": "String?",
+          "codable": {
+            "key": "message"
+          }
+        }
+      ],
+      "initDefaults": {
+        "appliedGrantId": "nil",
+        "grantExpiresAt": "nil",
+        "sourceDeviceId": "nil",
+        "denialReason": "nil",
+        "message": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayApprovalRequest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "approvalId",
+          "swiftType": "String",
+          "codable": {
+            "key": "approvalId"
+          }
+        },
+        {
+          "name": "runId",
+          "swiftType": "String",
+          "codable": {
+            "key": "runId"
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String",
+          "codable": {
+            "key": "sessionId"
+          }
+        },
+        {
+          "name": "toolKind",
+          "swiftType": "String",
+          "codable": {
+            "key": "toolKind"
+          }
+        },
+        {
+          "name": "title",
+          "swiftType": "String",
+          "codable": {
+            "key": "title"
+          }
+        },
+        {
+          "name": "message",
+          "swiftType": "String",
+          "codable": {
+            "key": "message"
+          }
+        },
+        {
+          "name": "beforeScreenshotBlake3",
+          "swiftType": "String?",
+          "codable": {
+            "key": "beforeScreenshotBlake3"
+          }
+        },
+        {
+          "name": "beforeScreenshotPNGBase64",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Optional PNG evidence captured immediately before the requested",
+            "    /// action. This lets daemon-originated browser approvals render the",
+            "    /// same pre-action thumbnail as app-owned Mac approvals without a",
+            "    /// second file-transfer round trip."
+          ],
+          "codable": {
+            "key": "beforeScreenshotPNGBase64"
+          }
+        },
+        {
+          "name": "beforeScreenshotMimeType",
+          "swiftType": "String?",
+          "codable": {
+            "key": "beforeScreenshotMimeType"
+          }
+        },
+        {
+          "name": "beforeScreenshotSizeBytes",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "beforeScreenshotSizeBytes"
+          }
+        },
+        {
+          "name": "actionSummary",
+          "swiftType": "String",
+          "codable": {
+            "key": "actionSummary"
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt"
+          }
+        },
+        {
+          "name": "trustMode",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Optional `ComputerUseTrustMode.rawValue` for approval surfaces",
+            "    /// that need to reveal Step-only affordances such as burst approval.",
+            "    /// Older clients can omit this field and render Manual behavior."
+          ],
+          "codable": {
+            "key": "trustMode"
+          }
+        }
+      ],
+      "initDefaults": {
+        "beforeScreenshotBlake3": "nil",
+        "beforeScreenshotPNGBase64": "nil",
+        "beforeScreenshotMimeType": "nil",
+        "beforeScreenshotSizeBytes": "nil",
+        "trustMode": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayApprovalResponse",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "approvalId",
+          "swiftType": "String",
+          "codable": {
+            "key": "approvalId"
+          }
+        },
+        {
+          "name": "decision",
+          "swiftType": "Decision",
+          "codable": {
+            "key": "decision"
+          }
+        },
+        {
+          "name": "respondedBy",
+          "swiftType": "String",
+          "codable": {
+            "key": "respondedBy"
+          }
+        },
+        {
+          "name": "respondedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "respondedAt"
+          }
+        },
+        {
+          "name": "note",
+          "swiftType": "String?",
+          "codable": {
+            "key": "note"
+          }
+        },
+        {
+          "name": "requestHashBlake3",
+          "swiftType": "String?",
+          "codable": {
+            "key": "requestHashBlake3"
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope?",
+          "codable": {
+            "key": "authority"
+          }
+        }
+      ],
+      "initDefaults": {
+        "note": "nil",
+        "requestHashBlake3": "nil",
+        "authority": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Decision",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "approve"
+              },
+              {
+                "id": "reject"
+              },
+              {
+                "id": "rejectAndHalt",
+                "wire": "reject_and_halt"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayControlDenied",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "reason",
+          "swiftType": "Reason",
+          "codable": {
+            "key": "reason"
+          }
+        },
+        {
+          "name": "detail",
+          "swiftType": "String?",
+          "codable": {
+            "key": "detail"
+          }
+        }
+      ],
+      "initDefaults": {
+        "detail": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Reason",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "entitlement"
+              },
+              {
+                "id": "sessionLimit",
+                "wire": "session_limit"
+              },
+              {
+                "id": "dailyLimit",
+                "wire": "daily_limit"
+              },
+              {
+                "id": "softCap",
+                "wire": "soft_cap"
+              },
+              {
+                "id": "hardCap",
+                "wire": "hard_cap"
+              },
+              {
+                "id": "scope"
+              },
+              {
+                "id": "denyRegion",
+                "wire": "deny_region"
+              },
+              {
+                "id": "killSwitch",
+                "wire": "kill_switch"
+              },
+              {
+                "id": "signatureFailure",
+                "wire": "signature_failure"
+              },
+              {
+                "id": "counterReplay",
+                "wire": "counter_replay"
+              },
+              {
+                "id": "staleTimestamp",
+                "wire": "stale_timestamp"
+              },
+              {
+                "id": "agentUnavailable",
+                "wire": "agent_unavailable"
+              },
+              {
+                "id": "unknown"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayMacLockState",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Hashable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "unlocked"
+        },
+        {
+          "id": "screenSaver",
+          "wire": "screen_saver"
+        },
+        {
+          "id": "screenLocked",
+          "wire": "screen_locked"
+        },
+        {
+          "id": "displaySleeping",
+          "wire": "display_sleeping"
+        },
+        {
+          "id": "loginWindow",
+          "wire": "login_window"
+        },
+        {
+          "id": "securityAgent",
+          "wire": "security_agent"
+        },
+        {
+          "id": "fastUserSwitching",
+          "wire": "fast_user_switching"
+        },
+        {
+          "id": "remoteDesktopCurtain",
+          "wire": "remote_desktop_curtain"
+        },
+        {
+          "id": "rebootLoginWindow",
+          "wire": "reboot_login_window"
+        },
+        {
+          "id": "fileVaultPreboot",
+          "wire": "filevault_preboot"
+        },
+        {
+          "id": "unknown"
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayRemoteUnlockBackend",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "screenCaptureKit",
+          "wire": "screen_capture_kit"
+        },
+        {
+          "id": "persistentScreenCaptureKit",
+          "wire": "persistent_screen_capture_kit"
+        },
+        {
+          "id": "appleScreenSharingLoopback",
+          "wire": "apple_screen_sharing_loopback"
+        },
+        {
+          "id": "openBurnBarVirtualHID",
+          "wire": "openburnbar_virtual_hid"
+        },
+        {
+          "id": "fileVaultSSH",
+          "wire": "filevault_ssh"
+        },
+        {
+          "id": "unavailable"
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayRemoteUnlockCertificationStatus",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "uncertified"
+        },
+        {
+          "id": "certified"
+        },
+        {
+          "id": "stale"
+        },
+        {
+          "id": "blocked"
+        },
+        {
+          "id": "failed"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayRemoteUnlockCapabilities",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "enabled",
+            "decode": {
+              "mode": "plain",
+              "type": "Bool",
+              "key": "enabled"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "enabled"
+            }
+          }
+        },
+        {
+          "name": "certificationStatus",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockCertificationStatus",
+          "codable": {
+            "key": "certificationStatus",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayRemoteUnlockCertificationStatus",
+              "key": "certificationStatus"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "certificationStatus"
+            }
+          }
+        },
+        {
+          "name": "certifiedAt",
+          "swiftType": "Date?",
+          "codable": {
+            "key": "certifiedAt",
+            "decode": {
+              "mode": "dateIsoContainsGuard",
+              "key": "certifiedAt"
+            },
+            "encode": {
+              "mode": "dateIsoIfLet",
+              "key": "certifiedAt"
+            }
+          }
+        },
+        {
+          "name": "certifiedOSBuild",
+          "swiftType": "String?",
+          "codable": {
+            "key": "certifiedOSBuild",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "certifiedOSBuild"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "certifiedOSBuild"
+            }
+          }
+        },
+        {
+          "name": "activeBackend",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockBackend",
+          "codable": {
+            "key": "activeBackend",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayRemoteUnlockBackend",
+              "key": "activeBackend"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "activeBackend"
+            }
+          }
+        },
+        {
+          "name": "supportedBackends",
+          "swiftType": "[HermesRealtimeRelayRemoteUnlockBackend]",
+          "codable": {
+            "key": "supportedBackends",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "[HermesRealtimeRelayRemoteUnlockBackend]",
+              "key": "supportedBackends",
+              "default": "[]"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "supportedBackends"
+            }
+          }
+        },
+        {
+          "name": "supportedLockStates",
+          "swiftType": "[HermesRealtimeRelayMacLockState]",
+          "codable": {
+            "key": "supportedLockStates",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "[HermesRealtimeRelayMacLockState]",
+              "key": "supportedLockStates",
+              "default": "[]"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "supportedLockStates"
+            }
+          }
+        },
+        {
+          "name": "blockers",
+          "swiftType": "[String]",
+          "codable": {
+            "key": "blockers",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "[String]",
+              "key": "blockers",
+              "default": "[]"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "blockers"
+            }
+          }
+        },
+        {
+          "name": "allowsCredentialPaste",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "allowsCredentialPaste",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "allowsCredentialPaste",
+              "default": "false"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "allowsCredentialPaste"
+            }
+          }
+        },
+        {
+          "name": "allowsSavedCredentialUnlock",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "allowsSavedCredentialUnlock",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "allowsSavedCredentialUnlock",
+              "default": "false"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "allowsSavedCredentialUnlock"
+            }
+          }
+        },
+        {
+          "name": "credentialRecipientKeyId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "credentialRecipientKeyId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "credentialRecipientKeyId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "credentialRecipientKeyId"
+            }
+          }
+        },
+        {
+          "name": "credentialRecipientPublicKeyBase64",
+          "swiftType": "String?",
+          "codable": {
+            "key": "credentialRecipientPublicKeyBase64",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "credentialRecipientPublicKeyBase64"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "credentialRecipientPublicKeyBase64"
+            }
+          }
+        },
+        {
+          "name": "credentialEnvelopeAlgorithm",
+          "swiftType": "String?",
+          "codable": {
+            "key": "credentialEnvelopeAlgorithm",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "credentialEnvelopeAlgorithm"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "credentialEnvelopeAlgorithm"
+            }
+          }
+        },
+        {
+          "name": "fileVaultSSHSupported",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "fileVaultSSHSupported",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "fileVaultSSHSupported",
+              "default": "false"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "fileVaultSSHSupported"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "certifiedAt": "nil",
+        "certifiedOSBuild": "nil",
+        "supportedBackends": "[]",
+        "supportedLockStates": "[]",
+        "blockers": "[]",
+        "allowsCredentialPaste": "false",
+        "allowsSavedCredentialUnlock": "false",
+        "credentialRecipientKeyId": "nil",
+        "credentialRecipientPublicKeyBase64": "nil",
+        "credentialEnvelopeAlgorithm": "nil",
+        "fileVaultSSHSupported": "false"
+      },
+      "codingKeysOrdered": [
+        [
+          "enabled",
+          "enabled"
+        ],
+        [
+          "certificationStatus",
+          "certificationStatus"
+        ],
+        [
+          "certifiedAt",
+          "certifiedAt"
+        ],
+        [
+          "certifiedOSBuild",
+          "certifiedOSBuild"
+        ],
+        [
+          "activeBackend",
+          "activeBackend"
+        ],
+        [
+          "supportedBackends",
+          "supportedBackends"
+        ],
+        [
+          "supportedLockStates",
+          "supportedLockStates"
+        ],
+        [
+          "blockers",
+          "blockers"
+        ],
+        [
+          "allowsCredentialPaste",
+          "allowsCredentialPaste"
+        ],
+        [
+          "allowsSavedCredentialUnlock",
+          "allowsSavedCredentialUnlock"
+        ],
+        [
+          "credentialRecipientKeyId",
+          "credentialRecipientKeyId"
+        ],
+        [
+          "credentialRecipientPublicKeyBase64",
+          "credentialRecipientPublicKeyBase64"
+        ],
+        [
+          "credentialEnvelopeAlgorithm",
+          "credentialEnvelopeAlgorithm"
+        ],
+        [
+          "fileVaultSSHSupported",
+          "fileVaultSSHSupported"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayRemoteUnlockSession",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "sessionId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "sessionId"
+            }
+          }
+        },
+        {
+          "name": "intent",
+          "swiftType": "Intent",
+          "codable": {
+            "key": "intent",
+            "decode": {
+              "mode": "plain",
+              "type": "Intent",
+              "key": "intent"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "intent"
+            }
+          }
+        },
+        {
+          "name": "requesterDisplayName",
+          "swiftType": "String",
+          "codable": {
+            "key": "requesterDisplayName",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requesterDisplayName"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requesterDisplayName"
+            }
+          }
+        },
+        {
+          "name": "viewerDeviceId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "viewerDeviceId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "viewerDeviceId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "viewerDeviceId"
+            }
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            }
+          }
+        },
+        {
+          "name": "expiresAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "expiresAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "expiresAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "expiresAt"
+            }
+          }
+        },
+        {
+          "name": "localAuthenticationSatisfied",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "localAuthenticationSatisfied",
+            "decode": {
+              "mode": "plain",
+              "type": "Bool",
+              "key": "localAuthenticationSatisfied"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "localAuthenticationSatisfied"
+            }
+          }
+        },
+        {
+          "name": "requestedLockState",
+          "swiftType": "HermesRealtimeRelayMacLockState?",
+          "codable": {
+            "key": "requestedLockState",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayMacLockState",
+              "key": "requestedLockState"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "requestedLockState"
+            }
+          }
+        },
+        {
+          "name": "requestedBackend",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockBackend?",
+          "codable": {
+            "key": "requestedBackend",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayRemoteUnlockBackend",
+              "key": "requestedBackend"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "requestedBackend"
+            }
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayAuthorityEnvelope",
+              "key": "authority"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "authority"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "sessionId": "nil",
+        "viewerDeviceId": "nil",
+        "requestedLockState": "nil",
+        "requestedBackend": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "sessionId",
+          "sessionId"
+        ],
+        [
+          "intent",
+          "intent"
+        ],
+        [
+          "requesterDisplayName",
+          "requesterDisplayName"
+        ],
+        [
+          "viewerDeviceId",
+          "viewerDeviceId"
+        ],
+        [
+          "requestedAt",
+          "requestedAt"
+        ],
+        [
+          "expiresAt",
+          "expiresAt"
+        ],
+        [
+          "localAuthenticationSatisfied",
+          "localAuthenticationSatisfied"
+        ],
+        [
+          "requestedLockState",
+          "requestedLockState"
+        ],
+        [
+          "requestedBackend",
+          "requestedBackend"
+        ],
+        [
+          "authority",
+          "authority"
+        ]
+      ],
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Intent",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "request"
+              },
+              {
+                "id": "attach"
+              },
+              {
+                "id": "cancel"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayRemoteUnlockState",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "sessionId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "sessionId"
+            }
+          }
+        },
+        {
+          "name": "lockState",
+          "swiftType": "HermesRealtimeRelayMacLockState",
+          "codable": {
+            "key": "lockState",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayMacLockState",
+              "key": "lockState"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "lockState"
+            }
+          }
+        },
+        {
+          "name": "backend",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockBackend",
+          "codable": {
+            "key": "backend",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayRemoteUnlockBackend",
+              "key": "backend"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "backend"
+            }
+          }
+        },
+        {
+          "name": "capabilities",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockCapabilities",
+          "codable": {
+            "key": "capabilities",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayRemoteUnlockCapabilities",
+              "key": "capabilities"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "capabilities"
+            }
+          }
+        },
+        {
+          "name": "controlOwnerViewerId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "controlOwnerViewerId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "controlOwnerViewerId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "controlOwnerViewerId"
+            }
+          }
+        },
+        {
+          "name": "observedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "observedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "observedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "observedAt"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "sessionId": "nil",
+        "controlOwnerViewerId": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "sessionId",
+          "sessionId"
+        ],
+        [
+          "lockState",
+          "lockState"
+        ],
+        [
+          "backend",
+          "backend"
+        ],
+        [
+          "capabilities",
+          "capabilities"
+        ],
+        [
+          "controlOwnerViewerId",
+          "controlOwnerViewerId"
+        ],
+        [
+          "observedAt",
+          "observedAt"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayRemoteUnlockInputAction",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "focusPasswordField",
+          "wire": "focus_password_field"
+        },
+        {
+          "id": "submit"
+        },
+        {
+          "id": "escape"
+        },
+        {
+          "id": "disconnect"
+        },
+        {
+          "id": "key"
+        },
+        {
+          "id": "pointerMove",
+          "wire": "pointer_move"
+        },
+        {
+          "id": "pointerClick",
+          "wire": "pointer_click"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayRemoteUnlockInput",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String",
+          "codable": {
+            "key": "sessionId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "sessionId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "sessionId"
+            }
+          }
+        },
+        {
+          "name": "action",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockInputAction",
+          "codable": {
+            "key": "action",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayRemoteUnlockInputAction",
+              "key": "action"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "action"
+            }
+          }
+        },
+        {
+          "name": "key",
+          "swiftType": "String?",
+          "codable": {
+            "key": "key",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "key"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "key"
+            }
+          }
+        },
+        {
+          "name": "normalizedX",
+          "swiftType": "Double?",
+          "codable": {
+            "key": "normalizedX",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "Double",
+              "key": "normalizedX"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "normalizedX"
+            }
+          }
+        },
+        {
+          "name": "normalizedY",
+          "swiftType": "Double?",
+          "codable": {
+            "key": "normalizedY",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "Double",
+              "key": "normalizedY"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "normalizedY"
+            }
+          }
+        },
+        {
+          "name": "clientIntentId",
+          "swiftType": "String",
+          "codable": {
+            "key": "clientIntentId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "clientIntentId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "clientIntentId"
+            }
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            }
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayAuthorityEnvelope",
+              "key": "authority"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "authority"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "key": "nil",
+        "normalizedX": "nil",
+        "normalizedY": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "sessionId",
+          "sessionId"
+        ],
+        [
+          "action",
+          "action"
+        ],
+        [
+          "key",
+          "key"
+        ],
+        [
+          "normalizedX",
+          "normalizedX"
+        ],
+        [
+          "normalizedY",
+          "normalizedY"
+        ],
+        [
+          "clientIntentId",
+          "clientIntentId"
+        ],
+        [
+          "requestedAt",
+          "requestedAt"
+        ],
+        [
+          "authority",
+          "authority"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayRemoteUnlockCredentialEnvelope",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String",
+          "codable": {
+            "key": "sessionId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "sessionId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "sessionId"
+            }
+          }
+        },
+        {
+          "name": "clientIntentId",
+          "swiftType": "String",
+          "codable": {
+            "key": "clientIntentId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "clientIntentId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "clientIntentId"
+            }
+          }
+        },
+        {
+          "name": "credentialKind",
+          "swiftType": "CredentialKind",
+          "codable": {
+            "key": "credentialKind",
+            "decode": {
+              "mode": "plain",
+              "type": "CredentialKind",
+              "key": "credentialKind"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "credentialKind"
+            }
+          }
+        },
+        {
+          "name": "recipientKeyId",
+          "swiftType": "String",
+          "codable": {
+            "key": "recipientKeyId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "recipientKeyId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "recipientKeyId"
+            }
+          }
+        },
+        {
+          "name": "algorithm",
+          "swiftType": "String",
+          "codable": {
+            "key": "algorithm",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "algorithm"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "algorithm"
+            }
+          }
+        },
+        {
+          "name": "ciphertextBase64",
+          "swiftType": "String",
+          "codable": {
+            "key": "ciphertextBase64",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "ciphertextBase64"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "ciphertextBase64"
+            }
+          }
+        },
+        {
+          "name": "aadBase64",
+          "swiftType": "String",
+          "codable": {
+            "key": "aadBase64",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "aadBase64"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "aadBase64"
+            }
+          }
+        },
+        {
+          "name": "redactedByteCount",
+          "swiftType": "Int",
+          "codable": {
+            "key": "redactedByteCount",
+            "decode": {
+              "mode": "plain",
+              "type": "Int",
+              "key": "redactedByteCount"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "redactedByteCount"
+            }
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            }
+          }
+        },
+        {
+          "name": "expiresAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "expiresAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "expiresAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "expiresAt"
+            }
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayAuthorityEnvelope",
+              "key": "authority"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "authority"
+            }
+          }
+        }
+      ],
+      "initDefaults": {},
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "sessionId",
+          "sessionId"
+        ],
+        [
+          "clientIntentId",
+          "clientIntentId"
+        ],
+        [
+          "credentialKind",
+          "credentialKind"
+        ],
+        [
+          "recipientKeyId",
+          "recipientKeyId"
+        ],
+        [
+          "algorithm",
+          "algorithm"
+        ],
+        [
+          "ciphertextBase64",
+          "ciphertextBase64"
+        ],
+        [
+          "aadBase64",
+          "aadBase64"
+        ],
+        [
+          "redactedByteCount",
+          "redactedByteCount"
+        ],
+        [
+          "requestedAt",
+          "requestedAt"
+        ],
+        [
+          "expiresAt",
+          "expiresAt"
+        ],
+        [
+          "authority",
+          "authority"
+        ]
+      ],
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "CredentialKind",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "typedPassword",
+                "wire": "typed_password"
+              },
+              {
+                "id": "clipboardPassword",
+                "wire": "clipboard_password"
+              },
+              {
+                "id": "savedPassword",
+                "wire": "saved_password"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayRemoteUnlockResult",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "sessionId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "sessionId"
+            }
+          }
+        },
+        {
+          "name": "status",
+          "swiftType": "Status",
+          "codable": {
+            "key": "status",
+            "decode": {
+              "mode": "plain",
+              "type": "Status",
+              "key": "status"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "status"
+            }
+          }
+        },
+        {
+          "name": "lockState",
+          "swiftType": "HermesRealtimeRelayMacLockState?",
+          "codable": {
+            "key": "lockState",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayMacLockState",
+              "key": "lockState"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "lockState"
+            }
+          }
+        },
+        {
+          "name": "backend",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockBackend?",
+          "codable": {
+            "key": "backend",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayRemoteUnlockBackend",
+              "key": "backend"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "backend"
+            }
+          }
+        },
+        {
+          "name": "detail",
+          "swiftType": "String?",
+          "codable": {
+            "key": "detail",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "detail"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "detail"
+            }
+          }
+        },
+        {
+          "name": "completedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "completedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "completedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "completedAt"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "sessionId": "nil",
+        "lockState": "nil",
+        "backend": "nil",
+        "detail": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "sessionId",
+          "sessionId"
+        ],
+        [
+          "status",
+          "status"
+        ],
+        [
+          "lockState",
+          "lockState"
+        ],
+        [
+          "backend",
+          "backend"
+        ],
+        [
+          "detail",
+          "detail"
+        ],
+        [
+          "completedAt",
+          "completedAt"
+        ]
+      ],
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Status",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "accepted"
+              },
+              {
+                "id": "denied"
+              },
+              {
+                "id": "failed"
+              },
+              {
+                "id": "expired"
+              },
+              {
+                "id": "unlocked"
+              },
+              {
+                "id": "disconnected"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelaySystemPermissionKind",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "doc": [
+        "/// macOS Transparency, Consent, and Control (TCC) buckets the System",
+        "/// Permission Concierge knows how to grant remotely. Carried over the",
+        "/// existing Computer Use control stream; older peers ignore the new",
+        "/// frame types because the outer envelope is forward-compatible."
+      ],
+      "cases": [
+        {
+          "id": "screenRecording",
+          "wire": "screen_recording"
+        },
+        {
+          "id": "accessibility"
+        },
+        {
+          "id": "remoteDesktop",
+          "wire": "remote_desktop"
+        },
+        {
+          "id": "systemExtension",
+          "wire": "system_extension"
+        },
+        {
+          "id": "camera"
+        },
+        {
+          "id": "microphone"
+        },
+        {
+          "id": "fullDiskAccess",
+          "wire": "full_disk_access"
+        },
+        {
+          "id": "automation"
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelaySystemPermissionStatusKind",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "doc": [
+        "/// Live status of a single TCC bucket as observed by the Mac. The Mac",
+        "/// emits one frame per (kind, bundleId) change and one optimistic frame",
+        "/// when it starts servicing a request."
+      ],
+      "cases": [
+        {
+          "id": "needsAccess",
+          "wire": "needs_access"
+        },
+        {
+          "id": "requesting"
+        },
+        {
+          "id": "granted"
+        },
+        {
+          "id": "denied"
+        },
+        {
+          "id": "timeout"
+        },
+        {
+          "id": "unknown"
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelaySystemPermissionAction",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "doc": [
+        "/// Mac-side action the phone wants run for a permission kind. The Mac",
+        "/// receiver gates the action against the bundled `kind`."
+      ],
+      "cases": [
+        {
+          "id": "prompt",
+          "doc": [
+            "    /// Trigger the macOS native prompt (CGRequestScreenCaptureAccess,",
+            "    /// AXIsProcessTrustedWithOptions(prompt: true), AVCaptureDevice",
+            "    /// requestAccess) when one exists. No-op for FDA."
+          ]
+        },
+        {
+          "id": "openSettings",
+          "wire": "open_settings",
+          "doc": [
+            "    /// Open the matching System Settings deep link via NSWorkspace."
+          ]
+        },
+        {
+          "id": "promptAndOpenSettings",
+          "wire": "prompt_and_open_settings",
+          "doc": [
+            "    /// Native prompt + deep link in one shot. Default behaviour for kinds",
+            "    /// that benefit from both (Screen Recording is the canonical case —",
+            "    /// the prompt seeds the TCC entry, the deep link finishes the job)."
+          ]
+        },
+        {
+          "id": "probeOnly",
+          "wire": "probe_only",
+          "doc": [
+            "    /// Run a polling probe-read only; no UI side effects. Used by the",
+            "    /// monitor at startup to populate the latest status without touching",
+            "    /// System Settings."
+          ]
+        },
+        {
+          "id": "retryFailedTool",
+          "wire": "retry_failed_tool",
+          "doc": [
+            "    /// Once the related TCC bucket flips to granted, re-dispatch the",
+            "    /// original failed tool call. The Mac honors this only when the",
+            "    /// originating tool call is still inflight."
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelaySystemPermissionRequest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "clientIntentId",
+          "swiftType": "String",
+          "codable": {
+            "key": "clientIntentId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "clientIntentId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "clientIntentId"
+            }
+          }
+        },
+        {
+          "name": "kind",
+          "swiftType": "HermesRealtimeRelaySystemPermissionKind",
+          "codable": {
+            "key": "kind",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelaySystemPermissionKind",
+              "key": "kind"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "kind"
+            }
+          }
+        },
+        {
+          "name": "bundleId",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Required for `kind == .automation` (target bundle id, e.g.",
+            "    /// `com.apple.Notes`). Optional for all other kinds."
+          ],
+          "codable": {
+            "key": "bundleId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "bundleId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "bundleId"
+            }
+          }
+        },
+        {
+          "name": "originatingToolCallId",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Tool call id this request is trying to unblock. Carried verbatim",
+            "    /// in the resulting status frames so the iOS retry dispatcher and",
+            "    /// the Mac retry hook can pair the request with the original",
+            "    /// inflight tool invocation."
+          ],
+          "codable": {
+            "key": "originatingToolCallId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "originatingToolCallId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "originatingToolCallId"
+            }
+          }
+        },
+        {
+          "name": "originatingToolName",
+          "swiftType": "String?",
+          "codable": {
+            "key": "originatingToolName",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "originatingToolName"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "originatingToolName"
+            }
+          }
+        },
+        {
+          "name": "action",
+          "swiftType": "HermesRealtimeRelaySystemPermissionAction",
+          "codable": {
+            "key": "action",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelaySystemPermissionAction",
+              "key": "action"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "action"
+            }
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            }
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayAuthorityEnvelope",
+              "key": "authority"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "authority"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "bundleId": "nil",
+        "originatingToolCallId": "nil",
+        "originatingToolName": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "clientIntentId",
+          "clientIntentId"
+        ],
+        [
+          "kind",
+          "kind"
+        ],
+        [
+          "bundleId",
+          "bundleId"
+        ],
+        [
+          "originatingToolCallId",
+          "originatingToolCallId"
+        ],
+        [
+          "originatingToolName",
+          "originatingToolName"
+        ],
+        [
+          "action",
+          "action"
+        ],
+        [
+          "requestedAt",
+          "requestedAt"
+        ],
+        [
+          "authority",
+          "authority"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelaySystemPermissionStatus",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "kind",
+          "swiftType": "HermesRealtimeRelaySystemPermissionKind",
+          "codable": {
+            "key": "kind",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelaySystemPermissionKind",
+              "key": "kind"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "kind"
+            }
+          }
+        },
+        {
+          "name": "bundleId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "bundleId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "bundleId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "bundleId"
+            }
+          }
+        },
+        {
+          "name": "status",
+          "swiftType": "HermesRealtimeRelaySystemPermissionStatusKind",
+          "codable": {
+            "key": "status",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelaySystemPermissionStatusKind",
+              "key": "status"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "status"
+            }
+          }
+        },
+        {
+          "name": "originatingToolCallId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "originatingToolCallId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "originatingToolCallId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "originatingToolCallId"
+            }
+          }
+        },
+        {
+          "name": "originatingToolName",
+          "swiftType": "String?",
+          "codable": {
+            "key": "originatingToolName",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "originatingToolName"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "originatingToolName"
+            }
+          }
+        },
+        {
+          "name": "deepLink",
+          "swiftType": "String?",
+          "doc": [
+            "    /// System Settings deep link — `x-apple.systempreferences:` URL the",
+            "    /// phone displays as a fallback and that the Mac can re-open on its",
+            "    /// own when handling a request."
+          ],
+          "codable": {
+            "key": "deepLink",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "deepLink"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "deepLink"
+            }
+          }
+        },
+        {
+          "name": "instructions",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Human-readable steps to render in the iOS sheet (\"Open System",
+            "    /// Settings → Privacy & Security → Screen Recording → toggle",
+            "    /// OpenBurnBar\"). Optional — iOS has shipped defaults per kind."
+          ],
+          "codable": {
+            "key": "instructions",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "instructions"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "instructions"
+            }
+          }
+        },
+        {
+          "name": "failureCategory",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Compact category tag for the classifier or the failing tool",
+            "    /// (e.g. `\"tccd\"`, `\"AXIsProcessTrusted\"`, `\"AppleEvents\"`). Used by",
+            "    /// telemetry and the Mac audit chain — not surfaced in the iOS sheet."
+          ],
+          "codable": {
+            "key": "failureCategory",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "failureCategory"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "failureCategory"
+            }
+          }
+        },
+        {
+          "name": "lastChangedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "lastChangedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "lastChangedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "lastChangedAt"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "bundleId": "nil",
+        "originatingToolCallId": "nil",
+        "originatingToolName": "nil",
+        "deepLink": "nil",
+        "instructions": "nil",
+        "failureCategory": "nil",
+        "lastChangedAt": "Date()"
+      },
+      "codingKeysOrdered": [
+        [
+          "kind",
+          "kind"
+        ],
+        [
+          "bundleId",
+          "bundleId"
+        ],
+        [
+          "status",
+          "status"
+        ],
+        [
+          "originatingToolCallId",
+          "originatingToolCallId"
+        ],
+        [
+          "originatingToolName",
+          "originatingToolName"
+        ],
+        [
+          "deepLink",
+          "deepLink"
+        ],
+        [
+          "instructions",
+          "instructions"
+        ],
+        [
+          "failureCategory",
+          "failureCategory"
+        ],
+        [
+          "lastChangedAt",
+          "lastChangedAt"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMediaFrameChunk",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "chunkId",
+          "swiftType": "String",
+          "codable": {
+            "key": "chunkId"
+          }
+        },
+        {
+          "name": "chunkIndex",
+          "swiftType": "Int",
+          "codable": {
+            "key": "chunkIndex"
+          }
+        },
+        {
+          "name": "chunkCount",
+          "swiftType": "Int",
+          "codable": {
+            "key": "chunkCount"
+          }
+        },
+        {
+          "name": "totalBytes",
+          "swiftType": "Int",
+          "codable": {
+            "key": "totalBytes"
+          }
+        }
+      ],
+      "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "enum",
+      "name": "AgentFocusFollowMode",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "off"
+        },
+        {
+          "id": "smart"
+        },
+        {
+          "id": "debounced"
+        },
+        {
+          "id": "immediate"
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayFocusTargetKind",
+      "conformances": [
+        "String",
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "cursor"
+        },
+        {
+          "id": "focusedElement",
+          "wire": "focused_element"
+        },
+        {
+          "id": "focusedWindow",
+          "wire": "focused_window"
+        },
+        {
+          "id": "agentWorkspace",
+          "wire": "agent_workspace"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayNormalizedRect",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "x",
+          "swiftType": "Double",
+          "codable": {
+            "key": "x"
+          }
+        },
+        {
+          "name": "y",
+          "swiftType": "Double",
+          "codable": {
+            "key": "y"
+          }
+        },
+        {
+          "name": "width",
+          "swiftType": "Double",
+          "codable": {
+            "key": "width"
+          }
+        },
+        {
+          "name": "height",
+          "swiftType": "Double",
+          "codable": {
+            "key": "height"
+          }
+        }
+      ],
+      "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayNormalizedPoint",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "x",
+          "swiftType": "Double",
+          "codable": {
+            "key": "x"
+          }
+        },
+        {
+          "name": "y",
+          "swiftType": "Double",
+          "codable": {
+            "key": "y"
+          }
+        }
+      ],
+      "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayFocusContext",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "appName",
+          "swiftType": "String",
+          "codable": {
+            "key": "appName"
+          }
+        },
+        {
+          "name": "bundleId",
+          "swiftType": "String",
+          "codable": {
+            "key": "bundleId"
+          }
+        },
+        {
+          "name": "windowTitle",
+          "swiftType": "String?",
+          "codable": {
+            "key": "windowTitle"
+          }
+        },
+        {
+          "name": "windowId",
+          "swiftType": "UInt32?",
+          "codable": {
+            "key": "windowId"
+          }
+        },
+        {
+          "name": "targetKind",
+          "swiftType": "HermesRealtimeRelayFocusTargetKind?",
+          "doc": [
+            "    /// Smart Zoom target type. Optional so older peers without",
+            "    /// Smart Zoom continue to decode the existing focus payload."
+          ],
+          "codable": {
+            "key": "targetKind"
+          }
+        },
+        {
+          "name": "displayId",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Display the rect/point belong to. Matches",
+            "    /// `HermesRealtimeRelayDisplayDescriptor.id` so the phone can ignore",
+            "    /// context that targets a display it is not currently mirroring."
+          ],
+          "codable": {
+            "key": "displayId"
+          }
+        },
+        {
+          "name": "normalizedRect",
+          "swiftType": "HermesRealtimeRelayNormalizedRect?",
+          "doc": [
+            "    /// Target rectangle expressed in display-relative normalized",
+            "    /// coordinates `[0...1]`. Used for text-field, window, and agent",
+            "    /// workspace targets."
+          ],
+          "codable": {
+            "key": "normalizedRect"
+          }
+        },
+        {
+          "name": "normalizedPoint",
+          "swiftType": "HermesRealtimeRelayNormalizedPoint?",
+          "doc": [
+            "    /// Target point expressed in display-relative normalized",
+            "    /// coordinates `[0...1]`. Used for cursor targets where a rect",
+            "    /// would be Mac-side guesswork."
+          ],
+          "codable": {
+            "key": "normalizedPoint"
+          }
+        },
+        {
+          "name": "confidence",
+          "swiftType": "Double?",
+          "doc": [
+            "    /// Provider's confidence in the target. `1.0` for direct AX hits,",
+            "    /// lower values for fallbacks like window-from-cursor."
+          ],
+          "codable": {
+            "key": "confidence"
+          }
+        },
+        {
+          "name": "updatedAt",
+          "swiftType": "Date?",
+          "doc": [
+            "    /// Wall-clock timestamp the provider sampled the target. Used by",
+            "    /// the phone to age out stale Smart Zoom context."
+          ],
+          "codable": {
+            "key": "updatedAt"
+          }
+        }
+      ],
+      "initDefaults": {
+        "windowTitle": "nil",
+        "windowId": "nil",
+        "targetKind": "nil",
+        "displayId": "nil",
+        "normalizedRect": "nil",
+        "normalizedPoint": "nil",
+        "confidence": "nil",
+        "updatedAt": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMediaPayload",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "streamClass",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Identifier of the media stream class this frame addresses",
+            "    /// (`media.blob`, `media.screen.video`, `media.video.out`, etc.). Carried",
+            "    /// as a string rather than a closed enum so receivers route unknown",
+            "    /// classes to a no-op handler instead of failing to decode."
+          ],
+          "codable": {
+            "key": "streamClass"
+          }
+        },
+        {
+          "name": "attachment",
+          "swiftType": "HermesRealtimeRelayAttachmentManifest?",
+          "doc": [
+            "    /// Attachment manifest carried on `media.blob.advertise`. Plaintext —",
+            "    /// metadata only, not content. Bytes flow over the iroh-blobs sub-stream."
+          ],
+          "codable": {
+            "key": "attachment"
+          }
+        },
+        {
+          "name": "blobTicket",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Base32-encoded iroh-blobs ticket. Receiver decodes and dials back to",
+            "    /// fetch the blob bytes."
+          ],
+          "codable": {
+            "key": "blobTicket"
+          }
+        },
+        {
+          "name": "ack",
+          "swiftType": "HermesRealtimeRelayMediaAck?",
+          "doc": [
+            "    /// Acknowledgement carried on `media.blob.ack`."
+          ],
+          "codable": {
+            "key": "ack"
+          }
+        },
+        {
+          "name": "mirrorRequest",
+          "swiftType": "HermesRealtimeRelayMirrorRequest?",
+          "doc": [
+            "    /// Mercury Phase 8 — iOS-initiated mirror request envelope. Set on",
+            "    /// `media.mirror.request` frames; nil elsewhere."
+          ],
+          "codable": {
+            "key": "mirrorRequest"
+          }
+        },
+        {
+          "name": "mirrorAck",
+          "swiftType": "HermesRealtimeRelayMirrorAck?",
+          "doc": [
+            "    /// Mac → iOS reply envelope. Set on `media.mirror.ack` frames; nil",
+            "    /// elsewhere."
+          ],
+          "codable": {
+            "key": "mirrorAck"
+          }
+        },
+        {
+          "name": "mirrorStop",
+          "swiftType": "HermesRealtimeRelayMirrorStop?",
+          "doc": [
+            "    /// iOS → Mac request to end an accepted mirror session. Set on",
+            "    /// `media.mirror.stop` frames; nil elsewhere."
+          ],
+          "codable": {
+            "key": "mirrorStop"
+          }
+        },
+        {
+          "name": "mirrorDisplaySelection",
+          "swiftType": "HermesRealtimeRelayMirrorDisplaySelection?",
+          "doc": [
+            "    /// iOS -> Mac request to switch the active mirrored display without",
+            "    /// ending the mirror session."
+          ],
+          "codable": {
+            "key": "mirrorDisplaySelection"
+          }
+        },
+        {
+          "name": "presence",
+          "swiftType": "HermesRealtimeRelayPresenceHeartbeat?",
+          "doc": [
+            "    /// iOS → Mac presence beacon. Set on `media.presence.heartbeat`",
+            "    /// frames; nil elsewhere."
+          ],
+          "codable": {
+            "key": "presence"
+          }
+        },
+        {
+          "name": "callInvite",
+          "swiftType": "HermesRealtimeRelayCallInvite?",
+          "doc": [
+            "    /// Phone → Mac request to surface an incoming Mercury call prompt on",
+            "    /// the Mac. Set on `media.call.invite` frames; nil elsewhere."
+          ],
+          "codable": {
+            "key": "callInvite"
+          }
+        },
+        {
+          "name": "callAck",
+          "swiftType": "HermesRealtimeRelayCallAck?",
+          "doc": [
+            "    /// Mac → phone response to a call invite. Set on `media.call.ack`",
+            "    /// frames; nil elsewhere."
+          ],
+          "codable": {
+            "key": "callAck"
+          }
+        },
+        {
+          "name": "longTermReferenceAck",
+          "swiftType": "HermesRealtimeRelayLongTermReferenceAck?",
+          "doc": [
+            "    /// Receiver -> encoder LTR acknowledgement. Set on `media.ltr.ack`",
+            "    /// frames; nil elsewhere."
+          ],
+          "codable": {
+            "key": "longTermReferenceAck"
+          }
+        },
+        {
+          "name": "encodedFrameBase64",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Base64 text of `MediaPacketCodec.encode(MediaFrame)`. Kept as",
+            "    /// opaque bytes here so `OpenBurnBarCore` does not depend on the",
+            "    /// media target while the transport envelope remains Codable."
+          ],
+          "codable": {
+            "key": "encodedFrameBase64"
+          }
+        },
+        {
+          "name": "frameChunk",
+          "swiftType": "HermesRealtimeRelayMediaFrameChunk?",
+          "doc": [
+            "    /// Optional chunk descriptor for large encoded media frames. The",
+            "    /// `encodedFrameBase64` field carries the chunk bytes; receivers",
+            "    /// reassemble chunks by `chunkId` before decoding the media frame."
+          ],
+          "codable": {
+            "key": "frameChunk"
+          }
+        },
+        {
+          "name": "focusContext",
+          "swiftType": "HermesRealtimeRelayFocusContext?",
+          "doc": [
+            "    /// Optional Mac focus-follow context. Additive only: old peers ignore it,",
+            "    /// and media frames remain routable solely by `streamClass`."
+          ],
+          "codable": {
+            "key": "focusContext"
+          }
+        },
+        {
+          "name": "sealedFramePosition",
+          "swiftType": "HermesRealtimeRelaySealedMediaFramePosition?",
+          "doc": [
+            "    /// F7 — present when `encodedFrameBase64` carries a MediaFrameAEAD-sealed",
+            "    /// (OBMFA1) envelope instead of a plaintext encoded frame. The position",
+            "    /// fields ride in clear so the receiver can rebuild the AAD; any tamper",
+            "    /// fails the GCM tag, so their integrity is enforced by the seal itself."
+          ],
+          "codable": {
+            "key": "sealedFramePosition"
+          }
+        }
+      ],
+      "initDefaults": {
+        "streamClass": "nil",
+        "attachment": "nil",
+        "blobTicket": "nil",
+        "ack": "nil",
+        "mirrorRequest": "nil",
+        "mirrorAck": "nil",
+        "mirrorStop": "nil",
+        "mirrorDisplaySelection": "nil",
+        "presence": "nil",
+        "callInvite": "nil",
+        "callAck": "nil",
+        "longTermReferenceAck": "nil",
+        "encodedFrameBase64": "nil",
+        "frameChunk": "nil",
+        "focusContext": "nil",
+        "sealedFramePosition": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelaySealedMediaFramePosition",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// F7 — the cleartext AAD components of a sealed media frame (the frame's",
+        "/// position in its stream). Authenticated by the seal's GCM tag — a receiver",
+        "/// rebuilds the AAD from these and `streamClass`, and any mismatch refuses",
+        "/// the frame."
+      ],
+      "fields": [
+        {
+          "name": "kind",
+          "swiftType": "UInt8",
+          "codable": {
+            "key": "kind"
+          }
+        },
+        {
+          "name": "gopId",
+          "swiftType": "UInt32",
+          "codable": {
+            "key": "gopId"
+          }
+        },
+        {
+          "name": "frameIndex",
+          "swiftType": "UInt32",
+          "codable": {
+            "key": "frameIndex"
+          }
+        }
+      ],
+      "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayAttachmentManifest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "manifestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "manifestId"
+          }
+        },
+        {
+          "name": "blobHash",
+          "swiftType": "String",
+          "codable": {
+            "key": "blobHash"
+          }
+        },
+        {
+          "name": "filename",
+          "swiftType": "String",
+          "codable": {
+            "key": "filename"
+          }
+        },
+        {
+          "name": "mime",
+          "swiftType": "String",
+          "codable": {
+            "key": "mime"
+          }
+        },
+        {
+          "name": "size",
+          "swiftType": "Int64",
+          "codable": {
+            "key": "size"
+          }
+        },
+        {
+          "name": "peerDeviceId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "peerDeviceId"
+          }
+        },
+        {
+          "name": "createdAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "createdAt"
+          }
+        }
+      ],
+      "initDefaults": {
+        "peerDeviceId": "nil",
+        "createdAt": "Date()"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMediaAck",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "manifestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "manifestId"
+          }
+        },
+        {
+          "name": "status",
+          "swiftType": "Status",
+          "codable": {
+            "key": "status"
+          }
+        },
+        {
+          "name": "reason",
+          "swiftType": "String?",
+          "codable": {
+            "key": "reason"
+          }
+        }
+      ],
+      "initDefaults": {
+        "reason": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Status",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "received"
+              },
+              {
+                "id": "rejected"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayAgentTerminalRequest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "doc": [
+        "/// Mercury Phase 8 — iOS-initiated request asking the Mac to start",
+        "/// hosting a screen share (or, in future phases, another mirrorable",
+        "/// stream class). The Mac arbitrates via `MercuryRouter` and replies",
+        "/// with `HermesRealtimeRelayMirrorAck`. Decision 2 in",
+        "/// `project_media_rollout`: the Mac is the only gate. No authority",
+        "/// envelope is required — the iroh pairing already authenticates the",
+        "/// requester.",
+        "/// Optional Phase 12 request to launch an agent's CLI **interactively** in a",
+        "/// visible Mac Terminal and pin the mirror to that single Terminal window,",
+        "/// rather than mirroring the full display. When present (and `interactive`),",
+        "/// the Mac launches `runtimeId`'s CLI, resolves the new Terminal window's",
+        "/// `CGWindowID`, and starts a window-pinned capture. Older Mac peers that do",
+        "/// not know this field keep their existing full-display mirror behavior."
+      ],
+      "fields": [
+        {
+          "name": "runtimeId",
+          "swiftType": "String",
+          "doc": [
+            "    /// CLI runtime identifier (e.g. `codex`, `claude`, `droid`, `forge`,",
+            "    /// `antigravity`, `grok`, `hermes`, `pi`). Carried as a string for",
+            "    /// forward-compat with runtimes the Mac may not yet recognize."
+          ],
+          "codable": {
+            "key": "runtimeId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "runtimeId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "runtimeId"
+            }
+          }
+        },
+        {
+          "name": "workingDirectory",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Optional working directory to `cd` into before launching the CLI."
+          ],
+          "codable": {
+            "key": "workingDirectory",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "workingDirectory"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "workingDirectory"
+            }
+          }
+        },
+        {
+          "name": "interactive",
+          "swiftType": "Bool",
+          "doc": [
+            "    /// Whether to launch an interactive REPL/TUI (true) vs a one-shot run.",
+            "    /// Only `true` drives the window-pinned focused-terminal flow."
+          ],
+          "codable": {
+            "key": "interactive",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "interactive",
+              "default": "true"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "interactive"
+            }
+          }
+        },
+        {
+          "name": "modelID",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Optional model identifier to pass to the CLI."
+          ],
+          "codable": {
+            "key": "modelID",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "modelID"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "modelID"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "workingDirectory": "nil",
+        "interactive": "true",
+        "modelID": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "runtimeId",
+          "runtimeId"
+        ],
+        [
+          "workingDirectory",
+          "workingDirectory"
+        ],
+        [
+          "interactive",
+          "interactive"
+        ],
+        [
+          "modelID",
+          "modelID"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMirrorRequest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "doc": [
+            "    /// iOS-generated UUID. Echoed in the ack for correlation."
+          ],
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "doc": [
+            "    /// Clock skew is tolerated by the Mac — informational only."
+          ],
+          "codable": {
+            "key": "requestedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            }
+          }
+        },
+        {
+          "name": "requesterDisplayName",
+          "swiftType": "String",
+          "doc": [
+            "    /// Display name shown on the Mac's `IncomingCallSheet` (\"Alberto's iPhone\")."
+          ],
+          "codable": {
+            "key": "requesterDisplayName",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requesterDisplayName"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requesterDisplayName"
+            }
+          }
+        },
+        {
+          "name": "streamClass",
+          "swiftType": "String",
+          "doc": [
+            "    /// Which `MediaStreamClass` the requester wants opened (default",
+            "    /// `media.screen.video`). Carried as a string for forward-compat",
+            "    /// with future mirrorable surfaces."
+          ],
+          "codable": {
+            "key": "streamClass",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "streamClass"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "streamClass"
+            }
+          }
+        },
+        {
+          "name": "streamingCapabilities",
+          "swiftType": "HermesRealtimeRelayStreamingCapabilities?",
+          "doc": [
+            "    /// Optional Phase 0/2 streaming probe snapshot from the requester.",
+            "    /// Older peers omit this field; the Mac falls back to the last",
+            "    /// heartbeat or the existing v1 behavior when it is absent."
+          ],
+          "codable": {
+            "key": "streamingCapabilities",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayStreamingCapabilities",
+              "key": "streamingCapabilities"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "streamingCapabilities"
+            }
+          }
+        },
+        {
+          "name": "focusFollowMode",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Optional Phase 5 focus-follow preference from the phone. Mac peers",
+            "    /// that do not know it keep their existing full-display mirror behavior."
+          ],
+          "codable": {
+            "key": "focusFollowMode",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "focusFollowMode"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "focusFollowMode"
+            }
+          }
+        },
+        {
+          "name": "viewerId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "viewerId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "viewerId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "viewerId"
+            }
+          }
+        },
+        {
+          "name": "viewerDeviceId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "viewerDeviceId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "viewerDeviceId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "viewerDeviceId"
+            }
+          }
+        },
+        {
+          "name": "controlAuthorityPeerNodeId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "controlAuthorityPeerNodeId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "controlAuthorityPeerNodeId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "controlAuthorityPeerNodeId"
+            }
+          }
+        },
+        {
+          "name": "remoteUnlockSession",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockSession?",
+          "doc": [
+            "    /// Optional Remote Unlock request metadata. Presence is not enough to",
+            "    /// start unlock; the embedded authority must still validate on the Mac."
+          ],
+          "codable": {
+            "key": "remoteUnlockSession",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayRemoteUnlockSession",
+              "key": "remoteUnlockSession"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "remoteUnlockSession"
+            }
+          }
+        },
+        {
+          "name": "agentTerminal",
+          "swiftType": "HermesRealtimeRelayAgentTerminalRequest?",
+          "doc": [
+            "    /// Optional Phase 12 interactive-CLI request. When present (and",
+            "    /// `interactive`), the Mac launches the runtime's CLI in a visible",
+            "    /// Terminal and pins the mirror to that single window. Older peers omit",
+            "    /// this field and keep the existing full-display mirror behavior."
+          ],
+          "codable": {
+            "key": "agentTerminal",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayAgentTerminalRequest",
+              "key": "agentTerminal"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "agentTerminal"
+            }
+          }
+        },
+        {
+          "name": "mediaSealKey",
+          "swiftType": "HermesRealtimeRelayControlSealKeyEnvelope?",
+          "doc": [
+            "    /// F7 — sealKeyV3-wrapped media-frame-AEAD session key, present when the",
+            "    /// requester wants per-frame sealing and both peers advertise",
+            "    /// `media_frame_aead_v1`. Pre-F7 Macs ignore it (frames stay plaintext at",
+            "    /// the app layer over the iroh transport seal)."
+          ],
+          "codable": {
+            "key": "mediaSealKey",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayControlSealKeyEnvelope",
+              "key": "mediaSealKey"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "mediaSealKey"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "streamingCapabilities": "nil",
+        "focusFollowMode": "nil",
+        "viewerId": "nil",
+        "viewerDeviceId": "nil",
+        "controlAuthorityPeerNodeId": "nil",
+        "remoteUnlockSession": "nil",
+        "agentTerminal": "nil",
+        "mediaSealKey": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "requestedAt",
+          "requestedAt"
+        ],
+        [
+          "requesterDisplayName",
+          "requesterDisplayName"
+        ],
+        [
+          "streamClass",
+          "streamClass"
+        ],
+        [
+          "streamingCapabilities",
+          "streamingCapabilities"
+        ],
+        [
+          "focusFollowMode",
+          "focusFollowMode"
+        ],
+        [
+          "viewerId",
+          "viewerId"
+        ],
+        [
+          "viewerDeviceId",
+          "viewerDeviceId"
+        ],
+        [
+          "controlAuthorityPeerNodeId",
+          "controlAuthorityPeerNodeId"
+        ],
+        [
+          "remoteUnlockSession",
+          "remoteUnlockSession"
+        ],
+        [
+          "agentTerminal",
+          "agentTerminal"
+        ],
+        [
+          "mediaSealKey",
+          "mediaSealKey"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayDisplayDescriptor",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable",
+        "Identifiable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "id",
+          "swiftType": "String",
+          "codable": {
+            "key": "id"
+          }
+        },
+        {
+          "name": "name",
+          "swiftType": "String",
+          "codable": {
+            "key": "name"
+          }
+        },
+        {
+          "name": "width",
+          "swiftType": "Int",
+          "codable": {
+            "key": "width"
+          }
+        },
+        {
+          "name": "height",
+          "swiftType": "Int",
+          "codable": {
+            "key": "height"
+          }
+        },
+        {
+          "name": "isPrimary",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "isPrimary"
+          }
+        }
+      ],
+      "initDefaults": {
+        "isPrimary": "false"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMirrorAck",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// Mercury Phase 8 — Mac-side reply to a `HermesRealtimeRelayMirrorRequest`."
+      ],
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "decision",
+          "swiftType": "Decision",
+          "codable": {
+            "key": "decision"
+          }
+        },
+        {
+          "name": "detail",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Free-text reason surfaced in the iOS Mercury Live sheet banner."
+          ],
+          "codable": {
+            "key": "detail"
+          }
+        },
+        {
+          "name": "cooldownSecondsRemaining",
+          "swiftType": "Int?",
+          "doc": [
+            "    /// Populated only when `decision == .coolingDown`. Omitted from the",
+            "    /// wire form otherwise to preserve byte-identical encoding when the",
+            "    /// field is absent (see `MirrorAckEncodingTests`)."
+          ],
+          "codable": {
+            "key": "cooldownSecondsRemaining"
+          }
+        },
+        {
+          "name": "availableDisplays",
+          "swiftType": "[HermesRealtimeRelayDisplayDescriptor]?",
+          "codable": {
+            "key": "availableDisplays"
+          }
+        },
+        {
+          "name": "selectedDisplayId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "selectedDisplayId"
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId"
+          }
+        },
+        {
+          "name": "viewerId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "viewerId"
+          }
+        },
+        {
+          "name": "viewerRole",
+          "swiftType": "String?",
+          "codable": {
+            "key": "viewerRole"
+          }
+        },
+        {
+          "name": "viewerCount",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "viewerCount"
+          }
+        },
+        {
+          "name": "maxViewers",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "maxViewers"
+          }
+        },
+        {
+          "name": "controlOwnerViewerId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "controlOwnerViewerId"
+          }
+        },
+        {
+          "name": "remoteUnlockState",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockState?",
+          "codable": {
+            "key": "remoteUnlockState"
+          }
+        },
+        {
+          "name": "remoteUnlockCapabilities",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockCapabilities?",
+          "codable": {
+            "key": "remoteUnlockCapabilities"
+          }
+        },
+        {
+          "name": "streamingCapabilities",
+          "swiftType": "HermesRealtimeRelayStreamingCapabilities?",
+          "doc": [
+            "    /// F7: the host's streaming capability snapshot (codecs, wire versions,",
+            "    /// frame-AEAD support) so the viewer can negotiate without an extra round",
+            "    /// trip. Optional — pre-F7 hosts omit it and pre-F7 viewers ignore it."
+          ],
+          "codable": {
+            "key": "streamingCapabilities"
+          }
+        }
+      ],
+      "initDefaults": {
+        "detail": "nil",
+        "cooldownSecondsRemaining": "nil",
+        "availableDisplays": "nil",
+        "selectedDisplayId": "nil",
+        "sessionId": "nil",
+        "viewerId": "nil",
+        "viewerRole": "nil",
+        "viewerCount": "nil",
+        "maxViewers": "nil",
+        "controlOwnerViewerId": "nil",
+        "remoteUnlockState": "nil",
+        "remoteUnlockCapabilities": "nil",
+        "streamingCapabilities": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Decision",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "accepted"
+              },
+              {
+                "id": "denied"
+              },
+              {
+                "id": "coolingDown",
+                "wire": "cooling_down"
+              },
+              {
+                "id": "unsupported"
+              },
+              {
+                "id": "busy"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMirrorDisplaySelection",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "sessionId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "sessionId"
+            }
+          }
+        },
+        {
+          "name": "displayId",
+          "swiftType": "String",
+          "codable": {
+            "key": "displayId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "displayId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "displayId"
+            }
+          }
+        },
+        {
+          "name": "selectedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "selectedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "selectedAt"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "selectedAt"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "sessionId": "nil",
+        "selectedAt": "Date()"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "sessionId",
+          "sessionId"
+        ],
+        [
+          "displayId",
+          "displayId"
+        ],
+        [
+          "selectedAt",
+          "selectedAt"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMirrorStop",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "doc": [
+        "/// Mercury Phase 8 — requester-side end signal for an accepted mirror session."
+      ],
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "sessionId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "sessionId"
+            }
+          }
+        },
+        {
+          "name": "stoppedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "stoppedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "stoppedAt"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "stoppedAt"
+            }
+          }
+        },
+        {
+          "name": "reason",
+          "swiftType": "String?",
+          "codable": {
+            "key": "reason",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "reason"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "reason"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "sessionId": "nil",
+        "stoppedAt": "Date()",
+        "reason": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "sessionId",
+          "sessionId"
+        ],
+        [
+          "stoppedAt",
+          "stoppedAt"
+        ],
+        [
+          "reason",
+          "reason"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayCallInvite",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "doc": [
+        "/// Mercury phone-originated call invite. This is the cross-platform",
+        "/// sibling of the Mac -> phone PushKit/FCM call path: it rides the live",
+        "/// `media.control` stream so an already-awake Mac can surface a real",
+        "/// incoming-call prompt without needing a cloud wake."
+      ],
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "requestedAt"
+            }
+          }
+        },
+        {
+          "name": "requesterDisplayName",
+          "swiftType": "String",
+          "codable": {
+            "key": "requesterDisplayName",
+            "decode": {
+              "mode": "plain",
+              "type": "String",
+              "key": "requesterDisplayName"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "requesterDisplayName"
+            }
+          }
+        },
+        {
+          "name": "callKind",
+          "swiftType": "String",
+          "doc": [
+            "    /// `\"video\"` today; kept as a string so future audio-only/group-call",
+            "    /// invites do not break older clients."
+          ],
+          "codable": {
+            "key": "callKind",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "String",
+              "key": "callKind",
+              "default": "\"video\""
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "callKind"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "callKind": "\"video\""
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "requestedAt",
+          "requestedAt"
+        ],
+        [
+          "requesterDisplayName",
+          "requesterDisplayName"
+        ],
+        [
+          "callKind",
+          "callKind"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayCallAck",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// Mac-side response to `HermesRealtimeRelayCallInvite`."
+      ],
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "decision",
+          "swiftType": "Decision",
+          "codable": {
+            "key": "decision"
+          }
+        },
+        {
+          "name": "detail",
+          "swiftType": "String?",
+          "codable": {
+            "key": "detail"
+          }
+        }
+      ],
+      "initDefaults": {
+        "detail": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Decision",
+            "conformances": [
+              "String",
+              "Codable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "accepted"
+              },
+              {
+                "id": "denied"
+              },
+              {
+                "id": "unsupported"
+              },
+              {
+                "id": "busy"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayLongTermReferenceAck",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "requestId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "requestId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "requestId"
+            }
+          }
+        },
+        {
+          "name": "tokenValue",
+          "swiftType": "UInt64",
+          "codable": {
+            "key": "tokenValue",
+            "decode": {
+              "mode": "plain",
+              "type": "UInt64",
+              "key": "tokenValue"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "tokenValue"
+            }
+          }
+        },
+        {
+          "name": "decodedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "decodedAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "decodedAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "decodedAt"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "requestId": "nil",
+        "decodedAt": "Date()"
+      },
+      "codingKeysOrdered": [
+        [
+          "requestId",
+          "requestId"
+        ],
+        [
+          "tokenValue",
+          "tokenValue"
+        ],
+        [
+          "decodedAt",
+          "decodedAt"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayPresenceHeartbeat",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "doc": [
+        "/// Mercury Phase 8 — periodic iOS → Mac beacon so the Mac knows it has",
+        "/// a live mirrorable client (used for outbound triggers like \"Call",
+        "/// iPhone\" from the Mac popover). Sent every 60s once the iOS control",
+        "/// stream is `live`. Forward-compatible: unknown capability strings are",
+        "/// dropped silently by `MercuryPeer.Feature` decoding."
+      ],
+      "fields": [
+        {
+          "name": "sentAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "sentAt",
+            "decode": {
+              "mode": "dateIso",
+              "key": "sentAt"
+            },
+            "encode": {
+              "mode": "dateIso",
+              "key": "sentAt"
+            }
+          }
+        },
+        {
+          "name": "deviceDisplayName",
+          "swiftType": "String",
+          "codable": {
+            "decode": {
+              "mode": "dualKey",
+              "keys": [
+                "deviceDisplayName",
+                "displayName"
+              ],
+              "tempNames": [
+                "canonicalName",
+                "androidAliasName"
+              ],
+              "fallback": "\"Unknown Device\""
+            },
+            "encode": {
+              "mode": "dualKey",
+              "keys": [
+                "deviceDisplayName",
+                "displayName"
+              ]
+            }
+          }
+        },
+        {
+          "name": "capabilities",
+          "swiftType": "[String]",
+          "codable": {
+            "key": "capabilities",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "[String]",
+              "key": "capabilities",
+              "default": "[]"
+            },
+            "encode": {
+              "mode": "plain",
+              "key": "capabilities"
+            }
+          }
+        },
+        {
+          "name": "blurredWallpaperBase64",
+          "swiftType": "String?",
+          "codable": {
+            "key": "blurredWallpaperBase64",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "blurredWallpaperBase64"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "blurredWallpaperBase64"
+            }
+          }
+        },
+        {
+          "name": "peerDeviceId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "peerDeviceId",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "String",
+              "key": "peerDeviceId"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "peerDeviceId"
+            }
+          }
+        },
+        {
+          "name": "streamingCapabilities",
+          "swiftType": "HermesRealtimeRelayStreamingCapabilities?",
+          "codable": {
+            "key": "streamingCapabilities",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayStreamingCapabilities",
+              "key": "streamingCapabilities"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "streamingCapabilities"
+            }
+          }
+        },
+        {
+          "name": "remoteUnlockCapabilities",
+          "swiftType": "HermesRealtimeRelayRemoteUnlockCapabilities?",
+          "codable": {
+            "key": "remoteUnlockCapabilities",
+            "decode": {
+              "mode": "ifPresent",
+              "type": "HermesRealtimeRelayRemoteUnlockCapabilities",
+              "key": "remoteUnlockCapabilities"
+            },
+            "encode": {
+              "mode": "ifPresent",
+              "key": "remoteUnlockCapabilities"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "blurredWallpaperBase64": "nil",
+        "peerDeviceId": "nil",
+        "streamingCapabilities": "nil",
+        "remoteUnlockCapabilities": "nil"
+      },
+      "codingKeysOrdered": [
+        [
+          "sentAt",
+          "sentAt"
+        ],
+        [
+          "deviceDisplayName",
+          "deviceDisplayName"
+        ],
+        [
+          "displayName",
+          "displayName"
+        ],
+        [
+          "capabilities",
+          "capabilities"
+        ],
+        [
+          "blurredWallpaperBase64",
+          "blurredWallpaperBase64"
+        ],
+        [
+          "peerDeviceId",
+          "peerDeviceId"
+        ],
+        [
+          "streamingCapabilities",
+          "streamingCapabilities"
+        ],
+        [
+          "remoteUnlockCapabilities",
+          "remoteUnlockCapabilities"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayVideoCodec",
+      "conformances": [
+        "String",
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "av1"
+        },
+        {
+          "id": "hevc"
+        },
+        {
+          "id": "h264"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayVideoCodecCapability",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "codec",
+          "swiftType": "HermesRealtimeRelayVideoCodec",
+          "codable": {
+            "key": "codec",
+            "decode": {
+              "mode": "plain",
+              "type": "HermesRealtimeRelayVideoCodec",
+              "key": "codec"
+            }
+          }
+        },
+        {
+          "name": "canEncode",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "canEncode",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "canEncode",
+              "default": "false"
+            }
+          }
+        },
+        {
+          "name": "canDecode",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "canDecode",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "canDecode",
+              "default": "false"
+            }
+          }
+        },
+        {
+          "name": "hardwareAccelerated",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "hardwareAccelerated",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "hardwareAccelerated",
+              "default": "false"
+            }
+          }
+        },
+        {
+          "name": "lowLatencyEncode",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "lowLatencyEncode",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "lowLatencyEncode",
+              "default": "false"
+            }
+          }
+        },
+        {
+          "name": "temporalLayering",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "temporalLayering",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "temporalLayering",
+              "default": "false"
+            }
+          }
+        },
+        {
+          "name": "longTermReference",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "longTermReference",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "longTermReference",
+              "default": "false"
+            }
+          }
+        },
+        {
+          "name": "screenContentCoding",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "screenContentCoding",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "screenContentCoding",
+              "default": "false"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "lowLatencyEncode": "false",
+        "temporalLayering": "false",
+        "longTermReference": "false",
+        "screenContentCoding": "false"
+      },
+      "codingKeysOrdered": [
+        [
+          "codec",
+          "codec"
+        ],
+        [
+          "canEncode",
+          "canEncode"
+        ],
+        [
+          "canDecode",
+          "canDecode"
+        ],
+        [
+          "hardwareAccelerated",
+          "hardwareAccelerated"
+        ],
+        [
+          "lowLatencyEncode",
+          "lowLatencyEncode"
+        ],
+        [
+          "temporalLayering",
+          "temporalLayering"
+        ],
+        [
+          "longTermReference",
+          "longTermReference"
+        ],
+        [
+          "screenContentCoding",
+          "screenContentCoding"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayMediaFrameVersionSupport",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "supportsV1",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "supportsV1",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "supportsV1",
+              "default": "true"
+            }
+          }
+        },
+        {
+          "name": "supportsV2",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "supportsV2",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "Bool",
+              "key": "supportsV2",
+              "default": "false"
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "supportsV1": "true",
+        "supportsV2": "false"
+      },
+      "codingKeysOrdered": [
+        [
+          "supportsV1",
+          "supportsV1"
+        ],
+        [
+          "supportsV2",
+          "supportsV2"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayDatagramCapability",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "maxPayloadBytes",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "maxPayloadBytes"
+          }
+        }
+      ],
+      "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayStreamingCapabilities",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": true,
+      "fields": [
+        {
+          "name": "codecCapabilities",
+          "swiftType": "[HermesRealtimeRelayVideoCodecCapability]",
+          "codable": {
+            "key": "codecCapabilities",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "[HermesRealtimeRelayVideoCodecCapability]",
+              "key": "codecCapabilities",
+              "default": "[]"
+            }
+          }
+        },
+        {
+          "name": "mediaFrameVersions",
+          "swiftType": "HermesRealtimeRelayMediaFrameVersionSupport",
+          "codable": {
+            "key": "mediaFrameVersions",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "HermesRealtimeRelayMediaFrameVersionSupport",
+              "key": "mediaFrameVersions",
+              "default": ".init()"
+            }
+          }
+        },
+        {
+          "name": "videoDatagrams",
+          "swiftType": "HermesRealtimeRelayDatagramCapability",
+          "codable": {
+            "key": "videoDatagrams",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "HermesRealtimeRelayDatagramCapability",
+              "key": "videoDatagrams",
+              "default": ".init(maxPayloadBytes: nil)"
+            }
+          }
+        },
+        {
+          "name": "source",
+          "swiftType": "String",
+          "codable": {
+            "key": "source",
+            "decode": {
+              "mode": "ifPresentDefault",
+              "type": "String",
+              "key": "source",
+              "default": "\"unknown\""
+            }
+          }
+        }
+      ],
+      "initDefaults": {
+        "mediaFrameVersions": ".init()",
+        "videoDatagrams": ".init(maxPayloadBytes: nil)"
+      },
+      "codingKeysOrdered": [
+        [
+          "codecCapabilities",
+          "codecCapabilities"
+        ],
+        [
+          "mediaFrameVersions",
+          "mediaFrameVersions"
+        ],
+        [
+          "videoDatagrams",
+          "videoDatagrams"
+        ],
+        [
+          "source",
+          "source"
+        ]
+      ],
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayPayload",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "operation",
+          "swiftType": "HermesRelayOperation?",
+          "codable": {
+            "key": "operation"
+          }
+        },
+        {
+          "name": "method",
+          "swiftType": "String?",
+          "codable": {
+            "key": "method"
+          }
+        },
+        {
+          "name": "payloadCiphertext",
+          "swiftType": "String?",
+          "codable": {
+            "key": "payloadCiphertext"
+          }
+        },
+        {
+          "name": "enc",
+          "swiftType": "String?",
+          "codable": {
+            "key": "enc"
+          }
+        },
+        {
+          "name": "wrappedKey",
+          "swiftType": "String?",
+          "codable": {
+            "key": "wrappedKey"
+          }
+        },
+        {
+          "name": "relayEncryption",
+          "swiftType": "String?",
+          "codable": {
+            "key": "relayEncryption"
+          }
+        },
+        {
+          "name": "relayKeyVersion",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "relayKeyVersion"
+          }
+        },
+        {
+          "name": "senderPublicKey",
+          "swiftType": "String?",
+          "codable": {
+            "key": "senderPublicKey"
+          }
+        },
+        {
+          "name": "senderDeviceId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "senderDeviceId"
+          }
+        },
+        {
+          "name": "senderPeerNodeId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "senderPeerNodeId"
+          }
+        },
+        {
+          "name": "senderCounter",
+          "swiftType": "Int64?",
+          "codable": {
+            "key": "senderCounter"
+          }
+        },
+        {
+          "name": "keyId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "keyId"
+          }
+        },
+        {
+          "name": "sequence",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "sequence"
+          }
+        },
+        {
+          "name": "kind",
+          "swiftType": "HermesRelayChunkKind?",
+          "codable": {
+            "key": "kind"
+          }
+        },
+        {
+          "name": "ciphertext",
+          "swiftType": "String?",
+          "codable": {
+            "key": "ciphertext"
+          }
+        },
+        {
+          "name": "errorCode",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Public, non-sensitive terminal error code for `response.error` frames.",
+            "    /// Do not put user/provider/runtime text here; encrypted `.error` chunks carry",
+            "    /// private detail when the caller needs it."
+          ],
+          "codable": {
+            "key": "errorCode"
+          }
+        },
+        {
+          "name": "error",
+          "swiftType": "String?",
+          "doc": [
+            "    /// Legacy plaintext error text kept decodable for older peers. New iroh",
+            "    /// senders must not populate this on `response.error` frames."
+          ],
+          "codable": {
+            "key": "error"
+          }
+        },
+        {
+          "name": "chunkCount",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "chunkCount"
+          }
+        },
+        {
+          "name": "capabilities",
+          "swiftType": "[String]?",
+          "codable": {
+            "key": "capabilities"
+          }
+        }
+      ],
+      "initDefaults": {
+        "operation": "nil",
+        "method": "nil",
+        "payloadCiphertext": "nil",
+        "enc": "nil",
+        "wrappedKey": "nil",
+        "relayEncryption": "nil",
+        "relayKeyVersion": "nil",
+        "senderPublicKey": "nil",
+        "senderDeviceId": "nil",
+        "senderPeerNodeId": "nil",
+        "senderCounter": "nil",
+        "keyId": "nil",
+        "sequence": "nil",
+        "kind": "nil",
+        "ciphertext": "nil",
+        "errorCode": "nil",
+        "error": "nil",
+        "chunkCount": "nil",
+        "capabilities": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayErrorCode",
+      "conformances": [
+        "String",
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "cases": [
+        {
+          "id": "requestFailed",
+          "wire": "request_failed"
+        },
+        {
+          "id": "transportFailed",
+          "wire": "transport_failed"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayAgentContextTarget",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "fields": [
+        {
+          "name": "requestId",
+          "swiftType": "String",
+          "codable": {
+            "key": "requestId"
+          }
+        },
+        {
+          "name": "sessionId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "sessionId"
+          }
+        },
+        {
+          "name": "runtime",
+          "swiftType": "String",
+          "codable": {
+            "key": "runtime"
+          }
+        },
+        {
+          "name": "threadId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "threadId"
+          }
+        },
+        {
+          "name": "displayId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "displayId"
+          }
+        },
+        {
+          "name": "normalizedX",
+          "swiftType": "Double",
+          "codable": {
+            "key": "normalizedX"
+          }
+        },
+        {
+          "name": "normalizedY",
+          "swiftType": "Double",
+          "codable": {
+            "key": "normalizedY"
+          }
+        },
+        {
+          "name": "normalizedRect",
+          "swiftType": "HermesRealtimeRelayNormalizedRect?",
+          "codable": {
+            "key": "normalizedRect"
+          }
+        },
+        {
+          "name": "instruction",
+          "swiftType": "String",
+          "codable": {
+            "key": "instruction"
+          }
+        },
+        {
+          "name": "focusContext",
+          "swiftType": "HermesRealtimeRelayFocusContext?",
+          "codable": {
+            "key": "focusContext"
+          }
+        },
+        {
+          "name": "clientIntentId",
+          "swiftType": "String",
+          "codable": {
+            "key": "clientIntentId"
+          }
+        },
+        {
+          "name": "requestedAt",
+          "swiftType": "Date",
+          "codable": {
+            "key": "requestedAt"
+          }
+        },
+        {
+          "name": "authority",
+          "swiftType": "HermesRealtimeRelayAuthorityEnvelope",
+          "codable": {
+            "key": "authority"
+          }
+        }
+      ],
+      "initDefaults": {
+        "sessionId": "nil",
+        "threadId": "nil",
+        "displayId": "nil",
+        "normalizedRect": "nil",
+        "focusContext": "nil"
+      },
+      "nested": []
+    }
+  ]
+}
