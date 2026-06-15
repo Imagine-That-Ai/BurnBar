@@ -189,11 +189,11 @@ vi.mock("../logging.js", async () => {
 vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 
 import {
+  __testing__,
   publishPhoneControlAuthority,
   publishAgentGrantAuthority,
-  revokeEscrowDeviceTrust,
   queueAgentCapabilityGrantRequest,
-  __testing__,
+  revokeEscrowDeviceTrust,
 } from "../callables/computerUseSecurity.js";
 import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY } from "../appCheckAttestation.js";

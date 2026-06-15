@@ -19,9 +19,9 @@ import org.junit.Test
  * key-change rejection, persistence fail-closed, and scoping semantics can be
  * verified without an Android Keystore / Robolectric.
  *
- * The production store binds this same logic to an [EncryptedSharedPreferences]
- * persistence (Android Keystore-backed AES-256), so this exercises the exact
- * branch logic the encrypted store runs at rest (M-006).
+ * The production store binds this same logic to a direct Android Keystore
+ * AES-GCM persistence, so this exercises the exact branch logic the encrypted
+ * store runs at rest (M-006).
  */
 class IrohPairingHostKeyPinStoreTest {
     @Before

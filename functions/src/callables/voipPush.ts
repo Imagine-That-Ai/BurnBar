@@ -15,20 +15,14 @@ import {
   macHasActiveMediaEntitlement,
   parseTriggerRequest,
   resolveFanOut,
+  VOIP_OUTBOUND_TTL_MS,
 } from "../voipPush.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
-
-// F-RR09-001: bound retention of push-queue docs (which carry uid + cleartext
-// caller name + live push tokens). Delivery + retry settle in minutes, so a
-// 7-day TTL never races delivery — it caps how long an undelivered/terminal
-// doc lingers. Account deletion additionally sweeps these by uid; this TTL is
-// the safety net for docs that belong to a still-active account.
-const PUSH_QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function pushQueueTimestamps(nowMillis: number = Date.now()): { createdAt: Timestamp; expireAt: Timestamp } {
   return {
     createdAt: Timestamp.fromMillis(nowMillis),
-    expireAt: Timestamp.fromMillis(nowMillis + PUSH_QUEUE_TTL_MS),
+    expireAt: Timestamp.fromMillis(nowMillis + VOIP_OUTBOUND_TTL_MS),
   };
 }
 
@@ -66,8 +60,8 @@ export const triggerVoIPCall = onCall(
     // a stable identifier that links the device across sessions.
     const correlationId = ephemeralCallCorrelationId();
     const now = Timestamp.now();
-    // T-PRV-02 / F-RR09-001: stamp a TTL so undelivered push documents self-expire from
-    // Firestore (matched by a ttl:true index on `expireAt`). Use 7-day retention.
+    // T-PRV-02 / F-RR09-001: stamp a TTL so undelivered push documents
+    // self-expire from Firestore (matched by a ttl:true index on `expireAt`).
     const queueTimestamps = pushQueueTimestamps(now.toMillis());
 
     const writes: Array<Promise<unknown>> = [];
