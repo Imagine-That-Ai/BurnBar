@@ -32,7 +32,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadRelayTypes, validateRelayTypes, emitSwiftRelayTypes } from "./relay-types.mjs";
+import { loadRelayTypes, validateRelayTypes, emitSwiftRelayTypes, emitKotlinRelayTypes, loadKotlinOverrides } from "./relay-types.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GEN = join(HERE, "gen");
@@ -255,6 +255,10 @@ export function generateAll(proto, relayTypes) {
     // CONSUMED by OpenBurnBarCore (the hand-written monolith was retired). Rust
     // is intentionally absent: it carries frames as opaque bytes, no payload types.
     ...emitSwiftRelayTypes(relayTypes),
+    // Kotlin (android/openburnbar-iroh-relay) — same schema, kotlinx.serialization.
+    // Byte-faithful generate-and-consume of the types whose schema field-set matches
+    // Kotlin's; drift types (date-regime, additive, dual-key) stay hand-written.
+    ...emitKotlinRelayTypes(relayTypes, loadKotlinOverrides()),
   };
 }
 

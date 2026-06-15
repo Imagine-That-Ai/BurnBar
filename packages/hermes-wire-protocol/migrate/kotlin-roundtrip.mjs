@@ -14,7 +14,7 @@
  *   node packages/hermes-wire-protocol/migrate/kotlin-roundtrip.mjs            # coverage + drift report
  *   node packages/hermes-wire-protocol/migrate/kotlin-roundtrip.mjs --type X   # dump one type's parsed model
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +45,17 @@ function parseKotlin() {
         block.push(l);
         if (l.includes("(")) started = true;
         if (started && depth <= 0) break;
+      }
+      // if a brace body follows the params (nested enums), consume through its matching }
+      if ((lines[j+1]||"").trim().startsWith(") {") || (lines[j]||"").trim().endsWith("{")) {}
+      let k = j + 1;
+      if ((lines[j]||"").includes(") {") || (lines[k]||"").trim() === "" && (lines[k+1]||"").includes("{")) {}
+      // simpler: if the close line is ") {" we already have "{"; brace-match forward
+      if ((lines[j]||"").includes("{")) {
+        let bd = (lines[j].match(/\{/g)||[]).length - (lines[j].match(/\}/g)||[]).length;
+        let m = j + 1;
+        while (m < lines.length && bd > 0) { bd += (lines[m].match(/\{/g)||[]).length - (lines[m].match(/\}/g)||[]).length; block.push(lines[m]); m++; }
+        j = m - 1;
       }
       types[dc[1]] = { kind: "data class", name: dc[1], startLine: i + 1, fields: parseFields(block), raw: block };
       i = j;
@@ -137,4 +148,109 @@ function main() {
   const ktOnly = Object.keys(kt).filter((n) => !schemaNames.has(n) && /^Hermes/.test(n));
   console.log(`\nKotlin-only Hermes* types (keep hand-written, exclude from gen): ${ktOnly.length}\n  ${ktOnly.join(", ")}`);
 }
-main();
+if (!process.argv.includes("--overrides") && !process.argv.includes("--faithful")) main();
+
+// --overrides <out.json>: dump per-type Kotlin representation model (the emitter's input).
+if (process.argv.includes("--overrides")) {
+  const out = process.argv[process.argv.indexOf("--overrides") + 1];
+  const kt = parseKotlin();
+  const schemaNames = new Set(schema.types.map((t) => t.name));
+  const model = { $generated: "Kotlin representation overrides parsed from HermesRealtimeRelayFrame.kt — keyed by type.field; emitter reconciles schema structure with these.", types: {} };
+  for (const t of schema.types) {
+    const k = kt[t.name]; if (!k) continue;
+    if (t.kind === "enum") {
+      model.types[t.name] = { kind: "enum", cases: (k.cases || []).map((c) => ({ id: c.id, serialName: c.serialName })) };
+    } else {
+      const fmap = {};
+      for (const f of (k.fields || [])) fmap[f.name] = { ktType: f.ktType, default: f.default, serialName: f.serialName, encodeDefault: !!f.encodeDefault };
+      model.types[t.name] = { kind: "data class", fields: fmap, fieldOrder: (k.fields || []).map((f) => f.name) };
+    }
+  }
+  // record which schema types Kotlin represents (present) vs Kotlin-only
+  model.ktOnly = Object.keys(kt).filter((n) => !schemaNames.has(n) && /^Hermes|^PhoneControl/.test(n));
+  writeFileSync(out, JSON.stringify(model, null, 2) + "\n");
+  console.log(`wrote overrides: ${Object.keys(model.types).length} types -> ${out}`);
+  process.exit(0);
+}
+
+// --faithful: generate Kotlin via emitKotlinRelayTypes and diff (normalized) per type vs current .kt
+if (process.argv.includes("--faithful")) {
+  const { emitKotlinRelayTypes, loadKotlinOverrides, kotlinGeneratableTypes } = await import("../relay-types.mjs");
+  const overrides = loadKotlinOverrides();
+  const { gen, deferred } = kotlinGeneratableTypes(schema, overrides);
+  const files = emitKotlinRelayTypes(schema, overrides);
+  const genText = Object.values(files)[0];
+  const kt = parseKotlin();
+  // split generated file into per-type blocks by "@Serializable"
+  const norm = (s) => s.split("\n").filter((l) => !/^\s*\/\//.test(l) && !/^\s*\/?\*/.test(l) && l.trim() !== "@Serializable").join("\n").replace(/\s+/g, " ").replace(/,\s*\)/g, ")").trim();
+  const genBlocks = {};
+  for (const t of gen) {
+    const re = t.kind === "enum"
+      ? new RegExp(`@Serializable\\nenum class ${t.name} \\{[\\s\\S]*?\\n\\}`, "m")
+      : new RegExp(`@Serializable\\ndata class ${t.name}\\b[\\s\\S]*?\\n\\)(?: \\{[\\s\\S]*?\\n\\})?`, "m");
+    const m = re.exec(genText); if (m) genBlocks[t.name] = m[0];
+  }
+  let ok = 0, bad = [];
+  for (const t of gen) {
+    const cur = (kt[t.name].raw || []).join("\n");
+    const g = genBlocks[t.name] || "";
+    if (norm(g) === norm(cur)) ok++; else bad.push(t.name);
+  }
+  console.log(`Kotlin emitter — generatable: ${gen.length} | faithful: ${ok}/${gen.length} | deferred(drift): ${deferred.length}`);
+  if (bad.length) { console.log("MISMATCH:", bad.join(", ")); }
+  else console.log("✓ all generatable types byte-faithful (normalized).");
+  if (process.argv.includes("--dump") && bad.length) {
+    const t = bad[0]; console.log("\n=== GENERATED "+t+" ===\n"+norm(genBlocks[t])+"\n=== CURRENT ===\n"+norm((kt[t].raw||[]).join("\n")));
+  }
+  process.exit(bad.length ? 1 : 0);
+}
+
+// --consume: remove the generatable types' hand-written declarations from the .kt
+// (generate-and-consume). Keeps everything else (FrameType, Payload, ControlPayload,
+// drift types, PresenceHeartbeat, sealed stream events, Json config, behavior).
+if (process.argv.includes("--consume")) {
+  const { loadKotlinOverrides, kotlinGeneratableTypes } = await import("../relay-types.mjs");
+  const { gen } = kotlinGeneratableTypes(schema, loadKotlinOverrides());
+  const genNames = new Set(gen.map((t) => t.name));
+  const kt = parseKotlin();
+  const srcLines = ktSrc.split("\n");
+  // collect [startIdx,endIdx] 0-based inclusive spans to delete, incl annotations/KDoc above
+  const spans = [];
+  for (const name of genNames) {
+    const k = kt[name]; if (!k) continue;
+    let start = k.startLine - 1;           // decl line (0-based)
+    // walk up over annotations / KDoc / blank-comment lines that belong to this decl
+    let s = start - 1;
+    while (s >= 0) {
+      const l = srcLines[s].trim();
+      if (l.startsWith("@") || l.startsWith("/**") || l.startsWith("*") || l.startsWith("*/") || l.startsWith("//") || l === "") s--;
+      else break;
+    }
+    // keep exactly one blank separator above (don't eat the previous type's trailing blank chain beyond one)
+    start = s + 1;
+    const end = start + (k.startLine - 1 - start) + k.raw.length - 1; // through block end
+    spans.push([start, k.startLine - 1 + k.raw.length - 1]);
+    // note: recompute end cleanly as decl start + raw length - 1
+  }
+  // normalize spans: delete from declStart's annotation-start to block end
+  const del = [];
+  for (const name of genNames) {
+    const k = kt[name]; if (!k) continue;
+    let declIdx = k.startLine - 1;
+    let s = declIdx - 1;
+    while (s >= 0) { const l = srcLines[s].trim(); if (l.startsWith("@")||l.startsWith("/**")||l.startsWith("*")||l.startsWith("*/")||l.startsWith("//")||l==="") s--; else break; }
+    const startIdx = s + 1;
+    const endIdx = declIdx + k.raw.length - 1;
+    del.push([startIdx, endIdx]);
+  }
+  del.sort((a,b)=>a[0]-b[0]);
+  const keep = [];
+  let cursor = 0;
+  for (const [a,b] of del) { for (let i=cursor;i<a;i++) keep.push(srcLines[i]); cursor = b+1; }
+  for (let i=cursor;i<srcLines.length;i++) keep.push(srcLines[i]);
+  let outText = keep.join("\n").replace(/\n{3,}/g, "\n\n");
+  require_fs_write(KT, outText);
+  console.log(`consumed ${del.length} generated types; ${srcLines.length} -> ${outText.split("\n").length} LOC in HermesRealtimeRelayFrame.kt`);
+  process.exit(0);
+}
+function require_fs_write(p, t){ writeFileSync(p, t); }
