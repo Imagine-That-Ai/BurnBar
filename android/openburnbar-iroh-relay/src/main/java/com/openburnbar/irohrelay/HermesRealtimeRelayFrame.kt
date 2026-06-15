@@ -139,24 +139,6 @@ enum class HermesRealtimeRelayFrameType {
     REMOTE_UNLOCK_DENIED,
 }
 
-@Serializable
-data class HermesRealtimeRelayPayload(
-    val operation: String? = null,
-    val method: String? = null,
-    val payloadCiphertext: String? = null,
-    val wrappedKey: String? = null,
-    val relayEncryption: String? = null,
-    val relayKeyVersion: Int? = null,
-    val sequence: Int? = null,
-    val kind: HermesRelayChunkKind? = null,
-    val ciphertext: String? = null,
-    val errorCode: String? = null,
-    /** Legacy plaintext terminal error. New senders use [errorCode] only. */
-    val error: String? = null,
-    val chunkCount: Int? = null,
-    val capabilities: List<String>? = null,
-)
-
 /**
  * Wire-form chunk kind for `HermesRealtimeRelayPayload.kind`.
  *
@@ -338,60 +320,6 @@ data class HermesRealtimeRelayPresenceHeartbeat(
 )
 
 @Serializable
-enum class HermesRealtimeRelayMacLockState {
-    @SerialName("unlocked")
-    UNLOCKED,
-
-    @SerialName("screen_saver")
-    SCREEN_SAVER,
-
-    @SerialName("screen_locked")
-    SCREEN_LOCKED,
-
-    @SerialName("display_sleeping")
-    DISPLAY_SLEEPING,
-
-    @SerialName("login_window")
-    LOGIN_WINDOW,
-
-    @SerialName("security_agent")
-    SECURITY_AGENT,
-
-    @SerialName("fast_user_switching")
-    FAST_USER_SWITCHING,
-
-    @SerialName("remote_desktop_curtain")
-    REMOTE_DESKTOP_CURTAIN,
-
-    @SerialName("reboot_login_window")
-    REBOOT_LOGIN_WINDOW,
-
-    @SerialName("filevault_preboot")
-    FILEVAULT_PREBOOT,
-
-    @SerialName("unknown")
-    UNKNOWN,
-}
-
-@Serializable
-enum class HermesRealtimeRelayRemoteUnlockBackend {
-    @SerialName("screen_capture_kit")
-    SCREEN_CAPTURE_KIT,
-
-    @SerialName("persistent_screen_capture_kit")
-    PERSISTENT_SCREEN_CAPTURE_KIT,
-
-    @SerialName("apple_screen_sharing_loopback")
-    APPLE_SCREEN_SHARING_LOOPBACK,
-
-    @SerialName("filevault_ssh")
-    FILEVAULT_SSH,
-
-    @SerialName("unavailable")
-    UNAVAILABLE,
-}
-
-@Serializable
 data class HermesRealtimeRelayControlPayload(
     val streamClass: String? = null,
     val sessionId: String? = null,
@@ -460,27 +388,6 @@ object HermesRealtimeRelayControlPayloadCodec {
             HermesRealtimeRelayControlPayload.serializer(),
             bytes.toString(Charsets.UTF_8),
         )
-}
-
-@Serializable
-enum class HermesRealtimeRelaySystemPermissionKind {
-    @SerialName("screen_recording")
-    SCREEN_RECORDING,
-
-    @SerialName("accessibility")
-    ACCESSIBILITY,
-
-    @SerialName("camera")
-    CAMERA,
-
-    @SerialName("microphone")
-    MICROPHONE,
-
-    @SerialName("full_disk_access")
-    FULL_DISK_ACCESS,
-
-    @SerialName("automation")
-    AUTOMATION,
 }
 
 @Serializable

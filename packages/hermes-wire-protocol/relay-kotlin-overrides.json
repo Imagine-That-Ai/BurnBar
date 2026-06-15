@@ -1035,6 +1035,10 @@
           "serialName": "apple_screen_sharing_loopback"
         },
         {
+          "id": "OPENBURNBAR_VIRTUAL_HID",
+          "serialName": "openburnbar_virtual_hid"
+        },
+        {
           "id": "FILEVAULT_SSH",
           "serialName": "filevault_ssh"
         },
@@ -1532,6 +1536,14 @@
         {
           "id": "ACCESSIBILITY",
           "serialName": "accessibility"
+        },
+        {
+          "id": "REMOTE_DESKTOP",
+          "serialName": "remote_desktop"
+        },
+        {
+          "id": "SYSTEM_EXTENSION",
+          "serialName": "system_extension"
         },
         {
           "id": "CAMERA",
@@ -2771,6 +2783,12 @@
           "serialName": null,
           "encodeDefault": false
         },
+        "enc": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
         "wrappedKey": {
           "ktType": "String?",
           "default": "null",
@@ -2785,6 +2803,36 @@
         },
         "relayKeyVersion": {
           "ktType": "Int?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "senderPublicKey": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "senderDeviceId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "senderPeerNodeId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "senderCounter": {
+          "ktType": "Long?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "keyId": {
+          "ktType": "String?",
           "default": "null",
           "serialName": null,
           "encodeDefault": false
@@ -2836,9 +2884,15 @@
         "operation",
         "method",
         "payloadCiphertext",
+        "enc",
         "wrappedKey",
         "relayEncryption",
         "relayKeyVersion",
+        "senderPublicKey",
+        "senderDeviceId",
+        "senderPeerNodeId",
+        "senderCounter",
+        "keyId",
         "sequence",
         "kind",
         "ciphertext",

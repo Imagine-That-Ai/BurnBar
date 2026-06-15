@@ -82,6 +82,7 @@ internal fun HermesRealtimeRelayRemoteUnlockBackend.wireValue(): String = when (
     HermesRealtimeRelayRemoteUnlockBackend.SCREEN_CAPTURE_KIT -> "screen_capture_kit"
     HermesRealtimeRelayRemoteUnlockBackend.PERSISTENT_SCREEN_CAPTURE_KIT -> "persistent_screen_capture_kit"
     HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK -> "apple_screen_sharing_loopback"
+    HermesRealtimeRelayRemoteUnlockBackend.OPENBURNBAR_VIRTUAL_HID -> "openburnbar_virtual_hid"
     HermesRealtimeRelayRemoteUnlockBackend.FILEVAULT_SSH -> "filevault_ssh"
     HermesRealtimeRelayRemoteUnlockBackend.UNAVAILABLE -> "unavailable"
 }

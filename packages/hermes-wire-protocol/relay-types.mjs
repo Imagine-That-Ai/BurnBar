@@ -191,12 +191,16 @@ function ktDoc(lines) { return doc(lines).map((l) => l.replace(/^\s*\/\/\/?\s?/,
 
 function emitKotlinEnum(t, ov) {
   const out = ["@Serializable", `enum class ${t.name} {`];
-  const caseSerial = new Map((ov.cases || []).map((c) => [c.id.toUpperCase(), c.serialName]));
+  // The wire string (@SerialName) is canonical and comes from the schema. The Kotlin
+  // constant NAME is a representation choice carried in the override (e.g. FILEVAULT_SSH,
+  // not the acronym-mangled FILE_VAULT_S_S_H screamingSnake would derive). Match schema
+  // case -> override constant by wire string; fall back to screamingSnake only if absent.
+  const wireToConst = new Map((ov.cases || []).map((c) => [c.serialName ?? c.id, c.id]));
   t.cases.forEach((c, i) => {
-    const screaming = screamingSnake(c.id).replace(/^_/, "");
     const sn = c.wire ?? c.id;
+    const constName = wireToConst.get(sn) ?? screamingSnake(c.id).replace(/^_/, "");
     out.push(`${KI}@SerialName("${sn}")`);
-    out.push(`${KI}${screaming},`);
+    out.push(`${KI}${constName},`);
     if (i < t.cases.length - 1) out.push("");
   });
   out.push("}");
@@ -263,9 +267,12 @@ export function kotlinGeneratableTypes(schema, overrides) {
     const ov = overrides.types[t.name];
     if (!ov) { deferred.push([t.name, "not-in-kotlin"]); continue; }
     if (t.kind === "enum") {
-      const schemaCases = t.cases.map((c) => screamingSnake(c.id).replace(/^_/, "")).sort();
-      const ktCases = (ov.cases || []).map((c) => c.id.toUpperCase()).sort();
-      if (JSON.stringify(schemaCases) === JSON.stringify(ktCases)) gen.push(t); else deferred.push([t.name, "enum-case-mismatch"]);
+      // Generatable iff the WIRE-STRING sets match (the @SerialName is the cross-language
+      // contract). The Kotlin constant name is representation, captured in the override —
+      // so acronym enums (FILEVAULT_SSH, OPENBURNBAR_VIRTUAL_HID) generate cleanly.
+      const schemaWire = t.cases.map((c) => c.wire ?? c.id).sort();
+      const ktWire = (ov.cases || []).map((c) => c.serialName ?? c.id).sort();
+      if (JSON.stringify(schemaWire) === JSON.stringify(ktWire)) gen.push(t); else deferred.push([t.name, "enum-case-mismatch"]);
     } else {
       const schemaFields = t.fields.map((f) => f.name).sort();
       const ktFields = (ov.fieldOrder || []).slice().sort();

@@ -18,8 +18,8 @@ When creating or updating the matching `/goal`, include this ledger pointer in t
 
 ## Finishing Criteria
 
-- [todo] Phase A: emitKotlinRelayTypes generates byte-faithful Kotlin for the ~52 safe types; kotlin-roundtrip prover reports faithful; generate-and-consume (hand-written replaced); `:openburnbar-iroh-relay:testDebugUnitTest` green + `:app:compileDebugKotlin` green.
-- [todo] Phase B: 3 missing enum cases (RemoteUnlockBackend, SystemPermissionKind) generated + atomic consumer `when` arms; gradle green.
+- [done] Phase A: emitKotlinRelayTypes generates byte-faithful Kotlin for the ~52 safe types; kotlin-roundtrip prover reports faithful; generate-and-consume (hand-written replaced); `:openburnbar-iroh-relay:testDebugUnitTest` green + `:app:compileDebugKotlin` green.
+- [done] Phase B: 3 missing enum cases (RemoteUnlockBackend, SystemPermissionKind) generated + atomic consumer `when` arms; gradle green.
 - [todo] Phase C: 3 date-regime flips + producer/consumer migration + intent-hash-unchanged resign test; gradle green.
 - [todo] Phase D: @EncodeDefault breadth + encode-byte prover (Kotlin key-set == Swift key-set).
 - [todo] codegen idempotent (node codegen.mjs && git diff --exit-code) + drift gate wired (incl. Swift Generated dir gap).

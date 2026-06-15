@@ -91,11 +91,14 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> Goal created. Implementation work starts after validation is defined.</li>
-    <li><strong>Current phase:</strong> Define validation, then begin the first concrete task.</li>
-    <li><strong>Blockers:</strong> None recorded.</li>
-    <li><strong>Next action:</strong> Write the first working checkpoint here before or after implementation starts.</li>
-    <li><strong>Protected paths:</strong> None recorded.</li>
+    <li><strong>Status:</strong> Phases A + B DONE and verified. Phase C (date-regime flips) in progress.</li>
+    <li><strong>Current phase:</strong> Phase C — flip 3 date wire-types to match the canonical Swift schema: <code>SystemPermissionRequest.requestedAt</code> + <code>SystemPermissionStatus.lastChangedAt</code> Double→String (dateIso); <code>AttachmentManifest.createdAt</code> String→Double (synthesized=number). All 3 verified real drifts vs schema codable modes.</li>
+    <li><strong>Worktree/branch:</strong> <code>/private/tmp/bb-kotlin</code> @ <code>feature/relay-kotlin-codegen</code>.</li>
+    <li><strong>Generatable:</strong> 53/60 types. Deferred (7): ControlPayload (+actionLogEntry), ActionLogEntry, PhoneControlSigningKeyKind, AgentFocusFollowMode, MirrorAck, PresenceHeartbeat (dualKey), ErrorCode.</li>
+    <li><strong>Blockers:</strong> None.</li>
+    <li><strong>Next action:</strong> Phase C — change override ktType (Double↔String) for the 3 date fields, regenerate, migrate producers/consumers (SystemPermissionConcierge, PhoneControlSignerCanonicalJson, MediaFileTransferService), add intent-hash-unchanged resign test, gradle verify, commit.</li>
+    <li><strong>Verify gauntlet:</strong> <code>node packages/hermes-wire-protocol/codegen.mjs &amp;&amp; git diff --exit-code</code> on Generated; <code>node --test packages/hermes-wire-protocol/</code> (15/15); <code>JAVA_HOME=/Users/albertonunez/.homebrew/opt/openjdk@21 ./gradlew :openburnbar-iroh-relay:testDebugUnitTest :app:compileDebugKotlin</code> (env: android/local.properties + app/google-services.json in place).</li>
+    <li><strong>Protected paths:</strong> Generated/*.kt and Swift Generated/*.swift are codegen output — edit the schema/overrides/emitter, never the generated files directly.</li>
   </ul>
 
   <h2>Progress Timeline</h2>
@@ -128,6 +131,14 @@
   </ul>
   <script>
     const progressEvents = [
+  {
+    ts: "2026-06-15T14:30:00Z",
+    status: "done",
+    phase: "phase-b-enum-cases-additive-fields",
+    actor: "agent",
+    summary: "Phase B complete: emitter now keys enum identity on the WIRE STRING (@SerialName) not screamingSnake — acronym enums (MacLockState FILEVAULT_PREBOOT, RemoteUnlockBackend FILEVAULT_SSH/OPENBURNBAR_VIRTUAL_HID) generate with idiomatic constants. Override extended: RemoteUnlockBackend +OPENBURNBAR_VIRTUAL_HID, SystemPermissionKind +REMOTE_DESKTOP/SYSTEM_EXTENSION, Payload +6 additive nullable fields (enc/senderPublicKey/senderDeviceId/senderPeerNodeId/senderCounter:Long?/keyId). Generatable 49->53; consumed 530->437 LOC. Atomic consumers: RemoteUnlockBackend.wireValue() arm; SystemPermissionKind bridge test relaxed to subset (relay wire enum is superset of Android-grantable kinds). New decode test proves the 3 schema-added wire values decode+re-encode losslessly. gradle :openburnbar-iroh-relay:testDebugUnitTest + :app:compileDebugKotlin BUILD SUCCESSFUL; node gates 15/15; codegen idempotent. Zero wire regression (additive + decode-only).",
+    evidence: ["/private/tmp/claude-501/-Users-albertonunez/a62144a4-697f-4a8d-b66a-6374853aa991/tasks/bzishrf4a.output"]
+  },
   {
     ts: "2026-06-15T13:30:00Z",
     status: "done",

@@ -369,4 +369,40 @@ class HermesRealtimeRelayControlFrameTest {
         assertEquals(801_000_002.0, decoded.media?.mirrorStop?.stoppedAt)
         assertEquals("viewer_closed", decoded.media?.mirrorStop?.reason)
     }
+
+    @Test
+    fun codecDecodesSchemaAddedWireEnumValues() {
+        // These three wire values exist in the canonical Swift schema but were previously
+        // absent from the hand-written Kotlin enums, so decoding a Mac-originated frame
+        // that used them threw. Schema-generated enums must decode them losslessly and
+        // re-encode to the exact wire string (cross-language drift is now impossible).
+        assertEquals(
+            HermesRealtimeRelayRemoteUnlockBackend.OPENBURNBAR_VIRTUAL_HID,
+            HermesRealtimeRelayJson.decodeFromString(
+                HermesRealtimeRelayRemoteUnlockBackend.serializer(),
+                "\"openburnbar_virtual_hid\"",
+            ),
+        )
+        assertEquals(
+            "\"openburnbar_virtual_hid\"",
+            HermesRealtimeRelayJson.encodeToString(
+                HermesRealtimeRelayRemoteUnlockBackend.serializer(),
+                HermesRealtimeRelayRemoteUnlockBackend.OPENBURNBAR_VIRTUAL_HID,
+            ),
+        )
+        assertEquals(
+            HermesRealtimeRelaySystemPermissionKind.REMOTE_DESKTOP,
+            HermesRealtimeRelayJson.decodeFromString(
+                HermesRealtimeRelaySystemPermissionKind.serializer(),
+                "\"remote_desktop\"",
+            ),
+        )
+        assertEquals(
+            HermesRealtimeRelaySystemPermissionKind.SYSTEM_EXTENSION,
+            HermesRealtimeRelayJson.decodeFromString(
+                HermesRealtimeRelaySystemPermissionKind.serializer(),
+                "\"system_extension\"",
+            ),
+        )
+    }
 }
