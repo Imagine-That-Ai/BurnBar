@@ -1,5 +1,6 @@
 package com.openburnbar.irohrelay
 
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -72,6 +73,43 @@ class HermesRealtimeRelayGeneratedRoundTripTest {
             )
         assertEquals("{}", datagram)
         assertFalse("a null optional must be omitted", datagram.contains("maxPayloadBytes"))
+    }
+
+    @Test
+    fun remoteUnlockCapabilitiesEmitsAllAlwaysEmitDefaults() {
+        // RemoteUnlockCapabilities is the largest @EncodeDefault group (6 fields). Swift
+        // (custom Codable, plain container.encode) emits all of them even at default; a
+        // default-constructed Kotlin instance must emit the exact same key set.
+        val caps =
+            HermesRealtimeRelayJson.encodeToString(
+                HermesRealtimeRelayRemoteUnlockCapabilities.serializer(),
+                HermesRealtimeRelayRemoteUnlockCapabilities(
+                    enabled = false,
+                    certificationStatus = HermesRealtimeRelayRemoteUnlockCertificationStatus.UNCERTIFIED,
+                    activeBackend = HermesRealtimeRelayRemoteUnlockBackend.UNAVAILABLE,
+                ),
+            )
+        val keys = HermesRealtimeRelayJson.parseToJsonElement(caps).jsonObject.keys
+        for (key in listOf(
+            "supportedBackends",
+            "supportedLockStates",
+            "blockers",
+            "allowsCredentialPaste",
+            "allowsSavedCredentialUnlock",
+            "fileVaultSSHSupported",
+        )) {
+            assertTrue("$key must be emitted at default", keys.contains(key))
+        }
+        // Nullable-no-default fields must still be omitted (not over-emitted).
+        assertFalse("certifiedAt (null optional) must be omitted", keys.contains("certifiedAt"))
+
+        // AgentTerminalRequest.interactive defaults to true; Swift always emits it.
+        val term =
+            HermesRealtimeRelayJson.encodeToString(
+                HermesRealtimeRelayAgentTerminalRequest.serializer(),
+                HermesRealtimeRelayAgentTerminalRequest(runtimeId = "rt-1"),
+            )
+        assertTrue("interactive must be emitted at default", term.contains("\"interactive\":true"))
     }
 
     @Test

@@ -54,8 +54,7 @@ internal object PhoneControlSignerJsonEncoding {
      * reference-seconds NUMBER from the parsed `Date`, so flipping a wire field from a
      * Double to this string does not change the cross-platform signature.
      */
-    fun iso8601FromEpochMillis(epochMillis: Long): String =
-        ISO8601_MILLIS_UTC.format(Instant.ofEpochMilli(epochMillis))
+    fun iso8601FromEpochMillis(epochMillis: Long): String = ISO8601_MILLIS_UTC.format(Instant.ofEpochMilli(epochMillis))
 
     fun quote(value: String): String {
         val out = StringBuilder(value.length + 2)

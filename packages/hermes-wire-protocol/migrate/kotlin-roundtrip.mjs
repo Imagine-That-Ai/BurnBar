@@ -2,9 +2,11 @@
 /**
  * Kotlin round-trip prover (mirrors migrate/roundtrip.mjs for Swift).
  *
- * Parses the hand-written android/.../HermesRealtimeRelayFrame.kt into a per-type
- * model, then cross-references with the canonical schema (relay-message-types.json)
- * to report, per schema type:
+ * Parses the relay Kotlin sources — both the hand-written HermesRealtimeRelayFrame.kt
+ * AND the generated Generated/HermesRealtimeRelayGeneratedTypes.kt (the generatable types
+ * were consumed out of the hand-written file in Phase A) — into a per-type model, then
+ * cross-references with the canonical schema (relay-message-types.json) to report,
+ * per schema type:
  *   - present-in-kotlin? (coverage)
  *   - the EXACT current Kotlin representation per field (type, default, @SerialName,
  *     @EncodeDefault) — the ground truth the emitter must reproduce for byte-faithful
@@ -15,14 +17,19 @@
  *   node packages/hermes-wire-protocol/migrate/kotlin-roundtrip.mjs --type X   # dump one type's parsed model
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const KT = join(HERE, "..", "..", "..", "android", "openburnbar-iroh-relay", "src", "main", "java", "com", "openburnbar", "irohrelay", "HermesRealtimeRelayFrame.kt");
+const IROH = join(HERE, "..", "..", "..", "android", "openburnbar-iroh-relay", "src", "main", "java", "com", "openburnbar", "irohrelay");
+const KT = join(IROH, "HermesRealtimeRelayFrame.kt");
+// Phase A consumed the generatable types OUT of the hand-written file into Generated/.
+// Parse BOTH (zero type-name overlap) so coverage/--type/--faithful see the full universe;
+// reading only KT would make every generated type look "missing" and crash --faithful.
+const KT_GEN = join(IROH, "Generated", "HermesRealtimeRelayGeneratedTypes.kt");
 const SCHEMA = join(HERE, "..", "relay-message-types.json");
 
-const ktSrc = readFileSync(KT, "utf8");
+const ktSrc = readFileSync(KT, "utf8") + "\n" + readFileSync(KT_GEN, "utf8");
 const schema = JSON.parse(readFileSync(SCHEMA, "utf8"));
 const lines = ktSrc.split("\n");
 
@@ -153,9 +160,19 @@ if (!process.argv.includes("--overrides") && !process.argv.includes("--faithful"
 // --overrides <out.json>: dump per-type Kotlin representation model (the emitter's input).
 if (process.argv.includes("--overrides")) {
   const out = process.argv[process.argv.indexOf("--overrides") + 1];
+  // GUARD: relay-kotlin-overrides.json is no longer a regenerable extract — it is a
+  // HAND-MAINTAINED codegen SOURCE. The generatable types were CONSUMED out of the .kt
+  // (Phase A) and the Phase B/C/D representation fixes live ONLY in the curated file.
+  // Re-extracting from the (gutted) hand-written .kt would destroy them. Refuse unless
+  // the caller explicitly opts in with --force (intentional re-bootstrap only).
+  const CURATED = join(HERE, "..", "relay-kotlin-overrides.json");
+  if (resolve(out) === resolve(CURATED) && !process.argv.includes("--force")) {
+    console.error("REFUSING to overwrite the curated relay-kotlin-overrides.json (hand-maintained codegen SOURCE; re-extraction would destroy Phase B/C/D fixes). Pass --force only to deliberately re-bootstrap.");
+    process.exit(2);
+  }
   const kt = parseKotlin();
   const schemaNames = new Set(schema.types.map((t) => t.name));
-  const model = { $generated: "Kotlin representation overrides parsed from HermesRealtimeRelayFrame.kt — keyed by type.field; emitter reconciles schema structure with these.", types: {} };
+  const model = { $generated: "Bootstrap-only snapshot of the Kotlin representation, extracted from the relay .kt sources — NOT the canonical override file. The canonical packages/hermes-wire-protocol/relay-kotlin-overrides.json is now hand-maintained; do not overwrite it from here.", types: {} };
   for (const t of schema.types) {
     const k = kt[t.name]; if (!k) continue;
     if (t.kind === "enum") {
@@ -192,7 +209,9 @@ if (process.argv.includes("--faithful")) {
   }
   let ok = 0, bad = [];
   for (const t of gen) {
-    const cur = (kt[t.name].raw || []).join("\n");
+    const k = kt[t.name];
+    if (!k) { bad.push(t.name + " (no parsed Kotlin source — is Generated/ present?)"); continue; }
+    const cur = (k.raw || []).join("\n");
     const g = genBlocks[t.name] || "";
     if (norm(g) === norm(cur)) ok++; else bad.push(t.name);
   }

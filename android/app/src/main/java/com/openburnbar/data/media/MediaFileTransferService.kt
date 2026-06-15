@@ -167,8 +167,7 @@ class MediaFileTransferService(
     // Swift synthesizes AttachmentManifest.createdAt as a Codable Date, which JSONEncoder
     // emits/decodes as a NUMBER of seconds since the 2001-01-01 Apple reference epoch.
     // (Was an ISO string here, which the Mac's synthesized decoder rejected.)
-    private fun swiftReferenceSeconds(epochMillis: Long): Double =
-        epochMillis / 1000.0 - 978_307_200.0
+    private fun swiftReferenceSeconds(epochMillis: Long): Double = epochMillis / 1000.0 - 978_307_200.0
 
     private fun inferMime(file: File): String = when (file.extension.lowercase()) {
         "png" -> "image/png"

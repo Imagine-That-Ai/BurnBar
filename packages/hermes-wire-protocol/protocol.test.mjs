@@ -3,10 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { generateAll, loadProtocol, screamingSnake, validateProtocol } from "./codegen.mjs";
 import { checkParity, parseKotlinFrames, parseSwiftFrames } from "./parity.mjs";
-import { loadRelayTypes, validateRelayTypes } from "./relay-types.mjs";
+import { kotlinGeneratableTypes, loadKotlinOverrides, loadRelayTypes, validateKotlinOverrides, validateRelayTypes } from "./relay-types.mjs";
 
 const proto = validateProtocol(loadProtocol());
 const relayTypes = validateRelayTypes(loadRelayTypes());
+const kotlinOverrides = loadKotlinOverrides();
 
 test("protocol.json is structurally valid", () => {
   assert.equal(proto.schemaVersion, 1);
@@ -61,6 +62,26 @@ test("relay-message-types.json is structurally valid", () => {
     assert.ok(!names.has(t.name), `duplicate type ${t.name}`);
     names.add(t.name);
   }
+});
+
+test("Kotlin overrides agree with the schema on @EncodeDefault (no silent encode-side drift)", () => {
+  // The relay Json uses encodeDefaults=false, so a non-optional Kotlin field with a
+  // non-null default that Swift always emits MUST carry @EncodeDefault or the wire
+  // shapes diverge. validateKotlinOverrides derives the truth from the schema and
+  // throws on any disagreement — this test pins it so a future override edit can't
+  // silently reopen the drift.
+  assert.doesNotThrow(() => validateKotlinOverrides(relayTypes, kotlinOverrides));
+});
+
+test("@EncodeDefault validator CATCHES a forged drift (proves it isn't a no-op)", () => {
+  const { gen } = kotlinGeneratableTypes(relayTypes, kotlinOverrides);
+  const victim = gen.find((t) => t.kind !== "enum" &&
+    Object.values(kotlinOverrides.types[t.name].fields || {}).some((f) => f.encodeDefault));
+  assert.ok(victim, "expected at least one @EncodeDefault field to perturb");
+  const perturbed = structuredClone(kotlinOverrides);
+  const f = Object.entries(perturbed.types[victim.name].fields).find(([, v]) => v.encodeDefault)[0];
+  perturbed.types[victim.name].fields[f].encodeDefault = false; // simulate forgetting @EncodeDefault
+  assert.throws(() => validateKotlinOverrides(relayTypes, perturbed), /@EncodeDefault should be true/);
 });
 
 test("every relay date field declares an explicit per-field regime (no global default)", () => {

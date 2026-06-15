@@ -381,6 +381,10 @@ jobs:
             || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
           node packages/hermes-wire-protocol/parity.mjs
           node --test packages/hermes-wire-protocol/protocol.test.mjs
+          # Kotlin emitter byte-faithfulness: every generatable type's emitter output must
+          # match the committed Kotlin (hand-written remainder + Generated/). Complements the
+          # protocol.test.mjs @EncodeDefault validator (override-vs-schema) above.
+          node packages/hermes-wire-protocol/migrate/kotlin-roundtrip.mjs --faithful
 
       # DTCG tokens build to CSS/Swift/Kotlin and stay one source of truth.
       - name: Design tokens (Style Dictionary build + tests)

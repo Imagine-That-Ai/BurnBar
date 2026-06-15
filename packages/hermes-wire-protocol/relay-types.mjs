@@ -282,8 +282,47 @@ export function kotlinGeneratableTypes(schema, overrides) {
   return { gen, deferred };
 }
 
+// The relay Json uses encodeDefaults=false, so Kotlin OMITS a defaulted field unless it
+// carries @EncodeDefault. Swift, by contrast, encodes a NON-OPTIONAL Codable field
+// unconditionally (synthesized Codable, or a custom `container.encode` for plain/dateIso/
+// dualKey modes) — it always emits it even at its default. So a non-optional Kotlin field
+// with a non-null default that Swift always emits MUST be @EncodeDefault, or the two wire
+// shapes silently diverge. The override carries `encodeDefault` per field; this validator
+// derives the same fact from the schema and throws if the override disagrees — so a future
+// type/field cannot silently reopen the drift this codegen closed.
+export function validateKotlinOverrides(schema, overrides) {
+  const { gen } = kotlinGeneratableTypes(schema, overrides);
+  const genNames = new Set(gen.map((t) => t.name));
+  const errors = [];
+  for (const t of schema.types) {
+    if (!genNames.has(t.name) || t.kind === "enum") continue;
+    const ov = overrides.types[t.name];
+    const synthesizes = !t.hasCustomCodable; // synthesized Codable emits every non-optional
+    for (const f of t.fields) {
+      const o = (ov.fields || {})[f.name];
+      if (!o) { errors.push(`${t.name}.${f.name}: no Kotlin override`); continue; }
+      const ktOptional = /\?$/.test(o.ktType);
+      const swiftOptional = /\?$/.test(f.swiftType);
+      const encMode = f.codable && f.codable.encode && f.codable.encode.mode;
+      // Swift unconditionally encodes a field when it's synthesized, or its custom encode
+      // is a plain/date/dual write (anything that isn't an optional encodeIfPresent).
+      const swiftAlwaysEmits = synthesizes || ["plain", "dateIso", "dualKey"].includes(encMode) || (!swiftOptional && !encMode);
+      const ktHasNonNullDefault = o.default !== undefined && o.default !== "null";
+      const expected = !ktOptional && ktHasNonNullDefault && swiftAlwaysEmits;
+      const actual = !!o.encodeDefault;
+      if (expected !== actual) {
+        errors.push(`${t.name}.${f.name}: @EncodeDefault should be ${expected} (ktType=${o.ktType}, default=${o.default}, swiftAlwaysEmits=${swiftAlwaysEmits}) but override says ${actual}. ` +
+          (expected ? "Swift always emits this non-optional default; Kotlin would silently OMIT it — set encodeDefault:true." : "This field would be over-emitted; remove encodeDefault."));
+      }
+    }
+  }
+  if (errors.length) throw new Error("relay-kotlin-overrides.json @EncodeDefault drift vs schema:\n  " + errors.join("\n  "));
+  return true;
+}
+
 /** Emit the generated Kotlin file: { absolutePath: content }. */
 export function emitKotlinRelayTypes(schema, overrides) {
+  validateKotlinOverrides(schema, overrides);
   const { gen } = kotlinGeneratableTypes(schema, overrides);
   const body = gen.map((t) => {
     const ov = overrides.types[t.name];

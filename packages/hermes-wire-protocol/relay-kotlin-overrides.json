@@ -1,5 +1,5 @@
 {
-  "$generated": "Kotlin representation overrides parsed from HermesRealtimeRelayFrame.kt — keyed by type.field; emitter reconciles schema structure with these.",
+  "$generated": "HAND-MAINTAINED Kotlin representation overrides — the codegen SOURCE consumed by emitKotlinRelayTypes (keyed by type.field; reconciles schema STRUCTURE with Kotlin REPRESENTATION: Long/Int widths, enum-as-String, @EncodeDefault, per-field date regime). Bootstrapped once from HermesRealtimeRelayFrame.kt, then curated across Phases B/C/D AND the generatable types were CONSUMED out of the .kt — so the prover's --overrides will NOT reproduce this file (it refuses without --force). Edit by hand; `node codegen.mjs` + protocol.test.mjs (validateKotlinOverrides) enforce consistency with the schema.",
   "types": {
     "HermesRealtimeRelayFrame": {
       "kind": "data class",

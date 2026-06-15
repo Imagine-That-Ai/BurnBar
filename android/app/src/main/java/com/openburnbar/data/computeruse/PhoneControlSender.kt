@@ -358,9 +358,12 @@ class PhoneControlSender(
                 originatingToolCallId = request.originatingToolCallId,
                 originatingToolName = request.originatingToolName,
                 action = request.action.toRelayAction(),
-                // Wire form is the canonical Swift dateIso string; the signature above is
-                // computed over the reference-seconds NUMBER (canonical JSON), which the
-                // Mac re-derives from this decoded Date — so the two never disagree.
+                // Wire form is the canonical Swift dateIso string. The signature above is
+                // computed over the reference-seconds NUMBER (PhoneControlSignerCanonicalJson
+                // hashes requestedAtSwiftReferenceSeconds, NOT this wire field); the Mac
+                // re-derives the same number from the decoded Date (its SignableSystemPermission
+                // hashes requestedAt: Date via JSONEncoder's default numeric strategy). So the
+                // wire string and the signed number stay in agreement for current-era timestamps.
                 requestedAt = PhoneControlSignerJsonEncoding.iso8601FromEpochMillis(request.requestedAtMillis),
                 authority = authority.toRelayAuthority(),
             )

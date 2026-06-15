@@ -86,13 +86,18 @@ class SystemPermissionInboxStore {
                 deepLink = status.deepLink,
                 instructions = status.instructions,
                 failureCategory = status.failureCategory,
-                // Wire form is now the canonical Swift dateIso string (was a Double of
+                // Wire form is the canonical Swift dateIso string (was a Double of
                 // reference-seconds, which silently failed to decode the Mac's ISO string).
-                lastChangedAtMillis = Instant.parse(status.lastChangedAt).toEpochMilli(),
+                // Parse defensively: a conformant Mac always emits ISO-8601, but a
+                // malformed/non-conformant peer value must not throw out of the inbound
+                // read loop (that would tear the stream down to Reconnecting).
+                lastChangedAtMillis = parseIsoMillisOrNow(status.lastChangedAt),
                 source = SystemPermissionItem.Source.MAC_STRUCTURED,
             )
         upsert(item)
     }
+
+    private fun parseIsoMillisOrNow(iso: String): Long = runCatching { Instant.parse(iso).toEpochMilli() }.getOrElse { System.currentTimeMillis() }
 
     fun ingestHeuristic(
         threadId: String,

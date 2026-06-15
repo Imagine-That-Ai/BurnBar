@@ -91,7 +91,7 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> GOAL COMPLETE — Phases A, B, C, D all DONE and verified. Pending only: push branch + open PR (Alberto merges).</li>
+    <li><strong>Status:</strong> GOAL COMPLETE + review-hardened — Phases A-D done & verified, then an adversarial principal-review pass fixed every confirmed issue (ktlint, prover, override validator, docs, edge-case hardening). NOTE: per the primary integrator's coordination directive, the review-fix commits are LOCAL ONLY — do NOT push/merge from this pane; the integrator sequences push/PR/merge across workspaces. (PR #440 was pushed earlier and is now behind the local branch.)</li>
     <li><strong>Outcome:</strong> 56/60 relay payload types are schema-generated; the other 4 are deliberate non-generated representation choices (not drift). HermesRealtimeRelayFrame.kt 1349 → 362 LOC. CI drift gate now covers the real android + Swift Generated dirs, so Swift↔Kotlin payload drift is structurally impossible AND enforced.</li>
     <li><strong>Worktree/branch:</strong> <code>/private/tmp/bb-kotlin</code> @ <code>feature/relay-kotlin-codegen</code> (commits: design doc, prover, Phase A, Phase B, Phase C, Phase D).</li>
     <li><strong>Deliberately NOT generated (4):</strong> PresenceHeartbeat (legacy <code>displayName</code> dual-key the schema omits — generating would break older peers), PhoneControlSigningKeyKind (app-domain, not a relay wire type), AgentFocusFollowMode + ErrorCode (Kotlin models as inline <code>String</code>).</li>
@@ -131,6 +131,14 @@
   </ul>
   <script>
     const progressEvents = [
+  {
+    ts: "2026-06-15T18:30:00Z",
+    status: "done",
+    phase: "review-remediation",
+    actor: "agent",
+    summary: "Adversarial principal-review pass (multi-agent audit + 2 re-run high-risk reviewers). VERDICT: no signature break, no critical/high functional defect — wire-type flips are decoupled from signing (Mac re-derives the number from the decoded Date), lastChangedAt/createdAt unsigned, additive fields dropped-when-null, seal/fixtures unaffected. FIXED every confirmed issue: (1) 4 CI-blocking ktlint violations (dead EncodeDefault import, 2 one-line fn bodies, trailing comment); (2) hardened SystemPermissionConcierge.ingest Instant.parse with runCatching+now() fallback so a malformed peer date can't tear down the read loop (+2 tests); (3) repaired the broken --faithful prover (now parses BOTH HermesRealtimeRelayFrame.kt + Generated/; 56/56 faithful) and wired it into fast-feedback.yml; (4) NEW codegen-time validateKotlinOverrides — derives @EncodeDefault from the schema and throws on override drift (closes the silent future-drift hole that defeated 'structurally impossible'); +2 node tests (forged-drift caught); (5) --overrides clobber guard + corrected the override $generated self-description (it's a hand-maintained SOURCE, not a regenerable extract); (6) README un-staled + Kotlin add/change-a-type runbook; (7) extended the encode-byte prover to RemoteUnlockCapabilities (6 fields) + AgentTerminalRequest.interactive via structural key-set checks; (8) corrected imprecise signing comments. Verify: ktlint 0 (full tree, CI-exact), node 17/17, codegen idempotent, gradle :openburnbar-iroh-relay:testDebugUnitTest + :app:testDebugUnitTest + :app:compileDebugAndroidTestKotlin BUILD SUCCESSFUL (encode prover 4/4, concierge 2/2, resign 1/1). RESIDUAL (pre-existing, documented): Android number() vs Swift shortest-round-trip can diverge only for timestamps within ~1h of 2001-01-01 (never reachable from System.currentTimeMillis()); no cross-language signing golden vector (Swift tests are also in-process self-consistency only).",
+    evidence: ["/private/tmp/claude-501/-Users-albertonunez/a62144a4-697f-4a8d-b66a-6374853aa991/tasks/bso66hysk.output"]
+  },
   {
     ts: "2026-06-15T16:55:00Z",
     status: "done",
