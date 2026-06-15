@@ -142,6 +142,15 @@ extension BurnBarHTTPGatewayServer {
         }
     }
 
+    /// Append one extra SSE `data:` frame on an already-open streamed connection,
+    /// after the synthesis stream's `[DONE]`. Clients that don't understand the
+    /// frame ignore it because it carries no OpenAI `choices` delta.
+    func emitFusionSpendFrame(_ session: FusionSessionSpend, on connection: NWConnection) async {
+        guard let payload = try? JSONEncoder().encode([FusionSessionSpend.wireKey: session]),
+              let text = String(data: payload, encoding: .utf8) else { return }
+        await sendRaw(Data("data: \(text)\n\n".utf8), on: connection)
+    }
+
     static func statusText(for status: Int) -> String {
         switch status {
         case 200: return "OK"

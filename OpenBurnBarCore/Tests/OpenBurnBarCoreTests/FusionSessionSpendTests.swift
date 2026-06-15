@@ -215,6 +215,29 @@ final class FusionSessionSpendTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(session.costMultiplier), 3.0, accuracy: 1e-9) // 0.15 / 0.05
     }
 
+    // MARK: - Wire contract (Codable round-trip, daemon → iOS over SSE)
+
+    func test_session_codableRoundTrip_preservesEverything() throws {
+        let original = try XCTUnwrap(FusionSpendAggregator.newestSession(from: canonicalRun()))
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FusionSessionSpend.self, from: data)
+        XCTAssertEqual(decoded, original, "Session must survive the daemon→iOS wire intact.")
+        XCTAssertEqual(decoded.totalCost, original.totalCost, accuracy: 1e-9)
+        XCTAssertEqual(decoded.lineItems.map(\.stage), original.lineItems.map(\.stage))
+        XCTAssertEqual(decoded.costMultiplier, original.costMultiplier)
+    }
+
+    func test_stage_codableRoundTrip_panelIndexSurvives() throws {
+        for stage: FusionStage in [.panel(index: 0), .panel(index: 7), .judge, .synthesis, .unknown] {
+            let data = try JSONEncoder().encode(stage)
+            XCTAssertEqual(try JSONDecoder().decode(FusionStage.self, from: data), stage)
+        }
+    }
+
+    func test_wireKey_isStable() {
+        XCTAssertEqual(FusionSessionSpend.wireKey, "openburnbar_fusion_spend")
+    }
+
     func test_rowFromUsageEvent_carriesParentAndCost() throws {
         let event = BurnBarUsageEvent(
             runID: nil,

@@ -106,7 +106,7 @@ public struct FusionUsageRow: Sendable, Hashable {
 /// Which pipeline stage produced a sub-call. Sorts panels first (by declared
 /// index), then judge, then synthesis, so the receipt reads top-to-bottom in
 /// pipeline order.
-public enum FusionStage: Sendable, Hashable {
+public enum FusionStage: Sendable, Hashable, Codable {
     case panel(index: Int)
     case judge
     case synthesis
@@ -176,7 +176,7 @@ extension BurnBarUsageConfidence {
 // MARK: - Sub-call line item
 
 /// One sub-call's spend within a fusion session — a row in the receipt.
-public struct FusionSubCallSpend: Identifiable, Sendable, Hashable {
+public struct FusionSubCallSpend: Identifiable, Sendable, Hashable, Codable {
     public let id: String
     public let stage: FusionStage
     public let modelID: String
@@ -220,7 +220,12 @@ public struct FusionSubCallSpend: Identifiable, Sendable, Hashable {
 // MARK: - Session
 
 /// One fusion run's itemized receipt — the model behind the end-of-session modal.
-public struct FusionSessionSpend: Identifiable, Sendable, Hashable {
+public struct FusionSessionSpend: Identifiable, Sendable, Hashable, Codable {
+    /// The wire key the daemon gateway emits the session under in a final SSE
+    /// frame, so iOS (which runs fusion on the Mac over the relay and has no
+    /// local ledger) gets the itemized receipt: `{"openburnbar_fusion_spend": …}`.
+    public static let wireKey = "openburnbar_fusion_spend"
+
     public let parentRequestID: String
     public let lineItems: [FusionSubCallSpend]
     /// The most recent sub-call timestamp in the run (when the receipt is "as of").

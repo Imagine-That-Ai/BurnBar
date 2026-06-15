@@ -19,6 +19,12 @@ import UIKit
 // `HermesChatRoute` is the value-typed destination both surfaces use, so push
 // works on iPhone and iPad with system navigation chrome.
 
+/// Identifiable wrapper over the fusion-receipt token so `.sheet(item:)` presents
+/// a fresh receipt for each completed fusion run.
+private struct FusionReceiptPresentation: Identifiable {
+    let id: UUID
+}
+
 struct HermesChatView: View {
     @Bindable var service: HermesService
     let dashboardSnapshot: DashboardStore?
@@ -47,6 +53,16 @@ struct HermesChatView: View {
     @State private var showElderWandConfigurator = false
     @State private var showElderWandPaywall = false
     @State private var atomRouter = HermesAtomRouter()
+
+    /// Presents the end-of-session fusion receipt: the service mints a fresh
+    /// `fusionReceiptToken` when a fusion run completes; dismissing clears it so
+    /// back-to-back runs each present their own receipt.
+    private var fusionReceiptPresentation: Binding<FusionReceiptPresentation?> {
+        Binding(
+            get: { service.fusionReceiptToken.map(FusionReceiptPresentation.init(id:)) },
+            set: { if $0 == nil { service.fusionReceiptToken = nil } }
+        )
+    }
     @State private var pendingAttachments: [HermesAttachment] = []
     @State private var attachmentImportError: String?
     @State private var textExpansionSnippets: [TextExpansionSnippet] = []
@@ -330,6 +346,13 @@ struct HermesChatView: View {
         }
         .elderWandConfiguratorSheet(isPresented: $showElderWandConfigurator, service: service)
         .elderWandPaywallSheet(isPresented: $showElderWandPaywall)
+        .sheet(item: fusionReceiptPresentation) { _ in
+            // The end-of-session receipt. `capturedFusionSpend` is the itemized
+            // session from the daemon's final SSE frame (it has landed by the time
+            // the stream completes on the dominant streaming path); `nil` falls
+            // back to the authoritative quota-only receipt.
+            FusionReceiptSheet(session: service.capturedFusionSpend)
+        }
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: chatFileImporterTypes,

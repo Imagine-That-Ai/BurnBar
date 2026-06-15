@@ -87,6 +87,24 @@ extension BurnBarHTTPGatewayServer {
                     succeeded: !relay.interrupted,
                     failureMessage: relay.interrupted ? "synthesis stream interrupted" : nil
                 )
+                // Emit the full itemized fusion session as a final SSE frame so
+                // clients with no local ledger (iOS over the relay) render the
+                // receipt. The connection is still open after the relay's `[DONE]`;
+                // the frame is additive and ignored by clients that don't read it.
+                if !relay.interrupted {
+                    let synthesisItem = ElderWandFusionOrchestrator.lineItem(
+                        stage: .synthesis,
+                        route: streaming.route,
+                        requestSignature: streaming.requestSignature,
+                        usage: relay.usage
+                    )
+                    let session = FusionSessionSpend(
+                        parentRequestID: streaming.parentRequestID,
+                        lineItems: streaming.priorLineItems + [synthesisItem].compactMap { $0 },
+                        completedAt: Date()
+                    )
+                    await emitFusionSpendFrame(session, on: connection)
+                }
                 return relay.outcome
             } catch is BurnBarProxyStreamingUnsupported {
                 // The originating route cannot stream verbatim (e.g. Ollama
