@@ -12,6 +12,7 @@ const {
   buildSessionDoc,
   buildRotationEventDoc,
   selectPrekeyToClaim,
+  buildPrekeyClaimStamp,
   prekeyReplenishStatus,
   MIN_AVAILABLE_ONE_TIME_PREKEYS,
   MIN_AVAILABLE_KYBER_PREKEYS,
@@ -385,32 +386,45 @@ describe("selectPrekeyToClaim", () => {
 // and validators already enforce these; these tests pin the invariants so a
 // regression that re-issues a consumed prekey or accepts ratchet state fails CI.
 describe("G5: bidirectional cross-device claim invariants", () => {
-  it("(a) consumes a claimed one-time prekey so the next claim never re-issues it", () => {
-    // Two device-A one-time prekeys published into the directory.
-    const published: { id: string; numericId: number }[] = [
-      { id: "otp-a", numericId: 1 },
-      { id: "otp-b", numericId: 2 },
+  it("(a) selecting + the claim mutation make a one-time prekey single-use (never re-issued)", () => {
+    // Both production pieces of the single-use guarantee are exercised here against the real
+    // exported functions: selectPrekeyToClaim (pick the lowest-numericId available prekey) and
+    // buildPrekeyClaimStamp (the mutation that flips status to "claimed"). The directory is
+    // modelled exactly as the claimSignalPrekeyBundle transaction sees it — a claim queries
+    // `status == "available"`, selects, then writes the claim stamp. The remaining piece, the
+    // Firestore `status == "available"` query + tx.update plumbing itself, is covered by the
+    // emulator integration test tracked in the Phase 2.5 handoff (out of pure-unit scope).
+    type DirectoryPrekey = { id: string; numericId: number; status: string };
+    const directory: DirectoryPrekey[] = [
+      { id: "otp-a", numericId: 1, status: "available" },
+      { id: "otp-b", numericId: 2, status: "available" },
     ];
+    const available = () => directory.filter((p) => p.status === "available");
+    const markClaimed = (id: string, sessionId: string) => {
+      const doc = directory.find((p) => p.id === id);
+      if (doc) doc.status = buildPrekeyClaimStamp(sessionId).status;
+    };
 
-    // Device B's first claim takes the lowest-numericId prekey.
-    const first = selectPrekeyToClaim(published);
+    // The claim mutation IS the single-use mechanism: it marks the prekey "claimed" and
+    // attributes the consuming session, removing it from future `status == "available"` queries.
+    const stamp = buildPrekeyClaimStamp("session-1");
+    expect(stamp.status).toBe("claimed");
+    expect(stamp.claimedBySessionId).toBe("session-1");
+
+    // First claim: lowest-numericId available prekey, then mark it claimed.
+    const first = selectPrekeyToClaim(available());
     expect(first?.id).toBe("otp-a");
-    // selectPrekeyToClaim is pure: it must not mutate the published set.
-    expect(published).toHaveLength(2);
+    if (first) markClaimed(first.id, "session-1");
 
-    // Consuming a one-time prekey removes it from the available candidate set
-    // (the callable flips status away from "available"); model that with filter.
-    const afterFirst = published.filter((p) => p.id !== first?.id);
-    const second = selectPrekeyToClaim(afterFirst);
+    // Second claim sees only the remaining available prekey — the claimed one is excluded.
+    const second = selectPrekeyToClaim(available());
     expect(second?.id).toBe("otp-b");
-    // The first prekey is never re-issued, even though it still exists by id.
-    expect(afterFirst.some((p) => p.id === "otp-a")).toBe(false);
+    if (second) markClaimed(second.id, "session-2");
 
-    // Once every one-time prekey is consumed the directory is exhausted: the
-    // next claim returns undefined (caller must fall back / trigger replenish),
-    // never a recycled prekey.
-    const exhausted = afterFirst.filter((p) => p.id !== second?.id);
-    expect(selectPrekeyToClaim(exhausted)).toBeUndefined();
+    // Directory exhausted: no available prekey → claim returns undefined, never a recycled
+    // (already-claimed) prekey.
+    expect(selectPrekeyToClaim(available())).toBeUndefined();
+    expect(directory.every((p) => p.status === "claimed")).toBe(true);
   });
 
   it("(b) claim side rejects every private-key and serialized-session encoding", () => {

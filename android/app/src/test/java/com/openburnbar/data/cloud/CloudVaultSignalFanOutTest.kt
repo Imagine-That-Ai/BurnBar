@@ -2,6 +2,8 @@ package com.openburnbar.data.cloud
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -124,16 +126,29 @@ class CloudVaultSignalFanOutTest {
     fun foreignPrivateKeyForListedIdFailsClosed() {
         val foreign = AndroidSignalIdentityKeypair.generate("foreign", 1)
         val envelope = seal(fanOutRecipients())
-        // Claiming a LISTED id ("deviceB_1") with the wrong (foreign) private key: the wrap is
-        // found but the libsignal HPKE open fails closed (Android has no typed key-binding guard).
-        assertThrows(Exception::class.java) {
-            CloudVaultCrypto.openSignalPayload(
-                envelope,
-                deviceB.identityKeyId,
-                foreign.privateKeyData,
-                binding,
-                trusted,
-            )
-        }
+        // Claiming a LISTED id ("deviceB_1") with the wrong (foreign) private key: the wrap IS
+        // found (deviceB is a recipient) and the sender (deviceA) is pinned/trusted, so neither the
+        // missing-wrap path nor sender-auth can trip — the failure must be the libsignal HPKE open
+        // rejecting the wrong recipient private key (Android has no typed key-binding guard).
+        val error =
+            assertThrows(Exception::class.java) {
+                CloudVaultCrypto.openSignalPayload(
+                    envelope,
+                    deviceB.identityKeyId,
+                    foreign.privateKeyData,
+                    binding,
+                    trusted,
+                )
+            }
+        // Pin the mechanism: NOT a sender-auth failure and NOT the missing-wrap path.
+        assertFalse(
+            "must fail at the HPKE open, not sender-auth",
+            error is CloudVaultSignalSenderAuthException,
+        )
+        assertNotEquals(
+            "must reach the HPKE open, not the missing-wrap path",
+            "Missing Signal recipient wrap",
+            error.message,
+        )
     }
 }

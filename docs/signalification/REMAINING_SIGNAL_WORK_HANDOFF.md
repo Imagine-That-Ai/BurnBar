@@ -441,17 +441,34 @@ Closed in this phase (committed KATs/fixtures, both directions where applicable)
   cases), also runnable via `make signal-cross-device-kats`. The native cross-device OPEN runs on the
   macOS/Android PR harness (the documented platform-suite convention), not silently skipped.
 
-**AGPL coordination handoff (not a blocker for this phase):** the permanence gate is wired as a NEW
-workflow file because `.github/workflows/fast-feedback.yml` is on the AGPL Rule-0 avoid-list
-(`SWARM_RUNBOOK.md`: "wire a NEW workflow file instead"). The AGPL/CI owner may optionally fold
-`signal-cross-device-kats` into the `fast-feedback-gate` `needs:` aggregator. No edit to the
-avoid-listed file or its `agpl-compliance` license job was made.
+**AGPL coordination handoff — make the gate merge-blocking (one owner action).** The permanence
+gate is wired as a NEW workflow file because `.github/workflows/fast-feedback.yml` is on the AGPL
+Rule-0 avoid-list (`SWARM_RUNBOOK.md`: "wire a NEW workflow file instead"); no edit to that file or
+its `agpl-compliance` license job was made. **Known gap:** a standalone workflow runs on every PR
+but only *blocks merge* if branch protection requires it — so today this gate is advisory, not
+merge-blocking. To close that, the repo/AGPL owner does ONE of:
+  1. **(preferred, no avoid-list edit)** Add the status check **`Signal cross-device KATs / signal-cross-device-kats`**
+     to the `main` branch-protection "Require status checks to pass" list (GitHub → Settings → Branches,
+     or `gh api repos/:owner/:repo/branches/main/protection` with the check name). Turnkey; no file change.
+  2. **(if the AGPL owner edits `fast-feedback.yml`)** append the `signal-cross-device-kats` job to its
+     `jobs:` map and add `- signal-cross-device-kats` to the `fast-feedback-gate` `needs:` list (the
+     aggregator's `toJSON(needs)` logic then enforces it automatically). Must NOT touch the
+     `agpl-compliance` job; additive-only diff.
+Until one of those lands, the macOS/Android platform PR harness + the advisory workflow are the
+enforcement surface.
 
-**Residual risk surfaced (out-of-phase, for an integration test, not a unit KAT):** the rotation
-rewrap worker's already-rotated short-circuit + old-storage-blob delete are not atomic across two
-devices; a cross-device race could leave an orphaned old-key blob or abort a partially-rewritten
-scan. The G4 core KAT pins the per-document crypto invariant the worker depends on; the worker-level
-race needs a live-Firestore integration test under section 5.
+**Tracked follow-up tests (out-of-phase, named — not silently dropped):**
+- **Claim-consume integration test (§7/L41).** The single-use prekey-claim invariant is covered at
+  the pure level by `selectPrekeyToClaim` (lowest-available pick) + `buildPrekeyClaimStamp`
+  (`status: "claimed"` mutation), both unit-tested against production code in
+  `signalPrekeyDirectory.test.ts`. The full transactional consume — the `claimSignalPrekeyBundle`
+  `runTransaction` with the `status == "available"` query + `tx.update` — needs a Functions-emulator
+  integration test (firebase-functions-test, not yet a dep) to prove a claimed prekey is never
+  re-issued end-to-end. Out of the plan's pure-unit G5 scope by design.
+- **Rotation rewrap worker cross-device race.** The worker's already-rotated short-circuit +
+  old-storage-blob delete are not atomic across two devices; a race could leave an orphaned old-key
+  blob or abort a partially-rewritten scan. The G4 core KAT pins the per-document crypto invariant
+  the worker depends on; the worker-level race needs a live-Firestore integration test under §5.
 
 Explicitly **out of Phase 2.5** (remains as handoff, not silently dropped): vendoring new native
 libsignal binaries (AGPL owner); turning production Signal producers flag-ON (§5/§8); the

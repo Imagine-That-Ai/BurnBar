@@ -80,40 +80,40 @@ final class CloudVaultRotationHandoffKATTests: XCTestCase {
             blobPlaintext
         )
 
-        // OLD wrap is gone: the OLD key no longer opens the resealed envelopes.
-        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(resealedPayload, keyData: oldKey, aadContext: payloadContext))
+        // OLD wrap is gone: the OLD key no longer opens the resealed payload. The vaultKeyID guard
+        // fires (the presented key's id != the envelope's new id) → a structured .invalidEnvelope,
+        // not a raw AEAD failure.
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(resealedPayload, keyData: oldKey, aadContext: payloadContext)) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("expected .invalidEnvelope from the vaultKeyID guard, got \(error)")
+            }
+        }
+        // The blob envelope carries no vaultKeyID, so the OLD key fails closed at the AEAD layer.
         XCTAssertThrowsError(try CloudVaultCrypto.openBlob(resealedBlob, keyData: oldKey, aadContext: blobContext))
 
         // STALE pre-rotation claim fails closed: a reader holding the OLD ciphertext and now
-        // presenting the NEW key cannot open it (vaultKeyID guard) — it fails closed, not silent.
-        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(staleEnvelope, keyData: newKey, aadContext: payloadContext))
+        // presenting the NEW key cannot open it — the vaultKeyID guard rejects it, not silent.
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(staleEnvelope, keyData: newKey, aadContext: payloadContext)) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("expected .invalidEnvelope from the vaultKeyID guard, got \(error)")
+            }
+        }
     }
 
-    func test_signalIdentityHandoff_rotationEventIsWellFormedAndRevokesOldIdentity() throws {
-        // The cross-device handoff publishes a NEW Signal identity key for the same device and
-        // records an append-only rotation event. Pin the transition + the recordSignalRotation
-        // output invariants (the callable runs server-side; buildRotationEventDoc enforces the
-        // same bounds in functions/src/callables/signalPrekeyDirectory.ts).
+    func test_signalIdentityHandoff_producesADistinctNewIdentityForTheSameDevice() {
+        // The cross-device handoff publishes a NEW Signal identity key (keyVersion N+1) for the same
+        // device. The append-only rotation EVENT that records the transition (fromKeyVersion <
+        // toKeyVersion, rewrapJobId-when-required) is shaped + bounds-checked by buildRotationEventDoc,
+        // covered in the TS signalPrekeyDirectory suite. Here we pin the identity transition itself:
+        // generateInMemory must yield the canonical id AND a materially-different keypair (not a
+        // re-label of the same key), which is what makes "new identity opens / old fails" meaningful.
         let oldIdentity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "mac-1", keyVersion: 1)
         let newIdentity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "mac-1", keyVersion: 2)
 
         XCTAssertEqual(oldIdentity.identityKeyId, "mac-1_1")
         XCTAssertEqual(newIdentity.identityKeyId, "mac-1_2")
-        // A real identity transition: the new key is materially different from the old one.
-        XCTAssertNotEqual(oldIdentity.publicKeyFingerprint, newIdentity.publicKeyFingerprint)
+        XCTAssertLessThan(oldIdentity.keyVersion, newIdentity.keyVersion)
         XCTAssertNotEqual(oldIdentity.publicKeyData, newIdentity.publicKeyData)
-
-        // recordSignalRotation semantics: version strictly increases, a rewrap job id is set when
-        // rewrap is required, and the OLD identity is the one revoked.
-        let fromKeyVersion = oldIdentity.keyVersion
-        let toKeyVersion = newIdentity.keyVersion
-        let rewrapRequired = true
-        let rewrapJobId = rewrapRequired ? "rewrap_\(newIdentity.identityKeyId)" : nil
-        let revokedIdentityKeyId = oldIdentity.identityKeyId
-
-        XCTAssertLessThan(fromKeyVersion, toKeyVersion)
-        XCTAssertEqual(try XCTUnwrap(rewrapJobId).isEmpty, false)
-        XCTAssertEqual(revokedIdentityKeyId, oldIdentity.identityKeyId)
-        XCTAssertNotEqual(revokedIdentityKeyId, newIdentity.identityKeyId)
+        XCTAssertNotEqual(oldIdentity.publicKeyFingerprint, newIdentity.publicKeyFingerprint)
     }
 }
