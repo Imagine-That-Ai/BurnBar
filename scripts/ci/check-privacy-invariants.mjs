@@ -27,7 +27,7 @@
  * Exit:   0 = all invariants hold; 1 = one or more violated; 2 = misconfigured.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,7 +47,11 @@ const INDEXES_PATH = join(REPO_ROOT, "firestore.indexes.json");
 const EPHEMERAL_PII_COLLECTIONS = [
   { collection: "voip_outbound", field: "expireAt", finding: "F-RR09-001" },
   { collection: "fcm_outbound", field: "expireAt", finding: "F-RR09-001" },
-  { collection: "agent_notification_events", field: "expireAt", finding: "F-RR09-007" },
+  {
+    collection: "agent_notification_events",
+    field: "expireAt",
+    finding: "F-RR09-007",
+  },
 ];
 
 /** Keys that must never appear in an outbound APNs/FCM push payload (F-RR09-008). */
@@ -75,7 +79,11 @@ function productionTsFiles(dir) {
     if (statSync(full).isDirectory()) {
       if (entry === "__tests__" || entry === "node_modules") continue;
       out.push(...productionTsFiles(full));
-    } else if (entry.endsWith(".ts") && !entry.endsWith(".test.ts") && !entry.endsWith(".d.ts")) {
+    } else if (
+      entry.endsWith(".ts") &&
+      !entry.endsWith(".test.ts") &&
+      !entry.endsWith(".d.ts")
+    ) {
       out.push(full);
     }
   }
@@ -89,7 +97,9 @@ function productionTsFiles(dir) {
  * quote, or backtick so it doesn't match a substring of a larger identifier.
  */
 function referencesCollection(text, name) {
-  return new RegExp(`[/"'\`]${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[/"'\`]`).test(text);
+  return new RegExp(
+    `[/"'\`]${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[/"'\`]`,
+  ).test(text);
 }
 
 function readOrDie(path) {
@@ -101,11 +111,36 @@ function readOrDie(path) {
   }
 }
 
-/** Extract a `export function NAME(...) { ... }` body via brace matching. */
+/**
+ * Extract a `function NAME(...): T { ... }` body via brace matching.
+ *
+ * Must skip the parameter list first: inline param types like
+ * `args: { callId: string }` contain braces, and a naive "first `{` after the
+ * name" grabs the PARAM TYPE, not the body — which would make the I5 payload
+ * check inspect the wrong block (a real false-negative we guard against here and
+ * in the self-test). We paren-match the param list, then take the first brace
+ * after the closing `)` (which also skips a `: ReturnType` annotation).
+ */
 function extractFunctionBody(source, name) {
   const sig = source.indexOf(`function ${name}`);
   if (sig === -1) return null;
-  const open = source.indexOf("{", sig);
+  const paramOpen = source.indexOf("(", sig);
+  if (paramOpen === -1) return null;
+  let parenDepth = 0;
+  let paramClose = -1;
+  for (let i = paramOpen; i < source.length; i += 1) {
+    const c = source[i];
+    if (c === "(") parenDepth += 1;
+    else if (c === ")") {
+      parenDepth -= 1;
+      if (parenDepth === 0) {
+        paramClose = i;
+        break;
+      }
+    }
+  }
+  if (paramClose === -1) return null;
+  const open = source.indexOf("{", paramClose);
   if (open === -1) return null;
   let depth = 0;
   for (let i = open; i < source.length; i += 1) {
@@ -121,20 +156,37 @@ function extractFunctionBody(source, name) {
 
 console.log("Privacy invariants gate (run-09)\n");
 
+// Fail-closed on a misconfigured root rather than crashing with a stack trace.
+for (const required of [INDEXES_PATH, FUNCTIONS_SRC]) {
+  if (!existsSync(required)) {
+    console.error(`MISCONFIGURED: required path not found: ${required}`);
+    process.exit(2);
+  }
+}
+
 // --- Load Firestore TTL field overrides -------------------------------------
 const indexesRaw = readOrDie(INDEXES_PATH);
 let indexes;
 try {
   indexes = JSON.parse(indexesRaw);
 } catch (err) {
-  console.error(`MISCONFIGURED: firestore.indexes.json is not valid JSON: ${err.message}`);
+  console.error(
+    `MISCONFIGURED: firestore.indexes.json is not valid JSON: ${err.message}`,
+  );
   process.exit(2);
 }
-const ttlOverrides = (indexes.fieldOverrides ?? []).filter((o) => o && o.ttl === true);
-const ttlByCollection = new Map(ttlOverrides.map((o) => [o.collectionGroup, o.fieldPath]));
+const ttlOverrides = (indexes.fieldOverrides ?? []).filter(
+  (o) => o && o.ttl === true,
+);
+const ttlByCollection = new Map(
+  ttlOverrides.map((o) => [o.collectionGroup, o.fieldPath]),
+);
 
 // --- Load production functions source ---------------------------------------
-const prodFiles = productionTsFiles(FUNCTIONS_SRC).map((f) => ({ path: f, text: readFileSync(f, "utf8") }));
+const prodFiles = productionTsFiles(FUNCTIONS_SRC).map((f) => ({
+  path: f,
+  text: readFileSync(f, "utf8"),
+}));
 const allProdText = prodFiles.map((f) => f.text).join("\n");
 
 // === I1: ephemeral PII collections must declare a TTL override ==============
@@ -156,14 +208,21 @@ for (const { collection, field, finding } of EPHEMERAL_PII_COLLECTIONS) {
 // (whose writers legitimately reference the collection via a shared constant):
 // require only that the collection literal is referenced somewhere in
 // functions/src, which catches a fully-orphaned (dead) TTL index.
-const ephemeralCollections = new Set(EPHEMERAL_PII_COLLECTIONS.map((c) => c.collection));
+const ephemeralCollections = new Set(
+  EPHEMERAL_PII_COLLECTIONS.map((c) => c.collection),
+);
 for (const [collection, field] of ttlByCollection) {
   if (ephemeralCollections.has(collection)) {
     const writer = prodFiles.find(
-      (f) => referencesCollection(f.text, collection) && new RegExp(`\\b${field}\\s*:`).test(f.text),
+      (f) =>
+        referencesCollection(f.text, collection) &&
+        new RegExp(`\\b${field}\\s*:`).test(f.text),
     );
     if (writer) {
-      ok("I2", `${collection}.${field} TTL index has a run-09 writer (${writer.path.replace(REPO_ROOT + "/", "")})`);
+      ok(
+        "I2",
+        `${collection}.${field} TTL index has a run-09 writer (${writer.path.replace(REPO_ROOT + "/", "")})`,
+      );
     } else {
       fail(
         "I2",
@@ -181,11 +240,18 @@ for (const [collection, field] of ttlByCollection) {
 }
 
 // === I3: no raw firebase-functions/logger import in production source ========
+// Catches static `import ... from "..."`, dynamic `import("...")`, and
+// `require("...")` — any route that pulls in the unscrubbed raw logger.
+const RAW_LOGGER_IMPORT =
+  /(?:import\s[^;]*from\s*|(?:import|require)\s*\(\s*)["']firebase-functions\/logger["']/;
 const rawLoggerImporters = prodFiles.filter((f) =>
-  /import\s[^;]*from\s+["']firebase-functions\/logger["']/.test(f.text),
+  RAW_LOGGER_IMPORT.test(f.text),
 );
 if (rawLoggerImporters.length === 0) {
-  ok("I3", "no production source imports the raw firebase-functions/logger (F-RR09-002)");
+  ok(
+    "I3",
+    "no production source imports the raw firebase-functions/logger (F-RR09-002)",
+  );
 } else {
   for (const f of rawLoggerImporters) {
     fail(
@@ -198,7 +264,10 @@ if (rawLoggerImporters.length === 0) {
 // === I4: structured logger keeps UID-path redaction =========================
 const loggingPath = join(FUNCTIONS_SRC, "logging.ts");
 const loggingText = readOrDie(loggingPath);
-if (/function\s+redactUidPaths\b/.test(loggingText) && /redactUidPaths\s*\(/.test(loggingText)) {
+if (
+  /function\s+redactUidPaths\b/.test(loggingText) &&
+  /redactUidPaths\s*\(/.test(loggingText)
+) {
   ok("I4", "logging.ts retains redactUidPaths and applies it (F-RR09-002)");
 } else {
   fail(
@@ -213,16 +282,33 @@ const voipPushText = readOrDie(voipPushPath);
 for (const builder of PUSH_PAYLOAD_BUILDERS) {
   const body = extractFunctionBody(voipPushText, builder);
   if (body === null) {
-    fail("I5", `voipPush.ts no longer defines ${builder}() — the push-payload-minimization invariant cannot be checked`);
+    fail(
+      "I5",
+      `voipPush.ts no longer defines ${builder}() — the push-payload-minimization invariant cannot be checked`,
+    );
     continue;
   }
-  const offending = BANNED_PUSH_KEYS.filter((k) => new RegExp(`\\b${k}\\b`).test(body));
-  if (offending.length === 0) {
-    ok("I5", `${builder}() omits stable correlators (F-RR09-008)`);
-  } else {
+  const offending = BANNED_PUSH_KEYS.filter((k) =>
+    new RegExp(`\\b${k}\\b`).test(body),
+  );
+  // An object spread (`return { ...args }`) can forward arbitrary keys past the
+  // literal-key check above, silently re-introducing a correlator. Payload
+  // builders must enumerate fields explicitly, never spread.
+  const spreads = /\{[\s\S]*\.\.\.[A-Za-z_$]/.test(body);
+  if (offending.length > 0) {
     fail(
       "I5",
       `${builder}() includes banned correlator key(s) [${offending.join(", ")}] — these must never ride to APNs/FCM (F-RR09-008)`,
+    );
+  } else if (spreads) {
+    fail(
+      "I5",
+      `${builder}() spreads an object into the payload (\`...\`) — it must enumerate fields explicitly so a correlator cannot leak through a spread (F-RR09-008)`,
+    );
+  } else {
+    ok(
+      "I5",
+      `${builder}() omits stable correlators and uses no spread (F-RR09-008)`,
     );
   }
 }
@@ -230,12 +316,16 @@ for (const builder of PUSH_PAYLOAD_BUILDERS) {
 // --- Verdict ----------------------------------------------------------------
 console.log("");
 if (failures.length > 0) {
-  console.error(`Privacy invariants gate FAILED (${failures.length} violation${failures.length === 1 ? "" : "s"}):\n`);
+  console.error(
+    `Privacy invariants gate FAILED (${failures.length} violation${failures.length === 1 ? "" : "s"}):\n`,
+  );
   console.error(failures.join("\n"));
   console.error(
     "\nThese invariants protect run-09 (privacy/logging/metadata). See docs/security/PRIVACY_INVARIANTS.md.",
   );
   process.exit(1);
 }
-console.log("Privacy invariants gate PASSED — all run-09 structural invariants hold.");
+console.log(
+  "Privacy invariants gate PASSED — all run-09 structural invariants hold.",
+);
 process.exit(0);

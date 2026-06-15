@@ -33,7 +33,8 @@ const database = process.env.FIRESTORE_DATABASE || "(default)";
 const HEALTHY_STATES = new Set(["ACTIVE", "CREATING"]);
 
 function accessToken() {
-  if (process.env.GOOGLE_OAUTH_ACCESS_TOKEN) return process.env.GOOGLE_OAUTH_ACCESS_TOKEN;
+  if (process.env.GOOGLE_OAUTH_ACCESS_TOKEN)
+    return process.env.GOOGLE_OAUTH_ACCESS_TOKEN;
   return execFileSync("gcloud", ["auth", "print-access-token"], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -43,9 +44,12 @@ function accessToken() {
 
 /** GET a single Firestore field's metadata (includes ttlConfig.state). */
 async function getField(collectionGroup, fieldPath, token) {
+  // `database` is the literal `(default)` path segment (the Firestore Admin API
+  // rejects a percent-encoded `%28default%29`), so it is interpolated as-is;
+  // the collection group and field are encoded defensively.
   const url =
     `https://firestore.googleapis.com/v1/projects/${project}` +
-    `/databases/${encodeURIComponent(database)}/collectionGroups/${encodeURIComponent(collectionGroup)}` +
+    `/databases/${database}/collectionGroups/${encodeURIComponent(collectionGroup)}` +
     `/fields/${encodeURIComponent(fieldPath)}`;
   const response = await fetch(url, {
     headers: {
@@ -55,16 +59,24 @@ async function getField(collectionGroup, fieldPath, token) {
   });
   if (response.status === 404) return { notFound: true };
   if (!response.ok) {
-    throw new Error(`Firestore Admin API ${collectionGroup}.${fieldPath} failed: ${response.status} ${await response.text()}`);
+    throw new Error(
+      `Firestore Admin API ${collectionGroup}.${fieldPath} failed: ${response.status} ${await response.text()}`,
+    );
   }
   return response.json();
 }
 
 async function main() {
-  const indexes = JSON.parse(readFileSync(resolve(repoRoot, "firestore.indexes.json"), "utf8"));
-  const ttlOverrides = (indexes.fieldOverrides ?? []).filter((o) => o && o.ttl === true);
+  const indexes = JSON.parse(
+    readFileSync(resolve(repoRoot, "firestore.indexes.json"), "utf8"),
+  );
+  const ttlOverrides = (indexes.fieldOverrides ?? []).filter(
+    (o) => o && o.ttl === true,
+  );
   if (ttlOverrides.length === 0) {
-    console.error("verify-firestore-ttl-state: no ttl:true field overrides found — nothing to verify (unexpected).");
+    console.error(
+      "verify-firestore-ttl-state: no ttl:true field overrides found — nothing to verify (unexpected).",
+    );
     process.exit(1);
   }
 
@@ -75,25 +87,38 @@ async function main() {
     try {
       field = await getField(collectionGroup, fieldPath, token);
     } catch (err) {
-      failures.push(`${collectionGroup}.${fieldPath}: API error — ${err.message}`);
+      failures.push(
+        `${collectionGroup}.${fieldPath}: API error — ${err.message}`,
+      );
       continue;
     }
     const state = field?.ttlConfig?.state;
     if (field?.notFound || !state) {
-      failures.push(`${collectionGroup}.${fieldPath}: NO active TTL policy (run \`gcloud firestore fields ttls update ${fieldPath} --collection-group=${collectionGroup} --enable-ttl --project=${project}\`)`);
+      failures.push(
+        `${collectionGroup}.${fieldPath}: NO active TTL policy (run \`gcloud firestore fields ttls update ${fieldPath} --collection-group=${collectionGroup} --enable-ttl --project=${project}\`)`,
+      );
     } else if (!HEALTHY_STATES.has(state)) {
-      failures.push(`${collectionGroup}.${fieldPath}: TTL policy state is ${state} (expected ACTIVE/CREATING) — needs repair`);
+      failures.push(
+        `${collectionGroup}.${fieldPath}: TTL policy state is ${state} (expected ACTIVE/CREATING) — needs repair`,
+      );
     } else {
       console.log(`  ✓ ${collectionGroup}.${fieldPath} TTL policy is ${state}`);
     }
   }
 
   if (failures.length > 0) {
-    console.error(`\nFirestore TTL verification FAILED (${failures.length}):\n  ✗ ` + failures.join("\n  ✗ "));
-    console.error("\nEphemeral PII/token collections must have a LIVE TTL policy (F-RR09-001 / F-RR09-007).");
+    console.error(
+      `\nFirestore TTL verification FAILED (${failures.length}):\n  ✗ ` +
+        failures.join("\n  ✗ "),
+    );
+    console.error(
+      "\nEphemeral PII/token collections must have a LIVE TTL policy (F-RR09-001 / F-RR09-007).",
+    );
     process.exit(1);
   }
-  console.log(`\nAll ${ttlOverrides.length} declared Firestore TTL policies are live on project ${project}.`);
+  console.log(
+    `\nAll ${ttlOverrides.length} declared Firestore TTL policies are live on project ${project}.`,
+  );
 }
 
 main().catch((err) => {
