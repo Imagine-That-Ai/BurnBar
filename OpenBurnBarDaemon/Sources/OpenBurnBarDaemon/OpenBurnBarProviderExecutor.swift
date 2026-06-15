@@ -271,9 +271,26 @@ public enum BurnBarProviderExecutorError: Error, LocalizedError {
 
 public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting {
     private let session: URLSession
+    /// Local, consent-gated executor for the `codex` provider. The `codex`
+    /// catalog entry advertises an OpenAI-compatible format family (so a mixed
+    /// Elder Wand panel can request it like any other model), but its route does
+    /// not resolve to a real HTTP endpoint — it spawns the local `codex` CLI.
+    /// We intercept those routes here, before any HTTP base-URL validation, and
+    /// delegate to the CLI executor.
+    private let codexExecutor: BurnBarCodexProviderExecutor
 
-    public init(session: URLSession = .shared) {
+    public init(
+        session: URLSession = .shared,
+        codexExecutor: BurnBarCodexProviderExecutor = BurnBarCodexProviderExecutor()
+    ) {
         self.session = session
+        self.codexExecutor = codexExecutor
+    }
+
+    /// Whether a route should be served by the local consent-gated `codex` CLI
+    /// instead of an HTTP upstream.
+    static func isCodexRoute(_ route: BurnBarProviderRoute) -> Bool {
+        route.providerID.caseInsensitiveCompare("codex") == .orderedSame
     }
 
     public func completeStructured(
@@ -285,6 +302,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             route: route
         ) {
             return fakeResult
+        }
+
+        if Self.isCodexRoute(route) {
+            return try await codexExecutor.completeStructured(promptRequest, route: route)
         }
 
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
@@ -371,6 +392,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
+        if Self.isCodexRoute(route) {
+            return try await codexExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        }
+
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
@@ -426,6 +451,13 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyStream {
+        if Self.isCodexRoute(route) {
+            // The local `codex` CLI produces a one-shot transcript, not live
+            // OpenAI SSE. Signal unsupported so the gateway falls back to the
+            // buffered `proxyChatCompletions` path on the same route.
+            throw BurnBarProxyStreamingUnsupported(reason: "codex-cli")
+        }
+
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
@@ -459,6 +491,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
+        if Self.isCodexRoute(route) {
+            return try await codexExecutor.proxyResponses(body: body, route: route, variant: variant)
+        }
+
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {

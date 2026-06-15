@@ -865,6 +865,53 @@ final class HermesService {
         HermesModelSelectionEngine.activeRequestedModelID(coordinator: self)
     }
 
+    /// Store the chat send-path reads the active Elder Wand preset from.
+    /// Injectable so previews/tests can use an isolated store; production
+    /// reads the shared one (the same instance the configurator writes to).
+    @ObservationIgnored
+    var elderWandSettings: ElderWandSettings = .shared
+
+    /// OpenRouter "Fusion" (`The Elder Wand`) plugin block for the active
+    /// preset, or `nil` when fusion is off. Satisfies
+    /// `HermesStreamingCoordinating.activeElderWandPlugins`; the streaming
+    /// engine injects this into the `/v1/chat/completions` body. On the direct
+    /// transport the request is redirected to the daemon gateway (see
+    /// `makeRequest`); on the relay transport the Mac already forwards
+    /// `.chatCompletions` to the daemon gateway, so the body's `plugins` block
+    /// is enough to reach `ElderWandFusionOrchestrator` (panel + judge).
+    var activeElderWandPlugins: [[String: any Sendable]]? {
+        elderWandSettings.elderWandPluginsPayload()
+    }
+
+    /// True when a usable Elder Wand preset is active, so the chat send-path
+    /// must reach the BurnBar daemon gateway (port 8317) instead of the
+    /// Hermes CLI (default 8642). The relay path already routes
+    /// `.chatCompletions` to the daemon gateway on the Mac
+    /// (`IrohRelayRequestHandler.usesBurnBarGateway`), so the redirect is
+    /// only applied to the direct (LAN/local) HTTP transport.
+    private var isElderWandFusionActive: Bool {
+        elderWandSettings.isFusionActive
+    }
+
+    /// Port the BurnBar daemon gateway binds (default). Mirrors
+    /// `HermesTransportSelector.directGatewayModelsURL` and the macOS
+    /// `gatewayPort` default — the daemon gateway runs on the same host as
+    /// the Hermes CLI (the Mac), so the redirect only swaps the port.
+    private static let burnBarDaemonGatewayPort = 8317
+
+    /// Rewrites a direct-transport URL to target the BurnBar daemon gateway
+    /// port on the same host. Returns the original URL unchanged when it has
+    /// no host (defensive). Used by `makeRequest` when a fusion preset is
+    /// active so the orchestrator receives the request.
+    private func redirectedToDaemonGateway(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.host != nil else {
+            return url
+        }
+        components.port = Self.burnBarDaemonGatewayPort
+        return components.url ?? url
+    }
+
     func activeModelIDForRequest() throws -> String {
         try HermesModelSelectionEngine.activeModelIDForRequest(coordinator: self)
     }
@@ -878,7 +925,17 @@ final class HermesService {
     }
 
     func makeRequest(path: String, timeout: TimeInterval) throws -> URLRequest {
-        var request = URLRequest(url: endpoint(path), timeoutInterval: timeout)
+        // Elder Wand routing-redirect: when a fusion preset is active the chat
+        // request must reach the BurnBar daemon gateway (port 8317), where
+        // `ElderWandFusionOrchestrator` runs the panel + judge — NOT the
+        // Hermes CLI (default 8642). The daemon runs on the same host as the
+        // CLI, so we only swap the port. Scoped to chat completions; other
+        // direct-transport paths (models/sessions) keep their endpoint.
+        let baseEndpoint = endpoint(path)
+        let resolvedURL = (isElderWandFusionActive && path.contains("/v1/chat/completions"))
+            ? redirectedToDaemonGateway(baseEndpoint)
+            : baseEndpoint
+        var request = URLRequest(url: resolvedURL, timeoutInterval: timeout)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token = try secretStore.load(connectionID: selectedConnection.id), !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

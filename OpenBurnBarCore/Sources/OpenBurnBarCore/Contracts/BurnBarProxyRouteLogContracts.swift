@@ -156,6 +156,13 @@ public struct BurnBarProxyRouteLogEntry: Codable, Hashable, Identifiable, Sendab
     public let attempts: [BurnBarProxyRouteAttempt]
     public let usage: BurnBarProxyRouteUsage?
     public let failureMessage: String?
+    /// Optional rollup key tying several sub-call route-log rows to one
+    /// originating request. The Elder Wand model-fusion router stamps each
+    /// panel/judge/synthesis sub-call with a shared `parentRequestID` so the
+    /// N rows for one fusion completion roll up to a single request. `nil` for
+    /// ordinary single-route completions; an `Optional` property so `Codable`
+    /// synthesis decodes it as absent on older rows (backward compatible).
+    public let parentRequestID: String?
 
     public init(
         id: String = UUID().uuidString,
@@ -190,7 +197,8 @@ public struct BurnBarProxyRouteLogEntry: Codable, Hashable, Identifiable, Sendab
         httpStatus: Int? = nil,
         attempts: [BurnBarProxyRouteAttempt] = [],
         usage: BurnBarProxyRouteUsage? = nil,
-        failureMessage: String? = nil
+        failureMessage: String? = nil,
+        parentRequestID: String? = nil
     ) {
         self.id = id
         self.occurredAt = occurredAt
@@ -225,6 +233,7 @@ public struct BurnBarProxyRouteLogEntry: Codable, Hashable, Identifiable, Sendab
         self.attempts = attempts
         self.usage = usage
         self.failureMessage = failureMessage
+        self.parentRequestID = parentRequestID
     }
 }
 

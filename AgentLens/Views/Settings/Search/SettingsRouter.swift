@@ -159,6 +159,12 @@ final class SettingsRouter {
         case .agentsAccounts, .agentsCLIs, .agentsRuntimes, .agentsModels, .agentsAdvanced:
             return [route]
 
+        // The Elder Wand configurator drills from the Agents landing into its
+        // own detail (the configurator), which `SettingsView.destination(for:)`
+        // renders.
+        case .analysisConfigurator:
+            return [route]
+
         // Legacy roots: forward into the merged Agents tab. Search results
         // that still reference `.connectionsRoot` / `.switcherRoot` /
         // `.hermesRoot` and `providersRoot` / `routingPoolsRoot` land on

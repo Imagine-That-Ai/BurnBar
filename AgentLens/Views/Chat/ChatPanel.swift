@@ -29,6 +29,10 @@ struct ChatPanel: View {
     @State private var showHistoryPopover = false
     @State private var showClearChatPrompt = false
     @State private var showCLIAssistantConsent = false
+    @State private var showElderWand = false
+    /// Live Cloud tier so the Elder Wand entry gates against the member's real
+    /// entitlement (`.gatedFeature(.elderWand, tier:)`).
+    @StateObject private var cloudEntitlement = MacCloudEntitlementStore.shared
     @State private var didRequestHermesFirstRunSetup = false
     @State private var showHermesRuntimePrompt = false
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
@@ -419,6 +423,21 @@ struct ChatPanel: View {
 
             ChatEngineModelMenu(controller: controller)
 
+            // The Elder Wand — multi-model fusion configurator. Gated to Cloud
+            // Pro; the gate modifier presents the unlock sheet when locked and
+            // opens the configurator when entitled.
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(panelIconTint)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+                .help("The Elder Wand — answer with a panel of models and a judge")
+                .accessibilityLabel("The Elder Wand")
+                .accessibilityAddTraits(.isButton)
+                .gatedFeature(.elderWand, tier: cloudEntitlement.cloudTier) {
+                    showElderWand = true
+                }
+
             if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
                 quotaChip
                     .transition(.opacity.combined(with: .scale(scale: 0.85)))
@@ -510,6 +529,10 @@ struct ChatPanel: View {
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
         .background(Color.white.opacity(0.02))
+        .onAppear { cloudEntitlement.start() }
+        .sheet(isPresented: $showElderWand) {
+            ElderWandConfiguratorView(controller: controller, settingsManager: settingsManager)
+        }
     }
 
     // MARK: - Consolidated Chat Menu
