@@ -66,6 +66,7 @@ extension BurnBarHTTPGatewayServer {
                     usageFormat: .openAI,
                     route: streaming.route.route,
                     idempotencyKey: idempotencyKey,
+                    parentRequestID: streaming.parentRequestID,
                     openStream: {
                         try await self.providerExecutor.openChatCompletionsStream(
                             body: streaming.requestBody,

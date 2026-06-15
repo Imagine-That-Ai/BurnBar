@@ -73,7 +73,11 @@ struct FusionSearchQuota: Equatable, Sendable {
 protocol FusionImpactDataSource: AnyObject {
     /// The authoritative fusion-search quota meter, or `nil` when no fusion
     /// snapshot exists yet (the member has never run a hosted Fusion search).
-    func fusionSearchQuota() async -> FusionSearchQuota?
+    ///
+    /// Throws when the underlying read FAILS (e.g. a Firestore error). The view
+    /// keeps that distinct from a successful `nil` so a read error never renders
+    /// as "no searches used" — it shows an error with Retry instead.
+    func fusionSearchQuota() async throws -> FusionSearchQuota?
 
     /// Fusion-vs-normal token/cost totals over the standing window, or `nil`
     /// when iOS cannot attribute fusion spend (the case today). The view renders
@@ -109,8 +113,10 @@ final class FirestoreFusionImpactDataSource: FusionImpactDataSource {
         self.totalsProvider = totalsProvider
     }
 
-    func fusionSearchQuota() async -> FusionSearchQuota? {
-        guard let snapshots = try? await fetchSnapshots() else { return nil }
+    func fusionSearchQuota() async throws -> FusionSearchQuota? {
+        // Let a read error propagate so the view distinguishes "failed to load"
+        // from a successful "no fusion snapshot yet"; only the latter is `nil`.
+        let snapshots = try await fetchSnapshots()
         guard let snapshot = Self.fusionSnapshot(in: snapshots) else { return nil }
         // The fusion snapshot carries exactly one bucket; prefer the explicit
         // searches bucket, falling back to the first if the name ever drifts.
@@ -150,10 +156,26 @@ struct FusionImpactView: View {
 
     @Environment(\.cloudSubscriptionStore) private var cloudStore
 
-    @State private var quota: FusionSearchQuota?
+    /// The fusion-search quota lifecycle. Kept distinct so a failed read renders
+    /// an error with Retry rather than the "no searches used yet" empty state.
+    @State private var quotaState: QuotaState = .loading
     @State private var totals: FusionVsNormalTotals?
-    @State private var isLoading = true
     @State private var animateRing = false
+
+    /// The authoritative quota meter's read lifecycle. `.empty` is the genuine
+    /// "never ran a hosted search" case; `.failed` is a read error the hero
+    /// surfaces with Retry — never as "0 used".
+    enum QuotaState: Equatable {
+        case loading
+        case loaded(FusionSearchQuota)
+        case empty
+        case failed
+    }
+
+    private var quota: FusionSearchQuota? {
+        if case .loaded(let quota) = quotaState { return quota }
+        return nil
+    }
 
     /// Default production init — the screen owns a Firestore-backed data source.
     init(dataSource: FusionImpactDataSource = FirestoreFusionImpactDataSource()) {
@@ -164,9 +186,13 @@ struct FusionImpactView: View {
         ZStack {
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
-                    FusionQuotaHeroCard(quota: quota, animateRing: animateRing)
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.05)
+                    FusionQuotaHeroCard(
+                        state: quotaState,
+                        animateRing: animateRing,
+                        retry: { Task { await loadData() } }
+                    )
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                    .staggeredEntrance(delay: 0.05)
 
                     FusionVsNormalSection(totals: totals)
                         .padding(.horizontal, AuroraDesign.Layout.cardInset)
@@ -189,7 +215,7 @@ struct FusionImpactView: View {
                 HapticBus.refreshFinished()
             }
 
-            if isLoading && quota == nil {
+            if quotaState == .loading {
                 ProgressView()
                     .tint(MobileTheme.ember)
                     .scaleEffect(1.2)
@@ -204,11 +230,17 @@ struct FusionImpactView: View {
     }
 
     private func loadData() async {
-        let loadedQuota = await dataSource.fusionSearchQuota()
-        let loadedTotals = await dataSource.fusionVsNormalTotals()
-        quota = loadedQuota
-        totals = loadedTotals
-        isLoading = false
+        quotaState = .loading
+        do {
+            if let loadedQuota = try await dataSource.fusionSearchQuota() {
+                quotaState = .loaded(loadedQuota)
+            } else {
+                quotaState = .empty
+            }
+        } catch {
+            quotaState = .failed
+        }
+        totals = await dataSource.fusionVsNormalTotals()
     }
 }
 
@@ -218,10 +250,17 @@ struct FusionImpactView: View {
 /// `BudgetCenterView.heroCard`. The donut renders via `SectorMark` on iOS 17+
 /// and falls back to the same `Circle().trim` ring the Budget hero uses below.
 private struct FusionQuotaHeroCard: View {
-    let quota: FusionSearchQuota?
+    let state: FusionImpactView.QuotaState
     let animateRing: Bool
+    let retry: () -> Void
 
     @ScaledMetric(relativeTo: .largeTitle) private var ringDiameter: CGFloat = 120
+
+    /// The loaded quota, when present. `nil` in `.loading` / `.empty` / `.failed`.
+    private var quota: FusionSearchQuota? {
+        if case .loaded(let quota) = state { return quota }
+        return nil
+    }
 
     private var usedFraction: Double { quota?.usedFraction ?? 0 }
 
@@ -253,32 +292,84 @@ private struct FusionQuotaHeroCard: View {
         return "PLENTY REMAINING"
     }
 
+    private var isFailed: Bool {
+        if case .failed = state { return true }
+        return false
+    }
+
     var body: some View {
         AuroraGlassCard(variant: .hero) {
-            VStack(spacing: MobileTheme.Spacing.md) {
-                header
-                HStack(spacing: 24) {
-                    ringView
-                    statColumn
-                    Spacer()
-                }
-                .padding(.vertical, 8)
-
-                if let resetsAtLabel = quota?.resetsAtLabel {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("Resets \(resetsAtLabel)")
-                            .font(MobileTheme.Typography.tiny)
-                        Spacer()
-                    }
-                    .foregroundStyle(MobileTheme.textMuted)
-                }
+            if isFailed {
+                failedBody
+            } else {
+                loadedBody
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Elder Wand hosted searches")
         .accessibilityValue(accessibilityValue)
+    }
+
+    private var loadedBody: some View {
+        VStack(spacing: MobileTheme.Spacing.md) {
+            header
+            HStack(spacing: 24) {
+                ringView
+                statColumn
+                Spacer()
+            }
+            .padding(.vertical, 8)
+
+            if let resetsAtLabel = quota?.resetsAtLabel {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Resets \(resetsAtLabel)")
+                        .font(MobileTheme.Typography.tiny)
+                    Spacer()
+                }
+                .foregroundStyle(MobileTheme.textMuted)
+            }
+        }
+    }
+
+    /// Distinct read-failure state — never the "no searches used" empty copy.
+    /// Names the failure plainly and offers Retry, matching the Mac receipt
+    /// modal's `.failed` honesty.
+    private var failedBody: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ELDER WAND SEARCHES")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.semibold)
+                        .tracking(1.5)
+                        .foregroundStyle(MobileTheme.textMuted)
+                    Text("ALLOWANCE UNAVAILABLE")
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(MobileTheme.warning)
+                }
+                Spacer()
+                Image(systemName: "exclamationmark.icloud")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(MobileTheme.warning)
+                    .accessibilityHidden(true)
+            }
+
+            Text("Couldn't load your hosted-search allowance. Check your connection and try again.")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: retry) {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .font(MobileTheme.Typography.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .tint(MobileTheme.ember)
+            .accessibilityHint("Reloads your hosted-search allowance")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -388,6 +479,9 @@ private struct FusionQuotaHeroCard: View {
     }
 
     private var accessibilityValue: String {
+        if isFailed {
+            return "Couldn't load your hosted-search allowance. Retry available."
+        }
         guard let quota else { return "No hosted Fusion searches recorded yet" }
         return "\(quota.remainingInt) of \(quota.limitInt) hosted searches remaining this month"
     }
@@ -508,6 +602,10 @@ private struct FusionVsNormalChartCard: View {
 
     private var sharePercent: Int { Int((totals.fusionShareFraction * 100).rounded()) }
 
+    /// The "≈ " prefix when any contributing row was an estimate, so the headline
+    /// currency reads honestly without altering the number.
+    private var estimatePrefix: String { totals.isEstimated ? "≈ " : "" }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
@@ -515,14 +613,14 @@ private struct FusionVsNormalChartCard: View {
                     Text("Fusion is \(sharePercent)% of spend")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(MobileTheme.textPrimary)
-                    Text("$\(String(format: "%.2f", totals.fusionCost)) fusion · $\(String(format: "%.2f", totals.normalCost)) normal")
+                    Text("\(estimatePrefix)$\(String(format: "%.2f", totals.fusionCost)) fusion · \(estimatePrefix)$\(String(format: "%.2f", totals.normalCost)) normal")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.textSecondary)
                 }
                 Spacer()
                 if let perRun = totals.averageCostPerFusionRun {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("$\(String(format: "%.2f", perRun))")
+                        Text("\(estimatePrefix)$\(String(format: "%.2f", perRun))")
                             .font(.system(.subheadline, design: .monospaced).weight(.bold))
                             .foregroundStyle(MobileTheme.whimsy)
                         Text("avg / run")
@@ -535,6 +633,14 @@ private struct FusionVsNormalChartCard: View {
             comparisonChart
                 .frame(height: 160)
                 .chartEntrance()
+
+            if totals.isEstimated {
+                Text("Estimated — some providers report usage approximately.")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("This total is estimated; some providers report usage approximately.")
+            }
         }
         .padding(MobileTheme.Spacing.md)
         .background(
@@ -562,6 +668,8 @@ private struct FusionVsNormalChartCard: View {
                         .foregroundStyle(MobileTheme.textSecondary)
                 }
                 .cornerRadius(6)
+                .accessibilityLabel("\(bar.category) spend")
+                .accessibilityValue("$\(String(format: "%.2f", bar.cost))")
             }
             .chartForegroundStyleScale([
                 "Fusion": MobileTheme.whimsy,
@@ -615,6 +723,9 @@ private struct FusionVsNormalBarsFallback: View {
                     }
                     .frame(height: 8)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(bar.category) spend")
+                .accessibilityValue("$\(String(format: "%.2f", bar.cost))")
             }
         }
     }

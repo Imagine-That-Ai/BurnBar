@@ -43,4 +43,31 @@ final class FusionWireContractTests: XCTestCase {
     func test_wireKeyMatchesContract() {
         XCTAssertEqual(FusionSessionSpend.wireKey, "openburnbar_fusion_spend")
     }
+
+    // MARK: - Period partition confidence (impact-screen honesty)
+
+    func test_partitionConfidence_estimatedWhenAnyContributingRowEstimated() {
+        let rows = [
+            FusionUsageRow(parentRequestID: "elderwand-A", stageLabel: "panel[0]", modelID: "m",
+                           inputTokens: 100, outputTokens: 100, cost: 0.10, confidence: .exact, recordedAt: Date()),
+            FusionUsageRow(parentRequestID: nil, stageLabel: nil, modelID: "n",
+                           inputTokens: 100, outputTokens: 100, cost: 0.20, confidence: .lowConfidenceEstimate, recordedAt: Date()),
+        ]
+        let totals = FusionSpendAggregator.partition(rows)
+        XCTAssertTrue(totals.isEstimated, "Any estimated contributing row makes the period total an estimate.")
+        XCTAssertEqual(totals.aggregateConfidence, .lowConfidenceEstimate)
+    }
+
+    func test_partitionConfidence_exactWhenAllExactOrZeroCost() {
+        let rows = [
+            FusionUsageRow(parentRequestID: "elderwand-A", stageLabel: "panel[0]", modelID: "m",
+                           inputTokens: 100, outputTokens: 100, cost: 0.10, confidence: .exact, recordedAt: Date()),
+            // A zero-cost estimated row must NOT taint a non-zero exact total.
+            FusionUsageRow(parentRequestID: nil, stageLabel: nil, modelID: "n",
+                           inputTokens: 0, outputTokens: 0, cost: 0.0, confidence: .unknown, recordedAt: Date()),
+        ]
+        let totals = FusionSpendAggregator.partition(rows)
+        XCTAssertFalse(totals.isEstimated)
+        XCTAssertEqual(totals.aggregateConfidence, .exact)
+    }
 }

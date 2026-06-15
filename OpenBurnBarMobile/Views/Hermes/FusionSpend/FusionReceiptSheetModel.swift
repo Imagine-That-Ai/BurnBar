@@ -64,19 +64,49 @@ final class FusionReceiptSheetModel {
         case quotaOnly
     }
 
+    /// The lifecycle of the authoritative `fusion_searches` quota read, kept
+    /// distinct so a Firestore read error is never mistaken for "no searches
+    /// used". `.empty` is the genuine zero/none case (a successful read with no
+    /// fusion snapshot yet); `.failed` is a read error the view surfaces with a
+    /// Retry affordance — matching the macOS modal's `.failed` honesty.
+    enum QuotaLoadState: Equatable {
+        case loading
+        case loaded(ProviderQuotaBucket)
+        case empty
+        case failed
+    }
+
     /// The itemized spend for the just-finished run, or `nil` when only the
     /// quota signal is available on this device today. When this is non-nil the
     /// view automatically renders every line item — no UI change is needed when
     /// relay spend-forwarding lands.
     private(set) var session: FusionSessionSpend?
 
-    /// The authoritative `fusion_searches` bucket from the Elder Wand fusion
-    /// quota snapshot. `nil` until loaded (or when the user has never run a
-    /// hosted search this month, so no snapshot exists yet).
-    private(set) var fusionBucket: ProviderQuotaBucket?
+    /// The authoritative `fusion_searches` quota read state. Drives the ring:
+    /// `.loaded` shows the bucket, `.loading` shows a spinner, `.empty` shows the
+    /// genuine "no searches used yet" copy, and `.failed` shows an error with a
+    /// Retry affordance — never silently rendering "0 used" on a read error.
+    private(set) var quotaLoadState: QuotaLoadState = .loading
+
+    /// The loaded bucket, when the read succeeded and a snapshot exists. `nil` in
+    /// every other state (`.loading` / `.empty` / `.failed`).
+    var fusionBucket: ProviderQuotaBucket? {
+        if case .loaded(let bucket) = quotaLoadState { return bucket }
+        return nil
+    }
 
     /// True while the quota snapshot is being fetched.
-    private(set) var isLoadingQuota = false
+    var isLoadingQuota: Bool {
+        if case .loading = quotaLoadState { return true }
+        return false
+    }
+
+    /// True when the authoritative quota read failed — the view surfaces an
+    /// error with Retry rather than an honest-looking "0 used".
+    var quotaLoadFailed: Bool {
+        if case .failed = quotaLoadState { return true }
+        return false
+    }
 
     private let firestore: FirestoreRepository
 
@@ -148,9 +178,12 @@ final class FusionReceiptSheetModel {
 
     // MARK: - Quota loading
 
-    /// Fetch the authoritative `fusion_searches` bucket. Best-effort: a failure
-    /// leaves `fusionBucket == nil` and the view falls back to omitting the
-    /// ring (never a fabricated value). Safe to call from `.task`.
+    /// Fetch the authoritative `fusion_searches` bucket. Resolves into one of
+    /// three terminal states so the view never lies: `.loaded(bucket)` on a
+    /// successful read with a snapshot, `.empty` on a successful read with no
+    /// fusion snapshot yet (genuinely "no searches used"), and `.failed` on a
+    /// read error (the view shows Retry, never "0 used"). Safe to call from
+    /// `.task` and re-callable as a Retry handler.
     ///
     /// Reads through `FirestoreRepository.fetchQuotaSnapshots()`, which returns
     /// the raw decoded snapshots WITHOUT the display-signal filter `QuotaStore`
@@ -158,15 +191,19 @@ final class FusionReceiptSheetModel {
     /// because it is not a routable quota-signal provider, so we deliberately
     /// read the snapshot directly here, matching the Functions writer.
     func loadQuota() async {
-        isLoadingQuota = true
-        defer { isLoadingQuota = false }
+        quotaLoadState = .loading
         do {
             let snapshots = try await firestore.fetchQuotaSnapshots()
-            fusionBucket = Self.fusionBucket(in: snapshots)
+            if let bucket = Self.fusionBucket(in: snapshots) {
+                quotaLoadState = .loaded(bucket)
+            } else {
+                quotaLoadState = .empty
+            }
         } catch {
             fusionReceiptLogger.warning(
                 "Fusion quota snapshot fetch failed: \(error.localizedDescription, privacy: .public)"
             )
+            quotaLoadState = .failed
         }
     }
 
