@@ -341,14 +341,14 @@ function main() {
     const dataTypes = types.filter((t) => !t.priv && !(t.kind === "enum" && t.namespace) && !FRAME_OWNED.has(t.name));
     const schema = { $generated: "Canonical Hermes relay payload message types — single source of truth for Swift/Kotlin codegen.",
                      schemaVersion: 1, types: dataTypes.map(cleanType) };
-    
+
     writeFileSync(process.argv[writeArg + 1], JSON.stringify(schema, null, 2) + "\n");
     console.log(`wrote ${schema.types.length} types to ${process.argv[writeArg + 1]}`);
     return;
   }
   const verifyArg = process.argv.indexOf("--verify-schema");
   if (verifyArg > -1) {
-    
+
     const schema = JSON.parse(readFileSync(process.argv[verifyArg + 1], "utf8"));
     const liveByName = new Map(types.map((t) => [t.name, t]));
     let ok = 0, bad = [];

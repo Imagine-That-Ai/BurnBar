@@ -105,7 +105,7 @@ struct MirrorControlPanel: View {
     var body: some View {
         VStack(alignment: .center, spacing: 10) {
             statusStrip
-            
+
             if trayExpanded {
                 if expansionDirection == .sideways {
                     sidewaysDock
@@ -157,7 +157,7 @@ struct MirrorControlPanel: View {
         let maxX = screenSize.width / 2 - 60
         let minY = -screenSize.height + 140
         let maxY = 10.0
-        
+
         return CGSize(
             width: min(max(offset.width, minX), maxX),
             height: min(max(offset.height, minY), maxY)
@@ -340,7 +340,7 @@ struct MirrorControlPanel: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             #endif
         }
-        
+
         let list = options(for: group)
         if expansionDirection == .sideways {
             let index = Int((-value.translation.height - 30) / 48)
@@ -372,7 +372,7 @@ struct MirrorControlPanel: View {
     private func handleDragEnded(_ value: DragGesture.Value, for group: MirrorControlGroup) {
         let duration = Date().timeIntervalSince(gestureStartTime)
         let distance = sqrt(pow(value.translation.width, 2) + pow(value.translation.height, 2))
-        
+
         if duration < 0.3 && distance < 15 {
             switch group {
             case .mode: cycleMode()
@@ -393,7 +393,7 @@ struct MirrorControlPanel: View {
                 }
             }
         }
-        
+
         withAnimation(.snappy(duration: 0.2)) {
             activeDragGroup = nil
             hoveredOptionIndex = nil
