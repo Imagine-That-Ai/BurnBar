@@ -245,6 +245,14 @@ private enum BurnBarDaemonCommandLine {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 gatewayAuthToken = arguments[index]
+            case "--gateway-auth-token-file":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                if gatewayAuthToken == nil {
+                    gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)
+                }
             case "--gateway-allow-unauthenticated-loopback":
                 #if DEBUG
                 gatewayAllowUnauthenticatedLoopback = true
@@ -257,6 +265,14 @@ private enum BurnBarDaemonCommandLine {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 socketAuthToken = arguments[index]
+            case "--socket-auth-token-file":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                if socketAuthToken == nil {
+                    socketAuthToken = try readTokenFile(arguments[index], argument: argument)
+                }
             case "--help", "-h":
                 print(Self.helpText)
                 Darwin.exit(EXIT_SUCCESS)
@@ -307,8 +323,12 @@ private enum BurnBarDaemonCommandLine {
           --gateway-host HOST          Gateway bind host (default 127.0.0.1)
           --gateway-port PORT          Gateway port (default 8317)
           --gateway-auth-token TOKEN   Bearer token for gateway auth
+          --gateway-auth-token-file PATH
+                                       Read gateway auth token from file (avoids ps exposure)
         \(debugOptions)
           --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
+          --socket-auth-token-file PATH
+                                       Read socket auth token from file (avoids ps exposure)
 
         Environment overrides:
           OPENBURNBAR_DAEMON_SOCKET_PATH
@@ -328,6 +348,7 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
     case missingValue(String)
     case unknownArgument(String)
     case debugOnlyArgument(String)
+    case tokenFileReadFailed(argument: String, path: String)
 
     var errorDescription: String? {
         switch self {
@@ -337,8 +358,26 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
             return "Unknown OpenBurnBarDaemon argument \(argument)."
         case .debugOnlyArgument(let argument):
             return "OpenBurnBarDaemon argument \(argument) is only available in debug builds."
+        case .tokenFileReadFailed(let argument, let path):
+            return "Could not read token file for \(argument) at path '\(path)': file missing or unreadable."
         }
     }
+}
+
+/// Reads an auth token from a file, trimming whitespace/newlines. Used by
+/// `--gateway-auth-token-file` and `--socket-auth-token-file` to avoid exposing
+/// tokens in `ps` output or the daemon's launchd plist arguments.
+private func readTokenFile(_ path: String, argument: String) throws -> String {
+    let url = URL(fileURLWithPath: path)
+    guard let data = try? Data(contentsOf: url) else {
+        throw BurnBarDaemonCommandLineError.tokenFileReadFailed(argument: argument, path: path)
+    }
+    let raw = String(data: data, encoding: .utf8) ?? ""
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        throw BurnBarDaemonCommandLineError.tokenFileReadFailed(argument: argument, path: path)
+    }
+    return trimmed
 }
 
 #if canImport(Sentry)

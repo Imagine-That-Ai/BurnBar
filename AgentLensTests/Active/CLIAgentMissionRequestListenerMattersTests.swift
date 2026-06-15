@@ -119,6 +119,7 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testVisibleTerminalSessionPermissionsAndTeardown() async throws {
         let fileManager = FileManager.default
         let sessionID = "test-session-\(UUID().uuidString)"
@@ -134,9 +135,19 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
 
         let cancellationTracker = MissionCancellationTracker()
         var eventSinkCalled = false
+        let settingsManager = makeSettingsManager()
+        let chatController = ChatSessionController(
+            dataStore: try makeDiscoveryInMemoryStore(),
+            settingsManager: settingsManager
+        )
+        let listener = CLIAgentMissionRequestListener(
+            accountManager: FakeAccountManager.makeSignedIn(),
+            settingsManager: settingsManager,
+            chatController: chatController
+        )
 
         do {
-            _ = try await CLIAgentMissionRequestListener().runVisibleTerminalProcess(
+            _ = try await listener.runVisibleTerminalProcess(
                 sessionID: sessionID,
                 executable: "/bin/echo",
                 executableName: "echo",
@@ -146,18 +157,18 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
                 extraEnvironment: [:],
                 workingDirectoryURL: nil,
                 cancellationTracker: cancellationTracker,
-                eventSink: { event in
+                eventSink: { _ in
                     eventSinkCalled = true
 
                     // Verify directory permissions
                     let attributes = try? fileManager.attributesOfItem(atPath: sessionURL.path)
                     let permissions = attributes?[.posixPermissions] as? NSNumber
-                    XCTAssertEqual(permissions?.uint16Value & 0o777, 0o700, "Session directory must be restricted to 0o700")
+                    XCTAssertEqual((permissions?.uint16Value ?? 0) & 0o777, 0o700, "Session directory must be restricted to 0o700")
 
                     // Verify terminal.log permissions
                     let logAttributes = try? fileManager.attributesOfItem(atPath: logURL.path)
                     let logPermissions = logAttributes?[.posixPermissions] as? NSNumber
-                    XCTAssertEqual(logPermissions?.uint16Value & 0o777, 0o600, "terminal.log must be restricted to 0o600")
+                    XCTAssertEqual((logPermissions?.uint16Value ?? 0) & 0o777, 0o600, "terminal.log must be restricted to 0o600")
 
                     // Cancel tracker to trigger cleanup/exit
                     cancellationTracker.cancel()
@@ -180,12 +191,12 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
             let testDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             try fileManager.createDirectory(at: testDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let attrs = try fileManager.attributesOfItem(atPath: testDir.path)
-            XCTAssertEqual((attrs[.posixPermissions] as? NSNumber)?.uint16Value & 0o777, 0o700)
+            XCTAssertEqual(((attrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0) & 0o777, 0o700)
 
             let testLog = testDir.appendingPathComponent("test.log")
             fileManager.createFile(atPath: testLog.path, contents: nil, attributes: [.posixPermissions: 0o600])
             let logAttrs = try fileManager.attributesOfItem(atPath: testLog.path)
-            XCTAssertEqual((logAttrs[.posixPermissions] as? NSNumber)?.uint16Value & 0o777, 0o600)
+            XCTAssertEqual(((logAttrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0) & 0o777, 0o600)
 
             try fileManager.removeItem(at: testDir)
         }

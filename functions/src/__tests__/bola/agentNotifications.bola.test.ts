@@ -1,0 +1,40 @@
+/**
+ * BOLA negative coverage — src/__tests__/bola/agentNotifications.bola.test.ts
+ * Generated scaffold; implements cross-user denial at callable trust boundary.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData } from "./callableBolaHarness.js";
+
+process.env.ENFORCE_APP_CHECK = "false";
+
+vi.mock("../../auth.js", () => ({
+  enforceAuthAndAppCheck: vi.fn(),
+  assertAppCheck: vi.fn(),
+}));
+vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+  enforceHighRiskOwnerAction: vi.fn(async () => undefined),
+}));
+vi.mock("../../appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+  return {
+    ...actual,
+    enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
+  };
+});
+vi.mock("../../adminRuntime.js", () => ({ db: { doc: vi.fn(() => ({ get: async () => ({ exists: false }) })) } }));
+
+export const BOLA_MANIFEST = {
+  "submitAgentNotificationReply": [
+    "submitAgentNotificationReply rejects cross-user object access"
+  ]
+} as const;
+
+describe("BOLA — agentNotifications", () => {
+  it("submitAgentNotificationReply rejects cross-user object access", async () => {
+    const mod = await import("../../callables/agentNotifications.js");
+    const exported = mod.submitAgentNotificationReply;
+    if (!exported) throw new Error("missing export submitAgentNotificationReply");
+    const run = callableRunner(exported);
+    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+  });
+});

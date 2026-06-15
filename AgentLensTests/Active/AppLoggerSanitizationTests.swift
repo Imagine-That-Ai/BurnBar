@@ -96,7 +96,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
             info: ["sentry.dsn": "https://mock@sentry.io/1"],
             paths: [:]
         )
-        let dsn = AgentLensApp.resolveSentryDSN(bundle: mockBundle)
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
         XCTAssertEqual(dsn, "https://mock@sentry.io/1")
     }
 
@@ -115,14 +115,14 @@ final class AppLoggerSanitizationTests: XCTestCase {
             info: [:],
             paths: ["GoogleService-Info.plist": plistURL.path]
         )
-        let dsn = AgentLensApp.resolveSentryDSN(bundle: mockBundle)
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
         XCTAssertEqual(dsn, "https://google-mock@sentry.io/2")
     }
 
     @MainActor
     func testResolveSentryDSN_emptyFallback() {
         let mockBundle = MockBundle(info: [:], paths: [:])
-        let dsn = AgentLensApp.resolveSentryDSN(bundle: mockBundle)
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
         XCTAssertNil(dsn)
     }
 
@@ -141,7 +141,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
         }
 
         override func path(forResource name: String?, ofType ext: String?) -> String? {
-            guard let name = name, let ext = ext else { return nil }
+            guard let name, let ext else { return nil }
             return mockPaths["\(name).\(ext)"]
         }
     }

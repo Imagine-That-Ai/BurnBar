@@ -67,3 +67,68 @@ jobs:
         env:
           OPENBURNBAR_SKIP_CORE_SWIFT_TESTS: "1"
         run: ./scripts/test-openburnbar-swift.sh
+
+  # ── Release-build verification ───────────────────────────────────────────
+  # The security gates on F-RR06-001/002 rely on `#if DEBUG` / `#else` compile
+  # branches. Unit tests inject `isDebugBuild: false` to simulate release
+  # behavior, but that does NOT prove the `#else` branch compiles or that
+  # debug-only escape hatches are absent from a real release binary. This job
+  # builds the daemon executable in release mode and verifies the
+  # `--gateway-allow-unauthenticated-loopback` flag is absent from `--help`
+  # output, proving the compile gate works in a real release build.
+  release-build-verification:
+    name: Release build (debug-only escape hatches compiled out)
+    runs-on: macos-26
+    timeout-minutes: 40
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: recursive
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-release-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Build daemon executable in release mode
+        run: |
+          cd OpenBurnBarDaemon && swift build -c release --target OpenBurnBarDaemonExecutable
+
+      - name: Verify debug-only escape hatches are absent from release binary
+        run: |
+          set -euo pipefail
+          BINARY="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
+          HELP_OUTPUT="$("$BINARY" --help 2>&1 || true)"
+
+          # The unauthenticated-loopback flag must NOT appear in release help.
+          if echo "$HELP_OUTPUT" | grep -q "gateway-allow-unauthenticated-loopback"; then
+            echo "::error::Release binary help output contains --gateway-allow-unauthenticated-loopback (should be compiled out)"
+            exit 1
+          fi
+
+          # The debugOnlyArgument error message must NOT appear in release help.
+          if echo "$HELP_OUTPUT" | grep -q "debugOnlyArgument"; then
+            echo "::error::Release binary help output contains debugOnlyArgument text"
+            exit 1
+          fi
+
+          echo "Release build verification passed: debug-only escape hatches are compiled out."

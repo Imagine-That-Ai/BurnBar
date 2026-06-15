@@ -1,0 +1,51 @@
+/**
+ * BOLA negative coverage — src/__tests__/bola/hermesConnections.bola.test.ts
+ * Generated scaffold; implements cross-user denial at callable trust boundary.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData } from "./callableBolaHarness.js";
+
+process.env.ENFORCE_APP_CHECK = "false";
+
+vi.mock("../../auth.js", () => ({
+  enforceAuthAndAppCheck: vi.fn(),
+  assertAppCheck: vi.fn(),
+}));
+vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+  enforceHighRiskOwnerAction: vi.fn(async () => undefined),
+}));
+vi.mock("../../appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+  return {
+    ...actual,
+    enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
+  };
+});
+vi.mock("../../adminRuntime.js", () => ({ db: { doc: vi.fn(() => ({ get: async () => ({ exists: false }) })) } }));
+
+export const BOLA_MANIFEST = {
+  "revokeHermesConnection": [
+    "revokeHermesConnection rejects cross-user object access"
+  ],
+  "updateHermesConnectionStatus": [
+    "updateHermesConnectionStatus rejects cross-user object access"
+  ]
+} as const;
+
+describe("BOLA — hermes", () => {
+  it("revokeHermesConnection rejects cross-user object access", async () => {
+    const mod = await import("../../callables/hermes.js");
+    const exported = mod.revokeHermesConnection;
+    if (!exported) throw new Error("missing export revokeHermesConnection");
+    const run = callableRunner(exported);
+    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+  });
+
+  it("updateHermesConnectionStatus rejects cross-user object access", async () => {
+    const mod = await import("../../callables/hermes.js");
+    const exported = mod.updateHermesConnectionStatus;
+    if (!exported) throw new Error("missing export updateHermesConnectionStatus");
+    const run = callableRunner(exported);
+    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+  });
+});

@@ -249,8 +249,10 @@ extension OpenBurnBarDaemonManager {
         ]
 
         // Propagate Sentry DSN to the daemon so crash reports are captured.
+        // Uses the same resolution helper as the app: Info.plist first, then
+        // GoogleService-Info.plist fallback (F-RR09-003).
         #if canImport(Sentry)
-        if let sentryDSN = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String,
+        if let sentryDSN = OpenBurnBarApp.resolveSentryDSN(),
            !sentryDSN.trimmingCharacters(in: .whitespaces).isEmpty {
             environmentVariables["OPENBURNBAR_SENTRY_DSN"] = sentryDSN
         }

@@ -554,10 +554,12 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         "BURNBAR_DAEMON_DISABLE_PEER_CODESIG"
     ]
 
-    /// Prefixes for any future daemon-scoped env vars.
+    /// Prefixes for any future daemon- and gateway-scoped env vars.
     static let childEnvironmentDeniedKeyPrefixes: Set<String> = [
         "OPENBURNBAR_DAEMON_",
-        "BURNBAR_DAEMON_"
+        "BURNBAR_DAEMON_",
+        "OPENBURNBAR_GATEWAY_",
+        "BURNBAR_GATEWAY_"
     ]
 
     private func sanitizedChildEnvironment(_ environment: [String: String]) -> [String: String] {

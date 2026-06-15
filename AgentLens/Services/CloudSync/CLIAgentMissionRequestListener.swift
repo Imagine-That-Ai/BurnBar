@@ -1898,7 +1898,6 @@ final class CLIAgentMissionRequestListener {
         let workspace = try VisibleTerminalSessionWorkspace.prepare(sessionID: sessionID, fileManager: fileManager)
         defer { workspace.cleanup() }
 
-        let sessionURL = workspace.sessionURL
         let logURL = workspace.logURL
         let scriptURL = workspace.scriptURL
         let exitURL = workspace.exitURL
@@ -2980,63 +2979,5 @@ private extension Substring {
 private extension String {
     func prefixString(_ maxLength: Int) -> String {
         String(prefix(maxLength))
-    }
-}
-
-struct VisibleTerminalSessionWorkspace {
-    let rootURL: URL
-    let sessionURL: URL
-    let logURL: URL
-    let scriptURL: URL
-    let exitURL: URL
-    let pidURL: URL
-
-    private init(rootURL: URL, sessionID: String) {
-        self.rootURL = rootURL
-        self.sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
-        self.logURL = sessionURL.appendingPathComponent("terminal.log")
-        self.scriptURL = sessionURL.appendingPathComponent("run.command")
-        self.exitURL = sessionURL.appendingPathComponent("exit.status")
-        self.pidURL = sessionURL.appendingPathComponent("terminal.pid")
-    }
-
-    static func prepare(
-        sessionID: String,
-        fileManager: FileManager = .default
-    ) throws -> VisibleTerminalSessionWorkspace {
-        let rootURL = fileManager.temporaryDirectory
-            .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
-        let workspace = VisibleTerminalSessionWorkspace(rootURL: rootURL, sessionID: sessionID)
-
-        try fileManager.createDirectory(
-            at: workspace.sessionURL,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-
-        // Pre-create log file with strict 0o600 permissions so tee respects it.
-        fileManager.createFile(
-            atPath: workspace.logURL.path,
-            contents: nil,
-            attributes: [.posixPermissions: 0o600]
-        )
-
-        return workspace
-    }
-
-    func cleanup(fileManager: FileManager = .default) {
-        if fileManager.fileExists(atPath: sessionURL.path) {
-            do {
-                try fileManager.removeItem(at: sessionURL)
-            } catch {
-                AppLogger.sync.error(
-                    "mission_visible_terminal_cleanup_failed",
-                    metadata: [
-                        "sessionURL": sessionURL.path,
-                        "errorClass": "\(String(describing: type(of: error)))"
-                    ]
-                )
-            }
-        }
     }
 }

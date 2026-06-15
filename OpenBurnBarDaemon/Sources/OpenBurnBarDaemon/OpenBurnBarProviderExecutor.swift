@@ -237,46 +237,8 @@ public extension BurnBarProviderExecuting {
     }
 }
 
-public enum BurnBarProviderExecutorError: Error, LocalizedError {
-    case invalidBaseURL(String)
-    case invalidResponse
-    case upstreamError(Int, String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidBaseURL(let baseURL):
-            return "Invalid OpenBurnBar provider base URL: \(baseURL)"
-        case .invalidResponse:
-            return "OpenBurnBar provider returned an invalid response."
-        case .upstreamError(let statusCode, let body):
-            return "OpenBurnBar provider request failed with status \(statusCode): \(body)"
-        }
-    }
-
-    /// Rejects non-HTTP(S) provider endpoints (e.g. `file://`, `javascript:`) before outbound requests.
-    static func validatedProviderBaseURL(_ rawValue: String) throws -> URL {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false, let url = URL(string: trimmed) else {
-            throw BurnBarProviderExecutorError.invalidBaseURL(rawValue)
-        }
-        guard let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              let host = url.host,
-              host.isEmpty == false else {
-            throw BurnBarProviderExecutorError.invalidBaseURL(rawValue)
-        }
-        return url
-    }
-}
-
 public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting {
     private let session: URLSession
-    /// Local, consent-gated executor for the `codex` provider. The `codex`
-    /// catalog entry advertises an OpenAI-compatible format family (so a mixed
-    /// Elder Wand panel can request it like any other model), but its route does
-    /// not resolve to a real HTTP endpoint — it spawns the local `codex` CLI.
-    /// We intercept those routes here, before any HTTP base-URL validation, and
-    /// delegate to the CLI executor.
     private let codexExecutor: BurnBarCodexProviderExecutor
 
     public init(
@@ -287,8 +249,6 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         self.codexExecutor = codexExecutor
     }
 
-    /// Whether a route should be served by the local consent-gated `codex` CLI
-    /// instead of an HTTP upstream.
     static func isCodexRoute(_ route: BurnBarProviderRoute) -> Bool {
         route.providerID.caseInsensitiveCompare("codex") == .orderedSame
     }

@@ -10,12 +10,12 @@ The point-in-time fixes live in code + tests; *this* layer makes them permanent.
 
 ## Threat-model anchor
 
-Per `docs/security/BurnBar-threat-model.md`, BurnBar is local-first and **not**
-universal zero-knowledge: the cloud and third-party push/telemetry processors
-intentionally see routing metadata. The invariants below bound that exposure to
-exactly the stated position — no full UIDs in logs, no stable cross-processor
-correlators in push payloads, no unbounded retention of uid+token docs, and no
-unscrubbed client crash egress.
+Per `docs/security/BurnBar-threat-model.md`, BurnBar is local-first and does
+not claim universal user-held cloud blindness: the cloud and third-party
+push/telemetry processors intentionally see routing metadata. The invariants
+below bound that exposure to exactly the stated position — no full UIDs in logs,
+no stable cross-processor correlators in push payloads, no unbounded retention
+of uid+token docs, and no unscrubbed client crash egress.
 
 ## The invariants (gate IDs)
 
