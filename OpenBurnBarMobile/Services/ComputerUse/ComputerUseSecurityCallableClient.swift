@@ -416,8 +416,8 @@ enum ComputerUseSecurityCallableClient {
             : "\(provider)_default"
         let lowered = raw.lowercased()
         let sanitized = lowered
-            .replacingOccurrences(of: /[^a-z0-9_-]/, with: "-")
-            .replacingOccurrences(of: /-+/, with: "-")
+            .replacing(/[^a-z0-9_-]/, with: "-")
+            .replacing(/-+/, with: "-")
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         return sanitized.isEmpty ? "\(provider)_default" : sanitized
     }
