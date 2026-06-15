@@ -665,6 +665,15 @@ jobs:
       - name: Check no unjustified suppressions or baselines
         run: bash scripts/ci/check-no-suppressions.sh
 
+      # run-09 privacy/logging/metadata structural invariants: ephemeral PII
+      # collections keep their TTL + writer, push payloads omit stable
+      # correlators, and the log scrubber + raw-logger ban stay in place.
+      - name: Self-test the privacy-invariants gate
+        run: node scripts/ci/check-privacy-invariants.test.mjs
+
+      - name: Check privacy invariants (run-09)
+        run: node scripts/ci/check-privacy-invariants.mjs
+
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
   # allowance, and account-deletion harnesses guard revenue and compliance. They
