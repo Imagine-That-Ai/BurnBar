@@ -1,6 +1,6 @@
 {
   "target": 2000,
-  "total": 22,
+  "total": 21,
   "files": [
     {
       "path": "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift",
@@ -37,10 +37,6 @@
     {
       "path": "OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift",
       "lines": 2801
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
-      "lines": 2590
     },
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
