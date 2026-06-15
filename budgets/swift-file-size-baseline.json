@@ -1,6 +1,6 @@
 {
   "target": 2000,
-  "total": 22,
+  "total": 21,
   "files": [
     {
       "path": "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift",
@@ -69,10 +69,6 @@
     {
       "path": "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift",
       "lines": 2206
-    },
-    {
-      "path": "AgentLens/Services/Media/MercuryRouter.swift",
-      "lines": 2189
     },
     {
       "path": "OpenBurnBarMobile/Views/Streams/StreamsView.swift",
