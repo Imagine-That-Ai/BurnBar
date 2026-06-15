@@ -467,7 +467,7 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:8.3.0")
 
     // OkHttp + WebSocket for Hermes
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
 
     // Vico 2.x — Compose-first chart library for Insights
     implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
