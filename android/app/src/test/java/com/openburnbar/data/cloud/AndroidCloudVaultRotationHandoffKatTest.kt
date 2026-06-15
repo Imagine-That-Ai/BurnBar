@@ -80,25 +80,17 @@ class AndroidCloudVaultRotationHandoffKatTest {
     }
 
     @Test
-    fun signalIdentityHandoffRotationEventIsWellFormedAndRevokesOldIdentity() {
-        // The cross-device handoff publishes a NEW Signal identity key for the same device and
-        // records an append-only rotation event. Pin the transition + recordSignalRotation output
-        // invariants (the callable runs server-side; buildRotationEventDoc enforces the same bounds).
+    fun signalIdentityHandoffProducesADistinctNewIdentityForTheSameDevice() {
+        // The handoff publishes a NEW Signal identity key (keyVersion N+1) for the same device. The
+        // rotation EVENT shape/bounds (fromKeyVersion < toKeyVersion, rewrapJobId-when-required) are
+        // enforced by buildRotationEventDoc, covered in the TS signalPrekeyDirectory suite. Here we
+        // pin the identity transition itself: the canonical id + a materially-different keypair.
         val oldIdentity = AndroidSignalIdentityKeypair.generate("mac-1", 1)
         val newIdentity = AndroidSignalIdentityKeypair.generate("mac-1", 2)
 
         assertEquals("mac-1_1", oldIdentity.identityKeyId)
         assertEquals("mac-1_2", newIdentity.identityKeyId)
-        // A real identity transition: the new key is materially different from the old one.
-        assertFalse(oldIdentity.publicKeyData.contentEquals(newIdentity.publicKeyData))
-
-        val rewrapRequired = true
-        val rewrapJobId = if (rewrapRequired) "rewrap_${newIdentity.identityKeyId}" else null
-        val revokedIdentityKeyId = oldIdentity.identityKeyId
-
         assertTrue(oldIdentity.keyVersion < newIdentity.keyVersion)
-        assertFalse(requireNotNull(rewrapJobId).isEmpty())
-        assertEquals(oldIdentity.identityKeyId, revokedIdentityKeyId)
-        assertNotEquals(newIdentity.identityKeyId, revokedIdentityKeyId)
+        assertFalse(oldIdentity.publicKeyData.contentEquals(newIdentity.publicKeyData))
     }
 }
