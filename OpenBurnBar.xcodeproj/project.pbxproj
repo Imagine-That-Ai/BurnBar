@@ -1306,7 +1306,6 @@
 		BB2C6CAD3B6C64FB36753498 /* FoilCTAButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A5678F769CE3CFF0C57435 /* FoilCTAButton.swift */; };
 		BB466B0D386753818494BD0C /* SmartDisplayOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC96924A9E2F2A9AAD47B3C /* SmartDisplayOrderTests.swift */; };
 		BB4ECB342291373FFD844557 /* AgentLiveStageWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E6E4CA88585AA6DB92A04DA /* AgentLiveStageWiringTests.swift */; };
-		BBC6BBD21911095D92ABECAC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 333C2481721AAE49EF31F743 /* GoogleService-Info.plist */; };
 		BC3EDF492E296B06E1301F01 /* BurnBarEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5C055040FDC9C49E85EEC8 /* BurnBarEntry.swift */; };
 		BC48BFEBE66919B9ADA0D2DB /* TextExpansionSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = C398809579449943D0D36650 /* TextExpansionSettings.swift */; };
 		BC5F385C44FE4F67908F743B /* HermesIrohRelayTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DF6DE9B4DB59CB5DB1B4554 /* HermesIrohRelayTransport.swift */; };
@@ -1597,7 +1596,6 @@
 		E2D934170D3BCF8D53314CEE /* SmartHubBridgeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542F5838C1572E8D74E76339 /* SmartHubBridgeServer.swift */; };
 		E30A369712CA4311AEF88359 /* ModelProviderLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A384D513ACF0354DDC6A2DDC /* ModelProviderLogoView.swift */; };
 		E3161FFC87D848C4915A9F0D /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B8CC3DB9D7E9365BCAB98EE1 /* UserNotifications.framework */; };
-		E38F3B0ED39A8F9D977DD6D3 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = E10FB395525B8C6AE422A378 /* GoogleService-Info.plist */; };
 		E39FC60FF24FB1712E7AC2AA /* IndexEmbeddingProviderID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515BCF65C6C0D1D29AF4F8F1 /* IndexEmbeddingProviderID.swift */; };
 		E3EC2813503F916BF8B771EC /* ProTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F210FE98A6C9AA5A6E74B240 /* ProTheme.swift */; };
 		E426A6F21A549494842BE882 /* SmartHubDisplaySettingsAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3288F8CD47E8AAE4FE2AB362 /* SmartHubDisplaySettingsAdapter.swift */; };
@@ -2272,7 +2270,6 @@
 		32B2AED1F8FC2AB86B10BFC7 /* AccountSwitcherSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcherSupport.swift; sourceTree = "<group>"; };
 		32F054395AAFE6133F1C4F79 /* MercuryRecentTransfersCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryRecentTransfersCard.swift; sourceTree = "<group>"; };
 		32F38004003A536B543A72BE /* BurnBarRateLimiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarRateLimiter.swift; sourceTree = "<group>"; };
-		333C2481721AAE49EF31F743 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		333F6D87EB7C6A54A0569204 /* MercuryAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryAvatarView.swift; sourceTree = "<group>"; };
 		3340CCD66BE7C420E3A7333C /* ScreenPrivacyGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenPrivacyGuardTests.swift; sourceTree = "<group>"; };
 		33410A2B10922756962E2FF9 /* AiderQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiderQuotaAdapter.swift; sourceTree = "<group>"; };
@@ -3458,7 +3455,6 @@
 		E0F0C614CF08FB09A79D2DB6 /* ContextPackDashboardSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextPackDashboardSurfaceTests.swift; sourceTree = "<group>"; };
 		E0F22A3A3A90AE30E5D5481E /* DashboardWorkspaceNavStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWorkspaceNavStrip.swift; sourceTree = "<group>"; };
 		E0FEF0EADE6B89380DD5C89E /* MacActionDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacActionDispatcher.swift; sourceTree = "<group>"; };
-		E10FB395525B8C6AE422A378 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		E114DA63DA4811A3978DAC47 /* InsightsInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsInspectorView.swift; sourceTree = "<group>"; };
 		E11DB55D11E66E011BFCB2F1 /* SmartDisplayConfigPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartDisplayConfigPublisher.swift; sourceTree = "<group>"; };
 		E12B438F0635692EE3E1BEA0 /* EmbeddingProviderProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingProviderProtocol.swift; sourceTree = "<group>"; };
@@ -5557,7 +5553,6 @@
 			isa = PBXGroup;
 			children = (
 				C58E189D22843BD248EE83BF /* Assets.xcassets */,
-				E10FB395525B8C6AE422A378 /* GoogleService-Info.plist */,
 				A49A4DF1F9131C2AE5255EAD /* openburnbar_models.json */,
 				22ECA745C30F9DB35B12C1C4 /* OpenBurnBarMobile.entitlements */,
 				26D25E62271A8698A81CAB25 /* PrivacyInfo.xcprivacy */,
@@ -5890,7 +5885,6 @@
 			isa = PBXGroup;
 			children = (
 				ADB09D71338A6D9E24C0D315 /* Assets.xcassets */,
-				333C2481721AAE49EF31F743 /* GoogleService-Info.plist */,
 				6946C44F6035DB2BBC1D2137 /* GoogleService-Info.plist.example */,
 				375393A8FE1D276E20D40D09 /* openburnbar_models.json */,
 				2BBE7B9A681888E810F4AC4B /* OpenBurnBar-Info.plist */,
@@ -7136,6 +7130,7 @@
 				6AA6774C598CE731F3D09BD0 /* Resources */,
 				E9A9CE05EB1CB5A0032B0BF2 /* Frameworks */,
 				68093FD2CB89FFF33810DF23 /* Embed Foundation Extensions */,
+				28EBBA77E00C3687E1B9DAD1 /* Copy Firebase Config If Present */,
 				6F0324720AA2AC6306AF13C0 /* Inject Internal App Check Debug Token */,
 				2FF71114694A1CECACA080FE /* Block App Check Debug Token In Release */,
 			);
@@ -7499,7 +7494,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				B2D76359CA686AF47574970D /* Assets.xcassets in Resources */,
-				E38F3B0ED39A8F9D977DD6D3 /* GoogleService-Info.plist in Resources */,
 				8A3D3C763AE73AAD2A41E29C /* Mermaid in Resources */,
 				5E89AAE1A4444E470D5194BD /* PrivacyInfo.xcprivacy in Resources */,
 				9099F939C8102FDCEF193BD5 /* openburnbar_models.json in Resources */,
@@ -7519,7 +7513,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				9F6B4D4A706DCBC7C0D44CF4 /* Assets.xcassets in Resources */,
-				BBC6BBD21911095D92ABECAC /* GoogleService-Info.plist in Resources */,
 				1303E789DE930B547998D00A /* GoogleService-Info.plist.example in Resources */,
 				F178AEE5924F2A53A253B593 /* PrivacyInfo.xcprivacy in Resources */,
 				4CF98F034216F3F26D5DBE6A /* README.md in Resources */,
@@ -7557,6 +7550,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\n";
+		};
+		28EBBA77E00C3687E1B9DAD1 /* Copy Firebase Config If Present */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist",
+			);
+			name = "Copy Firebase Config If Present";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/CopyFirebaseConfigIfPresent.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  rm -f \"${BUILT_GOOGLE_PLIST}\"\n  echo \"warning: GoogleService-Info.plist not found; Firebase auth remains disabled.\"\n  exit 0\nfi\n\nmkdir -p \"$(dirname \"${BUILT_GOOGLE_PLIST}\")\"\ncp \"${SOURCE_PLIST}\" \"${BUILT_GOOGLE_PLIST}\"\n";
 		};
 		2FF71114694A1CECACA080FE /* Block App Check Debug Token In Release */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -7691,7 +7704,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nSOURCE_PLIST=\"${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist\"\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  echo \"warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled.\"\n  exit 0\nfi\n\nREVERSED_CLIENT_ID=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :REVERSED_CLIENT_ID\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${REVERSED_CLIENT_ID}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 ${REVERSED_CLIENT_ID}\" \"${INFO_PLIST}\"\nfi\n";
+			shellScript = "set -euo pipefail\nSOURCE_PLIST=\"${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist\"\nBUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  rm -f \"${BUILT_GOOGLE_PLIST}\"\n  echo \"warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled.\"\n  exit 0\nfi\n\nmkdir -p \"$(dirname \"${BUILT_GOOGLE_PLIST}\")\"\ncp \"${SOURCE_PLIST}\" \"${BUILT_GOOGLE_PLIST}\"\n\nREVERSED_CLIENT_ID=\"$(\n  /usr/libexec/PlistBuddy -c \"Print :REVERSED_CLIENT_ID\" \"${SOURCE_PLIST}\" 2>/dev/null || true\n)\"\nif [[ -n \"${REVERSED_CLIENT_ID}\" ]]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 ${REVERSED_CLIENT_ID}\" \"${INFO_PLIST}\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -9483,11 +9496,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_69DD9024-9678-4A1C-88A7-79BE84F23A9E" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_94335012-DE24-4E0E-8340-933CA0F71667" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_F58706AE-4DEC-4F1A-933A-36E593334915" /* OpenBurnBarCore */;
+			productRef = "TEMP_B5CC7F7B-F593-49D3-B2A7-E2BA566B9237" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -9540,7 +9553,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_8072678A-F685-459C-B2D4-9BA51F0E6858" /* OpenBurnBarCore */;
+			productRef = "TEMP_552E579B-DCB6-49EC-A83B-853130FFA0D5" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -9554,15 +9567,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_AB2CC609-1E81-46BF-AD97-0BC1B15F6C50" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_88711E61-3887-405A-8B33-46015CFB6962" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_3D924580-8227-4BDC-BEF3-24F8FAB3BADA" /* OpenBurnBarMedia */;
+			productRef = "TEMP_3DA90211-063D-4D83-86A1-3949B03DC9AD" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_EBA6456B-E785-48A9-A95E-17AB9F751D97" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_3375E166-E27A-4799-96E4-B22411FA5257" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -10705,27 +10718,27 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_3D924580-8227-4BDC-BEF3-24F8FAB3BADA" /* OpenBurnBarMedia */ = {
+		"TEMP_3375E166-E27A-4799-96E4-B22411FA5257" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_3DA90211-063D-4D83-86A1-3949B03DC9AD" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_69DD9024-9678-4A1C-88A7-79BE84F23A9E" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_8072678A-F685-459C-B2D4-9BA51F0E6858" /* OpenBurnBarCore */ = {
+		"TEMP_552E579B-DCB6-49EC-A83B-853130FFA0D5" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_AB2CC609-1E81-46BF-AD97-0BC1B15F6C50" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_88711E61-3887-405A-8B33-46015CFB6962" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_EBA6456B-E785-48A9-A95E-17AB9F751D97" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_94335012-DE24-4E0E-8340-933CA0F71667" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_F58706AE-4DEC-4F1A-933A-36E593334915" /* OpenBurnBarCore */ = {
+		"TEMP_B5CC7F7B-F593-49D3-B2A7-E2BA566B9237" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
