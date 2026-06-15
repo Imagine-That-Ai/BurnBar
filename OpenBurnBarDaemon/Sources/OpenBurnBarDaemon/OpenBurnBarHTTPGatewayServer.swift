@@ -438,7 +438,12 @@ public actor BurnBarHTTPGatewayServer {
             return .buffered(await handleModels(includeUnadvertised: true))
 
         case ("POST", "/v1/chat/completions"):
-            return await handleChatCompletions(body: request.body, connection: connection, corsHeaders: corsHeaders)
+            return await handleChatCompletions(
+                body: request.body,
+                headers: request.headers,
+                connection: connection,
+                corsHeaders: corsHeaders
+            )
 
         case ("POST", "/v1/responses"):
             return await handleResponses(body: request.body)
@@ -992,6 +997,7 @@ public actor BurnBarHTTPGatewayServer {
 
     private func handleChatCompletions(
         body: String?,
+        headers: [String: String],
         connection: NWConnection,
         corsHeaders: [String: String]
     ) async -> GatewayRouteOutcome {
@@ -1009,7 +1015,8 @@ public actor BurnBarHTTPGatewayServer {
                 originatingModel: request.model,
                 wantsStream: request.stream == true,
                 connection: connection,
-                corsHeaders: corsHeaders
+                corsHeaders: corsHeaders,
+                hostedSearch: ElderWandHostedSearchConfig.resolve(headers: headers)
             )
         }
 
@@ -2753,7 +2760,7 @@ public actor BurnBarHTTPGatewayServer {
         return [
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, X-OpenBurnBar-Firebase-Authorization, X-OpenBurnBar-Firebase-AppCheck",
             "Vary": "Origin"
         ]
     }

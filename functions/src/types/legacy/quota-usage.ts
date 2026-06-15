@@ -1,0 +1,576 @@
+/**
+ * @fileoverview Shared TypeScript types for OpenBurnBar Cloud Functions v2.
+ *
+ * Extracted from src/types/legacy.ts (the strangler "leftovers" bucket) and
+ * grouped by domain. Re-exported verbatim from src/types/legacy.ts so every
+ * existing `import ... from "../types/legacy"` keeps resolving unchanged.
+ */
+
+import type { Provider, ProviderAccountStorageScope, ProviderID } from "./providers.js";
+
+// ---------------------------------------------------------------------------
+// Firestore: quota_snapshots/{provider}_{sourceId}
+// ---------------------------------------------------------------------------
+
+export interface QuotaBucket {
+  /** Bucket name from the provider (e.g. "tokens", "requests", "fast-calls"). */
+  name: string;
+
+  /** Used amount (same unit as limit). */
+  used?: number;
+
+  /** Granted limit, or -1 if unlimited/unknown. */
+  limit?: number;
+
+  /** Provider-reported unit label (schema-sync canon). */
+  unit?: string;
+
+  /** ISO 8601 refill moment (schema-sync canon; legacy clients may use resetsAt). */
+  resetAt?: string;
+
+  /** Remaining computed as max(0, limit - used) when limit >= 0. */
+  remaining: number;
+
+  /** Window descriptor (e.g. "daily", "monthly", "lifetime"). */
+  window?: string;
+
+  /**
+   * When this bucket refills. Mac writes a Firestore `Timestamp`; legacy
+   * docs may still carry an ISO 8601 string at `meta.resetsAt` (handled by
+   * each client's compat path). Server-side adapters that don't compute a
+   * reset moment leave this undefined.
+   */
+  resetsAt?: import("firebase-admin/firestore").Timestamp | string;
+
+  /** Bucket-specific metadata from the provider. */
+  meta?: Record<string, unknown>;
+}
+
+export interface QuotaSnapshotDoc {
+  /** Kind of source (always "provider" today; reserved for future expansion). */
+  sourceKind: "provider";
+
+  /** Source identifier (e.g. "default" or a plan ID). */
+  sourceId: string;
+
+  /** Provider key. */
+  provider: Provider;
+
+  /** Canonical provider catalog/cloud key. Defaults to provider for legacy docs. */
+  providerID?: ProviderID;
+
+  /** Provider account this snapshot belongs to. Missing means legacy/provider-level. */
+  accountID?: string;
+
+  /** Denormalized account label at fetch time for stable display/history. */
+  accountLabel?: string;
+
+  /** Storage scope of the account that produced this snapshot. */
+  accountStorageScope?: ProviderAccountStorageScope;
+
+  /** ISO 8601 timestamp when this snapshot was fetched. */
+  fetchedAt: string;
+
+  /** Human-readable source label. */
+  source: string;
+
+  /** Schema-sync alias for {@link source}. */
+  sourceLabel?: string;
+
+  /** ISO 8601 next reset for the snapshot (schema-sync canon). */
+  resetAt?: string;
+
+  /** Provider plan tier at fetch time (schema-sync canon). */
+  planTier?: string;
+
+  /** Confidence level: "high" | "medium" | "low" | "stale". */
+  confidence: "high" | "medium" | "low" | "stale";
+
+  /** Deep-link to provider management page, when known. */
+  managementURL?: string;
+
+  /** Free-form status message from the provider or from our adapters. */
+  statusMessage?: string;
+
+  /** Quota buckets. */
+  buckets?: QuotaBucket[];
+
+  /** Schema version. */
+  schemaVersion: number;
+
+  /** ISO 8601 timestamp of last document update. */
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/project_memory_snapshots/{docID}
+//
+// Keyed by an opaque vault-key-derived docID (no longer the plaintext slug);
+// see ProjectMemorySnapshotDoc below.
+// ---------------------------------------------------------------------------
+
+export type ProjectMemoryFreshness = "fresh" | "needsRefresh" | "stale";
+
+export interface CloudVaultBlobEnvelopeDoc {
+  schemaVersion: number;
+  algorithm: "AES-256-GCM";
+  keyVersion: number;
+  plaintextSHA256?: string;
+  plaintextHMAC?: string;
+  integrityHashVersion?: number;
+  sealedBoxBase64: string;
+  createdAt: string;
+  aad?: string;
+}
+
+export interface CloudVaultSealedTextDoc {
+  schemaVersion?: number;
+  algorithm: "AES-256-GCM";
+  keyVersion: number;
+  nonce: string;
+  ciphertext: string;
+  tag: string;
+  aad?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/session_logs/{deviceId}_{escapedId}
+//
+// Encrypted conversation backup manifest. The conversation body is sealed in
+// Cloud Storage (`bodyStorage === "firebase_storage_encrypted"`); only metadata
+// lives in Firestore. The plaintext "cockpit facets" below are deliberately
+// content-free (counters, cost, timing, working directory, generic tool tags)
+// so the Streams cockpit can filter/sort/aggregate without ever decrypting.
+// ---------------------------------------------------------------------------
+
+/** Generation of the plaintext cockpit facet block; bump triggers a client backfill. */
+export const CONVERSATION_FACET_SCHEMA_VERSION = 1;
+
+/** Content-free facets attached to a session-log manifest for cockpit querying. */
+export interface ConversationCockpitFacetsDoc {
+  facetSchemaVersion: number;
+  model: string;
+  messageCount: number;
+  userWordCount: number;
+  assistantWordCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+  costUSD: number;
+  /** Absolute working directory of the session, when known. */
+  workingDirectory?: string;
+  /** Generic tool names used (e.g. "bash", "edit"); never key files or commands. */
+  toolTags?: string[];
+  /** Wall-clock session duration in seconds, when both endpoints are known. */
+  durationSeconds?: number;
+}
+
+export interface SessionLogManifestDoc extends ConversationCockpitFacetsDoc {
+  id: string;
+  deviceId: string;
+  provider: string;
+  sessionId: string;
+  sourceType: string;
+  projectName: string;
+  inferredTaskTitle: string;
+  bodyStorage: "firebase_storage_encrypted";
+  storagePath: string;
+  sealedTitle: CloudVaultSealedTextDoc;
+  sealedBodyPreview: CloudVaultSealedTextDoc;
+  encryption: {
+    algorithm: string;
+    keyVersion: number;
+    tokenHashVersion: number;
+    semanticHashVersion: number;
+  };
+  chunkCount: number;
+  searchChunkCount: number;
+  byteCount: number;
+  encryptedByteCount: number;
+  bodyHash: string;
+  chunkHashes: string[];
+  chunkMetadataVersion: number;
+  cloudSearchIndexVersion: number;
+  cloudSearchIndexedAt: import("firebase-admin/firestore").Timestamp | string;
+  startTime?: import("firebase-admin/firestore").Timestamp | string;
+  endTime?: import("firebase-admin/firestore").Timestamp | string;
+  updatedAt: import("firebase-admin/firestore").Timestamp | string;
+}
+
+export type TextExpansionModeDoc = "static" | "llm_rewrite";
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/text_snippets/{snippetID}
+// ---------------------------------------------------------------------------
+
+export interface TextExpansionSnippetDoc {
+  id: string;
+  uid: string;
+  sourceDeviceID: string;
+  triggerHash: string;
+  sealedTitle: CloudVaultSealedTextDoc;
+  sealedTrigger: CloudVaultSealedTextDoc;
+  sealedBody: CloudVaultSealedTextDoc;
+  sealedScope: CloudVaultSealedTextDoc;
+  mode: TextExpansionModeDoc;
+  isEnabled: boolean;
+  revision: number;
+  createdAt: import("firebase-admin/firestore").Timestamp | string | number;
+  updatedAt: import("firebase-admin/firestore").Timestamp | string | number;
+  deletedAt?: import("firebase-admin/firestore").Timestamp | string | number | null;
+  encryption: {
+    algorithm: "AES-256-GCM";
+    keyVersion: number;
+    tokenHashVersion: number;
+  };
+  schemaVersion: number;
+}
+
+/**
+ * project_memory_snapshots/{docID}
+ *
+ * SEAL + OPAQUE DOC ID (privacy-leak-remediation-2026-06-02 §2). The human-
+ * readable `projectSlug`/`projectDisplayName` are NO LONGER persisted in the
+ * clear — both already live inside the sealed `sealedSnapshot` blob, and the doc
+ * is now keyed by an opaque, deterministic `docID` the device derives from the
+ * slug under the vault key (`projectMemoryDocID`, see CloudVaultCrypto). The
+ * server never learns the project's name. `schemaVersion` 2 fences the new
+ * sealed-only rows from the legacy plaintext-keyed rows.
+ */
+export interface ProjectMemorySnapshotDoc {
+  /** Opaque, vault-key-derived deterministic doc id (mirrors the Firestore key). */
+  docID?: string;
+  contentHash: string;
+  contentHashVersion?: number;
+  sourceSessionCount: number;
+  sourceConversationCount: number;
+  generatedAt: string;
+  freshness: ProjectMemoryFreshness;
+  visualKinds: string[];
+  sealedSnapshot: CloudVaultBlobEnvelopeDoc;
+  encryption: {
+    algorithm: string;
+    keyVersion: number;
+    envelopeSchemaVersion: number;
+  };
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/knowledge_repos/{repoId}
+//
+// Pensieve repo connector (privacy-leak-remediation-2026-06-02 §4). The
+// cleartext `repoFullName` is NO LONGER stored: a GitHub-push webhook (no vault
+// key, no user context) can only equality-MATCH the incoming repo, never needs
+// the name back, so the row carries a SERVER-keyed `repoMatchToken =
+// HMAC_SHA256(KNOWLEDGE_REPO_MATCH_KEY, normalize(full_name))` the webhook
+// recomputes from the GitHub-signed payload. The user-visible display name lives
+// only in `sealedRepoFullName`, sealed by the authed web client with the vault
+// key and decrypted client-side. `repoId` is derived from the opaque token, not
+// the name.
+// ---------------------------------------------------------------------------
+
+export interface KnowledgeRepoDoc {
+  uid: string;
+  /** Opaque doc id derived from `repoMatchToken` (not the repo name). */
+  repoId: string;
+  /** Server-keyed HMAC of the normalized repo full name — the webhook match key. */
+  repoMatchToken: string;
+  /** Vault-sealed display name supplied by the authed client (optional). */
+  sealedRepoFullName?: CloudVaultSealedTextDoc;
+  /** The user's own knowledge-source doc id this repo feeds (slug, accepted leakage). */
+  sourceSlug: string;
+  installId?: string;
+  connectedAt: import("firebase-admin/firestore").Timestamp | string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: model_benchmark_snapshots/{source_model_task_timestamp}
+// Firestore: model_benchmark_source_status/{source}
+// ---------------------------------------------------------------------------
+
+export type ModelBenchmarkSource =
+  | "artificial_analysis"
+  | "terminal_bench"
+  | "design_arena"
+  | "huggingface"
+  | "manual_fixture"
+  | "cached_fixture";
+
+export type ModelBenchmarkTaskCategory =
+  | "general"
+  | "coding"
+  | "terminal"
+  | "design"
+  | "agent"
+  | "analysis"
+  | "unknown";
+
+export type ModelBenchmarkFreshness = "fresh" | "stale" | "unavailable" | "cached" | "manual";
+
+export type ModelBenchmarkSnapshotDoc = Omit<
+  import("../generated/model-benchmarks.js").ModelBenchmarkSnapshotDoc,
+  "source" | "taskCategory" | "freshness" | "providerID"
+> & {
+  source: ModelBenchmarkSource;
+  providerID?: ProviderID;
+  taskCategory: ModelBenchmarkTaskCategory;
+  freshness: ModelBenchmarkFreshness;
+};
+
+export type ModelBenchmarkSourceStatusDoc = Omit<
+  import("../generated/model-benchmarks.js").ModelBenchmarkSourceStatusDoc,
+  "source" | "status"
+> & {
+  source: ModelBenchmarkSource;
+  status: "fresh" | "stale" | "unavailable" | "error";
+};
+
+// ---------------------------------------------------------------------------
+// Firestore: usage_rollups/{windowKey}
+// ---------------------------------------------------------------------------
+
+export interface ProviderSummary {
+  provider: Provider;
+  providerID?: ProviderID;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost?: number;
+}
+
+export interface ProviderAccountSummary {
+  id: string;
+  providerID: ProviderID;
+  accountID?: string;
+  accountLabel: string;
+  storageScope?: ProviderAccountStorageScope;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost?: number;
+}
+
+export interface ModelSummary {
+  model: string;
+  provider: Provider;
+  requests: number;
+  tokens: number;
+  cost?: number;
+}
+
+export interface DeviceSummary {
+  deviceId: string;
+  requests: number;
+  tokens: number;
+}
+
+export interface UsageRollupDoc {
+  /** Window key: "today", "7d", "30d", "90d", "all_time". */
+  today: number;
+  "7d": number;
+  "30d": number;
+  "90d": number;
+  all_time: number;
+
+  /** Aggregated totals keyed by metric name. */
+  totals: Record<string, number>;
+
+  /** Per-provider summaries. */
+  providerSummaries: ProviderSummary[];
+
+  /** Per-account summaries. Missing on legacy docs. */
+  accountSummaries?: ProviderAccountSummary[];
+
+  /** Per-model summaries. */
+  modelSummaries: ModelSummary[];
+
+  /** Per-device summaries. */
+  deviceSummaries: DeviceSummary[];
+
+  /** Sparse daily points for sparkline rendering: YYYY-MM-DD -> value. */
+  dailyPoints: Record<string, number>;
+
+  /** ISO 8601 timestamp when the rollup was last computed. */
+  computedAt: string;
+
+  /** Schema version. */
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/usage_counter_days/{yyyy-mm-dd}
+// Firestore: users/{uid}/usage_counter_totals/all_time
+// ---------------------------------------------------------------------------
+
+export interface UsageCounterDimensionDoc {
+  requests: number;
+  tokens: number;
+  costUsd: number;
+  provider?: Provider;
+  providerID?: ProviderID;
+  accountID?: string;
+  accountLabel?: string;
+  storageScope?: ProviderAccountStorageScope;
+  model?: string;
+  deviceId?: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface UsageCounterDayDoc {
+  day: string;
+  requests: number;
+  tokens: number;
+  costUsd: number;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: rollup_jobs/current
+// ---------------------------------------------------------------------------
+
+export interface RollupJobDoc {
+  /** Whether at least one usage doc has changed since last rollup. */
+  dirty: boolean;
+
+  /** ISO 8601 timestamp of the last successful rollup computation. */
+  lastComputedAt?: string;
+
+  /** ISO 8601 timestamp of the last time the dirty flag was set. */
+  dirtiedAt?: string;
+
+  /** Error code from the most recent failed rollup run. */
+  lastErrorCode?: string;
+
+  /** Consecutive failures on the raw-usage full rebuild repair path. */
+  consecutiveFullRebuildFailures?: number;
+
+  /** ISO 8601 time until which the full rebuild repair path is paused. */
+  fullRebuildCircuitOpenUntil?: string;
+
+  /**
+   * ISO 8601 start time of a full rebuild attempt, written transactionally
+   * BEFORE the destructive work begins and cleared on the success/failure
+   * paths. A leftover stale marker means the attempt was killed (timeout/OOM)
+   * and counts as a consecutive failure on the next pass.
+   */
+  fullRebuildAttemptInFlightAt?: string;
+
+  /** ISO 8601 time of the last client `force` full rebuild (cooldown anchor). */
+  lastForceRebuildAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/usage/{usageDoc}
+// ---------------------------------------------------------------------------
+
+export interface UsageEventDoc {
+  /** Provider that served the request. */
+  provider: Provider;
+
+  /** Canonical provider account namespace. Defaults to provider when absent. */
+  providerID?: ProviderID;
+
+  /** Optional provider account attribution. Missing means unattributed/legacy. */
+  providerAccountID?: string;
+
+  /** Denormalized account label at ingestion time. */
+  providerAccountLabel?: string;
+
+  /** Account storage/source class. */
+  providerAccountSource?: ProviderAccountStorageScope;
+
+  /** Model identifier. */
+  model?: string;
+
+  /** Provider/session identifier used to collapse idempotent re-uploads. */
+  sessionId?: string;
+
+  /**
+   * Vault-sealed project name (privacy-leak-remediation-2026-06-02 §1). The
+   * legacy plaintext `projectName` is no longer written by updated clients — the
+   * working-dir/project label is private text the server must not read, so it is
+   * AES-256-GCM-sealed on device. Absent on legacy docs (read with a fallback).
+   */
+  sealedProjectName?: CloudVaultSealedTextDoc;
+
+  /**
+   * Opaque vault-keyed HMAC trapdoor of the normalized project name, so clients
+   * can group usage by project without decrypting every doc. Carries no
+   * plaintext; the server cannot recover the name from it.
+   */
+  projectKeyHash?: string;
+
+  /** Device that originated the request. */
+  deviceId?: string;
+
+  /** Source device identifier used by synced records from another device. */
+  sourceDeviceId?: string;
+
+  /** Number of input tokens. */
+  inputTokens?: number;
+
+  /** Number of output tokens. */
+  outputTokens?: number;
+
+  /** Number of cache creation/write tokens. */
+  cacheCreationTokens?: number;
+
+  /** Number of cache read tokens. */
+  cacheReadTokens?: number;
+
+  /** Number of cache write tokens (schema-sync canon). */
+  cacheWriteTokens?: number;
+
+  /** Number of reasoning/thinking tokens. */
+  reasoningTokens?: number;
+
+  /** Total tokens as written by legacy clients. */
+  totalTokens?: number;
+
+  /** Estimated cost in USD (optional, canonical field). */
+  costUsd?: number;
+
+  /** Schema-sync alias for {@link costUsd}. */
+  costUSD?: number;
+
+  /** ISO 4217 currency code when cost is present (schema-sync canon). */
+  currency?: string;
+
+  /** Cost in USD (legacy field written by desktop UsageSyncService). */
+  cost?: number;
+
+  /** ISO 8601 ingestion timestamp (schema-sync canon). */
+  recordedAt: string;
+
+  /** Event classification (schema-sync canon). */
+  eventKind?: string;
+
+  /** Idempotency key for duplicate suppression (schema-sync canon). */
+  idempotencyKey?: string;
+
+  /** Parser/source confidence used to choose the best copy of a duplicate. */
+  provenanceConfidence?: string;
+
+  /** ISO 8601 timestamp of the event. */
+  timestamp?: unknown;
+
+  /** Legacy desktop event start timestamp. */
+  startTime?: unknown;
+
+  /** Legacy desktop event end timestamp. */
+  endTime?: unknown;
+
+  /** Legacy or server create timestamp. */
+  createdAt?: unknown;
+
+  /** Legacy or server update timestamp. */
+  updatedAt?: unknown;
+
+  /** Schema version. */
+  schemaVersion: number;
+}

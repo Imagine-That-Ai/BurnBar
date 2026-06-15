@@ -704,6 +704,13 @@ public struct BurnBarProviderRouter: Sendable {
 
             if activeSlots.isEmpty == false {
                 let sortedSlots = activeSlots.sorted { lhs, rhs in
+                    if let quotaOrder = Self.compareQuotaReset(
+                        lhs.slot.lastQuotaResetsAt,
+                        rhs.slot.lastQuotaResetsAt,
+                        now: now
+                    ) {
+                        return quotaOrder
+                    }
                     let lhsPreferred = configuration.settings.preferredCredentialSlotID == lhs.slot.slotID ? 0 : 1
                     let rhsPreferred = configuration.settings.preferredCredentialSlotID == rhs.slot.slotID ? 0 : 1
                     if lhsPreferred != rhsPreferred {
@@ -805,6 +812,33 @@ public struct BurnBarProviderRouter: Sendable {
 
     public func routeKey(providerID: String, slotID: String?) -> String {
         "\(providerID)#\(slotID ?? "legacy")"
+    }
+
+    private static func compareQuotaReset(_ lhs: Date?, _ rhs: Date?, now: Date) -> Bool? {
+        switch (activeQuotaReset(lhs, now: now), activeQuotaReset(rhs, now: now)) {
+        case let (.some(lhsReset), .some(rhsReset)):
+            guard lhsReset != rhsReset else { return nil }
+            return lhsReset < rhsReset
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        case (.none, .none):
+            return nil
+        }
+    }
+
+    private static func activeQuotaReset(_ value: Date?, now: Date) -> Date? {
+        guard let value, value > now else { return nil }
+        return value
+    }
+
+    private func sameQuotaDrainPool(_ lhs: BurnBarProviderRoute, _ rhs: BurnBarProviderRoute) -> Bool {
+        lhs.providerID == rhs.providerID
+            && lhs.resolvedModelID == rhs.resolvedModelID
+            && lhs.canonicalModelID == rhs.canonicalModelID
+            && lhs.formatFamily == rhs.formatFamily
+            && lhs.endpointProfileID == rhs.endpointProfileID
     }
 
     private func effectiveAPIKey(for configuration: BurnBarResolvedProviderConfiguration) -> String? {
@@ -1441,10 +1475,19 @@ extension BurnBarProviderRouter {
 
         let benchmarkIndex = benchmarkSnapshotsByModelAndTask(benchmarkSnapshots)
 
-        // Sort by composite score (desc), then deterministic tie-breaks.
-        // When scores tie inside one provider, prefer the least-recently selected
-        // slot so unpinned provider plans rotate instead of sticking to one key.
+        // Sort by composite score (desc), then deterministic tie-breaks. Inside
+        // one provider/model pool, drain the slot whose known quota window resets
+        // first before falling back to least-recently-selected rotation.
+        let rankingNow = Date()
         rankedRoutes.sort { lhs, rhs in
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+               ) {
+                return quotaOrder
+            }
             let lhsScore = rankedCompositeScore(
                 lhs,
                 routerMode: effectiveRouterMode,
@@ -1465,6 +1508,14 @@ extension BurnBarProviderRouter {
             let rhsProvider = rhs.breakdown.providerID
             if lhsProvider != rhsProvider {
                 return lhsProvider < rhsProvider
+            }
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+            ) {
+                return quotaOrder
             }
             let lhsLastSelected = slotInfoMap[lhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
             let rhsLastSelected = slotInfoMap[rhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
@@ -1545,7 +1596,16 @@ extension BurnBarProviderRouter {
         }
 
         let benchmarkIndex = benchmarkSnapshotsByModelAndTask([])
+        let rankingNow = Date()
         ranked.sort { lhs, rhs in
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+               ) {
+                return quotaOrder
+            }
             let lhsScore = rankedCompositeScore(
                 lhs,
                 routerMode: .providerFamilyFailover,
@@ -1563,6 +1623,14 @@ extension BurnBarProviderRouter {
             }
             if lhs.route.providerID != rhs.route.providerID {
                 return lhs.route.providerID < rhs.route.providerID
+            }
+            if sameQuotaDrainPool(lhs.route, rhs.route),
+               let quotaOrder = Self.compareQuotaReset(
+                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+                now: rankingNow
+            ) {
+                return quotaOrder
             }
             return (lhs.route.credentialSlotID ?? "legacy") < (rhs.route.credentialSlotID ?? "legacy")
         }
@@ -1626,6 +1694,7 @@ extension BurnBarProviderRouter {
         let status: BurnBarProviderCredentialSlotStatus
         let cooldownUntil: Date?
         let lastSelectedAt: Date?
+        let lastQuotaResetsAt: Date?
         let latencyMs: Double
         let isPreferredSlot: Bool
     }
@@ -1651,6 +1720,7 @@ extension BurnBarProviderRouter {
                         status: slot.status,
                         cooldownUntil: slot.cooldownUntil,
                         lastSelectedAt: slot.lastSelectedAt,
+                        lastQuotaResetsAt: slot.lastQuotaResetsAt,
                         latencyMs: latencyMs,
                         isPreferredSlot: isPreferred
                     )

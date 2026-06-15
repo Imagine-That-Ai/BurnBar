@@ -73,6 +73,8 @@ enum OpenBurnBarProductCatalog {
     static let cloudUltraAnnualProductID = "com.openburnbar.ultra.annual.v2"
     static let agentControl100ActionsProductID = "com.openburnbar.agentControl.actions100"
     static let flooRelay50GBProductID = "com.openburnbar.floo.relay50gb"
+    static let elderWandSearches100ProductID = "com.openburnbar.elderWand.searches100"
+    static let elderWandSearches500ProductID = "com.openburnbar.elderWand.searches500"
     static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
     static let legacyHostedQuotaOriginalProductID = "com.openburnbar.hostedQuotaSync.monthly"
     static let legacyHostedComputerUseProductID = "com.openburnbar.hostedComputerUseSync.monthly"
@@ -171,6 +173,28 @@ enum OpenBurnBarProductCatalog {
             included: "Adds 50 prepaid Floo relay GB to the current Cloud Pro month.",
             disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro subscription.",
             topUpKind: "floo_relay_50gb"
+        ),
+        OpenBurnBarStoreProduct(
+            id: elderWandSearches100ProductID,
+            title: "Elder Wand Search",
+            cadence: "100 hosted searches",
+            fallbackDisplayPrice: "$4.99",
+            entitlementID: nil,
+            role: .topUp,
+            included: "Adds 100 hosted web_search credits for Elder Wand Fusion to the current Cloud Pro or Ultra month.",
+            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro or Ultra subscription.",
+            topUpKind: "elder_wand_searches_100"
+        ),
+        OpenBurnBarStoreProduct(
+            id: elderWandSearches500ProductID,
+            title: "Elder Wand Search",
+            cadence: "500 hosted searches",
+            fallbackDisplayPrice: "$19.99",
+            entitlementID: nil,
+            role: .topUp,
+            included: "Adds 500 hosted web_search credits for Elder Wand Fusion to the current Cloud Pro or Ultra month.",
+            disclosure: "Consumable top-up. Requires an active BurnBar Cloud Pro or Ultra subscription.",
+            topUpKind: "elder_wand_searches_500"
         )
     ]
 
@@ -262,6 +286,8 @@ final class HostedQuotaSubscriptionStore {
     static let cloudUltraAnnualProductID = OpenBurnBarProductCatalog.cloudUltraAnnualProductID
     static let agentControl100ActionsProductID = OpenBurnBarProductCatalog.agentControl100ActionsProductID
     static let flooRelay50GBProductID = OpenBurnBarProductCatalog.flooRelay50GBProductID
+    static let elderWandSearches100ProductID = OpenBurnBarProductCatalog.elderWandSearches100ProductID
+    static let elderWandSearches500ProductID = OpenBurnBarProductCatalog.elderWandSearches500ProductID
 
     /// Every App Store-reviewable auto-renewable subscription and consumable
     /// top-up this build presents in StoreKit.

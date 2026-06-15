@@ -111,38 +111,49 @@ export interface AgentNotificationReplyCommand {
   schemaVersion: 1;
 }
 
-export function latestAssistantReply(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
+function sealedAssistantReply(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
+  const isSealed = data?.contentSealed === true || data?.sealedPayload !== undefined;
+  if (!isSealed) return undefined;
   const sealedRole = stringValue(data?.lastMessageRole);
+  if (sealedRole !== "assistant") return undefined;
   const sealedMessageId = stringValue(data?.lastAssistantMessageID);
-  if (
-    (data?.contentSealed === true || data?.sealedPayload !== undefined) &&
-    sealedRole === "assistant" &&
-    sealedMessageId
-  ) {
-    return {
-      id: sealedMessageId,
-      role: "assistant",
-      timestamp: data?.updatedAt ?? data?.updatedAtMillis,
-      isError: false,
-    };
-  }
+  if (!sealedMessageId) return undefined;
+  return {
+    id: sealedMessageId,
+    role: "assistant",
+    timestamp: data?.updatedAt ?? data?.updatedAtMillis,
+    isError: false,
+  };
+}
+
+function assistantReplyFromMessage(raw: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
+  const role = String(raw?.role ?? "");
+  if (role !== "assistant") return undefined;
+  const text = String(raw?.text ?? raw?.content ?? "").trim();
+  if (!text) return undefined;
+  const id = String(raw?.id ?? "").trim();
+  if (!id) return undefined;
+  return {
+    id,
+    role,
+    text,
+    timestamp: raw?.timestamp,
+    isError: raw?.isError === true,
+  };
+}
+
+function latestAssistantReplyFromMessages(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
   const messages = Array.isArray(data?.messages) ? data?.messages : [];
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const raw = isRecord(messages[index]) ? messages[index] : undefined;
-    const role = String(raw?.role ?? "");
-    const text = String(raw?.text ?? raw?.content ?? "").trim();
-    const id = String(raw?.id ?? "").trim();
-    if (role === "assistant" && text && id) {
-      return {
-        id,
-        role,
-        text,
-        timestamp: raw?.timestamp,
-        isError: raw?.isError === true,
-      };
-    }
+    const reply = assistantReplyFromMessage(raw);
+    if (reply) return reply;
   }
   return undefined;
+}
+
+export function latestAssistantReply(data: Record<string, unknown> | undefined): AgentReplyMessage | undefined {
+  return sealedAssistantReply(data) ?? latestAssistantReplyFromMessages(data);
 }
 
 export function shouldCreateNotificationEvent(args: {

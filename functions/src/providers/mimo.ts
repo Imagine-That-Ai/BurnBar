@@ -147,36 +147,39 @@ function tierCreditLimit(ctx: ProviderAccountConnectContext | undefined): number
   return ctx?.tokenPlanBillingCycle === "annual" ? monthly * 12 : monthly;
 }
 
-function parseRemainsBuckets(payload: unknown): QuotaBucket[] {
-  const root = recordOrUndefined(payload);
-  if (!root) return [];
-  const data = recordOrUndefined(root.data) ?? root;
+function extractRemainsArray(data: Record<string, unknown>): unknown[] | undefined {
+  if (Array.isArray(data.model_remains)) return data.model_remains;
+  if (Array.isArray(data.remains)) return data.remains;
+  if (Array.isArray(data.credits)) return data.credits;
+  return undefined;
+}
 
-  const remains =
-    (Array.isArray(data.model_remains) ? data.model_remains : undefined) ??
-    (Array.isArray(data.remains) ? data.remains : undefined) ??
-    (Array.isArray(data.credits) ? data.credits : undefined);
+function parseRemainsRow(row: unknown): QuotaBucket | undefined {
+  const item = recordOrUndefined(row);
+  if (!item) return undefined;
+  const used = Number(item.used ?? item.current_interval_usage_count ?? 0);
+  const total = Number(item.total ?? item.current_interval_total_count ?? item.limit ?? -1);
+  const remainsVal = Number(item.remains ?? item.remaining ?? (total >= 0 ? Math.max(0, total - used) : -1));
+  return {
+    name: String(item.model_name ?? item.name ?? "token_plan"),
+    used,
+    limit: total,
+    remaining: remainsVal,
+    window: String(item.period ?? item.window ?? "monthly"),
+    meta: { source: "vendor_remains" },
+  };
+}
 
-  if (Array.isArray(remains) && remains.length > 0) {
-    const buckets: QuotaBucket[] = [];
-    for (const row of remains) {
-      const item = recordOrUndefined(row);
-      if (!item) continue;
-      const used = Number(item.used ?? item.current_interval_usage_count ?? 0);
-      const total = Number(item.total ?? item.current_interval_total_count ?? item.limit ?? -1);
-      const remainsVal = Number(item.remains ?? item.remaining ?? (total >= 0 ? Math.max(0, total - used) : -1));
-      buckets.push({
-        name: String(item.model_name ?? item.name ?? "token_plan"),
-        used,
-        limit: total,
-        remaining: remainsVal,
-        window: String(item.period ?? item.window ?? "monthly"),
-        meta: { source: "vendor_remains" },
-      });
-    }
-    if (buckets.length > 0) return buckets;
+function parseRemainsRows(remains: unknown[]): QuotaBucket[] {
+  const buckets: QuotaBucket[] = [];
+  for (const row of remains) {
+    const bucket = parseRemainsRow(row);
+    if (bucket) buckets.push(bucket);
   }
+  return buckets;
+}
 
+function parseAggregateBucket(data: Record<string, unknown>): QuotaBucket[] {
   const used = Number(data.used ?? data.used_credits ?? 0);
   const total = Number(data.total ?? data.total_credits ?? data.limit ?? -1);
   const remaining = Number(
@@ -194,8 +197,21 @@ function parseRemainsBuckets(payload: unknown): QuotaBucket[] {
       },
     ];
   }
-
   return [];
+}
+
+function parseRemainsBuckets(payload: unknown): QuotaBucket[] {
+  const root = recordOrUndefined(payload);
+  if (!root) return [];
+  const data = recordOrUndefined(root.data) ?? root;
+
+  const remains = extractRemainsArray(data);
+  if (remains && remains.length > 0) {
+    const buckets = parseRemainsRows(remains);
+    if (buckets.length > 0) return buckets;
+  }
+
+  return parseAggregateBucket(data);
 }
 
 function ledgerBuckets(ctx: ProviderAccountConnectContext | undefined): QuotaBucket[] {

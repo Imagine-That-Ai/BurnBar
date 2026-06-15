@@ -10,8 +10,6 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import {
-  nowISO,
-  requiredIdentifier,
   boundedTrimmedString,
   safeCloudDocumentID,
   requireHexDigest,
@@ -23,16 +21,13 @@ import {
   requireSealedText,
   optionalISODateString,
   requireBoundedStringArray,
-  parseProjectMemoryFreshness,
-  requireCloudVaultBlobEnvelope,
   cloudVaultAADContext,
   assertUserStoragePath,
   assertEncryptedSessionBlobObject,
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
 import { randomBytes } from "node:crypto";
-import type { DocumentData, DocumentSnapshot, QuerySnapshot, WriteBatch, Query } from "firebase-admin/firestore";
-import type { ProjectMemorySnapshotDoc } from "../types.js";
+import type { QuerySnapshot, WriteBatch, Query } from "firebase-admin/firestore";
 import { stripUndefinedObject } from "../guards.js";
 import { wrapCallableHandler } from "../logging.js";
 import {
@@ -42,8 +37,18 @@ import {
   mapSessionLogManifestRow,
   resolveConversationSort,
 } from "./conversationQuery.js";
-import { buildCloudSearchPostingEdges, cloudSearchFallbackHashes } from "./encryptedSearchIndex.js";
+import { buildCloudSearchPostingEdges } from "./encryptedSearchIndex.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+
+// Re-export relocated callables so existing `import ... from "./callables/encryptedSearch.js"`
+// keeps resolving byte-identically. These were split out to keep every module under the
+// 600-line cap (the search/scoring machinery and the project-memory callables moved verbatim).
+export { searchEncryptedConversationIndex } from "./encryptedSearchQuery.js";
+export {
+  commitEncryptedProjectMemorySnapshot,
+  getEncryptedProjectMemorySnapshot,
+  listEncryptedProjectMemorySnapshots,
+} from "./encryptedProjectMemory.js";
 
 // ---------------------------------------------------------------------------
 // Callable: encrypted hosted session logs + cloud search
@@ -355,414 +360,6 @@ export const commitEncryptedSearchIndexBatch = onCall(
 
       await commitBatchedWrites(writes);
       return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length, commitID };
-    },
-  ),
-);
-
-export const commitEncryptedProjectMemorySnapshot = onCall(
-  {
-    region: FUNCTIONS_REGION,
-    enforceAppCheck: getConfig().enforceAppCheck,
-    maxInstances: 100,
-  },
-  wrapCallableHandler(
-    "commitEncryptedProjectMemorySnapshot",
-    async (
-      request: CallableRequest<{
-        docID?: unknown;
-        legacyDocID?: unknown;
-        contentHash?: unknown;
-        sourceSessionCount?: unknown;
-        sourceConversationCount?: unknown;
-        generatedAt?: unknown;
-        freshness?: unknown;
-        visualKinds?: unknown;
-        sealedSnapshot?: unknown;
-        contentHashVersion?: unknown;
-      }>,
-    ) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before syncing Project Memory.");
-      enforceAuthAndAppCheck(request, uid);
-      await assertActiveBurnBarProEntitlement(uid);
-
-      // SEAL + OPAQUE DOC ID (privacy-leak-remediation-2026-06-02 §2). The device
-      // derives an opaque, deterministic `docID` from the project slug under the
-      // vault key (projectMemoryDocID) and keys the doc by it; the plaintext slug
-      // and display name are NO LONGER accepted or persisted — both already live
-      // inside the sealed `sealedSnapshot` blob.
-      const docID = requiredIdentifier(request.data.docID, "docID");
-      const contentHash = requireHexDigest(request.data.contentHash, "contentHash");
-      const contentHashVersion = requireBoundedNumber(
-        request.data.contentHashVersion ?? 0,
-        "contentHashVersion",
-        0,
-        100,
-      );
-      const sourceSessionCount = requireBoundedNumber(
-        request.data.sourceSessionCount ?? 0,
-        "sourceSessionCount",
-        0,
-        1_000_000,
-      );
-      const sourceConversationCount = requireBoundedNumber(
-        request.data.sourceConversationCount ?? 0,
-        "sourceConversationCount",
-        0,
-        1_000_000,
-      );
-      const generatedAt = optionalISODateString(request.data.generatedAt, "generatedAt") ?? nowISO();
-      const freshness = parseProjectMemoryFreshness(request.data.freshness);
-      const visualKinds =
-        request.data.visualKinds == null
-          ? []
-          : requireBoundedStringArray(request.data.visualKinds, "visualKinds", 24, 80);
-      const sealedSnapshot = requireCloudVaultBlobEnvelope(
-        request.data.sealedSnapshot,
-        "sealedSnapshot",
-        cloudVaultAADContext(uid, "project_memory_snapshots", docID, "sealedSnapshot"),
-      );
-      const updatedAt = nowISO();
-
-      const doc: ProjectMemorySnapshotDoc = {
-        docID,
-        contentHash,
-        contentHashVersion,
-        sourceSessionCount,
-        sourceConversationCount,
-        generatedAt,
-        freshness,
-        visualKinds,
-        sealedSnapshot,
-        encryption: {
-          algorithm: sealedSnapshot.algorithm,
-          keyVersion: sealedSnapshot.keyVersion,
-          envelopeSchemaVersion: sealedSnapshot.schemaVersion,
-        },
-        // schemaVersion 2 fences the new sealed-only rows from legacy
-        // plaintext-slug-keyed rows (privacy-leak-remediation-2026-06-02 §2).
-        schemaVersion: 2,
-        updatedAt,
-      };
-
-      await db.doc(`users/${uid}/project_memory_snapshots/${docID}`).set(stripUndefinedObject(doc), { merge: true });
-
-      // Migration: the device sends `legacyDocID` (the old project-name-derived
-      // slug) when it differs from the opaque `docID`. Delete the stranded legacy
-      // doc so its cleartext `projectDisplayName` field and name-revealing doc id
-      // do not linger server-readable (privacy-leak-remediation-2026-06-02 §2).
-      const legacyDocID =
-        typeof request.data.legacyDocID === "string" && request.data.legacyDocID.length > 0
-          ? request.data.legacyDocID
-          : undefined;
-      if (legacyDocID && legacyDocID !== docID) {
-        await db
-          .doc(`users/${uid}/project_memory_snapshots/${legacyDocID}`)
-          .delete()
-          .catch(() => {
-            /* best-effort cleanup; the scheduled privacy backfill is the backstop */
-          });
-      }
-      return {
-        ok: true,
-        docID,
-        contentHash,
-        generatedAt,
-        updatedAt,
-      };
-    },
-  ),
-);
-
-export const getEncryptedProjectMemorySnapshot = onCall(
-  {
-    region: FUNCTIONS_REGION,
-    enforceAppCheck: getConfig().enforceAppCheck,
-    maxInstances: 100,
-  },
-  wrapCallableHandler(
-    "getEncryptedProjectMemorySnapshot",
-    async (
-      request: CallableRequest<{
-        docID?: unknown;
-      }>,
-    ) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before reading Project Memory.");
-      enforceAuthAndAppCheck(request, uid);
-      await assertActiveBurnBarProEntitlement(uid);
-
-      // Keyed by the opaque vault-key-derived docID the device sends; the server
-      // never sees the project slug/name (§2). The returned projection carries
-      // only the sealed snapshot + content-free facets — no plaintext name/slug.
-      const docID = requiredIdentifier(request.data.docID, "docID");
-      const snap = await db.doc(`users/${uid}/project_memory_snapshots/${docID}`).get();
-      if (!snap.exists) {
-        return { snapshot: null };
-      }
-      const data = snap.data() ?? {};
-      return {
-        snapshot: stripUndefinedObject({
-          docID: data.docID ?? docID,
-          contentHash: data.contentHash,
-          sourceSessionCount: data.sourceSessionCount,
-          sourceConversationCount: data.sourceConversationCount,
-          generatedAt: data.generatedAt,
-          freshness: data.freshness,
-          visualKinds: data.visualKinds,
-          sealedSnapshot: data.sealedSnapshot,
-          encryption: data.encryption,
-          schemaVersion: data.schemaVersion,
-          updatedAt: data.updatedAt,
-        }),
-      };
-    },
-  ),
-);
-
-export const listEncryptedProjectMemorySnapshots = onCall(
-  {
-    region: FUNCTIONS_REGION,
-    enforceAppCheck: getConfig().enforceAppCheck,
-    maxInstances: 100,
-  },
-  wrapCallableHandler(
-    "listEncryptedProjectMemorySnapshots",
-    async (
-      request: CallableRequest<{
-        limit?: unknown;
-      }>,
-    ) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before listing Project Memory.");
-      enforceAuthAndAppCheck(request, uid);
-      await assertActiveBurnBarProEntitlement(uid);
-
-      const limit = requireBoundedNumber(request.data.limit ?? 20, "limit", 1, 50);
-      const snapshot = await db
-        .collection(`users/${uid}/project_memory_snapshots`)
-        .orderBy("updatedAt", "desc")
-        .limit(limit)
-        .get();
-
-      const snapshots = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        // Opaque docID only — no plaintext name/slug projection (§2). A client
-        // that needs the display name opens the sealed snapshot on-device.
-        return stripUndefinedObject({
-          docID: data.docID ?? doc.id,
-          contentHash: data.contentHash,
-          sourceSessionCount: data.sourceSessionCount,
-          sourceConversationCount: data.sourceConversationCount,
-          generatedAt: data.generatedAt,
-          freshness: data.freshness,
-          visualKinds: data.visualKinds,
-          schemaVersion: data.schemaVersion,
-          updatedAt: data.updatedAt,
-        });
-      });
-
-      return { snapshots };
-    },
-  ),
-);
-
-export const searchEncryptedConversationIndex = onCall(
-  {
-    region: FUNCTIONS_REGION,
-    enforceAppCheck: getConfig().enforceAppCheck,
-    maxInstances: 100,
-  },
-  wrapCallableHandler(
-    "searchEncryptedConversationIndex",
-    async (
-      request: CallableRequest<{
-        tokenHashes?: unknown;
-        semanticHashes?: unknown;
-        limit?: unknown;
-        provider?: unknown;
-      }>,
-    ) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before searching session logs.");
-      enforceAuthAndAppCheck(request, uid);
-      await assertActiveBurnBarProEntitlement(uid);
-
-      const tokenHashes = requireOptionalSearchHashes(request.data.tokenHashes, "tokenHashes").slice(0, 10);
-      const semanticHashes = requireOptionalSearchHashes(request.data.semanticHashes, "semanticHashes").slice(0, 12);
-      const limitRaw = typeof request.data.limit === "number" ? request.data.limit : 25;
-      const limit = Math.max(1, Math.min(Math.floor(limitRaw), 50));
-      const provider = boundedTrimmedString(request.data.provider, "provider", 80, false);
-      if (tokenHashes.length === 0 && semanticHashes.length === 0) return { hits: [] };
-
-      type ScoredChunk = {
-        id: string;
-        data: DocumentData;
-        tokenMatches: number;
-        semanticMatches: number;
-      };
-      const scoredById = new Map<string, ScoredChunk>();
-      const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
-      const chunkCache = new Map<string, DocumentSnapshot>();
-
-      const mergeChunkDoc = (
-        doc: DocumentSnapshot,
-        requested: Set<string>,
-        fieldName: "tokenHashes" | "semanticHashes",
-        scoreName: "tokenMatches" | "semanticMatches",
-      ): boolean => {
-        if (!doc.exists) return false;
-        const data = doc.data() ?? {};
-        if (provider && data.provider !== provider) return false;
-        const hashes = Array.isArray(data[fieldName])
-          ? data[fieldName].filter((hash): hash is string => typeof hash === "string")
-          : [];
-        const matches = hashes.reduce((sum, hash) => sum + (requested.has(hash) ? 1 : 0), 0);
-        if (matches <= 0) return false;
-        const existing = scoredById.get(doc.id) ?? {
-          id: doc.id,
-          data,
-          tokenMatches: 0,
-          semanticMatches: 0,
-        };
-        existing[scoreName] += matches;
-        scoredById.set(doc.id, existing);
-        return true;
-      };
-
-      const mergeSnapshot = (
-        snap: QuerySnapshot,
-        requested: Set<string>,
-        fieldName: "tokenHashes" | "semanticHashes",
-        scoreName: "tokenMatches" | "semanticMatches",
-      ) => {
-        for (const doc of snap.docs) {
-          chunkCache.set(doc.id, doc);
-          mergeChunkDoc(doc, requested, fieldName, scoreName);
-        }
-      };
-
-      const mergePostingHits = async (
-        hashes: string[],
-        kind: "token" | "semantic",
-        fieldName: "tokenHashes" | "semanticHashes",
-        scoreName: "tokenMatches" | "semanticMatches",
-      ): Promise<Set<string>> => {
-        const matchedHashes = new Set<string>();
-        if (hashes.length === 0) return matchedHashes;
-        const postingKeys = hashes.map((hash) => `${kind}_${hash}`);
-        let postingQuery = db.collection(`users/${uid}/cloud_search_postings`).where("postingKey", "in", postingKeys);
-        if (provider) postingQuery = postingQuery.where("provider", "==", provider);
-        const postingSnaps = await postingQuery.limit(500).get();
-        const chunkIDs = new Set<string>();
-        const requested = new Set(hashes);
-        for (const postingSnap of postingSnaps.docs) {
-          const data = postingSnap.data();
-          if (!data || data.kind !== kind || typeof data.hash !== "string") continue;
-          if (!requested.has(data.hash)) continue;
-          if (typeof data.chunkID === "string" && chunkIDs.size < 500) {
-            chunkIDs.add(data.chunkID);
-          }
-        }
-        if (chunkIDs.size === 0) return matchedHashes;
-        const missingRefs = Array.from(chunkIDs)
-          .filter((chunkID) => !chunkCache.has(chunkID))
-          .map((chunkID) => db.doc(`users/${uid}/cloud_search_chunks/${chunkID}`));
-        if (missingRefs.length > 0) {
-          const chunkSnaps = await db.getAll(...missingRefs);
-          for (const chunkSnap of chunkSnaps) {
-            chunkCache.set(chunkSnap.id, chunkSnap);
-          }
-        }
-        for (const chunkID of chunkIDs) {
-          const chunkSnap = chunkCache.get(chunkID);
-          if (chunkSnap) {
-            if (mergeChunkDoc(chunkSnap, requested, fieldName, scoreName)) {
-              const hashesOnChunk = Array.isArray(chunkSnap.get(fieldName))
-                ? chunkSnap.get(fieldName).filter((hash: unknown): hash is string => typeof hash === "string")
-                : [];
-              for (const hash of hashesOnChunk) {
-                if (requested.has(hash)) matchedHashes.add(hash);
-              }
-            }
-          }
-        }
-        return matchedHashes;
-      };
-
-      const [tokenPostingMatchedHashes, semanticPostingMatchedHashes] = await Promise.all([
-        mergePostingHits(tokenHashes, "token", "tokenHashes", "tokenMatches"),
-        mergePostingHits(semanticHashes, "semantic", "semanticHashes", "semanticMatches"),
-      ]);
-
-      const tokenFallbackHashes = cloudSearchFallbackHashes(tokenHashes, tokenPostingMatchedHashes);
-      if (tokenFallbackHashes.length > 0) {
-        let tokenQuery = chunksRef.where("tokenHashes", "array-contains-any", tokenFallbackHashes);
-        if (provider) tokenQuery = tokenQuery.where("provider", "==", provider);
-        const tokenSnap = await tokenQuery.limit(250).get();
-        mergeSnapshot(tokenSnap, new Set(tokenFallbackHashes), "tokenHashes", "tokenMatches");
-      }
-
-      const semanticFallbackHashes = cloudSearchFallbackHashes(semanticHashes, semanticPostingMatchedHashes);
-      if (semanticFallbackHashes.length > 0) {
-        let semanticQuery = chunksRef.where("semanticHashes", "array-contains-any", semanticFallbackHashes);
-        if (provider) semanticQuery = semanticQuery.where("provider", "==", provider);
-        const semanticSnap = await semanticQuery.limit(250).get();
-        mergeSnapshot(semanticSnap, new Set(semanticFallbackHashes), "semanticHashes", "semanticMatches");
-      }
-
-      const scored = Array.from(scoredById.values())
-        .filter((item) => item.tokenMatches > 0 || item.semanticMatches > 0)
-        .sort((a, b) => {
-          const aScore = a.tokenMatches * 2 + a.semanticMatches;
-          const bScore = b.tokenMatches * 2 + b.semanticMatches;
-          return bScore - aScore || Number(a.data.ordinal ?? 0) - Number(b.data.ordinal ?? 0);
-        });
-
-      const hits: Array<Record<string, unknown>> = [];
-      const seenDocuments = new Set<string>();
-      for (const item of scored) {
-        const documentID = typeof item.data.documentID === "string" ? item.data.documentID : "";
-        if (!documentID || seenDocuments.has(documentID)) continue;
-        const docSnap = await db.doc(`users/${uid}/cloud_search_documents/${documentID}`).get();
-        if (!docSnap.exists) continue;
-        const docData = docSnap.data() ?? {};
-        if (docData.bodyHash !== item.data.bodyHash || docData.storagePath !== item.data.storagePath) continue;
-        seenDocuments.add(documentID);
-        hits.push({
-          id: item.id,
-          uid,
-          chunkID: item.id,
-          documentID,
-          sourceKind: item.data.sourceKind,
-          sourceID: item.data.sourceID,
-          provider: item.data.provider,
-          sealedTitle: docData.sealedTitle,
-          sealedSnippet: item.data.sealedSnippet,
-          sealedBodyPreview: docData.sealedBodyPreview,
-          storagePath: item.data.storagePath,
-          bodyHash: item.data.bodyHash,
-          bodyHashVersion: item.data.bodyHashVersion ?? docData.bodyHashVersion ?? 0,
-          score: Math.min(
-            1,
-            (item.tokenMatches * 2 + item.semanticMatches) /
-              Math.max(1, tokenHashes.length * 2 + semanticHashes.length),
-          ),
-          tokenScore: tokenHashes.length > 0 ? item.tokenMatches / tokenHashes.length : 0,
-          semanticScore: semanticHashes.length > 0 ? item.semanticMatches / semanticHashes.length : 0,
-          matchKind:
-            item.tokenMatches > 0 && item.semanticMatches > 0
-              ? "hybrid"
-              : item.semanticMatches > 0
-                ? "semantic"
-                : "token",
-          tokenHashVersion: item.data.tokenHashVersion ?? 1,
-          semanticHashVersion: item.data.semanticHashVersion ?? 0,
-          indexVersion: item.data.indexVersion ?? 1,
-        });
-        if (hits.length >= limit) break;
-      }
-      return { hits };
     },
   ),
 );

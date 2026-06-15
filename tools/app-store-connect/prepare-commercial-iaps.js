@@ -7,8 +7,9 @@
  * all-territory subscription prices, Cloud introductory trials, consumable
  * localization, consumable availability, and consumable base pricing.
  *
- * It intentionally does not create subscriptions. Missing products are
- * reported so the operator can recover/create them in ASC.
+ * It intentionally does not create subscriptions. Missing consumable top-ups
+ * are created when --apply is passed, then normalized with the same metadata,
+ * availability, and price schedule path as existing products.
  */
 'use strict';
 
@@ -86,6 +87,22 @@ const TOP_UPS = [
     priceUSD: '4.99',
     reviewNote:
       'Consumable top-up for BurnBar Cloud Pro subscribers. Adds 50 GB of Floo relay bandwidth allowance to the signed-in user ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Floo Relay top-ups.',
+  },
+  {
+    productId: 'com.openburnbar.elderWand.searches100',
+    name: 'Elder Wand Search 100',
+    description: 'Adds 100 hosted Elder Wand Fusion web_search credits.',
+    priceUSD: '4.99',
+    reviewNote:
+      'Consumable top-up for BurnBar Cloud Pro or Ultra subscribers. Adds 100 hosted web_search credits for Elder Wand Fusion to the signed-in user allowance ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Elder Wand Search top-ups.',
+  },
+  {
+    productId: 'com.openburnbar.elderWand.searches500',
+    name: 'Elder Wand Search 500',
+    description: 'Adds 500 hosted Elder Wand Fusion web_search credits.',
+    priceUSD: '19.99',
+    reviewNote:
+      'Consumable top-up for BurnBar Cloud Pro or Ultra subscribers. Adds 500 hosted web_search credits for Elder Wand Fusion to the signed-in user allowance ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Elder Wand Search top-ups.',
   },
 ];
 
@@ -222,24 +239,47 @@ async function maybeWrite(label, fn) {
   return fn();
 }
 
+function isUnmodifiableStateError(error) {
+  return error && error.statusCode === 409 && JSON.stringify(error.payload || {}).includes('INVALID.UNMODIFIABLE');
+}
+
+function attributesMatch(actual, desired) {
+  return Object.entries(desired).every(([key, value]) => actual && actual[key] === value);
+}
+
+async function maybePatch(label, fn) {
+  try {
+    return await maybeWrite(label, fn);
+  } catch (error) {
+    if (!isUnmodifiableStateError(error)) throw error;
+    console.log(`  skipped unmodifiable active metadata: ${label}`);
+    return null;
+  }
+}
+
 async function ensureSubscriptionMetadata(subscription, target, token) {
-  await maybeWrite(`PATCH subscription metadata ${target.productId}`, () => api(
+  const subscriptionAttributes = {
+    name: target.name,
+    reviewNote: target.reviewNote,
+    groupLevel: target.groupLevel,
+    familySharable: false,
+  };
+  if (attributesMatch(subscription.attributes, subscriptionAttributes)) {
+    console.log('  subscription metadata already current');
+  } else {
+    await maybePatch(`PATCH subscription metadata ${target.productId}`, () => api(
     'PATCH',
     `/v1/subscriptions/${subscription.id}`,
     {
       data: {
         id: subscription.id,
         type: 'subscriptions',
-        attributes: {
-          name: target.name,
-          reviewNote: target.reviewNote,
-          groupLevel: target.groupLevel,
-          familySharable: false,
-        },
+        attributes: subscriptionAttributes,
       },
     },
     token,
   ));
+  }
 
   const localizations = await listAll(
     `/v1/subscriptions/${subscription.id}/subscriptionLocalizations?limit=20`,
@@ -247,21 +287,26 @@ async function ensureSubscriptionMetadata(subscription, target, token) {
   );
   const current = localizations.find((entry) => entry.attributes.locale === 'en-US');
   if (current) {
-    await maybeWrite(`PATCH subscription localization ${current.id}`, () => api(
-      'PATCH',
-      `/v1/subscriptionLocalizations/${current.id}`,
-      {
-        data: {
-          id: current.id,
-          type: 'subscriptionLocalizations',
-          attributes: {
-            name: target.localizationName,
-            description: target.localizationDescription,
+    const localizationAttributes = {
+      name: target.localizationName,
+      description: target.localizationDescription,
+    };
+    if (attributesMatch(current.attributes, localizationAttributes)) {
+      console.log('  subscription localization en-US already current');
+    } else {
+      await maybePatch(`PATCH subscription localization ${current.id}`, () => api(
+        'PATCH',
+        `/v1/subscriptionLocalizations/${current.id}`,
+        {
+          data: {
+            id: current.id,
+            type: 'subscriptionLocalizations',
+            attributes: localizationAttributes,
           },
         },
-      },
-      token,
-    ));
+        token,
+      ));
+    }
   } else {
     await maybeWrite(`POST subscription localization en-US`, () => api(
       'POST',
@@ -444,13 +489,37 @@ async function countRelationship(path, token) {
   return (await listAll(path, token)).length;
 }
 
+async function ensureInAppPurchaseExists(target, token) {
+  const created = await maybeWrite(`POST consumable IAP ${target.productId}`, () => api(
+    'POST',
+    '/v2/inAppPurchases',
+    {
+      data: {
+        type: 'inAppPurchases',
+        attributes: {
+          name: target.name,
+          productId: target.productId,
+          inAppPurchaseType: 'CONSUMABLE',
+          reviewNote: target.reviewNote,
+          familySharable: false,
+        },
+        relationships: {
+          app: { data: { type: 'apps', id: APP_ID } },
+        },
+      },
+    },
+    token,
+  ));
+  return created && created.data ? created.data : null;
+}
+
 async function ensureInAppPurchaseLocalization(iap, target, token) {
   const localizations = await listAll(
     `/v2/inAppPurchases/${iap.id}/inAppPurchaseLocalizations?limit=20`,
     token,
   );
   const current = localizations.find((entry) => entry.attributes.locale === 'en-US');
-  const patchLocalization = (localization) => maybeWrite(`PATCH IAP localization ${localization.id}`, () => api(
+  const patchLocalization = (localization) => maybePatch(`PATCH IAP localization ${localization.id}`, () => api(
     'PATCH',
     `/v1/inAppPurchaseLocalizations/${localization.id}`,
     {
@@ -481,29 +550,38 @@ async function ensureInAppPurchaseLocalization(iap, target, token) {
     return;
   }
   if (current) {
-    await patchLocalization(current);
+    if (attributesMatch(current.attributes, { name: target.name, description: target.description })) {
+      console.log('  in-app purchase localization en-US already current');
+    } else {
+      await patchLocalization(current);
+    }
   } else {
     await createLocalization('en-US');
   }
 }
 
 async function ensureInAppPurchaseMetadata(iap, target, token) {
-  await maybeWrite(`PATCH IAP metadata ${target.productId}`, () => api(
-    'PATCH',
-    `/v2/inAppPurchases/${iap.id}`,
-    {
-      data: {
-        id: iap.id,
-        type: 'inAppPurchases',
-        attributes: {
-          name: target.name,
-          reviewNote: target.reviewNote,
-          familySharable: false,
+  const iapAttributes = {
+    name: target.name,
+    reviewNote: target.reviewNote,
+    familySharable: false,
+  };
+  if (attributesMatch(iap.attributes, iapAttributes)) {
+    console.log('  in-app purchase metadata already current');
+    return;
+  }
+  await maybePatch(`PATCH IAP metadata ${target.productId}`, () => api(
+      'PATCH',
+      `/v2/inAppPurchases/${iap.id}`,
+      {
+        data: {
+          id: iap.id,
+          type: 'inAppPurchases',
+          attributes: iapAttributes,
         },
       },
-    },
-    token,
-  ));
+      token,
+    ));
 }
 
 async function ensureInAppPurchaseAvailability(iap, territoryIds, token) {
@@ -543,8 +621,17 @@ async function findInAppPurchasePricePoint(iapId, priceUSD, token) {
 
 async function ensureInAppPurchasePriceSchedule(iap, target, token) {
   try {
-    await api('GET', `/v2/inAppPurchases/${iap.id}/iapPriceSchedule`, undefined, token);
-    return;
+    const schedule = await api(
+      'GET',
+      `/v2/inAppPurchases/${iap.id}/iapPriceSchedule?include=manualPrices,automaticPrices`,
+      undefined,
+      token,
+    );
+    const manualTotal = schedule.data?.relationships?.manualPrices?.meta?.paging?.total || 0;
+    const automaticTotal = schedule.data?.relationships?.automaticPrices?.meta?.paging?.total || 0;
+    if (manualTotal + automaticTotal > 0) {
+      return;
+    }
   } catch (error) {
     if (error.statusCode !== 404) throw error;
   }
@@ -611,10 +698,14 @@ async function main() {
 
   for (const target of TOP_UPS) {
     console.log(`\n→ in-app purchase ${target.productId}`);
-    const iap = iaps.get(target.productId);
+    let iap = iaps.get(target.productId);
     if (!iap) {
-      console.log('  missing in visible App Store Connect in-app purchases');
-      continue;
+      iap = await ensureInAppPurchaseExists(target, token);
+      if (!iap) {
+        console.log('  missing in visible App Store Connect in-app purchases');
+        continue;
+      }
+      iaps.set(target.productId, iap);
     }
     await ensureInAppPurchaseMetadata(iap, target, token);
     await ensureInAppPurchaseLocalization(iap, target, token);

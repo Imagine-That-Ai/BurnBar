@@ -10,6 +10,7 @@ import {
   GOOGLE_PLAY_PRODUCTS,
   evaluateAppStoreProductReadiness,
   evaluateCloudRunServiceReadiness,
+  evaluateElderWandHostedSearchRuntime,
   evaluateEnvRequirements,
   evaluateRetiredCloudRunServiceAbsence,
   evaluateRemoteConfigDefaults,
@@ -23,6 +24,9 @@ const launchGateSource = readFileSync(
 );
 assert.match(launchGateSource, /verifyCloudProTopUp/);
 assert.match(launchGateSource, /verifyGooglePlayCloudProTopUp/);
+assert.match(launchGateSource, /performElderWandHostedSearch/);
+assert.match(launchGateSource, /cloud_pro_included_fusion_searches_monthly/);
+assert.match(launchGateSource, /STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID/);
 assert.match(launchGateSource, /READY_FOR_CANARY/);
 assert.match(launchGateSource, /READY_FOR_PUBLIC_RELEASE/);
 assert.match(launchGateSource, /LAUNCH_DONE/);
@@ -37,7 +41,11 @@ assert.equal(
   GOOGLE_PLAY_PRODUCTS.agentControlActions100,
   "com.openburnbar.agentcontrol.actions100",
 );
+assert.equal(GOOGLE_PLAY_PRODUCTS.elderWandSearches100, "com.openburnbar.elderwand.searches100");
+assert.equal(GOOGLE_PLAY_PRODUCTS.elderWandSearches500, "com.openburnbar.elderwand.searches500");
 assert.equal(COMMERCIAL_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual.v2");
+assert.equal(COMMERCIAL_PRODUCTS.elderWandSearches100, "com.openburnbar.elderWand.searches100");
+assert.equal(COMMERCIAL_PRODUCTS.elderWandSearches500, "com.openburnbar.elderWand.searches500");
 assert.equal(GOOGLE_PLAY_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual");
 assert.notEqual(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
@@ -60,6 +68,7 @@ function passingChecks(overrides = {}) {
     redis: { ok: true },
     hostedQuotaRuntime: { ok: true },
     commercialBillingRuntime: { ok: true },
+    elderWandHostedSearchRuntime: { ok: true },
     remoteConfigCaps: { ok: true },
     opsAlerts: { ok: true },
     billingAlerts: { ok: true },
@@ -140,6 +149,8 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.ultraAnnual,
       COMMERCIAL_PRODUCTS.agentControlActions100,
       COMMERCIAL_PRODUCTS.flooRelay50GB,
+      COMMERCIAL_PRODUCTS.elderWandSearches100,
+      COMMERCIAL_PRODUCTS.elderWandSearches500,
     ],
     [
       COMMERCIAL_PRODUCTS.cloudMonthly,
@@ -150,6 +161,8 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.ultraAnnual,
       COMMERCIAL_PRODUCTS.agentControlActions100,
       COMMERCIAL_PRODUCTS.flooRelay50GB,
+      COMMERCIAL_PRODUCTS.elderWandSearches100,
+      COMMERCIAL_PRODUCTS.elderWandSearches500,
     ],
   );
   assert.equal(coverage.ok, true);
@@ -195,6 +208,12 @@ function passingChecks(overrides = {}) {
           name: "Agent Control 100 Actions",
           state: "WAITING_FOR_REVIEW",
         },
+        {
+          id: "iap_elder_wand_100",
+          productId: COMMERCIAL_PRODUCTS.elderWandSearches100,
+          name: "Elder Wand Search 100",
+          state: "WAITING_FOR_REVIEW",
+        },
       ],
     },
     [
@@ -202,6 +221,7 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.cloudProMonthly,
       COMMERCIAL_PRODUCTS.ultraMonthly,
       COMMERCIAL_PRODUCTS.agentControlActions100,
+      COMMERCIAL_PRODUCTS.elderWandSearches100,
     ],
   );
   assert.equal(readiness.ok, true);
@@ -264,6 +284,33 @@ function passingChecks(overrides = {}) {
   );
   assert.equal(evaluated.ok, false);
   assert.equal(evaluated.valueChecks[0].actual, "price_legacy");
+}
+
+{
+  const runtime = evaluateElderWandHostedSearchRuntime({
+    ok: true,
+    functionName: "performElderWandHostedSearch",
+    env: { ENFORCE_APP_CHECK: "true" },
+    secretEnvVarNames: ["PERPLEXITY_API_KEY", "TAVILY_API_KEY"],
+  });
+  assert.equal(runtime.ok, true);
+}
+
+{
+  const runtime = evaluateElderWandHostedSearchRuntime({
+    ok: true,
+    functionName: "performElderWandHostedSearch",
+    env: { ENFORCE_APP_CHECK: "true" },
+    secretEnvVarNames: ["TAVILY_API_KEY"],
+  });
+  assert.equal(runtime.ok, false);
+  assert.deepEqual(
+    runtime.secretChecks.map((check) => [check.name, check.ok]),
+    [
+      ["PERPLEXITY_API_KEY", false],
+      ["TAVILY_API_KEY", true],
+    ],
+  );
 }
 
 {

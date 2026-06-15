@@ -8,7 +8,7 @@
   "main": "lib/index.js",
   "scripts": {
     "sync:local-packages": "../scripts/build-signal-envelope-contracts.sh && ../scripts/build-entitlements.sh && node scripts/sync-local-packages.mjs",
-    "postinstall": "npm run sync:local-packages",
+    "postinstall": "node scripts/postinstall-sync-local-packages.mjs",
     "prebuild": "npm run sync:local-packages",
     "build": "tsc && node scripts/copy-certs.mjs",
     "build:watch": "tsc --watch",
@@ -53,7 +53,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"!src/types/generated/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"!src/types/generated/**/*.ts\"",
     "knip": "knip",
-    "lint": "eslint src --max-warnings 37",
+    "lint": "eslint src --max-warnings 0",
     "profile": "node --cpu-prof --cpu-prof-name=functions-profile.cpuprofile scripts/profile-functions.mjs",
     "profile:heap": "PROFILE_HEAP=true node scripts/profile-functions.mjs",
     "alerts:billing": "node scripts/create-billing-alert-policies.mjs",

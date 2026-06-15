@@ -48,6 +48,10 @@ enum HermesModelSelectionEngine {
         coordinator.selectedModelID = modelID
         coordinator.selectedModelWasExplicit = true
         coordinator.defaults.set(modelID, forKey: HermesRuntimeStore.selectedModelDefaultsKey)
+        coordinator.defaults.set(
+            modelID,
+            forKey: HermesRuntimeStore.selectedModelDefaultsKey(for: coordinator.selectedConnection.id)
+        )
         coordinator.runtimeErrorText = nil
         coordinator.lastError = nil
     }
@@ -56,6 +60,9 @@ enum HermesModelSelectionEngine {
         coordinator.selectedModelID = nil
         coordinator.selectedModelWasExplicit = false
         coordinator.defaults.removeObject(forKey: HermesRuntimeStore.selectedModelDefaultsKey)
+        coordinator.defaults.removeObject(
+            forKey: HermesRuntimeStore.selectedModelDefaultsKey(for: coordinator.selectedConnection.id)
+        )
     }
 
     static func selectGatewayModelID(_ modelID: String, coordinator: HermesModelSelectionCoordinating) {
@@ -65,6 +72,10 @@ enum HermesModelSelectionEngine {
         coordinator.selectedModelID = canonical
         coordinator.selectedModelWasExplicit = true
         coordinator.defaults.set(canonical, forKey: HermesRuntimeStore.selectedModelDefaultsKey)
+        coordinator.defaults.set(
+            canonical,
+            forKey: HermesRuntimeStore.selectedModelDefaultsKey(for: coordinator.selectedConnection.id)
+        )
         coordinator.runtimeErrorText = nil
         coordinator.lastError = nil
     }
@@ -80,6 +91,10 @@ enum HermesModelSelectionEngine {
         coordinator.selectedModelID = modelID
         if coordinator.selectedModelWasExplicit {
             coordinator.defaults.set(modelID, forKey: HermesRuntimeStore.selectedModelDefaultsKey)
+            coordinator.defaults.set(
+                modelID,
+                forKey: HermesRuntimeStore.selectedModelDefaultsKey(for: coordinator.selectedConnection.id)
+            )
         }
     }
 
@@ -111,6 +126,10 @@ enum HermesModelSelectionEngine {
         coordinator.selectedModelWasExplicit = true
         if let selectedModelID = coordinator.selectedModelID {
             coordinator.defaults.set(selectedModelID, forKey: HermesRuntimeStore.selectedModelDefaultsKey)
+            coordinator.defaults.set(
+                selectedModelID,
+                forKey: HermesRuntimeStore.selectedModelDefaultsKey(for: coordinator.selectedConnection.id)
+            )
         }
     }
     #endif
@@ -163,6 +182,12 @@ enum HermesModelSelectionEngine {
             persistResolvedSelectedModelID(resolved, coordinator: coordinator)
             return resolved
         } else {
+            guard HermesTransportSelector.preferredRouteEligibleModelID(
+                in: coordinator.modelOptions,
+                favorites: favoriteModelOptions(coordinator: coordinator)
+            ) != nil else {
+                throw HermesServiceError.noRouteEligibleModel
+            }
             throw HermesServiceError.selectedModelUnavailable(selectedModelID)
         }
         return canonicalizedSelectedModelID(selectedModelID, coordinator: coordinator)
@@ -203,6 +228,12 @@ enum HermesModelSelectionEngine {
                 persistResolvedSelectedModelID(resolved, coordinator: coordinator)
                 return resolved
             } else {
+                guard HermesTransportSelector.preferredRouteEligibleModelID(
+                    in: coordinator.modelOptions,
+                    favorites: favoriteModelOptions(coordinator: coordinator)
+                ) != nil else {
+                    throw HermesServiceError.noRouteEligibleModel
+                }
                 throw HermesServiceError.selectedModelUnavailable(selectedModelID)
             }
             return canonicalizedSelectedModelID(selectedModelID, coordinator: coordinator)

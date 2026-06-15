@@ -189,6 +189,7 @@ public enum ProviderRoutingStateBuilder {
             storageScope: account.storageScope,
             modelCompatibility: .unknown,
             quotaState: state,
+            quotaResetsAt: weeklyQuotaResetsAt(for: snapshot, now: now),
             cooldownUntil: nil,
             // Lower wins; default account has already been moved to index 0
             // by the caller, so we just forward the deterministic rank.
@@ -198,5 +199,43 @@ public enum ProviderRoutingStateBuilder {
             lastFailureCode: account.lastErrorCode,
             localCredentialAvailable: localCredentialAvailable
         )
+    }
+
+    private static func weeklyQuotaResetsAt(
+        for snapshot: ProviderQuotaSnapshot?,
+        now: Date
+    ) -> Date? {
+        guard let snapshot else { return nil }
+        return snapshot.buckets
+            .filter(\.isDisplayableQuotaSignal)
+            .map { $0.reconcilingElapsedWindow(asOf: now) }
+            .filter(isWeeklyQuotaBucket)
+            .compactMap(\.resetsAt)
+            .filter { $0 > now }
+            .min()
+    }
+
+    private static func isWeeklyQuotaBucket(_ bucket: ProviderQuotaBucket) -> Bool {
+        let window = bucket.window?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if window == ProviderQuotaWindowKind.weekly.rawValue.lowercased() {
+            return true
+        }
+
+        let marker = [
+            bucket.name,
+            bucket.meta?["label"],
+            bucket.window
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+        return marker.contains("week")
+            || marker.contains("7 day")
+            || marker.contains("7-day")
+            || marker.contains("7d")
+            || marker.contains("seven day")
     }
 }

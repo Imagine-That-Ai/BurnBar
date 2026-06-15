@@ -4,7 +4,7 @@
  * schema-sync generated provider-account contracts.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,10 +27,23 @@ const generated = readFileSync(
   join(repoRoot, "functions/src/types/generated/provider-account.ts"),
   "utf8"
 );
-const handMaintained = readFileSync(
+// types/legacy.ts was split into cohesive sub-modules under types/legacy/ (re-
+// exported byte-identically from legacy.ts). Concatenate the barrel + every
+// sub-module so the hand-maintained interface declarations are found wherever
+// the split relocated them (e.g. ProviderAccountDoc -> legacy/providers.ts,
+// ProviderAccountConnectContext -> legacy/config.ts).
+let handMaintained = readFileSync(
   join(repoRoot, "functions/src/types/legacy.ts"),
   "utf8"
 );
+const legacyDir = join(repoRoot, "functions/src/types/legacy");
+if (existsSync(legacyDir)) {
+  for (const file of readdirSync(legacyDir)) {
+    if (file.endsWith(".ts")) {
+      handMaintained += "\n" + readFileSync(join(legacyDir, file), "utf8");
+    }
+  }
+}
 
 const generatedDoc = extractInterfaceFields(generated, "ProviderAccountDoc");
 const handDoc = extractInterfaceFields(handMaintained, "ProviderAccountDoc");

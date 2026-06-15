@@ -79,6 +79,14 @@ function allowanceFieldNames(meter: CloudProAllowanceMeter): {
       cap: "monthlyRelayGBCap",
     };
   }
+  if (meter === "fusion_searches") {
+    return {
+      included: "includedFusionSearches",
+      used: "fusionSearchesUsed",
+      topUp: "topupFusionSearchesPurchased",
+      cap: "monthlyFusionSearchCap",
+    };
+  }
   return {
     included: "includedHostedActions",
     used: "hostedActionsUsed",
@@ -155,13 +163,18 @@ async function reserveCloudProAllowance(args: {
       {
         includedHostedActions: allowanceConfig.includedHostedActionsMonthly,
         includedRelayGB: allowanceConfig.includedRelayGBMonthly,
+        includedFusionSearches: allowanceConfig.includedFusionSearchesMonthly,
         hostedActionsUsed:
           args.meter === "hosted_actions" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
         relayGBUsed: args.meter === "relay_gb" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
+        fusionSearchesUsed:
+          args.meter === "fusion_searches" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
         topupActionsPurchased: FieldValue.increment(0),
         topupRelayGBPurchased: FieldValue.increment(0),
+        topupFusionSearchesPurchased: FieldValue.increment(0),
         monthlyHostedActionCap: allowanceConfig.monthlyHostedActionCap,
         monthlyRelayGBCap: allowanceConfig.monthlyRelayGBCap,
+        monthlyFusionSearchCap: allowanceConfig.monthlyFusionSearchCap,
         updatedAt: now,
         schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
       },

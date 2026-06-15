@@ -333,6 +333,8 @@ function appStoreTopUpKind(productID: string): CloudProTopUpKind | undefined {
   const cfg = getConfig();
   if (productID === cfg.agentControl100ActionsProductID) return "agent_control_actions_100";
   if (productID === cfg.flooRelay50GBProductID) return "floo_relay_50gb";
+  if (productID === cfg.elderWandSearches100ProductID) return "elder_wand_searches_100";
+  if (productID === cfg.elderWandSearches500ProductID) return "elder_wand_searches_500";
   return undefined;
 }
 

@@ -37,6 +37,7 @@ import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefin
 import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
 import { googlePlayBillingRecordPath } from "./googlePlayBillingPaths.js";
 import { claimGooglePlayPurchaseToken } from "./googlePlayTokenClaims.js";
+import { googlePlayTopUpKind, STRIPE_TOP_UP_KINDS, topUpCheckoutSelection } from "./stripeTopUps.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
@@ -45,7 +46,6 @@ import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 type StripeCheckoutTier = "cloud" | "cloud_pro";
 type StripeCheckoutCadence = "monthly" | "annual";
-type StripeTopUpKind = "agent_control_actions_100" | "floo_relay_50gb";
 type StripeWebhookReservation = "reserved" | "processed" | "processing";
 
 const STRIPE_WEBHOOK_EVENT_LEASE_MS = 10 * 60 * 1000;
@@ -117,22 +117,6 @@ function subscriptionCheckoutSelection(data: { tier?: unknown; cadence?: unknown
     tier,
     cadence,
   };
-}
-
-function topUpCheckoutSelection(kind: StripeTopUpKind): { priceID: string; kind: StripeTopUpKind } {
-  const cfg = getConfig();
-  switch (kind) {
-    case "agent_control_actions_100":
-      return {
-        kind,
-        priceID: requireConfiguredPriceID(cfg.stripeAgentControl100ActionsPriceID, "Agent Control 100 hosted actions"),
-      };
-    case "floo_relay_50gb":
-      return {
-        kind,
-        priceID: requireConfiguredPriceID(cfg.stripeFlooRelay50GBPriceID, "Floo relay 50 GB"),
-      };
-  }
 }
 
 function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: string; canonicalProductID: string } {
@@ -242,20 +226,6 @@ export async function markStripeWebhookEventFailed(event: Stripe.Event, error: u
   );
 }
 
-function googlePlayTopUpKind(productID: string): CloudProTopUpKind {
-  const cfg = getConfig();
-  if (
-    productID === cfg.googlePlayAgentControl100ActionsProductID ||
-    productID === cfg.agentControl100ActionsProductID
-  ) {
-    return "agent_control_actions_100";
-  }
-  if (productID === cfg.googlePlayFlooRelay50GBProductID || productID === cfg.flooRelay50GBProductID) {
-    return "floo_relay_50gb";
-  }
-  throw new HttpsError("invalid-argument", "Unsupported Google Play top-up product.");
-}
-
 export const createStripeBurnBarProCheckoutSession = onCall(
   {
     region: FUNCTIONS_REGION,
@@ -284,7 +254,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
       const topUpKind = optionalChoice(
         request.data.topUpKind,
-        ["agent_control_actions_100", "floo_relay_50gb"] as const,
+        STRIPE_TOP_UP_KINDS,
         "topUpKind",
       );
 

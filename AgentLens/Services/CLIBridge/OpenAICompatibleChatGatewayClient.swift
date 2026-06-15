@@ -1073,6 +1073,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         workspaceURL: URL? = nil,
         toolBroker: AgentToolBroker? = nil,
         plugins: [[String: any Sendable]]? = nil,
+        additionalHeaders: [String: String] = [:],
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         defer {
@@ -1144,7 +1145,8 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                 bearerToken: bearerToken,
                 toolBroker: toolBroker,
                 continuation: continuation,
-                plugins: plugins
+                plugins: plugins,
+                additionalHeaders: additionalHeaders
             )
             return
         }
@@ -1174,6 +1176,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             Self.applyNoRetentionHeaders(to: &request)
+            Self.applyAdditionalHeaders(additionalHeaders, to: &request)
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
             let (bytes, response) = try await session.bytes(for: request)
@@ -1218,7 +1221,8 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                     model: selectedModel,
                     session: session,
                     bearerToken: bearerToken,
-                    plugins: plugins
+                    plugins: plugins,
+                    additionalHeaders: additionalHeaders
                 )
                 if !content.content.isEmpty {
                     continuation.yield(.text(content.content))
@@ -1252,6 +1256,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         toolBroker: AgentToolBroker,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
         plugins: [[String: any Sendable]]? = nil,
+        additionalHeaders: [String: String] = [:],
         maxToolCalls: Int = 24
     ) async {
         defer { session.invalidateAndCancel() }
@@ -1281,6 +1286,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 }
                 Self.applyNoRetentionHeaders(to: &request)
+                Self.applyAdditionalHeaders(additionalHeaders, to: &request)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
                 let (data, response) = try await session.data(for: request)
@@ -1424,7 +1430,8 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         model: String,
         session: URLSession,
         bearerToken: String?,
-        plugins: [[String: any Sendable]]? = nil
+        plugins: [[String: any Sendable]]? = nil,
+        additionalHeaders: [String: String] = [:]
     ) async throws -> (content: String, usage: CLIUsageSnapshot?) {
         var body: [String: Any] = ["model": model, "stream": false, "messages": messages]
         if let plugins, !plugins.isEmpty {
@@ -1437,6 +1444,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         Self.applyNoRetentionHeaders(to: &request)
+        Self.applyAdditionalHeaders(additionalHeaders, to: &request)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
@@ -1589,6 +1597,16 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
     static func applyNoRetentionHeaders(to request: inout URLRequest) {
         for (key, value) in AgentProviderRetentionPolicy.noRetentionHeaders {
             request.setValue(value, forHTTPHeaderField: key)
+        }
+    }
+
+    static func applyAdditionalHeaders(_ headers: [String: String], to request: inout URLRequest) {
+        for (key, value) in headers {
+            let field = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !field.isEmpty, !trimmedValue.isEmpty else { continue }
+            guard field.caseInsensitiveCompare("Authorization") != .orderedSame else { continue }
+            request.setValue(trimmedValue, forHTTPHeaderField: field)
         }
     }
 }

@@ -63,6 +63,71 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         XCTAssertEqual(snapshot?.nextFallback?.accountID, "openai_work")
     }
 
+    func test_build_prefersEarliestWeeklyQuotaResetOverDefaultAccount() {
+        let work = account(id: "codex_work", providerID: .codex, isDefault: false, sortKey: 10)
+        let personal = account(id: "codex_personal", providerID: .codex, isDefault: true, sortKey: 0)
+        let soonerReset = now.addingTimeInterval(24 * 60 * 60)
+        let laterReset = now.addingTimeInterval(6 * 24 * 60 * 60)
+
+        let snapshot = ProviderRoutingStateBuilder.build(
+            providerID: .codex,
+            accounts: [personal, work],
+            snapshots: [
+                healthySnapshot(accountID: "codex_personal", providerID: .codex, weeklyResetsAt: laterReset),
+                healthySnapshot(accountID: "codex_work", providerID: .codex, weeklyResetsAt: soonerReset)
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(snapshot?.activeAccount?.accountID, "codex_work")
+        XCTAssertEqual(snapshot?.activeAccount?.quotaResetsAt, soonerReset)
+        XCTAssertEqual(snapshot?.nextFallback?.accountID, "codex_personal")
+    }
+
+    func test_build_doesNotTreatGenericRollingDaysBucketAsWeeklyReset() {
+        let work = account(id: "codex_work", providerID: .codex, isDefault: false, sortKey: 10)
+        let personal = account(id: "codex_personal", providerID: .codex, isDefault: true, sortKey: 0)
+        let soonerMonthlyReset = now.addingTimeInterval(24 * 60 * 60)
+
+        let monthlySnapshot = ProviderQuotaSnapshot(
+            id: "snap_codex_work",
+            provider: ProviderID.codex.rawValue,
+            providerID: .codex,
+            accountID: "codex_work",
+            accountLabel: "Codex Work",
+            sourceKind: .provider,
+            sourceID: "codex_work",
+            fetchedAt: now,
+            source: "Codex",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    name: "30-day quota",
+                    used: 100_000,
+                    limit: 1_000_000,
+                    remaining: 900_000,
+                    window: ProviderQuotaWindowKind.rollingDays.rawValue,
+                    meta: ["unit": "tokens"],
+                    resetsAt: soonerMonthlyReset
+                )
+            ],
+            updatedAt: now
+        )
+
+        let snapshot = ProviderRoutingStateBuilder.build(
+            providerID: .codex,
+            accounts: [personal, work],
+            snapshots: [
+                healthySnapshot(accountID: "codex_personal", providerID: .codex),
+                monthlySnapshot
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(snapshot?.activeAccount?.accountID, "codex_personal")
+        XCTAssertNil(snapshot?.nextFallback?.quotaResetsAt)
+    }
+
     func test_build_isDeterministicAcrossEqualSortKeys() {
         let bravo = account(id: "openai_b", label: "Bravo", sortKey: 5)
         let alpha = account(id: "openai_a", label: "Alpha", sortKey: 5)
@@ -393,11 +458,15 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         )
     }
 
-    private func healthySnapshot(accountID: String) -> ProviderQuotaSnapshot {
+    private func healthySnapshot(
+        accountID: String,
+        providerID: ProviderID = .openAI,
+        weeklyResetsAt: Date? = nil
+    ) -> ProviderQuotaSnapshot {
         ProviderQuotaSnapshot(
             id: "snap_\(accountID)",
-            provider: "openai",
-            providerID: .openAI,
+            provider: providerID.rawValue,
+            providerID: providerID,
             accountID: accountID,
             accountLabel: accountID,
             sourceKind: .provider,
@@ -405,7 +474,17 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
             fetchedAt: now,
             source: "OpenAI",
             confidence: .high,
-            buckets: [ProviderQuotaBucket(name: "tokens", used: 100_000, limit: 1_000_000, remaining: 900_000)],
+            buckets: [
+                ProviderQuotaBucket(
+                    name: weeklyResetsAt == nil ? "tokens" : "weekly",
+                    used: 100_000,
+                    limit: 1_000_000,
+                    remaining: 900_000,
+                    window: weeklyResetsAt == nil ? nil : ProviderQuotaWindowKind.weekly.rawValue,
+                    meta: ["unit": "tokens"],
+                    resetsAt: weeklyResetsAt
+                )
+            ],
             updatedAt: now
         )
     }

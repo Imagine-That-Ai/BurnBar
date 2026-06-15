@@ -55,6 +55,16 @@ const TOP_UP_PRODUCTS = [
     name: 'Floo Relay 50 GB',
     description: 'Adds 50 GB of Floo relay bandwidth.',
   },
+  {
+    productId: 'com.openburnbar.elderWand.searches100',
+    name: 'Elder Wand Search 100',
+    description: 'Adds 100 hosted Elder Wand Fusion web_search credits.',
+  },
+  {
+    productId: 'com.openburnbar.elderWand.searches500',
+    name: 'Elder Wand Search 500',
+    description: 'Adds 500 hosted Elder Wand Fusion web_search credits.',
+  },
 ];
 const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.pro.monthly': 'review-final/burnbar-cloud-review.jpg',
@@ -63,6 +73,8 @@ const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.proMax.annual': 'review-final/burnbar-cloud-pro-review.jpg',
   'com.openburnbar.agentControl.actions100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
   'com.openburnbar.floo.relay50gb': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.elderWand.searches100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.elderWand.searches500': 'review-final/burnbar-cloud-pro-topups-review.jpg',
 };
 const TRUSTED_UPLOAD_HOST_SUFFIXES = [
   '.apple.com',
@@ -258,14 +270,23 @@ async function ensureInAppPurchaseLocalization(iap, token, dryRun) {
       console.log(`  in-app purchase localization en-US already exists`);
       return;
     }
-    await ascApi('PATCH', `/v1/inAppPurchaseLocalizations/${current.id}`, {
-      data: {
-        id: current.id,
-        type: 'inAppPurchaseLocalizations',
-        attributes: { name: iap.name, description: iap.description },
-      },
-    }, token);
-    console.log(`  in-app purchase localization en-US updated`);
+    try {
+      await ascApi('PATCH', `/v1/inAppPurchaseLocalizations/${current.id}`, {
+        data: {
+          id: current.id,
+          type: 'inAppPurchaseLocalizations',
+          attributes: { name: iap.name, description: iap.description },
+        },
+      }, token);
+      console.log(`  in-app purchase localization en-US updated`);
+    } catch (error) {
+      const unmodifiable =
+        error &&
+        (error.statusCode === 409 || String(error.message || '').includes('HTTP 409')) &&
+        String(error.message || JSON.stringify(error.payload || {})).includes('INVALID.UNMODIFIABLE');
+      if (!unmodifiable) throw error;
+      console.log(`  skipped unmodifiable active in-app purchase localization en-US`);
+    }
     return;
   }
   await ascApi('POST', '/v1/inAppPurchaseLocalizations', {
