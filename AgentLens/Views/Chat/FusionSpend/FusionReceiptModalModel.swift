@@ -78,11 +78,12 @@ final class FusionReceiptModalModel {
     /// tests and previews can feed deterministic rows without a running daemon.
     private let loadUsageEvents: @Sendable (_ limit: Int) async throws -> [BurnBarUsageEvent]
 
-    /// The period `fusion_searches` quota bucket source. Defaults to `nil` (no
-    /// reader is wired on macOS yet); the integrator supplies the closure that
-    /// decodes `users/{uid}/quota_snapshots/openburnbar_elder_wand_fusion` →
-    /// `ProviderQuotaBucket`. Resolved on the main actor alongside the session.
-    private let loadQuotaBucket: @MainActor () -> ProviderQuotaBucket?
+    /// The period `fusion_searches` quota bucket source. The live default reads
+    /// `users/{uid}/quota_snapshots/openburnbar_elder_wand_fusion` via
+    /// `FusionSearchQuotaReader` and maps its hosted-searches bucket; it returns
+    /// `nil` (and the view omits the ring) when no snapshot or uid is available.
+    /// Resolved on the main actor alongside the session.
+    private let loadQuotaBucket: @MainActor () async -> ProviderQuotaBucket?
 
     /// How many ledger rows to pull. A fusion run is at most ~10 sub-calls
     /// (8 panel + judge + synthesis); a generous window keeps the newest run
@@ -97,7 +98,7 @@ final class FusionReceiptModalModel {
     init(
         daemonManager: OpenBurnBarDaemonManager = .shared,
         usageReadLimit: Int = 40,
-        quotaBucketProvider: @escaping @MainActor () -> ProviderQuotaBucket? = { nil }
+        quotaBucketProvider: @escaping @MainActor () async -> ProviderQuotaBucket? = { await FusionSearchQuotaReader.fetchBucket() }
     ) {
         let socketURL = daemonManager.paths.socketURL
         let request = daemonManager.dependencies.requestRecentUsage
@@ -116,7 +117,7 @@ final class FusionReceiptModalModel {
     init(
         usageReadLimit: Int = 40,
         loadUsageEvents: @escaping @Sendable (_ limit: Int) async throws -> [BurnBarUsageEvent],
-        quotaBucketProvider: @escaping @MainActor () -> ProviderQuotaBucket? = { nil }
+        quotaBucketProvider: @escaping @MainActor () async -> ProviderQuotaBucket? = { nil }
     ) {
         self.loadUsageEvents = loadUsageEvents
         self.loadQuotaBucket = quotaBucketProvider
@@ -146,7 +147,7 @@ final class FusionReceiptModalModel {
         let newest = FusionSpendAggregator.newestSession(from: rows)
 
         session = newest
-        quotaBucket = loadQuotaBucket()
+        quotaBucket = await loadQuotaBucket()
         monthToDateModelTokens = Self.monthToDateTokens(
             for: newest,
             from: rows,
