@@ -12,6 +12,12 @@ function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function accessToken() {
   if (process.env.GOOGLE_OAUTH_ACCESS_TOKEN)
     return process.env.GOOGLE_OAUTH_ACCESS_TOKEN;
@@ -96,6 +102,41 @@ async function createRuleset(token, fileName, content) {
   return { contentHash, rulesetName: ruleset.name };
 }
 
+function isRulesetPropagationError(error) {
+  return (
+    error?.status === 400 &&
+    /INVALID_ARGUMENT|invalid argument/i.test(error?.message || "")
+  );
+}
+
+async function patchExistingRelease(token, releaseName, update) {
+  const delaysMs = [0, 2_000, 5_000, 10_000, 20_000];
+  for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+    if (delaysMs[attempt] > 0) await sleep(delaysMs[attempt]);
+    try {
+      return await firebaseRulesJson(releaseName, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          release: update,
+          updateMask: "ruleset_name",
+        }),
+      });
+    } catch (error) {
+      if (
+        !isRulesetPropagationError(error) ||
+        attempt === delaysMs.length - 1
+      ) {
+        throw error;
+      }
+      const nextDelayMs = delaysMs[attempt + 1];
+      console.warn(
+        `firebase rules release ${releaseName} rejected newly-created ruleset; retrying in ${nextDelayMs}ms`,
+      );
+    }
+  }
+  throw new Error(`unreachable Firebase Rules release retry state: ${releaseName}`);
+}
+
 async function patchRelease(token, releaseName, rulesetName) {
   const update = {
     name: releaseName,
@@ -103,13 +144,7 @@ async function patchRelease(token, releaseName, rulesetName) {
   };
   let release;
   try {
-    release = await firebaseRulesJson(releaseName, token, {
-      method: "PATCH",
-      body: JSON.stringify({
-        release: update,
-        updateMask: "ruleset_name",
-      }),
-    });
+    release = await patchExistingRelease(token, releaseName, update);
   } catch (error) {
     if (error?.status !== 404) throw error;
     release = await firebaseRulesJson(`projects/${project}/releases`, token, {
