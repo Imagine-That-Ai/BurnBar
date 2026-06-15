@@ -39,6 +39,11 @@ class MediaFileTransferService(
     private val configuration: Configuration,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
+    private companion object {
+        const val MILLIS_PER_SECOND = 1000.0
+        const val APPLE_REFERENCE_EPOCH_OFFSET_SECONDS = 978_307_200.0
+    }
+
     data class Configuration(
         val storeDirectory: File,
         val inboxDirectory: File,
@@ -167,7 +172,7 @@ class MediaFileTransferService(
     // Swift synthesizes AttachmentManifest.createdAt as a Codable Date, which JSONEncoder
     // emits/decodes as a NUMBER of seconds since the 2001-01-01 Apple reference epoch.
     // (Was an ISO string here, which the Mac's synthesized decoder rejected.)
-    private fun swiftReferenceSeconds(epochMillis: Long): Double = epochMillis / 1000.0 - 978_307_200.0
+    private fun swiftReferenceSeconds(epochMillis: Long): Double = epochMillis / MILLIS_PER_SECOND - APPLE_REFERENCE_EPOCH_OFFSET_SECONDS
 
     private fun inferMime(file: File): String = when (file.extension.lowercase()) {
         "png" -> "image/png"
