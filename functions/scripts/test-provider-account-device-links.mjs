@@ -17,7 +17,7 @@ assert.equal(
   "users/user-1/provider_account_device_links/codex_default_macbook-pro"
 );
 
-const types = readFileSync(new URL("../src/types/legacy.ts", import.meta.url), "utf8");
+const types = readFileSync(new URL("../src/types/legacy/providers.ts", import.meta.url), "utf8");
 assert.match(types, /export type ProviderAccountDeviceLinkDoc = Omit/);
 assert.match(types, /capability: DeviceLinkCapability;/);
 assert.match(types, /export type DeviceLinkCapability = "owner" \| "use" \| "add";/);
@@ -42,7 +42,10 @@ const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "u
 }
 
 const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
-const providerAccountsSource = readFileSync(new URL("../src/callables/providerAccounts.ts", import.meta.url), "utf8");
+const providerAccountWritesSource = readFileSync(
+  new URL("../src/callables/providerAccountWrites.ts", import.meta.url),
+  "utf8",
+);
 for (const exportedName of [
   "adoptProviderAccountForDevice",
   "revokeProviderAccountDeviceLink",
@@ -51,6 +54,6 @@ for (const exportedName of [
 ]) {
   assert.match(indexSource, new RegExp(`\\b${exportedName}\\b`), `${exportedName} must be exported from index`);
 }
-assert.match(providerAccountsSource, /revokeAllLinksForAccount\(db, uid, accountID\)/);
+assert.match(providerAccountWritesSource, /revokeAllLinksForAccount\(\s*db,\s*uid,\s*accountID\s*\)/);
 
 console.log("Provider account device-link contract invariants passed");
