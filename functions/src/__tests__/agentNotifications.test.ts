@@ -18,8 +18,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Timestamp } from "firebase-admin/firestore";
 
-const { getFirestoreMock, setRealTimestamp, RAW_UID, EVENT_ID, EVENT_PATH, FANOUT_ERROR } = vi.hoisted(() => {
+const {
+  getFirestoreMock,
+  getCreatedEvent,
+  resetCreatedEvent,
+  setRealTimestamp,
+  RAW_UID,
+  EVENT_ID,
+  EVENT_PATH,
+  FANOUT_ERROR,
+} = vi.hoisted(() => {
   // A realistic 28-char Firebase Auth UID (alphanumeric, the exact shape the
   // scrubber deliberately does NOT regex-match to avoid false positives).
   const RAW_UID = "AbCdEf0123456789AbCdEf0123";
@@ -32,8 +42,13 @@ const { getFirestoreMock, setRealTimestamp, RAW_UID, EVENT_ID, EVENT_PATH, FANOU
   // is only available inside the `vi.mock` factory (importActual runs after
   // hoisting), so capture it there and read it lazily when `data()` is called.
   let realTimestamp: { now: () => unknown } | undefined;
+  let createdEvent: unknown;
   const setRealTimestamp = (ts: { now: () => unknown }) => {
     realTimestamp = ts;
+  };
+  const getCreatedEvent = () => createdEvent;
+  const resetCreatedEvent = () => {
+    createdEvent = undefined;
   };
 
   const eventData = () => {
@@ -101,13 +116,25 @@ const { getFirestoreMock, setRealTimestamp, RAW_UID, EVENT_ID, EVENT_PATH, FANOU
             async get(): Promise<never> {
               throw new Error(FANOUT_ERROR);
             },
+            async create(data: unknown) {
+              createdEvent = data;
+            },
           }),
         }),
       }),
     }),
   }));
 
-  return { getFirestoreMock, setRealTimestamp, RAW_UID, EVENT_ID, EVENT_PATH, FANOUT_ERROR };
+  return {
+    getFirestoreMock,
+    getCreatedEvent,
+    resetCreatedEvent,
+    setRealTimestamp,
+    RAW_UID,
+    EVENT_ID,
+    EVENT_PATH,
+    FANOUT_ERROR,
+  };
 });
 
 vi.mock("firebase-admin/firestore", async () => {
@@ -117,16 +144,24 @@ vi.mock("firebase-admin/firestore", async () => {
 });
 vi.mock("firebase-admin/messaging", () => ({ getMessaging: () => ({ send: vi.fn() }) }));
 
-import { sweepStuckAgentReplyEvents } from "../agentNotifications.js";
+import {
+  createEventFromThreadWrite,
+  sweepStuckAgentReplyEvents,
+} from "../agentNotifications.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasToMillis(value: unknown): value is { toMillis: () => number } {
+  return isRecord(value) && typeof value.toMillis === "function";
 }
 
 describe("M-023 agent-reply sweeper never logs a raw Firebase UID", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    resetCreatedEvent();
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -171,5 +206,35 @@ describe("M-023 agent-reply sweeper never logs a raw Firebase UID", () => {
     const wouldLeak = JSON.stringify({ document_path: EVENT_PATH });
     expect(wouldLeak).toContain(RAW_UID);
     expect(wouldLeak).toContain(`users/${RAW_UID}/`);
+  });
+
+  it("stamps a valid expireAt on created notification event (F-RR09-007)", async () => {
+    const eventId = await createEventFromThreadWrite({
+      uid: "user-1",
+      threadId: "thread-1",
+      sourceKind: "cli_session",
+      sourcePath: "users/user-1/cli_sessions/thread-1",
+      before: undefined,
+      after: {
+        contentSealed: true,
+        lastMessageRole: "assistant",
+        lastAssistantMessageID: "msg-123"
+      }
+    });
+
+    expect(eventId).toBe("cli_session_thread-1_msg-123");
+    const createdEvent = getCreatedEvent();
+    if (!isRecord(createdEvent)) {
+      throw new Error("expected notification event to be created");
+    }
+    expect(createdEvent.expireAt).toBeDefined();
+    expect(createdEvent.expireAt).toBeInstanceOf(Timestamp);
+    if (!hasToMillis(createdEvent.expireAt)) {
+      throw new Error("expected expireAt to expose toMillis()");
+    }
+    // expireAt should be ~30 days in the future (plus or minus a few seconds)
+    const expectedExpiry = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const diff = Math.abs(createdEvent.expireAt.toMillis() - expectedExpiry);
+    expect(diff).toBeLessThan(10000); // within 10 seconds
   });
 });

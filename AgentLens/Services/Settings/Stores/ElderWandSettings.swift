@@ -21,7 +21,7 @@ import OpenBurnBarCore
 @MainActor
 final class ElderWandSettings {
     /// `UserDefaults` key for the JSON-encoded preset list.
-    static let presetsStorageKey = "elderWand.presets.v1"
+    static let presetsStorageName = "elderWand.presets.v1"
 
     private let persistence: SettingsPersistenceCoordinator
 
@@ -34,7 +34,7 @@ final class ElderWandSettings {
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
         self.presets = Self.decodePresets(
-            from: persistence.optionalString(forKey: Self.presetsStorageKey)
+            from: persistence.optionalString(forKey: Self.presetsStorageName)
         ).presetsSanitized()
     }
 
@@ -138,7 +138,7 @@ final class ElderWandSettings {
               let json = String(data: data, encoding: .utf8) else {
             return
         }
-        persistence.set(json, forKey: Self.presetsStorageKey)
+        persistence.set(json, forKey: Self.presetsStorageName)
     }
 
     private static func decodePresets(from json: String?) -> [ElderWandPreset] {

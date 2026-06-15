@@ -24,7 +24,7 @@ final class ElderWandSettings {
     static let shared = ElderWandSettings()
 
     /// UserDefaults key for the JSON-encoded `[ElderWandPreset]`.
-    static let presetsDefaultsKey = "elderWand.presets.v1"
+    static let presetsDefaultsName = "elderWand.presets.v1"
 
     /// Wire-compatible plugin id (OpenRouter "Fusion").
     static let fusionPluginID = "fusion"
@@ -137,7 +137,7 @@ final class ElderWandSettings {
     // MARK: - Persistence
 
     private static func loadPresets(from defaults: UserDefaults) -> [ElderWandPreset] {
-        guard let data = defaults.data(forKey: presetsDefaultsKey) else { return [] }
+        guard let data = defaults.data(forKey: presetsDefaultsName) else { return [] }
         guard let decoded = try? JSONDecoder().decode([ElderWandPreset].self, from: data) else {
             return []
         }
@@ -146,10 +146,10 @@ final class ElderWandSettings {
 
     private static func persist(_ presets: [ElderWandPreset], to defaults: UserDefaults) {
         guard !presets.isEmpty else {
-            defaults.removeObject(forKey: presetsDefaultsKey)
+            defaults.removeObject(forKey: presetsDefaultsName)
             return
         }
         guard let data = try? JSONEncoder().encode(presets) else { return }
-        defaults.set(data, forKey: presetsDefaultsKey)
+        defaults.set(data, forKey: presetsDefaultsName)
     }
 }

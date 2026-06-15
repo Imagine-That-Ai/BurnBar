@@ -788,12 +788,33 @@ enum ComputerUseSecurityCallableClient {
         let raw = accountID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? accountID!
             : "\(provider)_default"
-        let lowered = raw.lowercased()
-        let sanitized = lowered
-            .replacing(/[^a-z0-9_-]/, with: "-")
-            .replacing(/-+/, with: "-")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        return sanitized.isEmpty ? "\(provider)_default" : sanitized
+        let sanitized = sanitizedProviderAccountSubjectFragment(raw)
+        let fallback = sanitizedProviderAccountSubjectFragment("\(provider)_default")
+        return sanitized.isEmpty ? fallback : sanitized
+    }
+
+    private static func sanitizedProviderAccountSubjectFragment(_ raw: String) -> String {
+        var collapsed = ""
+        var previousWasHyphen = false
+        for scalar in raw.lowercased().unicodeScalars {
+            let fragment: String
+            switch scalar.value {
+            case 48...57, 97...122, 95:
+                fragment = String(scalar)
+            case 45:
+                fragment = "-"
+            default:
+                fragment = "-"
+            }
+            if fragment == "-" {
+                guard !previousWasHyphen else { continue }
+                previousWasHyphen = true
+            } else {
+                previousWasHyphen = false
+            }
+            collapsed.append(fragment)
+        }
+        return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 
     /// Builds nonce + trusted-device action proof fields for owner-action callables.
@@ -802,7 +823,7 @@ enum ComputerUseSecurityCallableClient {
         subjectId: String,
         deviceId: String,
         approve: Bool = true
-    ) async throws -> [String: Any] {
+    ) async throws -> [String: any Sendable] {
         let uid = try requireSignedInUser().uid
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
@@ -827,17 +848,18 @@ enum ComputerUseSecurityCallableClient {
             deviceSignalIdentityPublicKeyFingerprint: identity.publicKeyFingerprint
         )
         let signature = try CloudVaultTrustedDeviceActionProof.sign(proofPayload, identity: identity)
+        let actionProof: [String: any Sendable] = [
+            "version": CloudVaultTrustedDeviceActionProof.version,
+            "algorithm": CloudVaultTrustedDeviceActionProof.algorithm,
+            "deviceSignalIdentityKeyId": identity.identityKeyId,
+            "deviceSignalIdentityPublicKeyFingerprint": identity.publicKeyFingerprint,
+            "issuedAtMillis": issuedAtMillis,
+            "signature": signature
+        ]
         return [
             "nonce": nonce,
             "trustedDeviceId": deviceId,
-            "actionProof": [
-                "version": CloudVaultTrustedDeviceActionProof.version,
-                "algorithm": CloudVaultTrustedDeviceActionProof.algorithm,
-                "deviceSignalIdentityKeyId": identity.identityKeyId,
-                "deviceSignalIdentityPublicKeyFingerprint": identity.publicKeyFingerprint,
-                "issuedAtMillis": issuedAtMillis,
-                "signature": signature
-            ]
+            "actionProof": actionProof
         ]
     }
 
@@ -847,7 +869,7 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         actionKind: String,
         subjectId: String,
-        payload: [String: Any] = [:],
+        payload: [String: any Sendable] = [:],
         approve: Bool = true
     ) async throws -> HTTPSCallableResult {
         var merged = payload

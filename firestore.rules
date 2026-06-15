@@ -4288,18 +4288,19 @@ service cloud.firestore {
         && request.resource.data.credentialKind in [
           "api_key", "oauth_token", "bearer_token", "unknown"
         ]
-        && request.resource.data.status in ["granted", "revoked"]
+        && request.resource.data.status == "granted"
         && request.resource.data.grantedAt is timestamp;
       }
       // Revoke is a server-side merge patch that touches only status + revokedAt.
       // The affectedKeys() check confines what the client can change on update;
-      // the status enum check prevents re-granting a revoked grant client-side.
+      // once status is revoked, no further updates are allowed.
       function validEscrowGrantUpdate() {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "status",
           "revokedAt"
         ])
-        && request.resource.data.status in ["granted", "revoked"]
+        && resource.data.status == "granted"
+        && request.resource.data.status == "revoked"
         && (!("revokedAt" in request.resource.data) || request.resource.data.revokedAt is timestamp);
       }
       allow read: if ownsUserNamespace(userId);

@@ -179,7 +179,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         destinationId: String?
     ) async throws -> URL {
         let callable = try functionsClient().httpsCallable("getHermesGatewayAttachmentDownloadUrl")
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "attachmentId": attachmentId,
             "clientId": clientId
         ]
@@ -433,7 +433,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         advertisedModel: String? = nil,
         capabilities: [String] = ["chat_completions"]
     ) async throws -> HermesConnectionRecord {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "pairingId": pairingId,
             "code": code,
             "displayName": displayName,

@@ -2463,19 +2463,22 @@ private struct MiniVisualPreview: View {
     let visual: ProjectMemoryVisual
 
     var body: some View {
-        Chart {
-            switch visual.kind {
-            case .timeline:
-                ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, p in
-                    LineMark(x: .value("i", idx), y: .value("v", p.value))
-                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                        .interpolationMethod(.catmullRom)
+        Group {
+            if visual.kind == .timeline {
+                Chart {
+                    ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, p in
+                        LineMark(x: .value("i", idx), y: .value("v", p.value))
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .interpolationMethod(.catmullRom)
+                    }
                 }
-            default:
-                ForEach(Array(visual.points.prefix(6).enumerated()), id: \.offset) { idx, p in
-                    BarMark(x: .value("i", idx), y: .value("v", p.value))
-                        .foregroundStyle(barColor(idx))
-                        .cornerRadius(2)
+            } else {
+                Chart {
+                    ForEach(Array(visual.points.prefix(6).enumerated()), id: \.offset) { idx, p in
+                        BarMark(x: .value("i", idx), y: .value("v", p.value))
+                            .foregroundStyle(barColor(idx))
+                            .cornerRadius(2)
+                    }
                 }
             }
         }

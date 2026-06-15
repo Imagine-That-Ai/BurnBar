@@ -53,8 +53,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// crash-instrumented while OSS/placeholder builds stay dark.
     #if canImport(Sentry)
     private static func configureSentryIfAvailable() {
-        guard let dsn = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String,
-              !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+        var dsn: String? = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String
+        if dsn == nil || dsn?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+            if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+               let dict = NSDictionary(contentsOfFile: path),
+               let googleDsn = dict["sentry.dsn"] as? String {
+                dsn = googleDsn
+            }
+        }
+        guard let finalDsn = dsn, !finalDsn.trimmingCharacters(in: .whitespaces).isEmpty else {
             // No DSN configured — crash reporting remains disabled silently.
             return
         }
@@ -65,7 +72,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return
         }
         SentrySDK.start { options in
-            options.dsn = dsn
+            options.dsn = finalDsn
             options.environment = "mobile"
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
             options.releaseName = "openburnbar-mobile@\(version)"

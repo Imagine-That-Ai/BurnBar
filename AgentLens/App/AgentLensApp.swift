@@ -1169,9 +1169,22 @@ struct OpenBurnBarApp: App {
     /// CI for internal builds). If absent, Sentry remains disabled silently.
     #if canImport(Sentry)
     @MainActor
+    internal static func resolveSentryDSN(bundle: Bundle = .main) -> String? {
+        if let dsn = bundle.object(forInfoDictionaryKey: "sentry.dsn") as? String,
+           !dsn.trimmingCharacters(in: .whitespaces).isEmpty {
+            return dsn
+        }
+        if let path = bundle.path(forResource: "GoogleService-Info", ofType: "plist"),
+           let dict = NSDictionary(contentsOfFile: path),
+           let googleDsn = dict["sentry.dsn"] as? String,
+           !googleDsn.trimmingCharacters(in: .whitespaces).isEmpty {
+            return googleDsn
+        }
+        return nil
+    }
+
     private static func configureSentryIfAvailable() {
-        guard let dsn = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String,
-              !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard let finalDsn = resolveSentryDSN(), !finalDsn.trimmingCharacters(in: .whitespaces).isEmpty else {
             // No DSN configured — crash reporting remains disabled silently.
             return
         }
@@ -1183,7 +1196,7 @@ struct OpenBurnBarApp: App {
             return
         }
         SentrySDK.start { options in
-            options.dsn = dsn
+            options.dsn = finalDsn
             options.environment = "app"
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
             options.releaseName = "openburnbar@\(version)"

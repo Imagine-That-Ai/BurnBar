@@ -99,13 +99,14 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["p1", "p2"], judge: "judge"),
-            plugin: Self.plugin(panel: ["p1", "p2"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["p1", "p2"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: false
         )
 
         guard case .buffered(let buffered) = result else {
-            return XCTFail("Expected buffered synthesis result, got \(result)")
+            XCTFail("Expected buffered synthesis result, got \(result)")
+            return
         }
         XCTAssertEqual(buffered.status, 200)
 
@@ -140,12 +141,13 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["good", "bad"], judge: "judge"),
-            plugin: Self.plugin(panel: ["good", "bad"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["good", "bad"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: false
         )
         guard case .buffered = result else {
-            return XCTFail("One good panel member must still produce a synthesis, got \(result)")
+            XCTFail("One good panel member must still produce a synthesis, got \(result)")
+            return
         }
         let records = await recorder.records
         XCTAssertTrue(records.contains { !$0.succeeded }, "the dropped panel member must be recorded as a failure")
@@ -160,12 +162,13 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["a", "b"], judge: "judge"),
-            plugin: Self.plugin(panel: ["a", "b"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["a", "b"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: false
         )
         guard case .failed(let failure) = result else {
-            return XCTFail("Zero panel successes must fail the request, got \(result)")
+            XCTFail("Zero panel successes must fail the request, got \(result)")
+            return
         }
         XCTAssertEqual(failure.status, 502)
     }
@@ -178,12 +181,13 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["p1"], judge: "judge"),
-            plugin: Self.plugin(panel: ["p1"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["p1"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: true
         )
         guard case .streaming(let streaming) = result else {
-            return XCTFail("wantsStream:true must return a streaming plan, got \(result)")
+            XCTFail("wantsStream:true must return a streaming plan, got \(result)")
+            return
         }
         XCTAssertEqual(streaming.route.wireModelSlug, "origin")
         XCTAssertFalse(streaming.parentRequestID.isEmpty)
@@ -250,14 +254,13 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
     }
 
-    private static func plugin(panel: [String], judge: String) -> FusionPluginConfig {
+    private static func plugin(panel: [String], judge: String) throws -> FusionPluginConfig {
         // Decode through the real wire shape so the test exercises CodingKeys.
         let analysis = panel.map { "\"\($0)\"" }.joined(separator: ",")
         let json = """
         {"id":"fusion","enabled":true,"analysis_models":[\(analysis)],"model":"\(judge)","max_tool_calls":2}
         """
-        // swiftlint:disable:next force_try
-        return try! JSONDecoder().decode(FusionPluginConfig.self, from: Data(json.utf8))
+        return try JSONDecoder().decode(FusionPluginConfig.self, from: Data(json.utf8))
     }
 
     private static func fusionBody(panel: [String], judge: String) -> Data {
@@ -316,7 +319,7 @@ final class ElderWandToolLoopTests: XCTestCase {
         let search = try? XCTUnwrap(tools.first { $0.name == "web_search" })
         let output = await search?.invoke(#"{"query":"anything"}"#)
         XCTAssertNotNil(output)
-        XCTAssertTrue(output?.contains("unavailable") == true, "no key configured must degrade, never crash")
+        XCTAssertEqual(output?.contains("unavailable"), true, "no key configured must degrade, never crash")
     }
 
     func testWebFetchRejectsBlockedHost() async {
@@ -324,7 +327,7 @@ final class ElderWandToolLoopTests: XCTestCase {
         let fetch = try? XCTUnwrap(tools.first { $0.name == "web_fetch" })
         let output = await fetch?.invoke(#"{"url":"http://169.254.169.254/latest/meta-data"}"#)
         XCTAssertNotNil(output)
-        XCTAssertTrue(output?.lowercased().contains("error") == true, "metadata host must be refused (SSRF)")
+        XCTAssertEqual(output?.lowercased().contains("error"), true, "metadata host must be refused (SSRF)")
     }
 
     func testSearchBackendResolvesFromEnvironment() {

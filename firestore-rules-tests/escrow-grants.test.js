@@ -93,7 +93,7 @@ async function main() {
     await assertFails(
       setDoc(doc(aliceDB, grantPath("grant-extra-2")), {
         ...validGrantDoc(),
-        encryptedSecret: "U29tZVNlY3JldA==",
+        encryptedPayload: ["not", "allowed"],
       })
     );
   });
@@ -102,7 +102,7 @@ async function main() {
     await assertFails(
       setDoc(doc(aliceDB, grantPath("grant-extra-3")), {
         ...validGrantDoc(),
-        apiKey: "sk-real-api-key-here",
+        apiCredential: ["not", "allowed"],
       })
     );
   });
@@ -132,6 +132,15 @@ async function main() {
     );
   });
 
+  await step("create with status revoked is rejected", async () => {
+    await assertFails(
+      setDoc(doc(aliceDB, grantPath("grant-badstatus-1")), {
+        ...validGrantDoc(),
+        status: "revoked",
+      })
+    );
+  });
+
   // ── CREATE: cross-user is rejected ───────────────────────────────────────
   await step("bob cannot write to alice's escrow_grants", async () => {
     await assertFails(
@@ -157,6 +166,26 @@ async function main() {
       setDoc(
         doc(aliceDB, grantPath("grant-to-revoke")),
         { status: "revoked", revokedAt: Timestamp.fromMillis(Date.now()) },
+        { merge: true }
+      )
+    );
+  });
+
+  await step("owner cannot change status back to granted on a revoked grant", async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDB, grantPath("grant-to-revoke")),
+        { status: "granted" },
+        { merge: true }
+      )
+    );
+  });
+
+  await step("owner cannot update a grant that is already revoked", async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDB, grantPath("grant-to-revoke")),
+        { revokedAt: Timestamp.fromMillis(Date.now() + 1000) },
         { merge: true }
       )
     );

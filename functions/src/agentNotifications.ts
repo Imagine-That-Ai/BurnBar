@@ -268,7 +268,7 @@ export function buildFcmMessage(args: {
   };
 }
 
-async function createEventFromThreadWrite(args: {
+export async function createEventFromThreadWrite(args: {
   uid: string;
   threadId: string;
   sourceKind: AgentNotificationSourceKind;
