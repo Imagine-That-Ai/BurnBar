@@ -446,7 +446,7 @@ dependencies {
     // feeds the HEVC encoder via a MediaCodec.createInputSurface() input
     // surface. 1.4.x is the first 1.x line that ships
     // CameraSelector.LENS_FACING_FRONT support across all minSdk targets.
-    val cameraXVersion = "1.4.0"
+    val cameraXVersion = "1.6.1"
     implementation("androidx.camera:camera-core:$cameraXVersion")
     implementation("androidx.camera:camera-camera2:$cameraXVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
