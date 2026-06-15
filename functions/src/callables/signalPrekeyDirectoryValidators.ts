@@ -74,7 +74,7 @@ export const FORBIDDEN_FIELDS = [
 // signalAtRestWrite.ts does.
 // ---------------------------------------------------------------------------
 
-interface DirectoryContext {
+export interface DirectoryContext {
   identityKeyId: string;
   deviceId: string;
   keyVersion: number;
