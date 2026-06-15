@@ -610,4 +610,3 @@ private extension String {
         String(prefix(maxLength))
     }
 }
-
