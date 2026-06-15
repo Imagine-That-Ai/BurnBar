@@ -161,6 +161,7 @@ extension ChatSessionController {
         guard !trimmed.isEmpty || !attachmentsToSend.isEmpty, !isStreaming else { return }
 
         streamError = nil
+        completedFusionSessionToken = nil
         conversationJumpTargets = []
         let userMsg = ChatMessageRecord(
             role: .user,
@@ -542,6 +543,7 @@ extension ChatSessionController {
 
         streamTask = Task { [weak self] in
             guard let self else { return }
+            var didRouteThroughFusion = false
             do {
                 var pieces: [ChatTranscriptPiece] = []
                 var usageSnapshot: CLIUsageSnapshot?
@@ -549,6 +551,7 @@ extension ChatSessionController {
                     self.settingsManager.elderWandPluginsPayload()
                 }
                 let fusionActive = elderWandPlugins != nil
+                didRouteThroughFusion = fusionActive
                 let hostedSearchHeaders = fusionActive
                     ? await Self.elderWandHostedSearchHeaders()
                     : [:]
@@ -746,6 +749,9 @@ extension ChatSessionController {
                                 usage: mirrorUsage
                             )
                         }
+                        if didRouteThroughFusion {
+                            self.completedFusionSessionToken = UUID().uuidString
+                        }
                     }
                     self.selectedContext = nil
                 }.value
@@ -766,6 +772,9 @@ extension ChatSessionController {
                         if self.messages[idx].content.isEmpty {
                             self.messages[idx].content = self.streamError ?? "Error"
                         }
+                    }
+                    if didRouteThroughFusion, !(error is CancellationError) {
+                        self.completedFusionSessionToken = UUID().uuidString
                     }
                 }.value
             }

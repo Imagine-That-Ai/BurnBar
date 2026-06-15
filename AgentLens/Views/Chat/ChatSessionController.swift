@@ -52,6 +52,11 @@ final class ChatSessionController {
 
     var streamError: String?
 
+    /// One-shot presentation token for the Elder Wand Fusion spend receipt.
+    /// The receipt model reads the newest fusion session from the daemon ledger;
+    /// this token only tells SwiftUI when to present the sheet.
+    var completedFusionSessionToken: String?
+
     var chatBackend: ChatBackendID = .codex
 
     var desktopControlGrant: AgentCapabilityGrant?
@@ -909,6 +914,7 @@ final class ChatSessionController {
         isStreaming = false
         activeStreamMessageId = nil
         streamError = nil
+        completedFusionSessionToken = nil
         selectedContext = nil
         conversationJumpTargets = []
         revokeDesktopControl()
@@ -1138,6 +1144,7 @@ final class ChatSessionController {
         persistActiveThreadSlot()
         messages = []
         conversationJumpTargets = []
+        completedFusionSessionToken = nil
         if chatBackend.requiresCLIAssistantConsent {
             chatViewMode = .cli
         } else {
@@ -1160,6 +1167,7 @@ final class ChatSessionController {
         isStreaming = false
         activeStreamMessageId = nil
         streamError = nil
+        completedFusionSessionToken = nil
         selectedContext = nil
         conversationJumpTargets = []
         revokeDesktopControl()

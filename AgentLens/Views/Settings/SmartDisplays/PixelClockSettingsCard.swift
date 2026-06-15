@@ -843,6 +843,7 @@ private struct ProviderFilterChip: View {
         case .ollama:       return "Ollama"
         case .kimi:         return "Kimi"
         case .openAI:       return "OpenAI"
+        case .openBurnBar:  return "BurnBar"
         case .openCode:     return "OpenCode"
         case .deepSeek:     return "DeepSeek"
         case .aider:        return "Aider"
