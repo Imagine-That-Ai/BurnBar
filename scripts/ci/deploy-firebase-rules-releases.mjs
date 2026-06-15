@@ -41,9 +41,11 @@ async function firebaseRulesJson(path, token, init = {}) {
   });
   const body = await response.text();
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       `Firebase Rules API ${init.method || "GET"} ${path} failed: ${response.status} ${body}`,
     );
+    error.status = response.status;
+    throw error;
   }
   return JSON.parse(body || "{}");
 }
@@ -95,16 +97,26 @@ async function createRuleset(token, fileName, content) {
 }
 
 async function patchRelease(token, releaseName, rulesetName) {
-  const release = await firebaseRulesJson(releaseName, token, {
-    method: "PATCH",
-    body: JSON.stringify({
-      release: {
-        name: releaseName,
-        rulesetName,
-      },
-      updateMask: "rulesetName",
-    }),
-  });
+  const update = {
+    name: releaseName,
+    rulesetName,
+  };
+  let release;
+  try {
+    release = await firebaseRulesJson(releaseName, token, {
+      method: "PATCH",
+      body: JSON.stringify({
+        release: update,
+        updateMask: "ruleset_name",
+      }),
+    });
+  } catch (error) {
+    if (error?.status !== 404) throw error;
+    release = await firebaseRulesJson(`projects/${project}/releases`, token, {
+      method: "POST",
+      body: JSON.stringify(update),
+    });
+  }
   if (release.rulesetName !== rulesetName) {
     throw new Error(
       `Firebase Rules release ${releaseName} points at ${release.rulesetName || "<missing>"} instead of ${rulesetName}`,
