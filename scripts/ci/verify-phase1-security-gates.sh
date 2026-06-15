@@ -13,7 +13,9 @@ require_pattern() {
   local label="$1"
   local pattern="$2"
   local file="$3"
-  if ! rg -q "$pattern" "$file"; then
+  # Use grep — ubuntu-latest runners do not ship ripgrep, and this gate must
+  # run offline inside verify-ops-readiness without extra apt installs.
+  if ! grep -Eq "$pattern" "$file"; then
     fail "${label}: expected pattern '${pattern}' in ${file}"
   fi
   echo "OK ${label}"

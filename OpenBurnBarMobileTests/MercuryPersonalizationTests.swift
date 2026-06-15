@@ -1,5 +1,9 @@
 import XCTest
 import SwiftUI
+import CoreImage
+#if canImport(UIKit)
+import UIKit
+#endif
 @testable import OpenBurnBarMobile
 
 @MainActor
@@ -184,6 +188,8 @@ final class MercuryPersonalizationTests: XCTestCase {
         store.append(makeEntry(id: "dupe", connectionID: "mac-q"))
 
         XCTAssertEqual(store.entries.count, 1)
+        XCTAssertEqual(store.entries.first?.id, "dupe")
+        XCTAssertEqual(Set(store.entries.map(\.id)).count, 1)
     }
 
     func testWallpaperAccentSamplerReturnsNilForEmptyOrInvalidPayloads() {
@@ -196,6 +202,12 @@ final class MercuryPersonalizationTests: XCTestCase {
         let red = try makePixelImageBase64(red: 250, green: 40, blue: 40)
         let accent = WallpaperAccentSampler.dominantAccent(fromBase64: red)
         XCTAssertNotNil(accent, "Should sample a color from a valid PNG payload")
+
+        // Also exercise the CIImage seam directly so the test does not depend on
+        // UIImage re-encoding quirks on simulator hosts.
+        let ciImage = CIImage(color: CIColor(red: 250 / 255, green: 40 / 255, blue: 40 / 255))
+            .cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+        XCTAssertNotNil(WallpaperAccentSampler.dominantAccent(from: ciImage))
     }
 
     // MARK: - Helpers
@@ -216,26 +228,23 @@ final class MercuryPersonalizationTests: XCTestCase {
     }
 
     private func makePixelImageBase64(red: UInt8, green: UInt8, blue: UInt8) throws -> String {
-        // 1×1 RGBA bitmap → CGImage → PNG → base64.
-        let pixels: [UInt8] = [red, green, blue, 255]
-        let provider = CGDataProvider(data: Data(pixels) as CFData)
-        let cgImage = CGImage(
-            width: 1,
-            height: 1,
-            bitsPerComponent: 8,
-            bitsPerPixel: 32,
-            bytesPerRow: 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-            provider: provider!,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent
-        )
-        guard let cgImage,
-              let image = UIImage(cgImage: cgImage).pngData() else {
+        #if canImport(UIKit)
+        let size = CGSize(width: 1, height: 1)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor(
+                red: CGFloat(red) / 255.0,
+                green: CGFloat(green) / 255.0,
+                blue: CGFloat(blue) / 255.0,
+                alpha: 1
+            ).setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        guard let png = image.pngData() else {
             throw NSError(domain: "MercuryPersonalizationTests", code: -1)
         }
-        return image.base64EncodedString()
+        return png.base64EncodedString()
+        #else
+        throw NSError(domain: "MercuryPersonalizationTests", code: -2)
+        #endif
     }
 }
