@@ -14,6 +14,7 @@ import {
   seedDoc,
   snapshotTenantPaths,
   expectTenantPathsUnchanged,
+  tier2CallableProof,
 } from "./callableBolaHarness.js";
 import { deviceLinkPath } from "../../domains/device-links/index.js";
 
@@ -44,12 +45,8 @@ vi.mock("../../appCheckAttestation.js", async () => {
   };
 });
 export const BOLA_MANIFEST = {
-  "adoptProviderAccountForDevice": [
-    "adoptProviderAccountForDevice rejects cross-user object access"
-  ],
-  "revokeProviderAccountDeviceLink": [
-    "revokeProviderAccountDeviceLink rejects cross-user object access"
-  ]
+  adoptProviderAccountForDevice: ["adoptProviderAccountForDevice rejects cross-user object access"],
+  revokeProviderAccountDeviceLink: ["revokeProviderAccountDeviceLink rejects cross-user object access"],
 } as const;
 
 describe("BOLA — deviceLinks", () => {
@@ -58,7 +55,13 @@ describe("BOLA — deviceLinks", () => {
     const exported = mod.adoptProviderAccountForDevice;
     if (!exported) throw new Error("missing export adoptProviderAccountForDevice");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "adoptProviderAccountForDevice",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("revokeProviderAccountDeviceLink rejects cross-user object access", async () => {

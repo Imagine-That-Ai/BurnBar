@@ -3,7 +3,15 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 import { describe, it, vi } from "vitest";
-import { ALICE_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData, pathKeyedFirestore } from "./callableBolaHarness.js";
+import {
+  ALICE_UID,
+  callableRequest,
+  callableRunner,
+  expectCallableDenial,
+  bolaCrossUserData,
+  pathKeyedFirestore,
+  tier2CallableProof,
+} from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -32,9 +40,7 @@ vi.mock("../../appCheckAttestation.js", async () => {
   };
 });
 export const BOLA_MANIFEST = {
-  "confirmRecovery": [
-    "confirmRecovery rejects cross-user object access"
-  ]
+  confirmRecovery: ["confirmRecovery rejects cross-user object access"],
 } as const;
 
 describe("BOLA — recovery", () => {
@@ -43,6 +49,12 @@ describe("BOLA — recovery", () => {
     const exported = mod.confirmRecovery;
     if (!exported) throw new Error("missing export confirmRecovery");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "confirmRecovery",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 });

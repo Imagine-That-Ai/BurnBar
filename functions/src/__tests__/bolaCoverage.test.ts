@@ -34,6 +34,17 @@ const P0_RUNTIME_PROOFS = new Set([
   "validateOpenTimestampsProof",
 ]);
 
+/** Tier-2: every object-id runtime test seeds victim tenant (see callableBolaHarness tier2CallableProof). */
+const TIER2_ISOLATION_ENDPOINTS = new Set(
+  endpointAuthorizationMatrix
+    .filter(
+      (entry) =>
+        entry.objectIdsFromClient.length > 0 &&
+        entry.bolaCoverage.some((ref) => ref.kind === "runtime-cross-user" && ref.covers.includes(entry.exportedName)),
+    )
+    .map((entry) => entry.exportedName),
+);
+
 describe("bola coverage registry", () => {
   it("matrix covers every exported Cloud Function from index.ts", () => {
     const exported = exportedFunctionNames();
@@ -76,5 +87,12 @@ describe("bola coverage registry", () => {
       expect(runtimeEndpoints.map((entry) => entry.exportedName)).toContain(name);
     }
     expect(P0_RUNTIME_PROOFS.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it("requires tier-2 victim seeding for every object-id runtime endpoint", () => {
+    expect(TIER2_ISOLATION_ENDPOINTS.size).toBeGreaterThanOrEqual(60);
+    for (const name of P0_RUNTIME_PROOFS) {
+      expect(TIER2_ISOLATION_ENDPOINTS).toContain(name);
+    }
   });
 });

@@ -42,10 +42,6 @@ describe("BOLA — credentialTransfer", () => {
 
     const mod = await import("../../callables/credentialTransfer.js");
     const run = callableRunner(mod.consumeCredentialTransfer);
-    await expectCallableDenial(
-      run,
-      callableRequest(ALICE_UID, { code: TRANSFER_CODE }),
-      "permission-denied",
-    );
+    await expectCallableDenial(run, callableRequest(ALICE_UID, { code: TRANSFER_CODE }), "permission-denied");
   });
 });

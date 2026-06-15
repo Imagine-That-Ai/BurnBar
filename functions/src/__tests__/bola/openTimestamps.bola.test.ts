@@ -3,9 +3,20 @@
  */
 import { describe, it, vi } from "vitest";
 
-import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial } from "./callableBolaHarness.js";
+import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
+import {
+  ALICE_UID,
+  BOB_UID,
+  callableRequest,
+  callableRunner,
+  expectCallableDenial,
+  pathKeyedFirestore,
+} from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
+
+const bolaStore = vi.hoisted(() => new Map());
+vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 
 vi.mock("../../auth.js", async () => {
   const actual = await vi.importActual<typeof import("../../auth.js")>("../../auth.js");
@@ -23,6 +34,8 @@ describe("BOLA — openTimestamps", () => {
   it("validateOpenTimestampsProof rejects cross-user object access", async () => {
     const mod = await import("../../computerUseOpenTimestamps.js");
     const run = callableRunner(mod.validateOpenTimestampsProof);
+    bolaStore.clear();
+    seedBolaVictimTenant(bolaStore, "validateOpenTimestampsProof");
     await expectCallableDenial(
       run,
       callableRequest(ALICE_UID, {

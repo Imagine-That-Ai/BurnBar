@@ -6,7 +6,8 @@ import type { BolaCoverageRef, EndpointAuthorizationEntry } from "./bolaCoverage
 const REPO_ROOT_FROM_FUNCTIONS = resolve(__dirname, "../../..");
 
 const CALLABLE_RUNTIME_INVOCATION = /(?:\.run\s*\(|callableRunner\s*\()/u;
-const HTTP_RUNTIME_INVOCATION = /(?:dispatchHermesGatewayRequest\s*\(|runHttpHandler\s*\(|Reflect\.get\s*\(\s*Object\s*\(\s*handler\s*\))/u;
+const HTTP_RUNTIME_INVOCATION =
+  /(?:dispatchHermesGatewayRequest\s*\(|runHttpHandler\s*\(|Reflect\.get\s*\(\s*Object\s*\(\s*handler\s*\))/u;
 
 const RUNTIME_BODY_MARKERS = [
   CALLABLE_RUNTIME_INVOCATION,
@@ -14,7 +15,12 @@ const RUNTIME_BODY_MARKERS = [
   /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow|expectCallableDenial)\b/u,
 ] as const;
 
-function matchesStaticHighRiskCoverage(source: string, titles: Set<string>, exportedName: string, refTest: string): boolean {
+function matchesStaticHighRiskCoverage(
+  source: string,
+  titles: Set<string>,
+  exportedName: string,
+  refTest: string,
+): boolean {
   if (titles.has(refTest)) return true;
   const prefix = `${exportedName} calls enforceHighRiskOwnerAction with actionKind`;
   for (const title of titles) {
@@ -67,9 +73,18 @@ function validateRuntimeCoverageDetails(
   if (ref.expectedCode && !source.includes(ref.expectedCode)) {
     errors.push(`${entry.exportedName}: runtime test must reference expectedCode "${ref.expectedCode}" in ${ref.file}`);
   }
+  const hasTier2Proof =
+    /\btier2CallableProof\s*\(/u.test(source) ||
+    /\b(?:outboundWrites|expectTenantPathsUnchanged|snapshotTenantPaths|seedBolaVictimTenant)\b/u.test(source) ||
+    /\bseedDoc\s*\(/u.test(source);
+  if (entry.objectIdsFromClient.length > 0 && !hasTier2Proof) {
+    errors.push(
+      `${entry.exportedName}: runtime test must use tier2CallableProof or seed victim tenant before cross-user invocation in ${ref.file}`,
+    );
+  }
   if (
     ref.expectedOutcome === "no-side-effect" &&
-    !/\b(?:outboundWrites|sideEffect|no-side-effect|expectTenantPathsUnchanged|snapshotTenantPaths|toEqual\s*\(\s*\[\s*\])/u.test(
+    !/\b(?:outboundWrites|sideEffect|no-side-effect|expectTenantPathsUnchanged|snapshotTenantPaths|tier2CallableProof)/u.test(
       source,
     )
   ) {
@@ -163,9 +178,7 @@ function validateBolaCoverageRef(
   const manifestMatch = source.match(/export const BOLA_MANIFEST\s*=\s*(\{[\s\S]*?\})\s*as const/u);
   if (manifestMatch) {
     try {
-      const manifestText = manifestMatch[1]
-          .replace(/(\w+):/gu, '"$1":')
-          .replace(/'/gu, '"');
+      const manifestText = manifestMatch[1].replace(/(\w+):/gu, '"$1":').replace(/'/gu, '"');
       const TRAILING_COMMA_RE = /,\s*\x7d/gu;
       const parsedManifest: unknown = JSON.parse(manifestText.replace(TRAILING_COMMA_RE, "}"));
       const manifest = normalizeBolaManifest(parsedManifest);
@@ -217,10 +230,7 @@ export function validateEndpointBolaCoverage(
   }
 
   const soleCoverage = entry.bolaCoverage.filter((ref) => ref.kind !== "static-high-risk-wiring");
-  if (
-    entry.objectIdsFromClient.length > 0 &&
-    soleCoverage.every((ref) => ref.kind === "static-high-risk-wiring")
-  ) {
+  if (entry.objectIdsFromClient.length > 0 && soleCoverage.every((ref) => ref.kind === "static-high-risk-wiring")) {
     errors.push(`${entry.exportedName}: static-high-risk-wiring cannot be sole BOLA coverage`);
   }
 

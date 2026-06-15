@@ -3,7 +3,15 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 import { describe, it, vi } from "vitest";
-import { ALICE_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData, pathKeyedFirestore } from "./callableBolaHarness.js";
+import {
+  ALICE_UID,
+  callableRequest,
+  callableRunner,
+  expectCallableDenial,
+  bolaCrossUserData,
+  pathKeyedFirestore,
+  tier2CallableProof,
+} from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -32,12 +40,8 @@ vi.mock("../../appCheckAttestation.js", async () => {
   };
 });
 export const BOLA_MANIFEST = {
-  "revokeHermesConnection": [
-    "revokeHermesConnection rejects cross-user object access"
-  ],
-  "updateHermesConnectionStatus": [
-    "updateHermesConnectionStatus rejects cross-user object access"
-  ]
+  revokeHermesConnection: ["revokeHermesConnection rejects cross-user object access"],
+  updateHermesConnectionStatus: ["updateHermesConnectionStatus rejects cross-user object access"],
 } as const;
 
 describe("BOLA — hermes", () => {
@@ -46,7 +50,13 @@ describe("BOLA — hermes", () => {
     const exported = mod.revokeHermesConnection;
     if (!exported) throw new Error("missing export revokeHermesConnection");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "revokeHermesConnection",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("updateHermesConnectionStatus rejects cross-user object access", async () => {
@@ -54,6 +64,12 @@ describe("BOLA — hermes", () => {
     const exported = mod.updateHermesConnectionStatus;
     if (!exported) throw new Error("missing export updateHermesConnectionStatus");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "updateHermesConnectionStatus",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 });

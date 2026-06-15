@@ -12,9 +12,10 @@ import {
   expectCallableDenial,
   pathKeyedFirestore,
   seedDoc,
+  tier2CallableProof,
 } from "./callableBolaHarness.js";
 
-const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
+const bolaStore: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -54,7 +55,7 @@ vi.mock("firebase-admin/firestore", () => ({
     fromMillis: (ms: number) => ({ toMillis: () => ms }),
   },
 }));
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(store) }));
+vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 
 export const BOLA_MANIFEST = {
   getHermesGatewayAttachmentDownloadUrl: ["getHermesGatewayAttachmentDownloadUrl rejects cross-user object access"],
@@ -71,6 +72,19 @@ describe("BOLA — hermesGateway callables", () => {
   it("getHermesGatewayAttachmentDownloadUrl rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermesGateway.js");
     const run = callableRunner(mod.getHermesGatewayAttachmentDownloadUrl);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "getHermesGatewayAttachmentDownloadUrl",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+    await tier2CallableProof(bolaStore, {
+      exportedName: "getHermesGatewayAttachmentDownloadUrl",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
     await expectCallableDenial(
       run,
       callableRequest(ALICE_UID, { attachmentId: "bob-att", clientId: "bob-client", destinationId: "burnbar:home" }),
@@ -81,6 +95,19 @@ describe("BOLA — hermesGateway callables", () => {
   it("approveHermesGatewayDeviceGrant rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermesGateway.js");
     const run = callableRunner(mod.approveHermesGatewayDeviceGrant);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "approveHermesGatewayDeviceGrant",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+    await tier2CallableProof(bolaStore, {
+      exportedName: "approveHermesGatewayDeviceGrant",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
     await expectCallableDenial(
       run,
       callableRequest(ALICE_UID, { clientId: "bob-client", userCode: "ABCDEFGH" }),
@@ -91,18 +118,57 @@ describe("BOLA — hermesGateway callables", () => {
   it("revokeHermesGatewayClient rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermesGateway.js");
     const run = callableRunner(mod.revokeHermesGatewayClient);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "revokeHermesGatewayClient",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+    await tier2CallableProof(bolaStore, {
+      exportedName: "revokeHermesGatewayClient",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
     await expectCallableDenial(run, callableRequest(ALICE_UID, { clientId: "bob-client" }), "not-found");
   });
 
   it("rotateHermesGatewayClientToken rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermesGateway.js");
     const run = callableRunner(mod.rotateHermesGatewayClientToken);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "rotateHermesGatewayClientToken",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+    await tier2CallableProof(bolaStore, {
+      exportedName: "rotateHermesGatewayClientToken",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
     await expectCallableDenial(run, callableRequest(ALICE_UID, { clientId: "bob-client" }), "not-found");
   });
 
   it("enqueueHermesGatewayEvent rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermesGateway.js");
     const run = callableRunner(mod.enqueueHermesGatewayEvent);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "enqueueHermesGatewayEvent",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+    await tier2CallableProof(bolaStore, {
+      exportedName: "enqueueHermesGatewayEvent",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
     await expectCallableDenial(
       run,
       callableRequest(ALICE_UID, {
@@ -119,6 +185,19 @@ describe("BOLA — hermesGateway callables", () => {
   it("setHermesGatewayOversightMode rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermesGateway.js");
     const run = callableRunner(mod.setHermesGatewayOversightMode);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "setHermesGatewayOversightMode",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+    await tier2CallableProof(bolaStore, {
+      exportedName: "setHermesGatewayOversightMode",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
     await expectCallableDenial(
       run,
       callableRequest(ALICE_UID, { clientId: "bob-client", mode: "supervised" }),
@@ -129,6 +208,19 @@ describe("BOLA — hermesGateway callables", () => {
   it("respondHermesGatewayApproval rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermesGateway.js");
     const run = callableRunner(mod.respondHermesGatewayApproval);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "respondHermesGatewayApproval",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+    await tier2CallableProof(bolaStore, {
+      exportedName: "respondHermesGatewayApproval",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
     await expectCallableDenial(
       run,
       callableRequest(ALICE_UID, {
@@ -172,15 +264,15 @@ describe("BOLA — burnBarHermesGateway HTTP", () => {
       return "{}";
     };
 
-    store.clear();
-    seedDoc(store, `hermes_gateway_token_index/${aliceTokenHash}`, {
+    bolaStore.clear();
+    seedDoc(bolaStore, `hermes_gateway_token_index/${aliceTokenHash}`, {
       uid: ALICE_UID,
       clientId: aliceClientId,
       status: "active",
       expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
     });
     const nowIso = new Date().toISOString();
-    seedDoc(store, `users/${ALICE_UID}/hermes_gateway_clients/${aliceClientId}`, {
+    seedDoc(bolaStore, `users/${ALICE_UID}/hermes_gateway_clients/${aliceClientId}`, {
       id: aliceClientId,
       uid: ALICE_UID,
       displayName: "Alice Agent",
@@ -197,7 +289,7 @@ describe("BOLA — burnBarHermesGateway HTTP", () => {
       updatedAt: nowIso,
       schemaVersion: 2,
     });
-    seedDoc(store, `users/${BOB_UID}/hermes_gateway_attachments/bob-att`, {
+    seedDoc(bolaStore, `users/${BOB_UID}/hermes_gateway_attachments/bob-att`, {
       id: "bob-att",
       clientId: "bob-client",
       status: "pending_upload",

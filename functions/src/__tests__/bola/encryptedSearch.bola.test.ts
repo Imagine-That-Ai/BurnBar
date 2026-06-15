@@ -3,7 +3,15 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 import { describe, it, vi } from "vitest";
-import { ALICE_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData, pathKeyedFirestore } from "./callableBolaHarness.js";
+import {
+  ALICE_UID,
+  callableRequest,
+  callableRunner,
+  expectCallableDenial,
+  bolaCrossUserData,
+  pathKeyedFirestore,
+  tier2CallableProof,
+} from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -32,27 +40,13 @@ vi.mock("../../appCheckAttestation.js", async () => {
   };
 });
 export const BOLA_MANIFEST = {
-  "beginEncryptedSessionBlobUpload": [
-    "beginEncryptedSessionBlobUpload rejects cross-user object access"
-  ],
-  "getEncryptedSessionBlobDownloadUrl": [
-    "getEncryptedSessionBlobDownloadUrl rejects cross-user object access"
-  ],
-  "commitEncryptedSearchIndexBatch": [
-    "commitEncryptedSearchIndexBatch rejects cross-user object access"
-  ],
-  "commitEncryptedProjectMemorySnapshot": [
-    "commitEncryptedProjectMemorySnapshot rejects cross-user object access"
-  ],
-  "getEncryptedProjectMemorySnapshot": [
-    "getEncryptedProjectMemorySnapshot rejects cross-user object access"
-  ],
-  "searchEncryptedConversationIndex": [
-    "searchEncryptedConversationIndex rejects cross-user object access"
-  ],
-  "queryConversations": [
-    "queryConversations rejects cross-user object access"
-  ]
+  beginEncryptedSessionBlobUpload: ["beginEncryptedSessionBlobUpload rejects cross-user object access"],
+  getEncryptedSessionBlobDownloadUrl: ["getEncryptedSessionBlobDownloadUrl rejects cross-user object access"],
+  commitEncryptedSearchIndexBatch: ["commitEncryptedSearchIndexBatch rejects cross-user object access"],
+  commitEncryptedProjectMemorySnapshot: ["commitEncryptedProjectMemorySnapshot rejects cross-user object access"],
+  getEncryptedProjectMemorySnapshot: ["getEncryptedProjectMemorySnapshot rejects cross-user object access"],
+  searchEncryptedConversationIndex: ["searchEncryptedConversationIndex rejects cross-user object access"],
+  queryConversations: ["queryConversations rejects cross-user object access"],
 } as const;
 
 describe("BOLA — encryptedSearch", () => {
@@ -61,7 +55,13 @@ describe("BOLA — encryptedSearch", () => {
     const exported = mod.beginEncryptedSessionBlobUpload;
     if (!exported) throw new Error("missing export beginEncryptedSessionBlobUpload");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "beginEncryptedSessionBlobUpload",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("getEncryptedSessionBlobDownloadUrl rejects cross-user object access", async () => {
@@ -69,7 +69,13 @@ describe("BOLA — encryptedSearch", () => {
     const exported = mod.getEncryptedSessionBlobDownloadUrl;
     if (!exported) throw new Error("missing export getEncryptedSessionBlobDownloadUrl");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "getEncryptedSessionBlobDownloadUrl",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("commitEncryptedSearchIndexBatch rejects cross-user object access", async () => {
@@ -77,7 +83,13 @@ describe("BOLA — encryptedSearch", () => {
     const exported = mod.commitEncryptedSearchIndexBatch;
     if (!exported) throw new Error("missing export commitEncryptedSearchIndexBatch");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "commitEncryptedSearchIndexBatch",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("commitEncryptedProjectMemorySnapshot rejects cross-user object access", async () => {
@@ -85,7 +97,13 @@ describe("BOLA — encryptedSearch", () => {
     const exported = mod.commitEncryptedProjectMemorySnapshot;
     if (!exported) throw new Error("missing export commitEncryptedProjectMemorySnapshot");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "commitEncryptedProjectMemorySnapshot",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("getEncryptedProjectMemorySnapshot rejects cross-user object access", async () => {
@@ -93,7 +111,13 @@ describe("BOLA — encryptedSearch", () => {
     const exported = mod.getEncryptedProjectMemorySnapshot;
     if (!exported) throw new Error("missing export getEncryptedProjectMemorySnapshot");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "getEncryptedProjectMemorySnapshot",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("searchEncryptedConversationIndex rejects cross-user object access", async () => {
@@ -101,7 +125,13 @@ describe("BOLA — encryptedSearch", () => {
     const exported = mod.searchEncryptedConversationIndex;
     if (!exported) throw new Error("missing export searchEncryptedConversationIndex");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "searchEncryptedConversationIndex",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("queryConversations rejects cross-user object access", async () => {
@@ -109,6 +139,12 @@ describe("BOLA — encryptedSearch", () => {
     const exported = mod.queryConversations;
     if (!exported) throw new Error("missing export queryConversations");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "queryConversations",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 });

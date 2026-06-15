@@ -7,2329 +7,2329 @@ export type BolaVictimSeed = {
 };
 
 export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
-  "adoptProviderAccountForDevice": [
+  adoptProviderAccountForDevice: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceID/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceID/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "approveEscrowDeviceTrust": [
+  approveEscrowDeviceTrust: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "approveHermesGatewayDeviceGrant": [
+  approveHermesGatewayDeviceGrant: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "hermes_gateway_device_sessions/bob-device-code",
-      "data": {
-        "uid": "__BOB_UID__"
-      }
+      path: "hermes_gateway_device_sessions/bob-device-code",
+      data: {
+        uid: "__BOB_UID__",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "beginEncryptedSessionBlobUpload": [
+  beginEncryptedSessionBlobUpload: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_documents/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/project_memory_snapshots/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/session_logs/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
-      "data": {
-        "documentID": "bob-doc"
-      }
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_postings/bob-post-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/documentID/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/documentID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "burnBarHermesGateway": [
+  burnBarHermesGateway: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/agent_notification_events/bob-event",
-      "data": {
-        "status": "open"
-      }
+      path: "users/__BOB_UID__/agent_notification_events/bob-event",
+      data: {
+        status: "open",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/messageId/bob-messageId",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/messageId/bob-messageId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/eventId/bob-event",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/eventId/bob-event",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/destinationId/bob-destinationId",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/destinationId/bob-destinationId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "claimSignalPrekeyBundle": [
+  claimSignalPrekeyBundle: [
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id",
-      "data": {
-        "published": true
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
     },
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id/one_time_prekeys/bob-prekey-1",
-      "data": {
-        "available": true
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id/one_time_prekeys/bob-prekey-1",
+      data: {
+        available: true,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "commitEncryptedProjectMemorySnapshot": [
+  commitEncryptedProjectMemorySnapshot: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_documents/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/project_memory_snapshots/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/session_logs/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
-      "data": {
-        "documentID": "bob-doc"
-      }
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_postings/bob-post-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/documentID/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/documentID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "commitEncryptedSearchIndexBatch": [
+  commitEncryptedSearchIndexBatch: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_documents/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/project_memory_snapshots/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/session_logs/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
-      "data": {
-        "documentID": "bob-doc"
-      }
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_postings/bob-post-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/documentID/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/documentID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "commitKnowledgeBatch": [
+  commitKnowledgeBatch: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_repos/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_repos/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/repoId/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/repoId/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "completeCliLink": [
+  completeCliLink: [
     {
-      "path": "cli_link_sessions/bob-device-code",
-      "data": {
-        "userCode": "ABCDEFGHJKMN",
-        "status": "approved",
-        "ownerUid": "BOB_UID"
-      }
+      path: "cli_link_sessions/bob-device-code",
+      data: {
+        userCode: "ABCDEFGHJKMN",
+        status: "approved",
+        ownerUid: "BOB_UID",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sessionId/bob-session",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "completeHermesPairing": [
+  completeHermesPairing: [
     {
-      "path": "users/__BOB_UID__/hermes_pairings/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_pairings/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_connections/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_connections/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sessionId/bob-session",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "completePiAgentPairing": [
+  completePiAgentPairing: [
     {
-      "path": "users/__BOB_UID__/pi_agent_pairings/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/pi_agent_pairings/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/pi_agent_connections/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/pi_agent_connections/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sessionId/bob-session",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "configureKnowledgeSource": [
+  configureKnowledgeSource: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_repos/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_repos/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/repoId/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/repoId/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "confirmRecovery": [
+  confirmRecovery: [
     {
-      "path": "users/__BOB_UID__/account_recovery_methods/bob-recovery",
-      "data": {
-        "status": "pending"
-      }
+      path: "users/__BOB_UID__/account_recovery_methods/bob-recovery",
+      data: {
+        status: "pending",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/recoveryId/bob-recovery",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/recoveryId/bob-recovery",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "connectHostedQuotaAccount": [
+  connectHostedQuotaAccount: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/provider_connections/openai",
-      "data": {
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_connections/openai",
+      data: {
+        status: "connected",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "connectKnowledgeRepo": [
+  connectKnowledgeRepo: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_repos/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_repos/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/repoId/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/repoId/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "connectProviderAccount": [
+  connectProviderAccount: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/provider_connections/openai",
-      "data": {
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_connections/openai",
+      data: {
+        status: "connected",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "connectSelfHostedQuotaAccount": [
+  connectSelfHostedQuotaAccount: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/provider_connections/openai",
-      "data": {
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_connections/openai",
+      data: {
+        status: "connected",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "consumeCredentialTransfer": [
+  consumeCredentialTransfer: [
     {
-      "path": "credential_transfers/ABCDEFGHJKMN",
-      "data": {
-        "ownerUid": "BOB_UID",
-        "consumed": false,
-        "payload": "v1.test"
-      }
+      path: "credential_transfers/ABCDEFGHJKMN",
+      data: {
+        ownerUid: "BOB_UID",
+        consumed: false,
+        payload: "v1.test",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "createHermesPairing": [
+  createHermesPairing: [
     {
-      "path": "users/__BOB_UID__/hermes_pairings/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_pairings/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sessionId/bob-session",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "createPiAgentPairing": [
+  createPiAgentPairing: [
     {
-      "path": "users/__BOB_UID__/pi_agent_pairings/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/pi_agent_pairings/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/pairingId/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/code/ABCDEFGHJKMN",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sessionId/bob-session",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "deleteHostedQuotaCredentials": [
+  deleteHostedQuotaCredentials: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/provider_connections/openai",
-      "data": {
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_connections/openai",
+      data: {
+        status: "connected",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "deleteKnowledgeSource": [
+  deleteKnowledgeSource: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_repos/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_repos/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/repoId/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/repoId/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "deleteProviderAccount": [
+  deleteProviderAccount: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "deleteProviderCredential": [
+  deleteProviderCredential: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/provider_connections/openai",
-      "data": {
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_connections/openai",
+      data: {
+        status: "connected",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "disconnectKnowledgeRepo": [
+  disconnectKnowledgeRepo: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_sync_manifests/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/knowledge_repos/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/knowledge_repos/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_knowledge/bob-knowledge-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/sourceManifestId/bob-src",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/repoId/bob-repo",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/repoId/bob-repo",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "enqueueHermesGatewayEvent": [
+  enqueueHermesGatewayEvent: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "getEncryptedProjectMemorySnapshot": [
+  getEncryptedProjectMemorySnapshot: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_documents/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/project_memory_snapshots/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/session_logs/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
-      "data": {
-        "documentID": "bob-doc"
-      }
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_postings/bob-post-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/documentID/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/documentID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "getEncryptedSessionBlobDownloadUrl": [
+  getEncryptedSessionBlobDownloadUrl: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_documents/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/project_memory_snapshots/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/session_logs/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
-      "data": {
-        "documentID": "bob-doc"
-      }
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_postings/bob-post-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/documentID/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/documentID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "getHermesGatewayAttachmentDownloadUrl": [
+  getHermesGatewayAttachmentDownloadUrl: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "pollCliLink": [
+  pollCliLink: [
     {
-      "path": "cli_link_sessions/bob-device-code",
-      "data": {
-        "userCode": "ABCDEFGHJKMN",
-        "status": "approved",
-        "ownerUid": "BOB_UID"
-      }
+      path: "cli_link_sessions/bob-device-code",
+      data: {
+        userCode: "ABCDEFGHJKMN",
+        status: "approved",
+        ownerUid: "BOB_UID",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceCode/bob-device-code",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceCode/bob-device-code",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "publishAgentGrantAuthority": [
+  publishAgentGrantAuthority: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/agent_grant_authorities/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/agent_grant_authorities/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "publishIrohPairingPublicKey": [
+  publishIrohPairingPublicKey: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/iroh_pairing/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/iroh_pairing_keys/host",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/iroh_pairing_keys/host",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "publishIrohPairingRecord": [
+  publishIrohPairingRecord: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/iroh_pairing/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "publishPhoneControlAuthority": [
+  publishPhoneControlAuthority: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "publishRelaySenderKey": [
+  publishRelaySenderKey: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/relay_sender_keys/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/relay_sender_keys/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "publishSignalPrekeyBundle": [
+  publishSignalPrekeyBundle: [
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id",
-      "data": {
-        "published": true
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "queryConversations": [
+  queryConversations: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_documents/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/project_memory_snapshots/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/session_logs/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
-      "data": {
-        "documentID": "bob-doc"
-      }
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_postings/bob-post-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/documentID/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/documentID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "queueAgentCapabilityGrantRequest": [
+  queueAgentCapabilityGrantRequest: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/agent_capability_grant_requests/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/agent_capability_grant_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cli_agent_mission_requests/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cli_agent_mission_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/agent_grant_authorities/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/agent_grant_authorities/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "recordSignalRotation": [
+  recordSignalRotation: [
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id",
-      "data": {
-        "published": true
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
     },
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id/rotation_events/bob-rot-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id/rotation_events/bob-rot-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "recordSignalSession": [
+  recordSignalSession: [
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id",
-      "data": {
-        "published": true
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
     },
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id/sessions/bob-sess-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id/sessions/bob-sess-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "refreshProviderAccountQuota": [
+  refreshProviderAccountQuota: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "registerEscrowDevice": [
+  registerEscrowDevice: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "respondHermesGatewayApproval": [
+  respondHermesGatewayApproval: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "respondMissionApproval": [
+  respondMissionApproval: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/agent_capability_grant_requests/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/agent_capability_grant_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cli_agent_mission_requests/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cli_agent_mission_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/agent_grant_authorities/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/agent_grant_authorities/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "revokeEscrowDeviceTrust": [
+  revokeEscrowDeviceTrust: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "revokeHermesConnection": [
+  revokeHermesConnection: [
     {
-      "path": "users/__BOB_UID__/hermes_connections/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_connections/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "revokeHermesGatewayClient": [
+  revokeHermesGatewayClient: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "revokeIrohPairingRecord": [
+  revokeIrohPairingRecord: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/iroh_pairing/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/requestId/bob-request",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "revokePiAgentConnection": [
+  revokePiAgentConnection: [
     {
-      "path": "users/__BOB_UID__/pi_agent_pairings/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/pi_agent_pairings/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/pi_agent_connections/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/pi_agent_connections/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "revokeProviderAccountDeviceLink": [
+  revokeProviderAccountDeviceLink: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/devices/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/devices/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/provider_account_device_links/bob-account_bob-device",
-      "data": {
-        "status": "active"
-      }
+      path: "users/__BOB_UID__/provider_account_device_links/bob-account_bob-device",
+      data: {
+        status: "active",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceID/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceID/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "revokeRemoteMcpClient": [
+  revokeRemoteMcpClient: [
     {
-      "path": "users/__BOB_UID__/remote_mcp_clients/bob-client",
-      "data": {
-        "active": true
-      }
+      path: "users/__BOB_UID__/remote_mcp_clients/bob-client",
+      data: {
+        active: true,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "rotateCloudVaultKey": [
+  rotateCloudVaultKey: [
     {
-      "path": "users/__BOB_UID__/cloud_vault_state/current",
-      "data": {
-        "keyGeneration": 1
-      }
+      path: "users/__BOB_UID__/cloud_vault_state/current",
+      data: {
+        keyGeneration: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/callerDeviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/callerDeviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "rotateHermesGatewayClientToken": [
+  rotateHermesGatewayClientToken: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "hermes_gateway_token_index/bob-token-hash",
-      "data": {
-        "uid": "__BOB_UID__",
-        "clientId": "bob-client"
-      }
+      path: "hermes_gateway_token_index/bob-token-hash",
+      data: {
+        uid: "__BOB_UID__",
+        clientId: "bob-client",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "searchEncryptedConversationIndex": [
+  searchEncryptedConversationIndex: [
     {
-      "path": "users/__BOB_UID__/escrow_devices/bob-device",
-      "data": {
-        "trustRoot": "__BOB_UID__",
-        "status": "trusted"
-      }
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_documents/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/project_memory_snapshots/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/session_logs/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
-      "data": {
-        "documentID": "bob-doc"
-      }
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
     },
     {
-      "path": "users/__BOB_UID__/cloud_search_postings/bob-post-1",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/documentID/bob-doc",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/documentID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "setHermesGatewayOversightMode": [
+  setHermesGatewayOversightMode: [
     {
-      "path": "users/__BOB_UID__/hermes_gateway_clients/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_gateway_attachments/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/clientId/bob-client",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/bola_victim/clientId/bob-client",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "signalPrekeyWatermark": [
+  signalPrekeyWatermark: [
     {
-      "path": "users/__BOB_UID__/signal_identity_public_keys/bob-id",
-      "data": {
-        "published": true
-      }
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "submitAgentNotificationReply": [
+  submitAgentNotificationReply: [
     {
-      "path": "users/__BOB_UID__/agent_notification_events/bob-event",
-      "data": {
-        "status": "open"
-      }
+      path: "users/__BOB_UID__/agent_notification_events/bob-event",
+      data: {
+        status: "open",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/eventId/bob-event",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/eventId/bob-event",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "triggerVoIPCall": [
+  triggerVoIPCall: [
     {
-      "path": "users/__BOB_UID__/devices/bob-paired",
-      "data": {
-        "voipDeviceToken": "bob-voip"
-      }
+      path: "users/__BOB_UID__/devices/bob-paired",
+      data: {
+        voipDeviceToken: "bob-voip",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/pairedDeviceId/bob-paired",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/pairedDeviceId/bob-paired",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "updateHermesConnectionStatus": [
+  updateHermesConnectionStatus: [
     {
-      "path": "users/__BOB_UID__/hermes_connections/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/hermes_connections/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "updatePiAgentConnectionStatus": [
+  updatePiAgentConnectionStatus: [
     {
-      "path": "users/__BOB_UID__/pi_agent_pairings/bob-pair",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/pi_agent_pairings/bob-pair",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/pi_agent_connections/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
+      path: "users/__BOB_UID__/pi_agent_connections/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "updateProviderAccount": [
+  updateProviderAccount: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "uploadProviderQuotaSnapshot": [
+  uploadProviderQuotaSnapshot: [
     {
-      "path": "users/__BOB_UID__/provider_accounts/bob-account",
-      "data": {
-        "provider": "openai",
-        "status": "connected"
-      }
+      path: "users/__BOB_UID__/provider_accounts/bob-account",
+      data: {
+        provider: "openai",
+        status: "connected",
+      },
     },
     {
-      "path": "provider_account_secret_refs/__BOB_UID___bob-account",
-      "data": {
-        "secretVersionName": "projects/test/secrets/bob/versions/1"
-      }
+      path: "provider_account_secret_refs/__BOB_UID___bob-account",
+      data: {
+        secretVersionName: "projects/test/secrets/bob/versions/1",
+      },
     },
     {
-      "path": "users/__BOB_UID__/bola_victim/accountID/bob-account",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
+      path: "users/__BOB_UID__/bola_victim/accountID/bob-account",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
   ],
-  "validateOpenTimestampsProof": [
+  validateOpenTimestampsProof: [
     {
-      "path": "users/__BOB_UID__/bola_victim/sessionId/bob-session",
-      "data": {
-        "ownerUid": "__BOB_UID__",
-        "status": "active",
-        "schemaVersion": 1
-      }
-    }
-  ]
+      path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
 } as Record<string, BolaVictimSeed[]>;
 
 function resolveVictimPath(path: string): string {
@@ -2344,10 +2344,7 @@ function resolveVictimData(data: Record<string, unknown>): Record<string, unknow
   return resolved;
 }
 
-export function seedBolaVictimTenant(
-  store: Map<string, Record<string, unknown>>,
-  exportedName: string,
-): void {
+export function seedBolaVictimTenant(store: Map<string, Record<string, unknown>>, exportedName: string): void {
   const seeds = BOLA_VICTIM_SEEDS[exportedName] ?? [];
   for (const seed of seeds) {
     seedDoc(store, resolveVictimPath(seed.path), resolveVictimData(seed.data));

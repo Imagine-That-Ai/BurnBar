@@ -6,7 +6,16 @@ import { EventEmitter } from "node:events";
 import { Timestamp } from "firebase-admin/firestore";
 import { describe, expect, it, vi } from "vitest";
 
-import { ALICE_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData, pathKeyedFirestore, seedDoc } from "./callableBolaHarness.js";
+import {
+  ALICE_UID,
+  callableRequest,
+  callableRunner,
+  expectCallableDenial,
+  bolaCrossUserData,
+  pathKeyedFirestore,
+  seedDoc,
+  tier2CallableProof,
+} from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -113,30 +122,60 @@ describe("BOLA — pairing", () => {
   it("completeCliLink rejects cross-user object access", async () => {
     const mod = await import("../../callables/cliLink.js");
     const run = callableRunner(mod.completeCliLink);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "completeCliLink",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("createHermesPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermes.js");
     const run = callableRunner(mod.createHermesPairing);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "createHermesPairing",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("completeHermesPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/hermes.js");
     const run = callableRunner(mod.completeHermesPairing);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "completeHermesPairing",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("createPiAgentPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/piAgent.js");
     const run = callableRunner(mod.createPiAgentPairing);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "createPiAgentPairing",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("completePiAgentPairing rejects cross-user object access", async () => {
     const mod = await import("../../callables/piAgent.js");
     const run = callableRunner(mod.completePiAgentPairing);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "completePiAgentPairing",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 });

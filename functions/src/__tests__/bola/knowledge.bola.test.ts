@@ -3,7 +3,15 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 import { describe, it, vi } from "vitest";
-import { ALICE_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData, pathKeyedFirestore } from "./callableBolaHarness.js";
+import {
+  ALICE_UID,
+  callableRequest,
+  callableRunner,
+  expectCallableDenial,
+  bolaCrossUserData,
+  pathKeyedFirestore,
+  tier2CallableProof,
+} from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -32,21 +40,11 @@ vi.mock("../../appCheckAttestation.js", async () => {
   };
 });
 export const BOLA_MANIFEST = {
-  "commitKnowledgeBatch": [
-    "commitKnowledgeBatch rejects cross-user object access"
-  ],
-  "configureKnowledgeSource": [
-    "configureKnowledgeSource rejects cross-user object access"
-  ],
-  "deleteKnowledgeSource": [
-    "deleteKnowledgeSource rejects cross-user object access"
-  ],
-  "connectKnowledgeRepo": [
-    "connectKnowledgeRepo rejects cross-user object access"
-  ],
-  "disconnectKnowledgeRepo": [
-    "disconnectKnowledgeRepo rejects cross-user object access"
-  ]
+  commitKnowledgeBatch: ["commitKnowledgeBatch rejects cross-user object access"],
+  configureKnowledgeSource: ["configureKnowledgeSource rejects cross-user object access"],
+  deleteKnowledgeSource: ["deleteKnowledgeSource rejects cross-user object access"],
+  connectKnowledgeRepo: ["connectKnowledgeRepo rejects cross-user object access"],
+  disconnectKnowledgeRepo: ["disconnectKnowledgeRepo rejects cross-user object access"],
 } as const;
 
 describe("BOLA — knowledge", () => {
@@ -55,7 +53,13 @@ describe("BOLA — knowledge", () => {
     const exported = mod.commitKnowledgeBatch;
     if (!exported) throw new Error("missing export commitKnowledgeBatch");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "commitKnowledgeBatch",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("configureKnowledgeSource rejects cross-user object access", async () => {
@@ -63,7 +67,13 @@ describe("BOLA — knowledge", () => {
     const exported = mod.configureKnowledgeSource;
     if (!exported) throw new Error("missing export configureKnowledgeSource");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "configureKnowledgeSource",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("deleteKnowledgeSource rejects cross-user object access", async () => {
@@ -71,7 +81,13 @@ describe("BOLA — knowledge", () => {
     const exported = mod.deleteKnowledgeSource;
     if (!exported) throw new Error("missing export deleteKnowledgeSource");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "deleteKnowledgeSource",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("connectKnowledgeRepo rejects cross-user object access", async () => {
@@ -79,7 +95,13 @@ describe("BOLA — knowledge", () => {
     const exported = mod.connectKnowledgeRepo;
     if (!exported) throw new Error("missing export connectKnowledgeRepo");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "connectKnowledgeRepo",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("disconnectKnowledgeRepo rejects cross-user object access", async () => {
@@ -87,6 +109,12 @@ describe("BOLA — knowledge", () => {
     const exported = mod.disconnectKnowledgeRepo;
     if (!exported) throw new Error("missing export disconnectKnowledgeRepo");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "disconnectKnowledgeRepo",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 });

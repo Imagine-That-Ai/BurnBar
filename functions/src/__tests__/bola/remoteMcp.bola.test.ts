@@ -41,9 +41,7 @@ vi.mock("../../appCheckAttestation.js", async () => {
   };
 });
 export const BOLA_MANIFEST = {
-  "revokeRemoteMcpClient": [
-    "revokeRemoteMcpClient rejects cross-user object access"
-  ]
+  revokeRemoteMcpClient: ["revokeRemoteMcpClient rejects cross-user object access"],
 } as const;
 
 describe("BOLA — remoteMcp", () => {

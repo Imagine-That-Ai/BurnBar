@@ -3,13 +3,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  ALICE_UID,
-  BOB_UID,
-  callableRequest,
-  callableRunner,
-  seedDoc,
-} from "./callableBolaHarness.js";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, seedDoc } from "./callableBolaHarness.js";
 
 const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
 const outboundWrites: Array<{ collection: string; payload: Record<string, unknown> }> = vi.hoisted(() => []);

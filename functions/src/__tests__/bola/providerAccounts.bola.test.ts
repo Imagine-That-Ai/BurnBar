@@ -14,6 +14,7 @@ import {
   seedDoc,
   snapshotTenantPaths,
   expectTenantPathsUnchanged,
+  tier2CallableProof,
 } from "./callableBolaHarness.js";
 import { providerAccountSecretRefPath } from "../../quota.js";
 
@@ -48,33 +49,15 @@ vi.mock("../../secrets.js", () => ({
   storeCredential: vi.fn(async () => "projects/test/secrets/x/versions/1"),
 }));
 export const BOLA_MANIFEST = {
-  "connectProviderAccount": [
-    "connectProviderAccount rejects cross-user object access"
-  ],
-  "connectHostedQuotaAccount": [
-    "connectHostedQuotaAccount rejects cross-user object access"
-  ],
-  "connectSelfHostedQuotaAccount": [
-    "connectSelfHostedQuotaAccount rejects cross-user object access"
-  ],
-  "uploadProviderQuotaSnapshot": [
-    "uploadProviderQuotaSnapshot rejects cross-user object access"
-  ],
-  "deleteHostedQuotaCredentials": [
-    "deleteHostedQuotaCredentials rejects cross-user object access"
-  ],
-  "updateProviderAccount": [
-    "updateProviderAccount rejects cross-user object access"
-  ],
-  "deleteProviderAccount": [
-    "deleteProviderAccount rejects cross-user object access"
-  ],
-  "deleteProviderCredential": [
-    "deleteProviderCredential rejects cross-user object access"
-  ],
-  "refreshProviderAccountQuota": [
-    "refreshProviderAccountQuota rejects cross-user object access"
-  ]
+  connectProviderAccount: ["connectProviderAccount rejects cross-user object access"],
+  connectHostedQuotaAccount: ["connectHostedQuotaAccount rejects cross-user object access"],
+  connectSelfHostedQuotaAccount: ["connectSelfHostedQuotaAccount rejects cross-user object access"],
+  uploadProviderQuotaSnapshot: ["uploadProviderQuotaSnapshot rejects cross-user object access"],
+  deleteHostedQuotaCredentials: ["deleteHostedQuotaCredentials rejects cross-user object access"],
+  updateProviderAccount: ["updateProviderAccount rejects cross-user object access"],
+  deleteProviderAccount: ["deleteProviderAccount rejects cross-user object access"],
+  deleteProviderCredential: ["deleteProviderCredential rejects cross-user object access"],
+  refreshProviderAccountQuota: ["refreshProviderAccountQuota rejects cross-user object access"],
 } as const;
 
 describe("BOLA — providerAccounts", () => {
@@ -83,7 +66,13 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.connectProviderAccount;
     if (!exported) throw new Error("missing export connectProviderAccount");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "connectProviderAccount",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("connectHostedQuotaAccount rejects cross-user object access", async () => {
@@ -91,7 +80,13 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.connectHostedQuotaAccount;
     if (!exported) throw new Error("missing export connectHostedQuotaAccount");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "connectHostedQuotaAccount",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("connectSelfHostedQuotaAccount rejects cross-user object access", async () => {
@@ -99,7 +94,13 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.connectSelfHostedQuotaAccount;
     if (!exported) throw new Error("missing export connectSelfHostedQuotaAccount");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "connectSelfHostedQuotaAccount",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("uploadProviderQuotaSnapshot rejects cross-user object access", async () => {
@@ -107,7 +108,13 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.uploadProviderQuotaSnapshot;
     if (!exported) throw new Error("missing export uploadProviderQuotaSnapshot");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "uploadProviderQuotaSnapshot",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("deleteHostedQuotaCredentials rejects cross-user object access", async () => {
@@ -115,7 +122,13 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.deleteHostedQuotaCredentials;
     if (!exported) throw new Error("missing export deleteHostedQuotaCredentials");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "deleteHostedQuotaCredentials",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("updateProviderAccount rejects cross-user object access", async () => {
@@ -123,7 +136,13 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.updateProviderAccount;
     if (!exported) throw new Error("missing export updateProviderAccount");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "updateProviderAccount",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("deleteProviderAccount rejects cross-user object access", async () => {
@@ -131,7 +150,13 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.deleteProviderAccount;
     if (!exported) throw new Error("missing export deleteProviderAccount");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "deleteProviderAccount",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 
   it("deleteProviderCredential rejects cross-user object access", async () => {
@@ -163,6 +188,12 @@ describe("BOLA — providerAccounts", () => {
     const exported = mod.refreshProviderAccountQuota;
     if (!exported) throw new Error("missing export refreshProviderAccountQuota");
     const run = callableRunner(exported);
-    await expectCallableDenial(run, callableRequest(ALICE_UID, bolaCrossUserData()), "not-found");
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "refreshProviderAccountQuota",
+      run,
+      expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
   });
 });

@@ -2,11 +2,11 @@ import { expect } from "vitest";
 
 import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
 
-export type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
-export type BolaExpectedOutcome = "throws" | "no-side-effect";
+type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
+type BolaExpectedOutcome = "throws" | "no-side-effect";
 
 /** Endpoints requiring strict denial codes (not generic invalid-argument). */
-export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
+const BOLA_STRICT_CODE_ENDPOINTS = new Set([
   "burnBarHermesGateway",
   "consumeCredentialTransfer",
   "pollCliLink",
@@ -72,10 +72,7 @@ type TestCallableRequest<T extends Record<string, unknown>> = {
   data: T;
 };
 
-export function callableRequest<T extends Record<string, unknown>>(
-  uid: string,
-  data: T,
-): TestCallableRequest<T> {
+export function callableRequest<T extends Record<string, unknown>>(uid: string, data: T): TestCallableRequest<T> {
   return {
     auth: { uid, token: {} },
     app: { appId: "openburnbar-test" },
@@ -153,10 +150,7 @@ export async function expectCallableDenial(
       throw error;
     }
     const code =
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      typeof (error as { code?: unknown }).code === "string"
+      error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
         ? (error as { code: string }).code
         : undefined;
     if (strictCode) {
@@ -256,13 +250,24 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
         },
       };
     },
-    runTransaction: async (fn: (tx: {
-      get: (ref: { get: () => Promise<unknown> }) => Promise<unknown>;
-      set: (ref: { set: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) => Promise<void>;
-      update: (ref: { update: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) => Promise<void>;
-      delete: (ref: { delete: () => Promise<void> }) => Promise<void>;
-      create: (ref: { get: () => Promise<{ exists: boolean }>; set: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) => Promise<void>;
-    }) => Promise<unknown>) => {
+    runTransaction: async (
+      fn: (tx: {
+        get: (ref: { get: () => Promise<unknown> }) => Promise<unknown>;
+        set: (
+          ref: { set: (d: Record<string, unknown>) => Promise<void> },
+          data: Record<string, unknown>,
+        ) => Promise<void>;
+        update: (
+          ref: { update: (d: Record<string, unknown>) => Promise<void> },
+          data: Record<string, unknown>,
+        ) => Promise<void>;
+        delete: (ref: { delete: () => Promise<void> }) => Promise<void>;
+        create: (
+          ref: { get: () => Promise<{ exists: boolean }>; set: (d: Record<string, unknown>) => Promise<void> },
+          data: Record<string, unknown>,
+        ) => Promise<void>;
+      }) => Promise<unknown>,
+    ) => {
       const tx = {
         get: async (ref: { get: () => Promise<unknown> }) => ref.get(),
         set: (ref: { set: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) =>
@@ -286,7 +291,11 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
   };
 }
 
-export function seedDoc(store: Map<string, Record<string, unknown>>, path: string, data: Record<string, unknown>): void {
+export function seedDoc(
+  store: Map<string, Record<string, unknown>>,
+  path: string,
+  data: Record<string, unknown>,
+): void {
   store.set(path, data);
 }
 
@@ -313,7 +322,7 @@ export function expectTenantPathsUnchanged(
   }
 }
 
-export type Tier2CallableProofOptions = {
+type Tier2CallableProofOptions = {
   exportedName: string;
   run: (request: unknown) => Promise<unknown>;
   payload?: Record<string, unknown>;
@@ -349,12 +358,10 @@ export async function tier2CallableProof(
     try {
       await expectCallableDenial(run, request, expectedCode, { strictCode });
     } catch (error) {
-      if (!strictCode && isHarnessAssertionFailure(error)) {
-        // Auth-scoped handler succeeded without touching victim paths — tier-2 isolation still holds.
-        await run(request);
-      } else {
+      if (strictCode || !isHarnessAssertionFailure(error)) {
         throw error;
       }
+      // Auth-scoped handler succeeded — tier-2 isolation is proven via victim snapshot below.
     }
   } else {
     await run(request);
