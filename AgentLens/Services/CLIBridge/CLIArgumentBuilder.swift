@@ -202,6 +202,10 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    private static func isYOLOGrant(_ grant: AgentCapabilityGrant) -> Bool {
+        grant.trustMode == .trusted && Set(AgentDesktopCapability.allCases).isSubset(of: grant.capabilities)
+    }
+
     private static func claudeAllowedTools(for grant: AgentCapabilityGrant) -> [String] {
         var tools: [String] = []
         if grant.capabilities.contains(.workspaceRead) {
