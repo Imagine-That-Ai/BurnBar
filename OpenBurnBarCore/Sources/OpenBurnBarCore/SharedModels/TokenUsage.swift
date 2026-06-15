@@ -96,7 +96,19 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     public let provenanceConfidence: UsageProvenanceConfidence
     public let estimatorVersion: String
 
+    /// The Elder Wand fusion run this row belongs to (`elderwand-<UUID>`), or
+    /// `nil` for a normal request. It survives only on the daemon read paths and
+    /// is dropped historically on SQLite import; the v49 `token_usage`
+    /// migration adds a nullable `parentRequestID` column so imported rows can
+    /// carry it, making the period fusion/normal partition a real SQL query.
+    public let parentRequestID: String?
+
     public var costUSD: Double { cost }
+
+    /// Whether this row belongs to an Elder Wand fusion run.
+    public var isFusionRow: Bool {
+        parentRequestID?.hasPrefix(FusionUsageRow.fusionParentPrefix) ?? false
+    }
 
     public init(
         id: UUID = UUID(),
@@ -123,7 +135,8 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         providerAccountSource: ProviderAccountStorageScope? = nil,
         provenanceMethod: UsageProvenanceMethod = .unknown,
         provenanceConfidence: UsageProvenanceConfidence = .unknown,
-        estimatorVersion: String = ""
+        estimatorVersion: String = "",
+        parentRequestID: String? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -157,6 +170,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.provenanceMethod = provenanceMethod
         self.provenanceConfidence = provenanceConfidence
         self.estimatorVersion = estimatorVersion
+        self.parentRequestID = parentRequestID
     }
 
     public static func billedTotalTokens(
@@ -176,6 +190,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         case sourceDeviceId, sourceDeviceName, isRemote
         case providerID, providerAccountID, providerAccountLabel, providerAccountSource
         case provenanceMethod, provenanceConfidence, estimatorVersion
+        case parentRequestID
     }
 
     public init(from decoder: Decoder) throws {
@@ -215,6 +230,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         provenanceMethod = try c.decodeIfPresent(UsageProvenanceMethod.self, forKey: .provenanceMethod) ?? .unknown
         provenanceConfidence = try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .provenanceConfidence) ?? .unknown
         estimatorVersion = try c.decodeIfPresent(String.self, forKey: .estimatorVersion) ?? ""
+        parentRequestID = try c.decodeIfPresent(String.self, forKey: .parentRequestID)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -245,6 +261,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encode(provenanceMethod, forKey: .provenanceMethod)
         try c.encode(provenanceConfidence, forKey: .provenanceConfidence)
         try c.encode(estimatorVersion, forKey: .estimatorVersion)
+        try c.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
     }
 
     public var duration: TimeInterval {

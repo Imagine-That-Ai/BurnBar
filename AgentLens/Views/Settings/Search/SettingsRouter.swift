@@ -159,10 +159,10 @@ final class SettingsRouter {
         case .agentsAccounts, .agentsCLIs, .agentsRuntimes, .agentsModels, .agentsAdvanced:
             return [route]
 
-        // The Elder Wand configurator drills from the Agents landing into its
-        // own detail (the configurator), which `SettingsView.destination(for:)`
-        // renders.
-        case .analysisConfigurator:
+        // The Elder Wand configurator and the standing Fusion Impact screen
+        // each drill from the Agents landing into their own detail, which
+        // `SettingsView.destination(for:)` renders.
+        case .analysisConfigurator, .fusionImpact:
             return [route]
 
         // Legacy roots: forward into the merged Agents tab. Search results

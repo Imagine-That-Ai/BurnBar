@@ -136,6 +136,16 @@ final class ChatSessionController {
     /// Most recent attachment-related error surfaced to the composer.
     var attachmentError: String?
 
+    /// Set to a FRESH client-minted token the instant an Elder Wand model-fusion
+    /// run finishes streaming, so a host view can present the end-of-session
+    /// receipt via `.sheet(item:)`. This is intentionally NOT the daemon's
+    /// `parentRequestID` (`elderwand-<UUID>`): that id is minted server-side and
+    /// never sent back to the client over SSE, so the receipt keys on the NEWEST
+    /// `elderwand-` group in the usage ledger at completion instead (correct for
+    /// the serialized one-fusion-at-a-time case). The token here is only a
+    /// presentation trigger; clearing it dismisses the receipt.
+    var completedFusionSessionToken: String?
+
     private struct LocalIndexOracleResult {
         let message: String
         let jumpTargets: [ConversationJumpTarget]
@@ -1638,6 +1648,14 @@ final class ChatSessionController {
         )
         let backendCapabilities = backendCapabilities(for: chatBackend, modelID: requestModel)
 
+        // Capture the fusion gate at stream START (same place `requestModel` /
+        // `streamStartedAt` are captured) so the completion block knows whether
+        // this run was an Elder Wand model-fusion run and should raise the
+        // end-of-session receipt. Reuses the SAME `elderWandPluginsPayload()`
+        // call the send switch reads, so the flag and the routing agree.
+        let elderWandPluginsAtStart = settingsManager.elderWandPluginsPayload()
+        let fusionRunActive = elderWandPluginsAtStart != nil
+
         streamTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -1648,7 +1666,7 @@ final class ChatSessionController {
                     // OpenAI-compatible chat backends carry the `plugins:[{id:"fusion",…}]`
                     // block AND redirect to the BurnBar daemon gateway (8317), where the
                     // fusion orchestrator lives — not the Hermes CLI gateway (8642).
-                    let elderWandPlugins = self.settingsManager.elderWandPluginsPayload()
+                    let elderWandPlugins = elderWandPluginsAtStart
                     let fusionActive = elderWandPlugins != nil
                     switch self.chatBackend {
                     case .hermes:
@@ -1827,6 +1845,14 @@ final class ChatSessionController {
                         }
                     }
                     self.selectedContext = nil
+                    // When this was an Elder Wand model-fusion run, mint a fresh
+                    // presentation token so a host view raises the end-of-session
+                    // receipt. The receipt reads the newest `elderwand-` group from
+                    // the daemon usage ledger — the daemon's own parentRequestID is
+                    // never sent to the client, so we key on completion order.
+                    if fusionRunActive {
+                        self.completedFusionSessionToken = UUID().uuidString
+                    }
                 }.value
             } catch {
                 await Task { @MainActor in

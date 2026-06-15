@@ -86,6 +86,18 @@ struct ChatGatewaySettingsView: View {
                 }
                 .tierLockBadge(.elderWand, tier: cloudEntitlement.cloudTier)
                 .settingsAnchor(SettingsAnchor.analysisConfigurator)
+
+                NavigationLink {
+                    FusionImpactView(dataStore: dataStore)
+                } label: {
+                    SettingsDrillRow(
+                        icon: "chart.bar.xaxis",
+                        iconTint: DesignSystem.Colors.whimsy,
+                        title: "Fusion Impact",
+                        subtitle: "See what fusion cost versus normal requests, per model, this period"
+                    )
+                }
+                .settingsAnchor(SettingsAnchor.fusionImpact)
             } header: {
                 Text("The Elder Wand")
             } footer: {
