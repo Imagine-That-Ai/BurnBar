@@ -88,11 +88,11 @@ export function recomputeEscrowFingerprint(publicKeyDataBase64: unknown): string
   return createHash("sha256").update(raw).digest("base64");
 }
 
-export function canonicalJSONQuote(value: string): string {
+function canonicalJSONQuote(value: string): string {
   return JSON.stringify(value);
 }
 
-export function canonicalJSONNumber(value: number): string {
+function canonicalJSONNumber(value: number): string {
   if (!Number.isFinite(value)) {
     throw new HttpsError("invalid-argument", "Signed grant request contains a non-finite number.");
   }

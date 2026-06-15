@@ -52,9 +52,9 @@ type TrustedDeviceActionProof = {
   signature: string;
 };
 
-export const CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION = 1;
-export const CLOUD_VAULT_DEVICE_TRUST_CHAIN_ALGORITHM = "signal-identity-xeddsa-v1";
-export const TRUSTED_DEVICE_ACTION_PROOF_VERSION = 1;
+const CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION = 1;
+const CLOUD_VAULT_DEVICE_TRUST_CHAIN_ALGORITHM = "signal-identity-xeddsa-v1";
+const TRUSTED_DEVICE_ACTION_PROOF_VERSION = 1;
 export const TRUSTED_DEVICE_ACTION_PROOF_DOMAIN = "OpenBurnBar-TrustedDeviceAction-v1";
 export const TRUSTED_DEVICE_ACTION_PROOF_MAX_AGE_MS = 5 * 60 * 1000;
 export const TRUSTED_DEVICE_ACTION_PROOF_CLOCK_SKEW_MS = 30 * 1000;
@@ -201,12 +201,11 @@ export function boundedFirestoreDocumentId(raw: unknown, name: string, maxLength
 
 // 65-byte uncompressed x9.63 P-256 public key: 0x04 || X(32) || Y(32).
 export const P256_X963_PUBLIC_KEY_BYTE_LENGTH = 65;
-export const P256_COORDINATE_BYTE_LENGTH = 32;
-export const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
+const P256_COORDINATE_BYTE_LENGTH = 32;
+const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
 export const RELAY_AUTH_ENCRYPTION = "hpke-auth-p256-hkdfsha256-aes256gcm";
 export const RELAY_AUTH_KEY_VERSION = 3;
-export const MAX_TRUST_ROOT_PUBLICATION_SKEW_MILLIS = 10 * 60 * 1000;
-export const COCOA_REFERENCE_UNIX_OFFSET_SECONDS = 978_307_200;
+const MAX_TRUST_ROOT_PUBLICATION_SKEW_MILLIS = 10 * 60 * 1000;
 export const AGENT_GRANT_AUTHORITY_FRESHNESS_SECONDS = 60;
 export const ED25519_SPKI_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
@@ -238,7 +237,7 @@ export function normalizeBase64(value: string): string {
   return value.replace(/\s+/gu, "");
 }
 
-export function requireExactBase64Bytes(raw: unknown, name: string, byteLength: number): Buffer {
+function requireExactBase64Bytes(raw: unknown, name: string, byteLength: number): Buffer {
   const encoded = requireBase64Like(raw, name, Math.ceil(byteLength * 1.3), Math.ceil(byteLength * 1.5) + 8);
   const decoded = Buffer.from(encoded, "base64");
   if (decoded.length !== byteLength || decoded.toString("base64") !== normalizeBase64(encoded)) {
