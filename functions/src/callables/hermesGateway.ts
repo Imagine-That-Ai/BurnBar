@@ -187,12 +187,7 @@ const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
 const ED25519_SPKI_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const GATEWAY_POP_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
-function httpError(
-  status: number,
-  error: string,
-  detail?: string,
-  extra?: Record<string, unknown>,
-): GatewayHttpError {
+function httpError(status: number, error: string, detail?: string, extra?: Record<string, unknown>): GatewayHttpError {
   return { status, error, detail, extra };
 }
 

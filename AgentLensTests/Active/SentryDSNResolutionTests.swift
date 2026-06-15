@@ -32,7 +32,6 @@ final class SentryDSNResolutionTests: XCTestCase {
         super.tearDown()
     }
 
-    @MainActor
     func testResolveSentryDSNFromInfoPlist() throws {
         let bundle = try makeBundle(
             infoPlist: ["sentry.dsn": "https://primary@example.com/1"]
@@ -43,7 +42,6 @@ final class SentryDSNResolutionTests: XCTestCase {
         )
     }
 
-    @MainActor
     func testResolveSentryDSNFallsBackToGoogleServiceInfoPlist() throws {
         let bundle = try makeBundle(
             googleServicePlist: ["sentry.dsn": "https://fallback@example.com/2"]
@@ -54,7 +52,6 @@ final class SentryDSNResolutionTests: XCTestCase {
         )
     }
 
-    @MainActor
     func testResolveSentryDSNPrefersInfoPlistOverGoogleServiceInfoPlist() throws {
         let bundle = try makeBundle(
             infoPlist: ["sentry.dsn": "https://primary@example.com/1"],
@@ -66,13 +63,11 @@ final class SentryDSNResolutionTests: XCTestCase {
         )
     }
 
-    @MainActor
     func testResolveSentryDSNReturnsNilWhenNoDSNConfigured() throws {
         let bundle = try makeBundle()
         XCTAssertNil(OpenBurnBarApp.resolveSentryDSN(bundle: bundle))
     }
 
-    @MainActor
     func testResolveSentryDSNIgnoresWhitespaceOnlyDSN() throws {
         let bundle = try makeBundle(
             infoPlist: ["sentry.dsn": "   "],
@@ -81,7 +76,6 @@ final class SentryDSNResolutionTests: XCTestCase {
         XCTAssertNil(OpenBurnBarApp.resolveSentryDSN(bundle: bundle))
     }
 
-    @MainActor
     func testResolveSentryDSNIgnoresEmptyStringDSN() throws {
         let bundle = try makeBundle(
             infoPlist: ["sentry.dsn": ""],

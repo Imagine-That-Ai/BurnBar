@@ -144,10 +144,7 @@ vi.mock("firebase-admin/firestore", async () => {
 });
 vi.mock("firebase-admin/messaging", () => ({ getMessaging: () => ({ send: vi.fn() }) }));
 
-import {
-  createEventFromThreadWrite,
-  sweepStuckAgentReplyEvents,
-} from "../agentNotifications.js";
+import { createEventFromThreadWrite, sweepStuckAgentReplyEvents } from "../agentNotifications.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -218,8 +215,8 @@ describe("M-023 agent-reply sweeper never logs a raw Firebase UID", () => {
       after: {
         contentSealed: true,
         lastMessageRole: "assistant",
-        lastAssistantMessageID: "msg-123"
-      }
+        lastAssistantMessageID: "msg-123",
+      },
     });
 
     expect(eventId).toBe("cli_session_thread-1_msg-123");

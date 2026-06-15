@@ -194,8 +194,12 @@ jobs:
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
-          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
         run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Inject iOS/macOS Sentry config
+        env:
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-ios.sh
 
       - name: Install OpenBurnBar Functions dependencies
         run: npm ci --prefix functions

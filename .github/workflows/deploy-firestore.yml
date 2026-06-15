@@ -101,6 +101,13 @@ jobs:
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
 
+      # run-09 F-RR09-001 / F-RR09-007: prove every declared ttl:true override is
+      # actually a LIVE Firestore TTL policy (ephemeral uid+token docs must
+      # auto-expire). This is the automated "B3 deploy readback".
+      - name: Verify Firestore TTL policies are live
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT"
+
       - name: Firestore deploy summary
         if: always()
         run: |

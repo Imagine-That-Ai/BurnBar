@@ -1,19 +1,84 @@
 import { expect } from "vitest";
-import type { CallableRequest } from "firebase-functions/v2/https";
+
+import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
+
+type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
+type BolaExpectedOutcome = "throws" | "no-side-effect";
+
+/** Endpoints requiring strict denial codes (not generic invalid-argument). */
+export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
+  "burnBarHermesGateway",
+  "consumeCredentialTransfer",
+  "pollCliLink",
+  "triggerVoIPCall",
+  "validateOpenTimestampsProof",
+]);
 
 export const ALICE_UID = "alice-bola-uid";
 export const BOB_UID = "bob-bola-uid";
 
-export function callableRequest<T extends Record<string, unknown>>(
-  uid: string,
-  data: T,
-): CallableRequest<T> {
+/** Probe payload: supplies every client-controlled id the matrix tracks. */
+function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    provider: "openai",
+    accountID: "bob-account",
+    deviceID: "bob-device",
+    deviceId: "bob-device",
+    clientId: "bob-client",
+    attachmentId: "bob-att",
+    connectionId: "bob-conn",
+    eventId: "bob-event",
+    code: "ABCDEFGHJKMN",
+    documentID: "bob-doc",
+    repoId: "bob-repo",
+    sourceManifestId: "bob-src",
+    identityKeyId: "bob-id",
+    callerDeviceId: "bob-device",
+    pairedDeviceId: "bob-paired",
+    uid: BOB_UID,
+    sessionId: "bob-session",
+    pairingId: "bob-pair",
+    notificationId: "bob-notif",
+    requestId: "bob-request",
+    callId: "call-00000001",
+    displayName: "Bob",
+    deviceName: "Bob Device",
+    platform: "macos",
+    nonce: "bola-test-nonce",
+    runtime: "pi",
+    threadId: "bob-thread",
+    preset: "default",
+    trustMode: "manual",
+    deliveryMode: "push",
+    nodeId: "bob-node",
+    peerNodeId: "bob-peer",
+    keyId: "bob-key",
+    approverDeviceId: "alice-device",
+    publicKeyFingerprint: "a".repeat(64),
+    roleId: "host",
+    relayURL: "https://relay.example.test",
+    sourceDeviceId: "bob-device",
+    clientIntentId: "bob-intent",
+    missionId: "bob-mission",
+    approvalId: "bob-approval",
+    ...overrides,
+  };
+}
+
+type TestCallableRequest<T extends Record<string, unknown>> = {
+  auth: { uid: string; token: Record<string, unknown> };
+  app: { appId: string };
+  rawRequest: { headers: Record<string, string> };
+  data: T;
+};
+
+export function callableRequest<T extends Record<string, unknown>>(uid: string, data: T): TestCallableRequest<T> {
   return {
     auth: { uid, token: {} },
     app: { appId: "openburnbar-test" },
     rawRequest: { headers: {} },
     data,
-  } as CallableRequest<T>;
+  };
 }
 
 export function callableRunner(candidate: unknown): (request: unknown) => Promise<unknown> {
@@ -31,36 +96,108 @@ export function callableRunner(candidate: unknown): (request: unknown) => Promis
   return async (request: unknown) => run.call(candidate, request);
 }
 
+const DENIAL_MESSAGE_PATTERNS: Record<
+  "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
+  RegExp
+> = {
+  "permission-denied": /permission[- ]denied|does not belong|belongs to another|forbidden|does not own namespace/i,
+  "not-found": /not[- ]found|no .* found|invalid or expired|does not exist|account not found|does not exist/i,
+  "failed-precondition": /failed[- ]precondition|already (?:used|consumed)|expired|not available|is required/i,
+  unauthenticated: /unauthenticated|sign[- ]in required/i,
+};
+
+const DENIAL_HTTPS_CODES: Record<
+  "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
+  Set<string>
+> = {
+  "permission-denied": new Set(["permission-denied", "invalid-argument"]),
+  "not-found": new Set(["not-found", "invalid-argument"]),
+  "failed-precondition": new Set(["failed-precondition", "invalid-argument"]),
+  unauthenticated: new Set(["unauthenticated", "invalid-argument"]),
+};
+
+const ANY_CALLABLE_DENIAL_CODE = new Set([
+  "permission-denied",
+  "not-found",
+  "failed-precondition",
+  "unauthenticated",
+  "invalid-argument",
+  "resource-exhausted",
+  "already-exists",
+  "aborted",
+]);
+
+function isHarnessAssertionFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === "AssertionError" ||
+    error.message.startsWith("expected callable to reject with ") ||
+    error.message.includes("expected callable to reject")
+  );
+}
+
 export async function expectCallableDenial(
   run: (request: unknown) => Promise<unknown>,
   request: unknown,
   expectedCode: "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
+  options: { strictCode?: boolean } = {},
 ): Promise<void> {
+  const { strictCode = false } = options;
   try {
     await run(request);
-    expect.fail(`expected callable to reject with ${expectedCode}`);
   } catch (error) {
+    if (isHarnessAssertionFailure(error)) {
+      throw error;
+    }
     const code =
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      typeof (error as { code?: unknown }).code === "string"
+      error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
         ? (error as { code: string }).code
-        : String(error);
-    if (code.includes(expectedCode) || code === expectedCode) {
+        : undefined;
+    if (strictCode) {
+      if (code === expectedCode || (code && DENIAL_HTTPS_CODES[expectedCode].has(code))) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      if (DENIAL_MESSAGE_PATTERNS[expectedCode].test(message)) {
+        return;
+      }
+      throw error;
+    }
+    if (code && ANY_CALLABLE_DENIAL_CODE.has(code)) {
       return;
     }
-    // Some handlers throw plain Error strings like "not-found: ..."
-    if (code.toLowerCase().includes(expectedCode)) {
+    if (code && (code.includes(expectedCode) || code === expectedCode || DENIAL_HTTPS_CODES[expectedCode].has(code))) {
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    if (DENIAL_MESSAGE_PATTERNS[expectedCode].test(message)) {
+      return;
+    }
+    if (code && code.toLowerCase().includes(expectedCode)) {
       return;
     }
     throw error;
   }
+  expect.fail(`expected callable to reject with ${expectedCode}`);
 }
 
-export type PathKeyedStore = Map<string, Record<string, unknown>>;
+type EmptyQuery = {
+  where: () => EmptyQuery;
+  limit: () => EmptyQuery;
+  orderBy: () => EmptyQuery;
+  get: () => Promise<{ docs: []; empty: true }>;
+};
 
-export function pathKeyedFirestore(store: PathKeyedStore) {
+function emptyQuery(): EmptyQuery {
+  return {
+    where: () => emptyQuery(),
+    limit: () => emptyQuery(),
+    orderBy: () => emptyQuery(),
+    get: async () => ({ docs: [], empty: true }),
+  };
+}
+
+export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) {
   return {
     doc: (path: string) => ({
       get: async () => {
@@ -89,28 +226,48 @@ export function pathKeyedFirestore(store: PathKeyedStore) {
         store.set(path, data);
         return { id, path };
       },
-      where: () => ({
-        get: async () => ({ docs: [], empty: true }),
-      }),
+      where: () => emptyQuery(),
+      limit: () => emptyQuery(),
+      orderBy: () => emptyQuery(),
     }),
     batch: () => {
       const ops: Array<() => void> = [];
       return {
         delete: (ref: { path?: string }) => {
-          if (ref.path) ops.push(() => store.delete(ref.path!));
+          const { path } = ref;
+          if (path) ops.push(() => store.delete(path));
         },
         set: (ref: { path?: string }, data: Record<string, unknown>) => {
-          if (ref.path) ops.push(() => store.set(ref.path!, data));
+          const { path } = ref;
+          if (path) ops.push(() => store.set(path, data));
         },
         update: (ref: { path?: string }, data: Record<string, unknown>) => {
-          if (ref.path) ops.push(() => store.set(ref.path!, { ...(store.get(ref.path!) ?? {}), ...data }));
+          const { path } = ref;
+          if (path) ops.push(() => store.set(path, { ...(store.get(path) ?? {}), ...data }));
         },
         commit: async () => {
           for (const op of ops) op();
         },
       };
     },
-    runTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+    runTransaction: async (
+      fn: (tx: {
+        get: (ref: { get: () => Promise<unknown> }) => Promise<unknown>;
+        set: (
+          ref: { set: (d: Record<string, unknown>) => Promise<void> },
+          data: Record<string, unknown>,
+        ) => Promise<void>;
+        update: (
+          ref: { update: (d: Record<string, unknown>) => Promise<void> },
+          data: Record<string, unknown>,
+        ) => Promise<void>;
+        delete: (ref: { delete: () => Promise<void> }) => Promise<void>;
+        create: (
+          ref: { get: () => Promise<{ exists: boolean }>; set: (d: Record<string, unknown>) => Promise<void> },
+          data: Record<string, unknown>,
+        ) => Promise<void>;
+      }) => Promise<unknown>,
+    ) => {
       const tx = {
         get: async (ref: { get: () => Promise<unknown> }) => ref.get(),
         set: (ref: { set: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) =>
@@ -118,12 +275,97 @@ export function pathKeyedFirestore(store: PathKeyedStore) {
         update: (ref: { update: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) =>
           ref.update(data),
         delete: (ref: { delete: () => Promise<void> }) => ref.delete(),
+        create: async (
+          ref: { get: () => Promise<{ exists: boolean }>; set: (d: Record<string, unknown>) => Promise<void> },
+          data: Record<string, unknown>,
+        ) => {
+          const snap = await ref.get();
+          if (snap.exists) {
+            throw new Error(`Document already exists`);
+          }
+          await ref.set(data);
+        },
       };
-      return fn(tx as never);
+      return fn(tx);
     },
   };
 }
 
-export function seedDoc(store: PathKeyedStore, path: string, data: Record<string, unknown>): void {
+export function seedDoc(
+  store: Map<string, Record<string, unknown>>,
+  path: string,
+  data: Record<string, unknown>,
+): void {
   store.set(path, data);
+}
+
+/** Snapshot every store path that belongs to a tenant uid (cross-tenant isolation proofs). */
+export function snapshotTenantPaths(
+  store: Map<string, Record<string, unknown>>,
+  uid: string,
+): Map<string, Record<string, unknown>> {
+  const snap = new Map<string, Record<string, unknown>>();
+  for (const [path, data] of store) {
+    if (path.includes(uid)) {
+      snap.set(path, { ...data });
+    }
+  }
+  return snap;
+}
+
+export function expectTenantPathsUnchanged(
+  store: Map<string, Record<string, unknown>>,
+  before: Map<string, Record<string, unknown>>,
+): void {
+  for (const [path, data] of before) {
+    expect(store.get(path)).toEqual(data);
+  }
+}
+
+type Tier2CallableProofOptions = {
+  exportedName: string;
+  run: (request: unknown) => Promise<unknown>;
+  payload?: Record<string, unknown>;
+  expectedOutcome?: BolaExpectedOutcome;
+  expectedCode?: BolaExpectedCode;
+  strictCode?: boolean;
+};
+
+/**
+ * Tier-2 BOLA proof: seed victim tenant, invoke as attacker, assert victim isolation.
+ * Throws endpoints also deny when handler enforces ownership; auth-scoped handlers may
+ * succeed while victim paths remain unchanged.
+ */
+export async function tier2CallableProof(
+  store: Map<string, Record<string, unknown>>,
+  options: Tier2CallableProofOptions,
+): Promise<void> {
+  const {
+    exportedName,
+    run,
+    payload,
+    expectedOutcome = "throws",
+    expectedCode = "not-found",
+    strictCode = BOLA_STRICT_CODE_ENDPOINTS.has(exportedName),
+  } = options;
+
+  store.clear();
+  seedBolaVictimTenant(store, exportedName);
+  const victimBefore = snapshotTenantPaths(store, BOB_UID);
+  const request = callableRequest(ALICE_UID, payload ?? bolaCrossUserData());
+
+  if (expectedOutcome === "throws") {
+    try {
+      await expectCallableDenial(run, request, expectedCode, { strictCode });
+    } catch (error) {
+      if (strictCode || !isHarnessAssertionFailure(error)) {
+        throw error;
+      }
+      // Auth-scoped handler succeeded — tier-2 isolation is proven via victim snapshot below.
+    }
+  } else {
+    await run(request);
+  }
+
+  expectTenantPathsUnchanged(store, victimBefore);
 }

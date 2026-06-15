@@ -345,9 +345,7 @@ describe("Hermes Gateway relay — Elder Wand (fusion) entitlement gate", () => 
     expect(message.relayEnvelope).toEqual(sealedEnvelope());
 
     // The relay message was actually persisted (the forward proceeded).
-    const messageDocs = [...stored.keys()].filter((key) =>
-      key.startsWith(`users/${PRO_UID}/hermes_gateway_messages/`),
-    );
+    const messageDocs = [...stored.keys()].filter((key) => key.startsWith(`users/${PRO_UID}/hermes_gateway_messages/`));
     expect(messageDocs).toHaveLength(1);
   });
 

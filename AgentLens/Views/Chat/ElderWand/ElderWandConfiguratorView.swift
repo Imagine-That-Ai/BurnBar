@@ -62,27 +62,60 @@ private struct ElderWandConfiguratorBody: View {
     var body: some View {
         let groups = groupedModels
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-            GlassCard {
-                ElderWandAnalysisSection(model: editor, groups: groups)
-                    .padding(DesignSystem.Spacing.md)
-            }
+            if groups.isEmpty {
+                ElderWandNoModelsState()
+            } else {
+                GlassCard {
+                    ElderWandAnalysisSection(model: editor, groups: groups)
+                        .padding(DesignSystem.Spacing.md)
+                }
 
-            GlassCard {
-                ElderWandJudgeSection(model: editor, groups: groups)
-                    .padding(DesignSystem.Spacing.md)
-            }
+                GlassCard {
+                    ElderWandJudgeSection(model: editor, groups: groups)
+                        .padding(DesignSystem.Spacing.md)
+                }
 
-            GlassCard {
-                ElderWandToolBudgetSection(model: editor)
-                    .padding(DesignSystem.Spacing.md)
-            }
+                GlassCard {
+                    ElderWandToolBudgetSection(model: editor)
+                        .padding(DesignSystem.Spacing.md)
+                }
 
-            GlassCard {
-                ElderWandPresetSection(settings: settings, editor: editor)
-                    .padding(DesignSystem.Spacing.md)
+                GlassCard {
+                    ElderWandPresetSection(settings: settings, editor: editor)
+                        .padding(DesignSystem.Spacing.md)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Empty state (no advertised models)
+
+private struct ElderWandNoModelsState: View {
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No live models advertised")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text("Connect or enable a routed provider, then refresh the chat gateway.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DesignSystem.Spacing.xl)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("No live models advertised. Connect or enable a routed provider, then refresh the chat gateway.")
     }
 }
 

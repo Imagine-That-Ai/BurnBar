@@ -1,24 +1,43 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import type { BolaCoverageKind, BolaCoverageRef, EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
+import type { BolaCoverageRef, EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
 
-export const REPO_ROOT_FROM_FUNCTIONS = resolve(__dirname, "../../..");
+const REPO_ROOT_FROM_FUNCTIONS = resolve(__dirname, "../../..");
+
+const CALLABLE_RUNTIME_INVOCATION = /(?:\.run\s*\(|callableRunner\s*\()/u;
+const HTTP_RUNTIME_INVOCATION =
+  /(?:dispatchHermesGatewayRequest\s*\(|runHttpHandler\s*\(|Reflect\.get\s*\(\s*Object\s*\(\s*handler\s*\))/u;
 
 const RUNTIME_BODY_MARKERS = [
-  /\.run\s*\(/u,
-  /\b(?:alice|bob|other-user|ALICE_UID|BOB_UID)\b/u,
-  /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow)\b/u,
+  CALLABLE_RUNTIME_INVOCATION,
+  /\b(?:alice|bob|other-user|ALICE_UID|BOB_UID|tier2CallableProof|seedBolaVictimTenant|snapshotTenantPaths|expectTenantPathsUnchanged)\b/u,
+  /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow|expectCallableDenial|tier2CallableProof)\b/u,
 ] as const;
 
-const IT_TITLE_PATTERN = (title: string) =>
-  new RegExp(`\\bit\\s*\\(\\s*(["'\`])${escapeRegExp(title)}\\1`, "u");
+function matchesStaticHighRiskCoverage(
+  source: string,
+  titles: Set<string>,
+  exportedName: string,
+  refTest: string,
+): boolean {
+  if (titles.has(refTest)) return true;
+  const prefix = `${exportedName} calls enforceHighRiskOwnerAction with actionKind`;
+  for (const title of titles) {
+    if (title.startsWith(prefix)) return true;
+  }
+  return (
+    source.includes("EXPECTED_GUARDS") &&
+    source.includes("enforceHighRiskOwnerAction") &&
+    new RegExp(`exportedName:\\s*"${escapeRegExp(exportedName)}"`, "u").test(source)
+  );
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function parseItTitles(source: string): Set<string> {
+function parseItTitles(source: string): Set<string> {
   const titles = new Set<string>();
   for (const match of source.matchAll(/\bit\s*\(\s*(["'`])([^"'`]+)\1/gu)) {
     titles.add(match[2]);
@@ -26,9 +45,16 @@ export function parseItTitles(source: string): Set<string> {
   return titles;
 }
 
-export function validateRuntimeTestBody(source: string): string[] {
+function validateRuntimeTestBody(
+  source: string,
+  trigger: EndpointAuthorizationEntry["trigger"] = "callable",
+): string[] {
   const errors: string[] = [];
-  for (const marker of RUNTIME_BODY_MARKERS) {
+  const markers =
+    trigger === "http"
+      ? [HTTP_RUNTIME_INVOCATION, RUNTIME_BODY_MARKERS[1], RUNTIME_BODY_MARKERS[2]]
+      : [...RUNTIME_BODY_MARKERS];
+  for (const marker of markers) {
     if (!marker.test(source)) {
       errors.push(`missing runtime marker ${marker.source}`);
     }
@@ -36,7 +62,80 @@ export function validateRuntimeTestBody(source: string): string[] {
   return errors;
 }
 
-export function validateBolaCoverageRef(
+function validateRuntimeCoverageDetails(
+  entry: EndpointAuthorizationEntry,
+  ref: BolaCoverageRef,
+  source: string,
+): string[] {
+  const errors = validateRuntimeTestBody(source, entry.trigger).map(
+    (msg) => `${entry.exportedName}: ${ref.file}: ${msg}`,
+  );
+  if (ref.expectedCode && !source.includes(ref.expectedCode)) {
+    errors.push(`${entry.exportedName}: runtime test must reference expectedCode "${ref.expectedCode}" in ${ref.file}`);
+  }
+  const hasTier2Proof =
+    /\btier2CallableProof\s*\(/u.test(source) ||
+    /\b(?:outboundWrites|expectTenantPathsUnchanged|snapshotTenantPaths|seedBolaVictimTenant)\b/u.test(source) ||
+    /\bseedDoc\s*\(/u.test(source);
+  if (entry.objectIdsFromClient.length > 0 && !hasTier2Proof) {
+    errors.push(
+      `${entry.exportedName}: runtime test must use tier2CallableProof or seed victim tenant before cross-user invocation in ${ref.file}`,
+    );
+  }
+  if (
+    ref.expectedOutcome === "no-side-effect" &&
+    !/\b(?:outboundWrites|sideEffect|no-side-effect|expectTenantPathsUnchanged|snapshotTenantPaths|tier2CallableProof)/u.test(
+      source,
+    )
+  ) {
+    errors.push(`${entry.exportedName}: no-side-effect coverage must assert cross-tenant isolation in ${ref.file}`);
+  }
+  return errors;
+}
+
+function validateCoverageTitle(
+  entry: EndpointAuthorizationEntry,
+  ref: BolaCoverageRef,
+  source: string,
+  titles: Set<string>,
+): string[] {
+  if (titles.has(ref.test)) return [];
+  if (
+    ref.kind === "static-high-risk-wiring" &&
+    matchesStaticHighRiskCoverage(source, titles, entry.exportedName, ref.test)
+  ) {
+    return [];
+  }
+  if (ref.kind === "auth-only" && ref.test === "rejects unauthenticated callable access") {
+    return new RegExp(`["']${escapeRegExp(entry.exportedName)}["']`).test(source)
+      ? []
+      : [`${entry.exportedName}: auth-only endpoint missing from AUTH_ONLY_CALLABLES in ${ref.file}`];
+  }
+  if (ref.kind === "platform-trigger" && ref.test === "platform triggers are not client-callable") {
+    if (!/PLATFORM_TRIGGER_ENDPOINTS/u.test(source)) {
+      return [`${entry.exportedName}: platform trigger missing from PLATFORM_TRIGGER_ENDPOINTS`];
+    }
+    return new RegExp(`["']${escapeRegExp(entry.exportedName)}["']`).test(source)
+      ? []
+      : [`${entry.exportedName}: not listed in PLATFORM_TRIGGER_ENDPOINTS`];
+  }
+  if (ref.kind === "not-applicable-public" && ref.test === "public health endpoints do not expose tenant objects") {
+    return new RegExp(`["']${escapeRegExp(entry.exportedName)}["']`).test(source)
+      ? []
+      : [`${entry.exportedName}: not listed in PUBLIC_HEALTH_ENDPOINTS`];
+  }
+  return [`${entry.exportedName}: test "${ref.test}" not found in ${ref.file}`];
+}
+
+function validateRuntimeCovers(entry: EndpointAuthorizationEntry, ref: BolaCoverageRef): string[] {
+  if (ref.kind !== "runtime-cross-user") return [];
+  if (!ref.covers.includes(entry.exportedName)) {
+    return [`${entry.exportedName}: runtime ref must include exportedName in covers[]`];
+  }
+  return [];
+}
+
+function validateBolaCoverageRef(
   entry: EndpointAuthorizationEntry,
   ref: BolaCoverageRef,
   repoRoot: string = REPO_ROOT_FROM_FUNCTIONS,
@@ -52,16 +151,8 @@ export function validateBolaCoverageRef(
   const source = readFileSync(absPath, "utf8");
   const titles = parseItTitles(source);
 
-  if (!titles.has(ref.test)) {
-    errors.push(`${entry.exportedName}: test "${ref.test}" not found in ${ref.file}`);
-  }
-
-  if (!ref.covers.includes(entry.exportedName) && ref.kind === "runtime-cross-user") {
-    const coversEntry = ref.covers.some((name) => name === entry.exportedName);
-    if (!coversEntry) {
-      errors.push(`${entry.exportedName}: runtime ref must include exportedName in covers[]`);
-    }
-  }
+  errors.push(...validateCoverageTitle(entry, ref, source, titles));
+  errors.push(...validateRuntimeCovers(entry, ref));
 
   for (const covered of ref.covers) {
     if (covered !== entry.exportedName && ref.kind === "runtime-cross-user" && ref.covers.length === 1) {
@@ -73,7 +164,7 @@ export function validateBolaCoverageRef(
   }
 
   if (ref.kind === "runtime-cross-user") {
-    errors.push(...validateRuntimeTestBody(source).map((msg) => `${entry.exportedName}: ${ref.file}: ${msg}`));
+    errors.push(...validateRuntimeCoverageDetails(entry, ref, source));
   }
 
   if (ref.kind === "firestore-rules" && entry.clientFirestoreSurface !== true) {
@@ -87,14 +178,10 @@ export function validateBolaCoverageRef(
   const manifestMatch = source.match(/export const BOLA_MANIFEST\s*=\s*(\{[\s\S]*?\})\s*as const/u);
   if (manifestMatch) {
     try {
-      const manifestText = manifestMatch[1]
-          .replace(/(\w+):/gu, '"$1":')
-          .replace(/'/gu, '"');
-      // eslint-disable-next-line no-control-regex -- reason: strip trailing commas before closing brace
+      const manifestText = manifestMatch[1].replace(/(\w+):/gu, '"$1":').replace(/'/gu, '"');
       const TRAILING_COMMA_RE = /,\s*\x7d/gu;
-      const manifest = JSON.parse(
-        manifestText.replace(TRAILING_COMMA_RE, "}"),
-      ) as Record<string, string[]>;
+      const parsedManifest: unknown = JSON.parse(manifestText.replace(TRAILING_COMMA_RE, "}"));
+      const manifest = normalizeBolaManifest(parsedManifest);
       const listed = manifest[entry.exportedName] ?? [];
       if (!listed.includes(ref.test)) {
         errors.push(`${entry.exportedName}: BOLA_MANIFEST missing test "${ref.test}"`);
@@ -105,6 +192,16 @@ export function validateBolaCoverageRef(
   }
 
   return errors;
+}
+
+function normalizeBolaManifest(value: unknown): Record<string, string[]> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, raw]) => {
+      if (!Array.isArray(raw) || !raw.every((item) => typeof item === "string")) return [];
+      return [[key, raw]];
+    }),
+  );
 }
 
 export function validateEndpointBolaCoverage(
@@ -133,10 +230,7 @@ export function validateEndpointBolaCoverage(
   }
 
   const soleCoverage = entry.bolaCoverage.filter((ref) => ref.kind !== "static-high-risk-wiring");
-  if (
-    entry.objectIdsFromClient.length > 0 &&
-    soleCoverage.every((ref) => ref.kind === "static-high-risk-wiring")
-  ) {
+  if (entry.objectIdsFromClient.length > 0 && soleCoverage.every((ref) => ref.kind === "static-high-risk-wiring")) {
     errors.push(`${entry.exportedName}: static-high-risk-wiring cannot be sole BOLA coverage`);
   }
 
@@ -159,8 +253,4 @@ export function validateEndpointBolaCoverage(
   }
 
   return errors;
-}
-
-export function collectBolaCoverageKinds(entry: EndpointAuthorizationEntry): Set<BolaCoverageKind> {
-  return new Set(entry.bolaCoverage.map((ref) => ref.kind));
 }

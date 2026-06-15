@@ -284,6 +284,11 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
                     "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG": "1",
                     "BURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "daemon-secret-2",
                     "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK": "1",
+                    "OPENBURNBAR_DAEMON_FUTURE_SECRET": "future-daemon-val",
+                    "OPENBURNBAR_GATEWAY_FUTURE_SECRET": "future-gateway-val",
+                    "BURNBAR_GATEWAY_FUTURE_CONFIG": "future-config-val",
+                    "HOME": "/tmp/home",
+                    "PATH": "/usr/bin:/bin",
                     "OPENAI_API_KEY": "should-be-overridden"
                 ]
             },
@@ -310,8 +315,15 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertNil(env["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"])
         XCTAssertNil(env["OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"])
 
+        // Prefix-based stripping covers future daemon/gateway env vars.
+        XCTAssertNil(env["OPENBURNBAR_DAEMON_FUTURE_SECRET"])
+        XCTAssertNil(env["OPENBURNBAR_GATEWAY_FUTURE_SECRET"])
+        XCTAssertNil(env["BURNBAR_GATEWAY_FUTURE_CONFIG"])
+
         // Non-daemon env vars pass through.
         XCTAssertEqual(env["TERM"], "xterm-256color")
+        XCTAssertEqual(env["HOME"], "/tmp/home")
+        XCTAssertEqual(env["PATH"], "/usr/bin:/bin")
 
         // Profile credential override still works.
         XCTAssertEqual(env["OPENAI_API_KEY"], "sk-test")

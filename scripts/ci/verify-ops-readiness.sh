@@ -47,4 +47,8 @@ bash -n scripts/ci/verify-release-attestations.sh
 echo "==> Phase 1 security register structural gates"
 bash scripts/ci/verify-phase1-security-gates.sh
 
+echo "==> privacy invariants gate (run-09) — self-test then enforce"
+node scripts/ci/check-privacy-invariants.test.mjs
+node scripts/ci/check-privacy-invariants.mjs
+
 echo "PASS: ops readiness"

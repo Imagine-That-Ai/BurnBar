@@ -5,7 +5,6 @@ import OpenBurnBarComputerUseCore
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
-
 // MARK: - Hermes Navigation
 //
 // Hermes is now a two-level flow:
@@ -18,17 +17,14 @@ import UIKit
 //
 // `HermesChatRoute` is the value-typed destination both surfaces use, so push
 // works on iPhone and iPad with system navigation chrome.
-
 enum HermesChatRoute: Hashable {
     /// Resume a previously persisted Hermes session.
     case existing(sessionID: String)
     /// Start a fresh chat (clears `service.messages` and `selectedSessionID`).
     case new
 }
-
 private struct PresentedHermesChatRoute: Identifiable {
     let route: HermesChatRoute
-
     var id: String {
         switch route {
         case .new:
@@ -38,18 +34,14 @@ private struct PresentedHermesChatRoute: Identifiable {
         }
     }
 }
-
 // MARK: - Hermes Mobile Setup
-
 enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
     case keepMacReady
     case chooseHost
     case syncProjects
     case startChat
-
     var id: Int { rawValue }
     var number: Int { rawValue + 1 }
-
     var title: String {
         switch self {
         case .keepMacReady: return "Keep your Mac ready"
@@ -58,7 +50,6 @@ enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
         case .startChat: return "Start chatting"
         }
     }
-
     var detail: String {
         switch self {
         case .keepMacReady:
@@ -71,7 +62,6 @@ enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
             return "Ask about spend, sessions, quota pressure, or anything your connected Hermes runtime can answer."
         }
     }
-
     var systemImage: String {
         switch self {
         case .keepMacReady: return "macbook.and.iphone"
@@ -81,7 +71,6 @@ enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
         }
     }
 }
-
 enum HermesMobileSetupWizardState {
     static let completionKey = "com.openburnbar.mobile.hermesSetupWizardCompleted"
 }
