@@ -308,7 +308,11 @@ final class OpenBurnBarDaemonUsageSyncService {
             endTime: event.recordedAt,
             usageSource: .daemon,
             provenanceMethod: provenanceMethod(for: provider, confidence: event.confidence),
-            provenanceConfidence: provenanceConfidence(from: event.confidence)
+            provenanceConfidence: provenanceConfidence(from: event.confidence),
+            // The Elder Wand fusion linkage. It rides the daemon event directly,
+            // so imported rows carry it into the v49 `parentRequestID` column and
+            // the period fusion/normal partition becomes a real SQL query.
+            parentRequestID: event.parentRequestID
         )
     }
 
@@ -337,8 +341,22 @@ final class OpenBurnBarDaemonUsageSyncService {
             endTime: record.event.recordedAt,
             usageSource: .daemon,
             provenanceMethod: provenanceMethod(for: provider, confidence: record.event.confidence),
-            provenanceConfidence: provenanceConfidence(from: record.event.confidence)
+            provenanceConfidence: provenanceConfidence(from: record.event.confidence),
+            // Prefer the event's own parentRequestID; fall back to parsing it
+            // from the idempotency-key signature (`<parentRequestID>|panel|…`)
+            // on raw ledger lines that predate the explicit field.
+            parentRequestID: record.event.parentRequestID
+                ?? Self.fusionParentRequestID(fromIdempotencyKey: record.idempotencyKey)
         )
+    }
+
+    /// Extracts the Elder Wand fusion `parentRequestID` from a recorded
+    /// idempotency key whose signature is `<parentRequestID>|<stage>|<model>|<index>`.
+    /// Returns `nil` unless the leading segment is an `elderwand-` parent, so a
+    /// normal request's key never masquerades as a fusion row.
+    static func fusionParentRequestID(fromIdempotencyKey key: String) -> String? {
+        let head = key.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? key
+        return head.hasPrefix(FusionUsageRow.fusionParentPrefix) ? head : nil
     }
 
     private func defaultProjectName(for provider: AgentProvider) -> String {

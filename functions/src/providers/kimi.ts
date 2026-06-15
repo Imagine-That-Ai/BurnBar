@@ -202,41 +202,12 @@ export const kimiAdapter: ProviderAdapter = {
     let statusMessage = "Kimi credential validated; balance endpoint unavailable — usage limits are unknown.";
 
     const balanceResult = await tryEachHost("/v1/users/me/balance", trimmed);
-
-    if (balanceResult.ok && balanceResult.data) {
-      const balance = recordOrUndefined(balanceResult.data);
-      if (balance) {
-        const available = finiteNumber(balance.available_balance ?? balance.availableBalance ?? balance.balance);
-        const used = finiteNumber(balance.used_balance ?? balance.usedBalance ?? balance.used);
-        const total = finiteNumber(balance.total_balance ?? balance.totalBalance ?? balance.total);
-
-        if (available != null && total != null && total > 0) {
-          const usedAmount = used != null ? used : Math.max(0, total - available);
-          buckets.push({
-            name: "account_balance",
-            used: usedAmount,
-            limit: total,
-            remaining: available,
-            window: "monthly",
-            meta: { currency: balance.currency ?? "CNY" },
-          });
-          confidence = "high";
-          source = "Kimi balance API";
-          statusMessage = "Fetched account balance from Kimi.";
-        } else if (available != null && available > 0) {
-          buckets.push({
-            name: "remaining_balance",
-            used: 0,
-            limit: available,
-            remaining: available,
-            window: "monthly",
-            meta: { currency: balance.currency ?? "CNY" },
-          });
-          confidence = "medium";
-          source = "Kimi balance API";
-          statusMessage = "Fetched remaining balance from Kimi; total limit unavailable.";
-        }
-      }
+    const balanceSignal = balanceBucketSignal(balanceResult);
+    if (balanceSignal) {
+      buckets.push(balanceSignal.bucket);
+      confidence = balanceSignal.confidence;
+      source = balanceSignal.source;
+      statusMessage = balanceSignal.statusMessage;
     }
 
     // Only add a models-accessible signal when we have no real quota
@@ -287,6 +258,70 @@ export const kimiAdapter: ProviderAdapter = {
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// Balance signal derivation
+// ---------------------------------------------------------------------------
+
+interface BalanceSignal {
+  bucket: QuotaBucket;
+  confidence: "high" | "medium";
+  source: string;
+  statusMessage: string;
+}
+
+/**
+ * Derive a quota bucket (plus confidence/source/status metadata) from a
+ * /v1/users/me/balance probe. Returns `undefined` when the probe failed or
+ * the payload carries no usable balance numbers, leaving the caller's
+ * models/connected fallback path in charge.
+ */
+function balanceBucketSignal(balanceResult: KimiFetchResult): BalanceSignal | undefined {
+  if (!balanceResult.ok || !balanceResult.data) return undefined;
+
+  const balance = recordOrUndefined(balanceResult.data);
+  if (!balance) return undefined;
+
+  const available = finiteNumber(balance.available_balance ?? balance.availableBalance ?? balance.balance);
+  const used = finiteNumber(balance.used_balance ?? balance.usedBalance ?? balance.used);
+  const total = finiteNumber(balance.total_balance ?? balance.totalBalance ?? balance.total);
+  const currency = balance.currency ?? "CNY";
+
+  if (available != null && total != null && total > 0) {
+    const usedAmount = used != null ? used : Math.max(0, total - available);
+    return {
+      bucket: {
+        name: "account_balance",
+        used: usedAmount,
+        limit: total,
+        remaining: available,
+        window: "monthly",
+        meta: { currency },
+      },
+      confidence: "high",
+      source: "Kimi balance API",
+      statusMessage: "Fetched account balance from Kimi.",
+    };
+  }
+
+  if (available != null && available > 0) {
+    return {
+      bucket: {
+        name: "remaining_balance",
+        used: 0,
+        limit: available,
+        remaining: available,
+        window: "monthly",
+        meta: { currency },
+      },
+      confidence: "medium",
+      source: "Kimi balance API",
+      statusMessage: "Fetched remaining balance from Kimi; total limit unavailable.",
+    };
+  }
+
+  return undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Balance payload

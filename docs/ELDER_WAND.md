@@ -79,17 +79,58 @@ Panel models and the judge get `web_search` + `web_fetch`, capped per model by
 - **`web_fetch`** reuses the daemon's SSRF-safe fetch posture
   (`OpenBurnBarBrowserTargetPolicy` + redirect guard) and returns stripped page
   text. Always available.
-- **`web_search`** is a configurable HTTP backend resolved from the **daemon
-  process environment**:
-  - `BURNBAR_BRAVE_SEARCH_API_KEY` (or `BRAVE_SEARCH_API_KEY`) → Brave Search, or
-  - `BURNBAR_TAVILY_API_KEY` (or `TAVILY_API_KEY`) → Tavily.
+- **`web_search`** has two modes:
+  - Production hosted search runs through `performElderWandHostedSearch`
+    (`functions/src/elderWandHostedSearch.ts`) with server-owned keys. It calls
+    **Perplexity Search API first** and uses **Tavily basic search as fallback**
+    when Perplexity fails or is unconfigured. No SERP-style provider is used in
+    the production hosted runtime.
+  - Local/dev daemon search resolves from the daemon process environment in this
+    order: `BURNBAR_PERPLEXITY_SEARCH_API_KEY`, `PERPLEXITY_SEARCH_API_KEY`, or
+    `PERPLEXITY_API_KEY`; then `BURNBAR_TAVILY_API_KEY` or `TAVILY_API_KEY`.
 
-  > **Operator action required.** When **no** search key is present in the daemon's
-  > launch environment, `web_search` degrades gracefully — the tool returns
-  > "search unavailable" and panel models proceed on their own knowledge plus
-  > anything reachable via `web_fetch`. To enable live web search, export one of the
-  > keys above in the environment the daemon launches with. Fusion still works
-  > without it; only the live-search capability is dark.
+  When hosted search quota is exhausted or no key is configured, `web_search`
+  degrades gracefully — the tool returns "search unavailable" and panel models
+  proceed on their own knowledge plus anything reachable via `web_fetch`.
+  Fusion still works without hosted live search; only the live-search capability
+  is dark.
+
+### Hosted Fusion search quota
+
+Hosted `web_search` is a paid Cloud Pro/Ultra meter, separate from model-token
+usage:
+
+- Meter: `fusion_searches` in
+  `users/{uid}/billing/allowances/months/{yyyy-MM}`.
+- Included monthly quota: **100 hosted searches** for Cloud Pro, **300 hosted
+  searches** for Ultra.
+- Monthly cap: **1,000 hosted searches** for Cloud Pro, **2,000 hosted searches**
+  for Ultra, including top-ups.
+- Top-ups:
+  - Apple: `com.openburnbar.elderWand.searches100` ($4.99),
+    `com.openburnbar.elderWand.searches500` ($19.99).
+  - Google Play: `com.openburnbar.elderwand.searches100` ($4.99),
+    `com.openburnbar.elderwand.searches500` ($19.99).
+  - Stripe web checkout: `price_1TiZ8MCFamvUJU7ySGKn0fnf` ($4.99),
+    `price_1TiZ8NCFamvUJU7yEQWC0voO` ($19.99).
+- Google Play one-time product setup is idempotent through
+  `tools/google-play/prepare-commercial-iaps.mjs`. Run without `--apply` for a
+  readback/dry-run and with `--apply` to create, patch, and activate the
+  `monetization.onetimeproducts` catalog items from the
+  `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` service-account secret.
+  - Server kind: `elder_wand_searches_100` or `elder_wand_searches_500`,
+    credited to `topupFusionSearchesPurchased`.
+- One successful hosted provider search call consumes one search credit, even
+  when the provider returns zero results. Failed provider calls do not consume a
+  credit. `web_fetch` does not consume search quota.
+- Fan-out protection: per Fusion run, hosted search has a default cap of 12
+  searches and an absolute cap of 24. Identical `(runId, query)` searches are
+  cached by query hash for the month so repeated tool calls in one Fusion run do
+  not re-hit the provider.
+- Quota tracker: Functions writes
+  `users/{uid}/quota_snapshots/openburnbar_elder_wand_fusion` with provider
+  `OpenBurnBar`, account `Elder Wand Fusion`, and a monthly
+  `Elder Wand hosted searches` bucket.
 
 ## Prerequisite: providers configured on the daemon gateway
 

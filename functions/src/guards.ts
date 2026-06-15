@@ -100,22 +100,56 @@ export function isProviderAccountStorageScope(value: unknown): value is Provider
   );
 }
 
+type ProviderAccountRequiredFields = Pick<
+  ProviderAccountDoc,
+  | "id"
+  | "providerID"
+  | "label"
+  | "status"
+  | "credentialKind"
+  | "storageScope"
+  | "redactedLabel"
+  | "isDefault"
+  | "sortKey"
+  | "schemaVersion"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+function hasValidProviderAccountRequiredFields(
+  raw: Record<string, unknown>,
+): raw is Record<string, unknown> & ProviderAccountRequiredFields {
+  return (
+    typeof raw.id === "string" &&
+    typeof raw.providerID === "string" &&
+    typeof raw.label === "string" &&
+    isProviderAccountStatus(raw.status) &&
+    isCredentialKind(raw.credentialKind) &&
+    isProviderAccountStorageScope(raw.storageScope) &&
+    typeof raw.redactedLabel === "string" &&
+    typeof raw.isDefault === "boolean" &&
+    typeof raw.sortKey === "number" &&
+    typeof raw.schemaVersion === "number" &&
+    typeof raw.createdAt === "string" &&
+    typeof raw.updatedAt === "string"
+  );
+}
+
+function parseProviderAccountRegion(value: unknown): ProviderAccountDoc["region"] {
+  return value === "cn" || value === "sgp" || value === "ams" || value === "global" ? value : undefined;
+}
+
+function parseProviderAccountTokenPlanTier(value: unknown): ProviderAccountDoc["tokenPlanTier"] {
+  return value === "lite" || value === "standard" || value === "pro" || value === "max" ? value : undefined;
+}
+
+function parseProviderAccountTokenPlanBillingCycle(value: unknown): ProviderAccountDoc["tokenPlanBillingCycle"] {
+  return value === "monthly" || value === "annual" ? value : undefined;
+}
+
 export function parseProviderAccountDoc(raw: unknown): ProviderAccountDoc | undefined {
   if (!isRecord(raw)) return undefined;
-  if (
-    typeof raw.id !== "string" ||
-    typeof raw.providerID !== "string" ||
-    typeof raw.label !== "string" ||
-    !isProviderAccountStatus(raw.status) ||
-    !isCredentialKind(raw.credentialKind) ||
-    !isProviderAccountStorageScope(raw.storageScope) ||
-    typeof raw.redactedLabel !== "string" ||
-    typeof raw.isDefault !== "boolean" ||
-    typeof raw.sortKey !== "number" ||
-    typeof raw.schemaVersion !== "number" ||
-    typeof raw.createdAt !== "string" ||
-    typeof raw.updatedAt !== "string"
-  ) {
+  if (!hasValidProviderAccountRequiredFields(raw)) {
     return undefined;
   }
   return {
@@ -131,29 +165,17 @@ export function parseProviderAccountDoc(raw: unknown): ProviderAccountDoc | unde
     schemaVersion: raw.schemaVersion,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
-    identityHint: typeof raw.identityHint === "string" ? raw.identityHint : undefined,
-    sourceDeviceID: typeof raw.sourceDeviceID === "string" ? raw.sourceDeviceID : undefined,
-    linkedSwitcherProfileID: typeof raw.linkedSwitcherProfileID === "string" ? raw.linkedSwitcherProfileID : undefined,
-    lastValidatedAt: typeof raw.lastValidatedAt === "string" ? raw.lastValidatedAt : undefined,
-    lastRefreshAt: typeof raw.lastRefreshAt === "string" ? raw.lastRefreshAt : undefined,
-    lastErrorCode: typeof raw.lastErrorCode === "string" ? raw.lastErrorCode : undefined,
-    endpointProfileID: typeof raw.endpointProfileID === "string" ? raw.endpointProfileID : undefined,
-    region:
-      raw.region === "cn" || raw.region === "sgp" || raw.region === "ams" || raw.region === "global"
-        ? raw.region
-        : undefined,
-    tokenPlanTier:
-      raw.tokenPlanTier === "lite" ||
-      raw.tokenPlanTier === "standard" ||
-      raw.tokenPlanTier === "pro" ||
-      raw.tokenPlanTier === "max"
-        ? raw.tokenPlanTier
-        : undefined,
-    tokenPlanBillingCycle:
-      raw.tokenPlanBillingCycle === "monthly" || raw.tokenPlanBillingCycle === "annual"
-        ? raw.tokenPlanBillingCycle
-        : undefined,
-    authMethodID: typeof raw.authMethodID === "string" ? raw.authMethodID : undefined,
+    identityHint: optionalStringField(raw.identityHint),
+    sourceDeviceID: optionalStringField(raw.sourceDeviceID),
+    linkedSwitcherProfileID: optionalStringField(raw.linkedSwitcherProfileID),
+    lastValidatedAt: optionalStringField(raw.lastValidatedAt),
+    lastRefreshAt: optionalStringField(raw.lastRefreshAt),
+    lastErrorCode: optionalStringField(raw.lastErrorCode),
+    endpointProfileID: optionalStringField(raw.endpointProfileID),
+    region: parseProviderAccountRegion(raw.region),
+    tokenPlanTier: parseProviderAccountTokenPlanTier(raw.tokenPlanTier),
+    tokenPlanBillingCycle: parseProviderAccountTokenPlanBillingCycle(raw.tokenPlanBillingCycle),
+    authMethodID: optionalStringField(raw.authMethodID),
   };
 }
 
@@ -445,6 +467,39 @@ function synthesizeRecordedAt(raw: Record<string, unknown>): string | undefined 
   return date?.toISOString();
 }
 
+function assignUsageEventStringFields(doc: UsageEventDoc, raw: Record<string, unknown>): void {
+  if (typeof raw.providerID === "string") doc.providerID = raw.providerID;
+  if (typeof raw.providerAccountID === "string") doc.providerAccountID = raw.providerAccountID;
+  if (typeof raw.providerAccountLabel === "string") doc.providerAccountLabel = raw.providerAccountLabel;
+  if (isProviderAccountStorageScope(raw.providerAccountSource)) {
+    doc.providerAccountSource = raw.providerAccountSource;
+  }
+  if (typeof raw.model === "string") doc.model = raw.model;
+  if (typeof raw.sessionId === "string") doc.sessionId = raw.sessionId;
+  if (typeof raw.deviceId === "string") doc.deviceId = raw.deviceId;
+  if (typeof raw.sourceDeviceId === "string") doc.sourceDeviceId = raw.sourceDeviceId;
+}
+
+function assignUsageEventNumberFields(doc: UsageEventDoc, raw: Record<string, unknown>): void {
+  if (typeof raw.inputTokens === "number") doc.inputTokens = raw.inputTokens;
+  if (typeof raw.outputTokens === "number") doc.outputTokens = raw.outputTokens;
+  if (typeof raw.cacheCreationTokens === "number") doc.cacheCreationTokens = raw.cacheCreationTokens;
+  if (typeof raw.cacheReadTokens === "number") doc.cacheReadTokens = raw.cacheReadTokens;
+  if (typeof raw.reasoningTokens === "number") doc.reasoningTokens = raw.reasoningTokens;
+  if (typeof raw.totalTokens === "number") doc.totalTokens = raw.totalTokens;
+  if (typeof raw.costUsd === "number") doc.costUsd = raw.costUsd;
+  if (typeof raw.cost === "number") doc.cost = raw.cost;
+  if (typeof raw.provenanceConfidence === "string") doc.provenanceConfidence = raw.provenanceConfidence;
+}
+
+function assignUsageEventRawTimeFields(doc: UsageEventDoc, raw: Record<string, unknown>): void {
+  if (raw.timestamp !== undefined) doc.timestamp = raw.timestamp;
+  if (raw.startTime !== undefined) doc.startTime = raw.startTime;
+  if (raw.endTime !== undefined) doc.endTime = raw.endTime;
+  if (raw.createdAt !== undefined) doc.createdAt = raw.createdAt;
+  if (raw.updatedAt !== undefined) doc.updatedAt = raw.updatedAt;
+}
+
 export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
   if (!isRecord(raw) || !isProvider(raw.provider)) {
     return undefined;
@@ -457,30 +512,9 @@ export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
     recordedAt,
     schemaVersion,
   };
-  if (typeof raw.providerID === "string") doc.providerID = raw.providerID;
-  if (typeof raw.providerAccountID === "string") doc.providerAccountID = raw.providerAccountID;
-  if (typeof raw.providerAccountLabel === "string") doc.providerAccountLabel = raw.providerAccountLabel;
-  if (isProviderAccountStorageScope(raw.providerAccountSource)) {
-    doc.providerAccountSource = raw.providerAccountSource;
-  }
-  if (typeof raw.model === "string") doc.model = raw.model;
-  if (typeof raw.sessionId === "string") doc.sessionId = raw.sessionId;
-  if (typeof raw.deviceId === "string") doc.deviceId = raw.deviceId;
-  if (typeof raw.sourceDeviceId === "string") doc.sourceDeviceId = raw.sourceDeviceId;
-  if (typeof raw.inputTokens === "number") doc.inputTokens = raw.inputTokens;
-  if (typeof raw.outputTokens === "number") doc.outputTokens = raw.outputTokens;
-  if (typeof raw.cacheCreationTokens === "number") doc.cacheCreationTokens = raw.cacheCreationTokens;
-  if (typeof raw.cacheReadTokens === "number") doc.cacheReadTokens = raw.cacheReadTokens;
-  if (typeof raw.reasoningTokens === "number") doc.reasoningTokens = raw.reasoningTokens;
-  if (typeof raw.totalTokens === "number") doc.totalTokens = raw.totalTokens;
-  if (typeof raw.costUsd === "number") doc.costUsd = raw.costUsd;
-  if (typeof raw.cost === "number") doc.cost = raw.cost;
-  if (typeof raw.provenanceConfidence === "string") doc.provenanceConfidence = raw.provenanceConfidence;
-  if (raw.timestamp !== undefined) doc.timestamp = raw.timestamp;
-  if (raw.startTime !== undefined) doc.startTime = raw.startTime;
-  if (raw.endTime !== undefined) doc.endTime = raw.endTime;
-  if (raw.createdAt !== undefined) doc.createdAt = raw.createdAt;
-  if (raw.updatedAt !== undefined) doc.updatedAt = raw.updatedAt;
+  assignUsageEventStringFields(doc, raw);
+  assignUsageEventNumberFields(doc, raw);
+  assignUsageEventRawTimeFields(doc, raw);
   return doc;
 }
 

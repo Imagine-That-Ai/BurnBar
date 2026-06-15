@@ -36,6 +36,7 @@ struct AgentInsightsTabScreen: View {
     private enum InsightsSection: String, CaseIterable, Identifiable {
         case insights = "Insights"
         case budgets = "Budgets"
+        case fusion = "Fusion"
         var id: String { rawValue }
     }
 
@@ -110,10 +111,12 @@ struct AgentInsightsTabScreen: View {
                         rosterContent
                     case .budgets:
                         budgetCenterContent
+                    case .fusion:
+                        fusionImpactContent
                     }
                 }
             }
-            .navigationTitle(selectedSection == .insights ? "Insights" : "Budget Center")
+            .navigationTitle(sectionTitle)
             .toolbar {
                 if selectedSection == .insights && (cloudStore?.isActive ?? true) {
                     toolbarContent
@@ -145,10 +148,12 @@ struct AgentInsightsTabScreen: View {
                         rosterContent
                     case .budgets:
                         budgetCenterContent
+                    case .fusion:
+                        fusionImpactContent
                     }
                 }
             }
-            .navigationTitle(selectedSection == .insights ? "Insights" : "Budget Center")
+            .navigationTitle(sectionTitle)
             .toolbar {
                 if selectedSection == .insights && (cloudStore?.isActive ?? true) {
                     toolbarContent
@@ -159,6 +164,8 @@ struct AgentInsightsTabScreen: View {
             NavigationStack {
                 if selectedSection == .budgets {
                     budgetCenterContent
+                } else if selectedSection == .fusion {
+                    fusionImpactContent
                 } else if let selectedScope {
                     AgentInsightsScopedDetail(
                         scope: selectedScope,
@@ -268,6 +275,19 @@ struct AgentInsightsTabScreen: View {
                     .tint(MobileTheme.ember)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+
+    private var fusionImpactContent: some View {
+        FusionImpactView()
+    }
+
+    /// Nav title for the currently-selected Insights section.
+    private var sectionTitle: String {
+        switch selectedSection {
+        case .insights: return "Insights"
+        case .budgets: return "Budget Center"
+        case .fusion: return "Fusion Impact"
         }
     }
 

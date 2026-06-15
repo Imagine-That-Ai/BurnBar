@@ -714,6 +714,20 @@ enum SettingsManifest {
             subtitle: "Build a panel of models and a judge for The Elder Wand",
             keywords: ["elder wand", "fusion", "panel", "judge", "analysis models"],
             helpText: "Opens The Elder Wand configurator: pick the analysis panel and judge model, set a tool-call budget, and save named presets."
+        ),
+        SettingsItem(
+            id: "agents.fusionImpact",
+            tab: .agents,
+            pageRoute: .fusionImpact,
+            anchorID: SettingsAnchor.fusionImpact,
+            title: "Fusion Impact",
+            subtitle: "What The Elder Wand spent — fusion versus normal, per model, this period",
+            keywords: [
+                "elder wand", "fusion", "impact", "spend", "cost", "receipt",
+                "how much", "per model", "this month", "last 30 days",
+                "fusion searches", "quota", "multiplier", "cost of certainty"
+            ],
+            helpText: "Opens the standing Fusion Impact screen: fusion-versus-normal spend over the period, per-model contribution, fusion run tally, and the fusion-search quota meter."
         )
     ]
 
@@ -790,7 +804,8 @@ enum SettingsManifest {
         SettingsAnchor.hermesPiHosts,
         SettingsAnchor.hermesRelay,
         SettingsAnchor.hermesPiRelay,
-        SettingsAnchor.analysisConfigurator
+        SettingsAnchor.analysisConfigurator,
+        SettingsAnchor.fusionImpact
     ]).union(providerItems.map(\.anchorID))
 
     private static let providerItems: [SettingsItem] = {

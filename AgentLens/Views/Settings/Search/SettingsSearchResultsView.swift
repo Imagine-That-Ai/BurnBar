@@ -122,6 +122,7 @@ struct SettingsSearchResultsView: View {
         case .hermesRelay: return "Hermes Remote Relay"
         case .hermesPiRelay: return "Pi Remote Relay"
         case .analysisConfigurator: return "Analysis Models"
+        case .fusionImpact: return "Fusion Impact"
         }
     }
 }

@@ -21,7 +21,9 @@ const fail = (m) => { console.error(`  FAIL ${m}`); failures += 1; };
 const ok = (m) => console.log(`  ok   ${m}`);
 
 // (1) Gateway transport: the PRODUCTION envelope-versions set must be EMPTY.
-const gw = readFileSync("functions/src/hermesGateway.ts", "utf8");
+// The envelope constants live in their own module after the Hermes Gateway
+// split; keep this gate pointed at the source of truth instead of the wrapper.
+const gw = readFileSync("functions/src/hermesGatewayEnvelope.ts", "utf8");
 if (/HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set<number>\(\s*\)/.test(gw)) {
   ok("HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is empty (transport fail-closed)");
 } else {

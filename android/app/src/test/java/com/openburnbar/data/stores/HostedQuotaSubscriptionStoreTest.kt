@@ -81,6 +81,8 @@ class HostedQuotaSubscriptionStoreTest {
         assertEquals("com.openburnbar.ultra.annual", HostedQuotaSubscriptionStore.CLOUD_ULTRA_ANNUAL_PRODUCT_ID)
         assertEquals("com.openburnbar.agentcontrol.actions100", HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID)
         assertEquals("com.openburnbar.floo.relay50gb", HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID)
+        assertEquals("com.openburnbar.elderwand.searches100", HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID)
+        assertEquals("com.openburnbar.elderwand.searches500", HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID)
         HostedQuotaSubscriptionStore.STORE_PRODUCTS.forEach { product ->
             assertEquals(product.id.lowercase(), product.id)
         }
@@ -95,6 +97,8 @@ class HostedQuotaSubscriptionStoreTest {
                 HostedQuotaSubscriptionStore.CLOUD_ULTRA_ANNUAL_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID,
             ),
             HostedQuotaSubscriptionStore.STORE_PRODUCTS.map { it.id }.toSet(),
         )

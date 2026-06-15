@@ -11,6 +11,7 @@ extension BurnBarHTTPGatewayServer {
 
     func handleChatCompletions(
         body: String?,
+        headers: [String: String],
         connection: NWConnection,
         corsHeaders: [String: String]
     ) async -> GatewayRouteOutcome {
@@ -28,7 +29,8 @@ extension BurnBarHTTPGatewayServer {
                 originatingModel: request.model,
                 wantsStream: request.stream == true,
                 connection: connection,
-                corsHeaders: corsHeaders
+                corsHeaders: corsHeaders,
+                hostedSearch: ElderWandHostedSearchConfig.resolve(headers: headers)
             )
         }
 

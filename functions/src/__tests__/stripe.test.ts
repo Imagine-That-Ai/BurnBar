@@ -83,6 +83,10 @@ vi.mock("../config.js", () => ({
     agentControl100ActionsProductID: "agent_control_100",
     googlePlayFlooRelay50GBProductID: "gp_floo_relay_50gb",
     flooRelay50GBProductID: "floo_relay_50gb",
+    googlePlayElderWandSearches100ProductID: "gp_elder_wand_searches_100",
+    elderWandSearches100ProductID: "elder_wand_searches_100",
+    googlePlayElderWandSearches500ProductID: "gp_elder_wand_searches_500",
+    elderWandSearches500ProductID: "elder_wand_searches_500",
   }),
 }));
 vi.mock("../resilienceHelpers.js", () => ({
@@ -293,6 +297,40 @@ describe("verifyGooglePlayCloudProTopUp", () => {
       monthKey: "2026-06",
       units: 100,
       kind: "agent_control_actions_100",
+      purchaseState: 0,
+      consumed: true,
+    });
+  });
+
+  it("credits Google Play Elder Wand search top-ups into the Fusion search meter", async () => {
+    state.creditMock.mockResolvedValueOnce({
+      credited: true,
+      monthKey: "2026-06",
+      units: 100,
+      kind: "elder_wand_searches_100",
+    });
+
+    const res = await invokeCallable<{ credited: boolean; purchaseState: number; consumed: boolean }>(
+      verifyGooglePlayCloudProTopUp,
+      { purchaseToken: TOPUP_TOKEN, productID: "gp_elder_wand_searches_100" },
+    );
+
+    expect(state.productsGet).toHaveBeenCalledWith({
+      packageName: "ai.openburnbar.app",
+      productId: "gp_elder_wand_searches_100",
+      token: TOPUP_TOKEN,
+    });
+    expect(state.creditMock).toHaveBeenCalledWith({
+      uid: UID,
+      kind: "elder_wand_searches_100",
+      source: "google_play",
+      externalPaymentID: tokenHash(TOPUP_TOKEN),
+    });
+    expect(res).toEqual({
+      credited: true,
+      monthKey: "2026-06",
+      units: 100,
+      kind: "elder_wand_searches_100",
       purchaseState: 0,
       consumed: true,
     });

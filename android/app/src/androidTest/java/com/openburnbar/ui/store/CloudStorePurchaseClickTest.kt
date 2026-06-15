@@ -54,6 +54,8 @@ class CloudStorePurchaseClickTest {
         clickPurchase(HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID)
         clickPurchase(HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID)
         clickPurchase(HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID)
+        clickPurchase(HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID)
+        clickPurchase(HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID)
 
         composeRule.runOnIdle {
             assertEquals(
@@ -62,6 +64,8 @@ class CloudStorePurchaseClickTest {
                     HostedQuotaSubscriptionStore.CLOUD_PRO_ANNUAL_PRODUCT_ID,
                     HostedQuotaSubscriptionStore.AGENT_CONTROL_TOP_UP_PRODUCT_ID,
                     HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID,
+                    HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID,
+                    HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID,
                 ),
                 purchasedProductIDs,
             )

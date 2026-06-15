@@ -31,6 +31,10 @@ final class HermesRuntimeStore {
     static let selectedModelDefaultsKey = "hermes.selectedModelID"
     static let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
 
+    static func selectedModelDefaultsKey(for connectionID: String) -> String {
+        "hermes.selectedModelID.\(connectionID)"
+    }
+
     // ── Shared catalog state ──
     var connections: [HermesConnectionRecord] = [HermesConnectionRecord.localDefault]
     var selectedConnection: HermesConnectionRecord = .localDefault

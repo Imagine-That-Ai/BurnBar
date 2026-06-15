@@ -718,6 +718,9 @@ final class HermesService {
         // Allow attachment-only messages (no text) so users can send a photo
         // and let the model describe / OCR it.
         guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
+        // Clear any prior run's itemized spend so a new fusion run's receipt never
+        // shows stale line items before its own SSE frame lands.
+        capturedFusionSpend = nil
 
         #if DEBUG
         print("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
@@ -881,6 +884,46 @@ final class HermesService {
     /// is enough to reach `ElderWandFusionOrchestrator` (panel + judge).
     var activeElderWandPlugins: [[String: any Sendable]]? {
         elderWandSettings.elderWandPluginsPayload()
+    }
+
+    /// Set to a fresh `UUID` the instant a fusion run finishes, so the chat
+    /// surface can present the end-of-session `FusionReceiptSheet` exactly once
+    /// per run. The chat view observes this token (`onChange(of:)`) and presents
+    /// the sheet on every change; using a token (rather than a `Bool`) means
+    /// back-to-back fusion runs each get their own modal even when the previous
+    /// one was dismissed. `nil` until the first fusion run completes.
+    ///
+    /// Only the completion path sets it — and only when `activeElderWandPlugins`
+    /// was non-nil for the just-finished run (see
+    /// `presentFusionReceiptIfFusionRun()`), so non-fusion turns never trigger
+    /// the receipt.
+    var fusionReceiptToken: UUID?
+
+    /// Called by the streaming engine at the canonical completion point for a
+    /// chat turn. When the turn that just finished was a fusion run (an Elder
+    /// Wand preset was active, i.e. `activeElderWandPlugins != nil`), mint a
+    /// fresh `fusionReceiptToken` so the chat surface presents the receipt.
+    /// A non-fusion turn is a no-op.
+    func presentFusionReceiptIfFusionRun() {
+        guard activeElderWandPlugins != nil else { return }
+        fusionReceiptToken = UUID()
+    }
+
+    /// The itemized fusion session captured from the daemon's final SSE frame
+    /// (`openburnbar_fusion_spend`). `nil` when the run emitted none (a buffered /
+    /// non-streaming synthesis route) — the receipt then shows the authoritative
+    /// `fusion_searches` quota ring only. Reset at the start of each send.
+    var capturedFusionSpend: FusionSessionSpend?
+
+    /// Stash the itemized fusion session decoded from the daemon's final SSE
+    /// frame. The streaming engine captures the frame and calls this BEFORE it
+    /// mints the receipt token (`HermesStreamingEngine.finishFusionReceipt`), so
+    /// the session is already present when the sheet reads `capturedFusionSpend`
+    /// at presentation. When no frame arrives (a buffered / non-streaming route,
+    /// or the iroh relay before it forwards the frame), the sheet shows the
+    /// authoritative quota-only receipt instead.
+    func captureFusionSpend(_ session: FusionSessionSpend) {
+        capturedFusionSpend = session
     }
 
     /// True when a usable Elder Wand preset is active, so the chat send-path

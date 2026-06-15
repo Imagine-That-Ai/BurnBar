@@ -872,6 +872,13 @@ struct CloudTopUpChip: View {
     }
 
     private var artName: String {
-        catalogProduct.topUpKind?.contains("floo") == true ? "CloudChipFloo" : "CloudChipAgent"
+        switch catalogProduct.topUpKind {
+        case "floo_relay_50gb":
+            return "CloudChipFloo"
+        case "elder_wand_searches_100", "elder_wand_searches_500":
+            return "CloudCapSessionSearch"
+        default:
+            return "CloudChipAgent"
+        }
     }
 }

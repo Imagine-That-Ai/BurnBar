@@ -89,6 +89,7 @@ extension AgentProvider {
         case .xAI: return "~/.grok/sessions"
         // MiMo quota is refreshed via Token Plan API; no local log directory.
         case .mimo: return "~/.codex"
+        case .openBurnBar: return "~/.codex"
         }
     }
 
@@ -125,6 +126,7 @@ extension AgentProvider {
         case .warp: return "warp_network*.log"
         case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
+        case .openBurnBar: return "openburnbar-no-local-logs"
         }
     }
 
@@ -135,7 +137,7 @@ extension AgentProvider {
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
-        case .openAI, .deepSeek:
+        case .openAI, .deepSeek, .openBurnBar:
             return .supported
         case .mimo:
             return .supported
@@ -153,7 +155,7 @@ extension AgentProvider {
         case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
-        case .openAI, .deepSeek:
+        case .openAI, .deepSeek, .openBurnBar:
             return .exact
         case .mimo:
             return .exact

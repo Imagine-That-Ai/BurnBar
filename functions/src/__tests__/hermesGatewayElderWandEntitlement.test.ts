@@ -60,7 +60,10 @@ vi.mock("../callables/shared.js", async () => {
     assertActiveBurnBarCloudProEntitlement: vi.fn(async (uid: string): Promise<void> => {
       if (!PRO_UIDS.has(uid)) {
         const { HttpsError } = await import("firebase-functions/v2/https");
-        throw new HttpsError("permission-denied", "BurnBar Cloud Pro is required for Floo and hosted Agent Control.");
+        throw new HttpsError(
+          "permission-denied",
+          "BurnBar Cloud Pro or Ultra is required for Floo, hosted Agent Control, and Elder Wand Fusion search.",
+        );
       }
     }),
   };

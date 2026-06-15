@@ -91,6 +91,21 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  performElderWandHostedSearch: {
+    objectIdsFromClient: [],
+    ownershipCheck: "handler derives uid from request.auth.uid only",
+    handlerModule: "elderWandHostedSearch.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["performElderWandHostedSearch"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+  },
   revokeProviderAccountDeviceLink: {
     bolaCoverage: [
       {
@@ -222,6 +237,57 @@ function defaultEntry(exportedName) {
   };
 }
 
+function indent(level) {
+  return "  ".repeat(level);
+}
+
+function formatPropertyKey(key) {
+  return /^[A-Za-z_$][\w$]*$/u.test(key) ? key : JSON.stringify(key);
+}
+
+function formatPrimitive(value) {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean" || value === null) return String(value);
+  throw new TypeError(`Unsupported primitive value in generated catalog: ${String(value)}`);
+}
+
+function canInlineArray(value) {
+  if (!Array.isArray(value)) return false;
+  return value.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item));
+}
+
+function formatTsLiteral(value, level = 0) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    if (canInlineArray(value)) {
+      return `[${value.map((item) => formatPrimitive(item)).join(", ")}]`;
+    }
+    return `[
+${value.map((item) => `${indent(level + 1)}${formatTsLiteral(item, level + 1)},`).join("\n")}
+${indent(level)}]`;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).filter(([, item]) => item !== undefined);
+    if (entries.length === 0) return "{}";
+    return `{
+${entries
+  .map(([key, item]) => {
+    const propertyKey = formatPropertyKey(key);
+    const renderedValue = formatTsLiteral(item, level + 1);
+    const inlineLine = `${indent(level + 1)}${propertyKey}: ${renderedValue},`;
+    if (typeof item === "string" && inlineLine.length > 120) {
+      return `${indent(level + 1)}${propertyKey}:\n${indent(level + 2)}${renderedValue},`;
+    }
+    return inlineLine;
+  })
+  .join("\n")}
+${indent(level)}}`;
+  }
+
+  return formatPrimitive(value);
+}
+
 const names = exportedNames();
 const existing = readFileSync(outPath, "utf8");
 const existingJson = existing.match(/export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u);
@@ -246,7 +312,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = `;
 
 writeFileSync(
   outPath,
-  `${header}${JSON.stringify(merged)} as EndpointAuthorizationEntry[];
+  `${header}${formatTsLiteral(merged)} as EndpointAuthorizationEntry[];
 `,
 );
 

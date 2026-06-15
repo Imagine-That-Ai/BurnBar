@@ -39,6 +39,8 @@ export const COMMERCIAL_PRODUCTS = Object.freeze({
   ultraAnnual: "com.openburnbar.ultra.annual.v2",
   agentControlActions100: "com.openburnbar.agentControl.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
+  elderWandSearches100: "com.openburnbar.elderWand.searches100",
+  elderWandSearches500: "com.openburnbar.elderWand.searches500",
 });
 export const GOOGLE_PLAY_PRODUCTS = Object.freeze({
   cloudMonthly: "com.openburnbar.pro.monthly",
@@ -49,6 +51,8 @@ export const GOOGLE_PLAY_PRODUCTS = Object.freeze({
   ultraAnnual: "com.openburnbar.ultra.annual",
   agentControlActions100: "com.openburnbar.agentcontrol.actions100",
   flooRelay50GB: "com.openburnbar.floo.relay50gb",
+  elderWandSearches100: "com.openburnbar.elderwand.searches100",
+  elderWandSearches500: "com.openburnbar.elderwand.searches500",
 });
 const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.cloudMonthly,
@@ -61,6 +65,16 @@ const REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS = [
 const REQUIRED_TOP_UP_PRODUCT_IDS = [
   COMMERCIAL_PRODUCTS.agentControlActions100,
   COMMERCIAL_PRODUCTS.flooRelay50GB,
+  COMMERCIAL_PRODUCTS.elderWandSearches100,
+  COMMERCIAL_PRODUCTS.elderWandSearches500,
+];
+const ELDER_WAND_HOSTED_SEARCH_FUNCTION = "performElderWandHostedSearch";
+const REQUIRED_ELDER_WAND_HOSTED_SEARCH_ENV = {
+  ENFORCE_APP_CHECK: "true",
+};
+const REQUIRED_ELDER_WAND_HOSTED_SEARCH_SECRETS = [
+  "PERPLEXITY_API_KEY",
+  "TAVILY_API_KEY",
 ];
 const REQUIRED_COMMERCIAL_PRODUCT_IDS = [
   ...REQUIRED_APP_STORE_SUBSCRIPTION_PRODUCT_IDS,
@@ -107,6 +121,7 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "evaluateMediaBudget",
   "computeTierCogsDaily",
   "onUsageWritten",
+  "performElderWandHostedSearch",
   "rebuildRollups",
   "reconcileHostedEntitlementsDaily",
   "recomputeComputerUseQuotaUsage",
@@ -175,6 +190,10 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
   AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
     COMMERCIAL_PRODUCTS.agentControlActions100,
   FLOO_RELAY_50GB_PRODUCT_ID: COMMERCIAL_PRODUCTS.flooRelay50GB,
+  ELDER_WAND_SEARCHES_100_PRODUCT_ID:
+    COMMERCIAL_PRODUCTS.elderWandSearches100,
+  ELDER_WAND_SEARCHES_500_PRODUCT_ID:
+    COMMERCIAL_PRODUCTS.elderWandSearches500,
   GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudMonthly,
   GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.cloudAnnual,
   GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID:
@@ -185,6 +204,10 @@ const REQUIRED_COMMERCIAL_ENV_VALUES = {
   GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID:
     GOOGLE_PLAY_PRODUCTS.agentControlActions100,
   GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID: GOOGLE_PLAY_PRODUCTS.flooRelay50GB,
+  GOOGLE_PLAY_ELDER_WAND_SEARCHES_100_PRODUCT_ID:
+    GOOGLE_PLAY_PRODUCTS.elderWandSearches100,
+  GOOGLE_PLAY_ELDER_WAND_SEARCHES_500_PRODUCT_ID:
+    GOOGLE_PLAY_PRODUCTS.elderWandSearches500,
 };
 const REQUIRED_COMMERCIAL_ENV_PRESENT = [
   "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
@@ -193,6 +216,8 @@ const REQUIRED_COMMERCIAL_ENV_PRESENT = [
   "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID",
   "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID",
   "STRIPE_FLOO_RELAY_50GB_PRICE_ID",
+  "STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID",
+  "STRIPE_ELDER_WAND_SEARCHES_500_PRICE_ID",
 ];
 const REQUIRED_REMOTE_CONFIG_DEFAULTS = {
   media_budget_soft_usd: "600",
@@ -209,6 +234,12 @@ const REQUIRED_REMOTE_CONFIG_DEFAULTS = {
   cloud_pro_included_relay_gb_monthly: "50",
   cloud_pro_relay_topup_unit_gb: "50",
   cloud_pro_monthly_relay_gb_cap: "300",
+  cloud_pro_included_fusion_searches_monthly: "100",
+  cloud_ultra_included_fusion_searches_monthly: "300",
+  cloud_pro_fusion_search_topup_unit: "100",
+  cloud_pro_fusion_search_large_topup_unit: "500",
+  cloud_pro_monthly_fusion_search_cap: "1000",
+  cloud_ultra_monthly_fusion_search_cap: "2000",
 };
 
 function run(command, args, options = {}) {
@@ -1173,6 +1204,45 @@ function checkCommercialBillingRuntime() {
   };
 }
 
+export function evaluateElderWandHostedSearchRuntime(runtime) {
+  if (!runtime.ok) {
+    return {
+      ok: false,
+      functionName: runtime.functionName || ELDER_WAND_HOSTED_SEARCH_FUNCTION,
+      error: runtime.error,
+    };
+  }
+
+  const envChecks = Object.entries(REQUIRED_ELDER_WAND_HOSTED_SEARCH_ENV).map(
+    ([name, expected]) => ({
+      name,
+      ok: runtime.env?.[name] === expected,
+      actual: runtime.env?.[name] ?? null,
+      expected,
+    }),
+  );
+  const secretNames = new Set(runtime.secretEnvVarNames || []);
+  const secretChecks = REQUIRED_ELDER_WAND_HOSTED_SEARCH_SECRETS.map((name) => ({
+    name,
+    ok: secretNames.has(name),
+  }));
+  return {
+    ok:
+      envChecks.every((check) => check.ok) &&
+      secretChecks.every((check) => check.ok),
+    functionName: runtime.functionName,
+    envChecks,
+    secretChecks,
+    secretEnvVarNames: [...secretNames].sort(),
+  };
+}
+
+function checkElderWandHostedSearchRuntime() {
+  return evaluateElderWandHostedSearchRuntime(
+    deployedFunctionEnvironment(ELDER_WAND_HOSTED_SEARCH_FUNCTION),
+  );
+}
+
 function checkRemoteConfigCaps() {
   const tempDir = mkdtempSync(join(tmpdir(), "openburnbar-remote-config-"));
   const tempFile = join(tempDir, "remote-config.json");
@@ -1345,6 +1415,7 @@ async function main() {
     redis: checkRedis(),
     hostedQuotaRuntime: checkHostedQuotaRuntime(),
     commercialBillingRuntime: checkCommercialBillingRuntime(),
+    elderWandHostedSearchRuntime: checkElderWandHostedSearchRuntime(),
     remoteConfigCaps: checkRemoteConfigCaps(),
     opsAlerts: checkOpsAlerts(),
     billingAlerts: checkBillingAlerts(),

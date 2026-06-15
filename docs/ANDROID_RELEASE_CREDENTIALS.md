@@ -91,6 +91,19 @@ If an agent needs to access these secrets for a build:
 
 3. **Play Console uploads**: The service account JSON is needed for any automated Play Console API calls (uploading AABs, updating listings, etc.). If the API returns 401/403, the service account may need its key regenerated.
 
+4. **Play Console API grants**: OpenBurnBar's Play developer account is
+   `5605378652941109095`. The Firebase/Cloud Functions compute service account
+   `246956661961-compute@developer.gserviceaccount.com` has full app-level
+   access for `com.openburnbar`. The stored
+   `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` service account
+   `android-iap-service@imaginethat-17aa7.iam.gserviceaccount.com` is also
+   granted app-level access for catalog automation and purchase verification.
+   Verify catalog state with:
+   ```bash
+   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON="$(firebase functions:secrets:access GOOGLE_PLAY_SERVICE_ACCOUNT_JSON --project burnbar)" \
+     node tools/google-play/prepare-commercial-iaps.mjs --json
+   ```
+
 ## Emergency: Keystore Lost
 
 If the local keystore file is lost but the GitHub secret still exists:

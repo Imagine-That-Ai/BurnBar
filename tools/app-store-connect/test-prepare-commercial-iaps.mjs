@@ -43,9 +43,13 @@ for (const subscription of SUBSCRIPTIONS) {
 assert.deepEqual([...topUpByProduct.keys()], [
   'com.openburnbar.agentControl.actions100',
   'com.openburnbar.floo.relay50gb',
+  'com.openburnbar.elderWand.searches100',
+  'com.openburnbar.elderWand.searches500',
 ]);
 assert.equal(topUpByProduct.get('com.openburnbar.agentControl.actions100').priceUSD, '4.99');
 assert.equal(topUpByProduct.get('com.openburnbar.floo.relay50gb').priceUSD, '4.99');
+assert.equal(topUpByProduct.get('com.openburnbar.elderWand.searches100').priceUSD, '4.99');
+assert.equal(topUpByProduct.get('com.openburnbar.elderWand.searches500').priceUSD, '19.99');
 
 const source = readFileSync(new URL('./prepare-commercial-iaps.js', import.meta.url), 'utf8');
 assert.doesNotMatch(
@@ -53,5 +57,11 @@ assert.doesNotMatch(
   /api\('POST',\s*['"`]\/v1\/subscriptions/,
   'prep script must not create subscriptions; ASC creation remains an explicit operator step',
 );
+assert.match(
+  source,
+  /api\(\s*['"`]POST['"`],\s*['"`]\/v2\/inAppPurchases/,
+  'prep script must create missing consumable top-ups idempotently',
+);
+assert.match(source, /inAppPurchaseType:\s*'CONSUMABLE'/);
 
 console.log('prepare-commercial-iaps contract checks passed');

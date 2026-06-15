@@ -29,10 +29,11 @@ extension BurnBarHTTPGatewayServer {
         originatingModel: String,
         wantsStream: Bool,
         connection: NWConnection,
-        corsHeaders: [String: String]
+        corsHeaders: [String: String],
+        hostedSearch: ElderWandHostedSearchConfig?
     ) async -> GatewayRouteOutcome {
         let startedAt = Date()
-        let orchestrator = makeElderWandOrchestrator()
+        let orchestrator = makeElderWandOrchestrator(hostedSearch: hostedSearch)
         let result = await orchestrator.run(
             bodyData: bodyData,
             plugin: plugin,
@@ -66,6 +67,7 @@ extension BurnBarHTTPGatewayServer {
                     usageFormat: .openAI,
                     route: streaming.route.route,
                     idempotencyKey: idempotencyKey,
+                    parentRequestID: streaming.parentRequestID,
                     openStream: {
                         try await self.providerExecutor.openChatCompletionsStream(
                             body: streaming.requestBody,
@@ -86,6 +88,24 @@ extension BurnBarHTTPGatewayServer {
                     succeeded: !relay.interrupted,
                     failureMessage: relay.interrupted ? "synthesis stream interrupted" : nil
                 )
+                // Emit the full itemized fusion session as a final SSE frame so
+                // clients with no local ledger (iOS over the relay) render the
+                // receipt. The connection is still open after the relay's `[DONE]`;
+                // the frame is additive and ignored by clients that don't read it.
+                if !relay.interrupted {
+                    let synthesisItem = ElderWandFusionOrchestrator.lineItem(
+                        stage: .synthesis,
+                        route: streaming.route,
+                        requestSignature: streaming.requestSignature,
+                        usage: relay.usage
+                    )
+                    let session = FusionSessionSpend(
+                        parentRequestID: streaming.parentRequestID,
+                        lineItems: streaming.priorLineItems + [synthesisItem].compactMap { $0 },
+                        completedAt: Date()
+                    )
+                    await emitFusionSpendFrame(session, on: connection)
+                }
                 return relay.outcome
             } catch is BurnBarProxyStreamingUnsupported {
                 // The originating route cannot stream verbatim (e.g. Ollama
@@ -168,8 +188,8 @@ extension BurnBarHTTPGatewayServer {
     }
 
     /// Construct an orchestrator over the server's stored deps.
-    private func makeElderWandOrchestrator() -> ElderWandFusionOrchestrator {
-        let tools = ElderWandWebTools().makeTools()
+    private func makeElderWandOrchestrator(hostedSearch: ElderWandHostedSearchConfig?) -> ElderWandFusionOrchestrator {
+        let tools = ElderWandWebTools(hostedSearch: hostedSearch).makeTools()
         return ElderWandFusionOrchestrator(
             resolveRoute: { [self] modelSlug in
                 await self.resolveElderWandRoute(modelSlug: modelSlug)

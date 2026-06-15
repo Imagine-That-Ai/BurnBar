@@ -52,6 +52,11 @@ final class ChatSessionController {
 
     var streamError: String?
 
+    /// One-shot presentation token for the Elder Wand Fusion spend receipt.
+    /// The receipt model reads the newest fusion session from the daemon ledger;
+    /// this token only tells SwiftUI when to present the sheet.
+    var completedFusionSessionToken: String?
+
     var chatBackend: ChatBackendID = .codex
 
     var desktopControlGrant: AgentCapabilityGrant?
@@ -909,6 +914,7 @@ final class ChatSessionController {
         isStreaming = false
         activeStreamMessageId = nil
         streamError = nil
+        completedFusionSessionToken = nil
         selectedContext = nil
         conversationJumpTargets = []
         revokeDesktopControl()
@@ -1138,6 +1144,7 @@ final class ChatSessionController {
         persistActiveThreadSlot()
         messages = []
         conversationJumpTargets = []
+        completedFusionSessionToken = nil
         if chatBackend.requiresCLIAssistantConsent {
             chatViewMode = .cli
         } else {
@@ -1160,6 +1167,7 @@ final class ChatSessionController {
         isStreaming = false
         activeStreamMessageId = nil
         streamError = nil
+        completedFusionSessionToken = nil
         selectedContext = nil
         conversationJumpTargets = []
         revokeDesktopControl()
@@ -1197,6 +1205,26 @@ final class ChatSessionController {
             AppLogger.chat.silentFailure("fetchChatThreadSummaries", error: error)
             historyThreads = []
         }
+    }
+
+    static func elderWandHostedSearchHeaders() async -> [String: String] {
+        guard let provider = MacFirebaseTokenProvider.shared else { return [:] }
+        async let idToken = provider.idToken()
+        async let appCheckToken = provider.appCheckToken()
+        var headers: [String: String] = [:]
+        if let rawToken = await idToken {
+            let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty {
+                headers["X-OpenBurnBar-Firebase-Authorization"] = "Bearer \(token)"
+            }
+        }
+        if let rawToken = await appCheckToken {
+            let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty {
+                headers["X-OpenBurnBar-Firebase-AppCheck"] = token
+            }
+        }
+        return headers
     }
 
     static func burnBarWorkspacePromptSection(path: String) -> String {
