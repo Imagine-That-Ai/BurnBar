@@ -262,7 +262,7 @@
     "vitest": "4.1.8"
   },
   "dependencies": {
-    "@sentry/node": "8.55.2",
+    "@sentry/node": "10.58.0",
     "globals": "17.6.0"
   },
   "overrides": {
