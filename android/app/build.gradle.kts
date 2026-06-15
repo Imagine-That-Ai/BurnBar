@@ -519,8 +519,8 @@ dependencies {
     testImplementation("androidx.datastore:datastore-preferences:1.1.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.8")
-    androidTestImplementation("androidx.compose.ui:ui-test-manifest:1.7.8")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.11.2")
+    androidTestImplementation("androidx.compose.ui:ui-test-manifest:1.11.2")
     // Mockk on-device flavor — pure-JVM `io.mockk:mockk` brings in
     // bytebuddy classes the ART runtime can't load, so the instrumented
     // suites use `mockk-android` instead.
