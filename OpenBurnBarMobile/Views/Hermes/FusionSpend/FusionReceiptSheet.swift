@@ -217,19 +217,38 @@ private struct FusionReceiptHeroCard: View {
         }
     }
 
+    /// The "cost of certainty" pill — the payoff beat. The multiplier rides the
+    /// tier holo gradient (the same foil the hero crest uses) as a celebratory
+    /// accent, with the rationale beside it. Glassless: a soft holo-tinted
+    /// capsule, not a glass plate.
     private func multiplierLine(_ multiplier: Double) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 12, weight: .bold))
+        HStack(spacing: MobileTheme.Spacing.sm) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(CloudTier.ultra.holoGradient)
                 .accessibilityHidden(true)
-            Text("\(CostText.multiplier(multiplier)) the cost of one model — the price of a second opinion")
+            Text("\(CostText.multiplier(multiplier)) the cost of one model")
                 .font(MobileTheme.Typography.caption)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                .fontWeight(.semibold)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+            Text("· the price of a second opinion")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
-        .foregroundStyle(MobileTheme.Colors.hermesAureate)
-        .padding(.horizontal, MobileTheme.Spacing.sm)
+        .padding(.horizontal, MobileTheme.Spacing.md)
+        .padding(.vertical, 7)
+        .background(
+            Capsule(style: .continuous)
+                .fill(CloudTier.ultra.holoGradient.opacity(0.12))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(holoColors.first?.opacity(0.30) ?? .clear, lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(CostText.multiplier(multiplier)) the cost of one model, the price of a second opinion")
     }
 
     private var estimateCaption: some View {
@@ -273,11 +292,30 @@ private struct FusionReceiptHeroCard: View {
     }
 }
 
+// MARK: - Stage presentation
+//
+// Each pipeline stage earns a distinguishing SF Symbol — read top-to-bottom the
+// column tells the story: a panel convenes, a judge weighs in, a final answer is
+// cast. Kept in the view layer so the shared `FusionStage` spine stays
+// storage-agnostic (and identical to the macOS receipt's mapping).
+
+private extension FusionStage {
+    var glyph: String {
+        switch self {
+        case .panel: return "person.3.sequence.fill"
+        case .judge: return "scale.3d"
+        case .synthesis: return "wand.and.stars"
+        case .unknown: return "circle.dotted"
+        }
+    }
+}
+
 // MARK: - Line Items Card
 
 /// The itemized sub-call list — one row per panel member, the judge, and the
 /// final synthesis, in pipeline order (the spine sorts them). Each row pairs a
-/// per-model color dot with its role, token count, and cost.
+/// per-model color chip carrying the stage glyph with its role, token count, and
+/// right-aligned monospaced cost.
 private struct FusionReceiptLineItemsCard: View {
     let items: [FusionSubCallSpend]
 
@@ -290,6 +328,7 @@ private struct FusionReceiptLineItemsCard: View {
                     if item.id != items.last?.id {
                         Divider()
                             .overlay(MobileTheme.Colors.borderSubtle.opacity(0.5))
+                            .padding(.leading, Self.rowGlyphInset)
                     }
                 }
             }
@@ -307,8 +346,12 @@ private struct FusionReceiptLineItemsCard: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// Chip width + spacing, so dividers align under the text column rather than
+    /// under the leading stage chip — the grouped-receipt look.
+    static let rowGlyphInset: CGFloat = 34 + MobileTheme.Spacing.md
+
     private var sectionHeader: some View {
-        Text("ITEMIZED")
+        Text("THE COUNCIL")
             .font(MobileTheme.Typography.tiny)
             .fontWeight(.bold)
             .tracking(2.0)
@@ -316,28 +359,30 @@ private struct FusionReceiptLineItemsCard: View {
     }
 }
 
-/// One sub-call row: color dot · role + model · tokens · cost.
+/// One sub-call row: stage chip · role + model · tokens · cost.
 private struct FusionReceiptLineRow: View {
     let item: FusionSubCallSpend
 
-    @ScaledMetric(relativeTo: .body) private var dotSize: CGFloat = 9
+    @ScaledMetric(relativeTo: .body) private var chipSize: CGFloat = 34
 
     private var modelColor: Color {
         MobileTheme.Colors.colorForModel(item.modelID)
     }
 
     var body: some View {
-        HStack(spacing: MobileTheme.Spacing.sm) {
-            Circle()
-                .fill(modelColor)
-                .frame(width: dotSize, height: dotSize)
-                .accessibilityHidden(true)
+        HStack(spacing: MobileTheme.Spacing.md) {
+            stageChip
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.stage.displayRole)
-                    .font(MobileTheme.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                HStack(spacing: 5) {
+                    Text(item.stage.displayRole)
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    if !item.confidence.isExact {
+                        estChip
+                    }
+                }
                 Text(ModelText.short(item.modelID))
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
@@ -358,14 +403,44 @@ private struct FusionReceiptLineRow: View {
                     .foregroundStyle(MobileTheme.Colors.textMuted)
                     .monospacedDigit()
             }
+            .layoutPriority(1)
         }
         .padding(.vertical, MobileTheme.Spacing.sm)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
 
+    /// A per-model color chip carrying the stage glyph — the row's identity at a
+    /// glance: the model's color, the stage's symbol.
+    private var stageChip: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                .fill(modelColor.opacity(0.16))
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                .strokeBorder(modelColor.opacity(0.35), lineWidth: 0.75)
+            Image(systemName: item.stage.glyph)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(modelColor)
+        }
+        .frame(width: chipSize, height: chipSize)
+        .accessibilityHidden(true)
+    }
+
+    private var estChip: some View {
+        Text("est.")
+            .font(MobileTheme.Typography.tiny)
+            .foregroundStyle(MobileTheme.warning)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(
+                Capsule(style: .continuous).fill(MobileTheme.warning.opacity(0.14))
+            )
+            .accessibilityHidden(true)
+    }
+
     private var accessibilityLabel: String {
-        "\(item.stage.displayRole), \(ModelText.short(item.modelID)), \(TokenText.spoken(item.totalTokens)) tokens, \(CostText.dollars(item.cost))"
+        let estimate = item.confidence.isExact ? "" : ", estimated"
+        return "\(item.stage.displayRole), \(ModelText.short(item.modelID)), \(TokenText.spoken(item.totalTokens)) tokens, \(CostText.dollars(item.cost))\(estimate)"
     }
 }
 
@@ -503,15 +578,20 @@ private struct FusionSearchQuotaRingCard: View {
     }
 }
 
-/// The fusion-search progress ring. Trims clockwise to the REMAINING fraction so
-/// a full ring reads "plenty left". Animates on value change; static under
-/// reduce-motion via the gated `.animation(_:value:)`.
+/// The fusion-search allowance gauge — a 270° dial (a real gauge, not a full
+/// ring) trimmed to the REMAINING fraction so a full arc reads "plenty left".
+/// The remaining percent sits big in the bowl with a "left" caption. Animates on
+/// value change; static under reduce-motion via the gated `.animation(_:value:)`.
 private struct FusionSearchRing: View {
     let fraction: Double
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// 0.75 of a full turn — a classic gauge dial with the gap at the bottom.
+    private let span: CGFloat = 0.75
+
     private var clamped: CGFloat { CGFloat(min(max(fraction, 0), 1)) }
+    private var percent: Int { Int((fraction * 100).rounded()) }
 
     private var accent: Color {
         if fraction < 0.15 { return MobileTheme.warning }
@@ -521,25 +601,39 @@ private struct FusionSearchRing: View {
 
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(MobileTheme.Colors.border.opacity(0.35), lineWidth: 7)
-            Circle()
-                .trim(from: 0, to: clamped)
-                .stroke(
-                    AngularGradient(
-                        colors: [accent, accent.opacity(0.85), MobileTheme.amber, accent],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .shadow(color: accent.opacity(0.4), radius: 8)
-                .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.85), value: clamped)
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(colors: [accent, accent.opacity(0.7)], startPoint: .top, endPoint: .bottom)
-                )
+            // The dial — rotated so the gap is centered at the bottom. Only the
+            // arcs rotate; the center label stays upright.
+            ZStack {
+                Circle()
+                    .trim(from: 0, to: span)
+                    .stroke(
+                        MobileTheme.Colors.border.opacity(0.35),
+                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                    )
+                Circle()
+                    .trim(from: 0, to: max(0.0001, span * clamped))
+                    .stroke(
+                        AngularGradient(
+                            colors: [accent, accent.opacity(0.85), MobileTheme.amber, accent],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                    )
+                    .shadow(color: accent.opacity(0.4), radius: 6)
+                    .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.85), value: clamped)
+            }
+            .rotationEffect(.degrees(135))
+
+            VStack(spacing: 0) {
+                Text("\(percent)%")
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .contentTransition(.numericText())
+                Text("left")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
         }
         .accessibilityHidden(true)
     }

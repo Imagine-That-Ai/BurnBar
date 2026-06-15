@@ -653,35 +653,58 @@ private struct FusionVsNormalChartCard: View {
         )
     }
 
+    /// The Fusion bar carries the warm Elder Wand ember gradient; Normal stays a
+    /// quiet neutral so the eye lands on fusion.
+    private static let fusionBarGradient = LinearGradient(
+        colors: [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "F45B69")],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+    private static let normalBarGradient = LinearGradient(
+        colors: [MobileTheme.hermesMercury.opacity(0.8), MobileTheme.hermesMercury.opacity(0.45)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
     @ViewBuilder
     private var comparisonChart: some View {
         if #available(iOS 16, *) {
             Chart(bars) { bar in
                 BarMark(
                     x: .value("Category", bar.category),
-                    y: .value("Cost (USD)", bar.cost)
+                    y: .value("Cost (USD)", bar.cost),
+                    width: .fixed(48)
                 )
                 .foregroundStyle(by: .value("Category", bar.category))
-                .annotation(position: .top) {
+                .annotation(position: .top, spacing: 4) {
                     Text("$\(String(format: "%.2f", bar.cost))")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(MobileTheme.textSecondary)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(bar.category == "Fusion" ? Color(hex: "FF8A3D") : MobileTheme.textSecondary)
                 }
-                .cornerRadius(6)
+                .cornerRadius(8)
                 .accessibilityLabel("\(bar.category) spend")
                 .accessibilityValue("$\(String(format: "%.2f", bar.cost))")
             }
-            .chartForegroundStyleScale([
-                "Fusion": MobileTheme.whimsy,
-                "Normal": MobileTheme.hermesMercury
-            ])
+            .chartForegroundStyleScale(
+                domain: ["Fusion", "Normal"],
+                range: [AnyShapeStyle(Self.fusionBarGradient), AnyShapeStyle(Self.normalBarGradient)]
+            )
             .chartLegend(.hidden)
+            .chartXAxis {
+                AxisMarks { _ in
+                    AxisValueLabel()
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                }
+            }
             .chartYAxis {
                 AxisMarks { value in
-                    AxisGridLine()
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(MobileTheme.borderSubtle.opacity(0.6))
                     AxisValueLabel {
                         if let cost = value.as(Double.self) {
                             Text("$\(Int(cost))")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(MobileTheme.textMuted)
                         }
                     }
                 }
@@ -753,6 +776,7 @@ private struct FusionContributionSection: View {
     }
 
     private var maxCost: Double { max(models.map(\.cost).max() ?? 0, 0.0001) }
+    private var totalCost: Double { max(models.map(\.cost).reduce(0, +), 0.0001) }
 
     var body: some View {
         if !models.isEmpty {
@@ -763,7 +787,7 @@ private struct FusionContributionSection: View {
                     .tracking(1.5)
                     .foregroundStyle(MobileTheme.textMuted)
 
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     ForEach(models) { model in
                         contributionRow(model)
                     }
@@ -784,33 +808,46 @@ private struct FusionContributionSection: View {
     @ViewBuilder
     private func contributionRow(_ model: ModelSpend) -> some View {
         let color = MobileTheme.Colors.colorForModel(model.modelID)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        let percent = Int((model.cost / totalCost * 100).rounded())
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
                 Circle()
                     .fill(color)
                     .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
                 Text(model.modelID)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(MobileTheme.textPrimary)
                     .lineLimit(1)
-                Spacer()
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                Text("\(percent)%")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(MobileTheme.textMuted)
                 Text("$\(String(format: "%.2f", model.cost))")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundStyle(MobileTheme.textSecondary)
+                    .foregroundStyle(MobileTheme.textPrimary)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(MobileTheme.borderSubtle.opacity(0.4))
                     Capsule()
-                        .fill(color)
-                        .frame(width: geo.size.width * CGFloat(model.cost / maxCost))
+                        .fill(
+                            LinearGradient(
+                                colors: [color, color.opacity(0.6)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(6, geo.size.width * CGFloat(model.cost / maxCost)))
+                        .shadow(color: color.opacity(0.35), radius: 3, y: 1)
                 }
             }
-            .frame(height: 6)
+            .frame(height: 7)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(model.modelID)
-        .accessibilityValue("$\(String(format: "%.2f", model.cost)) of fusion spend")
+        .accessibilityValue("$\(String(format: "%.2f", model.cost)), \(percent) percent of fusion spend")
     }
 }
 

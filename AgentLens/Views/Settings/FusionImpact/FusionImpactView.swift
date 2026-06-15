@@ -328,31 +328,52 @@ private struct FusionComparisonChartCard: View {
         }
     }
 
+    /// The Fusion bar carries the warm Elder Wand ember gradient; Normal stays a
+    /// quiet neutral so the eye lands on fusion.
+    private static let fusionBarGradient = LinearGradient(
+        colors: [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "F45B69")],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+    private static let normalBarGradient = LinearGradient(
+        colors: [DesignSystem.Colors.textSecondary.opacity(0.7), DesignSystem.Colors.textSecondary.opacity(0.4)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
     @available(macOS 13, *)
     private var chart: some View {
         Chart(bars) { bar in
             BarMark(
                 x: .value("Category", bar.category),
-                y: .value("Cost", bar.cost)
+                y: .value("Cost", bar.cost),
+                width: .fixed(46)
             )
             .foregroundStyle(by: .value("Category", bar.category))
-            .cornerRadius(6)
-            .annotation(position: .top) {
+            .cornerRadius(8)
+            .annotation(position: .top, spacing: 4) {
                 Text(CurrencyFormatting.usd(bar.cost))
-                    .font(DesignSystem.Typography.monoTiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .font(DesignSystem.Typography.monoSmall)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(bar.category == "Fusion" ? Color(hex: "FF8A3D") : DesignSystem.Colors.textSecondary)
             }
             .accessibilityLabel("\(bar.category) spend")
             .accessibilityValue(CurrencyFormatting.usd(bar.cost))
         }
-        .chartForegroundStyleScale([
-            "Fusion": DesignSystem.Colors.whimsy,
-            "Normal": DesignSystem.Colors.textSecondary
-        ])
+        .chartForegroundStyleScale(
+            domain: ["Fusion", "Normal"],
+            range: [AnyShapeStyle(Self.fusionBarGradient), AnyShapeStyle(Self.normalBarGradient)]
+        )
+        .chartXAxis {
+            AxisMarks { _ in
+                AxisValueLabel()
+                    .font(DesignSystem.Typography.caption)
+            }
+        }
         .chartYAxis {
             AxisMarks(position: .leading) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(DesignSystem.Colors.border)
+                    .foregroundStyle(DesignSystem.Colors.border.opacity(0.6))
                 AxisValueLabel {
                     if let cost = value.as(Double.self) {
                         Text(CurrencyFormatting.usdCompact(cost))
@@ -538,37 +559,52 @@ private struct FusionModelRow: View {
     let fraction: Double
 
     private var color: Color { DesignSystem.Colors.colorForModel(modelID) }
+    private var percent: Int { Int((min(max(fraction, 0), 1) * 100).rounded()) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Circle()
                     .fill(color)
                     .frame(width: 9, height: 9)
+                    .accessibilityHidden(true)
                 Text(TokenExtractionUtility.displayNameForModel(modelID))
                     .font(DesignSystem.Typography.caption)
+                    .fontWeight(.medium)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: DesignSystem.Spacing.sm)
+                Text("\(percent)%")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .monospacedDigit()
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
                 Text(CurrencyFormatting.usd(cost))
                     .font(DesignSystem.Typography.monoSmall)
+                    .monospacedDigit()
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
             }
             GeometryReader { geo in
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(color.opacity(0.85))
-                    .frame(width: max(2, geo.size.width * CGFloat(min(max(fraction, 0), 1))))
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceMuted)
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [color, color.opacity(0.65)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(6, geo.size.width * CGFloat(min(max(fraction, 0), 1))))
+                        .shadow(color: color.opacity(0.35), radius: 3, y: 1)
+                }
             }
-            .frame(height: 6)
-            .background(
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(DesignSystem.Colors.border.opacity(0.4))
-            )
+            .frame(height: 7)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(TokenExtractionUtility.displayNameForModel(modelID))
-        .accessibilityValue("\(CurrencyFormatting.usd(cost)), \(Int((fraction * 100).rounded())) percent of fusion spend")
+        .accessibilityValue("\(CurrencyFormatting.usd(cost)), \(percent) percent of fusion spend")
     }
 }
 
@@ -624,21 +660,31 @@ private struct FusionQuotaMeterCard: View {
         }
     }
 
+    /// The Elder Wand ember gradient for the consumed slice — the same foil the
+    /// receipt's gauge uses, so the two surfaces read as one feature.
+    private static let usedGradient = LinearGradient(
+        colors: [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "F45B69")],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
     @available(macOS 13, *)
     private var sectorRing: some View {
         Chart {
             SectorMark(
                 angle: .value("Used", usedFraction),
-                innerRadius: .ratio(0.68),
+                innerRadius: .ratio(0.70),
                 angularInset: 1.5
             )
-            .foregroundStyle(DesignSystem.Colors.whimsy)
+            .cornerRadius(3)
+            .foregroundStyle(Self.usedGradient)
             SectorMark(
                 angle: .value("Remaining", max(0, 1 - usedFraction)),
-                innerRadius: .ratio(0.68),
+                innerRadius: .ratio(0.70),
                 angularInset: 1.5
             )
-            .foregroundStyle(DesignSystem.Colors.border.opacity(0.5))
+            .cornerRadius(3)
+            .foregroundStyle(DesignSystem.Colors.surfaceMuted)
         }
         .chartLegend(.hidden)
         .frame(width: ringSize, height: ringSize)
@@ -649,10 +695,10 @@ private struct FusionQuotaMeterCard: View {
     private var strokeRing: some View {
         ZStack {
             Circle()
-                .stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 10)
+                .stroke(DesignSystem.Colors.surfaceMuted, lineWidth: 10)
             Circle()
                 .trim(from: 0, to: CGFloat(usedFraction))
-                .stroke(DesignSystem.Colors.whimsy, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                .stroke(Self.usedGradient, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             ringCenterLabel
         }
@@ -661,9 +707,15 @@ private struct FusionQuotaMeterCard: View {
     }
 
     private var ringCenterLabel: some View {
-        Text(bucket.remainingText)
-            .font(DesignSystem.Typography.monoSmall)
-            .foregroundStyle(DesignSystem.Colors.textPrimary)
+        VStack(spacing: 0) {
+            Text(bucket.remainingText)
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text("left")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
     }
 }
 
