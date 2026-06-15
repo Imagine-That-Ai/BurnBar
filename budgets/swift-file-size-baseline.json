@@ -35,16 +35,16 @@
       "lines": 2801
     },
     {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
-      "lines": 2606
-    },
-    {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
       "lines": 2576
     },
     {
       "path": "AgentLens/Views/Chat/ChatSessionController.swift",
       "lines": 2545
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
+      "lines": 2490
     },
     {
       "path": "AgentLens/Views/Settings/ConnectionsSettingsView.swift",
