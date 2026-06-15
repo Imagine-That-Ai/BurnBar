@@ -1,50 +1,5 @@
 {
   "target": 2000,
-  "total": 11,
-  "files": [
-    {
-      "path": "AgentLens/Views/Settings/ProviderPlanWizardView.swift",
-      "lines": 3766
-    },
-    {
-      "path": "AgentLens/Views/Dashboard/ProjectsView.swift",
-      "lines": 3383
-    },
-    {
-      "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
-      "lines": 3087
-    },
-    {
-      "path": "AgentLens/Views/Chat/ChatSessionController.swift",
-      "lines": 2545
-    },
-    {
-      "path": "AgentLens/Views/Settings/ConnectionsSettingsView.swift",
-      "lines": 2419
-    },
-    {
-      "path": "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift",
-      "lines": 2407
-    },
-    {
-      "path": "AgentLens/Views/Settings/CloudStoreSettingsView.swift",
-      "lines": 2352
-    },
-    {
-      "path": "AgentLens/Services/UsageAggregatorParsers.swift",
-      "lines": 2256
-    },
-    {
-      "path": "AgentLens/Services/Media/MercuryRouter.swift",
-      "lines": 2189
-    },
-    {
-      "path": "AgentLens/Views/Dashboard/DatabaseWorkspaceView.swift",
-      "lines": 2119
-    },
-    {
-      "path": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
-      "lines": 2014
-    }
-  ]
+  "total": 0,
+  "files": []
 }
