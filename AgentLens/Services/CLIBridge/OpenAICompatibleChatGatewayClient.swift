@@ -910,7 +910,20 @@ final class AgentToolBroker: Sendable {
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
             process.currentDirectoryURL = workingDirectory
-            process.environment = environment
+            if let environment = environment {
+                process.environment = environment
+            } else {
+                // M-040: do NOT inherit the full ambient parent environment. Both
+                // broker shells routed here — the restricted sandbox-exec shell
+                // (`shell_run`) and the unrestricted YOLO `/bin/zsh -f -lc`
+                // (`shell_run_unrestricted`) — previously left `process.environment`
+                // unset, so Foundation inherited every app/daemon-held secret in the
+                // parent env. We pin an allowlisted baseline (PATH/HOME/USER/SHELL/
+                // TERM/TMPDIR/LANG/LC_* + the provider/API-key env the agent needs)
+                // so daemon/gateway tokens and arbitrary ambient vars never reach the
+                // shell.
+                process.environment = AgentChildProcessEnvironment.allowlistedBaseline()
+            }
             let stdout = Pipe()
             let stderr = Pipe()
             process.standardOutput = stdout
