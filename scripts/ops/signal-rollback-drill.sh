@@ -65,7 +65,7 @@ assert_code "RC signal_envelope_v4_enabled read in runtime code (B3)" \
   "signal_envelope_v4_enabled" functions/src/signalEnvelopeRollout.ts
 # The compile-time fail-closed default that remains the baseline production lever:
 assert_code "empty HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (baseline lever)" \
-  "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS *= *new Set<number>\\(\\)" functions/src/hermesGateway.ts
+  "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS *= *new Set<number>\\(\\)" functions/src/hermesGatewayEnvelope.ts
 
 log "Step 2/5 — disable per-domain at-rest Signal (registry sealingScheme stays cloudvault)"
 if [[ "$LIVE" == "true" ]]; then
