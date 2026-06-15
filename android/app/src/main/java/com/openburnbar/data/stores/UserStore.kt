@@ -24,7 +24,6 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.OAuthProvider
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
-import com.openburnbar.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +32,7 @@ import kotlinx.coroutines.tasks.await
 
 // GoogleSignInStatusCodes.SIGN_IN_CANCELLED; user dismissal is not an app error.
 private const val GOOGLE_SIGN_IN_CANCELLED_STATUS_CODE = 12501
+private const val DEFAULT_WEB_CLIENT_ID_RESOURCE = "default_web_client_id"
 
 data class AppUser(
     val uid: String = "",
@@ -183,7 +183,18 @@ class UserStore : ViewModel() {
     }
 
     private fun googleServerClientId(context: Context): String? {
-        val clientId = context.getString(R.string.default_web_client_id).trim()
+        val resourceId =
+            context.resources.getIdentifier(
+                DEFAULT_WEB_CLIENT_ID_RESOURCE,
+                "string",
+                context.packageName,
+            )
+        val clientId =
+            if (resourceId == 0) {
+                ""
+            } else {
+                context.getString(resourceId).trim()
+            }
         return when {
             clientId.isBlank() ||
                 clientId.contains("YOUR_", ignoreCase = true) ||

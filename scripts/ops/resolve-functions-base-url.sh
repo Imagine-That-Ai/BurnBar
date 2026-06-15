@@ -16,12 +16,13 @@ lookup_uri() {
   python3 -c "
 import json, sys
 target = sys.argv[1].lower()
-data = json.loads(sys.argv[2] or '{}')
+payload = sys.stdin.read()
+data, _ = json.JSONDecoder().raw_decode(payload.strip() or '{}')
 for entry in data.get('result', []):
     if str(entry.get('id', '')).lower() == target:
         print(entry.get('uri') or '')
         break
-" "$fn_id" "$list_json"
+" "$fn_id" <<< "${list_json:-{}}"
 }
 
 uri_to_base() {

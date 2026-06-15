@@ -7,7 +7,9 @@
   },
   "main": "lib/index.js",
   "scripts": {
-    "prebuild": "../scripts/build-signal-envelope-contracts.sh && ../scripts/build-entitlements.sh",
+    "sync:local-packages": "../scripts/build-signal-envelope-contracts.sh && ../scripts/build-entitlements.sh && node scripts/sync-local-packages.mjs",
+    "postinstall": "npm run sync:local-packages",
+    "prebuild": "npm run sync:local-packages",
     "build": "tsc && node scripts/copy-certs.mjs",
     "build:watch": "tsc --watch",
     "test:guards": "npm run build && node scripts/test-guards.mjs",
@@ -65,8 +67,8 @@
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.0.0",
-    "@openburnbar/entitlements": "file:../packages/entitlements",
-    "@openburnbar/signal-envelope-contracts": "file:../packages/signal-envelope-contracts",
+    "@openburnbar/entitlements": "file:vendor/openburnbar/entitlements",
+    "@openburnbar/signal-envelope-contracts": "file:vendor/openburnbar/signal-envelope-contracts",
     "@sentry/core": "8.55.2",
     "@sentry/node": "8.55.2",
     "@simplewebauthn/server": "13.3.0",

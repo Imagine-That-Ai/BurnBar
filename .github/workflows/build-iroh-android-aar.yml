@@ -70,9 +70,23 @@ jobs:
             iroh-aar-${{ runner.os }}-
 
       - name: Install cargo-ndk
+        env:
+          # crates.io downloads on hosted runners occasionally fail with HTTP/2
+          # framing errors; sparse + retry keeps this setup step deterministic.
+          CARGO_HTTP_MULTIPLEXING: "false"
+          CARGO_NET_RETRY: "10"
         run: |
+          set -euo pipefail
           if ! command -v cargo-ndk >/dev/null 2>&1; then
-            cargo install cargo-ndk --locked --version "^3.5"
+            for attempt in 1 2 3; do
+              if cargo install cargo-ndk --locked --version "^3.5"; then
+                exit 0
+              fi
+              if [[ "${attempt}" == "3" ]]; then
+                exit 1
+              fi
+              sleep "$((attempt * 10))"
+            done
           fi
 
       - name: Export Android NDK ${{ env.ANDROID_NDK_VERSION }}
