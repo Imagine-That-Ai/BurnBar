@@ -33,6 +33,10 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+# shellcheck source=scripts/lib/openburnbar-app-test-classifier.sh
+source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
+
 cache_dir="$repo_root/.spm-cache-new"
 artifact_root="$repo_root/.derived-data"
 derived_data_root="${OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT:-${TMPDIR:-/tmp}/openburnbar-mobile-tests}"
@@ -418,7 +422,7 @@ fi
 
 "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
 
-hang_substrings=(
+openburnbar_app_test_hang_substrings+=(
     "test runner hung before establishing connection"
     "Test runner never began executing tests"
     "Test session timed out"
@@ -430,36 +434,6 @@ hang_substrings=(
     "Early unexpected exit, operation never finished bootstrapping"
     "operation never finished bootstrapping"
 )
-
-is_known_hang() {
-    local log_path="$1"
-    local pattern
-    for pattern in "${hang_substrings[@]}"; do
-        if grep -Fq "$pattern" "$log_path"; then
-            return 0
-        fi
-    done
-    return 1
-}
-
-is_xcode_false_negative_pass() {
-    local log_path="$1"
-
-    grep -Fq "Test Suite 'Selected tests' passed" "$log_path" || return 1
-    grep -Eq "Executed [1-9][0-9]* tests, with ([0-9]+ tests skipped and )?0 failures" "$log_path" || return 1
-
-    if grep -Eq "Test Case '-\\[[^]]+\\]' failed" "$log_path"; then
-        return 1
-    fi
-    if grep -A40 "^Failing tests:" "$log_path" | tail -n +2 | grep -qE '^[[:space:]]*[A-Za-z0-9_]+Tests\\.'; then
-        return 1
-    fi
-    if awk "/Test Suite 'Selected tests'/{found=1} found && /Executed [0-9]+ tests/ && /with .*[^0] failures/" "$log_path" | grep -q .; then
-        return 1
-    fi
-
-    return 0
-}
 
 is_zero_test_pass() {
     local log_path="$1"

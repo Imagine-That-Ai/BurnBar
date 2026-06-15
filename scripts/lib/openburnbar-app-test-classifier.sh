@@ -86,6 +86,27 @@ openburnbar_app_test_final_selected_summary_is_green() {
     ' "$log_path"
 }
 
+openburnbar_app_test_final_bundle_summary_is_green() {
+    local log_path="$1"
+
+    awk '
+        /Test Suite '\''[^'\'']+\.xctest'\'' passed/ {
+            waiting_for_summary = 1
+            green = 0
+            next
+        }
+        waiting_for_summary && /Executed [0-9]+ tests?/ {
+            if ($0 ~ /Executed [1-9][0-9]* tests?, with ([0-9]+ tests? skipped and )?0 failures/) {
+                green = 1
+            } else {
+                green = 0
+            }
+            waiting_for_summary = 0
+        }
+        END { exit green ? 0 : 1 }
+    ' "$log_path"
+}
+
 openburnbar_app_test_has_final_failing_tests_section() {
     local log_path="$1"
 
@@ -172,7 +193,10 @@ is_xcode_false_negative_pass() {
     fi
 
     if openburnbar_app_test_has_final_failing_tests_section "$log_path"; then
-        openburnbar_app_test_has_runner_restart "$log_path" || return 1
+        if openburnbar_app_test_has_runner_restart "$log_path"; then
+            return 0
+        fi
+        openburnbar_app_test_final_bundle_summary_is_green "$log_path" || return 1
         return 0
     fi
 

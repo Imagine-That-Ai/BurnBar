@@ -82,6 +82,23 @@ Failing tests:
 LOG
 )"
 
+final_green_bundle_with_stale_footer_log="$(write_fixture final-green-bundle-with-stale-footer <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-15 23:30:09.118.
+Test Suite 'OpenBurnBarMobileTests.xctest' passed at 2026-06-15 23:37:29.625.
+	 Executed 528 tests, with 3 tests skipped and 0 failures (0 unexpected) in 19.317 (23.614) seconds
+Test Suite 'Selected tests' passed at 2026-06-15 23:37:29.630.
+	 Executed 528 tests, with 3 tests skipped and 0 failures (0 unexpected) in 19.317 (23.620) seconds
+Test session results, code coverage, and logs:
+	/var/folders/.../OpenBurnBarMobileTests-attempt-1.xcresult
+
+Failing tests:
+	HermesServiceTests.testExplicitSelectedModelWithIneligibleLiveRouteStopsBeforeRelayRequest()
+	MercuryPersonalizationTests.testWallpaperAccentSamplerReturnsAccentForRedSquare()
+
+** TEST FAILED **
+LOG
+)"
+
 restarted_final_green_with_stale_footer_log="$(write_fixture restarted-final-green-with-stale-footer <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-14 17:50:09.282.
 Test Case '-[OpenBurnBarTests.CLIBridgeTests test_agentToolBroker_shellRunCannotWriteOutsideWorkspace]' failed (1.011 seconds).
@@ -155,6 +172,7 @@ assert_true "green XCTest summary plus trailing Xcode failure is accepted" is_xc
 assert_false "concrete XCTest failure is not accepted as a false-negative pass" is_xcode_false_negative_pass "$concrete_failure_log"
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
 assert_false "final failing-tests section is not hidden by a stale green summary" is_xcode_false_negative_pass "$final_failing_tests_log"
+assert_true "final green bundle and Selected tests summaries override a stale failing-tests footer" is_xcode_false_negative_pass "$final_green_bundle_with_stale_footer_log"
 assert_true "runner-restart stale failing footer is accepted when final Selected tests run is green" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
 assert_false "runner-restart final-run assertion failure is not hidden" is_xcode_false_negative_pass "$restarted_final_run_failure_log"
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
