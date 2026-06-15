@@ -10,48 +10,48 @@ import OpenBurnBarCore
 @Observable
 @MainActor
 final class HermesGatewaySettingsStore {
-    private let repository: any HermesGatewayRepository
-    @ObservationIgnored private let defaults: UserDefaults
-    private static let selectedClientDefaultsKey = "hermesGateway.selectedClientId"
+    let repository: any HermesGatewayRepository
+    @ObservationIgnored let defaults: UserDefaults
+    static let selectedClientDefaultsKey = "hermesGateway.selectedClientId"
 
-    private(set) var clients: [HermesGatewayClientRecord] = []
-    private(set) var selectedClientId: String?
-    private(set) var isLoading = false
-    private(set) var isApproving = false
-    private(set) var isSendingTest = false
-    private(set) var isSendingGatewayMessage = false
-    private(set) var isSwitchingModel = false
-    private(set) var revokingClientId: String?
-    private(set) var isPruningStaleClients = false
-    private(set) var noticeText: String?
-    private(set) var noticeStyle: HermesGatewayNoticeStyle = .info
-    private(set) var pendingTestEvent: HermesGatewayQueuedEvent?
-    private(set) var pendingModelSwitchEvent: HermesGatewayQueuedEvent?
-    private(set) var latestReply: HermesGatewayMessageRecord?
-    private(set) var approvals: [HermesGatewayApprovalRecord] = []
+    var clients: [HermesGatewayClientRecord] = []
+    var selectedClientId: String?
+    var isLoading = false
+    var isApproving = false
+    var isSendingTest = false
+    var isSendingGatewayMessage = false
+    var isSwitchingModel = false
+    var revokingClientId: String?
+    var isPruningStaleClients = false
+    var noticeText: String?
+    var noticeStyle: HermesGatewayNoticeStyle = .info
+    var pendingTestEvent: HermesGatewayQueuedEvent?
+    var pendingModelSwitchEvent: HermesGatewayQueuedEvent?
+    var latestReply: HermesGatewayMessageRecord?
+    var approvals: [HermesGatewayApprovalRecord] = []
     /// MP-6: end-to-end-encrypted approval detail text, keyed by the sealed
     /// payload's `actionId`, so the phone can bind the decrypted detail to the
     /// correct oversight gate (informed consent). Populated from opened gateway
     /// messages whose `kind == "approval"`; the /approvals control-plane record
     /// itself never carries this text.
-    private(set) var sealedApprovalDetails: [String: String] = [:]
-    private(set) var respondingApprovalId: String?
-    private(set) var settingOversightClientId: String?
-    private(set) var statusNow = Date()
+    var sealedApprovalDetails: [String: String] = [:]
+    var respondingApprovalId: String?
+    var settingOversightClientId: String?
+    var statusNow = Date()
 
-    @ObservationIgnored private var clientListener: ListenerRegistration?
-    @ObservationIgnored private var messageListener: ListenerRegistration?
-    @ObservationIgnored private var approvalListener: ListenerRegistration?
-    @ObservationIgnored private var statusClockTask: Task<Void, Never>?
-    @ObservationIgnored private var listenedUID: String?
-    @ObservationIgnored private let agentKeyPinStore = HermesGatewayAgentKeyPinStore()
-    @ObservationIgnored private var lastNotifiedMessageID: String?
-    @ObservationIgnored private var pendingEventSentAt: Date?
-    @ObservationIgnored private var messageListenerStartedAt: Date?
-    @ObservationIgnored private let gatewayThreadID = HermesGatewayMessageResolver.defaultThreadID
-    @ObservationIgnored private var openedGatewayAttachments: [String: HermesAttachment] = [:]
-    @ObservationIgnored private var failedGatewayAttachmentIDs = Set<String>()
-    private static let maxGatewayAttachmentDownloadBytes =
+    @ObservationIgnored var clientListener: ListenerRegistration?
+    @ObservationIgnored var messageListener: ListenerRegistration?
+    @ObservationIgnored var approvalListener: ListenerRegistration?
+    @ObservationIgnored var statusClockTask: Task<Void, Never>?
+    @ObservationIgnored var listenedUID: String?
+    @ObservationIgnored let agentKeyPinStore = HermesGatewayAgentKeyPinStore()
+    @ObservationIgnored var lastNotifiedMessageID: String?
+    @ObservationIgnored var pendingEventSentAt: Date?
+    @ObservationIgnored var messageListenerStartedAt: Date?
+    @ObservationIgnored let gatewayThreadID = HermesGatewayMessageResolver.defaultThreadID
+    @ObservationIgnored var openedGatewayAttachments: [String: HermesAttachment] = [:]
+    @ObservationIgnored var failedGatewayAttachmentIDs = Set<String>()
+    static let maxGatewayAttachmentDownloadBytes =
         Int64(HermesAttachmentLimits.maxGenericBytes * 2 + 4096)
 
     init(repository: any HermesGatewayRepository = FunctionsRepository.shared, defaults: UserDefaults = .standard) {
@@ -148,7 +148,7 @@ final class HermesGatewaySettingsStore {
             ?? displayClients.compactMap { nonEmpty($0.runtimeModelId) }.first
     }
 
-    private static func deduplicateGatewayClients(
+    static func deduplicateGatewayClients(
         _ clients: [HermesGatewayClientRecord],
         relativeTo now: Date
     ) -> [HermesGatewayClientRecord] {
@@ -168,7 +168,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private static func gatewayClientDuplicateKey(_ client: HermesGatewayClientRecord) -> String {
+    static func gatewayClientDuplicateKey(_ client: HermesGatewayClientRecord) -> String {
         // The gateway can accumulate multiple active grants when the same
         // device is re-paired during local testing. Prefer the phone's relay
         // key when it exists so two distinct devices with the same display name
@@ -188,14 +188,14 @@ final class HermesGatewaySettingsStore {
         return "name|\(displayName)|\(homeDestination)"
     }
 
-    private static func gatewayClientDisplayNameKey(_ value: String?) -> String {
+    static func gatewayClientDisplayNameKey(_ value: String?) -> String {
         guard let value = normalizedNonEmpty(value, lowercase: true) else {
             return "unknown-device"
         }
         return value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    private static func gatewayClientDestinationKey(_ value: String?) -> String {
+    static func gatewayClientDestinationKey(_ value: String?) -> String {
         let destination = normalizedNonEmpty(value, lowercase: true) ?? "burnbar:home"
         switch destination {
         case "home", "burnbar/home", "burnbar:home":
@@ -205,7 +205,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private static func shouldPreferGatewayClient(
+    static func shouldPreferGatewayClient(
         _ lhs: HermesGatewayClientRecord,
         over rhs: HermesGatewayClientRecord,
         relativeTo now: Date
@@ -222,14 +222,14 @@ final class HermesGatewaySettingsStore {
         return lhs.id > rhs.id
     }
 
-    private static func gatewayClientSortDate(_ client: HermesGatewayClientRecord) -> Date {
+    static func gatewayClientSortDate(_ client: HermesGatewayClientRecord) -> Date {
         client.lastSeenDate
             ?? gatewayDate(from: client.updatedAt)
             ?? gatewayDate(from: client.createdAt)
             ?? .distantPast
     }
 
-    private static func gatewayDate(from raw: String?) -> Date? {
+    static func gatewayDate(from raw: String?) -> Date? {
         guard let raw = normalizedNonEmpty(raw, lowercase: false) else { return nil }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -237,25 +237,25 @@ final class HermesGatewaySettingsStore {
         return ISO8601DateFormatter().date(from: raw)
     }
 
-    private static func normalizedNonEmpty(_ value: String?, lowercase: Bool) -> String? {
+    static func normalizedNonEmpty(_ value: String?, lowercase: Bool) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
             return nil
         }
         return lowercase ? trimmed.lowercased() : trimmed
     }
 
-    private func nonEmpty(_ value: String?) -> String? {
+    func nonEmpty(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
             return nil
         }
         return trimmed
     }
 
-    private static func gatewayE2EERequiredMessage(for client: HermesGatewayClientRecord) -> String {
+    static func gatewayE2EERequiredMessage(for client: HermesGatewayClientRecord) -> String {
         "Update OpenBurnBar on \(client.displayName), then reconnect Hermes so private messages can be read on both sides."
     }
 
-    private static func gatewayRelayKeyChangedMessage(for client: HermesGatewayClientRecord) -> String {
+    static func gatewayRelayKeyChangedMessage(for client: HermesGatewayClientRecord) -> String {
         "\(client.displayName)'s connection looks different from when you set it up. Nothing was sent, to keep things safe. Reconnect Hermes on \(client.displayName) to restore private replies."
     }
 
@@ -279,7 +279,7 @@ final class HermesGatewaySettingsStore {
     /// Clear the TOFU pin for a client so the next observed agent key is trusted
     /// afresh. Used on deliberate re-pair / revoke so re-pairing re-establishes
     /// trust instead of tripping the mismatch guard forever.
-    private func clearAgentKeyPin(clientId: String) {
+    func clearAgentKeyPin(clientId: String) {
         guard let uid = listenedUID, !uid.isEmpty else { return }
         agentKeyPinStore.clearPin(uid: uid, clientId: clientId)
     }
@@ -313,7 +313,7 @@ final class HermesGatewaySettingsStore {
         )
     }
 
-    private func ratchetSafetyCodeKeys(for client: HermesGatewayClientRecord) -> [String]? {
+    func ratchetSafetyCodeKeys(for client: HermesGatewayClientRecord) -> [String]? {
         guard client.canRatchetToAgent else { return [] }
         guard
             let agentRatchetIdentity = nonEmpty(client.agentRatchetIdentityPublicKey),
@@ -784,7 +784,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func handleClientsSnapshot(snapshot: QuerySnapshot?, error: Error?) {
+    func handleClientsSnapshot(snapshot: QuerySnapshot?, error: Error?) {
         if let error {
             setNotice("Could not watch Hermes gateway clients: \(error.localizedDescription)", style: .error)
             return
@@ -797,7 +797,7 @@ final class HermesGatewaySettingsStore {
         repairSelectedClientIfNeeded()
     }
 
-    private func handleMessagesSnapshot(snapshot: QuerySnapshot?, error: Error?) {
+    func handleMessagesSnapshot(snapshot: QuerySnapshot?, error: Error?) {
         if let error {
             setNotice("Could not watch Hermes replies: \(error.localizedDescription)", style: .error)
             return
@@ -880,7 +880,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func hydrateGatewayAttachments(for reply: HermesGatewayMessageRecord) async -> HermesGatewayMessageRecord {
+    func hydrateGatewayAttachments(for reply: HermesGatewayMessageRecord) async -> HermesGatewayMessageRecord {
         guard !reply.attachmentIds.isEmpty,
               let uid = listenedUID, !uid.isEmpty
         else { return reply }
@@ -911,7 +911,7 @@ final class HermesGatewaySettingsStore {
         return reply.withAttachmentHydration(opened: opened, failedAttachmentIds: failed)
     }
 
-    private func openGatewayAttachment(attachmentId: String, uid: String, clientId: String) async -> HermesAttachment? {
+    func openGatewayAttachment(attachmentId: String, uid: String, clientId: String) async -> HermesAttachment? {
         do {
             guard let data = try await fetchGatewayAttachmentDocument(uid: uid, attachmentId: attachmentId),
                   let record = HermesGatewayAttachmentRecord(documentID: attachmentId, data: data),
@@ -936,7 +936,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func fetchGatewayAttachmentDocument(uid: String, attachmentId: String) async throws -> [String: Any]? {
+    func fetchGatewayAttachmentDocument(uid: String, attachmentId: String) async throws -> [String: Any]? {
         try await withCheckedThrowingContinuation { continuation in
             Firestore.firestore()
                 .collection("users").document(uid)
@@ -951,7 +951,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func downloadGatewayAttachmentBody(record: HermesGatewayAttachmentRecord) async throws -> Data {
+    func downloadGatewayAttachmentBody(record: HermesGatewayAttachmentRecord) async throws -> Data {
         let url = try await repository.hermesGatewayAttachmentDownloadURL(
             attachmentId: record.id,
             clientId: record.clientId,
@@ -966,7 +966,7 @@ final class HermesGatewaySettingsStore {
         return data
     }
 
-    private func handleApprovalsSnapshot(snapshot: QuerySnapshot?, error: Error?) {
+    func handleApprovalsSnapshot(snapshot: QuerySnapshot?, error: Error?) {
         if let error {
             setNotice("Could not watch Hermes approvals: \(error.localizedDescription)", style: .error)
             return
@@ -977,7 +977,7 @@ final class HermesGatewaySettingsStore {
         statusNow = Date()
     }
 
-    private func presentReplyNotification(_ reply: HermesGatewayMessageRecord) {
+    func presentReplyNotification(_ reply: HermesGatewayMessageRecord) {
         guard lastNotifiedMessageID != reply.id else { return }
         lastNotifiedMessageID = reply.id
         let modelID = gatewayReplyModelID()
@@ -993,7 +993,7 @@ final class HermesGatewaySettingsStore {
         )
     }
 
-    private func recordReplyInHermesThread(_ reply: HermesGatewayMessageRecord) {
+    func recordReplyInHermesThread(_ reply: HermesGatewayMessageRecord) {
         let modelID = gatewayReplyModelID()
         HermesService.shared.recordBurnBarGatewayReply(
             reply,
@@ -1003,12 +1003,12 @@ final class HermesGatewaySettingsStore {
         )
     }
 
-    private func gatewayReplyModelID() -> String {
+    func gatewayReplyModelID() -> String {
         nonEmpty(runtimeModelId)
             ?? "hermes"
     }
 
-    private func gatewayReplyModelProvider(modelID: String) -> AgentProvider? {
+    func gatewayReplyModelProvider(modelID: String) -> AgentProvider? {
         hermesGatewayReplyModelProvider(
             providerID: nonEmpty(selectedClient?.runtimeProviderId),
             modelID: modelID
@@ -1028,17 +1028,17 @@ final class HermesGatewaySettingsStore {
         noticeStyle = style
     }
 
-    private func upsert(_ client: HermesGatewayClientRecord) {
+    func upsert(_ client: HermesGatewayClientRecord) {
         clients.removeAll { $0.id == client.id }
         clients.insert(client, at: 0)
         repairSelectedClientIfNeeded()
     }
 
-    private func isConsumedPairingCodeError(_ error: Error) -> Bool {
+    func isConsumedPairingCodeError(_ error: Error) -> Bool {
         error.localizedDescription.localizedCaseInsensitiveContains("pairing code was not found")
     }
 
-    private func refreshClientsAfterPairingFailure() async {
+    func refreshClientsAfterPairingFailure() async {
         do {
             clients = try await repository.listHermesGatewayClients()
             statusNow = Date()
@@ -1048,7 +1048,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func repairSelectedClientIfNeeded() {
+    func repairSelectedClientIfNeeded() {
         let visible = displayClients
         guard !visible.isEmpty else {
             persistSelectedClientID(nil)
@@ -1061,7 +1061,7 @@ final class HermesGatewaySettingsStore {
         persistSelectedClientID(onlineClients.first?.id ?? visible.first?.id)
     }
 
-    private func syncSelectedClientIDFromDefaults() {
+    func syncSelectedClientIDFromDefaults() {
         let stored = defaults.string(forKey: Self.selectedClientDefaultsKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = (stored?.isEmpty == false) ? stored : nil
@@ -1071,7 +1071,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func persistSelectedClientID(_ clientId: String?) {
+    func persistSelectedClientID(_ clientId: String?) {
         let previous = selectedClientId
         let trimmed = clientId?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let trimmed, !trimmed.isEmpty {
@@ -1086,7 +1086,7 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func clearGatewayConversationStateForTargetChange() {
+    func clearGatewayConversationStateForTargetChange() {
         pendingTestEvent = nil
         pendingModelSwitchEvent = nil
         pendingEventSentAt = nil
@@ -1094,7 +1094,7 @@ final class HermesGatewaySettingsStore {
         lastNotifiedMessageID = nil
     }
 
-    private func startStatusClockIfNeeded() {
+    func startStatusClockIfNeeded() {
         guard statusClockTask == nil else { return }
         statusNow = Date()
         statusClockTask = Task { @MainActor [weak self] in

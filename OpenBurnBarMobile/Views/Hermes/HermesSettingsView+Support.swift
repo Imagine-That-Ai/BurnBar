@@ -39,7 +39,7 @@ enum HermesGatewayPairingCodeFormatter {
         return displayString(for: compact)
     }
 
-    private static func compactCode(_ raw: String) -> String {
+    static func compactCode(_ raw: String) -> String {
         String(raw.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(8))
     }
 }
@@ -90,14 +90,14 @@ struct HermesGatewayConnectionSuccessSplash: View {
     let onDone: () -> Void
     let onSendTest: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
 
-    @State private var cardIn = false
-    @State private var avatarsIn = false
-    @State private var connected = false
-    @State private var detailsIn = false
-    @State private var haloPulse = false
-    @State private var burst = false
+    @State var cardIn = false
+    @State var avatarsIn = false
+    @State var connected = false
+    @State var detailsIn = false
+    @State var haloPulse = false
+    @State var burst = false
 
     var body: some View {
         ZStack {
@@ -202,7 +202,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
         .accessibilityLabel("Hermes is connected to BurnBar Cloud")
     }
 
-    private var cardBackground: some View {
+    var cardBackground: some View {
         RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
             .fill(MobileTheme.Colors.surface.opacity(0.82))
             .overlay(
@@ -225,7 +225,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
 
     // MARK: - Handshake
 
-    private var logoHandshake: some View {
+    var logoHandshake: some View {
         HStack(spacing: 0) {
             avatar(assetName: "HermesLogo", label: "Hermes", color: MobileTheme.hermesAureate, fillsCircle: true)
                 .offset(x: 10)
@@ -242,7 +242,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
         .accessibilityLabel("Hermes connected to BurnBar")
     }
 
-    private var connectorColumn: some View {
+    var connectorColumn: some View {
         VStack(spacing: MobileTheme.Spacing.sm) {
             ZStack {
                 Capsule()
@@ -274,7 +274,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
         .accessibilityHidden(true)
     }
 
-    private func burstRing(delay: Double) -> some View {
+    func burstRing(delay: Double) -> some View {
         Circle()
             .stroke(MobileTheme.success.opacity(0.55), lineWidth: 2.5)
             .frame(width: 40, height: 40)
@@ -283,7 +283,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
             .animation(.easeOut(duration: 0.75).delay(delay), value: burst)
     }
 
-    private func avatar(assetName: String, label: String, color: Color, fillsCircle: Bool) -> some View {
+    func avatar(assetName: String, label: String, color: Color, fillsCircle: Bool) -> some View {
         let size: CGFloat = 104
         return VStack(spacing: MobileTheme.Spacing.sm) {
             ZStack {
@@ -324,7 +324,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
     }
 
     @ViewBuilder
-    private func logoArtwork(_ name: String, fillsCircle: Bool, size: CGFloat) -> some View {
+    func logoArtwork(_ name: String, fillsCircle: Bool, size: CGFloat) -> some View {
         if fillsCircle {
             // Portrait-style logo: fill the circle and crop the asset's baked
             // square frame so it reads as an elegant avatar, not a boxed image.
@@ -344,7 +344,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
         }
     }
 
-    private func connectionPill(icon: String, label: String, value: String) -> some View {
+    func connectionPill(icon: String, label: String, value: String) -> some View {
         HStack(spacing: MobileTheme.Spacing.sm) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .bold))
@@ -373,7 +373,7 @@ struct HermesGatewayConnectionSuccessSplash: View {
 
     // MARK: - Intro choreography
 
-    private func runIntro() {
+    func runIntro() {
         Haptics.light()
         withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) {
             cardIn = true

@@ -19,49 +19,49 @@ struct HermesSettingsView: View {
 
     let authStore: AuthStore
 
-    @State private var showAddDirectSheet = false
+    @State var showAddDirectSheet = false
 
-    @State private var showTokenEditor = false
+    @State var showTokenEditor = false
 
-    @State private var editingToken = ""
+    @State var editingToken = ""
 
-    @State private var newDirectURL = ""
+    @State var newDirectURL = ""
 
-    @State private var newDirectName = ""
+    @State var newDirectName = ""
 
-    @State private var showDeleteConfirm: HermesConnectionRecord?
+    @State var showDeleteConfirm: HermesConnectionRecord?
 
-    @State private var showModelDetail: HermesRuntimeModelOption?
+    @State var showModelDetail: HermesRuntimeModelOption?
 
-    @State private var showModelPicker = false
+    @State var showModelPicker = false
 
-    @State private var gatewayStore = HermesGatewaySettingsStore()
+    @State var gatewayStore = HermesGatewaySettingsStore()
 
-    @State private var gatewayPairingCode = ""
+    @State var gatewayPairingCode = ""
 
-    @State private var gatewayTestMessage = "Hello Hermes from OpenBurnBar iPhone."
+    @State var gatewayTestMessage = "Hello Hermes from OpenBurnBar iPhone."
 
-    @State private var showGatewaySignIn = false
+    @State var showGatewaySignIn = false
 
-    @State private var gatewaySuccessClient: HermesGatewayClientRecord?
+    @State var gatewaySuccessClient: HermesGatewayClientRecord?
 
-    @State private var gatewayPrivacyClient: HermesGatewayClientRecord?
+    @State var gatewayPrivacyClient: HermesGatewayClientRecord?
 
-    @State private var copiedGatewayCommand: HermesGatewayWizardCommand?
+    @State var copiedGatewayCommand: HermesGatewayWizardCommand?
 
-    @State private var showGatewayAdditionalPairing = false
+    @State var showGatewayAdditionalPairing = false
 
-    @State private var showPruneGatewayClientsConfirm = false
+    @State var showPruneGatewayClientsConfirm = false
 
-    @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
+    @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) var showMessageTPS = false
 
-    @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
+    @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) var usePretextRendering = true
 
-    @State private var showPretextPlayground = false
+    @State var showPretextPlayground = false
 
-    @Environment(\.cloudSubscriptionStore) private var cloudSubscriptionStore
+    @Environment(\.cloudSubscriptionStore) var cloudSubscriptionStore
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) var dismiss
 
     var body: some View {
         ScrollView {
