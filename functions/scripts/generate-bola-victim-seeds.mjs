@@ -10,6 +10,14 @@ const repoRoot = resolve(import.meta.dirname, "../..");
 const catalogPath = resolve(repoRoot, "functions/src/security/endpointAuthorizationCatalog.generated.ts");
 const outPath = resolve(repoRoot, "functions/src/__tests__/bola/bolaVictimSeeds.generated.ts");
 
+function parseGeneratedLiteral(source) {
+  try {
+    return JSON.parse(source);
+  } catch {
+    return Function(`"use strict"; return (${source});`)();
+  }
+}
+
 const catalogSource = readFileSync(catalogPath, "utf8");
 const catalogMatch = catalogSource.match(
   /export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u,
@@ -18,7 +26,7 @@ if (!catalogMatch) {
   console.error("Could not parse catalog");
   process.exit(1);
 }
-const catalog = JSON.parse(catalogMatch[1]);
+const catalog = parseGeneratedLiteral(catalogMatch[1]);
 
 /** Default probe values — must match bolaCrossUserData() in callableBolaHarness.ts */
 const PROBE = {
@@ -260,7 +268,7 @@ type BolaVictimSeed = {
 
 const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = `;
 
-const body = JSON.stringify(registry, null, 2);
+const body = JSON.stringify(registry);
 
 const footer = ` as Record<string, BolaVictimSeed[]>;
 

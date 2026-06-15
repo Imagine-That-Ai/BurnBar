@@ -25,6 +25,14 @@ function exportedNames() {
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
 }
 
+function parseGeneratedLiteral(source) {
+  try {
+    return JSON.parse(source);
+  } catch {
+    return Function(`"use strict"; return (${source});`)();
+  }
+}
+
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
   burnBarHermesGateway: {
@@ -222,7 +230,7 @@ if (!existingJson) {
   process.exit(1);
 }
 
-const prior = JSON.parse(existingJson[1]);
+const prior = parseGeneratedLiteral(existingJson[1]);
 const priorByName = Object.fromEntries(prior.map((row) => [row.exportedName, row]));
 
 const merged = names.map((exportedName) => {

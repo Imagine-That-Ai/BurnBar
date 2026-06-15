@@ -2,16 +2,9 @@
  * BOLA negative coverage — src/__tests__/bola/agentNotifications.bola.test.ts
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
+
 import { describe, it, vi } from "vitest";
-import {
-  ALICE_UID,
-  callableRequest,
-  callableRunner,
-  expectCallableDenial,
-  bolaCrossUserData,
-  pathKeyedFirestore,
-  tier2CallableProof,
-} from "./callableBolaHarness.js";
+import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 

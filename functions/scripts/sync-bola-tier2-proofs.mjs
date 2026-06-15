@@ -27,6 +27,7 @@ const skipFiles = new Set([
   "authOnly.bola.test.ts",
   "callableHarness.bola.test.ts",
   "credentialTransfer.bola.test.ts",
+  "hermesGateway.bola.test.ts",
   "openTimestamps.bola.test.ts",
   "voipPush.bola.test.ts",
 ]);
@@ -70,6 +71,9 @@ for (const file of readdirSync(bolaDir).filter((name) => name.endsWith(".bola.te
       if (!exportedMatch) return block;
 
       const exportedName = exportedMatch[1];
+      if (new RegExp(`exportedName:\\s*"${exportedName}"`, "u").test(body) && body.includes("tier2CallableProof")) {
+        return block;
+      }
       const coverage = coverageByName[exportedName];
       const expectedCode = coverage?.expectedCode ?? "not-found";
       const expectedOutcome = coverage?.expectedOutcome ?? "throws";

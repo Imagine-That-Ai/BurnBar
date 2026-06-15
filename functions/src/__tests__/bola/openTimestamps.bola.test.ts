@@ -1,17 +1,11 @@
 /**
  * BOLA negative coverage — validateOpenTimestampsProof binds auth uid to body uid.
  */
+
 import { describe, it, vi } from "vitest";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, pathKeyedFirestore } from "./callableBolaHarness.js";
 
 import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
-import {
-  ALICE_UID,
-  BOB_UID,
-  callableRequest,
-  callableRunner,
-  expectCallableDenial,
-  pathKeyedFirestore,
-} from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 

@@ -1,18 +1,12 @@
 /**
  * BOLA negative coverage — consumeCredentialTransfer cross-tenant denial.
  */
-import { Timestamp } from "firebase-admin/firestore";
-import { describe, it, vi } from "vitest";
 
-import {
-  ALICE_UID,
-  BOB_UID,
-  callableRequest,
-  callableRunner,
-  expectCallableDenial,
-  pathKeyedFirestore,
-  seedDoc,
-} from "./callableBolaHarness.js";
+import { describe, it, vi } from "vitest";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, pathKeyedFirestore, seedDoc } from "./callableBolaHarness.js";
+
+import { Timestamp } from "firebase-admin/firestore";
+
 
 const TRANSFER_CODE = "ABCDEFGHJKMN";
 const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());

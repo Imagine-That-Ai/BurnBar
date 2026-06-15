@@ -23,7 +23,17 @@ Each exported Cloud Function declares:
 | `platform-trigger` | Scheduled / Firestore / webhook triggers are not client-callable |
 | `not-applicable-public` | Public health or bootstrap endpoints without tenant objects |
 
-Runtime tests live under `functions/src/__tests__/bola/`. Shared harness: `callableBolaHarness.ts` (includes `expectCallableDenial`, `snapshotTenantPaths`, `expectTenantPathsUnchanged`). Regression guard: `callableHarness.bola.test.ts`. CI validators: `bolaCoverage.test.ts`.
+Runtime tests live under `functions/src/__tests__/bola/`. Shared harness: `callableBolaHarness.ts` (includes `expectCallableDenial`, `tier2CallableProof`, `snapshotTenantPaths`, `expectTenantPathsUnchanged`). Regression guard: `callableHarness.bola.test.ts`. CI validators: `bolaCoverage.test.ts`.
+
+### Tier-2 victim seeding
+
+Object-id callables use `tier2CallableProof`: seed Bob's tenant via `bolaVictimSeeds.generated.ts`, invoke as Alice, assert Bob's paths are unchanged. Handlers with explicit ownership checks must throw (`expectedOutcome: "throws"`); auth-scoped handlers may succeed while victim isolation still holds (`expectedOutcome: "no-side-effect"`).
+
+P0 endpoints (`BOLA_STRICT_CODE_ENDPOINTS` in the harness) require strict denial codes — not generic `invalid-argument`. Regenerate seeds after catalog changes:
+
+```sh
+node functions/scripts/generate-bola-victim-seeds.mjs
+```
 
 Auth-scoped handlers (tenant from `request.auth.uid` only) use `expectedOutcome: "no-side-effect"` — seed the victim tenant, invoke as attacker, assert victim paths unchanged. Object-id handlers with explicit ownership checks use `expectedOutcome: "throws"` with a concrete `expectedCode`.
 

@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { BOLA_STRICT_CODE_ENDPOINTS } from "./bola/callableBolaHarness.js";
 import { endpointAuthorizationMatrix } from "../security/endpointAuthorizationMatrix.js";
 import { validateEndpointBolaCoverage } from "../security/bolaCoverageValidators.js";
 
@@ -26,13 +27,7 @@ function exportedFunctionNames(): string[] {
 }
 
 /** Endpoints with handler-level cross-tenant proofs (not scaffold smoke). */
-const P0_RUNTIME_PROOFS = new Set([
-  "burnBarHermesGateway",
-  "consumeCredentialTransfer",
-  "pollCliLink",
-  "triggerVoIPCall",
-  "validateOpenTimestampsProof",
-]);
+const P0_RUNTIME_PROOFS = BOLA_STRICT_CODE_ENDPOINTS;
 
 /** Tier-2: every object-id runtime test seeds victim tenant (see callableBolaHarness tier2CallableProof). */
 const TIER2_ISOLATION_ENDPOINTS = new Set(
@@ -94,5 +89,25 @@ describe("bola coverage registry", () => {
     for (const name of P0_RUNTIME_PROOFS) {
       expect(TIER2_ISOLATION_ENDPOINTS).toContain(name);
     }
+  });
+
+  it("does not duplicate tier2CallableProof invocations per test case", () => {
+    const bolaDir = resolve(REPO_ROOT, "functions/src/__tests__/bola");
+    const duplicates: string[] = [];
+    for (const file of readdirSync(bolaDir).filter((name) => name.endsWith(".bola.test.ts"))) {
+      const source = readFileSync(resolve(bolaDir, file), "utf8");
+      for (const block of source.matchAll(/\bit\s*\([^)]+\)\s*,\s*async\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\}\);/gu)) {
+        const body = block[1];
+        const names = [...body.matchAll(/exportedName:\s*["']([^"']+)["']/gu)].map((match) => match[1]);
+        const seen = new Set<string>();
+        for (const name of names) {
+          if (seen.has(name)) {
+            duplicates.push(`${file}: duplicate tier2CallableProof for ${name}`);
+          }
+          seen.add(name);
+        }
+      }
+    }
+    expect(duplicates, duplicates.join("\n")).toEqual([]);
   });
 });

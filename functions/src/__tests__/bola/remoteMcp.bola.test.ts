@@ -2,17 +2,9 @@
  * BOLA negative coverage — src/__tests__/bola/remoteMcp.bola.test.ts
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
-import { describe, expect, it, vi } from "vitest";
-import {
-  ALICE_UID,
-  BOB_UID,
-  callableRequest,
-  callableRunner,
-  pathKeyedFirestore,
-  seedDoc,
-  snapshotTenantPaths,
-  expectTenantPathsUnchanged,
-} from "./callableBolaHarness.js";
+
+import { describe, it, vi, expect } from "vitest";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, pathKeyedFirestore, seedDoc, snapshotTenantPaths, expectTenantPathsUnchanged } from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 

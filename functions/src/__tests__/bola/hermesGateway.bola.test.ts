@@ -7,9 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ALICE_UID,
   BOB_UID,
-  callableRequest,
   callableRunner,
-  expectCallableDenial,
   pathKeyedFirestore,
   seedDoc,
   tier2CallableProof,
@@ -78,18 +76,8 @@ describe("BOLA — hermesGateway callables", () => {
       run,
       expectedCode: "not-found",
       expectedOutcome: "throws",
+      payload: { attachmentId: "bob-att", clientId: "bob-client", destinationId: "burnbar:home" },
     });
-    await tier2CallableProof(bolaStore, {
-      exportedName: "getHermesGatewayAttachmentDownloadUrl",
-      run,
-      expectedCode: "not-found",
-      expectedOutcome: "throws",
-    });
-    await expectCallableDenial(
-      run,
-      callableRequest(ALICE_UID, { attachmentId: "bob-att", clientId: "bob-client", destinationId: "burnbar:home" }),
-      "not-found",
-    );
   });
 
   it("approveHermesGatewayDeviceGrant rejects cross-user object access", async () => {
@@ -101,18 +89,8 @@ describe("BOLA — hermesGateway callables", () => {
       run,
       expectedCode: "not-found",
       expectedOutcome: "throws",
+      payload: { clientId: "bob-client", userCode: "ABCDEFGH" },
     });
-    await tier2CallableProof(bolaStore, {
-      exportedName: "approveHermesGatewayDeviceGrant",
-      run,
-      expectedCode: "not-found",
-      expectedOutcome: "throws",
-    });
-    await expectCallableDenial(
-      run,
-      callableRequest(ALICE_UID, { clientId: "bob-client", userCode: "ABCDEFGH" }),
-      "not-found",
-    );
   });
 
   it("revokeHermesGatewayClient rejects cross-user object access", async () => {
@@ -124,14 +102,8 @@ describe("BOLA — hermesGateway callables", () => {
       run,
       expectedCode: "not-found",
       expectedOutcome: "throws",
+      payload: { clientId: "bob-client" },
     });
-    await tier2CallableProof(bolaStore, {
-      exportedName: "revokeHermesGatewayClient",
-      run,
-      expectedCode: "not-found",
-      expectedOutcome: "throws",
-    });
-    await expectCallableDenial(run, callableRequest(ALICE_UID, { clientId: "bob-client" }), "not-found");
   });
 
   it("rotateHermesGatewayClientToken rejects cross-user object access", async () => {
@@ -143,14 +115,8 @@ describe("BOLA — hermesGateway callables", () => {
       run,
       expectedCode: "not-found",
       expectedOutcome: "throws",
+      payload: { clientId: "bob-client" },
     });
-    await tier2CallableProof(bolaStore, {
-      exportedName: "rotateHermesGatewayClientToken",
-      run,
-      expectedCode: "not-found",
-      expectedOutcome: "throws",
-    });
-    await expectCallableDenial(run, callableRequest(ALICE_UID, { clientId: "bob-client" }), "not-found");
   });
 
   it("enqueueHermesGatewayEvent rejects cross-user object access", async () => {
@@ -162,24 +128,14 @@ describe("BOLA — hermesGateway callables", () => {
       run,
       expectedCode: "not-found",
       expectedOutcome: "throws",
-    });
-    await tier2CallableProof(bolaStore, {
-      exportedName: "enqueueHermesGatewayEvent",
-      run,
-      expectedCode: "not-found",
-      expectedOutcome: "throws",
-    });
-    await expectCallableDenial(
-      run,
-      callableRequest(ALICE_UID, {
+      payload: {
         clientId: "bob-client",
         targetClientId: "bob-client",
         eventId: "bob-event",
         eventType: "message",
         payload: { sealed: true },
-      }),
-      "failed-precondition",
-    );
+      },
+    });
   });
 
   it("setHermesGatewayOversightMode rejects cross-user object access", async () => {
@@ -191,18 +147,8 @@ describe("BOLA — hermesGateway callables", () => {
       run,
       expectedCode: "not-found",
       expectedOutcome: "throws",
+      payload: { clientId: "bob-client", mode: "supervised" },
     });
-    await tier2CallableProof(bolaStore, {
-      exportedName: "setHermesGatewayOversightMode",
-      run,
-      expectedCode: "not-found",
-      expectedOutcome: "throws",
-    });
-    await expectCallableDenial(
-      run,
-      callableRequest(ALICE_UID, { clientId: "bob-client", mode: "supervised" }),
-      "failed-precondition",
-    );
   });
 
   it("respondHermesGatewayApproval rejects cross-user object access", async () => {
@@ -214,16 +160,7 @@ describe("BOLA — hermesGateway callables", () => {
       run,
       expectedCode: "not-found",
       expectedOutcome: "throws",
-    });
-    await tier2CallableProof(bolaStore, {
-      exportedName: "respondHermesGatewayApproval",
-      run,
-      expectedCode: "not-found",
-      expectedOutcome: "throws",
-    });
-    await expectCallableDenial(
-      run,
-      callableRequest(ALICE_UID, {
+      payload: {
         clientId: "bob-client",
         deviceId: "bob-device",
         eventId: "bob-event",
@@ -231,9 +168,8 @@ describe("BOLA — hermesGateway callables", () => {
         approve: true,
         nonce: "alice-nonce-for-bob-approval",
         actionProof: { signedAction: "bob-event" },
-      }),
-      "not-found",
-    );
+      },
+    });
   });
 });
 
