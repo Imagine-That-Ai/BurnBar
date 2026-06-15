@@ -160,6 +160,18 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Elder Wand fusion-preset UserDefaults key constants ('elderWand.presets.v1'), not credential material"
+regexTarget = "match"
+regexes = [
+  '''presetsStorageKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
+  '''presetsDefaultsKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
+]
+paths = [
+  '''AgentLens/Services/Settings/Stores/ElderWandSettings\.swift''',
+  '''OpenBurnBarMobile/Services/Hermes/ElderWandSettings\.swift''',
+]
+
+[[allowlists]]
 description = "Console escrow documentation and interoperability vectors contain public wrapped-key fixtures only"
 regexTarget = "match"
 regexes = [

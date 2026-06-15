@@ -8,7 +8,7 @@
     },
     {
       "path": "OpenBurnBarMobile/Views/Hermes/HermesTabView.swift",
-      "lines": 3976
+      "lines": 3987
     },
     {
       "path": "AgentLens/Views/Settings/ProviderPlanWizardView.swift",
@@ -24,7 +24,7 @@
     },
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
-      "lines": 3281
+      "lines": 3271
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView.swift",
@@ -44,7 +44,7 @@
     },
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
-      "lines": 2576
+      "lines": 2612
     },
     {
       "path": "AgentLens/Views/Chat/ChatSessionController.swift",

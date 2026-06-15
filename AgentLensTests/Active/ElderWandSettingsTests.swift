@@ -273,7 +273,7 @@ final class ElderWandSettingsTests: XCTestCase {
 
     // MARK: - elderWandPluginsPayload: correct shape with one preset
 
-    func test_elderWandPluginsPayload_correctShape() {
+    func test_elderWandPluginsPayload_correctShape() throws {
         let settings = makeSettings()
         let preset = ElderWandPreset(
             name: "Fusion One",
@@ -287,7 +287,7 @@ final class ElderWandSettingsTests: XCTestCase {
         let payload = settings.elderWandPluginsPayload()
         XCTAssertNotNil(payload)
 
-        let entry = try! XCTUnwrap(payload?.first)
+        let entry = try XCTUnwrap(payload?.first)
         XCTAssertEqual(entry["id"] as? String, "fusion")
         XCTAssertEqual(entry["enabled"] as? Bool, true)
         XCTAssertEqual(entry["analysis_models"] as? [String], ["gpt-4o", "claude-opus-4"])
