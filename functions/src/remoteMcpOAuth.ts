@@ -20,24 +20,6 @@ interface RemoteMcpAccessClaims {
   jti: string;
 }
 
-export function isRemoteMcpProductionIssuerRuntime(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.NODE_ENV === "test") return false;
-  return env.REMOTE_MCP_RUNTIME_ENVIRONMENT === "production" || Boolean(env.K_SERVICE || env.FUNCTION_TARGET);
-}
-
-export function assertRemoteMcpIssuerTokenPosture(
-  input: { tokenSecret?: string; tokenEd25519PrivateKeyBase64PEM?: string },
-  env: NodeJS.ProcessEnv = process.env,
-): void {
-  if (!isRemoteMcpProductionIssuerRuntime(env)) return;
-  if (input.tokenSecret) {
-    throw new HttpsError("failed-precondition", "REMOTE_MCP_TOKEN_HMAC_SECRET must not be used in production.");
-  }
-  if (!input.tokenEd25519PrivateKeyBase64PEM) {
-    throw new HttpsError("failed-precondition", "REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 is required in production.");
-  }
-}
-
 function privateKeyFromBase64PEM(value: string) {
   return createPrivateKey(Buffer.from(value, "base64").toString("utf8"));
 }
@@ -49,7 +31,9 @@ function signRemoteMcpAccessToken(
 ): { token: string; algorithm: "ed25519" | "hmac-sha256" } {
   const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
   if (ed25519PrivateKeyBase64PEM) {
-    const sig = signDetached(null, Buffer.from(body), privateKeyFromBase64PEM(ed25519PrivateKeyBase64PEM)).toString("base64url");
+    const sig = signDetached(null, Buffer.from(body), privateKeyFromBase64PEM(ed25519PrivateKeyBase64PEM)).toString(
+      "base64url",
+    );
     return { token: `ed25519.${body}.${sig}`, algorithm: "ed25519" };
   }
   if (!secret) {
@@ -76,10 +60,6 @@ export async function issueRemoteMcpGrantForSignedInUser(
     audience: string;
   },
 ) {
-  assertRemoteMcpIssuerTokenPosture({
-    tokenSecret: input.tokenSecret,
-    tokenEd25519PrivateKeyBase64PEM: input.tokenEd25519PrivateKeyBase64PEM,
-  });
   const clientId = input.clientId?.trim() || `obbc_${randomBytes(12).toString("hex")}`;
   const scopes: RemoteMcpScope[] = input.scopes?.length
     ? input.scopes
@@ -131,4 +111,24 @@ export async function issueRemoteMcpGrantForSignedInUser(
     scopes,
     grantMode,
   };
+}
+
+export function isRemoteMcpProductionIssuerRuntime(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.NODE_ENV === "test") return false;
+  return typeof env.K_SERVICE === "string" && env.K_SERVICE.length > 0;
+}
+
+export function assertRemoteMcpIssuerTokenPosture(
+  config: { tokenSecret?: string; tokenEd25519PrivateKeyBase64PEM?: string },
+  env: Record<string, string | undefined> = process.env,
+): void {
+  const isProduction = env.REMOTE_MCP_RUNTIME_ENVIRONMENT === "production" || isRemoteMcpProductionIssuerRuntime(env);
+  if (isProduction) {
+    if (config.tokenSecret) {
+      throw new Error("REMOTE_MCP_TOKEN_HMAC_SECRET must not be used in production. Ed25519 signing is required.");
+    }
+    if (!config.tokenEd25519PrivateKeyBase64PEM) {
+      throw new Error("REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 must be set in production.");
+    }
+  }
 }

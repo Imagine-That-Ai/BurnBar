@@ -74,6 +74,143 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields();
     }
 
+    function validComputerUseSessionDocument(userId, sessionId) {
+      return request.resource.data.keys().hasOnly([
+          "id",
+          "sessionId",
+          "userId",
+          "mode",
+          "trustMode",
+          "startedAt",
+          "endedAt",
+          "endReason",
+          "actionCount",
+          "approvalCount",
+          "rejectionCount",
+          "panicHaltCount",
+          "visionSpendUSD",
+          "manifestHashHex",
+          "auditHeadHashHex",
+          "macAppVersion",
+          "schemaVersion",
+          "updatedAt"
+        ])
+        && (!("id" in request.resource.data) || request.resource.data.id == sessionId)
+        && request.resource.data.sessionId == sessionId
+        && request.resource.data.userId == userId
+        && request.resource.data.mode in ["agent_watch", "browser", "system"]
+        && request.resource.data.trustMode in ["manual", "step", "trusted"]
+        && request.resource.data.startedAt is timestamp
+        && (!("endedAt" in request.resource.data) || request.resource.data.endedAt is timestamp)
+        && (!("endReason" in request.resource.data) || request.resource.data.endReason in [
+          "completed",
+          "user_halt",
+          "panic_hotkey",
+          "panic_phone_gesture",
+          "panic_mac_lock",
+          "panic_remote_config",
+          "panic_accessibility_revoked",
+          "timeout",
+          "entitlement_lost",
+          "budget_soft_cap",
+          "budget_hard_cap",
+          "error"
+        ])
+        && request.resource.data.actionCount is int
+        && request.resource.data.actionCount >= 0
+        && request.resource.data.approvalCount is int
+        && request.resource.data.approvalCount >= 0
+        && request.resource.data.rejectionCount is int
+        && request.resource.data.rejectionCount >= 0
+        && request.resource.data.panicHaltCount is int
+        && request.resource.data.panicHaltCount >= 0
+        && request.resource.data.visionSpendUSD is number
+        && request.resource.data.visionSpendUSD >= 0
+        && request.resource.data.manifestHashHex is string
+        && request.resource.data.manifestHashHex.matches("^[A-Fa-f0-9]{64}$")
+        && (!("auditHeadHashHex" in request.resource.data) || (request.resource.data.auditHeadHashHex is string && request.resource.data.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
+        && request.resource.data.macAppVersion is string
+        && request.resource.data.macAppVersion.size() <= 80
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.schemaVersion <= 100
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
+    }
+
+    function validComputerUseActionDocument(actionId) {
+      return request.resource.data.keys().hasOnly([
+          "id",
+          "sessionId",
+          "entryIndex",
+          "toolKind",
+          "actionKind",
+          "status",
+          "approvedBy",
+          "scopeRuleId",
+          "denyReason",
+          "parentEntryHashHex",
+          "approvalLatencyMillis",
+          "visionTokensCostUSD",
+          "recordedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id == actionId
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() > 0
+        && request.resource.data.sessionId.size() <= 200
+        && request.resource.data.entryIndex is int
+        && request.resource.data.entryIndex >= 0
+        && request.resource.data.toolKind is string
+        && request.resource.data.toolKind.size() <= 120
+        && request.resource.data.actionKind is string
+        && request.resource.data.actionKind.size() <= 120
+        && request.resource.data.status in [
+          "executed", "denied", "rejected", "awaiting_approval", "error"
+        ]
+        && request.resource.data.approvedBy in [
+          "mac", "phone", "trusted_scope", "step", "denied", "panic"
+        ]
+        && (!("scopeRuleId" in request.resource.data) || (request.resource.data.scopeRuleId is string && request.resource.data.scopeRuleId.size() <= 200))
+        && (!("denyReason" in request.resource.data) || (request.resource.data.denyReason is string && request.resource.data.denyReason.size() <= 200))
+        && request.resource.data.parentEntryHashHex is string
+        && request.resource.data.parentEntryHashHex.matches("^[A-Fa-f0-9]{64}$")
+        && (!("approvalLatencyMillis" in request.resource.data) || (request.resource.data.approvalLatencyMillis is int && request.resource.data.approvalLatencyMillis >= 0))
+        && (!("visionTokensCostUSD" in request.resource.data) || (request.resource.data.visionTokensCostUSD is number && request.resource.data.visionTokensCostUSD >= 0))
+        && request.resource.data.recordedAt is timestamp
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.schemaVersion <= 100;
+    }
+
+    function validComputerUseQuotaUsageDocument(day) {
+      return request.resource.data.keys().hasOnly([
+          "dayKey",
+          "browserActionsExecuted",
+          "browserActionsRejected",
+          "systemActionsExecuted",
+          "systemActionsRejected",
+          "phoneControlIntentsExecuted",
+          "phoneControlIntentsRejected",
+          "sessionsStarted",
+          "sessionsCompleted",
+          "totalSessionSeconds",
+          "visionModelSpendUSD",
+          "updatedAt"
+        ])
+        && request.resource.data.dayKey == day
+        && request.resource.data.browserActionsExecuted is number
+        && request.resource.data.browserActionsRejected is number
+        && request.resource.data.systemActionsExecuted is number
+        && request.resource.data.systemActionsRejected is number
+        && request.resource.data.phoneControlIntentsExecuted is number
+        && request.resource.data.phoneControlIntentsRejected is number
+        && (!("sessionsStarted" in request.resource.data) || request.resource.data.sessionsStarted is number)
+        && (!("sessionsCompleted" in request.resource.data) || request.resource.data.sessionsCompleted is number)
+        && (!("totalSessionSeconds" in request.resource.data) || request.resource.data.totalSessionSeconds is number)
+        && request.resource.data.visionModelSpendUSD is number
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
+    }
+
     function validRootUserProfileWrite(userId) {
       return ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
@@ -344,15 +481,11 @@ service cloud.firestore {
         && hasActiveHostedQuotaEntitlement(userId);
     }
 
-    // Strict allowlist for the encrypted session-log manifest. The set below is
-    // the UNION of every key any write path leaves on the doc post-merge: the
-    // full create (SessionLogSyncService.swift uploadManifest) plus the
-    // facet-refresh merge update (facetFields + updatedAt). Because the writer
-    // uses merge:true, request.resource.data is the post-merge full document, so
-    // the allowlist must cover the union; the legacy plaintext fields are removed
-    // via FieldValue.delete() and therefore absent — they stay denied by
-    // hasOnly. No content/title/project text can ride along — only sealed
-    // envelopes, storage pointers, hashes, and bounded cockpit facets.
+    // Strict allowlist for encrypted session-log manifest creates. Full uploads
+    // use setData(merge: false), while later merge:true writes are restricted to
+    // facet refresh plus legacy plaintext field deletes by validSessionLogRefreshKeys().
+    // No content/title/project text can ride along — only sealed envelopes,
+    // storage pointers, hashes, and bounded cockpit facets.
     function validSessionLogManifestKeys() {
       return request.resource.data.keys().hasOnly([
         "id",
@@ -511,12 +644,28 @@ service cloud.firestore {
     // denylist carry the confidentiality boundary; keep these checks deliberately
     // light so legitimate encrypted manifests stay within Firestore's rule
     // evaluator budget.
+    function validOptionalInt(data, field) {
+      return !(field in data) || (data[field] is int && data[field] >= 0);
+    }
+
     function validSessionLogFacets(data) {
       return (!("model" in data) || (data.model is string && data.model.size() <= 200))
         && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
         && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
-        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32));
+        && (!("toolTags" in data) || (data.toolTags is list && data.toolTags.size() <= 32))
+        && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
+        && validOptionalInt(data, "inputTokens")
+        && validOptionalInt(data, "outputTokens")
+        && validOptionalInt(data, "cacheCreationTokens")
+        && validOptionalInt(data, "cacheReadTokens")
+        && validOptionalInt(data, "totalTokens")
+        && validOptionalInt(data, "messageCount")
+        && validOptionalInt(data, "userWordCount")
+        && validOptionalInt(data, "assistantWordCount")
+        && validOptionalInt(data, "durationSeconds")
+        && validOptionalInt(data, "facetSchemaVersion");
     }
+
 
     function validCloudHexDigest(value) {
       return value is string
@@ -2398,22 +2547,25 @@ service cloud.firestore {
         + "_" + string(request.resource.data.keyVersion);
     }
 
-    function validCloudVaultKeyWrapper(userId, wrapperId) {
-      return validKeyWrapperDocId(wrapperId)
+    match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
+      allow read: if ownsUserNamespace(userId);
+      function ownerWritableActiveCloudVaultKeyWrapper(wrapperId) {
+        return ownerWritableHostedCloudBackup(userId)
+        && validKeyWrapperDocId(wrapperId)
         && request.resource.data.keys().hasOnly([
           "uid",
           "wrapperId",
           "targetDeviceId",
           "sourceDeviceId",
           "publicKeyFingerprint",
-          "keyVersion",
-          "wrappedVaultKey",
-          "vaultKeyID",
-          "vaultGeneration",
-          "rotationJobId",
-          "revokedByRotationJobId",
-          "algorithm",
-          "status",
+	          "keyVersion",
+	          "wrappedVaultKey",
+	          "vaultKeyID",
+	          "vaultGeneration",
+	          "rotationJobId",
+	          "revokedByRotationJobId",
+	          "algorithm",
+	          "status",
           "createdAt",
           "updatedAt",
           "schemaVersion"
@@ -2430,34 +2582,29 @@ service cloud.firestore {
         && request.resource.data.publicKeyFingerprint.size() <= 128
         && request.resource.data.keyVersion is int
         && request.resource.data.keyVersion >= 1
-        && request.resource.data.keyVersion <= 1000
-        && (!("vaultGeneration" in request.resource.data) || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1 && request.resource.data.vaultGeneration <= 10000))
-        && (!("rotationJobId" in request.resource.data) || (request.resource.data.rotationJobId is string && request.resource.data.rotationJobId.size() <= 200))
-        && (!("revokedByRotationJobId" in request.resource.data) || (request.resource.data.revokedByRotationJobId is string && request.resource.data.revokedByRotationJobId.size() <= 200))
-        && request.resource.data.wrappedVaultKey is string
+	        && request.resource.data.keyVersion <= 1000
+	        && (!("vaultGeneration" in request.resource.data) || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1 && request.resource.data.vaultGeneration <= 10000))
+	        && (!("rotationJobId" in request.resource.data) || (request.resource.data.rotationJobId is string && request.resource.data.rotationJobId.size() <= 200))
+	        && (!("revokedByRotationJobId" in request.resource.data) || (request.resource.data.revokedByRotationJobId is string && request.resource.data.revokedByRotationJobId.size() <= 200))
+	        && request.resource.data.wrappedVaultKey is string
         && request.resource.data.wrappedVaultKey.size() <= 8192
         && request.resource.data.wrappedVaultKey.matches("^[A-Za-z0-9+/=]+$")
         && request.resource.data.algorithm == "ECIES-P256-AESGCM"
         && request.resource.data.status == "active"
-        && request.resource.data.schemaVersion in [2, 3]
+	        && request.resource.data.schemaVersion in [2, 3]
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
-    }
-
-    match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create: if ownerWritableHostedCloudBackup(userId)
-        && validCloudVaultKeyWrapper(userId, wrapperId);
-      allow update: if ownerWritableHostedCloudBackup(userId)
-        && validCloudVaultKeyWrapper(userId, wrapperId)
+      }
+      allow create: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId);
+      allow update: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "wrappedVaultKey",
           "updatedAt"
         ]);
-      allow delete: if false;
-    }
+	      allow delete: if false;
+	    }
 
 	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
 	      function validCloudVaultRotationJobClientUpdate() {
@@ -3211,23 +3358,12 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
-        && request.resource.data.sessionId == sessionId
-        && request.resource.data.userId == userId
-        && request.resource.data.mode in ["agent_watch", "browser", "system"]
-        && request.resource.data.trustMode in ["manual", "step", "trusted"]
-        && request.resource.data.manifestHashHex is string
-        && request.resource.data.macAppVersion is string
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1
-        && !("body" in request.resource.data)
-        && !("payloadCiphertext" in request.resource.data)
-        && !("ciphertext" in request.resource.data)
-        && !("screenshots" in request.resource.data)
-        && !("actionDescriptors" in request.resource.data);
+        && validComputerUseSessionDocument(userId, sessionId);
       // End-of-session updates may set the audit tail/counters only. Identity,
       // mode, trust mode, and manifest binding are immutable after create.
       allow update: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
+        && validComputerUseSessionDocument(userId, sessionId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "endedAt",
           "endReason",
@@ -3280,24 +3416,7 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
-        && request.resource.data.id == actionId
-        && request.resource.data.sessionId is string
-        && request.resource.data.entryIndex is int
-        && request.resource.data.toolKind is string
-        && request.resource.data.status in [
-          "executed", "denied", "rejected", "awaiting_approval", "error"
-        ]
-        && request.resource.data.approvedBy in [
-          "mac", "phone", "trusted_scope", "step", "denied", "panic"
-        ]
-        && request.resource.data.parentEntryHashHex is string
-        && request.resource.data.schemaVersion is int
-        && !("body" in request.resource.data)
-        && !("selector" in request.resource.data)
-        && !("text" in request.resource.data)
-        && !("url" in request.resource.data)
-        && !("screenshot" in request.resource.data)
-        && !("ciphertext" in request.resource.data);
+        && validComputerUseActionDocument(actionId);
       allow update: if false;
       allow delete: if false;
     }
@@ -3307,14 +3426,7 @@ service cloud.firestore {
     match /users/{userId}/computer_use_quota_usage/{day} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.dayKey == day
-        && request.resource.data.browserActionsExecuted is number
-        && request.resource.data.browserActionsRejected is number
-        && request.resource.data.systemActionsExecuted is number
-        && request.resource.data.systemActionsRejected is number
-        && request.resource.data.phoneControlIntentsExecuted is number
-        && request.resource.data.phoneControlIntentsRejected is number
-        && request.resource.data.visionModelSpendUSD is number;
+        && validComputerUseQuotaUsageDocument(day);
       allow delete: if false;
     }
 

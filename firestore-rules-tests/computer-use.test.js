@@ -209,11 +209,61 @@ async function main() {
       );
     });
 
+    await step("session create cannot smuggle descriptors, scope rules, or unknown fields", async () => {
+      const basePath = `users/${aliceUid}/computer_use_sessions`;
+      await assertFails(
+        setDoc(doc(aliceDB, `${basePath}/session-create-leak-1`), {
+          ...validSessionDoc,
+          sessionId: "session-create-leak-1",
+          selector: "button[type=submit]",
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `${basePath}/session-create-leak-2`), {
+          ...validSessionDoc,
+          sessionId: "session-create-leak-2",
+          scopeRules: ["allow browser.click #checkout"],
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `${basePath}/session-create-leak-3`), {
+          ...validSessionDoc,
+          sessionId: "session-create-leak-3",
+          arbitraryMetadata: "not part of the session contract",
+        })
+      );
+    });
+
     await step("user cannot create a session in another user's namespace", async () => {
       await assertFails(
         setDoc(doc(aliceDB, `users/${bobUid}/computer_use_sessions/session-1`), {
           ...validSessionDoc,
           userId: bobUid,
+        })
+      );
+    });
+
+    await step("user cannot create action or quota records in another user's namespace", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${bobUid}/computer_use_actions/action-bob`), {
+          ...validActionDoc,
+          id: "action-bob",
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${bobUid}/computer_use_quota_usage/2026-05-17`), {
+          dayKey: "2026-05-17",
+          browserActionsExecuted: 0,
+          browserActionsRejected: 0,
+          systemActionsExecuted: 0,
+          systemActionsRejected: 0,
+          phoneControlIntentsExecuted: 0,
+          phoneControlIntentsRejected: 0,
+          sessionsStarted: 0,
+          sessionsCompleted: 0,
+          totalSessionSeconds: 0,
+          visionModelSpendUSD: 0,
+          updatedAt: Timestamp.fromMillis(Date.now()),
         })
       );
     });
@@ -248,6 +298,35 @@ async function main() {
       await assertFails(setDoc(doc(aliceDB, path), { trustMode: "trusted" }, { merge: true }));
     });
 
+    await step("session update cannot preserve legacy descriptor fields", async () => {
+      const path = `users/${aliceUid}/computer_use_sessions/session-legacy-leak`;
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        const dbAdmin = ctx.firestore();
+        await setDoc(doc(dbAdmin, path), {
+          ...validSessionDoc,
+          sessionId: "session-legacy-leak",
+          selector: "button[type=submit]",
+        });
+      });
+      await assertFails(
+        setDoc(
+          doc(aliceDB, path),
+          {
+            endedAt: Timestamp.fromMillis(Date.now()),
+            endReason: "completed",
+            actionCount: 1,
+            approvalCount: 1,
+            rejectionCount: 0,
+            panicHaltCount: 0,
+            visionSpendUSD: 0.02,
+            auditHeadHashHex: "b".repeat(64),
+            updatedAt: Timestamp.fromMillis(Date.now()),
+          },
+          { merge: true }
+        )
+      );
+    });
+
     await step("session end-of-session update with audit head succeeds", async () => {
       await assertSucceeds(
         setDoc(
@@ -268,10 +347,24 @@ async function main() {
       );
     });
 
-    await step("action with descriptor fields (selector/url/text/screenshot) is rejected", async () => {
+    await step("action with descriptor fields or unknown fields is rejected", async () => {
       const leaky = { ...validActionDoc, selector: "button[type=submit]" };
       await assertFails(
         setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-1`), leaky)
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-leak-2`), {
+          ...validActionDoc,
+          id: "action-leak-2",
+          screenshots: ["plaintext-screen"],
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_actions/action-leak-3`), {
+          ...validActionDoc,
+          id: "action-leak-3",
+          actionDescriptors: [{ url: "https://example.test/private" }],
+        })
       );
     });
 
@@ -291,7 +384,31 @@ async function main() {
           systemActionsRejected: 0,
           phoneControlIntentsExecuted: 0,
           phoneControlIntentsRejected: 0,
+          sessionsStarted: 0,
+          sessionsCompleted: 0,
+          totalSessionSeconds: 0,
           visionModelSpendUSD: 0,
+          updatedAt: Timestamp.fromMillis(Date.now()),
+        })
+      );
+    });
+
+    await step("quota_usage rejects cross-user and non-contract fields", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_quota_usage/2026-05-18`), {
+          dayKey: "2026-05-18",
+          browserActionsExecuted: 0,
+          browserActionsRejected: 0,
+          systemActionsExecuted: 0,
+          systemActionsRejected: 0,
+          phoneControlIntentsExecuted: 0,
+          phoneControlIntentsRejected: 0,
+          sessionsStarted: 0,
+          sessionsCompleted: 0,
+          totalSessionSeconds: 0,
+          visionModelSpendUSD: 0,
+          updatedAt: Timestamp.fromMillis(Date.now()),
+          userId: bobUid,
         })
       );
     });

@@ -54,19 +54,13 @@ type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B 
 type Assert<T extends true> = T;
 
 // Generated canon ≡ runtime registry (functions/src/hermesGateway.ts).
-type AssertModelOptionDocParity = Assert<
-  Equals<Generated.HermesGatewayModelOptionDoc, HermesGatewayModelOptionDoc>
->;
+type AssertModelOptionDocParity = Assert<Equals<Generated.HermesGatewayModelOptionDoc, HermesGatewayModelOptionDoc>>;
 type AssertRelayEnvelopeDocParity = Assert<Equals<Generated.GatewayRelayEnvelopeDoc, GatewayRelayEnvelopeDoc>>;
 type AssertRatchetHeaderDocParity = Assert<Equals<Generated.GatewayRatchetHeaderDoc, GatewayRatchetHeaderDoc>>;
-type AssertRatchetEnvelopeDocParity = Assert<
-  Equals<Generated.GatewayRatchetEnvelopeDoc, GatewayRatchetEnvelopeDoc>
->;
+type AssertRatchetEnvelopeDocParity = Assert<Equals<Generated.GatewayRatchetEnvelopeDoc, GatewayRatchetEnvelopeDoc>>;
 type AssertClientDocParity = Assert<Equals<Generated.HermesGatewayClientDoc, HermesGatewayClientDoc>>;
 type AssertApprovalDocParity = Assert<Equals<Generated.HermesGatewayApprovalDoc, HermesGatewayApprovalDoc>>;
-type AssertDestinationDocParity = Assert<
-  Equals<Generated.HermesGatewayDestinationDoc, HermesGatewayDestinationDoc>
->;
+type AssertDestinationDocParity = Assert<Equals<Generated.HermesGatewayDestinationDoc, HermesGatewayDestinationDoc>>;
 type AssertEventDocParity = Assert<Equals<Generated.HermesGatewayEventDoc, HermesGatewayEventDoc>>;
 type AssertMessageDocParity = Assert<Equals<Generated.HermesGatewayMessageDoc, HermesGatewayMessageDoc>>;
 type AssertAttachmentManifestDocParity = Assert<

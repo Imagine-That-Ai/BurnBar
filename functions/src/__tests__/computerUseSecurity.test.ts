@@ -42,7 +42,11 @@ function p256Pair(): { x963: Buffer; privateKey: KeyObject } {
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const jwk = publicKey.export({ format: "jwk" });
   // EC JWKs always carry x/y; the fallbacks only satisfy the optional typing.
-  const x963 = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x ?? "", "base64url"), Buffer.from(jwk.y ?? "", "base64url")]);
+  const x963 = Buffer.concat([
+    Buffer.from([0x04]),
+    Buffer.from(jwk.x ?? "", "base64url"),
+    Buffer.from(jwk.y ?? "", "base64url"),
+  ]);
   return { x963, privateKey };
 }
 
@@ -120,10 +124,7 @@ describe("verifyPhoneControlAuthoritySignature — se-p256 lane", () => {
 
   it("rejects a compressed (0x02-prefixed) P-256 key — only uncompressed x9.63 is pinned", () => {
     const { x963, privateKey } = p256Pair();
-    const compressed = Buffer.concat([
-      Buffer.from([x963[33 + 31] % 2 === 0 ? 0x02 : 0x03]),
-      x963.subarray(1, 33),
-    ]);
+    const compressed = Buffer.concat([Buffer.from([x963[33 + 31] % 2 === 0 ? 0x02 : 0x03]), x963.subarray(1, 33)]);
     const signature = signP256Raw(PAYLOAD, privateKey).toString("base64");
 
     expect(verifyPhoneControlAuthoritySignature(compressed, "se-p256", PAYLOAD, signature)).toBe(false);

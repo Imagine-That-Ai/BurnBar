@@ -25,14 +25,6 @@ import { isRecord, isTimestampWithToMillis, stringField } from "./guards.js";
 const MEDIA_ENTITLEMENT_DOC_ID = "hosted_media_sync";
 
 /**
- * TTL for `voip_outbound` / `fcm_outbound` push documents (T-PRV-02). A call
- * push is short-lived: once delivered (or abandoned) the document carries no
- * ongoing value, so it self-expires from Firestore after one day. The matching
- * `expireAt` ttl:true index in `firestore.indexes.json` performs the deletion.
- */
-export const VOIP_OUTBOUND_TTL_MS = 24 * 60 * 60 * 1000;
-
-/**
  * Fresh, single-push correlation id (T-PRV-01 / T-PRV-07). Replaces the stable
  * `connection_id` that previously rode in the push payload to a third-party
  * push processor (APNs / FCM). Because it rotates per push, it cannot be used to

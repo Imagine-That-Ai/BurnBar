@@ -365,12 +365,7 @@ export function auditActorLabel(request: CallableRequest): string {
 }
 
 /** Outcome of anchoring one user's head (logged by the daily sweep). */
-type AuditAnchorOutcome =
-  | "anchored"
-  | "already_anchored"
-  | "no_head"
-  | "ots_stamper_unavailable"
-  | "ots_stamp_failed";
+type AuditAnchorOutcome = "anchored" | "already_anchored" | "no_head" | "ots_stamper_unavailable" | "ots_stamp_failed";
 
 /**
  * Anchor one user's audit head: stamp `head.headHash` with OpenTimestamps and

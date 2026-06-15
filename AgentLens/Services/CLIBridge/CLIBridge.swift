@@ -85,6 +85,16 @@ final class CLIBridge: ObservableObject {
         }
     }
 
+    func cancelAndWait() async {
+        await streamRuntime.cancelAll()
+    }
+
+    #if DEBUG
+    func testing_registerRunningProcess(_ process: Process) async -> UInt64 {
+        await streamRuntime.registerRunningProcess(process)
+    }
+    #endif
+
     /// T-TOOL-03: terminate any in-flight spawned external CLI process without
     /// disturbing the HTTP gateway stream. Called when a desktop-control grant is
     /// revoked mid-run so an agent operating under the just-revoked capabilities

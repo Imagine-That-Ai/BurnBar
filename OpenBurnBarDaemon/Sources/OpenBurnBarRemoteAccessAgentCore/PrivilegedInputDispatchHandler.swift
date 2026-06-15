@@ -83,7 +83,9 @@ public final class PrivilegedInputDispatchHandler: Sendable {
             text: request.text,
             key: request.key,
             modifiers: request.modifiers,
-            capabilityToken: envelope.capabilityToken
+            capabilityToken: envelope.capabilityToken,
+            presentingEscrowDeviceId: envelope.presentingEscrowDeviceId,
+            requiredAttestationHashBlake3: envelope.requiredAttestationHashBlake3
         )
         let context = sessionContext(for: envelope)
         let presenterBinding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
@@ -109,7 +111,11 @@ public final class PrivilegedInputDispatchHandler: Sendable {
     }
 
     private func validateCredentialType(envelope: PrivilegedInputDispatchEnvelope) throws {
-        let gateRequest = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: envelope.capabilityToken)
+        let gateRequest = VirtualHIDBridgeCapabilityGate.CredentialRequest(
+            capabilityToken: envelope.capabilityToken,
+            presentingEscrowDeviceId: envelope.presentingEscrowDeviceId,
+            requiredAttestationHashBlake3: envelope.requiredAttestationHashBlake3
+        )
         let context = sessionContext(for: envelope)
         let presenterBinding = VirtualHIDBridgeCapabilityGate.PresenterBinding(
             escrowDeviceId: context.escrowDeviceId,

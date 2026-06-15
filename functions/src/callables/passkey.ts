@@ -124,15 +124,11 @@ async function loadUserCredentials(uid: string): Promise<StoredPasskeyCredential
 }
 
 function isRegistrationResponseJSON(value: unknown): value is RegistrationResponseJSON {
-  return (
-    isRecord(value) && typeof value.id === "string" && typeof value.rawId === "string" && isRecord(value.response)
-  );
+  return isRecord(value) && typeof value.id === "string" && typeof value.rawId === "string" && isRecord(value.response);
 }
 
 function isAuthenticationResponseJSON(value: unknown): value is AuthenticationResponseJSON {
-  return (
-    isRecord(value) && typeof value.id === "string" && typeof value.rawId === "string" && isRecord(value.response)
-  );
+  return isRecord(value) && typeof value.id === "string" && typeof value.rawId === "string" && isRecord(value.response);
 }
 
 function requireRegistrationResponse(raw: unknown): RegistrationResponseJSON {

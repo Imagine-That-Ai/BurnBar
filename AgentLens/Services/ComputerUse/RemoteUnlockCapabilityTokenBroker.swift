@@ -52,13 +52,19 @@ public final class RemoteUnlockCapabilityTokenBroker {
         ) else {
             return nil
         }
+        let activeBinding = readiness.activeRemoteUnlockBinding(
+            sessionId: sessionId,
+            peerNodeId: peerNodeId,
+            viewerDeviceId: viewerDeviceId,
+            now: now
+        )
         let keyMaterial = try signingKeyStore.copyOrCreateKeyMaterial()
         return try issuer.mintRemoteUnlockToken(
             privateKey: keyMaterial.privateKey,
             scopeHash: scopeHash,
             actionKind: actionKind,
-            boundEscrowDeviceId: boundEscrowDeviceId,
-            attestationHashBlake3: attestationHashBlake3
+            boundEscrowDeviceId: boundEscrowDeviceId ?? activeBinding?.viewerDeviceId,
+            attestationHashBlake3: attestationHashBlake3 ?? activeBinding?.attestationHashBlake3
         )
     }
 }

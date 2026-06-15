@@ -123,11 +123,7 @@ export const MAX_FCM_RETRY_ATTEMPTS = 8;
 /** Max documents handled per scheduled tick. */
 const FCM_SWEEP_BATCH_LIMIT = 50;
 
-type FcmPushFn = (args: {
-  fcmToken: string;
-  data: Record<string, string>;
-  documentId: string;
-}) => Promise<SendResult>;
+type FcmPushFn = (args: { fcmToken: string; data: Record<string, string>; documentId: string }) => Promise<SendResult>;
 
 /** Outcome of processing a single stuck FCM document. */
 type StuckFcmOutcome = "sent" | "rejected" | "rescheduled" | "skipped";

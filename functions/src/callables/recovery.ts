@@ -54,9 +54,7 @@ function buildConfirmationCommitment(verificationHash: string): {
   confirmVerifierVersion: number;
 } {
   const confirmSalt = randomBytes(16).toString("hex");
-  const confirmVerifier = createHash("sha256")
-    .update(`${confirmSalt}:${verificationHash}`)
-    .digest("hex");
+  const confirmVerifier = createHash("sha256").update(`${confirmSalt}:${verificationHash}`).digest("hex");
   return { confirmSalt, confirmVerifier, confirmVerifierVersion: RECOVERY_CONFIRM_VERIFIER_VERSION };
 }
 const MAX_RECOVERY_CONTACTS = 5;
@@ -166,7 +164,10 @@ function verifyRecoveryConfirmation(data: Record<string, unknown>, suppliedHash:
   // surface them so they can be re-set-up onto the v2 commitment scheme.
   const stored = recoveryKey?.verificationHash;
   if (typeof stored !== "string") {
-    throw new HttpsError("failed-precondition", "Recovery method is missing its verification commitment; please set recovery up again.");
+    throw new HttpsError(
+      "failed-precondition",
+      "Recovery method is missing its verification commitment; please set recovery up again.",
+    );
   }
   const a = Buffer.from(suppliedHash);
   const b = Buffer.from(stored);

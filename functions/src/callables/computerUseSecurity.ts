@@ -127,8 +127,13 @@ function parseCloudVaultDeviceTrustChainProof(raw: unknown): CloudVaultDeviceTru
     throw new HttpsError("invalid-argument", "trustChain is required.");
   }
   const version =
-    boundedInteger(record.version, "trustChain.version", CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION, CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION, true) ??
-    CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION;
+    boundedInteger(
+      record.version,
+      "trustChain.version",
+      CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION,
+      CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION,
+      true,
+    ) ?? CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION;
   const algorithm = boundedTrimmedString(record.algorithm, "trustChain.algorithm", 80, true);
   if (algorithm !== CLOUD_VAULT_DEVICE_TRUST_CHAIN_ALGORITHM) {
     throw new HttpsError("invalid-argument", "trustChain.algorithm is unsupported.");
@@ -170,8 +175,13 @@ function parseTrustedDeviceActionProof(raw: unknown): TrustedDeviceActionProof {
     throw new HttpsError("invalid-argument", "actionProof is required.");
   }
   const version =
-    boundedInteger(record.version, "actionProof.version", TRUSTED_DEVICE_ACTION_PROOF_VERSION, TRUSTED_DEVICE_ACTION_PROOF_VERSION, true) ??
-    TRUSTED_DEVICE_ACTION_PROOF_VERSION;
+    boundedInteger(
+      record.version,
+      "actionProof.version",
+      TRUSTED_DEVICE_ACTION_PROOF_VERSION,
+      TRUSTED_DEVICE_ACTION_PROOF_VERSION,
+      true,
+    ) ?? TRUSTED_DEVICE_ACTION_PROOF_VERSION;
   const algorithm = boundedTrimmedString(record.algorithm, "actionProof.algorithm", 80, true);
   if (algorithm !== CLOUD_VAULT_DEVICE_TRUST_CHAIN_ALGORITHM) {
     throw new HttpsError("invalid-argument", "actionProof.algorithm is unsupported.");
@@ -179,7 +189,12 @@ function parseTrustedDeviceActionProof(raw: unknown): TrustedDeviceActionProof {
   return {
     version,
     algorithm,
-    deviceSignalIdentityKeyId: boundedTrimmedString(record.deviceSignalIdentityKeyId, "actionProof.deviceSignalIdentityKeyId", 200, true),
+    deviceSignalIdentityKeyId: boundedTrimmedString(
+      record.deviceSignalIdentityKeyId,
+      "actionProof.deviceSignalIdentityKeyId",
+      200,
+      true,
+    ),
     deviceSignalIdentityPublicKeyFingerprint: boundedTrimmedString(
       record.deviceSignalIdentityPublicKeyFingerprint,
       "actionProof.deviceSignalIdentityPublicKeyFingerprint",
@@ -207,7 +222,12 @@ async function requireTrustedEscrowDevice(
 ): Promise<{ deviceId: string; platform: string }> {
   const device = await db.doc(`users/${uid}/escrow_devices/${deviceId}`).get();
   const platform = device.exists ? device.get("platform") : undefined;
-  if (!device.exists || device.get("trustState") !== "trusted" || typeof platform !== "string" || !allowedPlatforms.has(platform)) {
+  if (
+    !device.exists ||
+    device.get("trustState") !== "trusted" ||
+    typeof platform !== "string" ||
+    !allowedPlatforms.has(platform)
+  ) {
     throw new HttpsError("permission-denied", "This mutation requires a trusted device for the requested trust root.");
   }
   return { deviceId, platform };
@@ -456,7 +476,11 @@ function cocoaReferenceSecondsToUnixMillis(referenceSeconds: number): bigint {
   return BigInt(Math.round((referenceSeconds + COCOA_REFERENCE_UNIX_OFFSET_SECONDS) * 1000));
 }
 
-function agentGrantAuthoritySignablePayload(intentHashHex: string, counter: number, timestampReferenceSeconds: number): Buffer {
+function agentGrantAuthoritySignablePayload(
+  intentHashHex: string,
+  counter: number,
+  timestampReferenceSeconds: number,
+): Buffer {
   const hashBytes = Buffer.from(intentHashHex, "utf8");
   const suffix = Buffer.alloc(16);
   suffix.writeBigUInt64BE(BigInt(counter), 0);
@@ -464,10 +488,9 @@ function agentGrantAuthoritySignablePayload(intentHashHex: string, counter: numb
   return Buffer.concat([hashBytes, suffix]);
 }
 
-function agentGrantLocalAuthProofSignablePayload(proof: Pick<
-  AgentGrantLocalAuthProof,
-  "proofId" | "deviceId" | "signedIntentHash" | "authenticatedAt" | "expiresAt"
->): Buffer {
+function agentGrantLocalAuthProofSignablePayload(
+  proof: Pick<AgentGrantLocalAuthProof, "proofId" | "deviceId" | "signedIntentHash" | "authenticatedAt" | "expiresAt">,
+): Buffer {
   const domain = "OpenBurnBar.AgentGrantLocalAuthProof.v1";
   const canonical = [
     domain,
@@ -626,7 +649,10 @@ function montgomeryUToCompressedEdwards(montgomeryU: Buffer, edwardsXSignBit: nu
  * (returns false) on any length / encoding / curve / verify error.
  */
 function verifyXEdDSACurve25519Signature(serializedPublicKey33: Buffer, payload: Buffer, signature64: Buffer): boolean {
-  if (serializedPublicKey33.length !== SIGNAL_DJB_PUBLIC_KEY_BYTE_LENGTH || serializedPublicKey33[0] !== ED25519_DJB_TYPE_BYTE) {
+  if (
+    serializedPublicKey33.length !== SIGNAL_DJB_PUBLIC_KEY_BYTE_LENGTH ||
+    serializedPublicKey33[0] !== ED25519_DJB_TYPE_BYTE
+  ) {
     return false;
   }
   if (signature64.length !== 64) return false;
@@ -824,7 +850,12 @@ export async function requireTrustedDeviceActionProof(args: {
 
   const device = await db.doc(`users/${args.uid}/escrow_devices/${args.deviceId}`).get();
   const platform = device.exists ? device.get("platform") : undefined;
-  if (!device.exists || device.get("trustState") !== "trusted" || typeof platform !== "string" || !args.allowedPlatforms.has(platform)) {
+  if (
+    !device.exists ||
+    device.get("trustState") !== "trusted" ||
+    typeof platform !== "string" ||
+    !args.allowedPlatforms.has(platform)
+  ) {
     throw new HttpsError("permission-denied", "This mutation requires a trusted device for the requested trust root.");
   }
   if (
@@ -834,7 +865,9 @@ export async function requireTrustedDeviceActionProof(args: {
     throw new HttpsError("permission-denied", "actionProof is not bound to the trusted device identity.");
   }
 
-  const identitySnap = await db.doc(`users/${args.uid}/signal_identity_public_keys/${proof.deviceSignalIdentityKeyId}`).get();
+  const identitySnap = await db
+    .doc(`users/${args.uid}/signal_identity_public_keys/${proof.deviceSignalIdentityKeyId}`)
+    .get();
   if (
     !identitySnap.exists ||
     identitySnap.get("deviceId") !== args.deviceId ||
@@ -845,7 +878,11 @@ export async function requireTrustedDeviceActionProof(args: {
   }
   const identityKeyVersion = identitySnap.get("keyVersion");
   const deviceKeyVersion = device.get("keyVersion");
-  if (typeof identityKeyVersion === "number" && typeof deviceKeyVersion === "number" && identityKeyVersion !== deviceKeyVersion) {
+  if (
+    typeof identityKeyVersion === "number" &&
+    typeof deviceKeyVersion === "number" &&
+    identityKeyVersion !== deviceKeyVersion
+  ) {
     throw new HttpsError("permission-denied", "actionProof identity key version does not match the trusted device.");
   }
 
@@ -949,7 +986,6 @@ function queuedAgentGrantDeliveryRequiresMacApproval(
   return queuedAgentGrantRequiresMacApproval(capabilities, trustMode);
 }
 
-
 function parseAgentGrantLocalAuthProof(raw: unknown): AgentGrantLocalAuthProof | undefined {
   if (raw == null) return undefined;
   const record = recordOrUndefined(raw);
@@ -958,7 +994,12 @@ function parseAgentGrantLocalAuthProof(raw: unknown): AgentGrantLocalAuthProof |
   }
   const proofId = boundedFirestoreDocumentId(record.proofId, "localAuthProof.proofId", 160);
   const deviceId = boundedFirestoreDocumentId(record.deviceId, "localAuthProof.deviceId", 160);
-  const signedIntentHash = boundedTrimmedString(record.signedIntentHash, "localAuthProof.signedIntentHash", 64, true).toLowerCase();
+  const signedIntentHash = boundedTrimmedString(
+    record.signedIntentHash,
+    "localAuthProof.signedIntentHash",
+    64,
+    true,
+  ).toLowerCase();
   const authenticatedAt =
     typeof record.authenticatedAt === "number" ? record.authenticatedAt : Number(record.authenticatedAt);
   const expiresAt = typeof record.expiresAt === "number" ? record.expiresAt : Number(record.expiresAt);
@@ -1010,10 +1051,7 @@ function verifyAgentGrantLocalAuthProof(
     : "bad_signature";
 }
 
-async function appendComputerUseAuditEvent(
-  uid: string,
-  event: Record<string, unknown>,
-): Promise<void> {
+async function appendComputerUseAuditEvent(uid: string, event: Record<string, unknown>): Promise<void> {
   await db.collection(`users/${uid}/computer_use_audit_events`).add({
     ...event,
     observedAt: FieldValue.serverTimestamp(),
@@ -1229,7 +1267,10 @@ export const approveEscrowDeviceTrust = onCall(
         const trustState = snapshot.get("trustState");
         if (trustState === "trusted") {
           const approvedByDeviceId = snapshot.get("approvedByDeviceId");
-          return { alreadyTrusted: true, approvedByDeviceId: typeof approvedByDeviceId === "string" ? approvedByDeviceId : undefined };
+          return {
+            alreadyTrusted: true,
+            approvedByDeviceId: typeof approvedByDeviceId === "string" ? approvedByDeviceId : undefined,
+          };
         }
         if (trustState === "revoked") {
           throw new HttpsError("failed-precondition", "Revoked escrow devices must be re-registered before approval.");
@@ -1375,14 +1416,21 @@ export const approveEscrowDeviceTrust = onCall(
         }
         const rawApproverKeyVersion = approverSnap.get("keyVersion");
         const approverKeyVersion =
-          typeof rawApproverKeyVersion === "number" && Number.isInteger(rawApproverKeyVersion) ? rawApproverKeyVersion : 1;
+          typeof rawApproverKeyVersion === "number" && Number.isInteger(rawApproverKeyVersion)
+            ? rawApproverKeyVersion
+            : 1;
         const approverSignalIdentityKeyId = `${approvedByDeviceId}_${approverKeyVersion}`;
         if (trustChain.approverSignalIdentityKeyId !== approverSignalIdentityKeyId) {
-          throw new HttpsError("permission-denied", "Trust-chain approver identity does not match the approver device.");
+          throw new HttpsError(
+            "permission-denied",
+            "Trust-chain approver identity does not match the approver device.",
+          );
         }
         const approverIdentityRef = db.doc(`users/${uid}/signal_identity_public_keys/${approverSignalIdentityKeyId}`);
         const approverIdentitySnap =
-          approverSignalIdentityKeyId === targetSignalIdentityKeyId ? targetIdentitySnap : await transaction.get(approverIdentityRef);
+          approverSignalIdentityKeyId === targetSignalIdentityKeyId
+            ? targetIdentitySnap
+            : await transaction.get(approverIdentityRef);
         if (
           !approverIdentitySnap.exists ||
           approverIdentitySnap.get("deviceId") !== approvedByDeviceId ||
@@ -1459,9 +1507,9 @@ export const approveEscrowDeviceTrust = onCall(
           { merge: true },
         );
         return { alreadyTrusted: false, approvedByDeviceId };
-	    });
+      });
 
-	    logInfo({
+      logInfo({
         event: "callable_info",
         message: "escrow_device_trust_approved",
         device_id: deviceId,
@@ -1543,7 +1591,10 @@ export const revokeEscrowDeviceTrust = onCall(
       const stateSnap = await db.doc(`users/${uid}/cloud_vault_state/current`).get();
       const state = recordOrUndefined(stateSnap.data());
       if (stateSnap.exists && state?.status === "active" && typeof state.vaultKeyID === "string") {
-        const trustedDevicesSnap = await db.collection(`users/${uid}/escrow_devices`).where("trustState", "==", "trusted").get();
+        const trustedDevicesSnap = await db
+          .collection(`users/${uid}/escrow_devices`)
+          .where("trustState", "==", "trusted")
+          .get();
         const survivorDeviceIds = trustedDevicesSnap.docs
           .map((doc) => doc.id)
           .filter((trustedDeviceId) => trustedDeviceId !== deviceId)
@@ -1771,18 +1822,24 @@ export const publishIrohPairingRecord = onCallProduction(
     await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
     const nodeId = boundedTrimmedString(request.data.nodeId, "nodeId", 128, true);
-    const relayURLRaw = request.data.relayURL == null ? undefined : boundedTrimmedString(request.data.relayURL, "relayURL", 512, false);
+    const relayURLRaw =
+      request.data.relayURL == null ? undefined : boundedTrimmedString(request.data.relayURL, "relayURL", 512, false);
     const relayURL = relayURLRaw && relayURLRaw.length > 0 ? relayURLRaw : undefined;
     const directAddresses = boundedStringArray(request.data.directAddresses, "directAddresses", 16, 512);
-    const publishedAtMillis = boundedInteger(request.data.publishedAtMillis, "publishedAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? Date.now();
+    const publishedAtMillis =
+      boundedInteger(request.data.publishedAtMillis, "publishedAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ??
+      Date.now();
     const protocolVersion = boundedInteger(request.data.protocolVersion, "protocolVersion", 1, 100, true) ?? 1;
     const signature = requireBase64Like(request.data.signature, "signature", 32, 256);
 
     const ref = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
     await db.runTransaction(async (transaction) => {
       const existing = await transaction.get(ref);
-      const createdAt = existing.exists && existing.get("createdAt") != null ? existing.get("createdAt") : FieldValue.serverTimestamp();
-      const existingControllerAllowlist = normalizedControllerDeviceAllowlist(existing.get("authorizedControllerDeviceIds"));
+      const createdAt =
+        existing.exists && existing.get("createdAt") != null ? existing.get("createdAt") : FieldValue.serverTimestamp();
+      const existingControllerAllowlist = normalizedControllerDeviceAllowlist(
+        existing.get("authorizedControllerDeviceIds"),
+      );
       const payload: Record<string, unknown> = {
         id: connectionId,
         nodeId,
@@ -1801,13 +1858,9 @@ export const publishIrohPairingRecord = onCallProduction(
       } else {
         payload.authorizedControllerDeviceIds = existingControllerAllowlist;
       }
-      transaction.set(
-        ref,
-        payload,
-        { merge: true },
-      );
+      transaction.set(ref, payload, { merge: true });
     });
-	    logInfo({
+    logInfo({
       event: "callable_info",
       message: "iroh_pairing_record_published",
       connection_id: connectionId,
@@ -1967,15 +2020,25 @@ export const publishRelaySenderKey = onCallProduction(
       throw new HttpsError("invalid-argument", "keyId must be a v3 relay sender key id.");
     }
     const relayKeyVersion =
-      boundedInteger(request.data.relayKeyVersion, "relayKeyVersion", RELAY_AUTH_KEY_VERSION, RELAY_AUTH_KEY_VERSION, true) ??
-      RELAY_AUTH_KEY_VERSION;
+      boundedInteger(
+        request.data.relayKeyVersion,
+        "relayKeyVersion",
+        RELAY_AUTH_KEY_VERSION,
+        RELAY_AUTH_KEY_VERSION,
+        true,
+      ) ?? RELAY_AUTH_KEY_VERSION;
     const relaySenderKey = requireP256X963PublicKey(request.data.publicKeyBase64, "publicKeyBase64");
     const derivedKeyId = `relay-v3-${createHash("sha256").update(relaySenderKey.decoded).digest("hex").slice(0, 24)}`;
     if (keyId !== derivedKeyId) {
       throw new HttpsError("invalid-argument", "keyId does not match the relay sender key.");
     }
     const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
-    const signalIdentityKeyId = boundedTrimmedString(request.data.signalIdentityKeyId, "signalIdentityKeyId", 200, true);
+    const signalIdentityKeyId = boundedTrimmedString(
+      request.data.signalIdentityKeyId,
+      "signalIdentityKeyId",
+      200,
+      true,
+    );
     const signalIdentityKeyVersion =
       boundedInteger(request.data.signalIdentityKeyVersion, "signalIdentityKeyVersion", 1, 100, true) ?? 1;
     const expectedSignalIdentityKeyId = `${deviceId}_${signalIdentityKeyVersion}`;
@@ -2000,7 +2063,10 @@ export const publishRelaySenderKey = onCallProduction(
       identity.get("publicKeyFingerprint") !== signalIdentityPublicKeyFingerprint ||
       identity.get("keyVersion") !== signalIdentityKeyVersion
     ) {
-      throw new HttpsError("permission-denied", "Relay sender key requires a published Signal identity for this trusted device.");
+      throw new HttpsError(
+        "permission-denied",
+        "Relay sender key requires a published Signal identity for this trusted device.",
+      );
     }
     if (device.exists && device.get("peerNodeId") && device.get("peerNodeId") !== peerNodeId) {
       throw new HttpsError("permission-denied", "Relay sender peer node does not match the trusted device binding.");
@@ -2167,8 +2233,10 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
     if (queuedAgentGrantDeliveryRequiresMacApproval(capabilities, trustMode, deliveryMode)) {
       throw new HttpsError("failed-precondition", "mac_approval_required");
     }
-    const requestedAt = typeof request.data.requestedAt === "number" ? request.data.requestedAt : Number(request.data.requestedAt);
-    const expiresAt = typeof request.data.expiresAt === "number" ? request.data.expiresAt : Number(request.data.expiresAt);
+    const requestedAt =
+      typeof request.data.requestedAt === "number" ? request.data.requestedAt : Number(request.data.requestedAt);
+    const expiresAt =
+      typeof request.data.expiresAt === "number" ? request.data.expiresAt : Number(request.data.expiresAt);
     const grantDurationSeconds =
       typeof request.data.grantDurationSeconds === "number"
         ? request.data.grantDurationSeconds
@@ -2221,10 +2289,15 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
     }
     const authorityPeerNodeId = boundedTrimmedString(authority.peerNodeId, "authority.peerNodeId", 160, true);
     const authorityCounter = boundedInteger(authority.counter, "authority.counter", 0, Number.MAX_SAFE_INTEGER, true);
-    const authorityTimestamp = typeof authority.timestamp === "number" ? authority.timestamp : Number(authority.timestamp);
+    const authorityTimestamp =
+      typeof authority.timestamp === "number" ? authority.timestamp : Number(authority.timestamp);
     const intentHashBlake3 = boundedTrimmedString(authority.intentHashBlake3, "authority.intentHashBlake3", 64, true);
     const signatureEd25519 = requireBase64Like(authority.signatureEd25519, "authority.signatureEd25519", 32, 256);
-    if (authorityCounter == null || !Number.isFinite(authorityTimestamp) || !/^[a-fA-F0-9]{64}$/u.test(intentHashBlake3)) {
+    if (
+      authorityCounter == null ||
+      !Number.isFinite(authorityTimestamp) ||
+      !/^[a-fA-F0-9]{64}$/u.test(intentHashBlake3)
+    ) {
       throw new HttpsError("invalid-argument", "authority is invalid.");
     }
     if (Math.abs(nowReferenceSeconds - authorityTimestamp) > AGENT_GRANT_AUTHORITY_FRESHNESS_SECONDS) {
@@ -2269,47 +2342,53 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
       authoritySnapshot.get("publicKeyBase64"),
       authorityKeyKind,
     );
-	    const signablePayload = agentGrantAuthoritySignablePayload(intentHashBlake3.toLowerCase(), authorityCounter, authorityTimestamp);
-	    if (!verifyPhoneControlAuthoritySignature(authorityPublicKey, authorityKeyKind, signablePayload, signatureEd25519)) {
-	      throw new HttpsError("permission-denied", "Agent grant authority signature is invalid.");
-	    }
-	    if (localAuthProof) {
-	      const proofStatus = verifyAgentGrantLocalAuthProof(localAuthProof, {
-	        sourceDeviceId,
-	        observedIntentHashHex,
-	        nowReferenceSeconds,
-	        authorityPublicKey,
-	        authorityKeyKind,
-	      });
-	      if (proofStatus !== "ok") {
-	        await appendComputerUseAuditEvent(uid, {
-	          eventType: "agent_grant.local_auth_proof.reject",
-	          reason: proofStatus,
-	          proofId: localAuthProof.proofId,
-	          requestId,
-	          sourceDeviceId,
-	          preset,
-	        }).catch((error) => logWarn({ event: "audit_write_failed", message: "local_auth_proof_reject", error }));
-	        throw new HttpsError("permission-denied", `local_auth_proof_${proofStatus}`);
-	      }
-	    }
+    const signablePayload = agentGrantAuthoritySignablePayload(
+      intentHashBlake3.toLowerCase(),
+      authorityCounter,
+      authorityTimestamp,
+    );
+    if (
+      !verifyPhoneControlAuthoritySignature(authorityPublicKey, authorityKeyKind, signablePayload, signatureEd25519)
+    ) {
+      throw new HttpsError("permission-denied", "Agent grant authority signature is invalid.");
+    }
+    if (localAuthProof) {
+      const proofStatus = verifyAgentGrantLocalAuthProof(localAuthProof, {
+        sourceDeviceId,
+        observedIntentHashHex,
+        nowReferenceSeconds,
+        authorityPublicKey,
+        authorityKeyKind,
+      });
+      if (proofStatus !== "ok") {
+        await appendComputerUseAuditEvent(uid, {
+          eventType: "agent_grant.local_auth_proof.reject",
+          reason: proofStatus,
+          proofId: localAuthProof.proofId,
+          requestId,
+          sourceDeviceId,
+          preset,
+        }).catch((error) => logWarn({ event: "audit_write_failed", message: "local_auth_proof_reject", error }));
+        throw new HttpsError("permission-denied", `local_auth_proof_${proofStatus}`);
+      }
+    }
 
-	    const payload = {
-	      ...grantRequest,
-	      ...(localAuthProof
-	        ? {
-	            localAuthProof: {
-	              proofId: localAuthProof.proofId,
-	              deviceId: localAuthProof.deviceId,
-	              signedIntentHash: localAuthProof.signedIntentHash,
-	              authenticatedAt: localAuthProof.authenticatedAt,
-	              expiresAt: localAuthProof.expiresAt,
-	              signatureEd25519: localAuthProof.signatureEd25519,
-	            },
-	            localAuthProofVerifiedAt: FieldValue.serverTimestamp(),
-	          }
-	        : {}),
-	      authority: {
+    const payload = {
+      ...grantRequest,
+      ...(localAuthProof
+        ? {
+            localAuthProof: {
+              proofId: localAuthProof.proofId,
+              deviceId: localAuthProof.deviceId,
+              signedIntentHash: localAuthProof.signedIntentHash,
+              authenticatedAt: localAuthProof.authenticatedAt,
+              expiresAt: localAuthProof.expiresAt,
+              signatureEd25519: localAuthProof.signatureEd25519,
+            },
+            localAuthProofVerifiedAt: FieldValue.serverTimestamp(),
+          }
+        : {}),
+      authority: {
         peerNodeId: authorityPeerNodeId,
         counter: authorityCounter,
         timestamp: authorityTimestamp,
@@ -2320,17 +2399,17 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
       canonicalRequestHashSha256: observedIntentHashHex,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-	    };
-	    await db.runTransaction(async (transaction) => {
-	      const proofRef = localAuthProof ? db.doc(`users/${uid}/local_auth_proofs/${localAuthProof.proofId}`) : undefined;
-	      const [freshAuthority, existingRequest, proofSnapshot] = await Promise.all([
-	        transaction.get(authorityRef),
-	        transaction.get(requestRef),
-	        proofRef ? transaction.get(proofRef) : Promise.resolve(undefined),
-	      ]);
-	      if (existingRequest.exists) {
-	        throw new HttpsError("already-exists", "Agent grant request is already queued.");
-	      }
+    };
+    await db.runTransaction(async (transaction) => {
+      const proofRef = localAuthProof ? db.doc(`users/${uid}/local_auth_proofs/${localAuthProof.proofId}`) : undefined;
+      const [freshAuthority, existingRequest, proofSnapshot] = await Promise.all([
+        transaction.get(authorityRef),
+        transaction.get(requestRef),
+        proofRef ? transaction.get(proofRef) : Promise.resolve(undefined),
+      ]);
+      if (existingRequest.exists) {
+        throw new HttpsError("already-exists", "Agent grant request is already queued.");
+      }
       if (
         !freshAuthority.exists ||
         freshAuthority.get("peerNodeId") !== authorityPeerNodeId ||
@@ -2339,27 +2418,27 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
         throw new HttpsError("permission-denied", "Agent grant authority changed before the request could be queued.");
       }
       const lastQueuedCounter = freshAuthority.get("lastQueuedCounter");
-	      if (typeof lastQueuedCounter === "number" && authorityCounter <= lastQueuedCounter) {
-	        throw new HttpsError("permission-denied", "Agent grant authority counter replay.");
-	      }
-		      if (proofSnapshot?.exists) {
-		        throw new HttpsError("permission-denied", "local_auth_proof_replay");
-		      }
-	      transaction.create(requestRef, payload);
-	      if (proofRef && localAuthProof) {
-	        transaction.create(proofRef, {
-	          proofId: localAuthProof.proofId,
-	          requestId,
-	          sourceDeviceId,
-	          signedIntentHash: localAuthProof.signedIntentHash,
-	          authenticatedAt: localAuthProof.authenticatedAt,
-	          expiresAt: localAuthProof.expiresAt,
-	          consumedAt: FieldValue.serverTimestamp(),
-	          status: "consumed",
-	          schemaVersion: 1,
-	        });
-	      }
-	      transaction.set(
+      if (typeof lastQueuedCounter === "number" && authorityCounter <= lastQueuedCounter) {
+        throw new HttpsError("permission-denied", "Agent grant authority counter replay.");
+      }
+      if (proofSnapshot?.exists) {
+        throw new HttpsError("permission-denied", "local_auth_proof_replay");
+      }
+      transaction.create(requestRef, payload);
+      if (proofRef && localAuthProof) {
+        transaction.create(proofRef, {
+          proofId: localAuthProof.proofId,
+          requestId,
+          sourceDeviceId,
+          signedIntentHash: localAuthProof.signedIntentHash,
+          authenticatedAt: localAuthProof.authenticatedAt,
+          expiresAt: localAuthProof.expiresAt,
+          consumedAt: FieldValue.serverTimestamp(),
+          status: "consumed",
+          schemaVersion: 1,
+        });
+      }
+      transaction.set(
         authorityRef,
         {
           lastQueuedCounter: authorityCounter,
@@ -2370,20 +2449,20 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
       );
     });
 
-	    if (localAuthProof) {
-	      await appendComputerUseAuditEvent(uid, {
-	        eventType: "agent_grant.local_auth_proof.consume",
-	        proofId: localAuthProof.proofId,
-	        requestId,
-	        sourceDeviceId,
-	        signedIntentHash: localAuthProof.signedIntentHash,
-	        preset,
-	      }).catch((error) => logWarn({ event: "audit_write_failed", message: "local_auth_proof_consume", error }));
-	    }
+    if (localAuthProof) {
+      await appendComputerUseAuditEvent(uid, {
+        eventType: "agent_grant.local_auth_proof.consume",
+        proofId: localAuthProof.proofId,
+        requestId,
+        sourceDeviceId,
+        signedIntentHash: localAuthProof.signedIntentHash,
+        preset,
+      }).catch((error) => logWarn({ event: "audit_write_failed", message: "local_auth_proof_consume", error }));
+    }
 
-	    logInfo({
-	      event: "callable_info",
-	      message: "agent_capability_grant_request_queued",
+    logInfo({
+      event: "callable_info",
+      message: "agent_capability_grant_request_queued",
       request_id: requestId,
       source_device_id: sourceDeviceId,
       preset,

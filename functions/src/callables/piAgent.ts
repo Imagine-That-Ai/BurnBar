@@ -283,9 +283,7 @@ export const listPiAgentConnections = onCall(
         return data && isPiAgentConnectionDoc(data) ? [data] : [];
       })
       .filter((doc) => request.data.includeRevoked === true || doc.status !== "revoked")
-      .sort((left, right) =>
-        (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt),
-      );
+      .sort((left, right) => (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt));
     return { connections };
   }),
 );

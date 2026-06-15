@@ -306,7 +306,13 @@ final class MacRemoteUnlockReadinessService {
         let sessionId: String
         let peerNodeId: String
         let viewerDeviceId: String?
+        let attestationHashBlake3: String?
         let expiresAt: Date
+    }
+
+    struct ActiveRemoteUnlockBinding: Sendable, Equatable {
+        let viewerDeviceId: String?
+        let attestationHashBlake3: String?
     }
 
     private enum Keys {
@@ -439,7 +445,33 @@ final class MacRemoteUnlockReadinessService {
             sessionId: sessionId,
             peerNodeId: peerNodeId,
             viewerDeviceId: normalizedRemoteUnlockIdentifier(session.viewerDeviceId),
+            attestationHashBlake3: normalizedRemoteUnlockIdentifier(session.authority.attestationHashBlake3),
             expiresAt: session.expiresAt
+        )
+    }
+
+    func activeRemoteUnlockBinding(
+        sessionId: String?,
+        peerNodeId: String?,
+        viewerDeviceId: String? = nil,
+        now: Date = Date()
+    ) -> ActiveRemoteUnlockBinding? {
+        pruneExpiredRemoteUnlockSessions(now: now)
+        guard let normalizedSessionId = normalizedRemoteUnlockIdentifier(sessionId),
+              let normalizedPeerNodeId = normalizedRemoteUnlockIdentifier(peerNodeId),
+              let active = activeRemoteUnlockSessions[normalizedSessionId],
+              active.expiresAt > now,
+              active.peerNodeId == normalizedPeerNodeId else {
+            return nil
+        }
+        if let viewerDeviceId = normalizedRemoteUnlockIdentifier(viewerDeviceId),
+           let activeViewerDeviceId = active.viewerDeviceId,
+           activeViewerDeviceId != viewerDeviceId {
+            return nil
+        }
+        return ActiveRemoteUnlockBinding(
+            viewerDeviceId: active.viewerDeviceId,
+            attestationHashBlake3: active.attestationHashBlake3
         )
     }
 

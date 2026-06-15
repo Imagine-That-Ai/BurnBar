@@ -11,7 +11,9 @@ describe("computer use quota recompute", () => {
 
   it("rejects malformed or non-session paths instead of trusting document fields", () => {
     expect(__testing__.uidFromComputerUseSessionPath("users/alice-uid/computer_use_actions/action-1")).toBeNull();
-    expect(__testing__.uidFromComputerUseSessionPath("tenants/t1/users/alice-uid/computer_use_sessions/session-1")).toBeNull();
+    expect(
+      __testing__.uidFromComputerUseSessionPath("tenants/t1/users/alice-uid/computer_use_sessions/session-1"),
+    ).toBeNull();
     expect(__testing__.uidFromComputerUseSessionPath("users//computer_use_sessions/session-1")).toBeNull();
   });
 });

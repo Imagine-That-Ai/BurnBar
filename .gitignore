@@ -220,3 +220,22 @@ functions/coverage/
 
 # Local-only Firebase security-evidence snapshots (contain IAM/PII recon — never commit)
 security/evidence/firebase-security-evidence-*.json
+security/threat-model/current-state-assessment-*.md
+security/threat-model/mitigation-roadmap-*.md
+
+# Local-only security audit work products. Keep raw model runs, exploit-oriented
+# evidence, and agent work ledgers on disk only; publish sanitized summaries.
+security-audit/
+security/evidence/
+security/threat-model/
+.agent/runs/
+docs/security/*SECURITY_SCAN*.md
+docs/security/SCAN_RUN-*.md
+docs/security/OPENBURNBAR_REPO_THREAT_MODEL_*.md
+docs/security/SECURITY_AUDIT_RELEASE_HANDOFF_*.md
+docs/security/*AUDIT*.md
+docs/security/*EVIDENCE*.md
+docs/security/*HANDOFF*.md
+docs/security/*REMEDIATION*.md
+docs/security/*findings*.md
+docs/security/SOTA_*_SIGNOFF.md

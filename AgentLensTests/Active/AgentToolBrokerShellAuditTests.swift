@@ -55,6 +55,48 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
         return workspace
     }
 
+    func test_restrictedShellDoesNotInheritParentSecretEnvironment() async throws {
+        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") else {
+            throw XCTSkip("sandbox-exec unavailable")
+        }
+        let key = "OPENBURNBAR_TEST_SECRET_TOKEN"
+        let previousValue = getenv(key).map { String(cString: $0) }
+        setenv(key, "supersecret-parent-env-token", 1)
+        defer {
+            if let previousValue {
+                setenv(key, previousValue, 1)
+            } else {
+                unsetenv(key)
+            }
+        }
+
+        let workspace = try makeWorkspace()
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes,
+            threadID: "thread-audit",
+            capabilities: [.shell],
+            trustMode: .manual,
+            now: Date(),
+            duration: 60
+        )
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
+
+        let payload = try jsonPayload(from: await broker.invokeOpenAITool(
+            name: "shell_run",
+            arguments: #"{"command":"if [ \"${OPENBURNBAR_TEST_SECRET_TOKEN-unset}\" = \"unset\" ]; then echo clean; else echo leaked:$OPENBURNBAR_TEST_SECRET_TOKEN; fi"}"#,
+            callID: "call-restricted-env-clean",
+            runID: "run-audit"
+        ))
+        XCTAssertEqual(payload["ok"] as? Bool, true)
+        XCTAssertEqual(payload["exitCode"] as? Int, 0)
+        XCTAssertEqual((payload["stdout"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), "clean")
+        XCTAssertFalse((payload["stdout"] as? String ?? "").contains("supersecret-parent-env-token"))
+    }
+
     func test_unrestrictedShellRequiresYOLOTrustedModeAndCapability() async throws {
         let workspace = try makeWorkspace()
         // Manual trust mode with the capability is NOT enough.

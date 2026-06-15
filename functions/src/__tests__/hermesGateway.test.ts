@@ -147,9 +147,9 @@ describe("Hermes Gateway lastSeenAt write coalescing", () => {
     // Worst-case staleness for a poller faster than the coalesce interval is
     // just under 2x the interval; presence must still read online there.
     expect(HERMES_GATEWAY_LAST_SEEN_COALESCE_MS * 3).toBeLessThanOrEqual(HERMES_GATEWAY_PRESENCE_WINDOW_MS);
-    expect(isHermesGatewayClientOnline("2026-06-01T00:01:30.000Z", now + 2 * HERMES_GATEWAY_LAST_SEEN_COALESCE_MS)).toBe(
-      true,
-    );
+    expect(
+      isHermesGatewayClientOnline("2026-06-01T00:01:30.000Z", now + 2 * HERMES_GATEWAY_LAST_SEEN_COALESCE_MS),
+    ).toBe(true);
   });
 });
 

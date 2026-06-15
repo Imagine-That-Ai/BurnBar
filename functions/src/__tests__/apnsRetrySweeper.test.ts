@@ -165,7 +165,12 @@ describe("sweepStuckVoIPPushes", () => {
   function fakeDb(docs: QueryDocumentSnapshot[]): {
     db: Firestore;
     collectionGroup: ReturnType<typeof vi.fn>;
-    query: { where: ReturnType<typeof vi.fn>; orderBy: ReturnType<typeof vi.fn>; limit: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+    query: {
+      where: ReturnType<typeof vi.fn>;
+      orderBy: ReturnType<typeof vi.fn>;
+      limit: ReturnType<typeof vi.fn>;
+      get: ReturnType<typeof vi.fn>;
+    };
   } {
     const query = {
       where: vi.fn(() => query),

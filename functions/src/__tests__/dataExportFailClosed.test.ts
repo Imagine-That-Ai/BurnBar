@@ -51,8 +51,6 @@ vi.mock("../callables/auditLog.js", () => ({
 
 import { exportUserData } from "../callables/dataExport.js";
 
-
-
 function authedRequest() {
   return {
     auth: { uid: "u1", token: {} },

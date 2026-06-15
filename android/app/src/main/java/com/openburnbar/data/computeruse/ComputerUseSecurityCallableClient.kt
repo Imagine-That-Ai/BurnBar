@@ -320,6 +320,7 @@ class ComputerUseSecurityCallableClient(
             identity = identity,
             firestore = firestore,
         )
+        val identityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(identity.publicKeyData)
         val issuedAtMillis = System.currentTimeMillis()
         val proofPayload =
             CloudVaultTrustedDeviceActionProofPayload(
@@ -331,13 +332,13 @@ class ComputerUseSecurityCallableClient(
                 nonce = nonce,
                 issuedAtMillis = issuedAtMillis,
                 deviceSignalIdentityKeyId = identity.identityKeyId,
-                deviceSignalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(identity.publicKeyData),
+                deviceSignalIdentityPublicKeyFingerprint = identityPublicKeyFingerprint,
             )
         val signature = CloudVaultTrustedDeviceActionProofSigner.sign(proofPayload, identity)
         val actionProof =
             CloudVaultTrustedDeviceActionProof(
                 deviceSignalIdentityKeyId = identity.identityKeyId,
-                deviceSignalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(identity.publicKeyData),
+                deviceSignalIdentityPublicKeyFingerprint = identityPublicKeyFingerprint,
                 issuedAtMillis = issuedAtMillis,
                 signature = signature,
             ).asMap()

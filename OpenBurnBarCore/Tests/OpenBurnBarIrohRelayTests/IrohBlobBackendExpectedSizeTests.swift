@@ -151,6 +151,34 @@ private class DefaultExpectedSizeBackend: IrohBlobBackend, @unchecked Sendable {
         )
     }
 
+    func fetchBlob(
+        ticketText: String,
+        destination: String,
+        expectedSizeBytes: UInt64
+    ) async throws -> BlobTransferStats {
+        try IrohBlobTransferLimits.validateExpectedFetchSize(expectedSizeBytes)
+        fetchCalls += 1
+        let url = URL(fileURLWithPath: destination)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data(repeating: 0xA5, count: writeBytes).write(to: url)
+        let actualBytes = max(UInt64(writeBytes), reportedBytes)
+        guard actualBytes <= expectedSizeBytes else {
+            try? FileManager.default.removeItem(atPath: destination)
+            throw IrohBlobBackendError.fetchFailed(
+                "blob exceeded expected size: \(actualBytes) bytes > \(expectedSizeBytes) bytes"
+            )
+        }
+        return BlobTransferStats(
+            bytesTotal: reportedBytes,
+            blake3Hash: "fake",
+            durationMillis: 1,
+            didResume: false
+        )
+    }
+
     func identity() async throws -> IrohEndpointIdentity {
         IrohEndpointIdentity(nodeId: "test", rawPublicKey: Data(repeating: 1, count: 32))
     }
@@ -171,7 +199,7 @@ private final class ExpectedSizeOverrideBackend: IrohBlobBackend, @unchecked Sen
         throw IrohBlobBackendError.fetchFailed("old fetch path should not be used")
     }
 
-    func fetchBlob(
+    override func fetchBlob(
         ticketText: String,
         destination: String,
         expectedSizeBytes: UInt64

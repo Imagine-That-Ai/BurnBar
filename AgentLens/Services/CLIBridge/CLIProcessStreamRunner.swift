@@ -18,7 +18,7 @@ struct CLIProcessStreamRunner: Sendable {
             invocation: CLIProcessInvocation(
                 executable: executable,
                 arguments: CLIArgumentBuilder.claudeArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant),
-                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .claude
             ),
@@ -78,7 +78,7 @@ struct CLIProcessStreamRunner: Sendable {
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant
                 ),
-                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .droid
             ),
@@ -108,7 +108,7 @@ struct CLIProcessStreamRunner: Sendable {
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant
                 ),
-                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .forge
             ),
@@ -136,7 +136,7 @@ struct CLIProcessStreamRunner: Sendable {
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant
                 ),
-                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .antigravity
             ),
@@ -164,7 +164,7 @@ struct CLIProcessStreamRunner: Sendable {
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant
                 ),
-                environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .cursorAgent
             ),
@@ -365,7 +365,7 @@ struct CLIProcessStreamRunner: Sendable {
         executablePath: String,
         overrides: [String: String]
     ) -> [String: String] {
-        var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executablePath)
+        var environment = CLIExecutableResolver.agentProcessEnvironment(executablePath: executablePath)
         for (key, value) in overrides {
             environment[key] = value
         }

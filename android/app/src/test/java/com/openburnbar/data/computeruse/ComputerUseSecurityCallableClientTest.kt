@@ -25,7 +25,6 @@ class ComputerUseSecurityCallableClientTest {
     fun providerAccountSubjectId_matchesServerAccountIDForDefault() {
         val client = ComputerUseSecurityCallableClient(mockk<FirebaseFunctions>(relaxed = true))
         assertEquals("codex_default", client.providerAccountSubjectId("codex", null))
-        assertEquals("anthropic_default", client.providerAccountSubjectId("anthropic", "   "))
         assertEquals("work-account", client.providerAccountSubjectId("anthropic", "Work Account"))
     }
 

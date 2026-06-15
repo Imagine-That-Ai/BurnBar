@@ -179,7 +179,11 @@ describe("PII scrubbing in structured logging", () => {
 
     it("redacts GitHub PAT (ghp_) and github_pat_ tokens", async () => {
       const { logInfo } = await import("../logging.js");
-      logInfo({ event: "test", a: "ghp_abcdefghijklmnopqrstuvwxyz0123456789", b: "github_pat_ABCDEFGHIJ_klmnopqrstuvwxyz0123456789" });
+      logInfo({
+        event: "test",
+        a: "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+        b: "github_pat_ABCDEFGHIJ_klmnopqrstuvwxyz0123456789",
+      });
       const payload = captureLog(logSpy);
       expect(payload.a).toBe("[REDACTED]");
       expect(payload.b).toBe("[REDACTED]");
@@ -512,8 +516,12 @@ describe("PII scrubbing in structured logging", () => {
         }),
       ).rejects.toThrow("handler exploded");
       const logEvents = logSpy.mock.calls.map(parseConsoleCall);
-      expect(logEvents.filter((payload: Record<string, unknown>) => payload.event === "callable_start")).toHaveLength(1);
-      expect(logEvents.filter((payload: Record<string, unknown>) => payload.event === "callable_success")).toHaveLength(0);
+      expect(logEvents.filter((payload: Record<string, unknown>) => payload.event === "callable_start")).toHaveLength(
+        1,
+      );
+      expect(logEvents.filter((payload: Record<string, unknown>) => payload.event === "callable_success")).toHaveLength(
+        0,
+      );
       expect(errorSpy).toHaveBeenCalledTimes(1); // error
       const errLog = parseConsolePayload(errorSpy.mock.calls[0]?.[0]);
       expect(errLog.event).toBe("callable_error");

@@ -1163,9 +1163,7 @@ async function handleEvents(req: HttpRequest, res: HttpResponse): Promise<void> 
   // pagination on an empty-but-unadvancing window. A projection (`select`) keeps
   // this scan cheap — it reads only the `sequence` field, not event bodies.
   const cursorAdvanceQuery = (
-    destinationId
-      ? baseCollection.where("destinationId", "==", destinationId)
-      : baseCollection
+    destinationId ? baseCollection.where("destinationId", "==", destinationId) : baseCollection
   )
     .where("sequence", ">", cursor)
     .orderBy("sequence", "asc")
@@ -2145,9 +2143,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
 
       await ensureDefaultDestination(uid, now);
       await Promise.all([
-        db
-          .doc(`users/${uid}/hermes_gateway_clients/${clientId}`)
-          .set(clientDoc, { merge: false }),
+        db.doc(`users/${uid}/hermes_gateway_clients/${clientId}`).set(clientDoc, { merge: false }),
         db
           .doc(`hermes_gateway_token_index/${tokenHash}`)
           .set({ uid, clientId, status: "active", createdAt: now, expiresAt: tokenExpiresAt }),

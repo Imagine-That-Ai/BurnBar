@@ -109,5 +109,3 @@ export async function fetchLiveSubscriptionStatus(
   }
   return { status, pairs };
 }
-
-

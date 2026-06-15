@@ -174,7 +174,12 @@ beforeEach(() => {
   state.productsGet.mockResolvedValue({ data: { purchaseState: 0, consumptionState: 0, orderId: "GPA.0001" } });
   state.productsConsume.mockResolvedValue({ data: {} });
   state.writeEntitlementMock.mockResolvedValue({ entitlementID: "burnbar_pro", active: true });
-  state.creditMock.mockResolvedValue({ credited: true, monthKey: "2026-06", units: 100, kind: "agent_control_actions_100" });
+  state.creditMock.mockResolvedValue({
+    credited: true,
+    monthKey: "2026-06",
+    units: 100,
+    kind: "agent_control_actions_100",
+  });
 });
 
 describe("lazy googleapis loading", () => {

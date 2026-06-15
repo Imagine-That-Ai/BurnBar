@@ -8,10 +8,6 @@ import FirebaseFunctions
 import OpenBurnBarCore
 
 // MARK: - Cloud Store Settings View (macOS)
-private enum MacCloudStoreLegalURLs {
-    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
-    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
-}
 
 struct CloudStoreSettingsView: View {
 
@@ -38,7 +34,9 @@ struct CloudStoreSettingsView: View {
     @State private var didRequestAutomaticCatchUp = false
     @State private var showingHostedMCPUnlock = false
 
-    /// Hosted Remote MCP requires Cloud Pro; locked setup routes to the unlock sheet.
+    /// Hosted Remote MCP requires Cloud Pro. When the member doesn't hold it,
+    /// the card wears the tier lock badge and routes its setup action to the
+    /// evocative unlock sheet instead of the live endpoint.
     private var isHostedMCPUnlocked: Bool {
         entitlement.cloudTier.satisfies(GatedFeature.gatedFeature(.hostedMCP).requiredTier)
     }
@@ -60,7 +58,10 @@ struct CloudStoreSettingsView: View {
                             .padding(.horizontal, 28)
                     }
 
-                    // Full four-tier pricing lineup, matching the marketing site.
+                    // The full four-tier pricing lineup — matches the marketing
+                    // site exactly (Local · Cloud · Cloud Pro · Cloud Ultra).
+                    // Shown to everyone: free users to subscribe, members to
+                    // compare and upgrade (a Cloud member can jump to Ultra).
                     tierLineup
                         .padding(.horizontal, 28)
 
@@ -96,6 +97,11 @@ struct CloudStoreSettingsView: View {
     }
 
     // MARK: - Aurora member card (active)
+    //
+    // Vivid ember/amber/blaze/whimsy burst, foil hairline border, drifting
+    // aurora ribbon, large badge halo, PRO + "OPENBURNBAR CLOUD" tag,
+    // "Member" in the primary gradient, status pill, Manage + Change badge
+    // capsule buttons. Mirrors the iOS/Android member card 1:1.
 
     @ViewBuilder
     private var auroraMemberCard: some View {
@@ -1710,21 +1716,6 @@ private struct TierHolographicAccent: View {
             angle: .degrees(reduceMotion ? 0 : Double(phase) * 360)
         )
         .saturation(1.2)
-    }
-}
-
-private struct MacCloudStoreLegalLinks: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            Link("Privacy Policy", destination: MacCloudStoreLegalURLs.privacy)
-            Text("·")
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-            Link("Terms of Use (EULA)", destination: MacCloudStoreLegalURLs.terms)
-        }
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(DesignSystem.Colors.ember)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("macCloudStore.legalLinks")
     }
 }
 

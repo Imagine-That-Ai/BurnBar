@@ -164,9 +164,12 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
 // runTransaction call (simulates concurrent writes in the TOCTOU race window).
 // Stored on store.__hook so it's visible to the hoisted mock without module-
 // level variable hoisting issues.
-function setBeforeTransactionHook(fn: (() => void) | null) { store.__hook = fn; }
-beforeEach(() => { store.__hook = null; });
-
+function setBeforeTransactionHook(fn: (() => void) | null) {
+  store.__hook = fn;
+}
+beforeEach(() => {
+  store.__hook = null;
+});
 
 vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: FieldValueMock, Timestamp: FakeTimestamp }));
@@ -664,7 +667,6 @@ describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
     // Grant request must NOT have been written.
     expect(store.has(`users/${UID}/agent_capability_grant_requests/${data.requestId}`)).toBe(false);
   });
-
 });
 
 // ---------------------------------------------------------------------------
@@ -704,9 +706,7 @@ describe("F-RR04-004 deliveryMode=live does not bypass mac_approval_required", (
     });
 
     // Must throw mac_approval_required regardless of deliveryMode.
-    await expect(invokeCallable(queueAgentCapabilityGrantRequest, data)).rejects.toThrow(
-      /mac_approval_required/i,
-    );
+    await expect(invokeCallable(queueAgentCapabilityGrantRequest, data)).rejects.toThrow(/mac_approval_required/i);
     // Grant request must NOT have been written.
     expect(store.has(`users/${UID}/agent_capability_grant_requests/${data.requestId}`)).toBe(false);
   });
