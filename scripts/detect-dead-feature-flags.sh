@@ -4,7 +4,9 @@
 # Strategy:
 #   1. Extract rollout identifiers from canonical sources only: Remote Config
 #      defaults/constants and the local Hermes Square feature-flag registry.
-#   2. Count literal usages across source/docs. Counts are matches, not files.
+#   2. Count literal usages across source/docs/ops scripts. Counts are matches,
+#      not files. Operational launch gates are real consumers of Remote Config
+#      quota defaults, even when the product runtime only reads the key once.
 #   3. Report flags that appear only once, which usually means "defined but
 #      never read." Do not scrape generic strings like `router_mode` or
 #      telemetry event names; they are not feature flags.
@@ -79,9 +81,9 @@ ACTIVE_FLAGS=()
 SEARCH_DIRS=(
   AgentLens OpenBurnBarCore OpenBurnBarDaemon OpenBurnBarMobile
   android/app/src functions/src extensions/openburnbar/src
-  docs droid-wiki AGENTS.md CONTRIBUTING.md README.md
+  scripts docs droid-wiki AGENTS.md CONTRIBUTING.md README.md
 )
-SEARCH_GLOBS=(--glob=*.swift --glob=*.kt --glob=*.ts --glob=*.md)
+SEARCH_GLOBS=(--glob=*.swift --glob=*.kt --glob=*.ts --glob=*.mjs --glob=*.js --glob=*.sh --glob=*.md)
 
 count_literal_uses() {
   local flag="$1"
