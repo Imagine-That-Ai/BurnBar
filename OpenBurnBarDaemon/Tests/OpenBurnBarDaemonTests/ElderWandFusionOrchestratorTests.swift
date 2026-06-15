@@ -99,7 +99,7 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["p1", "p2"], judge: "judge"),
-            plugin: Self.plugin(panel: ["p1", "p2"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["p1", "p2"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: false
         )
@@ -140,7 +140,7 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["good", "bad"], judge: "judge"),
-            plugin: Self.plugin(panel: ["good", "bad"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["good", "bad"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: false
         )
@@ -160,7 +160,7 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["a", "b"], judge: "judge"),
-            plugin: Self.plugin(panel: ["a", "b"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["a", "b"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: false
         )
@@ -178,7 +178,7 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         let result = await orchestrator.run(
             bodyData: Self.fusionBody(panel: ["p1"], judge: "judge"),
-            plugin: Self.plugin(panel: ["p1"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["p1"], judge: "judge"),
             originatingModel: "origin",
             wantsStream: true
         )
@@ -250,14 +250,13 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
     }
 
-    private static func plugin(panel: [String], judge: String) -> FusionPluginConfig {
+    private static func plugin(panel: [String], judge: String) throws -> FusionPluginConfig {
         // Decode through the real wire shape so the test exercises CodingKeys.
         let analysis = panel.map { "\"\($0)\"" }.joined(separator: ",")
         let json = """
         {"id":"fusion","enabled":true,"analysis_models":[\(analysis)],"model":"\(judge)","max_tool_calls":2}
         """
-        // swiftlint:disable:next force_try
-        return try! JSONDecoder().decode(FusionPluginConfig.self, from: Data(json.utf8))
+        return try JSONDecoder().decode(FusionPluginConfig.self, from: Data(json.utf8))
     }
 
     private static func fusionBody(panel: [String], judge: String) -> Data {
@@ -371,5 +370,96 @@ private actor TurnScript {
             reasoningTokens: 0,
             confidence: .exact
         )
+    }
+}
+
+// MARK: - Local Codex provider executor
+
+final class BurnBarCodexProviderExecutorTests: XCTestCase {
+    func testCodexArgumentsPreserveReadOnlyConsentGate() {
+        let arguments = BurnBarCodexProviderExecutor.codexArguments(
+            model: "  gpt-5-codex  ",
+            prompt: "answer this"
+        )
+
+        XCTAssertEqual(arguments.first, "exec")
+        XCTAssertTrue(arguments.contains("--json"))
+        XCTAssertTrue(arguments.contains("--ephemeral"))
+        XCTAssertTrue(arguments.contains("--skip-git-repo-check"))
+        XCTAssertTrue(arguments.contains("--ignore-user-config"))
+        XCTAssertTrue(arguments.contains("--ignore-rules"))
+        XCTAssertFalse(arguments.contains("--dangerously-bypass-approvals-and-sandbox"))
+        XCTAssertEqual(arguments.last, "answer this")
+
+        guard let sandboxIndex = arguments.firstIndex(of: "--sandbox") else {
+            return XCTFail("Codex arguments must include a sandbox flag")
+        }
+        XCTAssertEqual(arguments[sandboxIndex + 1], "read-only")
+
+        guard let modelIndex = arguments.firstIndex(of: "-m") else {
+            return XCTFail("Codex arguments must include a model flag")
+        }
+        XCTAssertEqual(arguments[modelIndex + 1], "gpt-5-codex")
+    }
+
+    func testSanitizedEnvironmentUsesAllowlistAndOptionalApiKey() {
+        let environment = BurnBarCodexProviderExecutor.sanitizedEnvironment(apiKey: "  sk-test  ")
+        let allowedKeys: Set<String> = [
+            "PATH",
+            "LANG",
+            "LC_ALL",
+            "TERM",
+            "TMPDIR",
+            "HOME",
+            "OPENAI_API_KEY"
+        ]
+
+        XCTAssertTrue(Set(environment.keys).isSubset(of: allowedKeys))
+        XCTAssertEqual(environment["HOME"], NSHomeDirectory())
+        XCTAssertEqual(environment["OPENAI_API_KEY"], "sk-test")
+        XCTAssertNil(environment["GITHUB_TOKEN"])
+        XCTAssertNil(environment["GOOGLE_APPLICATION_CREDENTIALS"])
+        XCTAssertNil(environment["FIREBASE_CONFIG"])
+        XCTAssertNil(environment["SSH_AUTH_SOCK"])
+        XCTAssertNil(environment["AWS_SECRET_ACCESS_KEY"])
+    }
+
+    func testExtractAgentMessageUsesLatestJSONLAgentMessage() {
+        let jsonl = """
+        {"type":"session.started"}
+        {"type":"item.completed","item":{"type":"agent_message","text":"first answer"}}
+        {"type":"item.completed","item":{"type":"tool_call","text":"ignored"}}
+        {"message":{"text":"fallback message"}}
+        {"type":"item.completed","item":{"type":"agent_message","text":"final answer"}}
+        """
+
+        XCTAssertEqual(
+            BurnBarCodexProviderExecutor.extractAgentMessage(fromJSONL: jsonl),
+            "final answer"
+        )
+    }
+
+    func testChatCompletionPromptFlattensMessagesAndJsonMode() throws {
+        let body = Data("""
+        {
+          "stream": true,
+          "response_format": { "type": "json_object" },
+          "messages": [
+            { "role": "system", "content": "system note" },
+            { "role": "user", "content": [
+              { "type": "text", "text": "first line" },
+              { "type": "text", "text": "second line" }
+            ] }
+          ]
+        }
+        """.utf8)
+
+        let request = try BurnBarCodexProviderExecutor.chatCompletionPrompt(from: body)
+
+        XCTAssertTrue(request.stream)
+        XCTAssertTrue(request.prompt.contains("Do not inspect or modify files"))
+        XCTAssertTrue(request.prompt.contains("System:\nsystem note"))
+        XCTAssertTrue(request.prompt.contains("User:\nfirst line\nsecond line"))
+        XCTAssertTrue(request.prompt.contains("Return valid JSON only."))
     }
 }
