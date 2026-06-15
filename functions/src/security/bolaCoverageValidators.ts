@@ -11,8 +11,8 @@ const HTTP_RUNTIME_INVOCATION =
 
 const RUNTIME_BODY_MARKERS = [
   CALLABLE_RUNTIME_INVOCATION,
-  /\b(?:alice|bob|other-user|ALICE_UID|BOB_UID)\b/u,
-  /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow|expectCallableDenial)\b/u,
+  /\b(?:alice|bob|other-user|ALICE_UID|BOB_UID|tier2CallableProof|seedBolaVictimTenant)\b/u,
+  /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow|expectCallableDenial|expectTenantPathsUnchanged)\b/u,
 ] as const;
 
 function matchesStaticHighRiskCoverage(

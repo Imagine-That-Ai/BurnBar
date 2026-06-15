@@ -18,7 +18,19 @@ if (!catalogMatch) {
   console.error("Could not parse catalog");
   process.exit(1);
 }
-const catalog = JSON.parse(catalogMatch[1]);
+function parseCatalogArray(source) {
+  try {
+    return JSON.parse(source);
+  } catch {
+    // The generated catalog may be compact JSON or a TypeScript object-literal
+    // array, depending on which generator version wrote it. This script runs on
+    // trusted first-party generated source, so evaluating the isolated array is
+    // acceptable and avoids a fragile ad hoc parser.
+    return Function(`"use strict"; return (${source});`)();
+  }
+}
+
+const catalog = parseCatalogArray(catalogMatch[1]);
 
 /** Default probe values — must match bolaCrossUserData() in callableBolaHarness.ts */
 const PROBE = {
@@ -260,7 +272,7 @@ type BolaVictimSeed = {
 
 const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = `;
 
-const body = JSON.stringify(registry, null, 2);
+const body = JSON.stringify(registry);
 
 const footer = ` as Record<string, BolaVictimSeed[]>;
 

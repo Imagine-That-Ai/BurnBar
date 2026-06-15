@@ -222,7 +222,15 @@ if (!existingJson) {
   process.exit(1);
 }
 
-const prior = JSON.parse(existingJson[1]);
+function parseCatalogArray(source) {
+  try {
+    return JSON.parse(source);
+  } catch {
+    return Function(`"use strict"; return (${source});`)();
+  }
+}
+
+const prior = parseCatalogArray(existingJson[1]);
 const priorByName = Object.fromEntries(prior.map((row) => [row.exportedName, row]));
 
 const merged = names.map((exportedName) => {

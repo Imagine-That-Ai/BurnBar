@@ -3,19 +3,7 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-  ALICE_UID,
-  BOB_UID,
-  callableRequest,
-  callableRunner,
-  expectCallableDenial,
-  bolaCrossUserData,
-  pathKeyedFirestore,
-  seedDoc,
-  snapshotTenantPaths,
-  expectTenantPathsUnchanged,
-  tier2CallableProof,
-} from "./callableBolaHarness.js";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, pathKeyedFirestore, seedDoc, snapshotTenantPaths, expectTenantPathsUnchanged, tier2CallableProof } from "./callableBolaHarness.js";
 import { deviceLinkPath } from "../../domains/device-links/index.js";
 
 process.env.ENFORCE_APP_CHECK = "false";

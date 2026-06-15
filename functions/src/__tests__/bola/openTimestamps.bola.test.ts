@@ -3,15 +3,7 @@
  */
 import { describe, it, vi } from "vitest";
 
-import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
-import {
-  ALICE_UID,
-  BOB_UID,
-  callableRequest,
-  callableRunner,
-  expectCallableDenial,
-  pathKeyedFirestore,
-} from "./callableBolaHarness.js";
+import { BOB_UID, callableRunner, tier2CallableProof, pathKeyedFirestore } from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -34,17 +26,17 @@ describe("BOLA — openTimestamps", () => {
   it("validateOpenTimestampsProof rejects cross-user object access", async () => {
     const mod = await import("../../computerUseOpenTimestamps.js");
     const run = callableRunner(mod.validateOpenTimestampsProof);
-    bolaStore.clear();
-    seedBolaVictimTenant(bolaStore, "validateOpenTimestampsProof");
-    await expectCallableDenial(
+    await tier2CallableProof(bolaStore, {
+      exportedName: "validateOpenTimestampsProof",
       run,
-      callableRequest(ALICE_UID, {
+      payload: {
         uid: BOB_UID,
         sessionId: "bob-session",
         auditHeadHashHex: "a".repeat(64),
         proofBase64: Buffer.from("proof").toString("base64"),
-      }),
-      "permission-denied",
-    );
+      },
+      expectedCode: "permission-denied",
+      expectedOutcome: "throws",
+    });
   });
 });

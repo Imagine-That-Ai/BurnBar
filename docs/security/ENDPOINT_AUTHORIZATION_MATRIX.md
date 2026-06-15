@@ -27,6 +27,18 @@ Runtime tests live under `functions/src/__tests__/bola/`. Shared harness: `calla
 
 Auth-scoped handlers (tenant from `request.auth.uid` only) use `expectedOutcome: "no-side-effect"` — seed the victim tenant, invoke as attacker, assert victim paths unchanged. Object-id handlers with explicit ownership checks use `expectedOutcome: "throws"` with a concrete `expectedCode`.
 
+### Tier-2 isolation proofs (required)
+
+Every `runtime-cross-user` test for endpoints with `objectIdsFromClient` must call `tier2CallableProof()` (or manually seed via `seedBolaVictimTenant` / `seedDoc` + `snapshotTenantPaths`). CI validators reject scaffold-only `bolaCrossUserData()` smokes.
+
+Victim seed paths are generated from the catalog:
+
+```sh
+node functions/scripts/generate-bola-victim-seeds.mjs
+```
+
+`BOLA_STRICT_CODE_ENDPOINTS` in `callableBolaHarness.ts` enforces exact denial codes for P0 proofs (`consumeCredentialTransfer`, `pollCliLink`, `burnBarHermesGateway`, `triggerVoIPCall`, `validateOpenTimestampsProof`).
+
 ## Regenerating the catalog
 
 After adding exports to `functions/src/index.ts`, refresh the generated catalog and BOLA scaffolds:

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { BOLA_STRICT_CODE_ENDPOINTS } from "./bola/callableBolaHarness.js";
 import { endpointAuthorizationMatrix } from "../security/endpointAuthorizationMatrix.js";
 import { validateEndpointBolaCoverage } from "../security/bolaCoverageValidators.js";
 
@@ -25,14 +26,8 @@ function exportedFunctionNames(): string[] {
   return names.sort((left, right) => left.localeCompare(right));
 }
 
-/** Endpoints with handler-level cross-tenant proofs (not scaffold smoke). */
-const P0_RUNTIME_PROOFS = new Set([
-  "burnBarHermesGateway",
-  "consumeCredentialTransfer",
-  "pollCliLink",
-  "triggerVoIPCall",
-  "validateOpenTimestampsProof",
-]);
+/** Endpoints with strict denial-code proofs (see BOLA_STRICT_CODE_ENDPOINTS). */
+const P0_RUNTIME_PROOFS = BOLA_STRICT_CODE_ENDPOINTS;
 
 /** Tier-2: every object-id runtime test seeds victim tenant (see callableBolaHarness tier2CallableProof). */
 const TIER2_ISOLATION_ENDPOINTS = new Set(

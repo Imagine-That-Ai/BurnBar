@@ -6,7 +6,7 @@ type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition
 type BolaExpectedOutcome = "throws" | "no-side-effect";
 
 /** Endpoints requiring strict denial codes (not generic invalid-argument). */
-const BOLA_STRICT_CODE_ENDPOINTS = new Set([
+export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
   "burnBarHermesGateway",
   "consumeCredentialTransfer",
   "pollCliLink",
@@ -18,7 +18,7 @@ export const ALICE_UID = "alice-bola-uid";
 export const BOB_UID = "bob-bola-uid";
 
 /** Probe payload: supplies every client-controlled id the matrix tracks. */
-export function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     provider: "openai",
     accountID: "bob-account",
