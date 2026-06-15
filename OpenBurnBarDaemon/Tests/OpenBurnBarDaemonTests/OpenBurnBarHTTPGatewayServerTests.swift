@@ -4715,24 +4715,56 @@ extension BurnBarHTTPGatewayServerTests {
             secretStore: BurnBarInMemorySecretStore(),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
-        let server = BurnBarHTTPGatewayServer(
-            configuration: BurnBarGatewayConfiguration(
-                isEnabled: true,
-                host: "127.0.0.1",
-                port: GatewayHarness.nextPortCandidate(),
-                authToken: nil,
-                allowUnauthenticatedLoopback: true
-            ),
-            configStore: configStore,
-            logger: capturingLogger
-        )
+        let warningEvent = "gateway_auth_disabled_loopback"
+        let listenerFailureEvent = "gateway_listener_failed"
+        var lastStartError: Error?
+        var lastCapturedEntries: [CapturingDaemonLogger.Entry] = []
 
-        try await server.start()
-        addTeardownBlock { await server.stop() }
+        for _ in 0..<5 {
+            let server = BurnBarHTTPGatewayServer(
+                configuration: BurnBarGatewayConfiguration(
+                    isEnabled: true,
+                    host: "127.0.0.1",
+                    port: try GatewayHarness.reservePort(),
+                    authToken: nil,
+                    allowUnauthenticatedLoopback: true
+                ),
+                configStore: configStore,
+                logger: capturingLogger
+            )
+            let startIndex = capturingLogger.captured.count
 
-        _ = try await waitForLogEntry(event: "gateway_auth_disabled_loopback", in: capturingLogger, timeoutSeconds: 5)
-        XCTAssertTrue(capturingLogger.captured.contains { $0.event == "gateway_auth_disabled_loopback" },
-                      "gateway_auth_disabled_loopback warning must be emitted when auth is off")
+            do {
+                try await server.start()
+            } catch {
+                lastStartError = error
+                await server.stop()
+                continue
+            }
+
+            let firstStartupEvent = try await waitForFirstLogEntry(
+                events: [warningEvent, listenerFailureEvent],
+                in: capturingLogger,
+                after: startIndex,
+                timeoutSeconds: 5
+            )
+            lastCapturedEntries = capturingLogger.captured
+
+            if firstStartupEvent?.event == warningEvent {
+                addTeardownBlock { await server.stop() }
+                XCTAssertTrue(capturingLogger.captured.contains { $0.event == warningEvent },
+                              "gateway_auth_disabled_loopback warning must be emitted when auth is off")
+                return
+            }
+
+            await server.stop()
+        }
+
+        if let lastStartError {
+            throw lastStartError
+        }
+        XCTFail("Timed out waiting for log event '\(warningEvent)' after retrying listener startup. "
+                + "Captured: \(lastCapturedEntries.map(\.event))")
     }
     #endif
 
@@ -4756,6 +4788,23 @@ extension BurnBarHTTPGatewayServerTests {
         let entries = logger.captured
         XCTFail("Timed out waiting for log event '\(event)'. Captured: \(entries.map(\.event))")
         return entries
+    }
+
+    private func waitForFirstLogEntry(
+        events: Set<String>,
+        in logger: CapturingDaemonLogger,
+        after startIndex: Int,
+        timeoutSeconds: TimeInterval = 5
+    ) async throws -> CapturingDaemonLogger.Entry? {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            let entries = logger.captured
+            if let match = entries.dropFirst(startIndex).first(where: { events.contains($0.event) }) {
+                return match
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return nil
     }
 }
 
@@ -4993,7 +5042,7 @@ private final class GatewayHarness: @unchecked Sendable {
         await server.stop()
     }
 
-    private static func reservePort() throws -> Int {
+    fileprivate static func reservePort() throws -> Int {
         var lastError: POSIXError?
         for _ in 0..<4096 {
             let candidate = nextPortCandidate()
