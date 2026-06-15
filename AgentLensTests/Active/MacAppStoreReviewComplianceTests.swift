@@ -28,6 +28,7 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
 
     func testMacCloudStoreHasNativeStoreKitPurchaseAndLegalLinks() throws {
         let source = try bundledTextResource(named: "CloudStoreSettingsView")
+        let linksSource = try bundledTextResource(named: "MacCloudStoreLegalLinks")
 
         XCTAssertTrue(source.contains("import StoreKit"))
         XCTAssertTrue(source.contains("guard let productID = tier.monthlyProductID"))
@@ -36,8 +37,8 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(source.contains("beginEntitlementBinding"))
         XCTAssertTrue(source.contains("verifyHostedQuotaEntitlement"))
         XCTAssertTrue(source.contains("Restore Purchases"))
-        XCTAssertTrue(source.contains("Privacy Policy"))
-        XCTAssertTrue(source.contains("Terms of Use (EULA)"))
+        XCTAssertTrue(linksSource.contains("Privacy Policy"))
+        XCTAssertTrue(linksSource.contains("Terms of Use (EULA)"))
         XCTAssertTrue(source.contains("macCloudStore.subscriptionDisclosure"))
         XCTAssertFalse(source.contains("Continue on iPhone"))
     }

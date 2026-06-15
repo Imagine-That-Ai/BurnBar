@@ -90,60 +90,58 @@ final class AppLoggerSanitizationTests: XCTestCase {
     }
 
     #if canImport(Sentry)
+    private func makeTestBundle(
+        info: [String: String] = [:],
+        googleServicePlist: [String: String] = [:]
+    ) throws -> (Bundle, URL) {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-logger-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        let bundleURL = tempDir.appendingPathComponent("MockApp.bundle")
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+        
+        var bundleInfo: [String: String] = ["CFBundleIdentifier": "com.openburnbar.tests.mockapp"]
+        for (key, value) in info {
+            bundleInfo[key] = value
+        }
+        try (bundleInfo as NSDictionary).write(to: bundleURL.appendingPathComponent("Info.plist"))
+        
+        if !googleServicePlist.isEmpty {
+            try (googleServicePlist as NSDictionary).write(to: bundleURL.appendingPathComponent("GoogleService-Info.plist"))
+        }
+        
+        guard let bundle = Bundle(path: bundleURL.path) else {
+            throw XCTSkip("Failed to load mock bundle from \(bundleURL.path)")
+        }
+        return (bundle, tempDir)
+    }
+
     @MainActor
-    func testResolveSentryDSN_fromInfoDictionary() {
-        let mockBundle = MockBundle(
-            info: ["sentry.dsn": "https://mock@sentry.io/1"],
-            paths: [:]
-        )
-        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
+    func testResolveSentryDSN_fromInfoDictionary() throws {
+        let (bundle, tempDir) = try makeTestBundle(info: ["sentry.dsn": "https://mock@sentry.io/1"])
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: bundle)
         XCTAssertEqual(dsn, "https://mock@sentry.io/1")
     }
 
     @MainActor
-    func testResolveSentryDSN_fromGoogleServiceInfo() {
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let plistURL = tempDirectory.appendingPathComponent("GoogleService-Info.plist")
-        let plistData: [String: Any] = ["sentry.dsn": "https://google-mock@sentry.io/2"]
-        (plistData as NSDictionary).write(to: plistURL, atomically: true)
-
-        defer {
-            try? FileManager.default.removeItem(at: plistURL)
-        }
-
-        let mockBundle = MockBundle(
+    func testResolveSentryDSN_fromGoogleServiceInfo() throws {
+        let (bundle, tempDir) = try makeTestBundle(
             info: [:],
-            paths: ["GoogleService-Info.plist": plistURL.path]
+            googleServicePlist: ["sentry.dsn": "https://google-mock@sentry.io/2"]
         )
-        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: bundle)
         XCTAssertEqual(dsn, "https://google-mock@sentry.io/2")
     }
 
     @MainActor
-    func testResolveSentryDSN_emptyFallback() {
-        let mockBundle = MockBundle(info: [:], paths: [:])
-        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
+    func testResolveSentryDSN_emptyFallback() throws {
+        let (bundle, tempDir) = try makeTestBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: bundle)
         XCTAssertNil(dsn)
-    }
-
-    private final class MockBundle: Bundle {
-        private let mockInfo: [String: Any]
-        private let mockPaths: [String: String]
-
-        init(info: [String: Any], paths: [String: String] = [:]) {
-            self.mockInfo = info
-            self.mockPaths = paths
-            super.init(path: FileManager.default.temporaryDirectory.path)!
-        }
-
-        override func object(forInfoDictionaryKey key: String) -> Any? {
-            return mockInfo[key]
-        }
-
-        override func path(forResource name: String?, ofType ext: String?) -> String? {
-            guard let name, let ext else { return nil }
-            return mockPaths["\(name).\(ext)"]
-        }
     }
     #endif
 }

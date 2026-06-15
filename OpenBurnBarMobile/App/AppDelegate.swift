@@ -54,14 +54,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     #if canImport(Sentry)
     private static func configureSentryIfAvailable() {
         var dsn: String? = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String
-        if dsn == nil || dsn?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+        if dsn == nil || dsn?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
             if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
                let dict = NSDictionary(contentsOfFile: path),
                let googleDsn = dict["sentry.dsn"] as? String {
                 dsn = googleDsn
             }
         }
-        guard let finalDsn = dsn, !finalDsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard let finalDsn = dsn, !finalDsn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             // No DSN configured — crash reporting remains disabled silently.
             return
         }

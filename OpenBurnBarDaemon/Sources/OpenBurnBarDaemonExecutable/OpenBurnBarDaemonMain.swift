@@ -364,20 +364,19 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
     }
 }
 
-/// Reads an auth token from a file, trimming whitespace/newlines. Used by
-/// `--gateway-auth-token-file` and `--socket-auth-token-file` to avoid exposing
-/// tokens in `ps` output or the daemon's launchd plist arguments.
+/// Reads an auth token from a file via the shared `readTokenFile` utility in
+/// `OpenBurnBarDaemon`. Wraps errors in `BurnBarDaemonCommandLineError` so the
+/// CLI surface reports the flag name that triggered the read.
 private func readTokenFile(_ path: String, argument: String) throws -> String {
-    let url = URL(fileURLWithPath: path)
-    guard let data = try? Data(contentsOf: url) else {
-        throw BurnBarDaemonCommandLineError.tokenFileReadFailed(argument: argument, path: path)
+    do {
+        return try OpenBurnBarDaemon.readTokenFile(path)
+    } catch let BurnBarTokenFileError.fileNotFound(filepath) {
+        throw BurnBarDaemonCommandLineError.tokenFileReadFailed(argument: argument, path: filepath)
+    } catch let BurnBarTokenFileError.unreadable(filepath, _) {
+        throw BurnBarDaemonCommandLineError.tokenFileReadFailed(argument: argument, path: filepath)
+    } catch let BurnBarTokenFileError.emptyOrWhitespace(filepath) {
+        throw BurnBarDaemonCommandLineError.tokenFileReadFailed(argument: argument, path: filepath)
     }
-    let raw = String(data: data, encoding: .utf8) ?? ""
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else {
-        throw BurnBarDaemonCommandLineError.tokenFileReadFailed(argument: argument, path: path)
-    }
-    return trimmed
 }
 
 #if canImport(Sentry)

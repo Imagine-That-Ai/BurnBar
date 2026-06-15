@@ -1762,16 +1762,14 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     "exportedName": "pollCliLink",
-    "trigger": "callable",
-    "authMethod": "Firebase Auth with callable-level ownership checks",
-    "appCheck": "required",
-    "tenantSource": "request.auth.uid",
+    "trigger": "http",
+    "authMethod": "deviceCode plus deviceSecretHash proof (no Firebase Auth)",
+    "appCheck": "not-applicable",
+    "tenantSource": "cli_link_sessions/{deviceCode} resolved server-side",
     "objectIdsFromClient": [
-      "pairingId",
-      "code",
-      "sessionId"
+      "deviceCode"
     ],
-    "ownershipCheck": "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
+    "ownershipCheck": "poll requires matching deviceSecretHash for the deviceCode session",
     "handlerModule": "callables/cliLink.ts",
     "bolaCoverage": [
       {
@@ -1782,7 +1780,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
           "pollCliLink"
         ],
         "expectedOutcome": "throws",
-        "expectedCode": "not-found"
+        "expectedCode": "permission-denied"
       }
     ],
     "highRiskComputerUse": false
@@ -3041,52 +3039,42 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     "exportedName": "sendFcmOutbound",
-    "trigger": "callable",
-    "authMethod": "Firebase Auth with callable-level ownership checks",
-    "appCheck": "required",
-    "tenantSource": "request.auth.uid",
-    "objectIdsFromClient": [
-      "deviceId",
-      "notificationId"
-    ],
-    "ownershipCheck": "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    "handlerModule": "apnsSender.ts",
+    "trigger": "firestore-trigger",
+    "authMethod": "Firebase Functions event trigger (not client-callable)",
+    "appCheck": "not-applicable",
+    "tenantSource": "trigger document path and server-side uid field",
+    "objectIdsFromClient": [],
+    "ownershipCheck": "trigger fires only on server-written fcm_outbound docs scoped by uid",
+    "handlerModule": "fcmAndroidSender.ts",
     "bolaCoverage": [
       {
-        "file": "functions/src/__tests__/bola/pushOutbound.bola.test.ts",
-        "test": "sendFcmOutbound rejects cross-user object access",
-        "kind": "runtime-cross-user",
+        "file": "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        "test": "platform triggers are not client-callable",
+        "kind": "platform-trigger",
         "covers": [
           "sendFcmOutbound"
-        ],
-        "expectedOutcome": "throws",
-        "expectedCode": "not-found"
+        ]
       }
     ],
     "highRiskComputerUse": false
   },
   {
     "exportedName": "sendVoIPOutbound",
-    "trigger": "callable",
-    "authMethod": "Firebase Auth with callable-level ownership checks",
-    "appCheck": "required",
-    "tenantSource": "request.auth.uid",
-    "objectIdsFromClient": [
-      "deviceId",
-      "notificationId"
-    ],
-    "ownershipCheck": "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
+    "trigger": "firestore-trigger",
+    "authMethod": "Firebase Functions event trigger (not client-callable)",
+    "appCheck": "not-applicable",
+    "tenantSource": "trigger document path and server-side uid field",
+    "objectIdsFromClient": [],
+    "ownershipCheck": "trigger fires only on server-written voip_outbound docs scoped by uid",
     "handlerModule": "apnsSender.ts",
     "bolaCoverage": [
       {
-        "file": "functions/src/__tests__/bola/pushOutbound.bola.test.ts",
-        "test": "sendVoIPOutbound rejects cross-user object access",
-        "kind": "runtime-cross-user",
+        "file": "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        "test": "platform triggers are not client-callable",
+        "kind": "platform-trigger",
         "covers": [
           "sendVoIPOutbound"
-        ],
-        "expectedOutcome": "throws",
-        "expectedCode": "not-found"
+        ]
       }
     ],
     "highRiskComputerUse": false
@@ -3188,27 +3176,22 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     "exportedName": "startCliLink",
-    "trigger": "callable",
-    "authMethod": "Firebase Auth with callable-level ownership checks",
-    "appCheck": "required",
-    "tenantSource": "request.auth.uid",
-    "objectIdsFromClient": [
-      "pairingId",
-      "code",
-      "sessionId"
-    ],
-    "ownershipCheck": "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
+    "trigger": "http",
+    "authMethod": "public rate-limited device enrollment (no tenant objects)",
+    "appCheck": "not-applicable",
+    "tenantSource": "server-generated deviceCode",
+    "objectIdsFromClient": [],
+    "ownershipCheck": "creates ephemeral cli_link_sessions without cross-tenant reads",
     "handlerModule": "callables/cliLink.ts",
     "bolaCoverage": [
       {
-        "file": "functions/src/__tests__/bola/pairing.bola.test.ts",
-        "test": "startCliLink rejects cross-user object access",
-        "kind": "runtime-cross-user",
+        "file": "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        "test": "public health endpoints do not expose tenant objects",
+        "kind": "not-applicable-public",
         "covers": [
           "startCliLink"
         ],
-        "expectedOutcome": "throws",
-        "expectedCode": "not-found"
+        "publicJustification": "Public CLI link bootstrap mints a fresh deviceCode; no uid-scoped object ids."
       }
     ],
     "highRiskComputerUse": false

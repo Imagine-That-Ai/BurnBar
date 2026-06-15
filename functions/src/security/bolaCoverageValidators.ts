@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import type { BolaCoverageKind, BolaCoverageRef, EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
+import type { BolaCoverageRef, EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
 
-export const REPO_ROOT_FROM_FUNCTIONS = resolve(__dirname, "../../..");
+const REPO_ROOT_FROM_FUNCTIONS = resolve(__dirname, "../../..");
 
 const CALLABLE_RUNTIME_INVOCATION = /(?:\.run\s*\(|callableRunner\s*\()/u;
-const HTTP_RUNTIME_INVOCATION = /(?:dispatchHermesGatewayRequest\s*\(|runHttpHandler\s*\()/u;
+const HTTP_RUNTIME_INVOCATION = /(?:dispatchHermesGatewayRequest\s*\(|runHttpHandler\s*\(|Reflect\.get\s*\(\s*Object\s*\(\s*handler\s*\))/u;
 
 const RUNTIME_BODY_MARKERS = [
   CALLABLE_RUNTIME_INVOCATION,
@@ -34,7 +34,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function parseItTitles(source: string): Set<string> {
+function parseItTitles(source: string): Set<string> {
   const titles = new Set<string>();
   for (const match of source.matchAll(/\bit\s*\(\s*(["'`])([^"'`]+)\1/gu)) {
     titles.add(match[2]);
@@ -42,7 +42,7 @@ export function parseItTitles(source: string): Set<string> {
   return titles;
 }
 
-export function validateRuntimeTestBody(
+function validateRuntimeTestBody(
   source: string,
   trigger: EndpointAuthorizationEntry["trigger"] = "callable",
 ): string[] {
@@ -59,7 +59,7 @@ export function validateRuntimeTestBody(
   return errors;
 }
 
-export function validateBolaCoverageRef(
+function validateBolaCoverageRef(
   entry: EndpointAuthorizationEntry,
   ref: BolaCoverageRef,
   repoRoot: string = REPO_ROOT_FROM_FUNCTIONS,
@@ -214,8 +214,4 @@ export function validateEndpointBolaCoverage(
   }
 
   return errors;
-}
-
-export function collectBolaCoverageKinds(entry: EndpointAuthorizationEntry): Set<BolaCoverageKind> {
-  return new Set(entry.bolaCoverage.map((ref) => ref.kind));
 }

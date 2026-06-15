@@ -3,9 +3,19 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData } from "./callableBolaHarness.js";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, expectCallableDenial, bolaCrossUserData, pathKeyedFirestore } from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
+
+const bolaStore = vi.hoisted(() => new Map());
+vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("firebase-admin/firestore", async () => {
+  const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
+  return {
+    ...actual,
+    getFirestore: () => pathKeyedFirestore(bolaStore),
+  };
+});
 
 vi.mock("../../auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
@@ -21,8 +31,6 @@ vi.mock("../../appCheckAttestation.js", async () => {
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   };
 });
-vi.mock("../../adminRuntime.js", () => ({ db: { doc: vi.fn(() => ({ get: async () => ({ exists: false }) })) } }));
-
 export const BOLA_MANIFEST = {
   "beginEncryptedSessionBlobUpload": [
     "beginEncryptedSessionBlobUpload rejects cross-user object access"

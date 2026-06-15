@@ -1,55 +1,58 @@
+@testable import OpenBurnBarDaemon
 import Foundation
 import XCTest
 
-/// Tests for the `--gateway-auth-token-file` and `--socket-auth-token-file`
-/// CLI flag behavior. The actual parsing lives in the private
-/// `BurnBarDaemonCommandLine` enum in `OpenBurnBarDaemonExecutable`, which is
-/// not `@testable import`-able (SwiftPM executable target limitation). These
-/// tests validate the file-reading contract (trim, empty rejection, missing
-/// file rejection) using the same `Foundation` APIs the production code uses,
-/// proving the logic is correct and the error paths are reachable.
+/// Tests for the shared `readTokenFile` utility used by
+/// `--gateway-auth-token-file` and `--socket-auth-token-file` CLI flags.
+/// These tests exercise the actual production function, not a copy of its
+/// logic, so a refactor cannot silently diverge.
 final class BurnBarDaemonTokenFileTests: XCTestCase {
 
-    func testTokenFileReadsAndTrimsTrailingNewline() throws {
+    private func makeTokenFile(content: String) throws -> String {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("token-file-trim-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("token-file-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-
-        let tokenFile = dir.appendingPathComponent("gateway-token")
-        try "gateway-secret-12345\n".write(to: tokenFile, atomically: true, encoding: .utf8)
-
-        let data = try Data(contentsOf: tokenFile)
-        let raw = String(data: data, encoding: .utf8) ?? ""
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        XCTAssertEqual(trimmed, "gateway-secret-12345")
-        XCTAssertNotEqual(trimmed, raw, "Trailing newline must be stripped")
+        let fileURL = dir.appendingPathComponent("token")
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        return fileURL.path
     }
 
-    func testTokenFileRejectsEmptyContent() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("token-file-empty-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-
-        let tokenFile = dir.appendingPathComponent("empty-token")
-        try "\n  \n".write(to: tokenFile, atomically: true, encoding: .utf8)
-
-        let data = try Data(contentsOf: tokenFile)
-        let raw = String(data: data, encoding: .utf8) ?? ""
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        XCTAssertTrue(trimmed.isEmpty,
-                      "Whitespace-only file content must produce empty token")
+    func testReadTokenFileTrimsTrailingNewline() throws {
+        let path = try makeTokenFile(content: "gateway-secret-12345\n")
+        let token = try readTokenFile(path)
+        XCTAssertEqual(token, "gateway-secret-12345")
     }
 
-    func testTokenFileRejectsMissingFile() throws {
+    func testReadTokenFileTrimsLeadingAndTrailingWhitespace() throws {
+        let path = try makeTokenFile(content: "  \n  socket-secret-67890  \n  ")
+        let token = try readTokenFile(path)
+        XCTAssertEqual(token, "socket-secret-67890")
+    }
+
+    func testReadTokenFileRejectsEmptyContent() throws {
+        let path = try makeTokenFile(content: "\n  \n")
+        XCTAssertThrowsError(try readTokenFile(path)) { error in
+            guard case .emptyOrWhitespace = error as? BurnBarTokenFileError else {
+                XCTFail("Expected .emptyOrWhitespace, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testReadTokenFileRejectsMissingFile() throws {
         let nonexistentPath = "/tmp/openburnbar-nonexistent-token-\(UUID().uuidString)"
+        XCTAssertThrowsError(try readTokenFile(nonexistentPath)) { error in
+            guard case .fileNotFound = error as? BurnBarTokenFileError else {
+                XCTFail("Expected .fileNotFound, got \(error)")
+                return
+            }
+        }
+    }
 
-        XCTAssertThrowsError(
-            try Data(contentsOf: URL(fileURLWithPath: nonexistentPath)),
-            "Missing token file must throw"
-        )
+    func testReadTokenFilePreservesInternalWhitespace() throws {
+        let path = try makeTokenFile(content: "token with internal spaces\n")
+        let token = try readTokenFile(path)
+        XCTAssertEqual(token, "token with internal spaces")
     }
 }
