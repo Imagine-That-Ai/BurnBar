@@ -42,7 +42,8 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
         XCTAssertNil(request.plugins)
         XCTAssertNil(request.activeFusionPlugin)
-        XCTAssertEqual(request.stream, true)
+        let stream = try XCTUnwrap(request.stream)
+        XCTAssertTrue(stream)
     }
 
     // MARK: - Recursion guard

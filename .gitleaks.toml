@@ -151,12 +151,16 @@ regexes = [
   '''dismissedAtKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
   '''savedQueriesKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
   '''forKey:\s*"[A-Za-z0-9_.:-]+"''',
+  '''presetsStorageKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
+  '''presetsDefaultsKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
 ]
 paths = [
   '''OpenBurnBarMobile/Services/ApprovalPolicyStore\.swift''',
   '''OpenBurnBarMobile/Services/MissionFABResurrectionController\.swift''',
   '''OpenBurnBarMobile/Models/ActivityStore\.swift''',
   '''OpenBurnBarMobile/Tests/MissionFABResurrectionControllerTests\.swift''',
+  '''AgentLens/Services/Settings/Stores/ElderWandSettings\.swift''',
+  '''OpenBurnBarMobile/Services/Hermes/ElderWandSettings\.swift''',
 ]
 
 [[allowlists]]
@@ -203,6 +207,17 @@ regexes = [
 paths = [
   '''launch-evidence/android-play-v25-ultra-live-proof-20260603T115300Z\.json''',
   '''launch-evidence/paid-proof-google_play_ultra-v25-20260603T115132Z\.out''',
+]
+
+[[allowlists]]
+description = "Firestore security-rules negative tests embed a fake fixture value (base64 'SomeSecret') to assert that smuggled ciphertext/secret fields are rejected — not a real credential"
+regexTarget = "match"
+regexes = [
+  '''encryptedSecret:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''encryptedPayload:\s*\[''',
+]
+paths = [
+  '''firestore-rules-tests/escrow-grants\.test\.js''',
 ]
 
 [[allowlists]]

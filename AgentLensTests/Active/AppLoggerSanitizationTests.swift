@@ -141,7 +141,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
         }
 
         override func path(forResource name: String?, ofType ext: String?) -> String? {
-            guard let name = name, let ext = ext else { return nil }
+            guard let name, let ext else { return nil }
             return mockPaths["\(name).\(ext)"]
         }
     }

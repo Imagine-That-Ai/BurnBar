@@ -1,6 +1,6 @@
 {
   "target": 2000,
-  "total": 22,
+  "total": 23,
   "files": [
     {
       "path": "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift",
@@ -8,7 +8,7 @@
     },
     {
       "path": "OpenBurnBarMobile/Views/Hermes/HermesTabView.swift",
-      "lines": 3976
+      "lines": 3987
     },
     {
       "path": "AgentLens/Views/Settings/ProviderPlanWizardView.swift",
@@ -19,12 +19,12 @@
       "lines": 3656
     },
     {
-      "path": "AgentLens/Views/Dashboard/ProjectsView.swift",
-      "lines": 3383
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
+      "lines": 3650
     },
     {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
-      "lines": 3281
+      "path": "AgentLens/Views/Dashboard/ProjectsView.swift",
+      "lines": 3386
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView.swift",
@@ -32,23 +32,23 @@
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
-      "lines": 3087
+      "lines": 3042
     },
     {
       "path": "OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift",
       "lines": 2801
     },
     {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
+      "lines": 2612
+    },
+    {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
       "lines": 2590
     },
     {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
-      "lines": 2576
-    },
-    {
       "path": "AgentLens/Views/Chat/ChatSessionController.swift",
-      "lines": 2545
+      "lines": 2519
     },
     {
       "path": "AgentLens/Views/Settings/ConnectionsSettingsView.swift",
@@ -56,11 +56,11 @@
     },
     {
       "path": "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift",
-      "lines": 2407
+      "lines": 2404
     },
     {
       "path": "AgentLens/Views/Settings/CloudStoreSettingsView.swift",
-      "lines": 2352
+      "lines": 2332
     },
     {
       "path": "AgentLens/Services/UsageAggregatorParsers.swift",
@@ -89,6 +89,10 @@
     {
       "path": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
       "lines": 2014
+    },
+    {
+      "path": "AgentLens/App/AgentLensApp.swift",
+      "lines": 2012
     }
   ]
 }

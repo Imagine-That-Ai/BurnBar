@@ -146,7 +146,7 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
                 extraEnvironment: [:],
                 workingDirectoryURL: nil,
                 cancellationTracker: cancellationTracker,
-                eventSink: { event in
+                eventSink: { _ in
                     eventSinkCalled = true
 
                     // Verify directory permissions
