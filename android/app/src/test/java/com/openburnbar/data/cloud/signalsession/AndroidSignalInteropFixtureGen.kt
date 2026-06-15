@@ -36,8 +36,9 @@ class AndroidSignalInteropFixtureGen {
 
     @Test
     fun emitAndroidAliceToSwiftBobFixture() {
-        val outPath = System.getenv("OBB_INTEROP_OUT")
-        assumeTrue("set OBB_INTEROP_OUT to emit the interop fixture", outPath != null)
+        val rawOut = System.getenv("OBB_INTEROP_OUT")
+        assumeTrue("set OBB_INTEROP_OUT to emit the interop fixture", rawOut != null)
+        val outPath = checkNotNull(rawOut)
         val now = 1_700_000_000_000L
 
         val bobReg = 0x0B0B
@@ -89,6 +90,6 @@ class AndroidSignalInteropFixtureGen {
         fixture.put("secondCiphertextB64", b64.encodeToString(secondMessage.serialize()))
         fixture.put("secondExpectedPlaintext", secondPlaintext)
 
-        File(outPath!!).writeText(fixture.toString(2))
+        File(outPath).writeText(fixture.toString(2))
     }
 }
