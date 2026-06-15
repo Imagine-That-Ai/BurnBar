@@ -242,15 +242,6 @@ extension BurnBarHTTPGatewayServer {
         let attempts: [BurnBarProxyRouteAttempt]
     }
 
-    /// remediation(B1): a single cached live model-catalog snapshot plus the
-    /// config-snapshot identity and timestamp it was captured under. Held only
-    /// inside the actor, so a plain value type without synchronization is safe.
-    struct CachedModelCatalogSnapshot {
-        let configHash: Int
-        let storedAt: Date
-        let snapshot: BurnBarLiveModelCatalogSnapshot
-    }
-
     struct HealthResponse: Encodable {
         let ok: Bool
         let version: String
