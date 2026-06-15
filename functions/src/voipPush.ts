@@ -55,6 +55,9 @@ interface TriggerRequest {
 /** Generic, non-identifying caller label sent in every push (T-PRV-01). */
 const GENERIC_CALLER_DISPLAY_NAME = "Incoming call";
 
+/** TTL for queued push fan-out docs; matched by the Firestore `expireAt` TTL index. */
+export const VOIP_OUTBOUND_TTL_MS = 15 * 60 * 1000;
+
 /**
  * Build the APNs VoIP push payload (T-PRV-01 / T-PRV-07). It deliberately carries
  * NO cleartext displayName and NO stable correlators (connectionId /

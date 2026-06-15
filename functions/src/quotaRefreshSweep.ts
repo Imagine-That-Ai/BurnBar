@@ -65,7 +65,7 @@ export type SweepQuery<Doc> = {
 };
 
 /** Subset of `DocumentSnapshot` used for marker and cursor docs. */
-type SweepMarkerSnapshot = {
+export type SweepMarkerSnapshot = {
   readonly exists: boolean;
   /** Cursor resume position — real snapshots expose their location here. */
   readonly ref: { readonly path: string };
