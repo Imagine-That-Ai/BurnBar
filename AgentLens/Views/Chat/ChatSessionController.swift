@@ -1199,6 +1199,26 @@ final class ChatSessionController {
         }
     }
 
+    static func elderWandHostedSearchHeaders() async -> [String: String] {
+        guard let provider = MacFirebaseTokenProvider.shared else { return [:] }
+        async let idToken = provider.idToken()
+        async let appCheckToken = provider.appCheckToken()
+        var headers: [String: String] = [:]
+        if let rawToken = await idToken {
+            let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty {
+                headers["X-OpenBurnBar-Firebase-Authorization"] = "Bearer \(token)"
+            }
+        }
+        if let rawToken = await appCheckToken {
+            let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty {
+                headers["X-OpenBurnBar-Firebase-AppCheck"] = token
+            }
+        }
+        return headers
+    }
+
     static func burnBarWorkspacePromptSection(path: String) -> String {
         """
 

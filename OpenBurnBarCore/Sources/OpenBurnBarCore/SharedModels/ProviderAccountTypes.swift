@@ -34,6 +34,7 @@ public struct ProviderID: RawRepresentable, Codable, Hashable, Sendable, Express
     public static let openAI = ProviderID(rawValue: "openai")
     public static let kimi = ProviderID(rawValue: "kimi")
     public static let factory = ProviderID(rawValue: "factory")
+    public static let openBurnBar = ProviderID(rawValue: "openburnbar")
     public static let antigravity = ProviderID(rawValue: "antigravity")
     public static let xAI = ProviderID(rawValue: "xai")
     public static let mimo = ProviderID(rawValue: "mimo")

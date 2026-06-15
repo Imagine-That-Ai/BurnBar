@@ -91,59 +91,58 @@ final class AppLoggerSanitizationTests: XCTestCase {
 
     #if canImport(Sentry)
     @MainActor
-    func testResolveSentryDSN_fromInfoDictionary() {
-        let mockBundle = MockBundle(
-            info: ["sentry.dsn": "https://mock@sentry.io/1"],
-            paths: [:]
+    func testResolveSentryDSN_fromInfoDictionary() throws {
+        let (mockBundle, cleanup) = try createMockBundle(
+            info: ["sentry.dsn": "https://mock@sentry.io/1"]
         )
+        defer { cleanup() }
         let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
         XCTAssertEqual(dsn, "https://mock@sentry.io/1")
     }
 
     @MainActor
-    func testResolveSentryDSN_fromGoogleServiceInfo() {
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let plistURL = tempDirectory.appendingPathComponent("GoogleService-Info.plist")
-        let plistData: [String: Any] = ["sentry.dsn": "https://google-mock@sentry.io/2"]
-        (plistData as NSDictionary).write(to: plistURL, atomically: true)
-
-        defer {
-            try? FileManager.default.removeItem(at: plistURL)
-        }
-
-        let mockBundle = MockBundle(
+    func testResolveSentryDSN_fromGoogleServiceInfo() throws {
+        let (mockBundle, cleanup) = try createMockBundle(
             info: [:],
-            paths: ["GoogleService-Info.plist": plistURL.path]
+            files: ["GoogleService-Info.plist": ["sentry.dsn": "https://google-mock@sentry.io/2"]]
         )
+        defer { cleanup() }
         let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
         XCTAssertEqual(dsn, "https://google-mock@sentry.io/2")
     }
 
     @MainActor
-    func testResolveSentryDSN_emptyFallback() {
-        let mockBundle = MockBundle(info: [:], paths: [:])
+    func testResolveSentryDSN_emptyFallback() throws {
+        let (mockBundle, cleanup) = try createMockBundle(info: [:])
+        defer { cleanup() }
         let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
         XCTAssertNil(dsn)
     }
 
-    private final class MockBundle: Bundle {
-        private let mockInfo: [String: Any]
-        private let mockPaths: [String: String]
+    private func createMockBundle(info: [String: Any], files: [String: [String: Any]] = [:]) throws -> (bundle: Bundle, cleanup: () -> Void) {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MockBundle-\(UUID().uuidString).bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
-        init(info: [String: Any], paths: [String: String] = [:]) {
-            self.mockInfo = info
-            self.mockPaths = paths
-            super.init(path: FileManager.default.temporaryDirectory.path)!
+        // Write Info.plist
+        let infoPlistURL = tempDir.appendingPathComponent("Info.plist")
+        try (info as NSDictionary).write(to: infoPlistURL)
+
+        // Write other files (like GoogleService-Info.plist)
+        for (filename, content) in files {
+            let fileURL = tempDir.appendingPathComponent(filename)
+            try (content as NSDictionary).write(to: fileURL)
         }
 
-        override func object(forInfoDictionaryKey key: String) -> Any? {
-            return mockInfo[key]
+        guard let bundle = Bundle(url: tempDir) else {
+            throw NSError(domain: "MockBundle", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to construct Bundle from URL"])
         }
 
-        override func path(forResource name: String?, ofType ext: String?) -> String? {
-            guard let name, let ext else { return nil }
-            return mockPaths["\(name).\(ext)"]
+        let cleanup = {
+            _ = try? FileManager.default.removeItem(at: tempDir)
         }
+
+        return (bundle, cleanup)
     }
     #endif
 }

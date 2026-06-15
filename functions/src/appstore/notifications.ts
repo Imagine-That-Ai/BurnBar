@@ -25,6 +25,8 @@ import { logError, logInfo } from "../logging.js";
  */
 
 import { onRequest } from "firebase-functions/v2/https";
+import type { Request } from "firebase-functions/v2/https";
+import type { Response } from "express";
 import { getFirestore } from "firebase-admin/firestore";
 
 import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
@@ -47,6 +49,80 @@ const MAX_NOTIFICATION_BODY_BYTES = 64 * 1024; // 64 KB
  */
 const MAX_SIGNED_PAYLOAD_CHARS = 32 * 1024;
 
+/**
+ * Validate the inbound HTTP request and extract Apple's `signedPayload`
+ * string. Returns the validated payload on success. On any failure this
+ * writes the exact error response to `res` and returns `undefined`, so
+ * the caller can short-circuit with identical status codes and bodies as
+ * the original inline guards.
+ */
+function extractSignedPayload(req: Request, res: Response): string | undefined {
+  if (req.method !== "POST") {
+    res.status(405).send("method not allowed");
+    return undefined;
+  }
+  // Apple does not send a Content-Length the spec mandates, but most
+  // reverse proxies (incl. Firebase's frontend) set it. If it's
+  // present and obviously oversized, drop it before we even parse.
+  const declaredLength = Number(req.headers["content-length"] ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_NOTIFICATION_BODY_BYTES) {
+    res.status(413).json({ error: "payload_too_large" });
+    return undefined;
+  }
+  const rawSignedPayload = isRecord(req.body) ? req.body.signedPayload : undefined;
+  if (typeof rawSignedPayload !== "string" || !rawSignedPayload) {
+    res.status(400).json({ error: "missing signedPayload" });
+    return undefined;
+  }
+  if (rawSignedPayload.length > MAX_SIGNED_PAYLOAD_CHARS) {
+    // Could be an attacker probing JWS endpoints with large garbage.
+    // 4xx so Apple wouldn't keep retrying if (somehow) the payload
+    // ever did genuinely come from them.
+    res.status(413).json({ error: "signed_payload_too_large" });
+    return undefined;
+  }
+  return rawSignedPayload;
+}
+
+/**
+ * Translate a `verifyNotification` rejection into its HTTP response.
+ * Distinguishes "you sent us garbage" (4xx) from "we screwed up" (5xx):
+ * Apple treats 4xx as terminal — no retry. That's right for a payload
+ * that fails chain verification: it would never become valid on retry.
+ */
+function respondToVerifyFailure(res: Response, err: unknown): void {
+  logError({
+    event: "appstore.notifications.verify_failed",
+    message: errorMessage(err),
+    kind: err instanceof JWSVerificationFailure ? `jws.${err.status}` : "unknown",
+  });
+  if (err instanceof JWSVerificationFailure) {
+    res.status(400).json({ error: "jws_invalid" });
+    return;
+  }
+  res.status(500).json({ error: "internal" });
+}
+
+/**
+ * Translate a `reconcileEntitlement` rejection into its HTTP response.
+ * For internal errors return 500 so Apple retries. For known policy
+ * errors (binding mismatch, etc.) return 200 so we don't burn through
+ * Apple's retry budget on a doomed payload.
+ */
+function respondToReconcileFailure(res: Response, err: unknown, type: string, subtype: string): void {
+  logError({
+    event: "appstore.notifications.reconcile_failed",
+    message: errorMessage(err),
+    type,
+    subtype,
+  });
+  if (err instanceof EntitlementReconcileError) {
+    res.status(200).json({ accepted: false, code: err.code });
+    return;
+  }
+  res.status(500).json({ error: "internal" });
+}
+
 export const appStoreServerNotificationsV2 = onRequest(
   {
     region: REGION,
@@ -58,30 +134,11 @@ export const appStoreServerNotificationsV2 = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).send("method not allowed");
+    const rawSignedPayload = extractSignedPayload(req, res);
+    if (rawSignedPayload === undefined) {
       return;
     }
-    // Apple does not send a Content-Length the spec mandates, but most
-    // reverse proxies (incl. Firebase's frontend) set it. If it's
-    // present and obviously oversized, drop it before we even parse.
-    const declaredLength = Number(req.headers["content-length"] ?? 0);
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_NOTIFICATION_BODY_BYTES) {
-      res.status(413).json({ error: "payload_too_large" });
-      return;
-    }
-    const rawSignedPayload = isRecord(req.body) ? req.body.signedPayload : undefined;
-    if (typeof rawSignedPayload !== "string" || !rawSignedPayload) {
-      res.status(400).json({ error: "missing signedPayload" });
-      return;
-    }
-    if (rawSignedPayload.length > MAX_SIGNED_PAYLOAD_CHARS) {
-      // Could be an attacker probing JWS endpoints with large garbage.
-      // 4xx so Apple wouldn't keep retrying if (somehow) the payload
-      // ever did genuinely come from them.
-      res.status(413).json({ error: "signed_payload_too_large" });
-      return;
-    }
+
     const cfg = loadAppStoreRuntimeConfig();
     const verifier = getAppleJWSVerifier(cfg);
 
@@ -89,20 +146,7 @@ export const appStoreServerNotificationsV2 = onRequest(
     try {
       notification = await verifier.verifyNotification(rawSignedPayload);
     } catch (err) {
-      logError({
-        event: "appstore.notifications.verify_failed",
-        message: errorMessage(err),
-        kind: err instanceof JWSVerificationFailure ? `jws.${err.status}` : "unknown",
-      });
-      // Distinguish "you sent us garbage" (4xx) from "we screwed up"
-      // (5xx). Apple treats 4xx as terminal — no retry. That's right
-      // for a payload that fails chain verification: it would never
-      // become valid on retry.
-      if (err instanceof JWSVerificationFailure) {
-        res.status(400).json({ error: "jws_invalid" });
-        return;
-      }
-      res.status(500).json({ error: "internal" });
+      respondToVerifyFailure(res, err);
       return;
     }
 
@@ -142,20 +186,12 @@ export const appStoreServerNotificationsV2 = onRequest(
       });
       res.status(200).send();
     } catch (err) {
-      logError({
-        event: "appstore.notifications.reconcile_failed",
-        message: errorMessage(err),
-        type: String(notification.payload.notificationType ?? ""),
-        subtype: String(notification.payload.subtype ?? ""),
-      });
-      // For internal errors return 500 so Apple retries. For known
-      // policy errors (binding mismatch, etc.) return 200 so we don't
-      // burn through Apple's retry budget on a doomed payload.
-      if (err instanceof EntitlementReconcileError) {
-        res.status(200).json({ accepted: false, code: err.code });
-        return;
-      }
-      res.status(500).json({ error: "internal" });
+      respondToReconcileFailure(
+        res,
+        err,
+        String(notification.payload.notificationType ?? ""),
+        String(notification.payload.subtype ?? ""),
+      );
     }
   },
 );

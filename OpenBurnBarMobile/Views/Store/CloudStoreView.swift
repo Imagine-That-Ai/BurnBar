@@ -27,7 +27,9 @@ private enum CloudSubscriptionDisclosure {
         "BurnBar Cloud Ultra Monthly - 1 month - $59.99 - no intro trial.",
         "BurnBar Cloud Ultra Annual - 1 year - $599 - no intro trial.",
         "Agent Control 100 Actions - consumable top-up - $4.99.",
-        "Floo Relay 50 GB - consumable top-up - $4.99."
+        "Floo Relay 50 GB - consumable top-up - $4.99.",
+        "Elder Wand Search 100 - consumable top-up - $4.99.",
+        "Elder Wand Search 500 - consumable top-up - $19.99."
     ]
     static let reviewVisiblePlanSummary = "All App Store Connect subscriptions for this app are available here: \(reviewVisiblePlans.joined(separator: " "))"
 }
@@ -365,7 +367,7 @@ private struct CloudStoreTopUpTile: View {
             }
 
             if let credit = store.lastTopUpCredit, credit.credited {
-                Text("Top-up credited: \(credit.units) units for \(credit.monthKey).")
+                Text("Top-up credited: \(credit.units) \(topUpUnitLabel(for: credit.kind)) for \(credit.monthKey).")
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(ProTheme.Membership.foilLeaf)
                     .fixedSize(horizontal: false, vertical: true)
@@ -375,6 +377,17 @@ private struct CloudStoreTopUpTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .membershipCard()
         .accessibilityIdentifier("cloudStore.topUps")
+    }
+}
+
+private func topUpUnitLabel(for kind: String) -> String {
+    switch kind {
+    case "floo_relay_50gb":
+        return "relay GB"
+    case "elder_wand_searches_100", "elder_wand_searches_500":
+        return "hosted searches"
+    default:
+        return "hosted actions"
     }
 }
 

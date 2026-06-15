@@ -191,6 +191,26 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .openBurnBar:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.plan],
+                defaultKind: .plan,
+                labelSuggestion: "OpenBurnBar",
+                dashboardURL: URL(string: "https://openburnbar.com"),
+                dashboardCTA: "Open OpenBurnBar",
+                oneLineHint: "Managed by your OpenBurnBar Cloud Pro or Ultra subscription.",
+                instructions: [
+                    GuideStep(1, "Sign in to OpenBurnBar", detail: "Use the account that owns your Cloud Pro or Ultra subscription."),
+                    GuideStep(2, "Manage quota from the Store", detail: "Built-in OpenBurnBar meters, including Elder Wand hosted search, appear in the quota tracker automatically."),
+                    GuideStep(3, "Buy top-ups when needed", detail: "Additional hosted actions, relay data, and Elder Wand searches are credited to the current billing month.")
+                ],
+                credentialPlaceholder: "Managed by OpenBurnBar",
+                credentialFooterMarkdown: "OpenBurnBar quota is tied to your subscription. No third-party API key is collected for this provider.",
+                supportsHosted: false,
+                supportsSelfHosted: false
+            )
+
         case .deepSeek:
             return ProviderSetupGuide(
                 provider: provider,

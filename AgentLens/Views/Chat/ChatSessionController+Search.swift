@@ -545,13 +545,18 @@ extension ChatSessionController {
             do {
                 var pieces: [ChatTranscriptPiece] = []
                 var usageSnapshot: CLIUsageSnapshot?
+                let elderWandPlugins = await MainActor.run {
+                    self.settingsManager.elderWandPluginsPayload()
+                }
+                let fusionActive = elderWandPlugins != nil
+                let hostedSearchHeaders = fusionActive
+                    ? await Self.elderWandHostedSearchHeaders()
+                    : [:]
                 let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
                     // The Elder Wand: when a model-fusion preset is active, the
                     // OpenAI-compatible chat backends carry the `plugins:[{id:"fusion",…}]`
                     // block AND redirect to the BurnBar daemon gateway (8317), where the
                     // fusion orchestrator lives — not the Hermes CLI gateway (8642).
-                    let elderWandPlugins = self.settingsManager.elderWandPluginsPayload()
-                    let fusionActive = elderWandPlugins != nil
                     switch self.chatBackend {
                     case .hermes:
                         // Keep Hermes system-prompt construction shared with iOS.
@@ -569,7 +574,8 @@ extension ChatSessionController {
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
                             toolBroker: activeToolBroker,
-                            plugins: elderWandPlugins
+                            plugins: elderWandPlugins,
+                            additionalHeaders: hostedSearchHeaders
                         )
                     case .openclaw:
                         let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
@@ -584,7 +590,8 @@ extension ChatSessionController {
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
                             toolBroker: activeToolBroker,
-                            plugins: elderWandPlugins
+                            plugins: elderWandPlugins,
+                            additionalHeaders: hostedSearchHeaders
                         )
                     case .piAgent:
                         // Attribute the responder to the active Pi agent without user-visible leakage.
@@ -602,7 +609,8 @@ extension ChatSessionController {
                             capabilities: backendCapabilities,
                             workspaceURL: self.chatWorkspaceURL,
                             toolBroker: activeToolBroker,
-                            plugins: elderWandPlugins
+                            plugins: elderWandPlugins,
+                            additionalHeaders: hostedSearchHeaders
                         )
                     case .codex:
                         return self.cliBridge.chatCodexStream(

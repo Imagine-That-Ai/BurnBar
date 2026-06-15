@@ -241,7 +241,12 @@ extension BurnBarHTTPGatewayServer {
             return .buffered(await handleModels(includeUnadvertised: true))
 
         case ("POST", "/v1/chat/completions"):
-            return await handleChatCompletions(body: request.body, connection: connection, corsHeaders: corsHeaders)
+            return await handleChatCompletions(
+                body: request.body,
+                headers: request.headers,
+                connection: connection,
+                corsHeaders: corsHeaders
+            )
 
         case ("POST", "/v1/responses"):
             return await handleResponses(body: request.body)

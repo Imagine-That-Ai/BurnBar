@@ -11,16 +11,55 @@ import OpenBurnBarCore
 // SSRF-safe `OpenBurnBarBrowserTargetPolicy` + redirect guard the browser
 // subsystem uses) and returns stripped page text.
 //
-// `web_search` is a configurable HTTP backend (Brave or Tavily) keyed from the
-// daemon environment. When NO key is configured the tool returns a graceful
-// "search unavailable" tool result instead of crashing — the model simply
-// proceeds without web search.
+// `web_search` is quota-metered through the hosted callable when Firebase auth
+// headers are present. Local Perplexity/Tavily environment keys remain as a
+// development fallback only; production quota exhaustion never falls through to
+// local keys.
+
+/// Hosted callable auth and endpoint forwarded by the macOS app to the daemon
+/// only when Elder Wand Fusion is active.
+struct ElderWandHostedSearchConfig: Sendable, Equatable {
+    static let firebaseAuthorizationHeader = "x-openburnbar-firebase-authorization"
+    static let appCheckHeader = "x-openburnbar-firebase-appcheck"
+    static let defaultEndpoint = URL(string: "https://us-central1-burnbar.cloudfunctions.net/performElderWandHostedSearch")!
+
+    let endpoint: URL
+    let firebaseAuthorization: String
+    let appCheckToken: String?
+
+    static func resolve(
+        headers: [String: String],
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ElderWandHostedSearchConfig? {
+        let authorization = headers[firebaseAuthorizationHeader]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let authorization, !authorization.isEmpty else { return nil }
+        let appCheck = headers[appCheckHeader]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ElderWandHostedSearchConfig(
+            endpoint: endpoint(environment: environment),
+            firebaseAuthorization: authorization,
+            appCheckToken: appCheck?.isEmpty == false ? appCheck : nil
+        )
+    }
+
+    private static func endpoint(environment: [String: String]) -> URL {
+        for key in ["BURNBAR_ELDER_WAND_HOSTED_SEARCH_URL", "ELDER_WAND_HOSTED_SEARCH_URL"] {
+            if let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !raw.isEmpty,
+               let url = URL(string: raw),
+               url.scheme == "https" || url.host == "127.0.0.1" || url.host == "localhost" {
+                return url
+            }
+        }
+        return defaultEndpoint
+    }
+}
 
 /// Which search provider `web_search` talks to, resolved from the environment.
 enum ElderWandSearchBackend: Sendable, Equatable {
-    /// Brave Search API (`https://api.search.brave.com`). Key from
-    /// `BURNBAR_BRAVE_SEARCH_API_KEY` (or legacy `BRAVE_SEARCH_API_KEY`).
-    case brave(apiKey: String)
+    /// Perplexity Search API (`https://api.perplexity.ai/search`). Key from
+    /// `BURNBAR_PERPLEXITY_SEARCH_API_KEY`, `PERPLEXITY_SEARCH_API_KEY`, or
+    /// `PERPLEXITY_API_KEY`.
+    case perplexity(apiKey: String)
     /// Tavily Search API (`https://api.tavily.com`). Key from
     /// `BURNBAR_TAVILY_API_KEY` (or legacy `TAVILY_API_KEY`).
     case tavily(apiKey: String)
@@ -29,16 +68,22 @@ enum ElderWandSearchBackend: Sendable, Equatable {
 
     var isAvailable: Bool {
         switch self {
-        case .brave, .tavily: return true
+        case .perplexity, .tavily: return true
         case .unavailable: return false
         }
     }
 
-    /// Resolve the backend from a process environment. Brave wins when both
-    /// keys are present (it is the cheaper/default backend).
+    /// Resolve the primary backend from a process environment. Perplexity wins
+    /// when multiple keys are present; Tavily is fallback.
     static func resolve(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> ElderWandSearchBackend {
+        resolveAll(environment: environment).first ?? .unavailable
+    }
+
+    static func resolveAll(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [ElderWandSearchBackend] {
         func value(_ keys: [String]) -> String? {
             for key in keys {
                 if let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -48,13 +93,14 @@ enum ElderWandSearchBackend: Sendable, Equatable {
             }
             return nil
         }
-        if let key = value(["BURNBAR_BRAVE_SEARCH_API_KEY", "BRAVE_SEARCH_API_KEY"]) {
-            return .brave(apiKey: key)
+        var backends: [ElderWandSearchBackend] = []
+        if let key = value(["BURNBAR_PERPLEXITY_SEARCH_API_KEY", "PERPLEXITY_SEARCH_API_KEY", "PERPLEXITY_API_KEY"]) {
+            backends.append(.perplexity(apiKey: key))
         }
         if let key = value(["BURNBAR_TAVILY_API_KEY", "TAVILY_API_KEY"]) {
-            return .tavily(apiKey: key)
+            backends.append(.tavily(apiKey: key))
         }
-        return .unavailable
+        return backends
     }
 }
 
@@ -77,7 +123,9 @@ struct ElderWandTool: Sendable {
 
 /// Builds the `web_fetch` + `web_search` tools backed by URLSession.
 struct ElderWandWebTools: Sendable {
-    private let searchBackend: ElderWandSearchBackend
+    private let hostedSearch: ElderWandHostedSearchConfig?
+    private let searchBackends: [ElderWandSearchBackend]
+    private let runID: String
     private let logger: BurnBarDaemonLogger
     /// Injectable fetcher so the SSRF + strip path is unit-testable without
     /// real network. Defaults to the same posture as the browser subsystem.
@@ -87,12 +135,16 @@ struct ElderWandWebTools: Sendable {
     private let searchRunner: @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
     init(
-        searchBackend: ElderWandSearchBackend = ElderWandSearchBackend.resolve(),
+        hostedSearch: ElderWandHostedSearchConfig? = nil,
+        searchBackend: ElderWandSearchBackend? = nil,
+        runID: String = "elder-wand-\(UUID().uuidString)",
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "elder-wand-web-tools"),
         fetcher: (@Sendable (URL) async throws -> (Data, HTTPURLResponse))? = nil,
         searchRunner: (@Sendable (URLRequest) async throws -> (Data, HTTPURLResponse))? = nil
     ) {
-        self.searchBackend = searchBackend
+        self.hostedSearch = hostedSearch
+        self.searchBackends = searchBackend.map { [$0] } ?? ElderWandSearchBackend.resolveAll()
+        self.runID = runID
         self.logger = logger
         self.fetcher = fetcher ?? { url in
             let delegate = BurnBarBrowserRedirectGuard()
@@ -197,37 +249,58 @@ struct ElderWandWebTools: Sendable {
                 ])
             ])
         ])
-        let backend = self.searchBackend
+        let hostedSearch = self.hostedSearch
+        let backends = self.searchBackends.filter(\.isAvailable)
         let runner = self.searchRunner
         let logger = self.logger
+        let runID = self.runID
         return ElderWandTool(name: "web_search", schema: schema) { arguments in
-            guard backend.isAvailable else {
-                return "web_search unavailable: no search provider API key is configured on this server. "
-                    + "Proceed using your own knowledge and any pages you can reach with web_fetch."
-            }
             guard let query = Self.stringArgument("query", from: arguments)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                   !query.isEmpty else {
                 return "web_search error: missing required \"query\" argument."
             }
-            do {
-                let request = try Self.makeSearchRequest(backend: backend, query: query)
-                let (data, response) = try await runner(request)
-                guard (200..<300).contains(response.statusCode) else {
-                    return "web_search error: provider returned HTTP \(response.statusCode)."
+            if let hostedSearch {
+                do {
+                    return try await Self.runHostedSearch(
+                        config: hostedSearch,
+                        query: query,
+                        runID: runID,
+                        runner: runner
+                    )
+                } catch {
+                    logger.silentFailure("elder_wand_hosted_web_search", error: error)
+                    return Self.hostedSearchUnavailableMessage()
                 }
-                let results = Self.parseSearchResults(backend: backend, data: data)
-                guard !results.isEmpty else {
-                    return "web_search: no results for \"\(query)\"."
-                }
-                let rendered = results.prefix(8).enumerated().map { index, result in
-                    "\(index + 1). \(result.title)\n   \(result.url)\n   \(result.snippet)"
-                }.joined(separator: "\n")
-                return "web_search results for \"\(query)\":\n\(rendered)"
-            } catch {
-                logger.silentFailure("elder_wand_web_search", error: error)
-                return "web_search error: \(error.localizedDescription)"
             }
+            guard !backends.isEmpty else {
+                return "web_search unavailable: hosted live search quota/auth is unavailable and no local development search key is configured. "
+                    + "Proceed using your own knowledge and any pages you can reach with web_fetch."
+            }
+            var providerErrors: [String] = []
+            for backend in backends {
+                do {
+                    let request = try Self.makeSearchRequest(backend: backend, query: query)
+                    let (data, response) = try await runner(request)
+                    guard (200..<300).contains(response.statusCode) else {
+                        providerErrors.append("HTTP \(response.statusCode)")
+                        continue
+                    }
+                    let results = Self.parseSearchResults(backend: backend, data: data)
+                    guard !results.isEmpty else {
+                        providerErrors.append("no results")
+                        continue
+                    }
+                    let rendered = results.prefix(8).enumerated().map { index, result in
+                        "\(index + 1). \(result.title)\n   \(result.url)\n   \(result.snippet)"
+                    }.joined(separator: "\n")
+                    return "web_search results for \"\(query)\":\n\(rendered)"
+                } catch {
+                    providerErrors.append(error.localizedDescription)
+                    logger.silentFailure("elder_wand_web_search", error: error)
+                }
+            }
+            return "web_search error: all configured providers failed (\(providerErrors.prefix(3).joined(separator: "; ")))."
         }
     }
 
@@ -237,31 +310,131 @@ struct ElderWandWebTools: Sendable {
         let snippet: String
     }
 
+    private static func runHostedSearch(
+        config: ElderWandHostedSearchConfig,
+        query: String,
+        runID: String,
+        runner: @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
+    ) async throws -> String {
+        let request = try makeHostedSearchRequest(config: config, query: query, runID: runID)
+        let (data, response) = try await runner(request)
+        guard (200..<300).contains(response.statusCode) else {
+            return hostedSearchUnavailableMessage(data: data, statusCode: response.statusCode)
+        }
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return hostedSearchUnavailableMessage()
+        }
+        if root["error"] is [String: Any] {
+            return hostedSearchUnavailableMessage(data: data, statusCode: response.statusCode)
+        }
+        let resultObject = (root["result"] as? [String: Any]) ?? root
+        let provider = (resultObject["provider"] as? String) ?? "hosted"
+        let rawResults = (resultObject["results"] as? [[String: Any]]) ?? []
+        let results = parseHostedSearchResults(rawResults)
+        guard !results.isEmpty else {
+            return "web_search: no hosted results for \"\(query)\"."
+        }
+        let rendered = results.prefix(5).enumerated().map { index, result in
+            "\(index + 1). \(result.title)\n   \(result.url)\n   \(result.snippet)"
+        }.joined(separator: "\n")
+        let quota = hostedQuotaLine(from: resultObject["quota"])
+        return "web_search hosted results via \(provider) for \"\(query)\":\n\(rendered)\(quota)"
+    }
+
+    private static func makeHostedSearchRequest(
+        config: ElderWandHostedSearchConfig,
+        query: String,
+        runID: String
+    ) throws -> URLRequest {
+        var request = URLRequest(url: config.endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(config.firebaseAuthorization, forHTTPHeaderField: "Authorization")
+        if let appCheckToken = config.appCheckToken {
+            request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "data": [
+                "query": query,
+                "sessionId": runID,
+                "runId": runID,
+                "maxResults": 5,
+                "runSearchCap": 12
+            ]
+        ])
+        return request
+    }
+
+    private static func hostedSearchUnavailableMessage(data: Data? = nil, statusCode: Int? = nil) -> String {
+        let detail: String
+        if let data,
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let error = root["error"] as? [String: Any],
+           let message = error["message"] as? String,
+           !message.isEmpty {
+            detail = " \(String(message.prefix(180)))"
+        } else if let statusCode {
+            detail = " Hosted callable returned HTTP \(statusCode)."
+        } else {
+            detail = ""
+        }
+        return "web_search unavailable: hosted Fusion live-search quota is exhausted or unavailable.\(detail) Proceed without live web_search."
+    }
+
+    private static func parseHostedSearchResults(_ rawResults: [[String: Any]]) -> [SearchResult] {
+        rawResults.compactMap { item in
+            guard let url = item["url"] as? String,
+                  url.starts(with: "http://") || url.starts(with: "https://") else {
+                return nil
+            }
+            let rawTitle = (item["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = rawTitle?.isEmpty == false ? rawTitle ?? url : url
+            let snippet = (item["snippet"] as? String)
+                ?? (item["content"] as? String)
+                ?? (item["description"] as? String)
+                ?? ""
+            return SearchResult(
+                title: title,
+                url: url,
+                snippet: condense(snippet)
+            )
+        }
+    }
+
+    private static func hostedQuotaLine(from raw: Any?) -> String {
+        guard let quota = raw as? [String: Any],
+              let remaining = quota["remaining"] as? Int else {
+            return ""
+        }
+        return "\nQuota: \(remaining) hosted Fusion searches remaining this month."
+    }
+
     private static func makeSearchRequest(
         backend: ElderWandSearchBackend,
         query: String
     ) throws -> URLRequest {
         switch backend {
-        case .brave(let apiKey):
-            var components = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")
-            components?.queryItems = [
-                URLQueryItem(name: "q", value: query),
-                URLQueryItem(name: "count", value: "8")
-            ]
-            guard let url = components?.url else { throw URLError(.badURL) }
+        case .perplexity(let apiKey):
+            guard let url = URL(string: "https://api.perplexity.ai/search") else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-            request.setValue(apiKey, forHTTPHeaderField: "X-Subscription-Token")
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            let payload: [String: Any] = [
+                "query": query,
+                "max_results": 8
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             return request
         case .tavily(let apiKey):
             guard let url = URL(string: "https://api.tavily.com/search") else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             let payload: [String: Any] = [
-                "api_key": apiKey,
                 "query": query,
+                "search_depth": "basic",
                 "max_results": 8
             ]
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
@@ -279,15 +452,19 @@ struct ElderWandWebTools: Sendable {
             return []
         }
         switch backend {
-        case .brave:
-            guard let web = object["web"] as? [String: Any],
-                  let results = web["results"] as? [[String: Any]] else {
-                return []
-            }
+        case .perplexity:
+            let results =
+                (object["results"] as? [[String: Any]])
+                ?? (object["search_results"] as? [[String: Any]])
+                ?? []
+            guard !results.isEmpty else { return [] }
             return results.compactMap { item in
                 guard let url = item["url"] as? String else { return nil }
                 let title = (item["title"] as? String) ?? url
-                let snippet = (item["description"] as? String) ?? ""
+                let snippet = (item["snippet"] as? String)
+                    ?? (item["description"] as? String)
+                    ?? (item["content"] as? String)
+                    ?? ""
                 return SearchResult(title: title, url: url, snippet: Self.condense(snippet))
             }
         case .tavily:

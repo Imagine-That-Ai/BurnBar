@@ -244,6 +244,7 @@ public enum DesignSystemColors {
         case .openCode:   return Color(hex: "2563EB")
         case .xAI:        return Color(hex: "1A1A1A")
         case .mimo:       return Color(hex: "FF6900")
+        case .openBurnBar: return Color(hex: "FA5053")
         }
     }
 
@@ -278,6 +279,7 @@ public enum DesignSystemColors {
         case .openCode:   return Color(hex: "93C5FD")
         case .xAI:        return Color(hex: "4A4A4A")
         case .mimo:       return Color(hex: "FF8533")
+        case .openBurnBar: return Color(hex: "FF7578")
         }
     }
     public static func colorForModel(_ modelName: String) -> Color {
@@ -388,6 +390,7 @@ public enum DesignSystemColors {
         case .openCode:    return "2563EB"
         case .xAI:         return "1A1A1A"
         case .mimo:        return "FF6900"
+        case .openBurnBar: return "FA5053"
         }
     }
 

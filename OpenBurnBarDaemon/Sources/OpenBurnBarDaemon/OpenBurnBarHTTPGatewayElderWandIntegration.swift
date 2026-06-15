@@ -29,10 +29,11 @@ extension BurnBarHTTPGatewayServer {
         originatingModel: String,
         wantsStream: Bool,
         connection: NWConnection,
-        corsHeaders: [String: String]
+        corsHeaders: [String: String],
+        hostedSearch: ElderWandHostedSearchConfig?
     ) async -> GatewayRouteOutcome {
         let startedAt = Date()
-        let orchestrator = makeElderWandOrchestrator()
+        let orchestrator = makeElderWandOrchestrator(hostedSearch: hostedSearch)
         let result = await orchestrator.run(
             bodyData: bodyData,
             plugin: plugin,
@@ -168,8 +169,8 @@ extension BurnBarHTTPGatewayServer {
     }
 
     /// Construct an orchestrator over the server's stored deps.
-    private func makeElderWandOrchestrator() -> ElderWandFusionOrchestrator {
-        let tools = ElderWandWebTools().makeTools()
+    private func makeElderWandOrchestrator(hostedSearch: ElderWandHostedSearchConfig?) -> ElderWandFusionOrchestrator {
+        let tools = ElderWandWebTools(hostedSearch: hostedSearch).makeTools()
         return ElderWandFusionOrchestrator(
             resolveRoute: { [self] modelSlug in
                 await self.resolveElderWandRoute(modelSlug: modelSlug)

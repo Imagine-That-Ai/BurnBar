@@ -31,6 +31,15 @@ export async function loadCloudProAllowanceConfig(): Promise<CloudProAllowanceCo
       includedRelayGBMonthly: integerDefault(parameters, "cloud_pro_included_relay_gb_monthly"),
       relayTopUpUnitGB: integerDefault(parameters, "cloud_pro_relay_topup_unit_gb"),
       monthlyRelayGBCap: integerDefault(parameters, "cloud_pro_monthly_relay_gb_cap"),
+      includedFusionSearchesMonthly: integerDefault(parameters, "cloud_pro_included_fusion_searches_monthly"),
+      includedUltraFusionSearchesMonthly: integerDefault(
+        parameters,
+        "cloud_ultra_included_fusion_searches_monthly",
+      ),
+      fusionSearchTopUpUnit: integerDefault(parameters, "cloud_pro_fusion_search_topup_unit"),
+      fusionSearchLargeTopUpUnit: integerDefault(parameters, "cloud_pro_fusion_search_large_topup_unit"),
+      monthlyFusionSearchCap: integerDefault(parameters, "cloud_pro_monthly_fusion_search_cap"),
+      monthlyUltraFusionSearchCap: integerDefault(parameters, "cloud_ultra_monthly_fusion_search_cap"),
     });
   } catch (err) {
     logWarn({

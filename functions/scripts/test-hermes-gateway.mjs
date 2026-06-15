@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   bearerTokenFromAuthorizationHeader,
   canonicalHermesGatewayUserCode,
@@ -361,7 +361,31 @@ assert.equal(sanitizeHermesGatewayApprovalSummary("  run\n\tshell   now "), "run
 assert.equal(sanitizeHermesGatewayApprovalSummary("x".repeat(5000)).length, 2000);
 assert.equal(sanitizeHermesGatewayApprovalSummary(42), "");
 
-const source = readFileSync(new URL("../src/callables/hermesGateway.ts", import.meta.url), "utf8");
+// callables/hermesGateway.ts was split into cohesive sibling modules
+// (hermesGateway*.ts) to stay under the file-length cap; the barrel re-exports
+// them. Scan the concatenation of the barrel + all siblings so these structural
+// assertions follow each callable/handler wherever the split relocated it.
+const callablesDir = new URL("../src/callables/", import.meta.url);
+const source = readdirSync(callablesDir)
+  .filter((file) => /^hermesGateway.*\.ts$/.test(file))
+  .sort()
+  .map((file) => readFileSync(new URL(file, callablesDir), "utf8"))
+  .join("\n");
+
+// `source` now concatenates ~10 sibling modules, so a NEGATIVE assertion using an
+// open-ended `[\s\S]*?` span from a function name could leap across file/function
+// boundaries and match a forbidden token in unrelated code — silently turning the
+// anti-regression check always-true. functionBodySlice() pins each negative to a
+// single handler's own body (anchor at its declaration; stop at the next top-level
+// declaration) so the guard stays meaningful, mirroring the resolver-slice below.
+function functionBodySlice(haystack, declaration) {
+  const start = haystack.indexOf(declaration);
+  assert.ok(start >= 0, `${declaration} must exist in the gateway source`);
+  const endRel = haystack
+    .slice(start + declaration.length)
+    .search(/\n(?:export |async function |function |const )/);
+  return endRel === -1 ? haystack.slice(start) : haystack.slice(start, start + declaration.length + endRel);
+}
 for (const name of [
   "approveHermesGatewayDeviceGrant",
   "listHermesGatewayClients",
@@ -397,12 +421,18 @@ assert.match(source, /\/attachments\/finalize/);
 assert.match(source, /hermes_gateway_token_index/);
 
 // Feature 1 — /state route is registered and read-only (must NOT bump the cursor).
-assert.match(source, /if \(path === "\/state"\) return await handleGatewayState/);
+// The dispatcher was decomposed into a routeGatewayRequest table that returns
+// `(await handler(req, res), true)`; the route→handler binding is unchanged.
+assert.match(source, /if \(path === "\/state"\) return \(await handleGatewayState\(req, res\), true\);/);
 assert.match(source, /async function handleGatewayState/);
 assert.match(source, /protocolVersion: HERMES_GATEWAY_PROTOCOL_VERSION/);
 assert.match(source, /online: isHermesGatewayClientOnline\(client\.lastSeenAt, now\)/);
+// Scoped to handleGatewayState's own body so the span can't leap into the
+// enqueue handler (which legitimately advances eventSequence). The /state read
+// must only READ eventSequence, never write `eventSequence: <expr> + 1`.
+const gatewayStateBody = functionBodySlice(source, "async function handleGatewayState");
 assert.ok(
-  !/handleGatewayState[\s\S]*?eventSequence: sequence \+ 1/.test(source),
+  !/eventSequence:[^,;\n]*\+\s*1/.test(gatewayStateBody),
   "handleGatewayState must never increment the event cursor",
 );
 
@@ -410,10 +440,14 @@ assert.ok(
 // model_switch forwards the opaque command without requiring cleartext modelId.
 assert.match(source, /clientAdvertisesModel\(targetClient, requestedModelId\)/);
 assert.match(source, /model_not_available/);
-assert.match(source, /modelId: targetIsRelayCapable \? undefined : requestedModelId/);
+// The decomposition lifted these into an `input` struct passed to a helper, so
+// the references may now be `input.targetIsRelayCapable`/`input.requestedModelId`;
+// the sealed-vs-cleartext modelId contract is byte-for-byte unchanged.
+assert.match(source, /modelId: (?:input\.)?targetIsRelayCapable \? undefined : (?:input\.)?requestedModelId/);
 assert.match(source, /!targetIsRelayCapable/);
-// Reconciliation clears the pending marker once the runtime reports the applied model.
-assert.match(source, /pendingModelId: settled \? FieldValue\.delete\(\)/);
+// Reconciliation clears the pending marker once the runtime reports the applied
+// model. The split lifted `settled` into a helper `input` struct (`input.settled`).
+assert.match(source, /pendingModelId: (?:input\.)?settled \? FieldValue\.delete\(\)/);
 
 // Feature 3 — oversight routes + hardened resolution semantics (reuse, not fork).
 assert.match(source, /if \(path === "\/approvals"\)/);
@@ -445,9 +479,17 @@ assert.match(source, /export const reapHermesGatewayApprovals = onSchedule/);
 // CONTROL-PLANE only — the server must NEVER persist a client-supplied free-text
 // `summary` (the action detail flows E2E-sealed over the message channel). Assert
 // the leak path is gone and the gate stores an empty summary at the boundary.
+// Scoped to handleArmApproval's own body: the arm path must never read the
+// client-supplied `body.summary` (no sanitize-and-store leak path, and no raw
+// read) so private free-text can't be reintroduced on the sealed gateway.
+const armApprovalBody = functionBodySlice(source, "function handleArmApproval");
 assert.ok(
-  !/handleArmApproval[\s\S]*?sanitizeHermesGatewayApprovalSummary\(body\.summary\)/.test(source),
+  !/sanitizeHermesGatewayApprovalSummary\(body\.summary\)/.test(armApprovalBody),
   "handleArmApproval must NOT persist client-supplied summary text on the sealed gateway",
+);
+assert.ok(
+  !/body\.summary/.test(armApprovalBody),
+  "handleArmApproval must NOT read client-supplied summary text on the sealed gateway",
 );
 // The stored summary is SERVER-DERIVED from the coarse toolName, never client free-text.
 assert.match(source, /const summary = toolName \? `Approve \$\{toolName\} action`/);

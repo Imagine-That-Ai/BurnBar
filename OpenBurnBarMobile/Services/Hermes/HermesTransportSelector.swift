@@ -250,6 +250,15 @@ final class HermesTransportSelector {
 
     @discardableResult
     func selectConnection(_ connection: HermesConnectionRecord, refresh: Bool = true, coordinator: HermesTransportCoordinating) -> Bool {
+        let selectedModelKey = HermesRuntimeStore.selectedModelDefaultsKey(for: connection.id)
+        let storedConnectionID = coordinator.defaults.string(forKey: HermesRuntimeStore.selectedConnectionDefaultsKey)
+        let persistedModelID = coordinator.defaults.string(forKey: selectedModelKey)
+            ?? (storedConnectionID == nil || storedConnectionID == connection.id
+                ? coordinator.defaults.string(forKey: HermesRuntimeStore.selectedModelDefaultsKey)
+                : nil)
+        let persistedModelKey = coordinator.defaults.string(forKey: selectedModelKey) == nil
+            ? HermesRuntimeStore.selectedModelDefaultsKey
+            : selectedModelKey
         let endpoint: URL?
         if connection.mode == .relayLink {
             guard Self.hasUsableRelayEncryption(connection) else {
@@ -279,11 +288,14 @@ final class HermesTransportSelector {
         coordinator.selectedConnection = connection
         coordinator.selectedSessionID = nil
         coordinator.selectedModelID = HermesService.restoredModelID(
-            coordinator.defaults.string(forKey: HermesRuntimeStore.selectedModelDefaultsKey),
+            persistedModelID,
             defaults: coordinator.defaults,
-            key: HermesRuntimeStore.selectedModelDefaultsKey
+            key: persistedModelKey
         )
         coordinator.selectedModelWasExplicit = coordinator.selectedModelID?.nilIfBlank != nil
+        if let selectedModelID = coordinator.selectedModelID {
+            coordinator.defaults.set(selectedModelID, forKey: selectedModelKey)
+        }
         coordinator.sessions = []
         coordinator.profiles = []
         coordinator.modelOptions = []

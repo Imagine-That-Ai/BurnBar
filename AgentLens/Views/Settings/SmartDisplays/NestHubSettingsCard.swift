@@ -742,6 +742,7 @@ private struct NestHubProviderChip: View {
         case .windsurf:     return "Windsurf"
         case .xAI:          return "Grok"
         case .mimo:         return "MiMo"
+        case .openBurnBar:  return "BurnBar"
         }
     }
 }

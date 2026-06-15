@@ -25,7 +25,7 @@ const EXPECTED_GUARDS: Array<{
 }> = [
   {
     exportedName: "approveHermesGatewayDeviceGrant",
-    file: "hermesGateway.ts",
+    file: "hermesGatewayApprove.ts",
     actionKind: "hermes_gateway_device_grant_approve",
   },
   { exportedName: "connectProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_connect" },

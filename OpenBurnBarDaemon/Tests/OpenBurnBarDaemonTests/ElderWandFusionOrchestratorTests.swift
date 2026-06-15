@@ -276,6 +276,13 @@ private actor SubCallRecorder {
     func append(_ record: ElderWandSubCallRecord) { records.append(record) }
 }
 
+private actor RequestRecorder {
+    private var requests: [URLRequest] = []
+    func append(_ request: URLRequest) { requests.append(request) }
+    func first() -> URLRequest? { requests.first }
+    func urls() -> [URL] { requests.compactMap(\.url) }
+}
+
 // MARK: - Tool loop + web tools
 
 final class ElderWandToolLoopTests: XCTestCase {
@@ -322,6 +329,81 @@ final class ElderWandToolLoopTests: XCTestCase {
         XCTAssertEqual(output?.contains("unavailable"), true, "no key configured must degrade, never crash")
     }
 
+    func testHostedSearchCallableUsesFirebaseHeadersAndCallableEnvelope() async throws {
+        let endpoint = try XCTUnwrap(URL(string: "https://example.com/performElderWandHostedSearch"))
+        let hosted = ElderWandHostedSearchConfig(
+            endpoint: endpoint,
+            firebaseAuthorization: "Bearer firebase-id-token",
+            appCheckToken: "app-check-token"
+        )
+        let recorder = RequestRecorder()
+        let tools = ElderWandWebTools(
+            hostedSearch: hosted,
+            searchBackend: .perplexity(apiKey: "local-key"),
+            runID: "fusion-run-1",
+            searchRunner: { request in
+                await recorder.append(request)
+                let body = """
+                {"result":{"provider":"perplexity","results":[{"title":"Hosted","url":"https://example.com/hosted","snippet":"fresh"}],"quota":{"remaining":99}}}
+                """
+                return (
+                    Data(body.utf8),
+                    HTTPURLResponse(url: endpoint, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                )
+            }
+        ).makeTools()
+        let search = try XCTUnwrap(tools.first { $0.name == "web_search" })
+
+        let output = await search.invoke(#"{"query":"latest BurnBar"}"#)
+
+        let recordedRequest = await recorder.first()
+        let request = try XCTUnwrap(recordedRequest)
+        XCTAssertEqual(request.url, endpoint)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer firebase-id-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Firebase-AppCheck"), "app-check-token")
+        let body = try XCTUnwrap(request.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [String: Any])
+        XCTAssertEqual(data["query"] as? String, "latest BurnBar")
+        XCTAssertEqual(data["runId"] as? String, "fusion-run-1")
+        XCTAssertEqual(data["maxResults"] as? Int, 5)
+        XCTAssertTrue(output.contains("hosted results via perplexity"))
+        XCTAssertTrue(output.contains("99 hosted Fusion searches remaining"))
+    }
+
+    func testHostedSearchQuotaFailureDoesNotFallBackToLocalProvider() async throws {
+        let endpoint = try XCTUnwrap(URL(string: "https://example.com/performElderWandHostedSearch"))
+        let hosted = ElderWandHostedSearchConfig(
+            endpoint: endpoint,
+            firebaseAuthorization: "Bearer firebase-id-token",
+            appCheckToken: nil
+        )
+        let recorder = RequestRecorder()
+        let tools = ElderWandWebTools(
+            hostedSearch: hosted,
+            searchBackend: .perplexity(apiKey: "local-key"),
+            runID: "fusion-run-2",
+            searchRunner: { request in
+                await recorder.append(request)
+                let body = """
+                {"error":{"status":"RESOURCE_EXHAUSTED","message":"Fusion hosted search quota is exhausted."}}
+                """
+                return (
+                    Data(body.utf8),
+                    HTTPURLResponse(url: request.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!
+                )
+            }
+        ).makeTools()
+        let search = try XCTUnwrap(tools.first { $0.name == "web_search" })
+
+        let output = await search.invoke(#"{"query":"latest BurnBar"}"#)
+
+        let requestedURLs = await recorder.urls()
+        XCTAssertEqual(requestedURLs, [endpoint])
+        XCTAssertTrue(output.contains("quota is exhausted or unavailable"))
+        XCTAssertFalse(output.contains("local-key"))
+    }
+
     func testWebFetchRejectsBlockedHost() async {
         let tools = ElderWandWebTools(searchBackend: .unavailable).makeTools()
         let fetch = try? XCTUnwrap(tools.first { $0.name == "web_fetch" })
@@ -332,8 +414,18 @@ final class ElderWandToolLoopTests: XCTestCase {
 
     func testSearchBackendResolvesFromEnvironment() {
         XCTAssertEqual(
-            ElderWandSearchBackend.resolve(environment: ["BURNBAR_BRAVE_SEARCH_API_KEY": "x"]),
-            .brave(apiKey: "x")
+            ElderWandSearchBackend.resolve(environment: [
+                "BURNBAR_PERPLEXITY_SEARCH_API_KEY": "x",
+                "TAVILY_API_KEY": "y"
+            ]),
+            .perplexity(apiKey: "x")
+        )
+        XCTAssertEqual(
+            ElderWandSearchBackend.resolveAll(environment: [
+                "PERPLEXITY_API_KEY": "x",
+                "TAVILY_API_KEY": "y"
+            ]),
+            [.perplexity(apiKey: "x"), .tavily(apiKey: "y")]
         )
         XCTAssertEqual(
             ElderWandSearchBackend.resolve(environment: ["TAVILY_API_KEY": "y"]),

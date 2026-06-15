@@ -21,7 +21,7 @@
  *    and converges exactly.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
@@ -569,8 +569,15 @@ describe("alertable structured log event keys", () => {
   it("keeps the exact jsonPayload.event strings the alert policies key on", () => {
     const read = (relative: string) => readFileSync(resolve(__dirname, relative), "utf8");
     const scheduled = read("../scheduled.ts");
-    const rollups = read("../rollups.ts");
     const misc = read("../callables/misc.ts");
+    // rollups.ts was split into rollup*.ts sibling modules and is now a
+    // re-export barrel, so the log-emitting code paths (and their event-string
+    // literals) live in those siblings. Scan the whole rollup* surface.
+    const srcDir = resolve(__dirname, "..");
+    const rollups = readdirSync(srcDir)
+      .filter((name) => /^rollup.*\.ts$/.test(name))
+      .map((name) => read(`../${name}`))
+      .join("\n");
 
     expect(scheduled).toContain('event: "rollup.full_rebuild_circuit_open"');
     expect(scheduled).toContain('event: "rollup.rebuild_failed"');
