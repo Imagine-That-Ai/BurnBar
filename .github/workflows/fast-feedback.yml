@@ -365,14 +365,26 @@ jobs:
             services/hermes-realtime-relay/src/generated/wireProtocol.ts \
             packages/hermes-wire-protocol/gen/HermesWireProtocol.swift \
             packages/hermes-wire-protocol/gen/HermesWireProtocol.kt \
-            packages/hermes-wire-protocol/gen/wire_protocol.rs
+            packages/hermes-wire-protocol/gen/wire_protocol.rs \
+            android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt \
+            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated
           node packages/hermes-wire-protocol/codegen.mjs
+          # codegen.mjs writes ALL generated surfaces (the gen/ references AND the real
+          # consumed payload types: Kotlin android Generated/ + Swift SharedModels/Generated/).
+          # Diff every one of them so a stale committed payload type fails CI — without the
+          # real Generated dirs here, drift only surfaces inside the apps (silent interop break).
           git diff --exit-code -- \
             services/hermes-realtime-relay/src/generated/wireProtocol.ts \
             packages/hermes-wire-protocol/gen \
+            android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated \
+            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated \
             || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
           node packages/hermes-wire-protocol/parity.mjs
           node --test packages/hermes-wire-protocol/protocol.test.mjs
+          # Kotlin emitter byte-faithfulness: every generatable type's emitter output must
+          # match the committed Kotlin (hand-written remainder + Generated/). Complements the
+          # protocol.test.mjs @EncodeDefault validator (override-vs-schema) above.
+          node packages/hermes-wire-protocol/migrate/kotlin-roundtrip.mjs --faithful
 
       # DTCG tokens build to CSS/Swift/Kotlin and stay one source of truth.
       - name: Design tokens (Style Dictionary build + tests)

@@ -2,6 +2,7 @@ package com.openburnbar.data.computeruse
 
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionStatus
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionStatusKind
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -85,11 +86,18 @@ class SystemPermissionInboxStore {
                 deepLink = status.deepLink,
                 instructions = status.instructions,
                 failureCategory = status.failureCategory,
-                lastChangedAtMillis = ((status.lastChangedAt + 978_307_200.0) * 1000.0).toLong(),
+                // Wire form is the canonical Swift dateIso string (was a Double of
+                // reference-seconds, which silently failed to decode the Mac's ISO string).
+                // Parse defensively: a conformant Mac always emits ISO-8601, but a
+                // malformed/non-conformant peer value must not throw out of the inbound
+                // read loop (that would tear the stream down to Reconnecting).
+                lastChangedAtMillis = parseIsoMillisOrNow(status.lastChangedAt),
                 source = SystemPermissionItem.Source.MAC_STRUCTURED,
             )
         upsert(item)
     }
+
+    private fun parseIsoMillisOrNow(iso: String): Long = runCatching { Instant.parse(iso).toEpochMilli() }.getOrElse { System.currentTimeMillis() }
 
     fun ingestHeuristic(
         threadId: String,

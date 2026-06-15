@@ -104,19 +104,50 @@ Edit `relay-message-types.json`, run `node codegen.mjs`, and the Swift files und
 extractor + round-trip prover that derived the schema byte-faithfully from the
 original) lives in `migrate/`.
 
-> **Kotlin / Android:** the schema is language-agnostic and the Kotlin emitter is
-> a designed next step (kotlinx.serialization with the three date regimes + alias
-> support). It needs an Android/Gradle environment to verify the byte-identical
-> round-trip against the Android iroh-relay module, so it is intentionally not
-> landed here — the schema makes it "add an emitter," not "re-derive the types."
+### Kotlin / Android (landed)
+
+The Kotlin payload types are generated too (kotlinx.serialization), to
+`android/openburnbar-iroh-relay/.../Generated/HermesRealtimeRelayGeneratedTypes.kt`
+via `emitKotlinRelayTypes`. 56/60 payload types are generated; the rest stay
+hand-written in `HermesRealtimeRelayFrame.kt` for deliberate reasons (a legacy
+dual-key alias; types Kotlin models as inline `String`). The CI drift gate diffs
+the real Android (and Swift) `Generated/` dirs after `node codegen.mjs`, so a
+stale committed payload type fails CI.
+
+Kotlin makes representation choices the cross-language schema doesn't capture
+(`Long` vs `Int` widths, enum-as-`String`, the `@EncodeDefault` set, the
+idiomatic acronym constants). Those live in **`relay-kotlin-overrides.json`**, a
+hand-maintained codegen SOURCE (it is *not* regenerable — the generatable types
+were consumed out of the `.kt`). The schema is STRUCTURE; the override is Kotlin
+REPRESENTATION; the emitter reconciles them.
+
+**Runbook — add or change a relay payload type for Kotlin:**
+
+1. Edit `relay-message-types.json` (the canonical structure).
+2. Add/edit the matching entry in `relay-kotlin-overrides.json`. Per field set
+   `ktType`, `default` (if any), `serialName` (only when the wire key differs
+   from the field name), and **`encodeDefault: true` for any non-optional field
+   with a non-null default that Swift always emits** — because the relay `Json`
+   uses `encodeDefaults=false` and would otherwise drop it on the wire while
+   Swift's synthesized/`plain`/`dateIso` Codable emits it unconditionally
+   (silent encode-side drift). For enums, list each case's `id` + `serialName`
+   (the wire string is the identity, not the Kotlin constant name).
+3. `node codegen.mjs` (regenerates Swift + Kotlin; `validateKotlinOverrides`
+   throws if your `encodeDefault` disagrees with the schema).
+4. Verify: `node --test packages/hermes-wire-protocol/` (drift + override
+   validator), `node migrate/kotlin-roundtrip.mjs --faithful` (emitter ==
+   committed Kotlin), and the Gradle encode-byte test
+   `HermesRealtimeRelayGeneratedRoundTripTest` — add an assertion there for any
+   new always-emit field. Commit the regenerated `Generated/` files.
 
 ## Files
 
 - `protocol.json` — the canonical spec (frames + constants + per-frame docs).
 - `relay-message-types.json` — the canonical spec for the rich payload message types.
-- `codegen.mjs` — emitters (TS, Swift, Kotlin, Rust frames) + Swift payload types + validation.
-- `relay-types.mjs` — payload-type schema loader, validator, and Swift emitter.
+- `codegen.mjs` — emitters (TS, Swift, Kotlin, Rust frames) + Swift & Kotlin payload types + validation.
+- `relay-types.mjs` — payload-type schema loader, validator, Swift + Kotlin emitters, and `validateKotlinOverrides`.
+- `relay-kotlin-overrides.json` — hand-maintained Kotlin representation overrides (codegen SOURCE; see the Kotlin section above).
 - `parity.mjs` — parsers + `checkParity` over the hand-written frame surfaces.
-- `protocol.test.mjs` — drift + parity + validation + payload-schema-integrity tests.
-- `migrate/` — one-time migration provenance (Swift→schema extractor + round-trip prover).
+- `protocol.test.mjs` — drift + parity + validation + payload-schema-integrity + Kotlin `@EncodeDefault` override tests.
+- `migrate/` — Swift→schema extractor + round-trip provers (`roundtrip.mjs` for Swift, `kotlin-roundtrip.mjs` for Kotlin; the latter's `--faithful` runs in CI).
 - `gen/` — generated reference outputs for the frame layer (DO NOT EDIT).

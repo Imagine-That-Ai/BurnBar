@@ -7,6 +7,13 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.security.MessageDigest
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
+// Swift HermesRealtimeRelayDateCodec.encode form: ISO-8601, internet date-time with
+// millisecond fractional seconds and a literal Z (e.g. 2026-03-22T10:26:42.000Z).
+private val ISO8601_MILLIS_UTC =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
 
 private const val NANOS_PER_SECOND = 1_000_000_000.0
 private const val MIN_UNESCAPED_CHAR_CODE = 0x20
@@ -40,6 +47,14 @@ internal object PhoneControlSignerJsonEncoding {
             instant.nano.toDouble() / NANOS_PER_SECOND -
             APPLE_REFERENCE_DATE_EPOCH_SECONDS
     }
+
+    /**
+     * The Swift `HermesRealtimeRelayDateCodec.encode` wire form for a `dateIso` field.
+     * The Mac decodes this tolerantly (number OR ISO string) and re-derives the signed
+     * reference-seconds NUMBER from the parsed `Date`, so flipping a wire field from a
+     * Double to this string does not change the cross-platform signature.
+     */
+    fun iso8601FromEpochMillis(epochMillis: Long): String = ISO8601_MILLIS_UTC.format(Instant.ofEpochMilli(epochMillis))
 
     fun quote(value: String): String {
         val out = StringBuilder(value.length + 2)
@@ -82,6 +97,7 @@ internal fun HermesRealtimeRelayRemoteUnlockBackend.wireValue(): String = when (
     HermesRealtimeRelayRemoteUnlockBackend.SCREEN_CAPTURE_KIT -> "screen_capture_kit"
     HermesRealtimeRelayRemoteUnlockBackend.PERSISTENT_SCREEN_CAPTURE_KIT -> "persistent_screen_capture_kit"
     HermesRealtimeRelayRemoteUnlockBackend.APPLE_SCREEN_SHARING_LOOPBACK -> "apple_screen_sharing_loopback"
+    HermesRealtimeRelayRemoteUnlockBackend.OPENBURNBAR_VIRTUAL_HID -> "openburnbar_virtual_hid"
     HermesRealtimeRelayRemoteUnlockBackend.FILEVAULT_SSH -> "filevault_ssh"
     HermesRealtimeRelayRemoteUnlockBackend.UNAVAILABLE -> "unavailable"
 }

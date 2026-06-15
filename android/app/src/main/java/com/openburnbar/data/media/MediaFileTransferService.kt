@@ -7,9 +7,6 @@ import com.openburnbar.irohrelay.IrohBlobBackendError
 import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohSecretKeyMaterial
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -125,7 +122,7 @@ class MediaFileTransferService(
                 mime = mime,
                 size = localFile.length(),
                 peerDeviceId = peerDeviceID,
-                createdAt = isoDate(System.currentTimeMillis()),
+                createdAt = swiftReferenceSeconds(System.currentTimeMillis()),
             )
         return PublishResult(manifest = manifest, ticketText = ticketText)
     }
@@ -167,11 +164,10 @@ class MediaFileTransferService(
         }
     }
 
-    private fun isoDate(epochMillis: Long): String {
-        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-        formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
-        return formatter.format(Date(epochMillis))
-    }
+    // Swift synthesizes AttachmentManifest.createdAt as a Codable Date, which JSONEncoder
+    // emits/decodes as a NUMBER of seconds since the 2001-01-01 Apple reference epoch.
+    // (Was an ISO string here, which the Mac's synthesized decoder rejected.)
+    private fun swiftReferenceSeconds(epochMillis: Long): Double = epochMillis / 1000.0 - 978_307_200.0
 
     private fun inferMime(file: File): String = when (file.extension.lowercase()) {
         "png" -> "image/png"
