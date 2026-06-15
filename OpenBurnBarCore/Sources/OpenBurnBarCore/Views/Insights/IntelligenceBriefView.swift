@@ -20,8 +20,6 @@ import SwiftUI
 /// (macOS workspace, iOS/iPadOS, embedded preview surfaces) drop it in
 /// identically. State lives with the caller.
 
-import SwiftUI
-
 /// Cross-platform Intelligence Brief — the Editorial Observatory.
 ///
 /// Renders an `InsightAnalysisResult` as a single-column editorial story:
