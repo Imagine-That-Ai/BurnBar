@@ -224,8 +224,8 @@ final class UsageStore: Sendable {
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                         usageSource, sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
                         providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                        provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
@@ -325,6 +325,9 @@ final class UsageStore: Sendable {
                             ELSE token_usage.provenanceConfidence
                         END,
                         estimatorVersion = excluded.estimatorVersion,
+                        -- Sticky fusion linkage (see upsertUsage): never erase a
+                        -- recorded elderwand parentRequestID with an incoming NULL.
+                        parentRequestID = COALESCE(excluded.parentRequestID, token_usage.parentRequestID),
                         syncedAt = NULL
                     WHERE
                         CASE excluded.provenanceConfidence
@@ -357,7 +360,8 @@ final class UsageStore: Sendable {
                     usage.providerAccountSource?.rawValue,
                     usage.provenanceMethod.rawValue,
                     usage.provenanceConfidence.rawValue,
-                    usage.estimatorVersion
+                    usage.estimatorVersion,
+                    usage.parentRequestID
                 ]
             )
         }
@@ -1026,8 +1030,8 @@ final class UsageStore: Sendable {
                     reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                     usageSource, sourceDeviceId, sourceDeviceName, isRemote,
                     providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                    provenanceMethod, provenanceConfidence, estimatorVersion
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                     projectName = excluded.projectName,
                     inputTokens = excluded.inputTokens,
@@ -1088,6 +1092,10 @@ final class UsageStore: Sendable {
                         ELSE token_usage.provenanceConfidence
                     END,
                     estimatorVersion = excluded.estimatorVersion,
+                    -- Fusion linkage is sticky: once a daemon row records the
+                    -- elderwand parentRequestID, a later non-daemon correction
+                    -- (which carries NULL) must not erase it.
+                    parentRequestID = COALESCE(excluded.parentRequestID, token_usage.parentRequestID),
                     syncedAt = NULL
                 WHERE
                     CASE excluded.provenanceConfidence
@@ -1120,6 +1128,10 @@ final class UsageStore: Sendable {
                         OR COALESCE(token_usage.providerAccountID, '') != COALESCE(excluded.providerAccountID, '')
                         OR COALESCE(token_usage.providerAccountLabel, '') != COALESCE(excluded.providerAccountLabel, '')
                         OR COALESCE(token_usage.providerAccountSource, '') != COALESCE(excluded.providerAccountSource, '')
+                        -- Update when an incoming daemon row newly carries the
+                        -- fusion parentRequestID a prior row lacked.
+                        OR (excluded.parentRequestID IS NOT NULL
+                            AND COALESCE(token_usage.parentRequestID, '') != excluded.parentRequestID)
                     )
                 """,
         )
@@ -1150,7 +1162,8 @@ final class UsageStore: Sendable {
                 usage.providerAccountSource?.rawValue,
                 usage.provenanceMethod.rawValue,
                 usage.provenanceConfidence.rawValue,
-                usage.estimatorVersion
+                usage.estimatorVersion,
+                usage.parentRequestID
             ]
         )
     }
@@ -1218,7 +1231,8 @@ final class UsageStore: Sendable {
             providerAccountSource: providerAccountSourceRaw.flatMap { ProviderAccountStorageScope(rawValue: $0) },
             provenanceMethod: provenanceMethod,
             provenanceConfidence: provenanceConfidence,
-            estimatorVersion: estimatorVersion
+            estimatorVersion: estimatorVersion,
+            parentRequestID: row["parentRequestID"] as? String
         )
     }
 

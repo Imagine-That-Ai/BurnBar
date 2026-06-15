@@ -883,6 +883,29 @@ final class HermesService {
         elderWandSettings.elderWandPluginsPayload()
     }
 
+    /// Set to a fresh `UUID` the instant a fusion run finishes, so the chat
+    /// surface can present the end-of-session `FusionReceiptSheet` exactly once
+    /// per run. The chat view observes this token (`onChange(of:)`) and presents
+    /// the sheet on every change; using a token (rather than a `Bool`) means
+    /// back-to-back fusion runs each get their own modal even when the previous
+    /// one was dismissed. `nil` until the first fusion run completes.
+    ///
+    /// Only the completion path sets it — and only when `activeElderWandPlugins`
+    /// was non-nil for the just-finished run (see
+    /// `presentFusionReceiptIfFusionRun()`), so non-fusion turns never trigger
+    /// the receipt.
+    var fusionReceiptToken: UUID?
+
+    /// Called by the streaming engine at the canonical completion point for a
+    /// chat turn. When the turn that just finished was a fusion run (an Elder
+    /// Wand preset was active, i.e. `activeElderWandPlugins != nil`), mint a
+    /// fresh `fusionReceiptToken` so the chat surface presents the receipt.
+    /// A non-fusion turn is a no-op.
+    func presentFusionReceiptIfFusionRun() {
+        guard activeElderWandPlugins != nil else { return }
+        fusionReceiptToken = UUID()
+    }
+
     /// True when a usable Elder Wand preset is active, so the chat send-path
     /// must reach the BurnBar daemon gateway (port 8317) instead of the
     /// Hermes CLI (default 8642). The relay path already routes

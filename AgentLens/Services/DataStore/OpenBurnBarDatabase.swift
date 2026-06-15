@@ -1676,6 +1676,35 @@ final class OpenBurnBarDatabase: Sendable {
             // that adds the guard and runs it outside the migration transaction.
         }
 
+        migrator.registerMigration("v49_token_usage_parent_request_id") { db in
+            // The Elder Wand fusion parentRequestID (`elderwand-<UUID>`) survives
+            // only on the daemon read paths and was historically dropped on
+            // SQLite import. This additive, nullable column lets imported daemon
+            // rows carry it so the period fusion/normal partition (rows whose
+            // parentRequestID LIKE 'elderwand-%') becomes a real, indexed SQL
+            // query instead of a live-only RPC scan. No backfill: pre-v49 rows
+            // keep NULL and read as "normal", which is correct — their fusion
+            // membership was never recorded locally.
+            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(token_usage)")
+                .compactMap { $0["name"] as? String }
+            if !columns.contains("parentRequestID") {
+                try db.alter(table: "token_usage") { t in
+                    t.add(column: "parentRequestID", .text)
+                }
+            }
+            // Partial index keeps the impact-screen partition cheap: only fusion
+            // rows are indexed, so `WHERE parentRequestID LIKE 'elderwand-%'`
+            // over a time window is a narrow index range scan, and normal rows
+            // (the overwhelming majority) cost nothing to skip.
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS token_usage_parent_request_idx
+                ON token_usage(parentRequestID, startTime)
+                WHERE parentRequestID IS NOT NULL
+                """
+            )
+        }
+
         return migrator
     }
 

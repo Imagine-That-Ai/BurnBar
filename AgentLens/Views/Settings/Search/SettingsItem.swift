@@ -148,6 +148,9 @@ enum SettingsPageRoute: Hashable, Codable {
 
     // The Elder Wand (analysis-model fusion configurator)
     case analysisConfigurator
+
+    // The Elder Wand — standing fusion spend / impact screen
+    case fusionImpact
 }
 
 // MARK: - Anchor IDs
@@ -266,6 +269,10 @@ enum SettingsAnchor {
 
     // The Elder Wand (analysis-model fusion configurator)
     static let analysisConfigurator = "agents.analysisConfigurator"
+
+    // The Elder Wand — standing fusion spend / impact screen
+    static let fusionImpact = "agents.fusionImpact"
+    static let fusionImpactPeriod = "agents.fusionImpact.period"
 
     // Switcher
     static let switcherBrowser = "switcher.browser"

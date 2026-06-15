@@ -154,6 +154,24 @@ struct ChatPanel: View {
                 showCLIAssistantConsent = false
             }
         }
+        .sheet(item: fusionReceiptToken) { token in
+            // The Elder Wand end-of-session receipt. `ChatSessionController` sets
+            // `completedFusionSessionToken` to a fresh token the instant a fusion
+            // run finishes; the model reads the newest fusion run from the daemon
+            // ledger. Dismiss clears the token so the same run never re-presents.
+            FusionReceiptModal(model: FusionReceiptModalModel())
+                .id(token.id)
+        }
+    }
+
+    /// Binds the controller's `String?` fusion token to an `Identifiable`
+    /// item so `.sheet(item:)` presents the receipt exactly once per run and
+    /// clears the token on dismiss.
+    private var fusionReceiptToken: Binding<FusionReceiptToken?> {
+        Binding(
+            get: { controller.completedFusionSessionToken.map(FusionReceiptToken.init(id:)) },
+            set: { controller.completedFusionSessionToken = $0?.id }
+        )
     }
 
     private func presentHermesSetupIfNeeded() {

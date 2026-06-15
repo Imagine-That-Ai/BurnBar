@@ -72,7 +72,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v48_conversation_fts_orphan_repair",
+            "v49_token_usage_parent_request_id",
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }

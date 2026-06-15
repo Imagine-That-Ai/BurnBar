@@ -256,6 +256,13 @@ struct SettingsView: View {
             // chat's advertised-model catalog). The chat-header entry point
             // (`ChatPanel`) passes a real controller.
             ElderWandConfiguratorView(controller: nil, settingsManager: settingsManager)
+        case .fusionImpact:
+            // The standing fusion-spend screen reads `token_usage` through the
+            // injected store. The fusion-search quota ring is fed separately
+            // from the `openburnbar_elder_wand_fusion` quota snapshot; until the
+            // macOS quota-sync workstream threads that bucket in, the ring
+            // self-hides (passing `nil`).
+            FusionImpactView(dataStore: dataStore)
         case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
              .agentsRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,

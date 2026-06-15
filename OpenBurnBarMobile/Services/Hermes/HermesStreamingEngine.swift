@@ -33,6 +33,11 @@ protocol HermesStreamingCoordinating: AnyObject {
     /// service is responsible for routing the request to the daemon gateway
     /// (port 8317) whenever this is non-nil.
     var activeElderWandPlugins: [[String: any Sendable]]? { get }
+    /// Invoked at the canonical end-of-turn completion point. When the
+    /// just-finished turn was a fusion run (`activeElderWandPlugins != nil`),
+    /// the coordinator mints a fresh receipt token so the chat surface presents
+    /// the end-of-session `FusionReceiptSheet`. A no-op for non-fusion turns.
+    func presentFusionReceiptIfFusionRun()
     func activeModelIDForRequest() throws -> String
     func makeRequest(path: String, timeout: TimeInterval) throws -> URLRequest
     func relayPayload(
@@ -939,6 +944,9 @@ final class HermesStreamingEngine {
             coordinator.messages[index] = assistantMessage
         }
         coordinator.isStreaming = false
+        // End-of-session receipt: when this was a fusion run, present the Elder
+        // Wand receipt. No-op otherwise.
+        coordinator.presentFusionReceiptIfFusionRun()
     }
 
     private func ensureRelayModelCatalogLoadedBeforeSend(coordinator: HermesStreamingCoordinating) async {
@@ -962,11 +970,18 @@ final class HermesStreamingEngine {
     ) async throws {
         guard coordinator.shouldRunToolUseIteration(for: message) else {
             coordinator.isStreaming = false
+            // The turn is fully complete (no tool iteration follows): present
+            // the Elder Wand receipt when this was a fusion run. No-op
+            // otherwise. Fires once per run because the tool-use loop re-enters
+            // `streamCompletion` and only returns to a terminal exit here when
+            // the run is truly finished.
+            coordinator.presentFusionReceiptIfFusionRun()
             return
         }
         guard iteration < coordinator.toolUseIterationCap else {
             // Cap exceeded — leave the pills as "done" but stop looping.
             coordinator.isStreaming = false
+            coordinator.presentFusionReceiptIfFusionRun()
             return
         }
 
