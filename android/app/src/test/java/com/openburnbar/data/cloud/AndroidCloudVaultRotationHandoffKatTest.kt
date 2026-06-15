@@ -4,6 +4,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -71,12 +72,22 @@ class AndroidCloudVaultRotationHandoffKatTest {
         assertNotEquals(oldVaultKeyID, resealed.vaultKeyID)
         assertArrayEquals(payloadPlaintext, CloudVaultCrypto.openPayload(resealed, newKey, payloadContext))
 
-        // OLD wrap is gone: the OLD key no longer opens the resealed envelope.
-        assertTrue(runCatching { CloudVaultCrypto.openPayload(resealed, oldKey, payloadContext) }.isFailure)
+        // OLD wrap is gone: the OLD key no longer opens the resealed payload. The vaultKeyID guard
+        // fires (presented key's id != envelope's new id) — a structured "Vault key mismatch", not a
+        // raw AEAD failure.
+        val oldKeyError =
+            assertThrows(IllegalArgumentException::class.java) {
+                CloudVaultCrypto.openPayload(resealed, oldKey, payloadContext)
+            }
+        assertEquals("Vault key mismatch", oldKeyError.message)
 
         // STALE pre-rotation claim fails closed: a reader holding the OLD ciphertext and presenting
-        // the NEW key cannot open it (vaultKeyID guard) — it fails closed, not silent.
-        assertTrue(runCatching { CloudVaultCrypto.openPayload(staleEnvelope, newKey, payloadContext) }.isFailure)
+        // the NEW key cannot open it — the vaultKeyID guard rejects it, not silent.
+        val staleError =
+            assertThrows(IllegalArgumentException::class.java) {
+                CloudVaultCrypto.openPayload(staleEnvelope, newKey, payloadContext)
+            }
+        assertEquals("Vault key mismatch", staleError.message)
     }
 
     @Test

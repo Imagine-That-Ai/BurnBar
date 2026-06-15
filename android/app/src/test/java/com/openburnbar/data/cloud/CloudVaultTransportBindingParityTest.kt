@@ -1,7 +1,7 @@
 package com.openburnbar.data.cloud
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
@@ -83,9 +83,17 @@ class CloudVaultTransportBindingParityTest {
 
     @Test
     fun reservedCharacterInTransportSegmentFailsClosed() {
-        // `|`, CR, LF in the transport-only clientId / slotId positions must fail closed.
-        assertTrue(runCatching { CloudVaultCryptoSupport.bindingToAAD(full.copy(clientId = "client|evil")) }.isFailure)
-        assertTrue(runCatching { CloudVaultCryptoSupport.bindingToAAD(full.copy(slotId = "slot\nevil")) }.isFailure)
-        assertTrue(runCatching { CloudVaultCryptoSupport.bindingToAAD(full.copy(clientId = "client\revil")) }.isFailure)
+        // `|`, CR, LF in the transport-only clientId / slotId positions must fail closed via the
+        // reserved-character guard specifically (not an arbitrary error).
+        val injections =
+            listOf(
+                full.copy(clientId = "client|evil"),
+                full.copy(slotId = "slot\nevil"),
+                full.copy(clientId = "client\revil"),
+            )
+        for (binding in injections) {
+            val error = assertThrows(IllegalArgumentException::class.java) { CloudVaultCryptoSupport.bindingToAAD(binding) }
+            assertEquals("Signal envelope binding segment contains a reserved character", error.message)
+        }
     }
 }
