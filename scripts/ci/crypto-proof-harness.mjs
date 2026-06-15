@@ -113,6 +113,51 @@ check("A:prefix matches the fixture prefix constant", () => {
   );
 });
 
+// ---- Proof A2: transport-mode bindingToAAD byte-parity -----------------------
+// The canonicalizer is mode-agnostic; this section pins a DEDICATED transport-mode
+// (scope=gateway, clientId/slotId-bearing) vector set so transport-binding byte
+// parity Node<->Swift<->Kotlin is a first-class, separately-named cross-language
+// KAT — not only an incidental couple of vectors mixed into the at-rest file.
+console.log("\n[A2] transport-binding bindingToAAD byte-parity vs cross-language fixture");
+const transportFixturePath = resolve(CONTRACT, "fixtures", "transport-binding-aad-vectors.json");
+const transportFixtureRaw = readFileSync(transportFixturePath);
+const transportFixture = JSON.parse(transportFixtureRaw.toString("utf8"));
+for (const vector of transportFixture.vectors) {
+  check(`A2:${vector.name} reproduces expectedAAD`, () => {
+    const actual = bindingToAAD(vector.binding);
+    assert(
+      actual === vector.expectedAAD,
+      `transport bindingToAAD drift:\n  expected ${JSON.stringify(vector.expectedAAD)}\n  actual   ${JSON.stringify(actual)}`,
+    );
+  });
+}
+check("A2:every vector is a transport/gateway binding", () => {
+  for (const v of transportFixture.vectors) {
+    assert(
+      v.binding.mode === "transport" && v.binding.scope === "gateway",
+      `${v.name} must be a transport/gateway binding`,
+    );
+  }
+});
+check("A2:transport AAD shares the at-rest pipe-field count (no mode confusion)", () => {
+  // prefix + 9 pipe-joined fields => a transport binding and an at-rest binding
+  // produce the SAME number of segments, so a relocated transport envelope can
+  // never alias an at-rest AAD by field count alone (the mode segment differs).
+  const fieldCount = (aad) => aad.slice(transportFixture.prefix.length).split("|").length;
+  const atRestVector = fixture.vectors.find((v) => v.binding.mode === "at-rest");
+  assert(atRestVector, "expected an at-rest vector in the at-rest fixture");
+  assert(
+    fieldCount(bindingToAAD(transportFixture.vectors[0].binding)) === fieldCount(bindingToAAD(atRestVector.binding)),
+    "transport vs at-rest AAD field-count mismatch",
+  );
+});
+check("A2:prefix matches the fixture prefix constant", () => {
+  assert(
+    bindingToAAD(transportFixture.vectors[0].binding).startsWith(transportFixture.prefix),
+    "transport bindingToAAD output does not start with the fixture prefix",
+  );
+});
+
 // ---- Proof B: real libsignal at-rest seal/open + fail-closed negatives -------
 console.log("\n[B] real libsignal at-rest HPKE seal/open + negatives");
 const atRestBinding = (over = {}) => ({
@@ -222,6 +267,23 @@ if (existsSync(swiftAadCopy)) {
   });
 } else {
   console.log("  skip D:Swift AAD copy not in this checkout (native lane absent) — cannot sha-compare here");
+}
+fixturePins.transportContractAadSha256 = sha256(transportFixtureRaw);
+const swiftTransportAadCopy = resolve(
+  REPO,
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/SignalTransportBindingAADVectors.json",
+);
+if (existsSync(swiftTransportAadCopy)) {
+  const swiftTransportRaw = readFileSync(swiftTransportAadCopy);
+  fixturePins.swiftTransportAadSha256 = sha256(swiftTransportRaw);
+  check("D:Swift transport AAD fixture copy is byte-identical to the contract fixture", () => {
+    assert(
+      sha256(swiftTransportRaw) === sha256(transportFixtureRaw),
+      `transport AAD fixture drift: contract ${sha256(transportFixtureRaw)} != swift ${sha256(swiftTransportRaw)} — cross-language seam broken`,
+    );
+  });
+} else {
+  console.log("  skip D:Swift transport AAD copy not in this checkout (native lane absent) — cannot sha-compare here");
 }
 if (existsSync(katFixture)) {
   fixturePins.katSha256 = sha256(readFileSync(katFixture));

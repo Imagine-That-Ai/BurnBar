@@ -1,0 +1,53 @@
+{
+  "_comment": "Cross-language byte-parity vectors for the v4 Signal-envelope binding -> AAD canonicalizer in TRANSPORT mode (scope=gateway, clientId/slotId-bearing). expectedAAD is the EXACT UTF-8 string bindingToAAD() (TS, packages/signal-envelope-contracts/src/index.ts), signalEnvelopeBindingToAAD(...) (Swift, OpenBurnBarCore/.../SignalEnvelopeAAD.swift), and CloudVaultCryptoSupport.bindingToAAD(...) (Kotlin, android/.../CloudVaultCryptoSupport.kt) MUST all produce. Layout: \"OpenBurnBar-Signal-AAD-v1|\" + [mode, scope, uid, clientId, collection, docId, field, slotId, formatVersion].join(\"|\"); absent optionals serialize as EMPTY segments. The canonicalizer is mode-agnostic, so a transport binding and an at-rest binding produce the same pipe-field count (no mode confusion). Phase 2.5 G6. Consumed by scripts/ci/crypto-proof-harness.mjs [A2], OpenBurnBarCore/.../SignalEnvelopeTransportAADParityTests.swift, and android/.../CloudVaultTransportBindingParityTest.kt. Keep this file byte-identical to the copy vendored into OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/SignalTransportBindingAADVectors.json.",
+  "prefix": "OpenBurnBar-Signal-AAD-v1|",
+  "vectors": [
+    {
+      "name": "transport-gateway-full",
+      "binding": {
+        "uid": "uid-1",
+        "scope": "gateway",
+        "clientId": "client-1",
+        "slotId": "event-1",
+        "mode": "transport",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|transport|gateway|uid-1|client-1||||event-1|1"
+    },
+    {
+      "name": "transport-gateway-clientid-only",
+      "binding": {
+        "uid": "uid-1",
+        "scope": "gateway",
+        "clientId": "client-1",
+        "mode": "transport",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|transport|gateway|uid-1|client-1|||||1"
+    },
+    {
+      "name": "transport-gateway-slotid-only",
+      "binding": {
+        "uid": "uid-1",
+        "scope": "gateway",
+        "slotId": "event-1",
+        "mode": "transport",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|transport|gateway|uid-1|||||event-1|1"
+    },
+    {
+      "name": "transport-non-ascii-nfc-clientId",
+      "_comment": "clientId carries U+00E9 (é) as the PRECOMPOSED single code point (NFC). The Swift+Android suites also feed the DECOMPOSED form (e + U+0301) at runtime and assert it normalizes to this same expectedAAD.",
+      "binding": {
+        "uid": "uid-1",
+        "scope": "gateway",
+        "clientId": "café-client",
+        "slotId": "event-1",
+        "mode": "transport",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|transport|gateway|uid-1|café-client||||event-1|1"
+    }
+  ]
+}
