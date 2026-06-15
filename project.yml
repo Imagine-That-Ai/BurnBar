@@ -103,9 +103,6 @@ targets:
           - Resources/GoogleService-Info.plist
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
-      - path: AgentLens/Resources/GoogleService-Info.plist
-        buildPhase: resources
-        optional: true
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar
@@ -119,18 +116,23 @@ targets:
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
     postBuildScripts:
       - name: Configure Firebase Auth Resources
-        # GoogleService-Info.plist is bundled via the regular Copy Resources phase
-        # (it lives in AgentLens/Resources). This step only patches Info.plist's
-        # CFBundleURLTypes with the REVERSED_CLIENT_ID extracted from the plist.
+        # GoogleService-Info.plist is gitignored and may be absent on fresh
+        # checkouts. Copy it into the built bundle only when local/CI config
+        # injection has provided it, then patch URL schemes from that plist.
         script: |
           set -euo pipefail
           SOURCE_PLIST="${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist"
+          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
           INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
 
           if [[ ! -f "${SOURCE_PLIST}" ]]; then
+            rm -f "${BUILT_GOOGLE_PLIST}"
             echo "warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled."
             exit 0
           fi
+
+          mkdir -p "$(dirname "${BUILT_GOOGLE_PLIST}")"
+          cp "${SOURCE_PLIST}" "${BUILT_GOOGLE_PLIST}"
 
           REVERSED_CLIENT_ID="$(
             /usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "${SOURCE_PLIST}" 2>/dev/null || true
@@ -464,9 +466,6 @@ targets:
           - "Resources/GoogleService-Info.plist"
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
-      - path: OpenBurnBarMobile/Resources/GoogleService-Info.plist
-        buildPhase: resources
-        optional: true
       # Mermaid is shipped as a folder reference so `index.html` and
       # `mermaid.min.js` keep their relative paths inside the bundle.
       - path: OpenBurnBarMobile/Resources/Mermaid
@@ -501,6 +500,34 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     postBuildScripts:
+      - name: Copy Firebase Config If Present
+        script: |
+          set -euo pipefail
+
+          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
+          finish() {
+            if [[ -n "${STAMP}" ]]; then
+              mkdir -p "$(dirname "${STAMP}")"
+              touch "${STAMP}"
+            fi
+          }
+          trap finish EXIT
+
+          SOURCE_PLIST="${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
+          BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+
+          if [[ ! -f "${SOURCE_PLIST}" ]]; then
+            rm -f "${BUILT_GOOGLE_PLIST}"
+            echo "warning: GoogleService-Info.plist not found; Firebase auth remains disabled."
+            exit 0
+          fi
+
+          mkdir -p "$(dirname "${BUILT_GOOGLE_PLIST}")"
+          cp "${SOURCE_PLIST}" "${BUILT_GOOGLE_PLIST}"
+        inputFiles:
+          - $(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/CopyFirebaseConfigIfPresent.stamp
       - name: Inject Internal App Check Debug Token
         script: |
           set -euo pipefail
