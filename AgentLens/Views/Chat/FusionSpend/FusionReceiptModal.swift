@@ -139,12 +139,22 @@ struct FusionReceiptModal: View {
         }
     }
 
+    /// A one-line provenance summary for the hero: how the answer was reached.
+    private static func panelSummary(for session: FusionSessionSpend) -> String {
+        let n = session.panelCount
+        var parts = ["Panel of \(n) model\(n == 1 ? "" : "s")"]
+        if session.judgeItem != nil { parts.append("judged") }
+        if session.synthesisItem != nil { parts.append("synthesized") }
+        return parts.joined(separator: " · ")
+    }
+
     @ViewBuilder
     private func loadedBody(_ session: FusionSessionSpend) -> some View {
         FusionReceiptHero(
             costShown: heroCostShown,
             isEstimated: !session.aggregateConfidence.isExact,
             isPartial: session.synthesisItem == nil,
+            panelSummary: Self.panelSummary(for: session),
             valueSize: heroValueSize
         )
 
@@ -171,33 +181,73 @@ private struct FusionReceiptHero: View {
     let costShown: Double
     let isEstimated: Bool
     let isPartial: Bool
+    let panelSummary: String?
     let valueSize: CGFloat
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+
+    private var heroNumberGradient: LinearGradient {
+        LinearGradient(
+            colors: [Color(hex: "FFF4D6"), Color(hex: "FFD56B"), Color(hex: "FF9E5C")],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+        ElderWandFoilBackdrop {
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(ElderWandFoil.gradient)
+                    .shadow(color: Color(hex: "FFB85C").opacity(0.6), radius: 12)
+                    .scaleEffect(appeared ? 1 : 0.7)
+                    .opacity(appeared ? 1 : 0)
+                    .accessibilityHidden(true)
+
                 Text(isPartial ? "Spent before the run stopped" : "This fusion cost")
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fontWeight(.semibold)
+                    .tracking(1.6)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.white.opacity(0.72))
 
                 Text(FusionSpendFormat.currency(costShown))
-                    .font(.system(size: valueSize, weight: .bold, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                    .font(.system(size: valueSize, weight: .heavy, design: .rounded))
+                    .foregroundStyle(heroNumberGradient)
                     .contentTransition(.numericText())
+                    .shadow(color: Color(hex: "FF8A3D").opacity(0.35), radius: 14)
                     .animation(DesignSystem.Animation.gentle, value: costShown)
                     .accessibilityLabel("Fusion total \(FusionSpendFormat.currency(costShown))")
 
+                if let panelSummary {
+                    Text(panelSummary)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(.white.opacity(0.62))
+                        .accessibilityLabel(panelSummary)
+                }
+
                 if isEstimated {
-                    Label("Estimated — some sub-calls reported approximate usage", systemImage: "info.circle")
+                    Label("Estimated", systemImage: "info.circle")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .foregroundStyle(Color(hex: "FFD56B"))
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(.white.opacity(0.08)))
                         .accessibilityLabel("This total is estimated; some sub-calls reported approximate usage.")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(DesignSystem.Spacing.sm)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignSystem.Spacing.xl)
+            .padding(.horizontal, DesignSystem.Spacing.lg)
         }
         .accessibilityElement(children: .combine)
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.6).delay(0.05)) {
+                appeared = true
+            }
+        }
     }
 }
 
@@ -221,6 +271,25 @@ private struct FusionReceiptDuressNote: View {
     }
 }
 
+// MARK: - Stage presentation
+//
+// Each pipeline stage earns a distinguishing SF Symbol and a one-word framing,
+// so a glance down the column reads as a story: a panel convenes, a judge
+// weighs in, a final answer is cast. Kept here (view layer) rather than on the
+// `FusionStage` model so the spine stays storage-agnostic.
+
+private extension FusionStage {
+    /// A small, distinguishing glyph per stage.
+    var glyph: String {
+        switch self {
+        case .panel: return "person.3.sequence.fill"
+        case .judge: return "scale.3d"
+        case .synthesis: return "wand.and.stars"
+        case .unknown: return "circle.dotted"
+        }
+    }
+}
+
 // MARK: - Line items
 
 private struct FusionReceiptLineItems: View {
@@ -228,28 +297,56 @@ private struct FusionReceiptLineItems: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text("Itemized")
-                .font(DesignSystem.Typography.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-            LiquidGlassGroup(spacing: DesignSystem.Spacing.xs) {
-                VStack(spacing: DesignSystem.Spacing.xs) {
-                    ForEach(session.lineItems) { item in
-                        FusionReceiptLineRow(item: item)
-                    }
-                }
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Text("The council")
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer(minLength: DesignSystem.Spacing.sm)
+                Text(Self.councilSummary(session))
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
             }
 
-            FusionReceiptTotalsRow(session: session)
+            GlassCard {
+                VStack(spacing: 0) {
+                    ForEach(Array(session.lineItems.enumerated()), id: \.element.id) { index, item in
+                        FusionReceiptLineRow(item: item)
+                        if index < session.lineItems.count - 1 {
+                            Divider()
+                                .opacity(0.18)
+                                .padding(.leading, Self.rowGlyphInset)
+                        }
+                    }
+
+                    Divider()
+                        .opacity(0.35)
+                        .padding(.vertical, DesignSystem.Spacing.xxs)
+                    FusionReceiptTotalsRow(session: session)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+            }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Itemized fusion sub-calls")
+        .accessibilityLabel("The council — itemized fusion sub-calls")
+    }
+
+    /// The inset (chip width + spacing) so dividers align under the text column,
+    /// not under the leading stage chip — a small alignment detail that reads as
+    /// "grouped", the way a polished receipt does.
+    static let rowGlyphInset: CGFloat = 30 + DesignSystem.Spacing.sm
+
+    private static func councilSummary(_ session: FusionSessionSpend) -> String {
+        let n = session.panelCount
+        return "\(n) panel · judge · final"
     }
 }
 
 private struct FusionReceiptLineRow: View {
     let item: FusionSubCallSpend
+
+    @ScaledMetric(relativeTo: .caption) private var chipSize: CGFloat = 30
 
     private var modelColor: Color {
         DesignSystem.Colors.colorForModel(item.modelID)
@@ -257,27 +354,23 @@ private struct FusionReceiptLineRow: View {
 
     var body: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            Circle()
-                .fill(modelColor)
-                .frame(width: 9, height: 9)
-                .accessibilityHidden(true)
+            stageChip
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.modelID)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     Text(item.stage.displayRole)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(modelColor)
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                     if !item.confidence.isExact {
-                        Text("· est.")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.warning)
+                        estChip
                     }
                 }
+                Text(item.modelID)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
 
             Spacer(minLength: DesignSystem.Spacing.sm)
@@ -285,24 +378,53 @@ private struct FusionReceiptLineRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(FusionSpendFormat.currency(item.cost))
                     .font(DesignSystem.Typography.monoSmall)
+                    .monospacedDigit()
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("\(FusionSpendFormat.tokens(item.inputTokens)) in · \(FusionSpendFormat.tokens(item.outputTokens)) out")
+                Text("\(FusionSpendFormat.tokens(item.totalTokens)) tok")
                     .font(DesignSystem.Typography.monoTiny)
+                    .monospacedDigit()
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
+            .layoutPriority(1)
         }
-        .padding(.horizontal, DesignSystem.Spacing.sm)
-        .padding(.vertical, DesignSystem.Spacing.xs + 2)
-        .liquidGlassSurface(in: .rect(cornerRadius: DesignSystem.Radius.sm))
+        .padding(.vertical, DesignSystem.Spacing.xs + 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// A per-model color chip carrying the stage glyph — the row's identity at a
+    /// glance: the model's color, the stage's symbol.
+    private var stageChip: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(modelColor.opacity(0.16))
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .strokeBorder(modelColor.opacity(0.35), lineWidth: 0.75)
+            Image(systemName: item.stage.glyph)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(modelColor)
+        }
+        .frame(width: chipSize, height: chipSize)
+        .accessibilityHidden(true)
+    }
+
+    private var estChip: some View {
+        Text("est.")
+            .font(DesignSystem.Typography.tiny)
+            .foregroundStyle(DesignSystem.Colors.warning)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(DesignSystem.Colors.warning.opacity(0.14))
+            )
+            .accessibilityHidden(true)
     }
 
     private var accessibilityLabel: String {
         let estimate = item.confidence.isExact ? "" : ", estimated"
         return "\(item.stage.displayRole), \(item.modelID), \(FusionSpendFormat.currency(item.cost)), "
-            + "\(FusionSpendFormat.tokens(item.inputTokens)) input, "
-            + "\(FusionSpendFormat.tokens(item.outputTokens)) output tokens\(estimate)"
+            + "\(FusionSpendFormat.tokens(item.totalTokens)) tokens\(estimate)"
     }
 }
 
@@ -311,19 +433,21 @@ private struct FusionReceiptTotalsRow: View {
 
     var body: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            Text("\(session.panelCount) panel · judge + final")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-            Spacer()
-            Text("\(FusionSpendFormat.tokens(session.totalTokens)) tokens")
+            Text("Total")
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Spacer(minLength: DesignSystem.Spacing.sm)
+            Text("\(FusionSpendFormat.tokens(session.totalTokens)) tok")
                 .font(DesignSystem.Typography.monoTiny)
+                .monospacedDigit()
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
             Text(FusionSpendFormat.currency(session.totalCost))
-                .font(DesignSystem.Typography.monoSmall)
+                .font(DesignSystem.Typography.mono)
+                .monospacedDigit()
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
         }
-        .padding(.horizontal, DesignSystem.Spacing.sm)
-        .padding(.top, DesignSystem.Spacing.xxs)
+        .padding(.vertical, DesignSystem.Spacing.xs)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "Total \(FusionSpendFormat.currency(session.totalCost)), "
@@ -333,39 +457,73 @@ private struct FusionReceiptTotalsRow: View {
 }
 
 // MARK: - Cost of certainty
+//
+// The payoff line. Foil earns a celebratory accent here (the multiplier rendered
+// in the Elder Wand ember gradient) — but stays glassless per the brand rule: a
+// warm obsidian-tinted pill, not a glass plate. This is the "why the panel was
+// worth it" beat, so it reads as desirable, not as a fee.
 
 private struct FusionReceiptCertaintyLine: View {
     let multiplier: Double
 
+    @ScaledMetric(relativeTo: .title) private var multiplierSize: CGFloat = 22
+    @ScaledMetric(relativeTo: .caption) private var glyphBadge: CGFloat = 30
+
     var body: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(DesignSystem.Colors.whimsy)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Cost of certainty")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("≈ \(FusionSpendFormat.multiplier(multiplier)) a single-model answer")
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+        HStack(spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                Circle().fill(.black.opacity(0.18))
+                Circle().strokeBorder(Color(hex: "FF8A3D").opacity(0.35), lineWidth: 0.75)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(ElderWandFoil.gradient)
             }
-            Spacer()
+            .frame(width: glyphBadge, height: glyphBadge)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("The cost of a second opinion")
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white.opacity(0.92))
+                Text("This run cost about \(FusionSpendFormat.multiplier(multiplier)) a single answer.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(.white.opacity(0.62))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: DesignSystem.Spacing.sm)
+
             Text(FusionSpendFormat.multiplier(multiplier))
-                .font(DesignSystem.Typography.mono)
-                .foregroundStyle(DesignSystem.Colors.whimsy)
+                .font(.system(size: multiplierSize, weight: .heavy, design: .rounded))
+                .foregroundStyle(ElderWandFoil.gradient)
+                .monospacedDigit()
+                .shadow(color: Color(hex: "FF8A3D").opacity(0.3), radius: 8)
+                .layoutPriority(1)
         }
-        .padding(DesignSystem.Spacing.md)
-        .background(
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            ZStack {
+                shape.fill(ElderWandFoil.obsidian)
+                shape.fill(ElderWandFoil.gradient.opacity(0.10))
+            }
+        }
+        .overlay {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.whimsyGradient.opacity(0.10))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(DesignSystem.Colors.whimsy.opacity(0.30), lineWidth: 1)
-        )
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.22), Color(hex: "FF8A3D").opacity(0.20), Color.white.opacity(0.04)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        }
+        .shadow(color: Color(hex: "FF6A3D").opacity(0.16), radius: 14, y: 6)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Cost of certainty: about \(FusionSpendFormat.multiplier(multiplier)) the price of a single-model answer")
+        .accessibilityLabel("The cost of a second opinion: this run cost about \(FusionSpendFormat.multiplier(multiplier)) the price of a single-model answer")
     }
 }
 
@@ -385,7 +543,7 @@ private struct FusionReceiptPeriodSection: View {
             GlassCard {
                 VStack(spacing: DesignSystem.Spacing.md) {
                     if let bucket {
-                        FusionSearchesRingRow(bucket: bucket)
+                        FusionSearchesGaugeRow(bucket: bucket)
                     } else {
                         Text("Fusion search allowance unavailable right now.")
                             .font(DesignSystem.Typography.caption)
@@ -399,81 +557,126 @@ private struct FusionReceiptPeriodSection: View {
                             Image(systemName: "calendar")
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
-                            Text("These models used \(FusionSpendFormat.tokens(monthToDateModelTokens)) tokens this month")
-                                .font(DesignSystem.Typography.tiny)
+                                .accessibilityHidden(true)
+                            Text("These models used ")
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            Spacer()
+                            + Text("\(FusionSpendFormat.tokens(monthToDateModelTokens)) tokens")
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            + Text(" this month")
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            Spacer(minLength: 0)
                         }
+                        .font(DesignSystem.Typography.tiny)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("These models used \(FusionSpendFormat.tokens(monthToDateModelTokens)) tokens this month")
                     }
                 }
-                .padding(DesignSystem.Spacing.sm)
+                .padding(DesignSystem.Spacing.md)
             }
         }
         .accessibilityElement(children: .contain)
     }
 }
 
-private struct FusionSearchesRingRow: View {
+private struct FusionSearchesGaugeRow: View {
     let bucket: ProviderQuotaBucket
 
-    /// Remaining fraction (0…1) for the ring fill — what's LEFT, so a full ring
+    @ScaledMetric(relativeTo: .title) private var gaugeSize: CGFloat = 76
+
+    /// Remaining fraction (0…1) for the gauge fill — what's LEFT, so a full arc
     /// reads "plenty remaining".
     private var remainingFraction: Double {
         max(0, min(1, 1 - bucket.progressFraction))
     }
 
+    private var usedText: String {
+        bucket.remainingText(displayMode: .absoluteValues)
+    }
+
     var body: some View {
-        HStack(spacing: DesignSystem.Spacing.md) {
-            FusionRing(remainingFraction: remainingFraction)
-                .frame(width: 56, height: 56)
+        HStack(spacing: DesignSystem.Spacing.lg) {
+            FusionArcGauge(remainingFraction: remainingFraction)
+                .frame(width: gaugeSize, height: gaugeSize)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Fusion searches")
-                    .font(DesignSystem.Typography.caption)
+                    .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text(bucket.remainingText(displayMode: .absoluteValues))
+                Text(usedText)
                     .font(DesignSystem.Typography.monoSmall)
+                    .monospacedDigit()
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                 if let reset = bucket.resetsAtDisplay {
-                    Text("Resets \(reset.relative)")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    HStack(spacing: DesignSystem.Spacing.xxs) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .accessibilityHidden(true)
+                        Text("Resets \(reset.relative)")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
                 }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(periodAccessibilityLabel)
+        .accessibilityValue(usedText)
     }
 
     private var periodAccessibilityLabel: String {
-        let usage = bucket.remainingText(displayMode: .absoluteValues)
+        let pct = Int((remainingFraction * 100).rounded())
         let reset = bucket.resetsAtDisplay.map { ", resets \($0.relative)" } ?? ""
-        return "Fusion searches, \(usage) remaining\(reset)"
+        return "Fusion searches, \(usedText), \(pct) percent remaining\(reset)"
     }
 }
 
-/// The remaining-allowance ring. Premium accent via the app's primary gradient —
-/// macOS has no foil primitives, so the gradient stroke carries the flourish.
-private struct FusionRing: View {
+/// The remaining-allowance arc gauge. A 270° dial (a real gauge, not a full
+/// ring) with the Elder Wand ember gradient stroke carrying the flourish; the
+/// remaining-percent sits big in the bowl with a small "left" caption beneath.
+private struct FusionArcGauge: View {
     let remainingFraction: Double
+
+    /// 0.75 of a full turn — a classic gauge dial with the gap at the bottom.
+    private let span: CGFloat = 0.75
+
+    private var clamped: CGFloat { CGFloat(max(0, min(1, remainingFraction))) }
+    private var percent: Int { Int((remainingFraction * 100).rounded()) }
 
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(DesignSystem.Colors.surfaceMuted, lineWidth: 6)
-            Circle()
-                .trim(from: 0, to: CGFloat(max(0.001, remainingFraction)))
-                .stroke(
-                    DesignSystem.Colors.primaryGradient,
-                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .animation(DesignSystem.Animation.gentle, value: remainingFraction)
-            Text("\(Int((remainingFraction * 100).rounded()))%")
-                .font(DesignSystem.Typography.monoTiny)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            // The dial — rotated so the 270° span's gap is centered at the
+            // bottom. Only the arcs rotate; the center label stays upright.
+            ZStack {
+                Circle()
+                    .trim(from: 0, to: span)
+                    .stroke(
+                        DesignSystem.Colors.surfaceMuted,
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    )
+                Circle()
+                    .trim(from: 0, to: max(0.0001, span * clamped))
+                    .stroke(
+                        ElderWandFoil.gradient,
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    )
+                    .shadow(color: Color(hex: "FF8A3D").opacity(0.35), radius: 5)
+                    .animation(DesignSystem.Animation.gentle, value: clamped)
+            }
+            .rotationEffect(.degrees(135))
+
+            VStack(spacing: 0) {
+                Text("\(percent)%")
+                    .font(.system(size: 19, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .contentTransition(.numericText())
+                Text("left")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
         }
     }
 }
