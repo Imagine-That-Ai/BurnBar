@@ -275,7 +275,8 @@ final class CLIBridge: ObservableObject {
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
         workspaceURL: URL? = nil,
-        toolBroker: AgentToolBroker? = nil
+        toolBroker: AgentToolBroker? = nil,
+        plugins: [[String: any Sendable]]? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -300,6 +301,7 @@ final class CLIBridge: ObservableObject {
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
                     toolBroker: toolBroker,
+                    plugins: plugins,
                     continuation: continuation
                 )
             }
@@ -328,7 +330,8 @@ final class CLIBridge: ObservableObject {
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
         workspaceURL: URL? = nil,
-        toolBroker: AgentToolBroker? = nil
+        toolBroker: AgentToolBroker? = nil,
+        plugins: [[String: any Sendable]]? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -353,6 +356,7 @@ final class CLIBridge: ObservableObject {
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
                     toolBroker: toolBroker,
+                    plugins: plugins,
                     continuation: continuation
                 )
             }
@@ -382,7 +386,8 @@ final class CLIBridge: ObservableObject {
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
         workspaceURL: URL? = nil,
-        toolBroker: AgentToolBroker? = nil
+        toolBroker: AgentToolBroker? = nil,
+        plugins: [[String: any Sendable]]? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -410,6 +415,7 @@ final class CLIBridge: ObservableObject {
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
                     toolBroker: toolBroker,
+                    plugins: plugins,
                     continuation: continuation
                 )
             }

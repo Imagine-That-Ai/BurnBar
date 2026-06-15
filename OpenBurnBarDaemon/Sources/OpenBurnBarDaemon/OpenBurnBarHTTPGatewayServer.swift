@@ -14,10 +14,10 @@ public actor BurnBarHTTPGatewayServer {
     public static let defaultModelCatalogCacheTTL: TimeInterval = 45
 
     private let configuration: BurnBarGatewayConfiguration
-    private let configStore: BurnBarConfigStore
+    let configStore: BurnBarConfigStore
     private let usageRecorder: BurnBarUsageRecorder?
     private let proxyRouteLogStore: BurnBarProxyRouteLogStore?
-    private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
+    let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     private let anthropicExecutor: BurnBarAnthropicProviderExecutor
     private let factoryExecutor: FactoryDroidProviderExecutor
     /// Experimental, off-by-default interactive-Claude path (Part B2). Non-nil
@@ -33,7 +33,7 @@ public actor BurnBarHTTPGatewayServer {
     private let modelHealthStore: BurnBarGatewayModelHealthStore
     private let modelCatalogSession: URLSession
     private let modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning
-    private let logger: BurnBarDaemonLogger
+    let logger: any BurnBarDaemonLogging
     private let rateLimiter: BurnBarRateLimiter?
     /// Dedicated limiter for the unauthenticated-loopback escape hatch; never
     /// applies to authenticated callers.
@@ -58,7 +58,7 @@ public actor BurnBarHTTPGatewayServer {
         modelCatalogSession: URLSession = .shared,
         modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
         modelCatalogCacheTTL: TimeInterval = 0,
-        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
+        logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
         self.configuration = configuration
@@ -726,13 +726,13 @@ public actor BurnBarHTTPGatewayServer {
         return routeKeysByFamily
     }
 
-    private struct GatewayAdvertisedRouteResolution {
+    struct GatewayAdvertisedRouteResolution {
         let requestedModel: GatewayRequestedModel
         let advertisedRequestedModel: GatewayRequestedModel
         let routeKeysByFamily: [BurnBarProviderFormatFamily: Set<String>]
     }
 
-    private func resolveAdvertisedRouteKeys(
+    func resolveAdvertisedRouteKeys(
         requestedModel: GatewayRequestedModel,
         advertisedRequestedModel: GatewayRequestedModel
     ) async throws -> GatewayAdvertisedRouteResolution {
@@ -862,14 +862,14 @@ public actor BurnBarHTTPGatewayServer {
         return "\(group.providerID)/\(rawID)"
     }
 
-    private struct GatewayRequestedModel {
+    struct GatewayRequestedModel {
         let originalID: String
         let modelID: String
         let providerID: String?
         let accountID: String?
     }
 
-    private func gatewayRequestedModel(from rawID: String) -> GatewayRequestedModel {
+    func gatewayRequestedModel(from rawID: String) -> GatewayRequestedModel {
         let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = trimmed.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard parts.count >= 2,
@@ -909,7 +909,7 @@ public actor BurnBarHTTPGatewayServer {
         return catalog.provider(id: model.providerID)?.formatFamily ?? .openaiCompat
     }
 
-    private func preferredGatewayFormatFamilies(
+    func preferredGatewayFormatFamilies(
         for modelID: String,
         advertised: [BurnBarProviderFormatFamily: Set<String>]
     ) -> [BurnBarProviderFormatFamily] {
@@ -920,7 +920,7 @@ public actor BurnBarHTTPGatewayServer {
         return baseOrder.filter { advertised[$0]?.isEmpty == false }
     }
 
-    private func singleAdvertisedProviderID(
+    func singleAdvertisedProviderID(
         in advertised: [BurnBarProviderFormatFamily: Set<String>]
     ) -> String? {
         var providerIDs: Set<String> = []
@@ -995,7 +995,25 @@ public actor BurnBarHTTPGatewayServer {
         connection: NWConnection,
         corsHeaders: [String: String]
     ) async -> GatewayRouteOutcome {
-        await routeModelRequest(
+        // The Elder Wand: short-circuit to the model-fusion orchestrator when an
+        // active `fusion` plugin is present AND the recursion marker is absent.
+        // Inner panel/judge/synthesis sub-calls carry the marker so they fall
+        // through to the normal single-route pipeline (no re-trigger).
+        if let body, let bodyData = body.data(using: .utf8),
+           !Self.bodyCarriesFusionRecursionMarker(bodyData),
+           let request = try? JSONDecoder().decode(ChatCompletionsRequest.self, from: bodyData),
+           let plugin = request.activeFusionPlugin {
+            return await runElderWandFusion(
+                bodyData: bodyData,
+                plugin: plugin,
+                originatingModel: request.model,
+                wantsStream: request.stream == true,
+                connection: connection,
+                corsHeaders: corsHeaders
+            )
+        }
+
+        return await routeModelRequest(
             body: body,
             connection: connection,
             corsHeaders: corsHeaders,
@@ -1866,7 +1884,7 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    private func providerFailureResponse(
+    func providerFailureResponse(
         _ error: Error,
         modelID: String,
         route: BurnBarProviderRoute?
@@ -1941,14 +1959,15 @@ public actor BurnBarHTTPGatewayServer {
         )
     }
 
-    private func routeKey(providerID: String, slotID: String?) -> String {
+    func routeKey(providerID: String, slotID: String?) -> String {
         "\(providerID)#\(slotID ?? "legacy")"
     }
 
-    private func recordUsageIfAvailable(
+    func recordUsageIfAvailable(
         _ usage: BurnBarProviderProxyUsage?,
         route: BurnBarProviderRoute,
-        idempotencyKey: String
+        idempotencyKey: String,
+        parentRequestID: String? = nil
     ) async {
         guard let usage, let usageRecorder else { return }
         let event = BurnBarUsageEvent(
@@ -1967,7 +1986,8 @@ public actor BurnBarHTTPGatewayServer {
             ),
             recordedAt: Date(),
             projectName: "OpenBurnBar Gateway",
-            confidence: usage.confidence
+            confidence: usage.confidence,
+            parentRequestID: parentRequestID
         )
         do {
             // A stable, content-derived key means a client that retries the
@@ -2110,7 +2130,7 @@ public actor BurnBarHTTPGatewayServer {
         return nil
     }
 
-    private static func httpStatus(from error: Error) -> Int? {
+    static func httpStatus(from error: Error) -> Int? {
         if case let BurnBarProviderExecutorError.upstreamError(status, _) = error {
             return status
         }
@@ -2136,7 +2156,7 @@ public actor BurnBarHTTPGatewayServer {
         max(0, Int((end.timeIntervalSince1970 - start.timeIntervalSince1970) * 1_000))
     }
 
-    private func recordProxyRouteLogEntry(
+    func recordProxyRouteLogEntry(
         context: GatewayRequestContext,
         requestedCanonicalModelID: String?,
         route: BurnBarProviderRoute?,
@@ -2147,7 +2167,8 @@ public actor BurnBarHTTPGatewayServer {
         httpStatus: Int? = nil,
         attempts: [BurnBarProxyRouteAttempt],
         usage: BurnBarProviderProxyUsage? = nil,
-        failureMessage: String? = nil
+        failureMessage: String? = nil,
+        parentRequestID: String? = nil
     ) async {
         let completedAt = Date()
         let routeUsage = route.flatMap { proxyRouteUsage(from: usage, route: $0) }
@@ -2187,7 +2208,8 @@ public actor BurnBarHTTPGatewayServer {
             httpStatus: httpStatus,
             attempts: attempts,
             usage: routeUsage,
-            failureMessage: Self.sanitizedFailureMessage(failureMessage)
+            failureMessage: Self.sanitizedFailureMessage(failureMessage),
+            parentRequestID: parentRequestID
         )
         await appendProxyRouteLog(entry)
     }
@@ -2195,7 +2217,7 @@ public actor BurnBarHTTPGatewayServer {
     /// Build a stable idempotency key from the request content and the route
     /// it was served on. Identical retries of the same completion on the same
     /// account collapse to one recorded usage event (see A2).
-    private func usageIdempotencyKey(requestSignature: String, route: BurnBarProviderRoute) -> String {
+    func usageIdempotencyKey(requestSignature: String, route: BurnBarProviderRoute) -> String {
         let routePart = "\(route.providerID)#\(route.credentialSlotID ?? "legacy")#\(route.resolvedModelID)"
         return "gateway:\(Self.stableDigest("\(requestSignature)|\(routePart)"))"
     }
@@ -2349,7 +2371,7 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    private func proxyChatCompletions(
+    func proxyChatCompletions(
         body: Data,
         route: BurnBarProviderRoute,
         formatFamily: BurnBarProviderFormatFamily,
@@ -2423,7 +2445,7 @@ public actor BurnBarHTTPGatewayServer {
             || description.contains("429")
     }
 
-    private func canonicalModelID(
+    func canonicalModelID(
         forModelName modelName: String,
         providerID requestedProviderID: String?,
         catalog: BurnBarCatalog
@@ -2515,7 +2537,7 @@ public actor BurnBarHTTPGatewayServer {
     /// this connection: a mid-stream failure is surfaced as a terminal SSE
     /// error event rather than a fail-over, because the client has already
     /// begun consuming the response.
-    private func relayProxyStream(
+    func relayProxyStream(
         on connection: NWConnection,
         corsHeaders: [String: String],
         usageFormat: GatewayStreamUsageFormat,
@@ -2746,11 +2768,11 @@ public actor BurnBarHTTPGatewayServer {
         return host == "localhost" || host == "127.0.0.1" || host == "::1"
     }
 
-    private func errorBody(_ message: String) -> String {
+    func errorBody(_ message: String) -> String {
         encodeBody(GatewayErrorResponse(error: message))
     }
 
-    private func jsonResponse(status: Int, body: String) -> GatewayHTTPResponse {
+    func jsonResponse(status: Int, body: String) -> GatewayHTTPResponse {
         GatewayHTTPResponse(
             status: status,
             headers: ["Content-Type": "application/json"],
@@ -2772,7 +2794,7 @@ public actor BurnBarHTTPGatewayServer {
         case payloadTooLarge
     }
 
-    private struct GatewayHTTPResponse {
+    struct GatewayHTTPResponse {
         let status: Int
         let headers: [String: String]
         let body: Data
@@ -2785,12 +2807,12 @@ public actor BurnBarHTTPGatewayServer {
     /// The result of routing a request: either a fully-buffered response the
     /// caller should write, or a stream the relay has already written directly
     /// to the connection (so the caller only needs to close it).
-    private enum GatewayRouteOutcome {
+    enum GatewayRouteOutcome {
         case buffered(GatewayHTTPResponse)
         case streamed
     }
 
-    private struct GatewayStreamRelayResult {
+    struct GatewayStreamRelayResult {
         let outcome: GatewayRouteOutcome
         let usage: BurnBarProviderProxyUsage?
         let interrupted: Bool

@@ -237,43 +237,20 @@ public extension BurnBarProviderExecuting {
     }
 }
 
-public enum BurnBarProviderExecutorError: Error, LocalizedError {
-    case invalidBaseURL(String)
-    case invalidResponse
-    case upstreamError(Int, String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidBaseURL(let baseURL):
-            return "Invalid OpenBurnBar provider base URL: \(baseURL)"
-        case .invalidResponse:
-            return "OpenBurnBar provider returned an invalid response."
-        case .upstreamError(let statusCode, let body):
-            return "OpenBurnBar provider request failed with status \(statusCode): \(body)"
-        }
-    }
-
-    /// Rejects non-HTTP(S) provider endpoints (e.g. `file://`, `javascript:`) before outbound requests.
-    static func validatedProviderBaseURL(_ rawValue: String) throws -> URL {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false, let url = URL(string: trimmed) else {
-            throw BurnBarProviderExecutorError.invalidBaseURL(rawValue)
-        }
-        guard let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              let host = url.host,
-              host.isEmpty == false else {
-            throw BurnBarProviderExecutorError.invalidBaseURL(rawValue)
-        }
-        return url
-    }
-}
-
 public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting {
     private let session: URLSession
+    private let codexExecutor: BurnBarCodexProviderExecutor
 
-    public init(session: URLSession = .shared) {
+    public init(
+        session: URLSession = .shared,
+        codexExecutor: BurnBarCodexProviderExecutor = BurnBarCodexProviderExecutor()
+    ) {
         self.session = session
+        self.codexExecutor = codexExecutor
+    }
+
+    static func isCodexRoute(_ route: BurnBarProviderRoute) -> Bool {
+        route.providerID.caseInsensitiveCompare("codex") == .orderedSame
     }
 
     public func completeStructured(
@@ -285,6 +262,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             route: route
         ) {
             return fakeResult
+        }
+
+        if Self.isCodexRoute(route) {
+            return try await codexExecutor.completeStructured(promptRequest, route: route)
         }
 
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
@@ -371,6 +352,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
+        if Self.isCodexRoute(route) {
+            return try await codexExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        }
+
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
@@ -426,6 +411,13 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyStream {
+        if Self.isCodexRoute(route) {
+            // The local `codex` CLI produces a one-shot transcript, not live
+            // OpenAI SSE. Signal unsupported so the gateway falls back to the
+            // buffered `proxyChatCompletions` path on the same route.
+            throw BurnBarProxyStreamingUnsupported(reason: "codex-cli")
+        }
+
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
@@ -459,6 +451,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         route: BurnBarProviderRoute,
         variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
+        if Self.isCodexRoute(route) {
+            return try await codexExecutor.proxyResponses(body: body, route: route, variant: variant)
+        }
+
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {

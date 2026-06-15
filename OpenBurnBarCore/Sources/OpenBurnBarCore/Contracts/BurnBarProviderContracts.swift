@@ -1170,6 +1170,14 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     /// Confidence level for the recorded counts. Defaults to `.exact` for backwards compat
     /// (existing daemon-recorded rows are exact provider responses).
     public let confidence: BurnBarUsageConfidence
+    /// Optional rollup key tying several sub-call usage events to one
+    /// originating request. The Elder Wand model-fusion router stamps every
+    /// panel/judge/synthesis sub-call with a shared `parentRequestID` so the N
+    /// rows recorded for one fusion completion sum back to a single request
+    /// (each sub-call still uses a DISTINCT idempotency key so they are not
+    /// deduped). `nil` for ordinary single-route completions; additive and
+    /// decode-optional so existing rows and call sites are unaffected.
+    public let parentRequestID: String?
 
     private enum CodingKeys: String, CodingKey {
         case runID
@@ -1185,6 +1193,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         case sessionID
         case projectName
         case confidence
+        case parentRequestID
     }
 
     public init(
@@ -1200,7 +1209,8 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         recordedAt: Date,
         sessionID: String? = nil,
         projectName: String? = nil,
-        confidence: BurnBarUsageConfidence = .exact
+        confidence: BurnBarUsageConfidence = .exact,
+        parentRequestID: String? = nil
     ) {
         self.runID = runID
         self.providerID = providerID
@@ -1215,6 +1225,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         self.sessionID = sessionID
         self.projectName = projectName
         self.confidence = confidence
+        self.parentRequestID = parentRequestID
     }
 
     public init(from decoder: Decoder) throws {
@@ -1232,6 +1243,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID)
         projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
         confidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .confidence) ?? .exact
+        parentRequestID = try container.decodeIfPresent(String.self, forKey: .parentRequestID)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1249,6 +1261,7 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         try container.encodeIfPresent(sessionID, forKey: .sessionID)
         try container.encodeIfPresent(projectName, forKey: .projectName)
         try container.encode(confidence, forKey: .confidence)
+        try container.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
     }
 }
 

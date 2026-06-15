@@ -622,7 +622,15 @@ public struct BurnBarLiveModelCatalog: Sendable {
         // credential/quota guard the cloud providers require.
         if configuration.provider.local {
             guard providerCanRoute, account.enabled else { return nil }
-            return await localProviderLiveModels(configuration: configuration, account: account)
+            // HTTP-backed local providers (a local Ollama daemon) discover their
+            // installed models from the live endpoint. Subprocess-backed local
+            // providers (e.g. codex via `codex-cli://`) have no queryable HTTP
+            // endpoint — advertise their static catalog models instead of making
+            // (and asserting on) an HTTP call.
+            if Self.isHTTPLocalEndpoint(configuration.settings.baseURL) {
+                return await localProviderLiveModels(configuration: configuration, account: account)
+            }
+            return staticLocalProviderModels(configuration: configuration)
         }
 
         guard providerCanRoute,
@@ -797,6 +805,34 @@ public struct BurnBarLiveModelCatalog: Sendable {
         } catch {
             return failure("\(configuration.provider.displayName) is not reachable at \(endpoint.absoluteString). Start it with `ollama serve`.")
         }
+    }
+
+    /// Whether a (local) provider's base URL is a queryable HTTP(S) endpoint.
+    /// Subprocess-backed local providers use a non-HTTP sentinel scheme (e.g.
+    /// `codex-cli://local`) and must not be probed over the network.
+    static func isHTTPLocalEndpoint(_ baseURL: String) -> Bool {
+        guard let scheme = URL(string: baseURL)?.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+
+    /// Advertises a subprocess-backed local provider's STATIC catalog models
+    /// (e.g. codex's `gpt-*-codex` virtuals) credential-lessly. There is no live
+    /// endpoint to query, so the catalog rows are the authority — every catalog
+    /// model is reported so it stays advertised and route-eligible.
+    private func staticLocalProviderModels(
+        configuration: BurnBarResolvedProviderConfiguration
+    ) -> LiveRefreshResult {
+        let discovered = configuration.provider.models.map {
+            DiscoveredModel(id: $0.id, displayName: $0.displayName)
+        }
+        return LiveRefreshResult(
+            advertisedModels: discovered,
+            sourceKind: "local_static_catalog",
+            refreshedAt: Date(),
+            error: nil,
+            isAuthoritative: true,
+            blocksRouting: false
+        )
     }
 
     private func liveModelEndpoint(for provider: BurnBarCatalogProvider, baseURL: URL) -> URL {

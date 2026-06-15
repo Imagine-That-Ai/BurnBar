@@ -88,4 +88,62 @@ final class AppLoggerSanitizationTests: XCTestCase {
         XCTAssertEqual(sanitized["APIKEY"], "[REDACTED]")
         XCTAssertEqual(sanitized["Authorization"], "[REDACTED]")
     }
+
+    #if canImport(Sentry)
+    @MainActor
+    func testResolveSentryDSN_fromInfoDictionary() {
+        let mockBundle = MockBundle(
+            info: ["sentry.dsn": "https://mock@sentry.io/1"],
+            paths: [:]
+        )
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
+        XCTAssertEqual(dsn, "https://mock@sentry.io/1")
+    }
+
+    @MainActor
+    func testResolveSentryDSN_fromGoogleServiceInfo() {
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let plistURL = tempDirectory.appendingPathComponent("GoogleService-Info.plist")
+        let plistData: [String: Any] = ["sentry.dsn": "https://google-mock@sentry.io/2"]
+        (plistData as NSDictionary).write(to: plistURL, atomically: true)
+
+        defer {
+            try? FileManager.default.removeItem(at: plistURL)
+        }
+
+        let mockBundle = MockBundle(
+            info: [:],
+            paths: ["GoogleService-Info.plist": plistURL.path]
+        )
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
+        XCTAssertEqual(dsn, "https://google-mock@sentry.io/2")
+    }
+
+    @MainActor
+    func testResolveSentryDSN_emptyFallback() {
+        let mockBundle = MockBundle(info: [:], paths: [:])
+        let dsn = OpenBurnBarApp.resolveSentryDSN(bundle: mockBundle)
+        XCTAssertNil(dsn)
+    }
+
+    private final class MockBundle: Bundle {
+        private let mockInfo: [String: Any]
+        private let mockPaths: [String: String]
+
+        init(info: [String: Any], paths: [String: String] = [:]) {
+            self.mockInfo = info
+            self.mockPaths = paths
+            super.init(path: FileManager.default.temporaryDirectory.path)!
+        }
+
+        override func object(forInfoDictionaryKey key: String) -> Any? {
+            return mockInfo[key]
+        }
+
+        override func path(forResource name: String?, ofType ext: String?) -> String? {
+            guard let name, let ext else { return nil }
+            return mockPaths["\(name).\(ext)"]
+        }
+    }
+    #endif
 }

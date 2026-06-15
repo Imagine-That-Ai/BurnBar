@@ -1072,6 +1072,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         capabilities: HermesBackendCapabilities = .default,
         workspaceURL: URL? = nil,
         toolBroker: AgentToolBroker? = nil,
+        plugins: [[String: any Sendable]]? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         defer {
@@ -1142,7 +1143,8 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                 session: URLSession(configuration: .default),
                 bearerToken: bearerToken,
                 toolBroker: toolBroker,
-                continuation: continuation
+                continuation: continuation,
+                plugins: plugins
             )
             return
         }
@@ -1156,12 +1158,15 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         var streamedAnyContent = false
         var parser = OpenAICompatibleSSEParser()
         do {
-            let body: [String: Any] = [
+            var body: [String: Any] = [
                 "model": selectedModel,
                 "stream": true,
                 "messages": messages,
                 "stream_options": ["include_usage": true]
             ]
+            if let plugins, !plugins.isEmpty {
+                body["plugins"] = plugins
+            }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1212,7 +1217,8 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                     messages: messages,
                     model: selectedModel,
                     session: session,
-                    bearerToken: bearerToken
+                    bearerToken: bearerToken,
+                    plugins: plugins
                 )
                 if !content.content.isEmpty {
                     continuation.yield(.text(content.content))
@@ -1245,6 +1251,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         bearerToken: String?,
         toolBroker: AgentToolBroker,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
+        plugins: [[String: any Sendable]]? = nil,
         maxToolCalls: Int = 24
     ) async {
         defer { session.invalidateAndCancel() }
@@ -1259,6 +1266,9 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                     "stream": false,
                     "messages": messages
                 ]
+                if let plugins, !plugins.isEmpty {
+                    body["plugins"] = plugins
+                }
                 if totalToolCalls < maxToolCalls {
                     body["tools"] = toolBroker.openAITools
                     body["tool_choice"] = "auto"
@@ -1413,9 +1423,13 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         messages: [[String: Any]],
         model: String,
         session: URLSession,
-        bearerToken: String?
+        bearerToken: String?,
+        plugins: [[String: any Sendable]]? = nil
     ) async throws -> (content: String, usage: CLIUsageSnapshot?) {
-        let body: [String: Any] = ["model": model, "stream": false, "messages": messages]
+        var body: [String: Any] = ["model": model, "stream": false, "messages": messages]
+        if let plugins, !plugins.isEmpty {
+            body["plugins"] = plugins
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -26,6 +26,13 @@ protocol HermesStreamingCoordinating: AnyObject {
     var runtimeGeneration: Int { get }
     var activeRequestedModelID: String? { get }
     var activeModelName: String? { get }
+    /// OpenRouter "Fusion" (`The Elder Wand`) plugin block for the active
+    /// preset, or `nil` when no preset is active. When non-nil the engine
+    /// injects it into the `/v1/chat/completions` body so the BurnBar daemon
+    /// gateway's `ElderWandFusionOrchestrator` runs the panel + judge. The
+    /// service is responsible for routing the request to the daemon gateway
+    /// (port 8317) whenever this is non-nil.
+    var activeElderWandPlugins: [[String: any Sendable]]? { get }
     func activeModelIDForRequest() throws -> String
     func makeRequest(path: String, timeout: TimeInterval) throws -> URLRequest
     func relayPayload(
@@ -776,6 +783,14 @@ final class HermesStreamingEngine {
         }
         if let sessionID = coordinator.selectedSessionID {
             payload["session_id"] = sessionID
+        }
+        // The Elder Wand (OpenRouter "Fusion") plugin block. Present only when
+        // a preset is active; mirrors the macOS payload shape verbatim
+        // ([{ "id":"fusion", "analysis_models":[…], "model":<judge>,
+        // "max_tool_calls":<n> }]). The BurnBar daemon gateway picks it up and
+        // runs the panel + judge; non-fusion gateways ignore the unknown key.
+        if let plugins = coordinator.activeElderWandPlugins, !plugins.isEmpty {
+            payload["plugins"] = plugins
         }
         return try JSONSerialization.data(withJSONObject: payload)
     }

@@ -88,7 +88,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
 
     func connectProviderCredential(provider: String, credential: String, kind: CredentialKind) async throws -> ProviderConnectionDoc {
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let payload: [String: Any] = [
+        let payload: [String: any Sendable] = [
             "provider": provider,
             "credential": credential,
             "credentialKind": kind.rawValue
@@ -117,7 +117,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         deviceDisplayName: String? = nil,
         metadata: ProviderAccountConnectMetadata? = nil
     ) async throws -> ProviderAccountDoc {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "provider": providerID.rawValue,
             "credential": credential,
             "credentialKind": kind.rawValue
@@ -180,7 +180,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "provider": providerID.rawValue,
             "credential": credential
         ]
@@ -224,7 +224,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        var payload: [String: Any] = ["provider": providerID.rawValue]
+        var payload: [String: any Sendable] = ["provider": providerID.rawValue]
         if let label, label.isEmpty == false {
             payload["label"] = label
         }
@@ -291,7 +291,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "provider": providerID.rawValue,
             "credential": credential,
             "credentialKind": kind.rawValue
@@ -334,7 +334,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
     }
 
     func updateProviderAccount(accountID: String, label: String? = nil, isDefault: Bool? = nil, disabled: Bool? = nil) async throws -> ProviderAccountDoc {
-        var payload: [String: Any] = ["accountID": accountID]
+        var payload: [String: any Sendable] = ["accountID": accountID]
         if let label { payload["label"] = label }
         if let isDefault { payload["isDefault"] = isDefault }
         if let disabled { payload["disabled"] = disabled }
