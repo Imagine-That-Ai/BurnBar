@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import os
 
 // Mounts a verified update DMG, validates the app inside, swaps it into
 // /Applications, and relaunches — the part the legacy checker left to the user
@@ -19,6 +20,8 @@ enum DirectDownloadUpdateInstallError: LocalizedError, Equatable {
     case appNotFoundInDMG
     case codesignRejected(String)
     case spawnFailed(Int32)
+    case versionUnreadable
+    case downgradeBlocked(current: Int, offered: Int)
 
     var errorDescription: String? {
         switch self {
@@ -32,30 +35,39 @@ enum DirectDownloadUpdateInstallError: LocalizedError, Equatable {
             return "The update's code signature did not validate. \(detail)"
         case let .spawnFailed(code):
             return "The updater helper could not be launched (error \(code))."
+        case .versionUnreadable:
+            return "The update's version could not be read from the disk image."
+        case let .downgradeBlocked(current, offered):
+            return "Refusing to install build \(offered) over the newer/equal build \(current) already installed."
         }
     }
 }
 
 enum DirectDownloadUpdateInstaller {
-    static let destinationPath = "/Applications/OpenBurnBar.app"
     private static let daemonRelativePath = "Contents/Helpers/OpenBurnBarDaemon"
 
     /// Mounts the verified DMG, validates the bundle, then spawns a detached
-    /// trampoline that swaps it into /Applications and relaunches after this
-    /// process exits, and terminates the app. Throws *before* any destructive
-    /// step when a precondition fails so the caller can fall back to opening the
-    /// DMG; on success this never returns normally (the app terminates).
+    /// trampoline that swaps it over the *running* app bundle and relaunches
+    /// after this process exits, then terminates the app. Throws *before* any
+    /// destructive step when a precondition fails so the caller can fall back to
+    /// opening the DMG; on success this never returns normally (the app
+    /// terminates).
     @MainActor
     static func installAndRelaunch(dmgAt dmgURL: URL) async throws {
+        // Replace the bundle wherever it actually runs (/Applications OR
+        // ~/Applications), not a hardcoded path — otherwise a user-local install
+        // would clobber/relaunch the wrong copy.
+        let destinationPath = Bundle.main.bundleURL.standardizedFileURL.path
         guard isWritableForReplacement(destinationPath) else {
             throw DirectDownloadUpdateInstallError.applicationsNotWritable
         }
         let appPID = ProcessInfo.processInfo.processIdentifier
+        let currentBuild = Self.currentBundleBuild()
 
-        // Mount + locate + validate are blocking shell-outs; keep them off the
-        // main actor so the UI's progress animation never stalls.
+        // Mount + locate + validate + anti-downgrade are blocking shell-outs;
+        // keep them off the main actor so the UI's progress animation never stalls.
         let prepared = try await Task.detached(priority: .userInitiated) {
-            try prepareInstall(dmgURL: dmgURL)
+            try prepareInstall(dmgURL: dmgURL, currentBuild: currentBuild)
         }.value
 
         do {
@@ -74,6 +86,10 @@ enum DirectDownloadUpdateInstaller {
         NSApp.terminate(nil)
     }
 
+    private static func currentBundleBuild() -> Int {
+        Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0") ?? 0
+    }
+
     // MARK: - Prepare (off-main, blocking)
 
     private struct PreparedInstall {
@@ -81,11 +97,15 @@ enum DirectDownloadUpdateInstaller {
         let appPath: String
     }
 
-    private nonisolated static func prepareInstall(dmgURL: URL) throws -> PreparedInstall {
+    private nonisolated static func prepareInstall(dmgURL: URL, currentBuild: Int) throws -> PreparedInstall {
         let mountPoint = try mount(dmgURL)
         do {
             let appPath = try locateApp(in: mountPoint)
             try validateSignature(at: appPath)
+            // Anti-downgrade/replay: even a validly-signed but OLD DMG (served by
+            // a tampered, unsigned feed claiming a higher version) must not be
+            // installed over a newer/equal build.
+            try validateNotDowngrade(at: appPath, currentBuild: currentBuild)
             return PreparedInstall(mountPoint: mountPoint, appPath: appPath)
         } catch {
             detach(mountPoint)
@@ -93,10 +113,28 @@ enum DirectDownloadUpdateInstaller {
         }
     }
 
+    /// Reads the mounted bundle's `CFBundleVersion` and refuses anything that is
+    /// not strictly newer than what's installed. The mounted image is the
+    /// authenticated artifact (Ed25519 over the DMG bytes); this closes the
+    /// downgrade window the unsigned feed metadata would otherwise leave open.
+    private nonisolated static func validateNotDowngrade(at appPath: String, currentBuild: Int) throws {
+        let infoPlistPath = (appPath as NSString).appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOfFile: infoPlistPath),
+              let buildString = info["CFBundleVersion"] as? String,
+              let offeredBuild = Int(buildString) else {
+            throw DirectDownloadUpdateInstallError.versionUnreadable
+        }
+        guard offeredBuild > currentBuild else {
+            throw DirectDownloadUpdateInstallError.downgradeBlocked(current: currentBuild, offered: offeredBuild)
+        }
+    }
+
     private nonisolated static func mount(_ dmgURL: URL) throws -> String {
+        // -readonly so the validated content can't be mutated under us between
+        // codesign-verify and the trampoline's ditto copy (TOCTOU).
         let result = runProcess(
             "/usr/bin/hdiutil",
-            ["attach", "-nobrowse", "-noautoopen", "-plist", dmgURL.path]
+            ["attach", "-nobrowse", "-noautoopen", "-readonly", "-plist", dmgURL.path]
         )
         guard result.status == 0 else {
             throw DirectDownloadUpdateInstallError.mountFailed(result.stderr.isEmpty ? result.stdout : result.stderr)
@@ -213,25 +251,46 @@ enum DirectDownloadUpdateInstaller {
         LOG="$(/usr/bin/dirname "$0")/relaunch.log"
         exec >>"$LOG" 2>&1
         echo "[updater] waiting for PID $APP_PID to exit"
-        while /bin/kill -0 "$APP_PID" 2>/dev/null; do /bin/sleep 0.2; done
+        WAITED=0
+        while /bin/kill -0 "$APP_PID" 2>/dev/null; do
+          /bin/sleep 0.2
+          WAITED=$((WAITED + 1))
+          if [ "$WAITED" -ge 1500 ]; then
+            echo "[updater] app still running after ~300s; aborting (terminate vetoed?)"
+            /usr/bin/hdiutil detach "$MOUNT" -quiet 2>/dev/null
+            /bin/rm -f "$0"
+            exit 1
+          fi
+        done
         /usr/bin/pkill -f "$DAEMON" 2>/dev/null
         /bin/sleep 0.5
         STAGE="$DEST.new-$$"
         BACKUP="$DEST.bak-$$"
-        /bin/rm -rf "$STAGE"
+        /bin/rm -rf "$STAGE" "$BACKUP"
         if ! /usr/bin/ditto "$SRC" "$STAGE"; then
           echo "[updater] ditto failed"
           /usr/bin/hdiutil detach "$MOUNT" -quiet 2>/dev/null
+          /bin/rm -f "$0"
           exit 1
         fi
-        /bin/mv "$DEST" "$BACKUP" 2>/dev/null
+        if [ -e "$DEST" ]; then
+          if ! /bin/mv "$DEST" "$BACKUP"; then
+            echo "[updater] could not move the existing app aside; aborting"
+            /bin/rm -rf "$STAGE"
+            /usr/bin/hdiutil detach "$MOUNT" -quiet 2>/dev/null
+            /bin/rm -f "$0"
+            exit 1
+          fi
+        fi
         if /bin/mv "$STAGE" "$DEST"; then
           /bin/rm -rf "$BACKUP"
         else
           echo "[updater] swap failed; rolling back"
-          /bin/mv "$BACKUP" "$DEST" 2>/dev/null
+          /bin/rm -rf "$DEST"
+          [ -e "$BACKUP" ] && /bin/mv "$BACKUP" "$DEST"
           /bin/rm -rf "$STAGE"
           /usr/bin/hdiutil detach "$MOUNT" -quiet 2>/dev/null
+          /bin/rm -f "$0"
           exit 1
         fi
         /usr/bin/hdiutil detach "$MOUNT" -quiet 2>/dev/null
@@ -284,9 +343,26 @@ enum DirectDownloadUpdateInstaller {
         } catch {
             return ProcessResult(status: -1, stdout: "", stderr: String(describing: error))
         }
-        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        // Drain stdout and stderr concurrently. Reading one to EOF before the
+        // other deadlocks if the child fills the unread pipe's buffer (e.g. a
+        // verbose codesign/hdiutil failure on stderr). OSAllocatedUnfairLock is
+        // genuinely Sendable, so the concurrent closures need no escape hatch.
+        let outBox = OSAllocatedUnfairLock(initialState: Data())
+        let errBox = OSAllocatedUnfairLock(initialState: Data())
+        let group = DispatchGroup()
+        let queue = DispatchQueue(label: "updater.runProcess.pipes", attributes: .concurrent)
+        queue.async(group: group) {
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            outBox.withLock { $0 = data }
+        }
+        queue.async(group: group) {
+            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
+            errBox.withLock { $0 = data }
+        }
+        group.wait()
         process.waitUntilExit()
+        let outData = outBox.withLock { $0 }
+        let errData = errBox.withLock { $0 }
         return ProcessResult(
             status: process.terminationStatus,
             stdout: String(data: outData, encoding: .utf8) ?? "",
