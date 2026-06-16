@@ -149,6 +149,14 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         )
         let collection = sharedArtifactsCollection(scope: scope)
 
+        guard let uid = scope.ownerUserID ?? SharedArtifactCloudCodec.ownerUID(fromWorkspaceID: scope.workspaceID) else {
+            throw SharedArtifactCloudCodecError.missingOwnerForSealedContent
+        }
+        // Resolve the CloudVault key once for the push pass: shared-artifact bodies
+        // are sealed before Firestore, and existing remote heads are opened with
+        // the same key to evaluate optimistic-concurrency / merge decisions.
+        let resolvedKey = try await writableVaultKey(uid: uid)
+
         for artifact in localArtifacts {
             report.localArtifactsEvaluated += 1
 
@@ -156,7 +164,12 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             let remoteArtifactID = resolveRemoteArtifactID(for: artifact, existingState: existingState)
             let remoteRef = collection.document(remoteArtifactID)
             let remoteData = try await remoteRef.getData()
-            let remoteRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: remoteData)
+            let remoteRecord = try decodeRemoteRecord(
+                documentID: remoteArtifactID,
+                data: remoteData,
+                uid: uid,
+                vaultKey: resolvedKey.keyData
+            )
             let decision = SharedArtifactSyncResolver.mergeDecision(
                 localContentHash: artifact.contentHash,
                 syncedContentHash: existingState?.localContentHashAtSync,
@@ -254,14 +267,21 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         artifactsCollection: collection,
                         remoteArtifactID: remoteArtifactID,
                         cloudRecord: cloudRecord,
-                        expectedRevisionID: baseRevisionID
+                        expectedRevisionID: baseRevisionID,
+                        uid: uid,
+                        resolvedKey: resolvedKey
                     )
                 } catch {
                     if let stale = SharedArtifactOptimisticWriteGate.conflict(from: error) {
                         var latestRemoteRecord = remoteRecord
                         do {
                             let latestData = try await remoteRef.getData()
-                            latestRemoteRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: latestData)
+                            latestRemoteRecord = try decodeRemoteRecord(
+                                documentID: remoteArtifactID,
+                                data: latestData,
+                                uid: uid,
+                                vaultKey: resolvedKey.keyData
+                            )
                         } catch {
                             latestRemoteRecord = remoteRecord
                         }
@@ -479,9 +499,25 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             .limit(to: max(1, maxRemoteArtifacts))
             .getDocuments()
 
+        let uid = scope.ownerUserID ?? SharedArtifactCloudCodec.ownerUID(fromWorkspaceID: scope.workspaceID)
+        // Sealed shared-artifact heads are opened with the shared CloudVault key.
+        // Resolved once per pull; nil only when the vault holds no sealed content,
+        // in which case legacy plaintext heads still decode.
+        let resolvedKey: CloudVaultResolvedKey?
+        if let uid {
+            resolvedKey = try await readableVaultKey(uid: uid)
+        } else {
+            resolvedKey = nil
+        }
+
         for document in snapshot.documents {
             report.remoteArtifactsEvaluated += 1
-            let remoteRecord = try SharedArtifactCloudCodec.decode(documentID: document.documentID, data: document.data())
+            let remoteRecord = try SharedArtifactCloudCodec.decode(
+                documentID: document.documentID,
+                data: document.data(),
+                uid: uid,
+                vaultKey: resolvedKey?.keyData
+            )
             let existingState = try context.dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteRecord.artifactID)
             let localSourceID = existingState?.sourceArtifactID ?? sourceArtifactID(scope: scope, remoteArtifactID: remoteRecord.artifactID)
             let existingArtifact = try context.dataStore.fetchSourceArtifact(id: localSourceID, includeDeleted: true)
@@ -986,11 +1022,18 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         artifactsCollection: CloudSyncCollectionGateway,
         remoteArtifactID: String,
         cloudRecord: SharedArtifactCloudRecord,
-        expectedRevisionID: String?
+        expectedRevisionID: String?,
+        uid: String,
+        resolvedKey: CloudVaultResolvedKey
     ) async throws -> String? {
         let headDoc = artifactsCollection.document(remoteArtifactID)
         let existingData = try await headDoc.getData()
-        let observedRecord = try decodeRemoteRecord(documentID: remoteArtifactID, data: existingData)
+        let observedRecord = try decodeRemoteRecord(
+            documentID: remoteArtifactID,
+            data: existingData,
+            uid: uid,
+            vaultKey: resolvedKey.keyData
+        )
         let observedRevisionID = observedRecord?.revisionID
 
         try SharedArtifactOptimisticWriteGate.validate(
@@ -998,10 +1041,54 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             observedRevisionID: observedRevisionID
         )
 
-        let payload = SharedArtifactCloudCodec.encode(cloudRecord, useServerTimestamp: true)
-        try await headDoc.setData(payload, merge: true)
-        try await headDoc.collection("versions").document(cloudRecord.revisionID).setData(payload, merge: true)
+        // Seal head and version separately: each binds its CloudVault envelope to
+        // its own document path (head → artifactID, version → revisionID), so a
+        // sealed payload can never be relocated between documents within the vault.
+        let headPayload = try SharedArtifactCloudCodec.encodeSealed(
+            cloudRecord,
+            vaultKey: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID,
+            uid: uid,
+            aadCollection: SharedArtifactCloudCodec.headAADCollection,
+            aadDocID: remoteArtifactID,
+            useServerTimestamp: true
+        )
+        try await headDoc.setData(headPayload, merge: true)
+
+        let versionPayload = try SharedArtifactCloudCodec.encodeSealed(
+            cloudRecord,
+            vaultKey: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID,
+            uid: uid,
+            aadCollection: SharedArtifactCloudCodec.versionAADCollection,
+            aadDocID: cloudRecord.revisionID,
+            useServerTimestamp: true
+        )
+        try await headDoc.collection("versions").document(cloudRecord.revisionID).setData(versionPayload, merge: true)
         return observedRevisionID
+    }
+
+    /// Resolve the current CloudVault key for sealing shared-artifact writes,
+    /// mirroring the `SessionLogSyncService`/`CLIAgentSessionMirror` pattern.
+    private func writableVaultKey(uid: String) async throws -> CloudVaultResolvedKey {
+        let gate = await context.syncGate()
+        return try await MacCloudVaultKeyAccess.keyForWriting(
+            uid: uid,
+            deviceId: gate.account.deviceId,
+            firestore: Firestore.firestore()
+        )
+    }
+
+    /// Resolve the current CloudVault key for opening sealed shared-artifact
+    /// reads. Returns nil when no vault key exists yet (a vault with no sealed
+    /// content), in which case only legacy plaintext documents are decodable.
+    private func readableVaultKey(uid: String) async throws -> CloudVaultResolvedKey? {
+        let gate = await context.syncGate()
+        return try await MacCloudVaultKeyAccess.keyForReading(
+            uid: uid,
+            deviceId: gate.account.deviceId,
+            firestore: Firestore.firestore()
+        )
     }
 
     private func publishCollaborationNotice(
@@ -1206,9 +1293,19 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         return "\(remoteRecord.artifactID).md"
     }
 
-    private func decodeRemoteRecord(documentID: String, data: [String: Any]?) throws -> SharedArtifactCloudRecord? {
+    private func decodeRemoteRecord(
+        documentID: String,
+        data: [String: Any]?,
+        uid: String? = nil,
+        vaultKey: Data? = nil
+    ) throws -> SharedArtifactCloudRecord? {
         guard let data, data.isEmpty == false else { return nil }
-        return try SharedArtifactCloudCodec.decode(documentID: documentID, data: data)
+        return try SharedArtifactCloudCodec.decode(
+            documentID: documentID,
+            data: data,
+            uid: uid,
+            vaultKey: vaultKey
+        )
     }
 
     func upsertCollaborationHealth(

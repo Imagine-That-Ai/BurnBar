@@ -1366,6 +1366,27 @@ service cloud.firestore {
         && request.resource.data.teamID == teamId;
     }
 
+    // Shared/team artifacts seal their private content (body/title/relativePath/
+    // contentHash) into a single path-bound `sealedPayload` before Firestore — at
+    // parity with chat_threads, conversations, cli_sessions, and session_logs. The
+    // server therefore never sees source content: writes MUST carry `contentSealed
+    // == true`, a path-bound sealed payload bound to THIS document, and MUST NOT
+    // carry any cleartext content field. `collection`/`docId` identify the exact
+    // document (head → "artifacts"+artifactId; version → "artifact_versions"+
+    // revisionId) so an envelope can never be relocated within the vault.
+    function sharedArtifactSealedOwnerWrite(workspaceId, teamId, collection, docId) {
+      return sharedArtifactOwnerWrite(workspaceId, teamId)
+        && forbidsSealedPlaintextContentFields()
+        && request.resource.data.contentSealed == true
+        && validPathBoundSealedPayloadForUser(
+             request.auth.uid,
+             request.resource.data.vaultKeyID,
+             request.resource.data.sealedPayload,
+             collection,
+             docId
+           );
+    }
+
     // --- Server-only private provider credential references ---
 
     // Cloud Functions store Secret Manager version names here. The Admin SDK
@@ -4406,16 +4427,16 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
-    // --- Shared artifacts (unchanged) ---
+    // --- Shared artifacts (E2EE-sealed; see sharedArtifactSealedOwnerWrite) ---
 
     match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
       allow read: if sharedArtifactOwnerRead(workspaceId);
-      allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
+      allow create, update: if sharedArtifactSealedOwnerWrite(workspaceId, teamId, "artifacts", artifactId);
       allow delete: if sharedArtifactOwnerRead(workspaceId);
 
       match /versions/{revisionId} {
         allow read: if sharedArtifactOwnerRead(workspaceId);
-        allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
+        allow create, update: if sharedArtifactSealedOwnerWrite(workspaceId, teamId, "artifact_versions", revisionId);
         allow delete: if sharedArtifactOwnerRead(workspaceId);
       }
     }

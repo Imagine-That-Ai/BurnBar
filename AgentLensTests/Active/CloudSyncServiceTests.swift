@@ -1,5 +1,6 @@
 import XCTest
 import FirebaseFirestore
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 // MARK: - CloudSync Enums Tests
@@ -1015,5 +1016,197 @@ final class EscrowPublicKeyPublisherTests: XCTestCase {
             publicKeyFingerprint: String(repeating: "F", count: 44),
             keyVersion: 1
         ))
+    }
+}
+
+// MARK: - V-10: shared-artifact sealing (no plaintext source content to Firestore)
+
+final class SharedArtifactCloudCodecSealingTests: XCTestCase {
+
+    private func makeRecord(
+        artifactID: String = "artifact-1",
+        revisionID: String = "rev-1",
+        title: String = "secret-design.md",
+        body: String = "private source content the cloud must never see",
+        contentHash: String = String(repeating: "a", count: 64),
+        relativePath: String? = "src/secret/design.md"
+    ) -> SharedArtifactCloudRecord {
+        SharedArtifactCloudRecord(
+            artifactID: artifactID,
+            workspaceID: "workspace-user-1",
+            teamID: "team-default",
+            ownerUserID: "user-1",
+            visibility: .team,
+            revisionID: revisionID,
+            baseRevisionID: nil,
+            title: title,
+            body: body,
+            contentHash: contentHash,
+            relativePath: relativePath,
+            isDeleted: false,
+            updatedByUserID: "user-1",
+            updatedByDeviceID: "mac-device",
+            resolvedConflictRevisionID: nil,
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+    }
+
+    private func headAAD(uid: String, docID: String) -> String {
+        "OpenBurnBar-CloudVault-aad-v2|\(uid)|artifacts|\(docID)|sealedPayload|2|sealedPayload"
+    }
+
+    func test_encodeSealed_writesNoCleartextContent() throws {
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let record = makeRecord()
+
+        let payload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID,
+            uid: "user-1",
+            aadCollection: SharedArtifactCloudCodec.headAADCollection,
+            aadDocID: record.artifactID,
+            useServerTimestamp: false
+        )
+
+        // The whole point: no source content leaves the device in cleartext.
+        XCTAssertFalse(payload["body"] is String, "body must not be a cleartext string")
+        XCTAssertFalse(payload["title"] is String, "title must not be a cleartext string")
+        XCTAssertFalse(payload["contentHash"] is String, "contentHash oracle must be removed from cleartext")
+        XCTAssertFalse(payload["relativePath"] is String, "relativePath must not be a cleartext string")
+        XCTAssertEqual(payload["contentSealed"] as? Bool, true)
+        XCTAssertEqual(payload["vaultKeyID"] as? String, vaultKeyID)
+
+        let sealed = try XCTUnwrap(payload["sealedPayload"] as? [String: Any])
+        XCTAssertEqual(sealed["algorithm"] as? String, "AES-256-GCM")
+        XCTAssertEqual(sealed["aad"] as? String, headAAD(uid: "user-1", docID: record.artifactID))
+        // The serialized envelope must not contain the plaintext body anywhere.
+        let envelopeText = (sealed["sealedBoxBase64"] as? String) ?? ""
+        XCTAssertFalse(envelopeText.contains(record.body))
+    }
+
+    func test_encodeSealed_then_decode_roundTrips() throws {
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let record = makeRecord()
+
+        let payload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID,
+            uid: "user-1",
+            aadCollection: SharedArtifactCloudCodec.headAADCollection,
+            aadDocID: record.artifactID,
+            useServerTimestamp: false
+        )
+
+        let decoded = try SharedArtifactCloudCodec.decode(
+            documentID: record.artifactID,
+            data: payload,
+            uid: "user-1",
+            vaultKey: key
+        )
+
+        XCTAssertEqual(decoded.title, record.title)
+        XCTAssertEqual(decoded.body, record.body)
+        XCTAssertEqual(decoded.contentHash, record.contentHash)
+        XCTAssertEqual(decoded.relativePath, record.relativePath)
+        XCTAssertEqual(decoded.revisionID, record.revisionID)
+    }
+
+    func test_decode_sealedWithoutKey_throwsRequiresKey() throws {
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let record = makeRecord()
+
+        let payload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID,
+            uid: "user-1",
+            aadCollection: SharedArtifactCloudCodec.headAADCollection,
+            aadDocID: record.artifactID,
+            useServerTimestamp: false
+        )
+
+        XCTAssertThrowsError(
+            try SharedArtifactCloudCodec.decode(documentID: record.artifactID, data: payload)
+        ) { error in
+            guard case SharedArtifactCloudCodecError.sealedContentRequiresKey = error else {
+                return XCTFail("expected sealedContentRequiresKey, got \(error)")
+            }
+        }
+    }
+
+    func test_decode_relocatedSealedPayload_throws() throws {
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let record = makeRecord(artifactID: "artifact-1")
+
+        // Seal bound to artifact-1 …
+        let payload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID,
+            uid: "user-1",
+            aadCollection: SharedArtifactCloudCodec.headAADCollection,
+            aadDocID: "artifact-1",
+            useServerTimestamp: false
+        )
+
+        // … then attempt to open it as if it lived at artifact-2 (relocation).
+        XCTAssertThrowsError(
+            try SharedArtifactCloudCodec.decode(
+                documentID: "artifact-2",
+                data: payload,
+                uid: "user-1",
+                vaultKey: key
+            )
+        )
+    }
+
+    func test_encodeSealed_headAndVersion_bindDistinctAAD() throws {
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let record = makeRecord(artifactID: "artifact-1", revisionID: "rev-9")
+
+        let headPayload = try SharedArtifactCloudCodec.encodeSealed(
+            record, vaultKey: key, vaultKeyID: vaultKeyID, uid: "user-1",
+            aadCollection: SharedArtifactCloudCodec.headAADCollection,
+            aadDocID: record.artifactID, useServerTimestamp: false
+        )
+        let versionPayload = try SharedArtifactCloudCodec.encodeSealed(
+            record, vaultKey: key, vaultKeyID: vaultKeyID, uid: "user-1",
+            aadCollection: SharedArtifactCloudCodec.versionAADCollection,
+            aadDocID: record.revisionID, useServerTimestamp: false
+        )
+
+        let headAad = (headPayload["sealedPayload"] as? [String: Any])?["aad"] as? String
+        let versionAad = (versionPayload["sealedPayload"] as? [String: Any])?["aad"] as? String
+        XCTAssertNotEqual(headAad, versionAad)
+        XCTAssertEqual(headAad?.contains("|artifacts|"), true)
+        XCTAssertEqual(versionAad?.contains("|artifact_versions|"), true)
+    }
+
+    func test_legacyPlaintextDocument_stillDecodes() throws {
+        // Back-compat: a not-yet-migrated plaintext document still reads, so
+        // existing cloud heads keep working until their next write re-seals them.
+        let data: [String: Any] = [
+            "artifactID": "artifact-legacy",
+            "workspaceID": "workspace-user-1",
+            "teamID": "team-default",
+            "ownerUserID": "user-1",
+            "visibility": "team",
+            "revisionID": "rev-legacy",
+            "title": "legacy.md",
+            "body": "legacy plaintext body",
+            "contentHash": String(repeating: "b", count: 64),
+            "relativePath": "src/legacy.md",
+            "isDeleted": false
+        ]
+        let decoded = try SharedArtifactCloudCodec.decode(documentID: "artifact-legacy", data: data)
+        XCTAssertEqual(decoded.body, "legacy plaintext body")
+        XCTAssertEqual(decoded.title, "legacy.md")
     }
 }

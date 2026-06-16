@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 // Shared-artifact + memory sync boundary types and Firestore codecs used by `CloudSyncService`.
 
@@ -97,6 +98,9 @@ struct SharedArtifactCloudRecord: Equatable, Sendable {
 enum SharedArtifactCloudCodecError: LocalizedError {
     case missingField(String)
     case invalidFieldType(String)
+    case sealedContentRequiresKey
+    case sealedContentMalformed
+    case missingOwnerForSealedContent
 
     var errorDescription: String? {
         switch self {
@@ -104,6 +108,12 @@ enum SharedArtifactCloudCodecError: LocalizedError {
             return "Shared artifact cloud payload is missing required field: \(field)."
         case .invalidFieldType(let field):
             return "Shared artifact cloud payload has an invalid field type for: \(field)."
+        case .sealedContentRequiresKey:
+            return "Shared artifact document is sealed but no CloudVault key was provided to open it."
+        case .sealedContentMalformed:
+            return "Shared artifact sealed content could not be decoded after opening the CloudVault envelope."
+        case .missingOwnerForSealedContent:
+            return "Shared artifact document is sealed but carries no owner identity to derive its path-bound AAD."
         }
     }
 }
@@ -233,6 +243,128 @@ enum SharedArtifactOptimisticWriteGate {
 enum SharedArtifactCloudCodec {
     static let provenancePrefix = "shared-sync:"
 
+    /// Path-bound AAD `collection` segment for the head document
+    /// (`workspaces/.../artifacts/{artifactID}`). The Firestore security rule
+    /// binds the sealed envelope to `cloudVaultAADContext(uid, "artifacts",
+    /// artifactID, "sealedPayload")`, so this MUST stay in lockstep with
+    /// `firestore.rules`'s `sharedArtifactSealedOwnerWrite(... "artifacts" ...)`.
+    static let headAADCollection = "artifacts"
+
+    /// Path-bound AAD `collection` segment for the version history subdocument
+    /// (`.../artifacts/{artifactID}/versions/{revisionID}`). Bound to
+    /// `cloudVaultAADContext(uid, "artifact_versions", revisionID, "sealedPayload")`.
+    static let versionAADCollection = "artifact_versions"
+
+    /// The single sealed field name. Matches the rule's hardcoded
+    /// `cloudVaultAADContext(..., "sealedPayload")`.
+    static let sealedAADField = "sealedPayload"
+
+    /// Private content of a shared artifact, sealed as ONE CloudVault payload
+    /// before Firestore receives the document. Only non-content routing metadata
+    /// (ids, visibility, revision, owner/device, timestamps) stays top-level; the
+    /// source `body`, `title`, `relativePath`, and the (now in-envelope, no longer
+    /// oracle-able) `contentHash` are E2EE-sealed with path-bound AAD. This brings
+    /// shared/team artifacts to parity with chat threads, conversations, CLI
+    /// sessions, and session logs, which all seal before Firestore.
+    struct SealedContent: Codable, Equatable, Sendable {
+        let title: String
+        let body: String
+        let contentHash: String
+        let relativePath: String?
+    }
+
+    static var sealedContentEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+
+    static var sealedContentDecoder: JSONDecoder {
+        JSONDecoder()
+    }
+
+    /// Seal `title`/`body`/`relativePath`/`contentHash` into a single path-bound
+    /// CloudVault envelope and emit a Firestore payload that carries ZERO source
+    /// content in cleartext. `aadCollection`/`aadDocID` MUST identify the exact
+    /// Firestore document being written (head → `headAADCollection` + artifactID;
+    /// version → `versionAADCollection` + revisionID) so the envelope is bound to
+    /// its location and cannot be relocated within the vault. Stale plaintext
+    /// fields from any pre-seal document are explicitly deleted so a merge write
+    /// can never leave cleartext behind.
+    static func encodeSealed(
+        _ record: SharedArtifactCloudRecord,
+        vaultKey: Data,
+        vaultKeyID: String,
+        uid: String,
+        aadCollection: String,
+        aadDocID: String,
+        useServerTimestamp: Bool
+    ) throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "artifactID": record.artifactID,
+            "workspaceID": record.workspaceID,
+            "teamID": record.teamID,
+            "visibility": record.visibility.rawValue,
+            "revisionID": record.revisionID,
+            "isDeleted": record.isDeleted,
+            "contentSealed": true,
+            "sealedSchemaVersion": CloudVaultCrypto.currentSealedPayloadSchemaVersion,
+            "vaultKeyID": vaultKeyID
+        ]
+        if let ownerUserID = record.ownerUserID {
+            payload["ownerUserID"] = ownerUserID
+        }
+        if let baseRevisionID = record.baseRevisionID {
+            payload["baseRevisionID"] = baseRevisionID
+        }
+        if let updatedByUserID = record.updatedByUserID {
+            payload["updatedByUserID"] = updatedByUserID
+        }
+        if let updatedByDeviceID = record.updatedByDeviceID {
+            payload["updatedByDeviceID"] = updatedByDeviceID
+        }
+        if let resolvedConflictRevisionID = record.resolvedConflictRevisionID {
+            payload["resolvedConflictRevisionID"] = resolvedConflictRevisionID
+        }
+        if useServerTimestamp {
+            payload["updatedAt"] = FieldValue.serverTimestamp()
+        } else if let updatedAt = record.updatedAt {
+            payload["updatedAt"] = updatedAt
+        }
+
+        let content = SealedContent(
+            title: record.title,
+            body: record.body,
+            contentHash: record.contentHash,
+            relativePath: record.relativePath
+        )
+        let contentData = try sealedContentEncoder.encode(content)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: aadCollection,
+            docID: aadDocID,
+            field: sealedAADField
+        )
+        let sealed = try CloudVaultCrypto.sealPayload(
+            contentData,
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
+        payload["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealed)
+
+        // Defense-in-depth for `setData(merge: true)` over a legacy plaintext
+        // document: explicitly clear every cleartext content field so the sealed
+        // write can never inherit stale source content. `FieldValue.delete()`
+        // leaves these keys out of the resulting document, so the Firestore rule's
+        // `forbidsSealedPlaintextContentFields()` still passes.
+        payload["title"] = FieldValue.delete()
+        payload["body"] = FieldValue.delete()
+        payload["contentHash"] = FieldValue.delete()
+        payload["relativePath"] = FieldValue.delete()
+        return payload
+    }
+
     static func encode(_ record: SharedArtifactCloudRecord, useServerTimestamp: Bool) -> [String: Any] {
         var payload: [String: Any] = [
             "artifactID": record.artifactID,
@@ -271,7 +403,18 @@ enum SharedArtifactCloudCodec {
         return payload
     }
 
-    static func decode(documentID: String, data: [String: Any]) throws -> SharedArtifactCloudRecord {
+    /// Decode a shared-artifact head document. When the document is sealed
+    /// (`sealedPayload` present) the CloudVault `vaultKey` (and the owner `uid`
+    /// for path-bound AAD) MUST be supplied; the source content is opened from
+    /// the envelope. Legacy plaintext documents (pre-seal, or unit-test fixtures)
+    /// decode unchanged, so reads of not-yet-migrated documents keep working
+    /// until their next write re-seals them.
+    static func decode(
+        documentID: String,
+        data: [String: Any],
+        uid: String? = nil,
+        vaultKey: Data? = nil
+    ) throws -> SharedArtifactCloudRecord {
         let artifactID = stringValue(data["artifactID"]) ?? stringValue(data["id"]) ?? documentID
         guard let workspaceID = stringValue(data["workspaceID"]) else {
             throw SharedArtifactCloudCodecError.missingField("workspaceID")
@@ -285,35 +428,89 @@ enum SharedArtifactCloudCodec {
         guard let revisionID = stringValue(data["revisionID"]) else {
             throw SharedArtifactCloudCodecError.missingField("revisionID")
         }
-        guard let title = stringValue(data["title"]) else {
-            throw SharedArtifactCloudCodecError.missingField("title")
-        }
-        guard let body = stringValue(data["body"]) else {
-            throw SharedArtifactCloudCodecError.missingField("body")
-        }
-        guard let contentHash = stringValue(data["contentHash"]) else {
-            throw SharedArtifactCloudCodecError.missingField("contentHash")
-        }
+        let ownerUserID = stringValue(data["ownerUserID"])
         let isDeleted = boolValue(data["isDeleted"]) ?? false
+
+        let title: String
+        let body: String
+        let contentHash: String
+        let relativePath: String?
+
+        if let sealedRaw = data["sealedPayload"],
+           let envelope = CloudVaultCrypto.sealedPayload(from: sealedRaw) {
+            guard let vaultKey else {
+                throw SharedArtifactCloudCodecError.sealedContentRequiresKey
+            }
+            // Decode is only ever called on head documents, so the path-bound AAD
+            // collection is always `headAADCollection` and the docID is the head id.
+            let resolvedUID = uid
+                ?? ownerUserID
+                ?? Self.ownerUID(fromWorkspaceID: workspaceID)
+            guard let resolvedUID else {
+                throw SharedArtifactCloudCodecError.missingOwnerForSealedContent
+            }
+            let aadContext = try CloudVaultAADContext(
+                uid: resolvedUID,
+                collection: headAADCollection,
+                docID: documentID,
+                field: sealedAADField
+            )
+            let contentData = try CloudVaultCrypto.openPayload(
+                envelope,
+                keyData: vaultKey,
+                aadContext: aadContext
+            )
+            guard let content = try? sealedContentDecoder.decode(SealedContent.self, from: contentData) else {
+                throw SharedArtifactCloudCodecError.sealedContentMalformed
+            }
+            title = content.title
+            body = content.body
+            contentHash = content.contentHash
+            relativePath = content.relativePath
+        } else {
+            guard let plaintextTitle = stringValue(data["title"]) else {
+                throw SharedArtifactCloudCodecError.missingField("title")
+            }
+            guard let plaintextBody = stringValue(data["body"]) else {
+                throw SharedArtifactCloudCodecError.missingField("body")
+            }
+            guard let plaintextHash = stringValue(data["contentHash"]) else {
+                throw SharedArtifactCloudCodecError.missingField("contentHash")
+            }
+            title = plaintextTitle
+            body = plaintextBody
+            contentHash = plaintextHash
+            relativePath = stringValue(data["relativePath"])
+        }
 
         return SharedArtifactCloudRecord(
             artifactID: artifactID,
             workspaceID: workspaceID,
             teamID: teamID,
-            ownerUserID: stringValue(data["ownerUserID"]),
+            ownerUserID: ownerUserID,
             visibility: visibility,
             revisionID: revisionID,
             baseRevisionID: stringValue(data["baseRevisionID"]),
             title: title,
             body: body,
             contentHash: contentHash,
-            relativePath: stringValue(data["relativePath"]),
+            relativePath: relativePath,
             isDeleted: isDeleted,
             updatedByUserID: stringValue(data["updatedByUserID"]),
             updatedByDeviceID: stringValue(data["updatedByDeviceID"]),
             resolvedConflictRevisionID: stringValue(data["resolvedConflictRevisionID"]),
             updatedAt: dateValue(data["updatedAt"])
         )
+    }
+
+    /// Derive the owner UID from a `workspace-{uid}` workspace identifier, used
+    /// only as a last-resort fallback when neither an explicit uid nor an
+    /// `ownerUserID` field is available to rebuild path-bound AAD.
+    static func ownerUID(fromWorkspaceID workspaceID: String) -> String? {
+        let prefix = "workspace-"
+        guard workspaceID.hasPrefix(prefix) else { return nil }
+        let candidate = String(workspaceID.dropFirst(prefix.count))
+        return candidate.isEmpty ? nil : candidate
     }
 
     static func encodeProvenance(
