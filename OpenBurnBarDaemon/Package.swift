@@ -45,7 +45,7 @@ let package = Package(
         // Vendored to match the app target: GRDB must import SQLCipher, not system sqlite3.
         .package(path: "../Vendor/GRDB-SQLCipher"),
         .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
-        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.0.0")
+        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.17.1")
     ],
     targets: [
         .target(
