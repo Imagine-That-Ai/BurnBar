@@ -133,10 +133,21 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                         messages: messages.map(ChatThreadSealedPayload.Message.init)
                     )
                     let payloadData = try Self.sealedPayloadEncoder.encode(payload)
+                    // V-11 / M-007: bind the sealed envelope to this exact document
+                    // (uid|chat_threads|docId|sealedPayload) so a same-account attacker
+                    // cannot relocate ciphertext between chat-thread documents. docId is
+                    // the Firestore document id (`<deviceId>_<threadId>`), matching the
+                    // `{threadId}` wildcard the rule binds against.
                     let sealedPayload = try CloudVaultCrypto.sealPayload(
                         payloadData,
                         keyData: resolvedKey.keyData,
-                        vaultKeyID: resolvedKey.vaultKeyID
+                        vaultKeyID: resolvedKey.vaultKeyID,
+                        aadContext: try CloudVaultAADContext(
+                            uid: uid,
+                            collection: "chat_threads",
+                            docID: docId,
+                            field: "sealedPayload"
+                        )
                     )
                     data["contentSealed"] = true
                     data["sealedSchemaVersion"] = 2

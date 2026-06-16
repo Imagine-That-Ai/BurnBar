@@ -1027,7 +1027,11 @@ service cloud.firestore {
       ]);
     }
 
-    function validChatThreadSealedContent(userId) {
+    // M-007 / V-11: chat_threads binds its sealedPayload to uid|collection|docID|field
+    // path-bound AAD (emitted by the Mac ChatThreadSyncService writer). chat_threads is a
+    // Mac-only sealed-backup surface (no cross-platform reader opens the sealed content), so
+    // this is tightened without a mobile reader-migration prerequisite.
+    function validChatThreadSealedContent(userId, threadId) {
       return !chatThreadHasPlaintextContent()
         && validChatThreadKeys()
         && forbidsDirectSignalEnvelope()
@@ -1035,13 +1039,13 @@ service cloud.firestore {
           || (
             request.resource.data.contentSealed == true
             && request.resource.data.sealedSchemaVersion == 2
-            && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+            && validPathBoundSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload, "chat_threads", threadId)
           ));
     }
 
-    function ownerWritableChatThread(userId) {
+    function ownerWritableChatThread(userId, threadId) {
       return ownerWritableNonSecret(userId)
-        && validChatThreadSealedContent(userId)
+        && validChatThreadSealedContent(userId, threadId)
         && (!chatThreadIncludesBackedUpContent()
           || hasActiveHostedQuotaEntitlement(userId));
     }
@@ -1571,7 +1575,7 @@ service cloud.firestore {
 
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableChatThread(userId);
+      allow create, update: if ownerWritableChatThread(userId, threadId);
       allow delete: if ownsUserNamespace(userId);
     }
 

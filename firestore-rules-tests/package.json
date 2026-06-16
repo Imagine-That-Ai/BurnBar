@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore --project burnbar-test 'node computer-use.test.js && node media-budget.test.js && node session-log-backup.test.js && node rr12-relay-and-root.test.js && node cloud-vault-aad.test.js && node cloud-vault-key-wrappers.test.js && node m007-path-bound-sealed-payload.test.js && node escrow-grants.test.js'",
-    "test:ci": "firebase emulators:exec --only firestore --project burnbar-test 'node computer-use.test.js && node media-budget.test.js && node session-log-backup.test.js && node rr12-relay-and-root.test.js && node cloud-vault-aad.test.js && node cloud-vault-key-wrappers.test.js && node m007-path-bound-sealed-payload.test.js && node escrow-grants.test.js'",
+    "test": "firebase emulators:exec --only firestore --project burnbar-test 'node computer-use.test.js && node media-budget.test.js && node session-log-backup.test.js && node rr12-relay-and-root.test.js && node cloud-vault-aad.test.js && node cloud-vault-key-wrappers.test.js && node m007-path-bound-sealed-payload.test.js && node chat-thread-path-bound.test.js && node escrow-grants.test.js'",
+    "test:ci": "firebase emulators:exec --only firestore --project burnbar-test 'node computer-use.test.js && node media-budget.test.js && node session-log-backup.test.js && node rr12-relay-and-root.test.js && node cloud-vault-aad.test.js && node cloud-vault-key-wrappers.test.js && node m007-path-bound-sealed-payload.test.js && node chat-thread-path-bound.test.js && node escrow-grants.test.js'",
+    "test:chat-thread-path-bound": "firebase emulators:exec --only firestore --project burnbar-test 'node chat-thread-path-bound.test.js'",
     "test:storage-rules": "firebase emulators:exec --only storage --project burnbar-test 'node storage-rules.test.js'",
     "test:all": "npm run test:ci && npm run test:storage-rules",
     "test:session-log-backup": "firebase emulators:exec --only firestore --project burnbar-test 'node session-log-backup.test.js'",
