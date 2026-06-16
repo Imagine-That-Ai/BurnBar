@@ -7970,6 +7970,7 @@
 				"$(PROJECT_DIR)/AgentLens/Views/Popover/MenuBarPopoverView.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/AccountSettingsView.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView.swift",
+				"$(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView+Support.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift",
 				"$(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift",

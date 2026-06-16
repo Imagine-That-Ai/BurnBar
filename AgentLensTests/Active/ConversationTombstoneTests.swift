@@ -47,14 +47,16 @@ final class ConversationTombstoneTests: XCTestCase {
         XCTAssertTrue(columns.contains("deletedAt"), "v47 must add a deletedAt tombstone column.")
         XCTAssertTrue(columns.contains("version"), "v47 must add a version counter column.")
 
-        // v47 added the tombstone columns; the backup gate keys off the newest
-        // registered migration, so this test must track later migrations instead
-        // of pinning the tombstone suite to the migration that happened to follow v47.
-        XCTAssertTrue(
-            OpenBurnBarDatabase.migrator.migrations.contains("v47_conversation_tombstones"),
+        let migrations = OpenBurnBarDatabase.migrator.migrations
+        let tombstoneIndex = try XCTUnwrap(
+            migrations.firstIndex(of: "v47_conversation_tombstones"),
             "v47 must remain registered."
         )
-        XCTAssertEqual(OpenBurnBarDatabase.migrator.migrations.last, "v49_token_usage_parent_request_id")
+        let orphanRepairIndex = try XCTUnwrap(
+            migrations.firstIndex(of: "v48_conversation_fts_orphan_repair"),
+            "v48 must remain registered after the tombstone migration."
+        )
+        XCTAssertLessThan(tombstoneIndex, orphanRepairIndex)
 
         // Fresh rows default to version 1 with a null tombstone.
         try dataStore.upsertConversation(makeRecord(id: "conv-version-default"))

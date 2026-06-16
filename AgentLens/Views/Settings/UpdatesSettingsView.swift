@@ -78,6 +78,7 @@ struct UpdatesSettingsView: View {
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
+        .settingsAnchor(SettingsAnchor.updatesOverview)
     }
 
     private func channelBadge(_ text: String) -> some View {

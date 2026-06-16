@@ -263,13 +263,13 @@ struct SettingsView: View {
             // macOS quota-sync workstream threads that bucket in, the ring
             // self-hides (passing `nil`).
             FusionImpactView(dataStore: dataStore)
-        case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
+        case .generalRoot, .updatesRoot, .daemonRoot, .accountRoot, .cloudRoot,
              .agentsRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .switcherRoot, .hermesRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
              .dataControlCenterRoot,
-             .textExpansionRoot, .computerUseRoot, .updatesRoot:
+             .textExpansionRoot, .computerUseRoot:
             // Roots are reachable via the sidebar tab selection — the path
             // stays empty for these. Legacy roots (`connectionsRoot`,
             // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,
