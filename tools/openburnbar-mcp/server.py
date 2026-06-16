@@ -1257,6 +1257,22 @@ def burnbar_semantic_search_conversations(
     and the active embedding version matches OpenBurnBar's deterministic local
     embedder. Otherwise it returns a structured unavailable payload.
     """
+    # V-35: returning raw indexed conversation snippets is a sensitive read. Gate
+    # it behind the `sensitive_read` capability (OFF in the default read_only
+    # profile), at parity with the cloud variant's `cloud_decrypt` gate, so an
+    # external MCP client cannot exfiltrate local conversation content without an
+    # explicit operator opt-in. The denial is policy-audited like every other gate.
+    denied = _capability_denial(
+        "burnbar_semantic_search_conversations",
+        "sensitive_read",
+        reason=(
+            "Returns raw indexed conversation snippets. Disabled by default so an "
+            "external MCP client cannot exfiltrate local conversation content "
+            "without an explicit operator opt-in."
+        ),
+    )
+    if denied:
+        return denied
     path = _default_db_path()
     try:
         with _connect_ro(path) as conn:

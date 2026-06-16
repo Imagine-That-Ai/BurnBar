@@ -88,6 +88,17 @@ class LocalMcpPolicyTests(unittest.TestCase):
         self.assertEqual(spawn["code"], "MCP_CAPABILITY_DISABLED")
         self.assertEqual(spawn["capability"], "spawn_process")
 
+    def test_default_profile_denies_local_semantic_search(self) -> None:
+        # V-35: returning raw indexed conversation snippets is a sensitive read and
+        # must be OFF by default, so an external MCP client cannot exfiltrate local
+        # conversation content without an explicit operator opt-in.
+        result = self._payload(
+            self.server.burnbar_semantic_search_conversations("quota debugging")
+        )
+        self.assertEqual(result["code"], "MCP_CAPABILITY_DISABLED")
+        self.assertEqual(result["capability"], "sensitive_read")
+        self.assertEqual(result["tool"], "burnbar_semantic_search_conversations")
+
     def test_specific_env_flags_enable_only_the_requested_capability(self) -> None:
         os.environ["OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT"] = "true"
         cloud = self._payload(self.server.burnbar_cloud_semantic_search_conversations("vault key"))

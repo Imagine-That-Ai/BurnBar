@@ -59,6 +59,8 @@ def test_semantic_search_returns_unavailable_when_tables_missing(tmp_path, monke
     db_path = tmp_path / "openburnbar.sqlite"
     sqlite3.connect(db_path).close()
     monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+    # V-35: local semantic search now requires the sensitive_read capability.
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "true")
 
     payload = json.loads(server.burnbar_semantic_search_conversations("quota debugging"))
 
@@ -219,6 +221,8 @@ def test_semantic_search_returns_deterministic_hit(tmp_path, monkeypatch):
     conn.close()
 
     monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+    # V-35: local semantic search now requires the sensitive_read capability.
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "true")
     payload = json.loads(
         server.burnbar_semantic_search_conversations(
             "quota routing deterministic semantic repair",
