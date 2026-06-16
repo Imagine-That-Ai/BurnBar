@@ -436,6 +436,7 @@ targets:
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift" "MenuBarPopoverView.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift" "AccountSettingsView.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift" "CloudStoreSettingsView.txt"
+          copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView+Support.swift" "CloudStoreSettingsView+Support.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift" "MacCloudStoreLegalLinks.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift" "SettingsView.txt"
           copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift" "CloudStoreView.txt"
@@ -450,6 +451,7 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MenuBarPopoverView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AccountSettingsView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsView+Support.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt

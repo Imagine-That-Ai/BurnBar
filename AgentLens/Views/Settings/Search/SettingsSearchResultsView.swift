@@ -100,7 +100,7 @@ struct SettingsSearchResultsView: View {
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
              .switcherRoot, .hermesRoot, .agentsRoot, .textExpansionRoot, .mediaRoot,
              .dataControlCenterRoot,
-             .computerUseRoot:
+             .computerUseRoot, .updatesRoot:
             return ""
         case .agentsAccounts: return "Accounts"
         case .agentsCLIs: return "CLIs"

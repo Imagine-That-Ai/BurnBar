@@ -44,6 +44,39 @@ enum SettingsManifest {
             helpText: "Detects installed agents, enables indexing, and configures cloud features."
         ),
 
+        // MARK: Updates
+
+        SettingsItem(
+            id: "updates.overview",
+            tab: .updates,
+            pageRoute: .updatesRoot,
+            anchorID: SettingsAnchor.updatesOverview,
+            title: "App Version",
+            subtitle: "See the installed OpenBurnBar version and update channel",
+            keywords: ["updates", "version", "build", "channel", "release", "appcast"],
+            helpText: "Shows the current app version, build number, source commit, and delivery channel."
+        ),
+        SettingsItem(
+            id: "updates.automaticChecks",
+            tab: .updates,
+            pageRoute: .updatesRoot,
+            anchorID: SettingsAnchor.updatesAutomaticChecks,
+            title: "Automatically Check for Updates",
+            subtitle: "Check shortly after launch and once a day",
+            keywords: ["automatic", "auto", "updates", "check", "daily", "prerelease", "pre-release", "homebrew", "dmg"],
+            helpText: "Controls direct-download update checks and optional prerelease/source update behavior."
+        ),
+        SettingsItem(
+            id: "updates.releaseNotes",
+            tab: .updates,
+            pageRoute: .updatesRoot,
+            anchorID: SettingsAnchor.updatesReleaseNotes,
+            title: "Release Notes",
+            subtitle: "Open the GitHub releases page",
+            keywords: ["release notes", "changelog", "github", "download", "latest"],
+            helpText: "Links to the release feed for inspecting new versions before installing."
+        ),
+
         // MARK: General → Appearance
 
         SettingsItem(
@@ -763,6 +796,9 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.summariesAuto,
+        SettingsAnchor.updatesOverview,
+        SettingsAnchor.updatesAutomaticChecks,
+        SettingsAnchor.updatesReleaseNotes,
         SettingsAnchor.daemonStatus,
         SettingsAnchor.gatewayEnabled,
         SettingsAnchor.gatewayHost,
