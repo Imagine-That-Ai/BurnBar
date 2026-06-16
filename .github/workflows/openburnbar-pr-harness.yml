@@ -13,6 +13,12 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      force_mercury_media_e2e:
+        description: "Run the Mercury/media targeted E2E lane even when changed-path detection would skip it."
+        required: false
+        type: boolean
+        default: false
   schedule:
     # 08:37 UTC daily. Avoid the top of the hour; GitHub documents higher
     # scheduler contention there.
@@ -711,6 +717,8 @@ jobs:
           fetch-depth: 0
       - name: Detect changed paths
         id: filter
+        env:
+          FORCE_MERCURY_MEDIA_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.force_mercury_media_e2e == true }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
@@ -739,7 +747,7 @@ jobs:
           # Keep the Mercury proof fail-closed when its product surface, tests,
           # or runner wiring changes. The workflow and script paths matter
           # because this job is the proof for those harness edits.
-          if match '^\.github/workflows/openburnbar-pr-harness\.yml$|^scripts/test-openburnbar-mobile\.sh$|^scripts/lib/prepare-signal-ffi-xcframework\.sh$|^scripts/ci/inject-firebase-config(-android)?\.sh$|^OpenBurnBarMobile/.*[Mm]edia|^OpenBurnBarMobile/.*[Mm]ercury|^OpenBurnBarMobileTests/.*[Mm]edia|^OpenBurnBarMobileTests/.*[Mm]ercury|^android/.*/media/|^AgentLens/Services/Media/|^functions/src/media'; then
+          if [[ "${FORCE_MERCURY_MEDIA_E2E:-false}" == "true" ]] || match '^\.github/workflows/openburnbar-pr-harness\.yml$|^scripts/test-openburnbar-mobile\.sh$|^scripts/lib/prepare-signal-ffi-xcframework\.sh$|^scripts/ci/inject-firebase-config(-android)?\.sh$|^OpenBurnBarMobile/.*[Mm]edia|^OpenBurnBarMobile/.*[Mm]ercury|^OpenBurnBarMobileTests/.*[Mm]edia|^OpenBurnBarMobileTests/.*[Mm]ercury|^android/.*/media/|^AgentLens/Services/Media/|^functions/src/media'; then
             echo "mercury_media=true" >> "$GITHUB_OUTPUT"
           else
             echo "mercury_media=false" >> "$GITHUB_OUTPUT"
@@ -912,7 +920,8 @@ jobs:
     # This job intentionally proves both Android media and the iOS Mercury/media
     # path. On macos-26 the iOS test bundle compile alone can take ~35 minutes,
     # after Android JVM tests and Signal FFI prep, so keep enough headroom for
-    # actual XCTest execution instead of cancelling during link/install.
+    # actual XCTest execution. The iOS step stays targeted so this lane does
+    # not duplicate the full iOS Mobile job.
     timeout-minutes: 90
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
@@ -979,15 +988,27 @@ jobs:
           OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP: "1"
           OPENBURNBAR_MOBILE_TEST_ATTEMPTS: "1"
           OPENBURNBAR_MOBILE_TEST_FILTER: >-
+            OpenBurnBarMobileTests/AgentIdentityRegistryMacURITests
+            OpenBurnBarMobileTests/AgentLiveStageWiringTests
+            OpenBurnBarMobileTests/HermesServiceTests/testMediaControlStreamUsesPublishedRelayURLAndMediaTimeout
+            OpenBurnBarMobileTests/HermesServiceTests/testInlineMirrorRelayResolverUsesActiveMediaControlWhenRelayDiscoveryIsEmpty
+            OpenBurnBarMobileTests/HermesServiceTests/testInlineMirrorRelayResolverPrefersDiscoveredRelayOverActiveMediaControl
+            OpenBurnBarMobileTests/HermesServiceTests/testInlineMirrorRelayResolverRejectsStoppedMediaControlWithoutRelay
+            OpenBurnBarMobileTests/MediaAttachmentManifestStoreTests
+            OpenBurnBarMobileTests/MediaInboxFileProtectionTests
             OpenBurnBarMobileTests/MercuryPersonalizationTests
             OpenBurnBarMobileTests/MercuryTransferThumbnailCacheTests
-            OpenBurnBarMobileTests/MercuryConsentStoreMattersTests
-            OpenBurnBarMobileTests/MercuryEnvelopeCardTests
-            OpenBurnBarMobileTests/MercuryGradientSnapshotTests
-            OpenBurnBarMobileTests/MercuryRouterTests
-            OpenBurnBarMobileTests/MercuryShimmerModifierTests
             OpenBurnBarMobileTests/OpenBurnBarMobileTests/testMercuryReceiverInstallIsRetainedByRelayTransport
             OpenBurnBarMobileTests/OpenBurnBarMobileTests/testMercuryReceiverCanInstallWithoutBlobBackend
+            OpenBurnBarMobileTests/OpenBurnBarMobileTests/testIrohRequestStreamRoutesSignalSessionMessagesToMediaDispatcher
+            OpenBurnBarMobileTests/ScreenShareAutoTypeFollowPolicyTests
+            OpenBurnBarMobileTests/ScreenShareControlInputPolicyTests
+            OpenBurnBarMobileTests/ScreenSharePiPControllerTests
+            OpenBurnBarMobileTests/ScreenShareSmartTextDoubleTapTests
+            OpenBurnBarMobileTests/ScreenShareSmartZoomReducerTests
+            OpenBurnBarMobileTests/ScreenShareStreamStateOverlayPolicyTests
+            OpenBurnBarMobileTests/ScreenShareViewerStatsMeterTests
+            OpenBurnBarMobileTests/ScreenShareViewportStateTests
         run: ./scripts/test-openburnbar-mobile.sh
 
   targeted-e2e-gate:
