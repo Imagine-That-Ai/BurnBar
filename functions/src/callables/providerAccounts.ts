@@ -19,6 +19,7 @@ import {
 } from "./shared.js";
 import { destroyCredential } from "../secrets.js";
 import { eraseUserAccount } from "../accountDeletion.js";
+import { auditActorLabel } from "./auditLog.js";
 import type { ProviderAccountConnectContext } from "../types.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
@@ -371,6 +372,10 @@ export const deleteUserCloudData = onCall(
       destroyCredential,
       deleteAuthUser: async (targetUID) => {
         await auth.deleteUser(targetUID);
+      },
+      audit: {
+        actor: auditActorLabel(request),
+        domain: "account",
       },
     });
     if (summary.failedSecretDestroys > 0) {

@@ -14,6 +14,7 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [007-ops-notification-plane.md](007-ops-notification-plane.md) | GCP Monitoring + Sentry + deploy gates |
 | [008-remote-control-engine.md](008-remote-control-engine.md) | Iroh-first remote desktop, media, and remote-control engine |
 | [010-project-code-static-parser.md](010-project-code-static-parser.md) | Stateless local Tree-sitter helper for Project Code Memory |
+| [011-stripe-redirect-url-validation.md](011-stripe-redirect-url-validation.md) | Exact-loopback + optional origin allowlist for Stripe redirects |
 
 Related operational docs:
 

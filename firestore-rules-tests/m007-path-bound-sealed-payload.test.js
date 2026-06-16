@@ -12,10 +12,10 @@
  * docId in the AAD) and (b) the legacy/global `OpenBurnBar-CloudVaultSealedPayload-v2`
  * AAD that `validCloudSealedPayload` still tolerates structurally.
  *
- * chat_threads and cli_sessions are intentionally NOT covered here: their writers
- * still seal with the global AAD, so they remain on the lenient validator (see
- * `validPathBoundSealedPayloadForUser` comment in firestore.rules). Tightening
- * them would brick legitimate writes — that is a writer-migration prerequisite.
+ * chat_threads is intentionally NOT covered here: its writers still seal with
+ * the global AAD, so it remains on the lenient validator. cli_sessions has its
+ * own targeted test in cli-session-path-bound.test.js because it has mobile
+ * readers and phone-side reseal writers.
  *
  * Run with:
  *   cd firestore-rules-tests && npm run test:m007-path-bound-sealed-payload
@@ -46,7 +46,7 @@ function payloadAad(uid, collection, docId) {
 }
 
 // The legacy/global AAD that sealPayload emits when called WITHOUT an aadContext
-// (still emitted by the chat_threads / cli_sessions writers).
+// (still emitted by chat_threads writers).
 const GLOBAL_SEALED_PAYLOAD_AAD = "OpenBurnBar-CloudVaultSealedPayload-v2";
 
 function sealedPayload(aad) {
