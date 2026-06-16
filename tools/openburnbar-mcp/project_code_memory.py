@@ -337,7 +337,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)"
+    )
     # agent_memories_fts was a vestigial body-search index that can never be populated:
     # the redacted-index invariant (test_direct_memory_helpers_keep_plaintext_out_of_agent_index)
     # keeps memory bodies OUT of the agent index entirely — they live only in
@@ -1043,7 +1045,14 @@ def remember(
     }
 
 
-def recall(conn: sqlite3.Connection, query: str, project_path: str | None, limit: int, scope: str = "all", include_cross_project: bool = False) -> dict[str, Any]:
+def recall(
+    conn: sqlite3.Connection,
+    query: str,
+    project_path: str | None,
+    limit: int,
+    scope: str = "all",
+    include_cross_project: bool = False,
+) -> dict[str, Any]:
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
@@ -1160,12 +1169,26 @@ def forget(conn: sqlite3.Connection, memory_id: str, project_path: str | None) -
     ).fetchone()
     if row is None:
         return {"status": "not_found", "memoryID": memory_id, **project_payload(root)}
-    remove_project_memory_section(conn, project_id=project_id, project_display_name=root.name, memory_id=memory_id, ts=now_iso())
+    remove_project_memory_section(
+        conn, project_id=project_id, project_display_name=root.name, memory_id=memory_id, ts=now_iso()
+    )
     conn.execute("DELETE FROM agent_memories WHERE id = ?", (memory_id,))
-    audit_event(conn, action="memory.forget", domain="memory", project_id=project_id, subject_id=memory_id, labels=["local hard delete"])
+    audit_event(
+        conn,
+        action="memory.forget",
+        domain="memory",
+        project_id=project_id,
+        subject_id=memory_id,
+        labels=["local hard delete"],
+    )
     # Local row deleted + snapshot section removed; the snapshot is the only cloud
     # presence (synced as a sealed blob), so its removal is the cross-tier reconciliation.
-    return {"status": "ok", "memoryID": memory_id, "cloudDelete": "local_and_snapshot_reconciled", **project_payload(root)}
+    return {
+        "status": "ok",
+        "memoryID": memory_id,
+        "cloudDelete": "local_and_snapshot_reconciled",
+        **project_payload(root),
+    }
 
 
 def audit_trail(conn: sqlite3.Connection, project_path: str | None, limit: int) -> dict[str, Any]:
