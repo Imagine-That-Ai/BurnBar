@@ -228,6 +228,9 @@ enum HermesModelSelectionEngine {
                 persistResolvedSelectedModelID(resolved, coordinator: coordinator)
                 return resolved
             } else {
+                if AssistantModelIDCanonicalizer.containsAdvertisedModelID(selectedModelID, in: coordinator.modelOptions) {
+                    throw HermesServiceError.selectedModelUnavailable(selectedModelID)
+                }
                 guard HermesTransportSelector.preferredRouteEligibleModelID(
                     in: coordinator.modelOptions,
                     favorites: favoriteModelOptions(coordinator: coordinator)
