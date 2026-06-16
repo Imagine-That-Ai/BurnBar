@@ -1051,31 +1051,60 @@ def recall(conn: sqlite3.Connection, query: str, project_path: str | None, limit
     if not tokens and not query.strip():
         return {"status": "unavailable", "code": "EMPTY_QUERY", "reason": "query produced no searchable tokens"}
     lim = max(1, min(int(limit), 50))
-    clauses: list[str] = []
-    args: list[Any] = []
-    if not include_cross_project:
-        clauses.append("m.project_id = ?")
-        args.append(project_id)
-    if scope != "all":
-        clauses.append("m.scope = ?")
-        args.append(scope)
-    where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     # Recall scans the per-project index then resolves bodies from the snapshot. The
     # body is deliberately not indexed (redacted-index invariant: bodies live only in
     # project_memory_snapshots), so ranking is a token-overlap over the resolved body;
     # per-project memory counts are small enough that the bounded scan is correct here.
-    rows = conn.execute(
-        f"""
-        SELECT
-            m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
-            m.tags_json, m.source_path, m.valid_from, m.updated_at
-        FROM agent_memories AS m
-        {where_clause}
-        ORDER BY m.updated_at DESC
-        LIMIT 1000
-        """,
-        args,
-    ).fetchall()
+    if include_cross_project and scope == "all":
+        rows = conn.execute(
+            """
+            SELECT
+                m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
+                m.tags_json, m.source_path, m.valid_from, m.updated_at
+            FROM agent_memories AS m
+            ORDER BY m.updated_at DESC
+            LIMIT 1000
+            """
+        ).fetchall()
+    elif include_cross_project:
+        rows = conn.execute(
+            """
+            SELECT
+                m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
+                m.tags_json, m.source_path, m.valid_from, m.updated_at
+            FROM agent_memories AS m
+            WHERE m.scope = ?
+            ORDER BY m.updated_at DESC
+            LIMIT 1000
+            """,
+            [scope],
+        ).fetchall()
+    elif scope == "all":
+        rows = conn.execute(
+            """
+            SELECT
+                m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
+                m.tags_json, m.source_path, m.valid_from, m.updated_at
+            FROM agent_memories AS m
+            WHERE m.project_id = ?
+            ORDER BY m.updated_at DESC
+            LIMIT 1000
+            """,
+            [project_id],
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT
+                m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
+                m.tags_json, m.source_path, m.valid_from, m.updated_at
+            FROM agent_memories AS m
+            WHERE m.project_id = ? AND m.scope = ?
+            ORDER BY m.updated_at DESC
+            LIMIT 1000
+            """,
+            [project_id, scope],
+        ).fetchall()
     results = []
     for row in rows:
         body = project_memory_section_body(conn, str(row[1]), str(row[0]))

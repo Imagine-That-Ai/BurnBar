@@ -103,6 +103,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeDiagnostics: "daemon.code.diagnostics",
         .codeIndexStatus: "daemon.code.index_status",
         .codeExplore: "daemon.code.explore",
+        .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
         .runResume: "run.resume"
     ]
 

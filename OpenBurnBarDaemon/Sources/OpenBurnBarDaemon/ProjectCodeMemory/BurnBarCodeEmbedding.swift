@@ -23,7 +23,8 @@ extension BurnBarCodeEmbeddingProvider {
 
 /// Default daemon embedder: Apple's built-in NaturalLanguage sentence embedding. No model
 /// file is shipped — it is part of the OS — and it runs in-process. Quality is general-NL
-/// (good on identifiers/comments/doc text); a code-specialised model can replace it later.
+/// (good on identifiers/comments/doc text); the protocol boundary keeps future
+/// code-specialised providers isolated to versioned embedding generation.
 struct NLSentenceEmbeddingProvider: BurnBarCodeEmbeddingProvider {
     let versionID: String
     let dimension: Int

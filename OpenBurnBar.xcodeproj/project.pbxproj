@@ -1200,6 +1200,7 @@
 		9F6B4D4A706DCBC7C0D44CF4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ADB09D71338A6D9E24C0D315 /* Assets.xcassets */; };
 		9F7D4779DD28137458E09536 /* HomeAssistantConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 798B1D5BAE8F76ABE5B3054F /* HomeAssistantConfigTests.swift */; };
 		9F9325D33C44DCAAD631E0B8 /* EscrowRevocationWatcherMattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 752DB05C41A12F6C580A7C15 /* EscrowRevocationWatcherMattersTests.swift */; };
+		9FAB571B98EFE8C493FCB173 /* BurnBarCodeEmbedding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDCD019A341C23A1AE20557 /* BurnBarCodeEmbedding.swift */; };
 		9FBF1891C469583FB35596E0 /* StreamingBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A480A7DE141BEA7DEDCDE6 /* StreamingBubble.swift */; };
 		9FC2DD128B8E599EFFBF6FC7 /* ElderWandToolLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE7FCF0E75A202ABCA2276C /* ElderWandToolLoop.swift */; };
 		9FCE8DD9F1892D080679EE87 /* DataControlCenterFlip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 661DB7E0DA699EA4F09FA0A8 /* DataControlCenterFlip.swift */; };
@@ -2629,6 +2630,7 @@
 		4D4B13F4358076971DE47E63 /* DaemonSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonSettingsView.swift; sourceTree = "<group>"; };
 		4D71556CDA88C221090B7766 /* CloudHeroAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudHeroAnimation.swift; sourceTree = "<group>"; };
 		4DAACC7A45A08F77AEC176A3 /* QuotaCustomizationSettingsDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaCustomizationSettingsDetailView.swift; sourceTree = "<group>"; };
+		4DDCD019A341C23A1AE20557 /* BurnBarCodeEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarCodeEmbedding.swift; sourceTree = "<group>"; };
 		4DE1DD1F879A5CE858C7DB31 /* AutoSummaryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSummaryEngine.swift; sourceTree = "<group>"; };
 		4DF6DE9B4DB59CB5DB1B4554 /* HermesIrohRelayTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesIrohRelayTransport.swift; sourceTree = "<group>"; };
 		4E1DA78566A421F59CDF78E4 /* ComputerUseBudgetStatusStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseBudgetStatusStore.swift; sourceTree = "<group>"; };
@@ -6252,6 +6254,7 @@
 		9C52D6603C54857624956770 /* ProjectCodeMemory */ = {
 			isa = PBXGroup;
 			children = (
+				4DDCD019A341C23A1AE20557 /* BurnBarCodeEmbedding.swift */,
 				8D550634B8E07F65D67F1A2D /* BurnBarProjectCodeMemoryStore.swift */,
 				4E2A6CC413CDF25F63EFD48C /* BurnBarProjectCodeMemoryStore+Helpers.swift */,
 				6A0444AE4AF2E79237777940 /* BurnBarProjectCodeMemoryStore+SQLiteRow.swift */,
@@ -8210,6 +8213,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				32E9962B068377ACB01FA2F5 /* BurnBarCLIAuditVerify.swift in Sources */,
+				9FAB571B98EFE8C493FCB173 /* BurnBarCodeEmbedding.swift in Sources */,
 				69D41B5E232E08206FCCA728 /* BurnBarCodexProviderExecutor.swift in Sources */,
 				505C62F3E489BDB103F872C8 /* BurnBarCrossVendorDegradePolicy.swift in Sources */,
 				E19E204145E70E6152DA4ECF /* BurnBarDaemonDatabaseCipher.swift in Sources */,
