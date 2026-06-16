@@ -726,6 +726,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     }
 
     private func staticParserHelperPath() throws -> URL {
+        if let configuredPath = ProcessInfo.processInfo.environment["OPENBURNBAR_CODE_STATIC_PARSER_PATH"],
+           configuredPath.isEmpty == false,
+           FileManager.default.isExecutableFile(atPath: configuredPath) {
+            return URL(fileURLWithPath: configuredPath)
+        }
+
         let cwd = FileManager.default.currentDirectoryPath
         let candidates = [
             "\(cwd)/crates/project-code-static-parser/target/debug/project-code-static-parser",
