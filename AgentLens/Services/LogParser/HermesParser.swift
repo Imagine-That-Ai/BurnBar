@@ -377,7 +377,7 @@ final class HermesParser: LogParser, Sendable {
         excluding seenSessionIds: Set<String>,
         scope: HermesHomeScope
     ) -> ParseResult {
-        guard let data = try? Data(contentsOf: indexURL), // try?-ok(optional index read)
+        guard let data = ParserInputLimits.boundedContents(of: indexURL), // try?-ok(size-guarded optional index read)
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
         }
@@ -507,7 +507,7 @@ final class HermesParser: LogParser, Sendable {
         excluding seenSessionIds: Set<String>,
         scope: HermesHomeScope
     ) -> ParseResult {
-        guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
+        guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded optional snapshot read)
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
         }

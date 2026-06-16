@@ -109,7 +109,7 @@ final class AugmentParser: LogParser, Sendable {
         file: URL,
         sessionId: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let data = try? Data(contentsOf: file), // try?-ok(log read guard-return-nil)
+        guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded read, guard-return-nil)
               let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(malformed JSON guard-return-nil)
             return nil
         }

@@ -493,15 +493,9 @@ final class OpenClawParser: LogParser, Sendable {
     }
 
     private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: ConversationRecord)? {
-        let data: Data
-        if file.pathExtension.lowercased() == "jsonl" || file.pathExtension.lowercased() == "log" {
-            guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
-            defer { try? handle.close() } // try?-ok(handle teardown)
-            data = handle.readDataToEndOfFile()
-        } else {
-            guard let fileData = try? Data(contentsOf: file) else { return nil } // try?-ok(session read, skip if absent)
-            data = fileData
-        }
+        // Pre-flight size guard for both the streaming (jsonl/log) and whole-file
+        // (json) paths so a maliciously huge session file can't exhaust memory.
+        guard let data = ParserInputLimits.boundedContents(of: file) else { return nil } // try?-ok(size-guarded read, skip if absent/oversized)
 
         var turns: [(role: String, text: String, timestamp: Date?)] = []
         var inputTokens = 0
@@ -611,16 +605,22 @@ final class OpenClawParser: LogParser, Sendable {
         return flattenSessionObjects(root)
     }
 
-    private static func flattenSessionObjects(_ value: Any) -> [[String: Any]] {
+    private static func flattenSessionObjects(_ value: Any, depth: Int = 0) -> [[String: Any]] {
+        // Bound recursion so adversarially nested arrays/objects can't blow the
+        // stack. Beyond the limit we stop descending: a dictionary is emitted as
+        // a leaf, an array contributes nothing further.
+        guard ParserInputLimits.depthWithinLimit(depth) else {
+            return (value as? [String: Any]).map { [$0] } ?? []
+        }
         if let array = value as? [Any] {
-            return array.flatMap(flattenSessionObjects)
+            return array.flatMap { flattenSessionObjects($0, depth: depth + 1) }
         }
         guard let object = value as? [String: Any] else { return [] }
 
         let nestedKeys = ["messages", "turns", "events", "conversation", "history", "items"]
         let nested = nestedKeys.flatMap { key -> [[String: Any]] in
             guard let value = object[key] else { return [] }
-            return flattenSessionObjects(value)
+            return flattenSessionObjects(value, depth: depth + 1)
         }
         return nested.isEmpty ? [object] : nested
     }
