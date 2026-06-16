@@ -81,9 +81,12 @@ export function normalizeIpv4(host: string): string | null {
     return null;
   }
 
-  const numericParts = parts.map(parseIpv4NumericPart);
-  if (numericParts.some((part) => part === null)) return null;
-  const nums = numericParts as number[];
+  const nums: number[] = [];
+  for (const part of parts) {
+    const numericPart = parseIpv4NumericPart(part);
+    if (numericPart === null) return null;
+    nums.push(numericPart);
+  }
 
   let value: number;
   switch (nums.length) {
