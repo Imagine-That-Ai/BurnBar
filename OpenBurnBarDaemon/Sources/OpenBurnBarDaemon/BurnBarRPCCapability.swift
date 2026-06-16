@@ -71,6 +71,11 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .computerUseApprovalPending, .computerUseApprovalRespond,
              .computerUsePanicHalt, .computerUseAuditExport:
             return .computerUse
+        case .phoneControlPinProvision:
+            // T-DMN-04: provisioning mutates daemon trust state; classify with
+            // config-credential writes so only a fully-trusted first-party peer
+            // can pin a phone key.
+            return .config
         case .controllerSummary, .controllerRuntimeSnapshot,
              .controllerProjectsList, .controllerProjectGet,
              .controllerProjectUpsert, .reviewRunRecord,

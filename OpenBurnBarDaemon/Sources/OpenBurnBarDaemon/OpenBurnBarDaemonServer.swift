@@ -30,6 +30,10 @@ public actor BurnBarDaemonServer {
     /// tests and unsigned developer builds; production wires it enforcing on the
     /// same flag as the peer-codesig gate.
     let localAuthProofVerifier: DaemonLocalAuthProofVerifier?
+    /// T-DMN-04: daemon-side store for pinned phone-control verifying keys. The
+    /// first-party Mac app provisions this store via `phoneControlPinProvision` so
+    /// the daemon can verify local-auth proofs independently of the app.
+    let phoneControlPinStore: DaemonPhoneKeyPinStore?
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -46,6 +50,7 @@ public actor BurnBarDaemonServer {
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    var localAuthVerifiedComputerUseSessions: [String: Date] = [:]
 
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
@@ -59,13 +64,15 @@ public actor BurnBarDaemonServer {
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
-        localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil
+        localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
+        phoneControlPinStore: DaemonPhoneKeyPinStore? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
         self.peerAuthenticator = peerAuthenticator
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
+        self.phoneControlPinStore = phoneControlPinStore
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -531,7 +538,8 @@ public actor BurnBarDaemonServer {
                 )
             case .computerUseSessionStart, .computerUseInvoke,
                  .computerUseApprovalPending, .computerUseApprovalRespond,
-                 .computerUsePanicHalt, .computerUseAuditExport:
+                 .computerUsePanicHalt, .computerUseAuditExport,
+                 .phoneControlPinProvision:
                 return try await handleComputerUseRPC(
                     method: method,
                     decoder: decoder,

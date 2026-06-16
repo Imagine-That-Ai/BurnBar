@@ -9,6 +9,7 @@ const {
   requireReviewStatus,
   requireChatMemoryProvenance,
   requireCloakedVector,
+  requireOptionalProjectHmac,
   slugify,
 } = __testing__;
 
@@ -31,14 +32,28 @@ describe("Pensieve tier limits", () => {
 });
 
 describe("requireSourceKind", () => {
-  it("accepts the three allowed source kinds", () => {
-    for (const kind of ["repo_docs", "notes", "chat_memory"]) {
+  it("accepts the allowed source kinds, including explicit hosted code opt-in", () => {
+    for (const kind of ["repo_docs", "notes", "chat_memory", "code"]) {
       expect(requireSourceKind(kind, "sourceKind")).toBe(kind);
     }
   });
   it("rejects unknown source kinds", () => {
     expect(() => requireSourceKind("secrets", "sourceKind")).toThrow(/must be one of/);
     expect(() => requireSourceKind(undefined, "sourceKind")).toThrow();
+  });
+});
+
+describe("requireOptionalProjectHmac", () => {
+  it("accepts absent values and canonical 64-character HMACs", () => {
+    expect(requireOptionalProjectHmac(undefined, "projectHmac")).toBeUndefined();
+    expect(requireOptionalProjectHmac(null, "projectHmac")).toBeUndefined();
+    expect(requireOptionalProjectHmac("ab".repeat(32), "projectHmac")).toBe("ab".repeat(32));
+  });
+
+  it("rejects malformed project HMACs", () => {
+    expect(() => requireOptionalProjectHmac("not-a-hmac", "projectHmac")).toThrow(/hex digest/);
+    expect(() => requireOptionalProjectHmac("a".repeat(63), "projectHmac")).toThrow(/64-character/);
+    expect(() => requireOptionalProjectHmac("a".repeat(128), "projectHmac")).toThrow(/64-character/);
   });
 });
 

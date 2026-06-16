@@ -33,7 +33,7 @@ enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
 // AUDIT(@unchecked Sendable): raw SQLite access is serialized through `dbQueue`.
 // sendable-allowlist: sqlite-raw-pointer
 final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
-    fileprivate struct SQLiteRow {
+    struct SQLiteRow {
         let values: [String?]
     }
 
@@ -496,7 +496,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         )
                         chunkCount += 1
                     }
-                    for symbol in Self.extractSymbols(text: text, lang: lang, relativePath: relativePath, projectID: projectID, artifactID: artifactID, blobSHA: blobSHA) {
+                    for symbol in Self.extractSymbols(text: text, lang: lang, relativePath: relativePath, rootPath: root.path, projectID: projectID, artifactID: artifactID, blobSHA: blobSHA) {
                         try insertSymbol(symbol, indexedAt: now)
                         symbolCount += 1
                     }
@@ -690,6 +690,15 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
         let projectID = Self.projectID(for: root)
+        let exactReferences = try self.exactLSPReferences(
+            symbolName: request.name,
+            root: root,
+            projectID: projectID,
+            limit: request.limit
+        )
+        if exactReferences.isEmpty == false {
+            return BurnBarProjectCodeReferencesResponse(traceID: traceID, projectID: projectID, references: exactReferences)
+        }
         let references: [BurnBarProjectCodeReference] = try databaseSync {
             try queryRows(
                 """
@@ -932,6 +941,34 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let language: String?
         let blobSha: String
         let text: String
+        let rootPath: String?
+        let operation: String?
+        let position: StaticParserPosition?
+
+        init(
+            requestId: String,
+            filePath: String,
+            language: String?,
+            blobSha: String,
+            text: String,
+            rootPath: String? = nil,
+            operation: String? = nil,
+            position: StaticParserPosition? = nil
+        ) {
+            self.requestId = requestId
+            self.filePath = filePath
+            self.language = language
+            self.blobSha = blobSha
+            self.text = text
+            self.rootPath = rootPath
+            self.operation = operation
+            self.position = position
+        }
+    }
+
+    struct StaticParserPosition: Encodable {
+        let line: Int
+        let character: Int
     }
 
     struct StaticParserResponse: Decodable {
@@ -941,6 +978,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let ok: Bool
         let hasParseError: Bool
         let symbols: [StaticParserSymbol]
+        let references: [StaticParserReference]?
         let errors: [String]
     }
 
@@ -953,11 +991,21 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let evidence: StaticParserTierEvidence
     }
 
+    struct StaticParserReference: Decodable {
+        let filePath: String
+        let startLine: Int
+        let endLine: Int
+        let startCharacter: Int
+        let endCharacter: Int
+        let confidenceTier: String
+    }
+
     struct StaticParserTierEvidence: Decodable {
         let parser: String?
         let language: String?
         let blobSha: String?
         let shaMatch: Bool?
+        let lspResponded: Bool?
     }
 
     private func databaseSync<T>(_ work: () throws -> T) rethrows -> T {
@@ -1613,6 +1661,100 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
     }
 
+    private func exactLSPReferences(
+        symbolName: String,
+        root: URL,
+        projectID: String,
+        limit: Int
+    ) throws -> [BurnBarProjectCodeReference] {
+        guard let helperPath = Self.staticParserExecutablePath() else { return [] }
+        let target = try databaseSync {
+            try querySymbols(
+                """
+                SELECT s.id, s.artifact_id, a.file_path, s.name, s.kind, s.range_json,
+                       s.confidence_tier, s.blob_sha, s.tier_evidence_json
+                FROM code_symbols s
+                JOIN code_artifacts a ON a.id = s.artifact_id
+                WHERE s.project_id = ? AND s.name = ?
+                ORDER BY
+                    CASE WHEN s.confidence_tier = 'exact_lsp' THEN 0
+                         WHEN s.confidence_tier = 'static_tree_sitter' THEN 1
+                         ELSE 2 END,
+                    a.file_path ASC
+                LIMIT 1
+                """,
+                [.text(projectID), .text(symbolName)]
+            ).first
+        }
+        guard let target,
+              Self.isCurrentBlob(root: root, filePath: target.filePath, blobSHA: target.blobSHA) else {
+            return []
+        }
+        let fileURL = root.appendingPathComponent(target.filePath, isDirectory: false)
+        guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else { return [] }
+        let request = StaticParserRequest(
+            requestId: "refs:\(symbolName)",
+            filePath: target.filePath,
+            language: Self.language(for: fileURL),
+            blobSha: target.blobSHA,
+            text: text,
+            rootPath: root.path,
+            operation: "references",
+            position: StaticParserPosition(
+                line: max(0, target.range.startLine - 1),
+                character: max(0, (target.range.startColumn ?? 1) - 1)
+            )
+        )
+        guard let payload = try? JSONEncoder().encode(request) else { return [] }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: helperPath)
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            input.fileHandleForWriting.write(payload)
+            input.fileHandleForWriting.write(Data("\n".utf8))
+            try? input.fileHandleForWriting.close()
+            process.waitUntilExit()
+        } catch {
+            return []
+        }
+        guard process.terminationStatus == 0 else { return [] }
+        let outputData = output.fileHandleForReading.readDataToEndOfFile()
+        guard let line = String(data: outputData, encoding: .utf8)?
+            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
+            .first,
+            let response = try? JSONDecoder().decode(StaticParserResponse.self, from: Data(line.utf8)),
+            response.ok,
+            response.blobSha == target.blobSHA,
+            response.errors.isEmpty,
+            let refs = response.references,
+            refs.isEmpty == false
+        else {
+            return []
+        }
+        let capped = max(1, min(limit, 200))
+        return refs.prefix(capped).enumerated().map { index, ref in
+            let range = BurnBarProjectCodeRange(
+                startLine: max(1, ref.startLine),
+                endLine: max(max(1, ref.startLine), ref.endLine),
+                startColumn: ref.startCharacter + 1,
+                endColumn: ref.endCharacter + 1
+            )
+            let id = "lsp_ref_" + String(Self.sha256Hex("\(projectID):\(symbolName):\(ref.filePath):\(index)").prefix(32))
+            return BurnBarProjectCodeReference(
+                referenceID: id,
+                fromFilePath: ref.filePath,
+                targetSymbol: Self.publicSymbol(target),
+                range: range,
+                confidenceTier: ref.confidenceTier
+            )
+        }
+    }
+
     private func codeSearchHits(query: String, root: URL, projectID: String, limit: Int) throws -> [BurnBarProjectCodeSearchHit] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyQuery }
@@ -1847,28 +1989,5 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
 
     private static func normalizedStorageBudgetBytes(_ requested: Int?) -> Int {
         max(1, min(requested ?? defaultProjectStorageBudgetBytes, maximumProjectStorageBudgetBytes))
-    }
-}
-
-private extension BurnBarProjectCodeMemoryStore.SQLiteRow {
-    func optionalString(_ index: Int) -> String? {
-        guard values.indices.contains(index) else { return nil }
-        return values[index]
-    }
-
-    func string(_ index: Int) -> String {
-        optionalString(index) ?? ""
-    }
-
-    func int64(_ index: Int) -> Int64 {
-        Int64(string(index)) ?? 0
-    }
-
-    func double(_ index: Int) -> Double {
-        Double(string(index)) ?? 0
-    }
-
-    func optionalDouble(_ index: Int) -> Double? {
-        optionalString(index).flatMap(Double.init)
     }
 }

@@ -34,6 +34,7 @@ bash -n scripts/ops/activate-production-ops-plane.sh
 bash -n scripts/ops/verify-production-ops-plane.sh
 bash -n scripts/ops/verify-firestore-disaster-recovery.sh
 bash -n scripts/ops/verify-github-governance.sh
+bash -n scripts/ops/verify-firestore-app-check-enforcement.sh
 bash -n scripts/ops/resolve-functions-base-url.sh
 bash -n scripts/ops/deploy-health-functions.sh
 bash -n scripts/ops/discover-gcp-access.sh

@@ -120,6 +120,8 @@ final class AgentCapabilityGrantStore {
                 trustMode: request.trustMode,
                 receivedAt: now,
                 sourceDeviceID: request.sourceDeviceID,
+                localAuthProof: request.localAuthProof,
+                localAuthIntentHashHex: request.localAuthProof?.signedIntentHash,
                 message: "Desktop tools are off."
             )
         } else {
@@ -136,6 +138,8 @@ final class AgentCapabilityGrantStore {
                 receivedAt: now,
                 grantExpiresAt: grant.expiresAt,
                 sourceDeviceID: request.sourceDeviceID,
+                localAuthProof: request.localAuthProof,
+                localAuthIntentHashHex: request.localAuthProof?.signedIntentHash,
                 message: "\(request.preset.title) permissions enabled for this thread."
             )
         }

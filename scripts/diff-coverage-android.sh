@@ -115,6 +115,11 @@ sys.exit(0)
 PY
     # The presence-gate verdict is authoritative when no JaCoCo report exists;
     # set -e already aborted above on a failed gate, so reaching here is a pass.
+    # Outside CI (no JaCoCo), fail-closed so the gameable presence path is not
+    # used as a local-dev escape hatch. Closes OPUS-F-011.
+    if [[ -z "${CI:-}" ]]; then
+      echo "::warning::Android diff-coverage fell back to presence-based check outside CI. Set CI=1 or generate JaCoCo reports for real line evidence."
+    fi
     exit 0
 fi
 

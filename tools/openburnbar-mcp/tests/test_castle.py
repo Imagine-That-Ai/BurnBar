@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -176,6 +177,107 @@ def test_gemini_completion_parse_is_strict_about_empty_stdout_and_exit_code() ->
     assert adapter.parse_completion("", "", exit_code=0)["is_error"] is True
     assert adapter.parse_completion('{"error":null,"text":"ok"}', "", exit_code=1)["is_error"] is True
     assert adapter.parse_completion('{"error":null,"text":"ok"}', "", exit_code=0)["is_error"] is False
+
+
+def test_claude_stream_json_command_uses_verbose_print_mode(tmp_path: Path) -> None:
+    payload = castle.ClaudeAdapter().build_command(
+        task_prompt="touch castle_probe.txt",
+        model_arg="claude-opus-4-8",
+        cwd=str(tmp_path),
+        prompt_path=str(tmp_path / "prompt.txt"),
+    )
+
+    assert payload["argv"][:4] == ["claude", "-p", "--verbose", "--output-format"]
+    assert "stream-json" in payload["argv"]
+
+
+class _FakeProbeAdapter:
+    runtime = "codex"
+    executable_name = "codex"
+
+    def __init__(self, *, polluted: bool = False) -> None:
+        self.polluted = polluted
+
+    def auth_precondition(self) -> dict:
+        return {"status": "ok", "runtime": self.runtime}
+
+    def build_command(self, *, result_path: str, done_path: str, **_: object) -> dict:
+        add = "git add -A" if self.polluted else "git add castle_probe.txt"
+        command = " && ".join(
+            [
+                "printf landed > castle_probe.txt",
+                "mkdir -p .serena",
+                "printf leaked > .serena/project.yml",
+                add,
+                "git commit -q -m 'castle smoke probe'",
+                f"printf '{{\"error\":null}}\\n' > {shlex.quote(result_path)}",
+                f'printf \'{{"exitCode":0,"runtime":"codex","modelArg":"fake"}}\\n\' > {shlex.quote(done_path)}',
+            ]
+        )
+        return {"command": command}
+
+    def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict:
+        return {"is_error": exit_code != 0}
+
+
+def test_smoke_probe_reports_clean_committed_tree(monkeypatch) -> None:
+    monkeypatch.setitem(castle.REGISTRY, "codex", _FakeProbeAdapter(polluted=False))
+
+    payload = castle.adapter_smoke_probe(castle.REGISTRY["codex"], "fake", ttl=0, timeout_seconds=30)
+
+    assert payload["landsCommit"] is True
+    assert payload["cleanCommit"] is True
+    assert payload["committedFiles"] == ["castle_probe.txt"]
+
+
+def test_smoke_probe_fails_polluted_committed_tree(monkeypatch) -> None:
+    monkeypatch.setitem(castle.REGISTRY, "codex", _FakeProbeAdapter(polluted=True))
+
+    payload = castle.adapter_smoke_probe(castle.REGISTRY["codex"], "fake", ttl=0, timeout_seconds=30)
+
+    assert payload["landsCommit"] is False
+    assert payload["code"] == "CASTLE_PROBE_COMMIT_POLLUTION"
+    assert payload["committedFiles"] == ["castle_probe.txt", "prompt.txt"]
+    assert payload["statusRecord"]["phase"] == "failed"
+
+
+def test_build_command_defaults_status_path_to_castle_cache(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(castle, "CASTLE_CACHE_DIR", tmp_path / "castle")
+
+    payload = castle.CodexAdapter().build_command(
+        task_prompt="touch castle_probe.txt",
+        model_arg="gpt-5.5",
+        cwd=str(tmp_path),
+        prompt_path=str(tmp_path / "prompt.txt"),
+    )
+
+    status_path = Path(payload["statusPath"])
+    assert status_path.name == "status.json"
+    assert status_path.parent.parent == tmp_path / "castle" / "runs"
+
+
+def test_droid_build_command_returns_status_path_for_status_bridge(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(castle, "CASTLE_CACHE_DIR", tmp_path / "castle")
+    monkeypatch.setattr(
+        ministry,
+        "build_droid_command",
+        lambda *args, **kwargs: {
+            "status": "ok",
+            "command": "droid exec",
+            "resultPath": kwargs.get("result_path"),
+            "donePath": kwargs.get("done_path"),
+        },
+    )
+
+    payload = castle.DroidAdapter().build_command(
+        task_prompt="touch castle_probe.txt",
+        model_arg="gpt-5.4-mini",
+        cwd=str(tmp_path),
+    )
+
+    status_path = Path(payload["statusPath"])
+    assert status_path.name == "status.json"
+    assert status_path.parent.parent == tmp_path / "castle" / "runs"
 
 
 def test_collect_result_writes_noop_status_when_head_does_not_move(tmp_path: Path) -> None:

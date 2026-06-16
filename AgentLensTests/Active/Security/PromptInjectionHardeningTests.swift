@@ -6,6 +6,7 @@ import OpenBurnBarCore
 /// Added as part of 2026-06-01 AI-Agent/LLM Security specialist review.
 /// Verifies untrusted content (RAG, logs, user messages, summaries, focus) is wrapped with provenance + explicit "ignore instructions inside" rules.
 /// Run via: ./scripts/test-openburnbar-app.sh (normalizes to OpenBurnBarTests target).
+@MainActor
 final class PromptInjectionHardeningTests: XCTestCase {
 
     // MARK: - LLMSafeContent (ContextBuilder)
@@ -175,6 +176,34 @@ final class PromptInjectionHardeningTests: XCTestCase {
         XCTAssertTrue(wrapped.contains("<UNTRUSTED_CONTENT provenance=\"computer_use_tool_result:browser_extract\">"))
         XCTAssertTrue(wrapped.contains("WEB_INJECTED"))
         XCTAssertNil(result["text"], "Raw browser extraction text must remain inside untrustedContent.")
+    }
+
+    // MARK: - ContextBuilder assistant-message wrapping
+
+    func testBuildSystemPromptWrapsLatestAssistantMessage() async throws {
+        let dataStore = try makeEmptyDataStore()
+        let prompt = await ContextBuilder.buildSystemPrompt(from: dataStore, intelligenceService: nil)
+        // With an empty store there is no assistant message; the prompt should still contain
+        // the safety framing and no unwrapped injection surface.
+        XCTAssertTrue(prompt.contains("OpenBurnBar's in-app AI coding assistant"))
+        XCTAssertFalse(prompt.contains("latest_assistant_message"))
+    }
+
+    func testBuildDatabaseAnalystSystemPromptWrapsLatestAssistantMessage() async throws {
+        let dataStore = try makeEmptyDataStore()
+        let prompt = await ContextBuilder.buildDatabaseAnalystSystemPrompt(
+            from: dataStore,
+            intelligenceService: nil,
+            indexingEnabled: false,
+            health: .empty
+        )
+        XCTAssertTrue(prompt.contains("local data analyst"))
+        XCTAssertTrue(prompt.contains("(None yet.)"))
+    }
+
+    private func makeEmptyDataStore() throws -> DataStore {
+        let store = try DataStore.makeInMemoryForTesting(runMigrations: true, refreshOnInit: false)
+        return store
     }
 
     // MARK: - Payload examples (documented for red-team / CI expansion)

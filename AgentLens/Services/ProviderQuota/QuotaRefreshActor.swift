@@ -676,6 +676,12 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".grok", isDirectory: true).path
     case .cursorAgent:
         return homeDirectoryURL.appendingPathComponent(".cursor-agent", isDirectory: true).path
+    case .gemini:
+        return homeDirectoryURL.appendingPathComponent(".gemini", isDirectory: true).path
+    case .kimi:
+        return homeDirectoryURL.appendingPathComponent(".kimi", isDirectory: true).path
+    case .pi:
+        return homeDirectoryURL.appendingPathComponent(".pi", isDirectory: true).path
     }
 }
 
@@ -720,6 +726,12 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .xAI
     case .cursorAgent:
         return .cursorAgent
+    case .gemini:
+        return .geminiCLI
+    case .kimi:
+        return .kimi
+    case .pi:
+        return .piAgent
     }
 }
 

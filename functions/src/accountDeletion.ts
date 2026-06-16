@@ -8,6 +8,7 @@
 
 import type { CollectionReference, DocumentReference, Firestore, Query, WriteBatch } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { logWarn } from "./logging.js";
 
 interface AccountDeletionSummary {
   destroyedSecrets: number;
@@ -95,7 +96,24 @@ export async function eraseUserCloudData(
     failedSecretDestroys: 0,
     deletedDocuments: 0,
   };
-  const logger = options.logger ?? console;
+  const logger = options.logger ?? null;
+
+  const safeWarn = (msg: string, err?: unknown, extra?: Record<string, unknown>) => {
+    if (logger) {
+      // Tests/mock callers may still use raw console.warn; keep the contract but
+      // never pass raw UIDs/paths in production call sites.
+      logger.warn(msg, err);
+    } else {
+      // Route through the structured scrubber instead of raw console.warn so
+      // UIDs and paths are truncated/redacted per I3 invariant. Closes OPUS-F-005.
+      logWarn({
+        event: "account_deletion_warning",
+        message: msg,
+        error: err instanceof Error ? err.message : String(err ?? ""),
+        ...extra,
+      });
+    }
+  };
 
   const secretRefs = await db.collection("provider_account_secret_refs").where("uid", "==", uid).get();
 
@@ -110,7 +128,10 @@ export async function eraseUserCloudData(
         summary.destroyedSecrets += 1;
       } catch (error) {
         summary.failedSecretDestroys += 1;
-        logger.warn(`Failed to destroy provider credential secret for ${uid}/${doc.id}:`, error);
+        safeWarn("Failed to destroy provider credential secret", error, {
+          document_id: doc.id,
+          collection: "provider_account_secret_refs",
+        });
       }
     }
     await batcher.delete(doc.ref);
@@ -153,7 +174,7 @@ export async function eraseUserCloudData(
     try {
       await deleteStorageObjects(prefix);
     } catch (error) {
-      logger.warn(`Failed to delete Cloud Storage objects (${prefix}) for ${uid}:`, error);
+      safeWarn("Failed to delete Cloud Storage objects", error, { storage_prefix_kind: prefix.startsWith("avatars/") ? "avatars" : "users" });
     }
   }
 

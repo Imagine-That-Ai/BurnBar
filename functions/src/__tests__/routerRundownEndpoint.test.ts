@@ -27,6 +27,7 @@ let firestoreReads = 0;
 
 vi.mock("firebase-admin/firestore", () => ({
   getFirestore: () => ({
+    settings: vi.fn(),
     doc: (path: string) => ({
       get: async () => {
         firestoreReads += 1;
@@ -34,6 +35,11 @@ vi.mock("firebase-admin/firestore", () => ({
       },
     }),
   }),
+}));
+
+vi.mock("../callables/publicRateLimit.js", () => ({
+  checkPublicHttpEndpointRateLimit: vi.fn(),
+  clientIpFromHttpRequest: () => "127.0.0.1",
 }));
 
 // An Express/Node-response double sufficient for the firebase-functions

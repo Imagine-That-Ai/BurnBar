@@ -102,6 +102,7 @@ website/public/downloads/*.zip
 tools/burnbar-mcp/.venv/
 
 # Internal AI agent memory (not for public consumption)
+.codex/
 .claude/agent-memory/
 .claude/settings.local.json
 .claude/*.lock

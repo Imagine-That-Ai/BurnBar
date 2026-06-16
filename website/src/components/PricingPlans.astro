@@ -14,14 +14,21 @@ const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
 const cloudPro = SITE.pricing.tiers.find((tier) => tier.id === "cloud_pro")!;
 const ultra = SITE.pricing.tiers.find((tier) => tier.id === "ultra")!;
-const allowance = cloudPro.allowance as {
+const proAllowance = cloudPro.allowance as {
   hostedAgentActionsMonthly: number;
   relayGBMonthly: number;
   hostedAgentActionMonthlyCap: number;
   relayGBMonthlyCap: number;
+  wandParallelMax?: number;
 };
 const actionTopUp = SITE.pricing.topUps[0]!;
 const relayTopUp = SITE.pricing.topUps[1]!;
+const wandCap = (tier: { allowance?: { wandParallelMax?: number } }) =>
+  tier.allowance?.wandParallelMax ?? 1;
+const wandWorkers = (tier: { allowance?: { wandParallelMax?: number } }) => {
+  const cap = wandCap(tier);
+  return cap === 1 ? "1 local worker per Wand cast" : `${cap} parallel workers per Wand cast`;
+};
 
 const savePct = (monthly: string, annual: string) =>
   Math.round((1 - Number(annual) / (Number(monthly) * 12)) * 100);
@@ -82,6 +89,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       <span class="plan__inc-label mono">Included</span>
       <ul class="plan__specs">
         <li>Smart insights &amp; configurable daily digest</li>
+        <li>The Wand: {wandWorkers(free)}</li>
         <li>Self-hosted quota runner — Claude Code &amp; Codex</li>
         <li>Hermes assistant on local backends</li>
         <li>Optional Firebase sync — metadata only</li>
@@ -132,6 +140,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       <li>Conversation backup &amp; resume across iPhone, iPad &amp; Mac</li>
       <li>Encrypted session history, searchable everywhere</li>
       <li>Agent memory sync across every device</li>
+      <li>The Wand opens {wandCap(cloud)} agents in parallel</li>
       <li>Verified entitlement — checked server-side</li>
     </ul>
 
@@ -195,6 +204,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       <li>Everything in BurnBar Cloud</li>
       <li>Floo — see &amp; use your Mac from your phone</li>
       <li>Agent Control — agents work under your grant</li>
+      <li>The Wand opens {wandCap(cloudPro)} agents in parallel</li>
       <li>Live screen, files, calls &amp; shared clipboard</li>
       <li>Tamper-proof action record · per-task grants</li>
     </ul>
@@ -202,8 +212,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     <div class="plan__included">
       <span class="plan__inc-label mono">Included each month</span>
       <ul class="plan__specs">
-        <li>{allowance.hostedAgentActionsMonthly} hosted Agent Control actions</li>
-        <li>{allowance.relayGBMonthly} relay-accounting GB</li>
+        <li>{proAllowance.hostedAgentActionsMonthly} hosted Agent Control actions</li>
+        <li>{proAllowance.relayGBMonthly} relay-accounting GB</li>
         <li>Prepaid overage only · BYOK never spends credits</li>
       </ul>
     </div>
@@ -261,6 +271,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       <li>100 Pensieve knowledge sources</li>
       <li>500,000 encrypted memory chunks · 10 GB</li>
       <li>Repo docs, notes &amp; chat memories your agents recall</li>
+      <li>The Wand opens {wandCap(ultra)} agents in parallel</li>
       <li>Sealed on-device · search runs over encrypted structures (some patterns stay visible)</li>
       <li>Same hosted Agent Control &amp; relay allowance as Pro</li>
     </ul>
@@ -273,7 +284,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           visible
         </li>
         <li>
-          {allowance.hostedAgentActionsMonthly} hosted actions · {allowance.relayGBMonthly} relay-accounting
+          {proAllowance.hostedAgentActionsMonthly} hosted actions · {proAllowance.relayGBMonthly} relay-accounting
           GB each month
         </li>
         <li>Prepaid overage only · BYOK never spends credits</li>
@@ -301,9 +312,9 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
           <span class="topup__price mono">${relayTopUp.priceUSD}</span>
         </div>
         <p class="topup__note">
-          Monthly caps still apply ({allowance.hostedAgentActionMonthlyCap.toLocaleString()} actions
-          · {allowance.relayGBMonthlyCap} GB). When allowance and top-ups run out, hosted work
-          pauses instead of silently spending more.
+          Monthly caps still apply ({proAllowance.hostedAgentActionMonthlyCap.toLocaleString()}{" "}
+          actions · {proAllowance.relayGBMonthlyCap} GB). When allowance and top-ups run out, hosted
+          work pauses instead of silently spending more.
         </p>
       </div>
     </div>

@@ -1,0 +1,377 @@
+{
+  "audit": {
+    "commit": "60faa7022767c7287458574765d71e4ecf5b83d9",
+    "date": "2026-06-16",
+    "auditor": "Kimi Code CLI"
+  },
+  "findings": [
+    {
+      "id": "FINDING-001",
+      "title": "Local SQLite database is plaintext by default",
+      "severity": "Critical",
+      "status": "Open",
+      "cwe": "CWE-312",
+      "area": "Local database / cryptography",
+      "evidence": "DatabaseEncryptionService.swift exists but GRDB-SQLCipher codec is not enabled; docs/THREAT_MODEL.md admits SQLCipher not yet vendored.",
+      "impact": "Any same-user process or filesystem access can read all agent logs, provider tokens, and usage data.",
+      "acceptance_criteria": [
+        "PRAGMA cipher_version returns a version in Release builds.",
+        "DatabaseEncryptionService derives a unique key per install and stores it in the keychain.",
+        "Migration path documented for existing plaintext databases."
+      ],
+      "related_threats": ["THREAT-001", "THREAT-005"],
+      "related_prior_audit": "M-001"
+    },
+    {
+      "id": "FINDING-002",
+      "title": "App and daemon run unsandboxed",
+      "severity": "Critical",
+      "status": "Risk Accepted",
+      "cwe": "CWE-250",
+      "area": "macOS app / daemon",
+      "evidence": "README and docs/THREAT_MODEL.md explicitly state the app requires full home-directory access and cannot be sandboxed.",
+      "impact": "A compromised app or daemon has full access to the user's home directory, keychain, and can act as the user.",
+      "acceptance_criteria": [
+        "Documented as accepted risk with compensating controls.",
+        "Daemon RPC enforces least privilege per method."
+      ],
+      "related_threats": ["THREAT-001", "THREAT-006"],
+      "related_prior_audit": null
+    },
+    {
+      "id": "FINDING-003",
+      "title": "Computer Use adversarial test coverage incomplete",
+      "severity": "High",
+      "status": "Open",
+      "cwe": "CWE-693",
+      "area": "Computer Use / agent tools",
+      "evidence": "AgentLens/Services/ComputerUse/ has approval UI and kill switches, but AgentLensTests/Active/ lacks adversarial tests.",
+      "impact": "Attacker or malicious prompt could bypass approval, escalate scope, or trick user into approving harmful actions.",
+      "acceptance_criteria": [
+        "Tests for all 13 tool kinds under adversarial input.",
+        "Tests for Trusted -> Step downgrade and panic kill.",
+        "Tests for cross-origin/cross-app injection in browser tool."
+      ],
+      "related_threats": ["THREAT-008", "THREAT-009", "THREAT-010"],
+      "related_prior_audit": "M-001"
+    },
+    {
+      "id": "FINDING-004",
+      "title": "Prompt / RAG injection defenses partial",
+      "severity": "High",
+      "status": "Open",
+      "cwe": "CWE-74",
+      "area": "AI / RAG / chat",
+      "evidence": "docs/security/LLM_GENAI_AGENT_THREAT_MODEL.md documents threat; delimiter wrappers exist but coverage not uniform.",
+      "impact": "Malicious agent log content can manipulate LLM output, leak data, or trigger unauthorized tool calls.",
+      "acceptance_criteria": [
+        "Uniform untrusted-content wrapper at every ingestion -> prompt boundary.",
+        "Provenance metadata attached to RAG snippets.",
+        "Adversarial test corpus committed and run in CI."
+      ],
+      "related_threats": ["THREAT-004", "THREAT-007"],
+      "related_prior_audit": "M-016"
+    },
+    {
+      "id": "FINDING-005",
+      "title": "App Check production enforcement unverifiable",
+      "severity": "High",
+      "status": "Open",
+      "cwe": "CWE-306",
+      "area": "Cloud sync / Firebase",
+      "evidence": "functions/src/auth.ts has assertAppCheck but enforcement depends on Firebase console; Firestore rules lack request.app checks.",
+      "impact": "If App Check disabled/misconfigured, any client with stolen Firebase Auth token can read/write owner-scoped data via REST.",
+      "acceptance_criteria": [
+        "Production console audit confirms App Check enforcement for Firestore.",
+        "Add repo-level assertion test that fails on rule drift.",
+        "Add runtime probe using non-attested token."
+      ],
+      "related_threats": ["THREAT-002", "THREAT-003"],
+      "related_prior_audit": "M-005"
+    },
+    {
+      "id": "FINDING-006",
+      "title": "Cloud sync metadata leaks provider/cost/device info",
+      "severity": "Medium",
+      "status": "Accepted / Document",
+      "cwe": "CWE-359",
+      "area": "Cloud sync / privacy",
+      "evidence": "Firestore usage/, usage_rollups/, quota_snapshots/ contain provider IDs, costs, timestamps, device IDs.",
+      "impact": "BurnBar/Firebase can profile user behavior; legal risk if marketing claims total privacy.",
+      "acceptance_criteria": [
+        "Privacy policy accurately describes visible metadata.",
+        "Consider encrypting/hashing provider IDs and costs with user key."
+      ],
+      "related_threats": ["THREAT-002"],
+      "related_prior_audit": null
+    },
+    {
+      "id": "FINDING-007",
+      "title": "Daemon RPC lacks per-method capability isolation",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-285",
+      "area": "Local daemon",
+      "evidence": "Daemon uses a single auth token; no documented authorization matrix.",
+      "impact": "Any client with the token can call any method, including Computer Use tool dispatch.",
+      "acceptance_criteria": [
+        "Document RPC method authorization matrix.",
+        "Add per-method capability checks.",
+        "Consider per-client ephemeral tokens."
+      ],
+      "related_threats": ["THREAT-006"],
+      "related_prior_audit": null
+    },
+    {
+      "id": "FINDING-008",
+      "title": "Local MCP server exposes raw search snippets",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-200",
+      "area": "Local MCP / AI tools",
+      "evidence": "tools/openburnbar-mcp/server.py returns semantic-search snippets without human gate.",
+      "impact": "External AI agent with MCP access can exfiltrate sensitive user context.",
+      "acceptance_criteria": [
+        "Add user approval before returning snippets.",
+        "Scope returned snippets to explicit query intent.",
+        "Add audit log of MCP tool calls."
+      ],
+      "related_threats": ["THREAT-004", "THREAT-007"],
+      "related_prior_audit": "M-016"
+    },
+    {
+      "id": "FINDING-009",
+      "title": "Cursor connector uses public Cloudflare quick tunnel",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-668",
+      "area": "Extensions / Cursor integration",
+      "evidence": "Cursor connector uses Cloudflare quick tunnel for localhost exposure.",
+      "impact": "Public URL increases attack surface; token exposure could allow remote access to local daemon.",
+      "acceptance_criteria": [
+        "Document when/why tunnel is used.",
+        "Bind tunnel to cryptographically random token with short TTL.",
+        "Add UI indicator and one-click revocation."
+      ],
+      "related_threats": ["THREAT-006"],
+      "related_prior_audit": null
+    },
+    {
+      "id": "FINDING-010",
+      "title": "CI/CD has broad secrets and can ship malicious release",
+      "severity": "Medium",
+      "status": "Risk Accepted",
+      "cwe": "CWE-345",
+      "area": "Supply chain",
+      "evidence": ".github/workflows/release.yml signs and notarizes using GitHub secrets.",
+      "impact": "Users install trojanized update; worst-case full user compromise.",
+      "acceptance_criteria": [
+        "Require two-person rule for release workflow.",
+        "Use OIDC to fetch short-lived signing certs where possible.",
+        "Publish reproducible-build instructions and verification."
+      ],
+      "related_threats": ["THREAT-011"],
+      "related_prior_audit": "M-040"
+    },
+    {
+      "id": "FINDING-011",
+      "title": "Firestore rules drift risk",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-284",
+      "area": "Cloud infrastructure",
+      "evidence": "Rules live in firestore.rules; deployment manual/semi-automated; no CI drift test.",
+      "impact": "Production rules may diverge from repo, weakening tenant isolation.",
+      "acceptance_criteria": [
+        "Add CI step comparing deployed rules to repo.",
+        "Add property-based tests for rule paths."
+      ],
+      "related_threats": ["THREAT-002", "THREAT-003"],
+      "related_prior_audit": "M-005"
+    },
+    {
+      "id": "FINDING-012",
+      "title": "Rate limiting missing from callable surface",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-770",
+      "area": "Cloud Functions",
+      "evidence": "No global rate-limit middleware; only resilience helpers for Stripe/Firestore.",
+      "impact": "Abuse, enumeration, or cost attacks.",
+      "acceptance_criteria": [
+        "Add per-UID rate limiting for expensive callables.",
+        "Add App Check + IP-based anomaly alerting."
+      ],
+      "related_threats": ["THREAT-011", "THREAT-012"],
+      "related_prior_audit": "M-017"
+    },
+    {
+      "id": "FINDING-013",
+      "title": "Data deletion cascade incomplete",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-212",
+      "area": "Privacy / data governance",
+      "evidence": "functions/src/callables/dataDeletion.ts exists; prior audit M-013 noted incomplete cascade.",
+      "impact": "User data may remain in Firestore/Storage/backup after deletion request.",
+      "acceptance_criteria": [
+        "End-to-end test proving deletion of all user documents and Storage blobs.",
+        "Verify local deletion path."
+      ],
+      "related_threats": ["THREAT-013"],
+      "related_prior_audit": "M-013"
+    },
+    {
+      "id": "FINDING-014",
+      "title": "Android iroh secret key caching",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-312",
+      "area": "Android / crypto",
+      "evidence": "Prior audit M-006 noted iroh secret key may be cached in shared preferences.",
+      "impact": "Key extraction from rooted or backup-exposed devices.",
+      "acceptance_criteria": [
+        "Store iroh secret key in Android Keystore.",
+        "Add migration from shared prefs."
+      ],
+      "related_threats": ["THREAT-014"],
+      "related_prior_audit": "M-006"
+    },
+    {
+      "id": "FINDING-015",
+      "title": "Cloud Vault AAD partial",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-345",
+      "area": "Cloud sync / crypto",
+      "evidence": "Prior audit M-007 noted AAD coverage incomplete across envelope variants.",
+      "impact": "Possible substitution or malleability of sealed payloads.",
+      "acceptance_criteria": [
+        "Audit every seal/open call site for AAD binding to sender, recipient, scope.",
+        "Add tests that reject tampered AAD."
+      ],
+      "related_threats": ["THREAT-002"],
+      "related_prior_audit": "M-007"
+    },
+    {
+      "id": "FINDING-016",
+      "title": "session_logs callable/rule validation gaps",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-20",
+      "area": "Cloud Functions / Firestore",
+      "evidence": "Prior audit M-018 noted validation gaps in session_logs write path.",
+      "impact": "Malformed or oversized logs could break sync or leak across documents.",
+      "acceptance_criteria": [
+        "Strict schema validation for session_logs writes.",
+        "Size/depth limits enforced."
+      ],
+      "related_threats": ["THREAT-003"],
+      "related_prior_audit": "M-018"
+    },
+    {
+      "id": "FINDING-017",
+      "title": "Log parser memory exhaustion / zip bomb",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-400",
+      "area": "Log parsing",
+      "evidence": "Parsers load entire files; no size/depth caps visible.",
+      "impact": "DoS via malicious log file.",
+      "acceptance_criteria": [
+        "Max file size per parser.",
+        "Max nested depth for JSON/XML.",
+        "Streaming parse where possible."
+      ],
+      "related_threats": ["THREAT-015"],
+      "related_prior_audit": "M-019"
+    },
+    {
+      "id": "FINDING-018",
+      "title": "Exported data may contain more than expected",
+      "severity": "Low",
+      "status": "Open",
+      "cwe": "CWE-359",
+      "area": "Privacy",
+      "evidence": "Prior audit M-014 noted dataExport could include derived or cached fields.",
+      "impact": "User receives more data than expected; regulatory concern.",
+      "acceptance_criteria": [
+        "Audit dataExport fields against privacy policy."
+      ],
+      "related_threats": ["THREAT-013"],
+      "related_prior_audit": "M-014"
+    },
+    {
+      "id": "FINDING-019",
+      "title": "Push notification payload may leak UID",
+      "severity": "Low",
+      "status": "Open",
+      "cwe": "CWE-200",
+      "area": "Notifications",
+      "evidence": "Prior audit M-023 noted agentNotifications.ts leaked UIDs.",
+      "impact": "FCM payload could deanonymize user or link devices.",
+      "acceptance_criteria": [
+        "Notification body contains no UIDs, names, or provider IDs."
+      ],
+      "related_threats": ["THREAT-002"],
+      "related_prior_audit": "M-023"
+    },
+    {
+      "id": "FINDING-020",
+      "title": "Phone HID capability token binding weak",
+      "severity": "Medium",
+      "status": "Open",
+      "cwe": "CWE-639",
+      "area": "Computer Use / phone control",
+      "evidence": "Prior audit M-028 noted HID actions need stronger capability-token binding to device/session.",
+      "impact": "Cross-pairing or stolen token could allow unauthorized remote input.",
+      "acceptance_criteria": [
+        "Bind each HID capability grant to a specific session/device key.",
+        "Verify token before every action."
+      ],
+      "related_threats": ["THREAT-009"],
+      "related_prior_audit": "M-028"
+    },
+    {
+      "id": "FINDING-021",
+      "title": "Free-form crash context could leak content",
+      "severity": "Low",
+      "status": "Open",
+      "cwe": "CWE-532",
+      "area": "Observability / privacy",
+      "evidence": "Sentry/Crashlytics scrubbers exist but cannot catch all free-form error messages.",
+      "impact": "Agent log fragments or paths may appear in crash reports.",
+      "acceptance_criteria": [
+        "Audit all throw sites for user content.",
+        "Add before-send hook tests with synthetic sensitive data."
+      ],
+      "related_threats": ["THREAT-013"],
+      "related_prior_audit": null
+    },
+    {
+      "id": "FINDING-022",
+      "title": "Local daemon auth token rotation undefined",
+      "severity": "Low",
+      "status": "Open",
+      "cwe": "CWE-798",
+      "area": "Local daemon",
+      "evidence": "Single auth token stored in defaults/keychain; no documented rotation on reinstall/update.",
+      "impact": "Long-lived secret; compromise of one client can persist.",
+      "acceptance_criteria": [
+        "Document rotation policy.",
+        "Rotate on major updates or on demand."
+      ],
+      "related_threats": ["THREAT-006"],
+      "related_prior_audit": null
+    }
+  ],
+  "summary": {
+    "critical": 2,
+    "high": 3,
+    "medium": 12,
+    "low": 5,
+    "informational": 0,
+    "open": 20,
+    "accepted": 2
+  }
+}

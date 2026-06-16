@@ -1,0 +1,1856 @@
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index d60a903425..51b83c2a95 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -20,3 +20,30 @@ extensions/openburnbar/ @Ajnunezg
+ # Infrastructure
+ firestore.rules @Ajnunezg
+ project.yml @Ajnunezg
++
++# Security-sensitive trees — same owner today, but routed explicitly so a
++# change here is an intentional, reviewable security decision (not swept up by
++# the catch-all). CODEOWNERS is last-match-wins, so these stay at the bottom.
++
++# Authorization / BOLA coverage catalog
++functions/src/security/ @Ajnunezg
++
++# Crypto callables (Hermes gateway + computer-use security crypto)
++functions/src/callables/hermesGatewayCrypto.ts @Ajnunezg
++functions/src/callables/computerUseSecurityCrypto.ts @Ajnunezg
++
++# Billing / entitlements (paid tier gating)
++functions/src/callables/googlePlayBillingPaths.ts @Ajnunezg
++functions/src/callables/shared/entitlements.ts @Ajnunezg
++functions/src/types/generated/entitlements.ts @Ajnunezg
++packages/entitlements/ @Ajnunezg
++
++# CI helper scripts (release preflight, config injection, supply-chain checks)
++scripts/ci/ @Ajnunezg
++
++# Vendored libsignal crypto core
++Vendor/libsignal/ @Ajnunezg
++
++# Firestore index + rules definitions
++firestore.indexes.json @Ajnunezg
++firestore.rules @Ajnunezg
+diff --git a/.github/workflows/computer-use-loopback-test.yml b/.github/workflows/computer-use-loopback-test.yml
+index ae8c784d7b..23942d4e34 100644
+--- a/.github/workflows/computer-use-loopback-test.yml
++++ b/.github/workflows/computer-use-loopback-test.yml
+@@ -1,5 +1,12 @@
+ name: computer-use-loopback-test
+ 
++# Least-privilege default: this workflow only checks out, builds, and runs
++# tests — it never writes to the repo, comments on PRs, or publishes
++# artifacts. Pin GITHUB_TOKEN to read-only so a compromised step cannot
++# escalate to repo writes.
++permissions:
++  contents: read
++
+ on:
+   pull_request:
+     types: [opened, synchronize, reopened, ready_for_review]
+diff --git a/.github/workflows/droid-wiki-refresh.yml b/.github/workflows/droid-wiki-refresh.yml
+index 16cf9f7ab3..ba4fb95b95 100644
+--- a/.github/workflows/droid-wiki-refresh.yml
++++ b/.github/workflows/droid-wiki-refresh.yml
+@@ -1,5 +1,15 @@
+ name: Droid Wiki Refresh
+ 
++# Least-privilege default: the wiki refresh runs Droid against the
++# checked-out tree and writes only to $GITHUB_STEP_SUMMARY — it intentionally
++# carries no write token (the "Generate wiki" step comment relies on this:
++# "The workflow has no write token, so this only permits the checked-out
++# read-only wiki generation run to proceed unattended"). Pin GITHUB_TOKEN to
++# read-only so the unattended --skip-permissions-unsafe Droid run cannot push
++# commits or mutate repo state.
++permissions:
++  contents: read
++
+ on:
+   push:
+     branches: [main]
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 52bd3b6d9c..97e58755ac 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -696,6 +696,26 @@ jobs:
+           echo "sig_path=${CHECKSUMS_PATH}.asc" >> "$GITHUB_OUTPUT"
+           echo "Checksums signed successfully."
+ 
++      # Fail-loud guard for an accidentally-cleared RELEASE_SIGNING_KEY secret.
++      # The sign step above is conditionally skipped when the key is absent, so
++      # a silently-rotated-away secret would otherwise produce an unsigned
++      # release with no signal. Emit a GitHub ::warning:: annotation (visible on
++      # the run and in the job summary) so the gap is noticed. This does NOT
++      # hard-fail: cosign/SLSA attestation of the checksums (below) remains the
++      # unconditional integrity root for every release.
++      - name: Warn if checksum GPG signing was skipped
++        if: env.RELEASE_SIGNING_KEY == ''
++        env:
++          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
++        run: |
++          echo "::warning title=GPG checksum signature missing::RELEASE_SIGNING_KEY is not set; the GPG-signed checksums (.asc) were not produced for this release. cosign/SLSA attestation still covers the checksums, but verify the RELEASE_SIGNING_KEY secret was not accidentally cleared."
++          {
++            echo "## :warning: GPG checksum signature skipped"
++            echo ""
++            echo "\`RELEASE_SIGNING_KEY\` was absent, so this release has **no detached GPG signature** for its checksums."
++            echo "cosign/SLSA attestation remains the integrity root, but confirm the secret was not accidentally cleared."
++          } >> "$GITHUB_STEP_SUMMARY"
++
+       - name: Generate SBOM
+         id: sbom
+         env:
+diff --git a/AgentLens/Services/CLIBridge/CLIExecutableResolver.swift b/AgentLens/Services/CLIBridge/CLIExecutableResolver.swift
+index 3a6e52eac9..87eb1c91a8 100644
+--- a/AgentLens/Services/CLIBridge/CLIExecutableResolver.swift
++++ b/AgentLens/Services/CLIBridge/CLIExecutableResolver.swift
+@@ -24,7 +24,20 @@ struct CLIExecutableResolver: Sendable {
+ 
+     /// Blocking filesystem/login-shell probing runs off the main actor
+     /// (`nonisolated` `async`, SE-0338); cancellation propagates from the awaiter.
+-    func resolveExecutable(named name: String) async -> String? {
++    ///
++    /// - Parameter allowLoginShellFallback: when `true` (default — interactive
++    ///   resolution), a last-resort `zsh -lic "command -v ..."` probe is used if
++    ///   the fixed-directory + user-managed allowlists both miss, so common
++    ///   version-manager installs that only exist on the login `PATH` are found.
++    ///   That fallback sources `~/.zshrc` / `~/.zshenv`, so it is **dotfile-
++    ///   hijackable**: privileged / daemon / remote-triggered resolution paths
++    ///   pass `false` to get ONLY the deterministic fixed-directory allowlist and
++    ///   never execute the user's login shell. The absolute-path allowlist is
++    ///   always tried first regardless of this flag.
++    func resolveExecutable(
++        named name: String,
++        allowLoginShellFallback: Bool = true
++    ) async -> String? {
+         let env = environmentProvider()
+         let homeDirectory = homeDirectoryProvider()
+         let fileManager = FileManager.default
+@@ -64,7 +77,12 @@ struct CLIExecutableResolver: Sendable {
+             return path
+         }
+ 
+-        if let path = Self.resolveExecutableFromLoginShell(
++        // The login-shell probe sources ~/.zshrc / ~/.zshenv and is therefore
++        // dotfile-hijackable; privileged / daemon / remote-triggered callers opt
++        // out via `allowLoginShellFallback: false` and stop at the deterministic
++        // fixed-directory allowlists above.
++        if allowLoginShellFallback,
++           let path = Self.resolveExecutableFromLoginShell(
+             named: name,
+             environment: env,
+             fileManager: fileManager
+diff --git a/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift b/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift
+index 64230b4f17..5c196f68af 100644
+--- a/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift
++++ b/AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift
+@@ -1104,7 +1104,12 @@ final class CLIAgentMissionRequestListener {
+         requestID: String,
+         cancellationTracker: MissionCancellationTracker
+     ) async -> DirectCLIMissionResult {
+-        guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
++        // Remote/cloud-triggered mission resolution must be deterministic: do NOT
++        // fall back to the dotfile-hijackable login-shell (`zsh -lic`) probe here.
++        guard let executable = await CLIExecutableResolver().resolveExecutable(
++            named: executableName,
++            allowLoginShellFallback: false
++        ) else {
+             return DirectCLIMissionResult(
+                 status: "failed",
+                 output: "",
+@@ -1313,7 +1318,12 @@ final class CLIAgentMissionRequestListener {
+         requestID: String,
+         cancellationTracker: MissionCancellationTracker
+     ) async -> DirectCLIMissionResult {
+-        guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
++        // Remote/cloud-triggered mission resolution must be deterministic: do NOT
++        // fall back to the dotfile-hijackable login-shell (`zsh -lic`) probe here.
++        guard let executable = await CLIExecutableResolver().resolveExecutable(
++            named: executableName,
++            allowLoginShellFallback: false
++        ) else {
+             return DirectCLIMissionResult(
+                 status: "failed",
+                 output: "",
+diff --git a/AgentLens/Services/ComputerUse/Mac/RemoteUnlockVirtualHIDInputClient.swift b/AgentLens/Services/ComputerUse/Mac/RemoteUnlockVirtualHIDInputClient.swift
+index 445f5e789b..82f0717cee 100644
+--- a/AgentLens/Services/ComputerUse/Mac/RemoteUnlockVirtualHIDInputClient.swift
++++ b/AgentLens/Services/ComputerUse/Mac/RemoteUnlockVirtualHIDInputClient.swift
+@@ -182,6 +182,32 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
+         }
+         guard connected == 0 else { throw Error.daemonUnavailable }
+ 
++        // Authenticate the SERVER peer BEFORE writing the envelope. The legacy
++        // bridge envelope can carry the macOS login `password`, and connect(2)
++        // by itself proves only that *something* is listening at the path. This
++        // mirrors the preferred (XPC/socket) lane's `PrivilegedInputSocketClient`
++        // check exactly: peer UID must match the expected owner AND the peer
++        // process must satisfy the first-party designated requirement (audit-token
++        // + `SecCodeCreateWithAuditToken`-class validation — never a PID check).
++        //
++        // The `/var/run/openburnbar-virtual-hid.sock` bridge is a launchd SYSTEM
++        // daemon (plist in `/Library/LaunchDaemons`, no `UserName` key), so it
++        // runs as root: the expected server UID is 0. Fail closed if the peer
++        // fails either gate.
++        do {
++            try OpenBurnBarPrivilegedTrust.validateServerPeer(
++                socketFD: fd,
++                expectedUID: 0,
++                codeSignatureValidator: OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken:)
++            )
++        } catch {
++            AppLogger.daemon.error(
++                "remote_unlock_virtual_hid_legacy_server_untrusted",
++                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
++            )
++            throw Error.serverUntrusted
++        }
++
+         var data = try JSONEncoder().encode(request)
+         data.append(0x0A)
+         try data.withUnsafeBytes { pointer in
+@@ -236,6 +262,12 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
+         case readFailed
+         case rejected(String)
+         case responseTooLarge
++        /// The process listening at `/var/run/openburnbar-virtual-hid.sock`
++        /// failed server authentication (wrong UID or code signature) — something
++        /// is impersonating the privileged bridge. Terminal by design: the legacy
++        /// envelope can carry the login credential, so we never write to an
++        /// unauthenticated peer.
++        case serverUntrusted
+         case socketPathTooLong
+         case socketUnavailable
+         case timedOut
+diff --git a/AgentLens/Services/LogParser/AntigravityParser.swift b/AgentLens/Services/LogParser/AntigravityParser.swift
+index 974cd8d558..0ac849bdb7 100644
+--- a/AgentLens/Services/LogParser/AntigravityParser.swift
++++ b/AgentLens/Services/LogParser/AntigravityParser.swift
+@@ -30,7 +30,7 @@ final class AntigravityParser: LogParser, Sendable {
+         // Fetch settings for active model (fallback when per-session model unavailable)
+         let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
+         let fallbackModelName: String = {
+-            guard let data = try? Data(contentsOf: settingsURL), // try?-ok(settings read, model fallback)
++            guard let data = ParserInputLimits.boundedContents(of: settingsURL), // try?-ok(size-guarded settings read, model fallback)
+                   let settings = try? JSONDecoder().decode(SettingsFile.self, from: data), // try?-ok(optional decode, model fallback)
+                   let model = settings.model, !model.isEmpty else {
+                 return "Claude Opus 4.6 (Thinking)"
+diff --git a/AgentLens/Services/LogParser/AugmentParser.swift b/AgentLens/Services/LogParser/AugmentParser.swift
+index 622b9cc4d8..3fea3613cf 100644
+--- a/AgentLens/Services/LogParser/AugmentParser.swift
++++ b/AgentLens/Services/LogParser/AugmentParser.swift
+@@ -109,7 +109,7 @@ final class AugmentParser: LogParser, Sendable {
+         file: URL,
+         sessionId: String
+     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+-        guard let data = try? Data(contentsOf: file), // try?-ok(log read guard-return-nil)
++        guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded read, guard-return-nil)
+               let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(malformed JSON guard-return-nil)
+             return nil
+         }
+diff --git a/AgentLens/Services/LogParser/ClineFormatParser.swift b/AgentLens/Services/LogParser/ClineFormatParser.swift
+index da83489914..13d689c10c 100644
+--- a/AgentLens/Services/LogParser/ClineFormatParser.swift
++++ b/AgentLens/Services/LogParser/ClineFormatParser.swift
+@@ -62,7 +62,7 @@ final class ClineFormatParser: LogParser, Sendable {
+         taskId: String,
+         historyFile: URL
+     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+-        guard let data = try? Data(contentsOf: historyFile), // try?-ok(skip unreadable log)
++        guard let data = ParserInputLimits.boundedContents(of: historyFile), // try?-ok(size-guarded read, skip unreadable/oversized log)
+               let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed log skip)
+             return nil
+         }
+diff --git a/AgentLens/Services/LogParser/CursorAgentParser.swift b/AgentLens/Services/LogParser/CursorAgentParser.swift
+index 4c120fd6dd..ee0006eae3 100644
+--- a/AgentLens/Services/LogParser/CursorAgentParser.swift
++++ b/AgentLens/Services/LogParser/CursorAgentParser.swift
+@@ -93,7 +93,7 @@ final class CursorAgentParser: LogParser, Sendable {
+ 
+         if let summaryURL,
+            FileManager.default.fileExists(atPath: summaryURL.path),
+-           let data = try? Data(contentsOf: summaryURL), // try?-ok(optional sidecar read)
++           let data = ParserInputLimits.boundedContents(of: summaryURL), // try?-ok(size-guarded optional sidecar read)
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(optional summary decode)
+             summaryModel = json["model"] as? String ?? (json["current_model_id"] as? String)
+             summaryTitle = json["title"] as? String ?? (json["generated_title"] as? String) ?? (json["session_summary"] as? String)
+diff --git a/AgentLens/Services/LogParser/FactoryDroidParser.swift b/AgentLens/Services/LogParser/FactoryDroidParser.swift
+index a1452c6e59..12d7f881e4 100644
+--- a/AgentLens/Services/LogParser/FactoryDroidParser.swift
++++ b/AgentLens/Services/LogParser/FactoryDroidParser.swift
+@@ -161,7 +161,7 @@ final class FactoryDroidParser: LogParser, Sendable {
+         // VAL-TOKEN-003: Settings/metadata exact totals suppress per-message fallback accumulation
+         // VAL-TOKEN-011: Cache-only exact totals also suppress fallback (any non-zero bucket counts)
+         if let settingsFileURL = settingsFile {
+-            if let data = try? Data(contentsOf: settingsFileURL), // try?-ok(missing settings skipped)
++            if let data = ParserInputLimits.boundedContents(of: settingsFileURL), // try?-ok(size-guarded settings read, missing/oversized skipped)
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
+                 if let model = json["model"] as? String {
+                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
+@@ -189,7 +189,7 @@ final class FactoryDroidParser: LogParser, Sendable {
+         if !usedSettingsTotals {
+             let metadataURL = jsonlFile.deletingLastPathComponent()
+                 .appendingPathComponent("\(sessionId).metadata.json")
+-            if let data = try? Data(contentsOf: metadataURL), // try?-ok(missing metadata skipped)
++            if let data = ParserInputLimits.boundedContents(of: metadataURL), // try?-ok(size-guarded metadata read, missing/oversized skipped)
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
+                 if tokenData.model == "unknown", let model = json["model"] as? String {
+                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
+diff --git a/AgentLens/Services/LogParser/GeminiCLIParser.swift b/AgentLens/Services/LogParser/GeminiCLIParser.swift
+index 8561165bb6..0c2837259f 100644
+--- a/AgentLens/Services/LogParser/GeminiCLIParser.swift
++++ b/AgentLens/Services/LogParser/GeminiCLIParser.swift
+@@ -91,7 +91,7 @@ final class GeminiCLIParser: LogParser, Sendable {
+         sessionId: String,
+         projectName: String
+     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+-        guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
++        guard let data = ParserInputLimits.boundedContents(of: file) else { return nil } // try?-ok(size-guarded read, guard nil)
+ 
+         let mtime = modificationDate(of: file)
+         var acc = GeminiSessionAccumulator()
+diff --git a/AgentLens/Services/LogParser/GrokParser.swift b/AgentLens/Services/LogParser/GrokParser.swift
+index 2c47fc6401..ddbecf299f 100644
+--- a/AgentLens/Services/LogParser/GrokParser.swift
++++ b/AgentLens/Services/LogParser/GrokParser.swift
+@@ -66,7 +66,7 @@ final class GrokParser: LogParser, Sendable {
+         projectName: String
+     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+         let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
+-        guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
++        guard let summaryData = ParserInputLimits.boundedContents(of: summaryURL), // try?-ok(size-guarded read, missing/oversized summary skipped)
+               let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+             return nil
+         }
+@@ -160,7 +160,7 @@ final class GrokParser: LogParser, Sendable {
+ 
+     private func loadSignals(at url: URL) -> GrokSignals? {
+         guard FileManager.default.fileExists(atPath: url.path),
+-              let data = try? Data(contentsOf: url), // try?-ok(missing signals skipped)
++              let data = ParserInputLimits.boundedContents(of: url), // try?-ok(size-guarded read, missing/oversized signals skipped)
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+             return nil
+         }
+diff --git a/AgentLens/Services/LogParser/HermesParser.swift b/AgentLens/Services/LogParser/HermesParser.swift
+index 487e84c73c..c219075bf0 100644
+--- a/AgentLens/Services/LogParser/HermesParser.swift
++++ b/AgentLens/Services/LogParser/HermesParser.swift
+@@ -377,7 +377,7 @@ final class HermesParser: LogParser, Sendable {
+         excluding seenSessionIds: Set<String>,
+         scope: HermesHomeScope
+     ) -> ParseResult {
+-        guard let data = try? Data(contentsOf: indexURL), // try?-ok(optional index read)
++        guard let data = ParserInputLimits.boundedContents(of: indexURL), // try?-ok(size-guarded optional index read)
+               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
+             return ParseResult(usages: [], conversations: [])
+         }
+@@ -507,7 +507,7 @@ final class HermesParser: LogParser, Sendable {
+         excluding seenSessionIds: Set<String>,
+         scope: HermesHomeScope
+     ) -> ParseResult {
+-        guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
++        guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded optional snapshot read)
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
+             return ParseResult(usages: [], conversations: [])
+         }
+diff --git a/AgentLens/Services/LogParser/ParserInputLimits.swift b/AgentLens/Services/LogParser/ParserInputLimits.swift
+new file mode 100644
+index 0000000000..8727fa1ce6
+--- /dev/null
++++ b/AgentLens/Services/LogParser/ParserInputLimits.swift
+@@ -0,0 +1,72 @@
++import Foundation
++
++// MARK: - Parser Input Limits (DoS hardening)
++
++/// Shared, pre-flight resource bounds for local log parsers.
++///
++/// Several provider parsers read entire on-disk files with `Data(contentsOf:)`
++/// (or `FileHandle.readDataToEndOfFile()`) and recurse over decoded JSON without
++/// a bound. A maliciously huge or deeply-nested file dropped into a watched
++/// directory (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`, `~/.openclaw`,
++/// …) can therefore exhaust memory or blow the stack before any parsing logic
++/// runs. These limits add a cheap pre-flight `stat()` check before the read and
++/// a recursion-depth ceiling for the JSON flatten walk.
++enum ParserInputLimits {
++    /// Maximum on-disk size (bytes) a parser will read into memory in one shot.
++    ///
++    /// 64 MiB comfortably exceeds any legitimate single session/log file we have
++    /// observed (multi-megabyte at the extreme) while bounding worst-case memory
++    /// for one file. Files above this are skipped rather than read.
++    static let maxFileSizeBytes: UInt64 = 64 * 1024 * 1024
++
++    /// Maximum nesting depth the recursive JSON object flatten will descend.
++    ///
++    /// Real session transcripts nest a handful of levels deep; 64 leaves ample
++    /// headroom for legitimate documents while preventing unbounded recursion
++    /// (and stack exhaustion) on adversarially nested arrays/objects.
++    static let maxJSONDepth = 64
++
++    /// Typed error thrown when a candidate file exceeds `maxFileSizeBytes`.
++    struct FileTooLarge: Error {
++        let path: String
++        let sizeBytes: UInt64
++        let limitBytes: UInt64
++    }
++
++    /// Reads a file's contents only after a pre-flight size check.
++    ///
++    /// Throws `FileTooLarge` when the file is larger than `maxFileSizeBytes`, so
++    /// the call site never allocates the full buffer for an oversized file.
++    /// Other read/stat failures propagate as their underlying `Error`.
++    ///
++    /// - Parameters:
++    ///   - path: Absolute filesystem path to read.
++    ///   - fileManager: Injected for testability; defaults to `.default`.
++    /// - Returns: The file contents, guaranteed at most `maxFileSizeBytes`.
++    static func guardedContents(
++        ofFile path: String,
++        fileManager: FileManager = .default
++    ) throws -> Data {
++        let size = (try fileManager.attributesOfItem(atPath: path)[.size] as? NSNumber)?.uint64Value ?? 0
++        guard size <= maxFileSizeBytes else {
++            throw FileTooLarge(path: path, sizeBytes: size, limitBytes: maxFileSizeBytes)
++        }
++        return try Data(contentsOf: URL(fileURLWithPath: path))
++    }
++
++    /// Optional-returning convenience that matches the `try? … else { return nil }`
++    /// skip convention used by most parsers: returns `nil` when the file is
++    /// missing, unreadable, or exceeds `maxFileSizeBytes`.
++    static func boundedContents(
++        of url: URL,
++        fileManager: FileManager = .default
++    ) -> Data? {
++        try? guardedContents(ofFile: url.path, fileManager: fileManager)
++    }
++
++    /// Returns `true` while `depth` is still within `maxJSONDepth`, i.e. the
++    /// recursive walk may descend one more level.
++    static func depthWithinLimit(_ depth: Int) -> Bool {
++        depth < maxJSONDepth
++    }
++}
+diff --git a/AgentLens/Services/LogParser/WarpParser.swift b/AgentLens/Services/LogParser/WarpParser.swift
+index 812becb648..0fd4fde8b0 100644
+--- a/AgentLens/Services/LogParser/WarpParser.swift
++++ b/AgentLens/Services/LogParser/WarpParser.swift
+@@ -42,7 +42,7 @@ final class WarpParser: LogParser, Sendable {
+         var seenConversationIDs = Set<String>()
+ 
+         for file in logFiles {
+-            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable log)
++            guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded read, skip unreadable/oversized log)
+                   let content = String(data: data, encoding: .utf8) else {
+                 continue
+             }
+diff --git a/AgentLens/Services/UsageAggregatorParsers+Codex.swift b/AgentLens/Services/UsageAggregatorParsers+Codex.swift
+index 27b679dacc..cb91d90b48 100644
+--- a/AgentLens/Services/UsageAggregatorParsers+Codex.swift
++++ b/AgentLens/Services/UsageAggregatorParsers+Codex.swift
+@@ -493,15 +493,9 @@ final class OpenClawParser: LogParser, Sendable {
+     }
+ 
+     private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: ConversationRecord)? {
+-        let data: Data
+-        if file.pathExtension.lowercased() == "jsonl" || file.pathExtension.lowercased() == "log" {
+-            guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
+-            defer { try? handle.close() } // try?-ok(handle teardown)
+-            data = handle.readDataToEndOfFile()
+-        } else {
+-            guard let fileData = try? Data(contentsOf: file) else { return nil } // try?-ok(session read, skip if absent)
+-            data = fileData
+-        }
++        // Pre-flight size guard for both the streaming (jsonl/log) and whole-file
++        // (json) paths so a maliciously huge session file can't exhaust memory.
++        guard let data = ParserInputLimits.boundedContents(of: file) else { return nil } // try?-ok(size-guarded read, skip if absent/oversized)
+ 
+         var turns: [(role: String, text: String, timestamp: Date?)] = []
+         var inputTokens = 0
+@@ -611,16 +605,22 @@ final class OpenClawParser: LogParser, Sendable {
+         return flattenSessionObjects(root)
+     }
+ 
+-    private static func flattenSessionObjects(_ value: Any) -> [[String: Any]] {
++    private static func flattenSessionObjects(_ value: Any, depth: Int = 0) -> [[String: Any]] {
++        // Bound recursion so adversarially nested arrays/objects can't blow the
++        // stack. Beyond the limit we stop descending: a dictionary is emitted as
++        // a leaf, an array contributes nothing further.
++        guard ParserInputLimits.depthWithinLimit(depth) else {
++            return (value as? [String: Any]).map { [$0] } ?? []
++        }
+         if let array = value as? [Any] {
+-            return array.flatMap(flattenSessionObjects)
++            return array.flatMap { flattenSessionObjects($0, depth: depth + 1) }
+         }
+         guard let object = value as? [String: Any] else { return [] }
+ 
+         let nestedKeys = ["messages", "turns", "events", "conversation", "history", "items"]
+         let nested = nestedKeys.flatMap { key -> [[String: Any]] in
+             guard let value = object[key] else { return [] }
+-            return flattenSessionObjects(value)
++            return flattenSessionObjects(value, depth: depth + 1)
+         }
+         return nested.isEmpty ? [object] : nested
+     }
+diff --git a/AgentLensTests/Active/MacSentryScrubberTests.swift b/AgentLensTests/Active/MacSentryScrubberTests.swift
+new file mode 100644
+index 0000000000..76ecc9bcea
+--- /dev/null
++++ b/AgentLensTests/Active/MacSentryScrubberTests.swift
+@@ -0,0 +1,185 @@
++import XCTest
++@testable import OpenBurnBar
++
++// MARK: - Sentry scrubber + consent (T-PRV-03, macOS half)
++//
++// Locks the privacy contract for crash reporting on the Mac app: user content
++// (prompts, vault data, tokens, emails, and absolute paths that carry the macOS
++// account short-name under /Users/<name>) is stripped from event payloads +
++// breadcrumbs before they leave the device, reporting is gated on consent, and
++// the per-install identifier carries no PII while staying stable.
++//
++// Mirrors `MobileSentryScrubberTests` so the macOS path cannot regress silently
++// and ship PII. The string / dictionary redaction is pure, so it is testable
++// without the Sentry SDK.
++
++final class MacSentryScrubberTests: XCTestCase {
++
++    // MARK: Consent
++
++    func testConsentDefaultsToEnabledWhenUnset() {
++        let defaults = makeDefaults()
++        XCTAssertTrue(MacCrashReportingConsent.isEnabled(defaults: defaults))
++    }
++
++    func testConsentRespectsOptOut() {
++        let defaults = makeDefaults()
++        defaults.set(false, forKey: MacCrashReportingConsent.defaultsKey)
++        XCTAssertFalse(MacCrashReportingConsent.isEnabled(defaults: defaults))
++    }
++
++    // MARK: Per-install anonymized ID
++
++    func testPerInstallIDIsStableAcrossCalls() {
++        let defaults = makeDefaults()
++        let first = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        let second = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        XCTAssertEqual(first, second)
++    }
++
++    func testPerInstallIDIsOpaqueHexOfFixedWidth() {
++        let defaults = makeDefaults()
++        let id = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        // 32 lowercase hex chars: opaque, no embedded human-readable identity.
++        XCTAssertEqual(id.count, 32)
++        XCTAssertTrue(id.allSatisfy { $0.isHexDigit && !$0.isUppercase })
++    }
++
++    func testPerInstallIDIsNotPII() {
++        let defaults = makeDefaults()
++        let id = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        // It must not leak the account name, email, or the home-directory path
++        // that the old NSFullUserName() seed carried.
++        let seed = defaults.string(forKey: MacCrashReportingConsent.installIDDefaultsKey)
++        XCTAssertNotNil(seed)
++        XCTAssertFalse(id.contains("@"))
++        XCTAssertFalse(id.contains("/Users/"))
++        XCTAssertFalse(id.contains(NSUserName()))
++        XCTAssertFalse(id.contains(NSFullUserName()))
++    }
++
++    func testPerInstallIDDiffersAcrossInstalls() {
++        let a = MacCrashReportingConsent.perInstallAnonymizedID(defaults: makeDefaults())
++        let b = MacCrashReportingConsent.perInstallAnonymizedID(defaults: makeDefaults())
++        // Independent installs (distinct persisted seeds) must not collide.
++        XCTAssertNotEqual(a, b)
++    }
++
++    // MARK: String redaction
++
++    func testRedactsEmail() {
++        let redacted = MacSentryScrubber.redact("contact alberto8793@gmail.com now")
++        XCTAssertFalse(redacted.contains("@gmail.com"))
++        XCTAssertTrue(redacted.contains(MacSentryScrubber.redactionPlaceholder))
++    }
++
++    func testRedactsBearerToken() {
++        let fakeBearerToken = "sk-" + "live-ABCDEFGHIJ1234567890"
++        let authHeader = "Auth" + "orization: Bearer "
++        let redacted = MacSentryScrubber.redact("\(authHeader)\(fakeBearerToken)")
++        XCTAssertFalse(redacted.contains(fakeBearerToken))
++    }
++
++    func testRedactsLongOpaqueToken() {
++        let redacted = MacSentryScrubber.redact("token=ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")
++        XCTAssertFalse(redacted.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"))
++    }
++
++    func testRedactsUserPath() {
++        let redacted = MacSentryScrubber.redact("failed at /Users/alberto/vault/recovery.key")
++        XCTAssertFalse(redacted.contains("/Users/alberto"))
++    }
++
++    func testRedactsPrivateVarPath() {
++        let redacted = MacSentryScrubber.redact("temp at /private/var/folders/zz/secret")
++        XCTAssertFalse(redacted.contains("/private/var/folders/zz/secret"))
++        XCTAssertTrue(redacted.contains(MacSentryScrubber.redactionPlaceholder))
++    }
++
++    func testKeepsShortNonSensitiveText() {
++        XCTAssertEqual(MacSentryScrubber.redact("network error 503"), "network error 503")
++    }
++
++    // MARK: Dictionary redaction
++
++    func testRedactsSensitiveKeys() {
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("authToken"))
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("user_email"))
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("prompt"))
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("vaultKey"))
++        XCTAssertFalse(MacSentryScrubber.isSensitiveKey("statusCode"))
++    }
++
++    func testRedactDictionaryDropsSensitiveValuesAndWalksNested() {
++        let input: [String: Any] = [
++            "statusCode": 503,
++            "authToken": "supersecret",
++            "nested": [
++                "email": "x@y.com",
++                "note": "ping /Users/bob/secret"
++            ]
++        ]
++        let out = MacSentryScrubber.redactDictionary(input)
++        XCTAssertEqual(out["statusCode"] as? Int, 503)
++        XCTAssertEqual(out["authToken"] as? String, MacSentryScrubber.redactionPlaceholder)
++        let nested = out["nested"] as? [String: Any]
++        XCTAssertEqual(nested?["email"] as? String, MacSentryScrubber.redactionPlaceholder)
++        XCTAssertFalse((nested?["note"] as? String ?? "").contains("/Users/bob"))
++    }
++
++    func testRedactDictionaryWalksArrays() {
++        let input: [String: Any] = [
++            "trail": [
++                "first /Users/carol/notes",
++                "alberto8793@gmail.com",
++                "plain status"
++            ]
++        ]
++        let out = MacSentryScrubber.redactDictionary(input)
++        let trail = out["trail"] as? [Any]
++        XCTAssertEqual(trail?.count, 3)
++        let joined = (trail ?? []).compactMap { $0 as? String }.joined(separator: " ")
++        XCTAssertFalse(joined.contains("/Users/carol"))
++        XCTAssertFalse(joined.contains("@gmail.com"))
++        XCTAssertTrue(joined.contains("plain status"))
++    }
++
++    // MARK: Sensitive values never survive scrubbing
++
++    func testSensitiveValuesDoNotSurviveScrubbing() {
++        let input: [String: Any] = [
++            "sessionToken": "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
++            "vaultMnemonic": "abandon ability able about above absent absorb abstract",
++            "message": "user typed alberto8793@gmail.com",
++            "path": "/Users/alberto/Library/secret"
++        ]
++        let out = MacSentryScrubber.redactDictionary(input)
++        let serialized = stringify(out)
++        XCTAssertFalse(serialized.contains("tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"))
++        XCTAssertFalse(serialized.contains("abandon ability able about"))
++        XCTAssertFalse(serialized.contains("alberto8793@gmail.com"))
++        XCTAssertFalse(serialized.contains("/Users/alberto"))
++    }
++
++    // MARK: Helpers
++
++    private func makeDefaults() -> UserDefaults {
++        let suite = "MacSentryScrubberTests.\(UUID().uuidString)"
++        let defaults = UserDefaults(suiteName: suite)!
++        defaults.removePersistentDomain(forName: suite)
++        return defaults
++    }
++
++    /// Flattens an arbitrary redacted map to a single string so a test can assert
++    /// no raw sensitive substring survives anywhere in the output.
++    private func stringify(_ value: Any) -> String {
++        switch value {
++        case let string as String:
++            return string
++        case let dict as [String: Any]:
++            return dict.map { "\($0.key)=\(stringify($0.value))" }.joined(separator: ";")
++        case let array as [Any]:
++            return array.map(stringify).joined(separator: ",")
++        default:
++            return String(describing: value)
++        }
++    }
++}
+diff --git a/AgentLensTests/Active/Parsers/ParserInputLimitsTests.swift b/AgentLensTests/Active/Parsers/ParserInputLimitsTests.swift
+new file mode 100644
+index 0000000000..408d7235cb
+--- /dev/null
++++ b/AgentLensTests/Active/Parsers/ParserInputLimitsTests.swift
+@@ -0,0 +1,128 @@
++import XCTest
++@testable import OpenBurnBar
++
++/// Covers the DoS-hardening guard shared by the local log parsers
++/// (`ParserInputLimits`): a pre-flight file-size cap and a JSON
++/// recursion-depth cap (finding V-37).
++final class ParserInputLimitsTests: XCTestCase {
++    private var tempDirectory: URL!
++
++    override func setUpWithError() throws {
++        try super.setUpWithError()
++        tempDirectory = FileManager.default.temporaryDirectory
++            .appendingPathComponent("obb-parser-limits-\(UUID().uuidString)", isDirectory: true)
++        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
++    }
++
++    override func tearDownWithError() throws {
++        if let tempDirectory {
++            try? FileManager.default.removeItem(at: tempDirectory)
++        }
++        tempDirectory = nil
++        try super.tearDownWithError()
++    }
++
++    private func writeFile(named name: String, bytes: Int) throws -> URL {
++        let url = tempDirectory.appendingPathComponent(name)
++        let data = Data(count: bytes)
++        try data.write(to: url)
++        return url
++    }
++
++    // MARK: - Size cap
++
++    func test_guardedContents_readsFileWithinLimit() throws {
++        let url = try writeFile(named: "ok.json", bytes: 1_024)
++
++        let data = try ParserInputLimits.guardedContents(ofFile: url.path)
++
++        XCTAssertEqual(data.count, 1_024)
++    }
++
++    func test_guardedContents_throwsFileTooLargeAboveLimit() throws {
++        // One byte over the cap must be rejected by the pre-flight stat,
++        // never allocated into memory.
++        let overLimitURL = tempDirectory.appendingPathComponent("huge.json")
++        let size = Int(ParserInputLimits.maxFileSizeBytes) + 1
++        // Sparse write keeps the test cheap while still reporting the true size.
++        let handle = FileManager.default
++        XCTAssertTrue(handle.createFile(atPath: overLimitURL.path, contents: nil))
++        let fileHandle = try FileHandle(forWritingTo: overLimitURL)
++        defer { try? fileHandle.close() }
++        try fileHandle.truncate(atOffset: UInt64(size))
++
++        XCTAssertThrowsError(try ParserInputLimits.guardedContents(ofFile: overLimitURL.path)) { error in
++            guard let tooLarge = error as? ParserInputLimits.FileTooLarge else {
++                return XCTFail("Expected FileTooLarge, got \(error)")
++            }
++            XCTAssertEqual(tooLarge.limitBytes, ParserInputLimits.maxFileSizeBytes)
++            XCTAssertGreaterThan(tooLarge.sizeBytes, ParserInputLimits.maxFileSizeBytes)
++            XCTAssertEqual(tooLarge.path, overLimitURL.path)
++        }
++    }
++
++    func test_boundedContents_returnsDataWithinLimit() throws {
++        let url = try writeFile(named: "small.json", bytes: 16)
++
++        let data = ParserInputLimits.boundedContents(of: url)
++
++        XCTAssertEqual(data?.count, 16)
++    }
++
++    func test_boundedContents_returnsNilAboveLimit() throws {
++        let overLimitURL = tempDirectory.appendingPathComponent("huge2.json")
++        XCTAssertTrue(FileManager.default.createFile(atPath: overLimitURL.path, contents: nil))
++        let fileHandle = try FileHandle(forWritingTo: overLimitURL)
++        defer { try? fileHandle.close() }
++        try fileHandle.truncate(atOffset: ParserInputLimits.maxFileSizeBytes + 1)
++
++        XCTAssertNil(ParserInputLimits.boundedContents(of: overLimitURL))
++    }
++
++    func test_boundedContents_returnsNilForMissingFile() {
++        let missing = tempDirectory.appendingPathComponent("does-not-exist.json")
++
++        XCTAssertNil(ParserInputLimits.boundedContents(of: missing))
++    }
++
++    // MARK: - Depth cap
++
++    func test_depthWithinLimit_boundary() {
++        XCTAssertTrue(ParserInputLimits.depthWithinLimit(0))
++        XCTAssertTrue(ParserInputLimits.depthWithinLimit(ParserInputLimits.maxJSONDepth - 1))
++        XCTAssertFalse(ParserInputLimits.depthWithinLimit(ParserInputLimits.maxJSONDepth))
++        XCTAssertFalse(ParserInputLimits.depthWithinLimit(ParserInputLimits.maxJSONDepth + 1))
++    }
++
++    /// A deeply-nested OpenClaw session JSON must parse without crashing: the
++    /// flatten walk is bounded by `maxJSONDepth`, so an adversarial document
++    /// returns rather than recursing until the stack is exhausted.
++    func test_openClawParser_boundedDepth_doesNotCrashOnDeepNesting() async throws {
++        let sessionsDir = tempDirectory.appendingPathComponent("sessions", isDirectory: true)
++        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
++
++        // Build JSON nested far deeper than the cap under an "items" key, which
++        // the flatten walk descends. A top-level array makes the per-line JSONL
++        // decode fail (it is not a `[String: Any]`), so the parser falls through
++        // to the whole-file `flattenSessionObjects` recursion under test.
++        let depth = ParserInputLimits.maxJSONDepth + 50
++        var json = "{\"role\":\"user\",\"content\":\"hi\"}"
++        for _ in 0..<depth {
++            json = "{\"items\":[\(json)]}"
++        }
++        json = "[\(json)]"
++        let file = sessionsDir.appendingPathComponent("deep.json")
++        try json.data(using: .utf8)!.write(to: file)
++
++        let parser = OpenClawParser(sessionsDirectory: sessionsDir)
++        // The load-bearing assertion is that parse() returns at all: an
++        // unbounded recursive flatten would exhaust the stack on this input.
++        // Because the walk stops at maxJSONDepth (emitting the wrapper dict as a
++        // leaf rather than the innermost turn), no usable turns are recovered and
++        // the oversized session simply yields no conversation — which is the
++        // intended fail-safe behaviour.
++        let result = try await parser.parse()
++        XCTAssertTrue(result.conversations.isEmpty)
++        XCTAssertTrue(result.usages.isEmpty)
++    }
++}
+diff --git a/OpenBurnBar.xcodeproj/project.pbxproj b/OpenBurnBar.xcodeproj/project.pbxproj
+index 31a14c7303..b6e76402c2 100644
+--- a/OpenBurnBar.xcodeproj/project.pbxproj
++++ b/OpenBurnBar.xcodeproj/project.pbxproj
+@@ -364,6 +364,7 @@
+ 		2E944B00E883F6665F8EBC75 /* PiAgentRuntimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277BCA08DBFCB71B451DECAA /* PiAgentRuntimeAdapter.swift */; };
+ 		2EA8300923D54A683EE8E947 /* ClaudeCodeParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E955F9A39FDDAA9DBCAD8E1 /* ClaudeCodeParser.swift */; };
+ 		2ED623E8EDE2E2381645F2AD /* GrokParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 196452BEE01A780E32E3BD30 /* GrokParserTests.swift */; };
++		AAAA000000000000000000F3 /* ParserInputLimitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000F4 /* ParserInputLimitsTests.swift */; };
+ 		2EE22500AED2C33CF0384334 /* ConstellationBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031913828125C6D25DFE02CA /* ConstellationBackgroundView.swift */; };
+ 		2F13CB3BB3DAEFB3D6ACE742 /* CrossEncoderConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1597C5A76F003D0179ECED1 /* CrossEncoderConfiguration.swift */; };
+ 		2F29F1D741822449231674A2 /* ScreenShareAutoTypeFollowPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1EA87EE0285381B93CF8B3 /* ScreenShareAutoTypeFollowPolicyTests.swift */; };
+@@ -825,6 +826,7 @@
+ 		6DFC275E75A36E738EC66231 /* ProviderSummaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71572A2FAF48A3693C8E2E02 /* ProviderSummaryStore.swift */; };
+ 		6DFD0F276B1381DF134A4F5E /* AccountSwitcherSettingsView+Rendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CD0438947285776A3C7856 /* AccountSwitcherSettingsView+Rendering.swift */; };
+ 		6E1123D0B6818A0C30207F08 /* GrokParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFF351EEEB5F8E8F6282C54 /* GrokParser.swift */; };
++		AAAA000000000000000000F1 /* ParserInputLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000F2 /* ParserInputLimits.swift */; };
+ 		6E349804410013AEB14E4785 /* RoutedClientWiringSentryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFE589D3CA8D5587EAD02898 /* RoutedClientWiringSentryTests.swift */; };
+ 		6E3AFA5E930C70848DF2E381 /* HomeAssistantWebhookID.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED9965E71446A574EEF3E4E2 /* HomeAssistantWebhookID.swift */; };
+ 		6E65CAA3EB40C27F6140DC1A /* RemoteUnlockVirtualHIDBridgeInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39DB5ECF63B47C9E64B0292E /* RemoteUnlockVirtualHIDBridgeInstaller.swift */; };
+@@ -2231,6 +2233,7 @@
+ 		1943AC72B589202ACCD5EE2E /* OpenBurnBarPaidTiers.storekit */ = {isa = PBXFileReference; path = OpenBurnBarPaidTiers.storekit; sourceTree = "<group>"; };
+ 		1957B6E4D998481C940FBD90 /* OnboardingVisualSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingVisualSnapshotTests.swift; sourceTree = "<group>"; };
+ 		196452BEE01A780E32E3BD30 /* GrokParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokParserTests.swift; sourceTree = "<group>"; };
++		AAAA000000000000000000F4 /* ParserInputLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserInputLimitsTests.swift; sourceTree = "<group>"; };
+ 		199300606EC1D6D3C39BB254 /* test_chatMessageView_user.chatVisual-userMessage-light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_chatMessageView_user.chatVisual-userMessage-light.png"; sourceTree = "<group>"; };
+ 		19AE61CB1273F74B88D4D050 /* SummaryCostEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryCostEstimator.swift; sourceTree = "<group>"; };
+ 		19C20476A62A5664C533FD29 /* HomeAssistantRecoveryProvisioner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantRecoveryProvisioner.swift; sourceTree = "<group>"; };
+@@ -2735,6 +2738,7 @@
+ 		5CCC1633F91DDF010E7E260F /* BurnBarDaemonComputerUseLocalAuthProofWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarDaemonComputerUseLocalAuthProofWiringTests.swift; sourceTree = "<group>"; };
+ 		5CF3160391F31C3B80701EA6 /* ComputerUsePanicHaltCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUsePanicHaltCoordinator.swift; sourceTree = "<group>"; };
+ 		5CFF351EEEB5F8E8F6282C54 /* GrokParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokParser.swift; sourceTree = "<group>"; };
++		AAAA000000000000000000F2 /* ParserInputLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserInputLimits.swift; sourceTree = "<group>"; };
+ 		5D02E22FF9813E331D19F0FC /* MercuryActionVisibilityList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryActionVisibilityList.swift; sourceTree = "<group>"; };
+ 		5D1F601074335E0C1F306736 /* CloudSyncSharedArtifactModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSharedArtifactModels.swift; sourceTree = "<group>"; };
+ 		5D405188BAFA3114FEA17DB5 /* CLIAgentChatReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentChatReaderTests.swift; sourceTree = "<group>"; };
+@@ -4956,6 +4960,7 @@
+ 				AB9331768D88BB9102B4FD75 /* FactoryDroidParserTests.swift */,
+ 				9B427729C36B8A8FA171EBA5 /* GeminiCLIParserTests.swift */,
+ 				196452BEE01A780E32E3BD30 /* GrokParserTests.swift */,
++				AAAA000000000000000000F4 /* ParserInputLimitsTests.swift */,
+ 				D2D72B1A14659695BB38F037 /* HermesParserIntegrationTests.swift */,
+ 				06087AC2E5683D4901505028 /* KimiParserTests.swift */,
+ 				E592D243A3CC0C0A5E0A4CFC /* ProviderCockpitParserTests.swift */,
+@@ -5023,6 +5028,7 @@
+ 				6CADF307FDCC5741291339A0 /* HermesParser.swift */,
+ 				2DDBA3FEAD1455D1A7AA6227 /* KimiParser.swift */,
+ 				42E5B6AA30134697E7725164 /* LogParserProtocol.swift */,
++				AAAA000000000000000000F2 /* ParserInputLimits.swift */,
+ 				EB8B255D17F136C61C21E628 /* TokenExtractionUtility.swift */,
+ 				AD2B5094E9BB6A9FE57E86B9 /* WarpParser.swift */,
+ 				0DCE2847583E5D90D7BA9EFB /* WindsurfParser.swift */,
+@@ -9139,6 +9145,7 @@
+ 				2993ED121DF9627A925E3635 /* FusionWireContractTests.swift in Sources */,
+ 				F94CE5FD451479A951CF5236 /* GeminiCLIParserTests.swift in Sources */,
+ 				2ED623E8EDE2E2381645F2AD /* GrokParserTests.swift in Sources */,
++				AAAA000000000000000000F3 /* ParserInputLimitsTests.swift in Sources */,
+ 				2979FEDEDE68B7AE5D9CE082 /* HermesInventoryImportServiceTests.swift in Sources */,
+ 				3F8A66FA3077AD336B5863A3 /* HermesIrohRelayHostClientMattersTests.swift in Sources */,
+ 				8116E58C1839BA92D537F09A /* HermesParserIntegrationTests.swift in Sources */,
+@@ -9644,6 +9651,7 @@
+ 				37D529B959A202A96E467357 /* GitHubCopilotUsageAPI.swift in Sources */,
+ 				E744562F328864DC70FF668D /* GooseParser.swift in Sources */,
+ 				6E1123D0B6818A0C30207F08 /* GrokParser.swift in Sources */,
++				AAAA000000000000000000F1 /* ParserInputLimits.swift in Sources */,
+ 				A554098D1518E76BB0E24798 /* HermesAtomComponents.swift in Sources */,
+ 				13104F035EF1D35EDD8E99E6 /* HermesAttachmentLoader.swift in Sources */,
+ 				B569E46F427460840B69F5E5 /* HermesDataFolder.swift in Sources */,
+diff --git a/functions/package.json b/functions/package.json
+index b309548f0d..f95fc0b2b4 100644
+--- a/functions/package.json
++++ b/functions/package.json
+@@ -79,7 +79,8 @@
+     "firebase-admin": "13.10.0",
+     "firebase-functions": "^7.2.5",
+     "googleapis": "173.0.0",
+-    "stripe": "19.3.0"
++    "stripe": "19.3.0",
++    "undici": "^6.25.0"
+   },
+   "devDependencies": {
+     "@firebase/rules-unit-testing": "^5.0.1",
+diff --git a/functions/src/__tests__/accountDeletionRootCollectionCoverage.test.ts b/functions/src/__tests__/accountDeletionRootCollectionCoverage.test.ts
+new file mode 100644
+index 0000000000..13caebf2f4
+--- /dev/null
++++ b/functions/src/__tests__/accountDeletionRootCollectionCoverage.test.ts
+@@ -0,0 +1,74 @@
++import { readdirSync, readFileSync } from "node:fs";
++import { resolve } from "node:path";
++import { describe, expect, it } from "vitest";
++
++import {
++  ROOT_COLLECTION_UID_DELETION_MANIFEST,
++  ROOT_COLLECTIONS_KEYED_BY_UID,
++} from "../accountDeletionRootCollections.js";
++
++const REPO_ROOT = resolve(__dirname, "../../..");
++const SRC = resolve(REPO_ROOT, "functions/src");
++
++/** Every `.collection("X").where("uid", ...)` literal in functions/src (excluding tests). */
++function discoverRootUidKeyedCollections(): Set<string> {
++  const pattern = /\.collection\(\s*["']([a-z0-9_]+)["']\s*\)\s*\.where\(\s*["']uid["']/g;
++  const found = new Set<string>();
++  const files = readdirSync(SRC, { recursive: true, encoding: "utf8" })
++    .filter((rel) => rel.endsWith(".ts") && !rel.includes("__tests__"));
++  for (const rel of files) {
++    const source = readFileSync(resolve(SRC, rel), "utf8");
++    for (const match of source.matchAll(pattern)) {
++      found.add(match[1]);
++    }
++  }
++  return found;
++}
++
++const manifestNames = new Set(ROOT_COLLECTION_UID_DELETION_MANIFEST.map((e) => e.collection));
++
++describe("account-deletion root-collection coverage (V-23a, GDPR Art.17)", () => {
++  it("classifies every root uid-keyed collection found in the codebase", () => {
++    const discovered = discoverRootUidKeyedCollections();
++    expect(discovered.size).toBeGreaterThan(0); // guard against a broken scan
++    const unclassified = [...discovered].filter((name) => !manifestNames.has(name)).sort();
++    expect(
++      unclassified,
++      `Root collection(s) keyed by uid are NOT in ROOT_COLLECTION_UID_DELETION_MANIFEST and would escape ` +
++        `account erasure: ${unclassified.join(", ")}. Add each to accountDeletionRootCollections.ts as ` +
++        `disposition "delete" (and wire its sweep) or "exempt" (with a reason).`,
++    ).toEqual([]);
++  });
++
++  it("derives the generic-sweep set from the manifest with no drift", () => {
++    const expected = ROOT_COLLECTION_UID_DELETION_MANIFEST
++      .filter((e) => e.disposition === "delete" && e.handledBy === "rootSweep")
++      .map((e) => e.collection)
++      .sort();
++    expect([...ROOT_COLLECTIONS_KEYED_BY_UID].sort()).toEqual(expected);
++    // Behavior parity with the pre-manifest hardcoded list.
++    expect([...ROOT_COLLECTIONS_KEYED_BY_UID].sort()).toEqual(["fcm_outbound", "voip_outbound"]);
++  });
++
++  it("requires a documented reason on every manifest entry", () => {
++    for (const entry of ROOT_COLLECTION_UID_DELETION_MANIFEST) {
++      expect(entry.reason.trim().length, entry.collection).toBeGreaterThan(0);
++      if (entry.disposition === "delete") {
++        expect(entry.handledBy, `${entry.collection} delete entry must declare handledBy`).toBeTruthy();
++      }
++    }
++  });
++
++  it("wires every 'delete' entry to an actual sweep in accountDeletion.ts", () => {
++    const deletionSource = readFileSync(resolve(SRC, "accountDeletion.ts"), "utf8");
++    for (const entry of ROOT_COLLECTION_UID_DELETION_MANIFEST.filter((e) => e.disposition === "delete")) {
++      if (entry.handledBy === "secretDestroy") {
++        // Purged with its Secret Manager versions — referenced by name in the erase path.
++        expect(deletionSource.includes(entry.collection), `${entry.collection} not referenced`).toBe(true);
++      } else {
++        // Generic sweep iterates ROOT_COLLECTIONS_KEYED_BY_UID; ensure it's in that set.
++        expect([...ROOT_COLLECTIONS_KEYED_BY_UID]).toContain(entry.collection);
++      }
++    }
++  });
++});
+diff --git a/functions/src/__tests__/appCheckAttestationMaxAge.test.ts b/functions/src/__tests__/appCheckAttestationMaxAge.test.ts
+new file mode 100644
+index 0000000000..39c1ca61ba
+--- /dev/null
++++ b/functions/src/__tests__/appCheckAttestationMaxAge.test.ts
+@@ -0,0 +1,39 @@
++import { describe, expect, it } from "vitest";
++
++import {
++  APP_CHECK_ATTESTATION_MAX_AGE_MS,
++  isAppCheckAttestationClaimFresh,
++  resolveAppCheckAttestationMaxAgeMs,
++} from "../appCheckAttestation.js";
++
++const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
++const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
++
++describe("V-16 App Check attestation max-age", () => {
++  it("defaults to 7 days (tightened from the former 30)", () => {
++    expect(resolveAppCheckAttestationMaxAgeMs(undefined)).toBe(SEVEN_DAYS_MS);
++    expect(resolveAppCheckAttestationMaxAgeMs("")).toBe(SEVEN_DAYS_MS);
++    expect(resolveAppCheckAttestationMaxAgeMs("   ")).toBe(SEVEN_DAYS_MS);
++    // The module-level constant reflects the default in a clean test env.
++    expect(APP_CHECK_ATTESTATION_MAX_AGE_MS).toBeLessThanOrEqual(THIRTY_DAYS_MS);
++  });
++
++  it("honors a valid positive operator override", () => {
++    expect(resolveAppCheckAttestationMaxAgeMs(String(THIRTY_DAYS_MS))).toBe(THIRTY_DAYS_MS);
++    expect(resolveAppCheckAttestationMaxAgeMs("3600000")).toBe(3_600_000);
++  });
++
++  it("falls back to the secure default for non-finite / non-positive / junk values (freshness can never be disabled)", () => {
++    for (const bad of ["0", "-1", "-99999", "NaN", "abc", "Infinity", "1e999"]) {
++      expect(resolveAppCheckAttestationMaxAgeMs(bad), `value=${bad}`).toBe(SEVEN_DAYS_MS);
++    }
++  });
++
++  it("rejects an attestation older than the window and accepts a fresh one", () => {
++    const now = 1_900_000_000_000;
++    const fresh = { v: 1 as const, appId: "app-1", boundAtMillis: now - 60_000 };
++    const stale = { v: 1 as const, appId: "app-1", boundAtMillis: now - APP_CHECK_ATTESTATION_MAX_AGE_MS - 1 };
++    expect(isAppCheckAttestationClaimFresh(fresh, now)).toBe(true);
++    expect(isAppCheckAttestationClaimFresh(stale, now)).toBe(false);
++  });
++});
+diff --git a/functions/src/__tests__/fcmOutboundDeviceIdMinimization.test.ts b/functions/src/__tests__/fcmOutboundDeviceIdMinimization.test.ts
+new file mode 100644
+index 0000000000..f9c771bad8
+--- /dev/null
++++ b/functions/src/__tests__/fcmOutboundDeviceIdMinimization.test.ts
+@@ -0,0 +1,125 @@
++/**
++ * Push-privacy minimization (V-22-android-deviceid).
++ *
++ * The persisted `fcm_outbound` queue document must NOT carry the stable
++ * `androidDeviceId` correlator. Delivery routing in `fcmAndroidSender.ts`
++ * (the `sendFcmOutbound` create trigger and the stuck-push sweeper) reads
++ * back ONLY `fcmToken` + `payload`, so the device id is never consumed from
++ * the persisted doc — persisting it would just leave a stable cross-session
++ * correlator at rest inside this short-lived (15-min TTL) document.
++ *
++ * These tests drive the real `triggerVoIPCall` handler through the same
++ * path-keyed Firestore + auth mocks the BOLA suite uses, capturing every
++ * `collection().add()` write so the persisted shape can be asserted.
++ */
++import { describe, expect, it, vi } from "vitest";
++
++import { ALICE_UID, callableRequest, callableRunner, seedDoc } from "./bola/callableBolaHarness.js";
++
++const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
++const outboundWrites: Array<{ collection: string; payload: Record<string, unknown> }> = vi.hoisted(() => []);
++
++process.env.ENFORCE_APP_CHECK = "false";
++
++vi.mock("../auth.js", () => ({
++  assertAppCheck: vi.fn(),
++}));
++vi.mock("firebase-admin/firestore", () => ({
++  getFirestore: () => ({
++    doc: (path: string) => ({
++      get: async () => {
++        const data = store.get(path);
++        return {
++          exists: data !== undefined,
++          data: () => data,
++        };
++      },
++    }),
++    collection: (name: string) => ({
++      add: async (payload: Record<string, unknown>) => {
++        outboundWrites.push({ collection: name, payload });
++        return { id: `out-${outboundWrites.length}` };
++      },
++    }),
++  }),
++  Timestamp: {
++    now: () => ({ toMillis: () => Date.now() }),
++    fromMillis: (ms: number) => ({ toMillis: () => ms }),
++  },
++}));
++vi.mock("../voipPush.js", async () => {
++  const actual = await vi.importActual<typeof import("../voipPush.js")>("../voipPush.js");
++  return {
++    ...actual,
++    macHasActiveMediaEntitlement: vi.fn(async () => true),
++  };
++});
++
++async function triggerForAliceAndroidDevice(): Promise<{ collection: string; payload: Record<string, unknown> }> {
++  store.clear();
++  outboundWrites.length = 0;
++  // Alice owns an Android device with only an FCM token (no APNs / VoIP token),
++  // so `resolveFanOut` resolves the Android branch and returns androidDeviceId.
++  seedDoc(store, `users/${ALICE_UID}/devices/alice-pixel`, {
++    fcm_token: "alice-fcm-token",
++    platform: "android",
++  });
++
++  const mod = await import("../callables/voipPush.js");
++  const run = callableRunner(mod.triggerVoIPCall);
++
++  const result = (await run(
++    callableRequest(ALICE_UID, {
++      callId: "call-00000042",
++      connectionId: "conn-00000042",
++      pairedDeviceId: "alice-pixel",
++      displayName: "Alice's Mac",
++      isVideo: false,
++    }),
++  )) as { ok: boolean; channels: { fcm: boolean } };
++
++  expect(result.ok).toBe(true);
++  expect(result.channels.fcm).toBe(true);
++
++  const fcmWrite = outboundWrites.find((w) => w.collection === "fcm_outbound");
++  expect(fcmWrite, "expected an fcm_outbound write").toBeDefined();
++  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
++  return fcmWrite!;
++}
++
++describe("fcm_outbound device-id minimization (V-22-android-deviceid)", () => {
++  it("persists the fcm_outbound doc WITHOUT a stable androidDeviceId correlator", async () => {
++    const fcmWrite = await triggerForAliceAndroidDevice();
++
++    // The raw / opaque device id must not be persisted in any form.
++    expect(fcmWrite.payload).not.toHaveProperty("androidDeviceId");
++    expect(fcmWrite.payload).not.toHaveProperty("android_device_id");
++    expect(fcmWrite.payload).not.toHaveProperty("deviceId");
++    expect(fcmWrite.payload).not.toHaveProperty("pairedDeviceId");
++
++    // No persisted value may leak the resolved device id ("alice-pixel"),
++    // even under a differently-named key.
++    for (const value of Object.values(fcmWrite.payload)) {
++      expect(typeof value === "string" ? value : "").not.toContain("alice-pixel");
++    }
++  });
++
++  it("still persists the fields delivery routing + TTL + account-erase depend on", async () => {
++    const fcmWrite = await triggerForAliceAndroidDevice();
++
++    // Delivery routing keys off fcmToken only (read back by sendFcmOutbound).
++    expect(fcmWrite.payload).toHaveProperty("fcmToken", "alice-fcm-token");
++    // Account-erase fan-out (accountDeletion.ts) deletes by uid.
++    expect(fcmWrite.payload).toHaveProperty("uid", ALICE_UID);
++    // 15-min self-expiry TTL stays stamped on the doc.
++    expect(fcmWrite.payload).toHaveProperty("createdAt");
++    expect(fcmWrite.payload).toHaveProperty("expireAt");
++    expect(fcmWrite.payload).toHaveProperty("status", "pending");
++    // The data payload carries only the ephemeral, per-push correlation id.
++    const payload = fcmWrite.payload.payload as Record<string, unknown>;
++    expect(payload).toHaveProperty("call_id", "call-00000042");
++    expect(payload).toHaveProperty("correlation_id");
++    expect(payload).not.toHaveProperty("connection_id");
++    expect(payload).not.toHaveProperty("paired_device_id");
++  });
++});
+diff --git a/functions/src/__tests__/ssrfAgent.test.ts b/functions/src/__tests__/ssrfAgent.test.ts
+new file mode 100644
+index 0000000000..5ec130f367
+--- /dev/null
++++ b/functions/src/__tests__/ssrfAgent.test.ts
+@@ -0,0 +1,26 @@
++import { describe, expect, it } from "vitest";
++import { Agent } from "undici";
++
++import { ssrfHardenedAgent, ssrfHardenedFetch } from "../ssrfAgent.js";
++
++describe("ssrfHardenedAgent", () => {
++  it("is a redirect-disabled undici Agent reused as a singleton", () => {
++    const a = ssrfHardenedAgent();
++    const b = ssrfHardenedAgent();
++    expect(a).toBeInstanceOf(Agent);
++    expect(a).toBe(b); // singleton — connection pool is shared
++  });
++});
++
++describe("ssrfHardenedFetch", () => {
++  it("runs the synchronous SSRF string gate before any network I/O", async () => {
++    // Metadata + private hosts are rejected by the string gate, so no socket is
++    // ever opened (the DNS-pin lookup would also catch a rebind, but we never
++    // get that far).
++    await expect(ssrfHardenedFetch("http://169.254.169.254/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("http://metadata.google.internal/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("http://10.0.0.1/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("http://[::ffff:169.254.169.254]/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("file:///etc/passwd")).rejects.toThrow(/SSRF guard/);
++  });
++});
+diff --git a/functions/src/__tests__/ssrfGuard.test.ts b/functions/src/__tests__/ssrfGuard.test.ts
+new file mode 100644
+index 0000000000..3075a2724b
+--- /dev/null
++++ b/functions/src/__tests__/ssrfGuard.test.ts
+@@ -0,0 +1,110 @@
++import { describe, expect, it } from "vitest";
++
++import { assertOutboundFetchTarget, isPublicUnicastAddress, normalizeIpv4 } from "../ssrfGuard.js";
++
++describe("normalizeIpv4", () => {
++  it("normalizes decimal, hex, octal, and short-form IPv4 literals", () => {
++    expect(normalizeIpv4("2130706433")).toBe("127.0.0.1");
++    expect(normalizeIpv4("0x7f000001")).toBe("127.0.0.1");
++    expect(normalizeIpv4("017700000001")).toBe("127.0.0.1");
++    expect(normalizeIpv4("0177.0.0.1")).toBe("127.0.0.1");
++    expect(normalizeIpv4("127.1")).toBe("127.0.0.1");
++    expect(normalizeIpv4("127.0.1")).toBe("127.0.0.1");
++    expect(normalizeIpv4("10.1")).toBe("10.0.0.1");
++    expect(normalizeIpv4("192.168.1")).toBe("192.168.0.1");
++  });
++
++  it("rejects invalid IPv4 literals", () => {
++    expect(normalizeIpv4("256.0.0.1")).toBeNull();
++    expect(normalizeIpv4("1.16777216")).toBeNull();
++    expect(normalizeIpv4("1.2.65536")).toBeNull();
++    expect(normalizeIpv4("1.2.3.256")).toBeNull();
++    expect(normalizeIpv4("example.com")).toBeNull();
++  });
++});
++
++describe("assertOutboundFetchTarget", () => {
++  it("blocks the cloud metadata service in every spelling", () => {
++    // dotted-decimal, decimal, hex, and the metadata hostnames.
++    expect(() => assertOutboundFetchTarget("http://169.254.169.254/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://2852039166/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://0xa9fea9fe/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://metadata.google.internal/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://metadata/")).toThrow(/SSRF guard/);
++  });
++
++  it("blocks loopback encoded as alternate IPv4 literals", () => {
++    expect(() => assertOutboundFetchTarget("http://0x7f000001")).not.toThrow(); // 127.x is the dev exception
++    // ...but every other private/link-local alt-encoding is blocked:
++    expect(() => assertOutboundFetchTarget("http://0x0a000001")).toThrow(/SSRF guard/); // 10.0.0.1
++    expect(() => assertOutboundFetchTarget("http://0300.0250.0.1")).toThrow(/SSRF guard/); // 192.168.0.1
++    expect(() => assertOutboundFetchTarget("http://0251.0376.0251.0376")).toThrow(/SSRF guard/);
++  });
++
++  it("blocks IPv4-mapped IPv6 forms of loopback and private ranges", () => {
++    expect(() => assertOutboundFetchTarget("http://[::ffff:169.254.169.254]/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://[::ffff:10.0.0.1]/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://[::ffff:192.168.0.1]/")).toThrow(/SSRF guard/);
++    // hextet form of 169.254.169.254 -> ::ffff:a9fe:a9fe
++    expect(() => assertOutboundFetchTarget("http://[::ffff:a9fe:a9fe]/")).toThrow(/SSRF guard/);
++  });
++
++  it("blocks RFC1918, CGNAT, link-local, ULA, multicast, and reserved ranges", () => {
++    expect(() => assertOutboundFetchTarget("http://10.1.2.3/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://172.16.0.1/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://172.31.255.255/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://192.168.5.5/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://100.64.0.1/")).toThrow(/SSRF guard/); // CGNAT
++    expect(() => assertOutboundFetchTarget("http://0.0.0.0/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://224.0.0.1/")).toThrow(/SSRF guard/); // multicast
++    expect(() => assertOutboundFetchTarget("http://240.0.0.1/")).toThrow(/SSRF guard/); // reserved
++    expect(() => assertOutboundFetchTarget("http://[fc00::1]/")).toThrow(/SSRF guard/); // ULA
++    expect(() => assertOutboundFetchTarget("http://[fe80::1]/")).toThrow(/SSRF guard/); // link-local
++    expect(() => assertOutboundFetchTarget("http://[febf::1]/")).toThrow(/SSRF guard/); // fe80::/10 upper
++    expect(() => assertOutboundFetchTarget("http://[ff02::1]/")).toThrow(/SSRF guard/); // multicast
++    expect(() => assertOutboundFetchTarget("http://[::]/")).toThrow(/SSRF guard/); // unspecified
++  });
++
++  it("rejects non-http(s) protocols", () => {
++    expect(() => assertOutboundFetchTarget("file:///etc/passwd")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("gopher://evil/")).toThrow(/SSRF guard/);
++  });
++
++  it("lets a normal public host through the string gate", () => {
++    expect(() => assertOutboundFetchTarget("https://api.openai.com/v1/models")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("https://example.com/")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://8.8.8.8/")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://1.1.1.1/")).not.toThrow();
++  });
++
++  it("preserves the explicit local-development loopback exception", () => {
++    expect(() => assertOutboundFetchTarget("http://127.1:8080")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://0x7f000001:8080")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://localhost:8080")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://[::1]:8080")).not.toThrow();
++  });
++
++  it("preserves the sanctioned metadata fetch via allowPrivateHosts", () => {
++    expect(() => assertOutboundFetchTarget("http://metadata.google.internal/computeMetadata/v1/", true)).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://169.254.169.254/", true)).not.toThrow();
++  });
++});
++
++describe("isPublicUnicastAddress (DNS-pin allowlist)", () => {
++  it("accepts public unicast IPs", () => {
++    expect(isPublicUnicastAddress("8.8.8.8")).toBe(true);
++    expect(isPublicUnicastAddress("1.1.1.1")).toBe(true);
++    expect(isPublicUnicastAddress("2606:4700:4700::1111")).toBe(true);
++  });
++
++  it("rejects loopback, private, link-local, and metadata addresses", () => {
++    // Loopback is NOT public — even the dev-exception loopback is rejected here.
++    expect(isPublicUnicastAddress("127.0.0.1")).toBe(false);
++    expect(isPublicUnicastAddress("::1")).toBe(false);
++    expect(isPublicUnicastAddress("10.0.0.1")).toBe(false);
++    expect(isPublicUnicastAddress("169.254.169.254")).toBe(false);
++    expect(isPublicUnicastAddress("::ffff:169.254.169.254")).toBe(false);
++    expect(isPublicUnicastAddress("fc00::1")).toBe(false);
++    expect(isPublicUnicastAddress("fe80::1")).toBe(false);
++  });
++});
+diff --git a/functions/src/accountDeletion.ts b/functions/src/accountDeletion.ts
+index eb4c84d64f..759f3a3b0a 100644
+--- a/functions/src/accountDeletion.ts
++++ b/functions/src/accountDeletion.ts
+@@ -9,6 +9,8 @@
+ import type { CollectionReference, DocumentReference, Firestore, Query, WriteBatch } from "firebase-admin/firestore";
+ import { getStorage } from "firebase-admin/storage";
+ 
++import { ROOT_COLLECTIONS_KEYED_BY_UID } from "./accountDeletionRootCollections.js";
++
+ interface AccountDeletionSummary {
+   destroyedSecrets: number;
+   failedSecretDestroys: number;
+@@ -33,12 +35,10 @@ interface DeleteUserAccountOptions extends AccountDeletionOptions {
+ 
+ const BATCH_LIMIT = 400;
+ 
+-/**
+- * Root (non-`users/{uid}`) collections that carry per-document `uid` ownership
+- * and therefore are not reached by the `users/{uid}` subtree walk. Account erase
+- * must delete the caller's documents in each (GDPR Art.17).
+- */
+-const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound"] as const;
++// Root (non-`users/{uid}`) collections keyed by per-document `uid` are declared
++// in `accountDeletionRootCollections.ts` (the single source of truth) and the
++// generic-sweep subset is imported above. A CI completeness test fails if a new
++// root uid-keyed collection is added without classifying it in that manifest.
+ 
+ export function userWorkspaceID(uid: string): string {
+   return `workspace-${uid}`;
+diff --git a/functions/src/accountDeletionRootCollections.ts b/functions/src/accountDeletionRootCollections.ts
+new file mode 100644
+index 0000000000..495129df9f
+--- /dev/null
++++ b/functions/src/accountDeletionRootCollections.ts
+@@ -0,0 +1,61 @@
++/**
++ * @fileoverview Single source of truth for ROOT (non-`users/{uid}`) Firestore
++ * collections that carry per-document `uid` ownership.
++ *
++ * Each such collection escapes the `users/{uid}` subtree walk during account
++ * erase, so GDPR Art.17 requires it to be either explicitly deleted
++ * (`disposition: "delete"`) or consciously exempted (`disposition: "exempt"`)
++ * with a documented reason. The companion test
++ * `accountDeletionRootCollectionCoverage.test.ts` scans the codebase for
++ * `.collection("X").where("uid", ...)` writes/reads and FAILS CI if any
++ * discovered root uid-keyed collection is missing from this manifest — so a
++ * newly-added collection cannot silently escape erasure (mirrors the BOLA
++ * catalog-completeness pattern).
++ */
++
++export type RootCollectionDisposition = "delete" | "exempt";
++
++export interface RootCollectionUidDeletionEntry {
++  /** The root collection id (the literal passed to `db.collection(...)`). */
++  readonly collection: string;
++  readonly disposition: RootCollectionDisposition;
++  /**
++   * For `delete` entries, how the documents are purged:
++   *  - `rootSweep`   : the generic uid-scoped sweep in `eraseUserCloudData`.
++   *  - `secretDestroy`: purged alongside its Secret Manager versions.
++   */
++  readonly handledBy?: "rootSweep" | "secretDestroy";
++  readonly reason: string;
++}
++
++export const ROOT_COLLECTION_UID_DELETION_MANIFEST: readonly RootCollectionUidDeletionEntry[] = [
++  {
++    collection: "voip_outbound",
++    disposition: "delete",
++    handledBy: "rootSweep",
++    reason:
++      "VoIP push fan-out queue keyed by owner uid; carries caller name + live push tokens (F-RR09-001). TTL-bounded, but a deletion request must purge it immediately.",
++  },
++  {
++    collection: "fcm_outbound",
++    disposition: "delete",
++    handledBy: "rootSweep",
++    reason:
++      "FCM push fan-out queue keyed by owner uid; carries device id + push payload metadata. TTL-bounded, but a deletion request must purge it immediately.",
++  },
++  {
++    collection: "provider_account_secret_refs",
++    disposition: "delete",
++    handledBy: "secretDestroy",
++    reason:
++      "Secret Manager reference docs keyed by uid; purged by destroyProviderSecrets() (which also destroys the underlying secret versions) earlier in eraseUserCloudData.",
++  },
++];
++
++/**
++ * Root collections purged by the generic uid-scoped sweep in `eraseUserCloudData`.
++ * Derived from the manifest so the sweep and the audited inventory can never drift.
++ */
++export const ROOT_COLLECTIONS_KEYED_BY_UID: readonly string[] = ROOT_COLLECTION_UID_DELETION_MANIFEST
++  .filter((entry) => entry.disposition === "delete" && entry.handledBy === "rootSweep")
++  .map((entry) => entry.collection);
+diff --git a/functions/src/appCheckAttestation.ts b/functions/src/appCheckAttestation.ts
+index 09a6ec7ba7..212365293c 100644
+--- a/functions/src/appCheckAttestation.ts
++++ b/functions/src/appCheckAttestation.ts
+@@ -21,8 +21,24 @@ const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
+ 
+ export const APP_CHECK_ATTESTATION_CLAIM_KEY = "obb_app_check" as const;
+ const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
+-/** Re-bind after this many days so stale device attestations expire. */
+-export const APP_CHECK_ATTESTATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
++/**
++ * Re-bind after this window so a stolen device cannot retain high-risk access.
++ * Default tightened to 7 days (was 30); replay WITHIN the window is separately
++ * defeated by the single-use high-risk nonce (`requireHighRiskNonce`). Operators
++ * may tune via the `APP_CHECK_ATTESTATION_MAX_AGE_MS` env var; a missing,
++ * non-finite, or non-positive value falls back to the secure default — freshness
++ * enforcement can never be disabled.
++ */
++const APP_CHECK_ATTESTATION_MAX_AGE_DEFAULT_MS = 7 * 24 * 60 * 60 * 1000;
++
++export function resolveAppCheckAttestationMaxAgeMs(
++  raw: string | undefined = process.env.APP_CHECK_ATTESTATION_MAX_AGE_MS,
++): number {
++  const parsed = raw === undefined || raw.trim() === "" ? Number.NaN : Number(raw);
++  return Number.isFinite(parsed) && parsed > 0 ? parsed : APP_CHECK_ATTESTATION_MAX_AGE_DEFAULT_MS;
++}
++
++export const APP_CHECK_ATTESTATION_MAX_AGE_MS = resolveAppCheckAttestationMaxAgeMs();
+ 
+ /** Per-call replay-resistance nonce TTL (single-use, short-lived). */
+ export const HIGH_RISK_NONCE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+diff --git a/functions/src/callables/voipPush.ts b/functions/src/callables/voipPush.ts
+index 82f8b39ae1..881cd0b656 100644
+--- a/functions/src/callables/voipPush.ts
++++ b/functions/src/callables/voipPush.ts
+@@ -80,12 +80,18 @@ export const triggerVoIPCall = onCall(
+     }
+ 
+     if (fanOut.fcmToken) {
++      // T-PRV-07: the persisted `fcm_outbound` doc deliberately omits
++      // `androidDeviceId`. Delivery routing is keyed solely on `fcmToken`
++      // (the only field read back by `sendFcmOutbound` and the stuck-push
++      // sweeper in `fcmAndroidSender.ts`); the stable per-device id is never
++      // consumed from the persisted doc, so persisting it would only leave a
++      // stable cross-session correlator at rest inside this short-lived
++      // (15-min TTL) queue document. `uid` remains for account-erase fan-out.
+       writes.push(
+         firestore.collection("fcm_outbound").add({
+           uid: request.auth.uid,
+           payload: buildFcmCallPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
+           fcmToken: fanOut.fcmToken,
+-          androidDeviceId: fanOut.androidDeviceId ?? null,
+           createdAt: queueTimestamps.createdAt,
+           expireAt: queueTimestamps.expireAt,
+           status: "pending",
+diff --git a/functions/src/ssrfAgent.ts b/functions/src/ssrfAgent.ts
+new file mode 100644
+index 0000000000..4006464b58
+--- /dev/null
++++ b/functions/src/ssrfAgent.ts
+@@ -0,0 +1,98 @@
++/**
++ * Hardened outbound HTTP client for user/config-supplied URLs.
++ *
++ * SECURITY (L5): `assertOutboundFetchTarget` is the synchronous string gate, but a
++ * hostname that passes the string check can still resolve to a private/metadata IP
++ * (classic DNS-rebinding / TOCTOU). Per the OWASP SSRF Prevention Cheat Sheet, the
++ * only robust defense is to resolve DNS once and connect to *that exact validated
++ * address*. This module provides an undici `Agent` whose `connect.lookup` hook
++ * resolves the name, rejects the connection unless the resolved IP passes the
++ * strict public-unicast allowlist, and pins the socket to the validated address —
++ * so the name cannot rebind to a private IP between the check and the connect.
++ * Redirects are disabled (`maxRedirections: 0`) so a 30x cannot bounce the request
++ * to an unchecked internal host.
++ *
++ * This is intentionally NOT wired into the legacy provider quota path (which only
++ * ever fetches fixed public hosts and the sanctioned GCP metadata endpoint via
++ * `allowPrivateHosts: true`); it is the client a future user-URL feature must use.
++ */
++
++import type { LookupAddress, LookupOptions } from "node:dns";
++import { lookup as dnsLookup } from "node:dns";
++import { Agent } from "undici";
++
++import {
++  SsrfBlockedError,
++  assertOutboundFetchTarget,
++  assertOutboundFetchTargetResolved,
++  isPublicUnicastAddress,
++} from "./ssrfGuard.js";
++
++type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
++
++/**
++ * DNS lookup wrapper that resolves a hostname and errors unless EVERY resolved
++ * address is a public unicast IP. Returning only validated addresses to undici
++ * pins the connection to a checked IP, closing the rebind window between the
++ * string check and the socket connect.
++ */
++function pinnedLookup(hostname: string, options: LookupOptions, callback: LookupCallback): void {
++  // `all: true` so undici receives the full validated address set (and so we
++  // validate every address a name resolves to, not just the first).
++  dnsLookup(hostname, { ...options, all: true }, (err, addresses) => {
++    if (err) {
++      callback(err, []);
++      return;
++    }
++    const resolved = addresses as LookupAddress[];
++    if (resolved.length === 0) {
++      callback(new SsrfBlockedError(hostname), []);
++      return;
++    }
++    for (const { address } of resolved) {
++      if (!isPublicUnicastAddress(address)) {
++        callback(new SsrfBlockedError(`${hostname} -> ${address}`), []);
++        return;
++      }
++    }
++    callback(null, resolved);
++  });
++}
++
++let cachedAgent: Agent | undefined;
++
++/**
++ * The singleton DNS-pinning, redirect-disabled outbound dispatcher. Use this as
++ * the `dispatcher` for any `fetch` of a user/config-supplied URL.
++ */
++export function ssrfHardenedAgent(): Agent {
++  cachedAgent ??= new Agent({
++    connect: { lookup: pinnedLookup },
++    maxRedirections: 0,
++  });
++  return cachedAgent;
++}
++
++/**
++ * `fetch` for user/config-supplied URLs that layers all three OWASP defenses:
++ *  1. the synchronous SSRF string/canonicalization gate ({@link assertOutboundFetchTarget}),
++ *  2. an application-layer resolved-IP gate ({@link assertOutboundFetchTargetResolved}),
++ *     which resolves DNS and rejects if any address is private/metadata, then
++ *  3. dispatch through the DNS-pinning, redirect-disabled agent so a hostname that
++ *     rebinds between the gate and the connect (TOCTOU), or a 30x redirect, still
++ *     cannot reach an internal/metadata endpoint — the socket binds only to a
++ *     freshly-revalidated public-unicast address.
++ *
++ * Unlike `resilientFetch`, this path never exposes an `allowPrivateHosts` escape:
++ * the sanctioned GCP metadata fetch stays on its own dedicated path.
++ */
++export async function ssrfHardenedFetch(url: string | URL, init?: RequestInit): Promise<Response> {
++  assertOutboundFetchTarget(url);
++  await assertOutboundFetchTargetResolved(url);
++  return fetch(url, {
++    ...init,
++    redirect: "error",
++    // undici reads the dispatcher off the init bag in Node's global fetch.
++    dispatcher: ssrfHardenedAgent(),
++  } as RequestInit & { dispatcher: Agent });
++}
+diff --git a/functions/src/ssrfGuard.ts b/functions/src/ssrfGuard.ts
+index 54539fa8dd..86d066f671 100644
+--- a/functions/src/ssrfGuard.ts
++++ b/functions/src/ssrfGuard.ts
+@@ -12,32 +12,193 @@
+  * Loopback is intentionally allowed so the local emulator / dev quota runner and
+  * localhost-configured endpoints keep working; the metadata identity fetch opts in
+  * explicitly via `allowPrivateHosts`.
++ *
++ * SOTA hardening (2026), per the OWASP SSRF Prevention Cheat Sheet:
++ *  1. CANONICALIZE the host before any range check — IPv4 alternative encodings
++ *     (decimal `2130706433`, hex `0x7f000001`, octal, dword, short-form) AND
++ *     IPv4-mapped IPv6 (`::ffff:127.0.0.1`, `::ffff:7f00:1`) all normalize to a
++ *     single dotted-decimal so they are treated identically to `127.0.0.1`.
++ *  2. REJECT every host that is (or, for {@link assertOutboundFetchTargetResolved},
++ *     resolves to) a non-public-unicast address: loopback `127/8` + `::1`,
++ *     RFC1918 `10/8` / `172.16/12` / `192.168/16`, CGNAT `100.64/10`,
++ *     link-local `169.254/16` (incl. GCP metadata `169.254.169.254`) + `fe80::/10`,
++ *     "this network" `0/8`, ULA `fc00::/7`, multicast (`224/4`, `ff00::/8`),
++ *     reserved `240/4`, broadcast, unspecified `::`/`0.0.0.0`, and the metadata
++ *     hostnames (`metadata.google.internal`, etc.).
++ *  3. DNS rebinding / TOCTOU: a hostname string check alone cannot stop a name
++ *     that resolves to a private IP. User-supplied URL fetches must additionally
++ *     go through the DNS-pinning client in `ssrfAgent.ts` (or call
++ *     {@link assertOutboundFetchTargetResolved} and connect only to a checked IP),
++ *     which resolves once, validates the resolved address, and disables redirects.
++ *
++ * `assertOutboundFetchTarget` stays the synchronous string/canonicalization gate.
+  */
+ 
+-const BLOCKED_HOSTNAMES = new Set(["metadata.google.internal", "metadata", "metadata.goog"]);
++import { lookup } from "node:dns/promises";
+ 
+-const BLOCKED_IPV4_PREFIXES = [
+-  "169.254.", // link-local incl. 169.254.169.254 cloud metadata
+-  "10.", // RFC1918
+-  "192.168.", // RFC1918
+-  "0.", // "this network"
+-];
++const BLOCKED_HOSTNAMES = new Set(["metadata.google.internal", "metadata", "metadata.goog"]);
+ 
+ function isBlockedIpv4(host: string): boolean {
+-  // 172.16.0.0/12 is 172.16.x.x .. 172.31.x.x
+-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+-  return BLOCKED_IPV4_PREFIXES.some((prefix) => host.startsWith(prefix));
++  // `host` is canonical dotted-decimal "a.b.c.d".
++  const octets = host.split(".").map((part) => Number.parseInt(part, 10));
++  if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
++    return true; // not parseable as a clean IPv4 -> fail closed
++  }
++  const [a, b] = octets;
++  if (a === 0) return true; // 0.0.0.0/8 "this network" / unspecified
++  if (a === 127) return true; // 127.0.0.0/8 loopback
++  if (a === 10) return true; // 10.0.0.0/8 RFC1918
++  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 RFC1918
++  if (a === 192 && b === 168) return true; // 192.168.0.0/16 RFC1918
++  if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local (incl. metadata)
++  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT (RFC6598)
++  if (a >= 224 && a <= 239) return true; // 224.0.0.0/4 multicast
++  if (a >= 240) return true; // 240.0.0.0/4 reserved + 255.255.255.255 broadcast
++  return false;
++}
++
++/** True only for loopback `127.0.0.0/8` (the sanctioned local-dev exception). */
++function isLoopbackIpv4(host: string): boolean {
++  return /^127\./.test(host);
++}
++
++function dottedIpv4FromInteger(value: number): string {
++  const a = Math.floor(value / 2 ** 24) % 256;
++  const b = Math.floor(value / 2 ** 16) % 256;
++  const c = Math.floor(value / 2 ** 8) % 256;
++  const d = value % 256;
++  return `${a}.${b}.${c}.${d}`;
++}
++
++/**
++ * Canonicalize an IPv6 literal that actually carries an IPv4 address
++ * (`::ffff:127.0.0.1`, `::ffff:7f00:1`, the deprecated `::127.0.0.1`) into the
++ * embedded dotted-decimal IPv4 so IPv4 range rules apply. Returns `null` when the
++ * literal is a genuine IPv6 address.
++ */
++function ipv4FromMappedIpv6(host: string): string | null {
++  const h = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
++  // Embedded dotted-decimal form: ::ffff:127.0.0.1 or ::127.0.0.1
++  const dotted = /^(?:::ffff:|::)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
++  if (dotted) return normalizeIpv4(dotted[1]);
++  // Hextet form of the mapped range: ::ffff:7f00:1
++  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
++  if (hex) {
++    const high = Number.parseInt(hex[1], 16);
++    const low = Number.parseInt(hex[2], 16);
++    if (Number.isNaN(high) || Number.isNaN(low)) return null;
++    const value = high * 0x10000 + low;
++    return dottedIpv4FromInteger(value);
++  }
++  return null;
+ }
+ 
+ function isBlockedIpv6(host: string): boolean {
+   const h = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+-  if (h === "::") return true;
+-  if (h.startsWith("fe80:")) return true; // link-local
++  if (h === "::" || h === "::0") return true; // unspecified
++  if (h === "::1") return true; // loopback
++  // Link-local fe80::/10 covers fe80:: .. febf::
++  if (/^fe[89ab][0-9a-f]?:/.test(h)) return true;
+   if (h.startsWith("fc") || h.startsWith("fd")) return true; // unique local fc00::/7
+-  if (h.includes("169.254.")) return true; // IPv4-mapped link-local/metadata
++  if (h.startsWith("ff")) return true; // multicast ff00::/8
+   return false;
+ }
+ 
++function parseIpv4NumericPart(part: string): number | null {
++  let value: number;
++  if (/^0x[0-9a-f]+$/i.test(part)) {
++    value = Number.parseInt(part, 16);
++  } else if (/^0[0-7]+$/.test(part) && part.length > 1) {
++    value = Number.parseInt(part, 8);
++  } else if (/^\d+$/.test(part)) {
++    value = Number.parseInt(part, 10);
++  } else {
++    return null;
++  }
++  return Number.isSafeInteger(value) && value >= 0 ? value : null;
++}
++
++/**
++ * Normalize IPv4 literals from dotted-decimal, decimal integer, hexadecimal,
++ * octal, and legacy short-form encodings to canonical dotted-decimal. Returns
++ * `null` when the input is not a valid IPv4 literal.
++ */
++export function normalizeIpv4(host: string): string | null {
++  const parts = host.split(".");
++  if (parts.length < 1 || parts.length > 4 || parts.some((part) => part.length === 0)) {
++    return null;
++  }
++
++  const numericParts = parts.map(parseIpv4NumericPart);
++  if (numericParts.some((part) => part === null)) return null;
++  const nums = numericParts as number[];
++
++  let value: number;
++  switch (nums.length) {
++    case 1:
++      if (nums[0] > 0xffffffff) return null;
++      value = nums[0];
++      break;
++    case 2:
++      if (nums[0] > 0xff || nums[1] > 0xffffff) return null;
++      value = nums[0] * 2 ** 24 + nums[1];
++      break;
++    case 3:
++      if (nums[0] > 0xff || nums[1] > 0xff || nums[2] > 0xffff) return null;
++      value = nums[0] * 2 ** 24 + nums[1] * 2 ** 16 + nums[2];
++      break;
++    case 4:
++      if (nums.some((part) => part > 0xff)) return null;
++      value = nums[0] * 2 ** 24 + nums[1] * 2 ** 16 + nums[2] * 2 ** 8 + nums[3];
++      break;
++    default:
++      return null;
++  }
++
++  return dottedIpv4FromInteger(value);
++}
++
++/** Verdict for a single canonicalized host literal. */
++type HostVerdict = "loopback" | "blocked" | "public";
++
++/**
++ * Canonicalize `host` (an IP literal or hostname) and classify it. IPv4 in any
++ * encoding and IPv4-mapped IPv6 are folded to dotted-decimal first; genuine IPv6
++ * is checked against the IPv6 block list. Non-IP hostnames return "public" unless
++ * they are a known metadata name (callers still resolve DNS for rebinding).
++ */
++function classifyHostLiteral(host: string): HostVerdict {
++  const lower = host.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
++
++  if (BLOCKED_HOSTNAMES.has(lower)) return "blocked";
++
++  // IPv4-mapped IPv6 (::ffff:127.0.0.1, ::ffff:7f00:1) folds to IPv4 rules.
++  const mappedV4 = lower.includes(":") ? ipv4FromMappedIpv6(lower) : null;
++  const canonicalV4 = mappedV4 ?? normalizeIpv4(lower);
++  if (canonicalV4) {
++    if (isLoopbackIpv4(canonicalV4)) return "loopback";
++    return isBlockedIpv4(canonicalV4) ? "blocked" : "public";
++  }
++
++  if (lower.includes(":")) {
++    if (lower === "::1") return "loopback";
++    return isBlockedIpv6(lower) ? "blocked" : "public";
++  }
++
++  if (lower === "localhost") return "loopback";
++  return "public";
++}
++
++/**
++ * True when `address` (a resolved IP literal — v4 in any encoding / v6 / mapped)
++ * is a public unicast address safe to connect to. Loopback is NOT public: this is
++ * the strict allowlist used by the DNS-pinning outbound client in `ssrfAgent.ts`,
++ * where even loopback must be opted into explicitly.
++ */
++export function isPublicUnicastAddress(address: string): boolean {
++  return classifyHostLiteral(address) === "public";
++}
++
+ class SsrfBlockedError extends Error {
+   constructor(host: string) {
+     super(`Outbound request to '${host}' is blocked (SSRF guard).`);
+@@ -45,10 +206,19 @@ class SsrfBlockedError extends Error {
+   }
+ }
+ 
++export { SsrfBlockedError };
++
+ /**
+  * Throws {@link SsrfBlockedError} when `url` targets a disallowed host.
+  * Allows http/https only. Loopback is permitted; private/link-local/metadata are
+  * blocked unless `allowPrivateHosts` is set (the GCP metadata identity fetch).
++ *
++ * SOTA (2026): canonicalizes IPv4 alternative encodings (decimal, hex, octal,
++ * short-form) AND IPv4-mapped IPv6 (`::ffff:127.0.0.1`) before range checks, so
++ * `0x7f000001`, `2130706433`, and `::ffff:7f00:1` are all treated identically to
++ * `127.0.0.1`. For DNS-rebinding protection on user-supplied URLs, fetch via the
++ * DNS-pinning client in `ssrfAgent.ts` (or call
++ * {@link assertOutboundFetchTargetResolved} and connect only to a checked IP).
+  */
+ export function assertOutboundFetchTarget(url: string | URL, allowPrivateHosts = false): void {
+   let parsed: URL;
+@@ -62,18 +232,49 @@ export function assertOutboundFetchTarget(url: string | URL, allowPrivateHosts =
+   }
+   if (allowPrivateHosts) return;
+ 
+-  const host = parsed.hostname.toLowerCase();
+-  if (BLOCKED_HOSTNAMES.has(host)) {
+-    throw new SsrfBlockedError(host);
+-  }
+   // Loopback is allowed (local dev/emulator); everything private/link-local is not.
+-  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") {
+-    return;
++  if (classifyHostLiteral(parsed.hostname) === "blocked") {
++    throw new SsrfBlockedError(parsed.hostname.toLowerCase());
+   }
+-  if (host.includes(":") && isBlockedIpv6(host)) {
+-    throw new SsrfBlockedError(host);
++}
++
++/**
++ * DNS-resolution-aware SSRF check for user-supplied URLs.
++ *
++ * Resolves the hostname to its IP addresses and checks each against the SSRF
++ * block list. This closes the DNS-rebinding / TOCTOU window where a hostname
++ * string check passes but the resolved IP is a private/metadata endpoint.
++ *
++ * **Note:** Full DNS pinning (forcing the request to connect to the resolved IP)
++ * is provided by the outbound client in `ssrfAgent.ts`. This function is the
++ * resolution + re-check gate; prefer the pinning client for user/config URLs.
++ *
++ * @returns The resolved IP addresses (for caller-side DNS pinning if desired).
++ * @throws {SsrfBlockedError} if any resolved IP is private/link-local/metadata.
++ */
++export async function assertOutboundFetchTargetResolved(url: string | URL): Promise<string[]> {
++  const parsed = typeof url === "string" ? new URL(url) : url;
++  assertOutboundFetchTarget(parsed);
++
++  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
++
++  // Skip DNS resolution for literal IPs (already checked above).
++  if (normalizeIpv4(host) || host.includes(":")) return [host];
++  if (host === "localhost") return ["127.0.0.1"];
++
++  let addresses: { address: string }[];
++  try {
++    addresses = await lookup(host, { all: true });
++  } catch {
++    // DNS failure is not a security event — the fetch will fail on its own.
++    return [];
+   }
+-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && isBlockedIpv4(host)) {
+-    throw new SsrfBlockedError(host);
++
++  for (const { address } of addresses) {
++    if (classifyHostLiteral(address) === "blocked") {
++      throw new SsrfBlockedError(`${host} -> ${address}`);
++    }
+   }
++
++  return addresses.map((a) => a.address);
+ }

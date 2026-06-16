@@ -18,10 +18,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 
 _THIS_DIR = Path(__file__).resolve().parent
@@ -39,12 +39,31 @@ MINISTRY_CACHE_DIR = Path.home() / "Library" / "Application Support" / "OpenBurn
 AUTONOMY_LEVELS = {"low", "medium", "high"}
 SELECTORS = {"best", "pareto"}
 BACKENDS = {"gateway", "direct", "builtin"}
+
+# Hard ceiling on parallel workers per Wand cast — mirrors the
+# firestore.rules validMissionGroup() cap. The macOS app/daemon passes the
+# user's resolved per-tier cap (Free 1 / Cloud 3 / Cloud Pro 8 / Ultra 16, from
+# WandFanOut.maxParallel) via OPENBURNBAR_WAND_PARALLEL_MAX; absent it we fall
+# back to this ceiling. Always clamped to [1, WAND_PARALLEL_HARD_CEILING].
+WAND_PARALLEL_HARD_CEILING = 16
+
+
+def resolved_wand_parallel_max() -> int:
+    """Per-tier parallel fan-out ceiling for a Wand cast, from the env the app sets."""
+    raw = os.environ.get("OPENBURNBAR_WAND_PARALLEL_MAX", "").strip()
+    try:
+        value = int(raw) if raw else WAND_PARALLEL_HARD_CEILING
+    except ValueError:
+        value = WAND_PARALLEL_HARD_CEILING
+    return max(1, min(value, WAND_PARALLEL_HARD_CEILING))
+
+
 RUNTIMES = {"droid", "codex", "claude", "gemini", "opencode", "cursor-agent", "cursoragent", "kimi", "pi"}
 
 SEED_WANDS: list[dict[str, Any]] = [
     {
-        "id": "council",
-        "name": "Council Wand",
+        "id": "headmaster",
+        "name": "Headmaster's Wand",
         "selector": "best",
         "constraints": {"minCapabilityRank": 10},
         "target": "highest-capability proven-headless worker",
@@ -940,7 +959,7 @@ def select_models_for_wand(
     probe_ttl: int = 3600,
     probe_runner: Callable[[str, str, int], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    count = max(1, min(int(count), 12))
+    count = max(1, min(int(count), resolved_wand_parallel_max()))
     wands_payload = load_wands(store_path)
     wand = _wand_by_id(wands_payload, wand_id)
     if not wand:

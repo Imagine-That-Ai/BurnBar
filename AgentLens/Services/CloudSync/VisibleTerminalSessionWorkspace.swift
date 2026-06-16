@@ -36,10 +36,19 @@ struct VisibleTerminalSessionWorkspace {
      *   - fileManager: filesystem abstraction; injected in tests.
      * - Throws: any error from `createDirectory` or `createFile`.
      */
+    enum PreparationError: Error, Equatable {
+        case emptySessionID
+        case logFileCreationFailed(URL)
+    }
+
     static func prepare(
         sessionID: String,
         fileManager: FileManager = .default
     ) throws -> VisibleTerminalSessionWorkspace {
+        guard !sessionID.isEmpty else {
+            throw PreparationError.emptySessionID
+        }
+
         let rootURL = fileManager.temporaryDirectory
             .appendingPathComponent("OpenBurnBarVisibleCLI", isDirectory: true)
         let workspace = VisibleTerminalSessionWorkspace(rootURL: rootURL, sessionID: sessionID)
@@ -50,12 +59,15 @@ struct VisibleTerminalSessionWorkspace {
             attributes: [.posixPermissions: 0o700]
         )
 
-        // Pre-create log file with strict 0o600 permissions so tee respects it.
-        fileManager.createFile(
+        // Pre-create log file with strict 0o600 permissions so tee inherits it.
+        let created = fileManager.createFile(
             atPath: workspace.logURL.path,
             contents: nil,
             attributes: [.posixPermissions: 0o600]
         )
+        guard created else {
+            throw PreparationError.logFileCreationFailed(workspace.logURL)
+        }
 
         return workspace
     }

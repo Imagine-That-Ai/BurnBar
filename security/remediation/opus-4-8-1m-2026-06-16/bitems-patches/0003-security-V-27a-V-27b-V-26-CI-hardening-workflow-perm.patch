@@ -1,0 +1,128 @@
+From ebf8ba176bff23e42b7264374033db6a11ae5f8c Mon Sep 17 00:00:00 2001
+From: "Alberto (via Claude)" <alberto8793@icloud.com>
+Date: Tue, 16 Jun 2026 03:39:08 -0500
+Subject: [PATCH 3/8] =?UTF-8?q?security(V-27a/V-27b/V-26):=20CI=20hardenin?=
+ =?UTF-8?q?g=20=E2=80=94=20workflow=20permissions,=20CODEOWNERS=20paths,?=
+ =?UTF-8?q?=20GPG=20fail-loud?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+contents:read on 2 workflows; explicit CODEOWNERS paths for security/crypto/billing/ci/libsignal/
+firestore; ::warning:: on missing RELEASE_SIGNING_KEY (cosign/SLSA stays the integrity root).
+[workflow-implemented]
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .github/CODEOWNERS                            | 27 +++++++++++++++++++
+ .../workflows/computer-use-loopback-test.yml  |  7 +++++
+ .github/workflows/droid-wiki-refresh.yml      | 10 +++++++
+ .github/workflows/release.yml                 | 20 ++++++++++++++
+ 4 files changed, 64 insertions(+)
+
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index d60a903425..51b83c2a95 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -20,3 +20,30 @@ extensions/openburnbar/ @Ajnunezg
+ # Infrastructure
+ firestore.rules @Ajnunezg
+ project.yml @Ajnunezg
++
++# Security-sensitive trees — same owner today, but routed explicitly so a
++# change here is an intentional, reviewable security decision (not swept up by
++# the catch-all). CODEOWNERS is last-match-wins, so these stay at the bottom.
++
++# Authorization / BOLA coverage catalog
++functions/src/security/ @Ajnunezg
++
++# Crypto callables (Hermes gateway + computer-use security crypto)
++functions/src/callables/hermesGatewayCrypto.ts @Ajnunezg
++functions/src/callables/computerUseSecurityCrypto.ts @Ajnunezg
++
++# Billing / entitlements (paid tier gating)
++functions/src/callables/googlePlayBillingPaths.ts @Ajnunezg
++functions/src/callables/shared/entitlements.ts @Ajnunezg
++functions/src/types/generated/entitlements.ts @Ajnunezg
++packages/entitlements/ @Ajnunezg
++
++# CI helper scripts (release preflight, config injection, supply-chain checks)
++scripts/ci/ @Ajnunezg
++
++# Vendored libsignal crypto core
++Vendor/libsignal/ @Ajnunezg
++
++# Firestore index + rules definitions
++firestore.indexes.json @Ajnunezg
++firestore.rules @Ajnunezg
+diff --git a/.github/workflows/computer-use-loopback-test.yml b/.github/workflows/computer-use-loopback-test.yml
+index ae8c784d7b..23942d4e34 100644
+--- a/.github/workflows/computer-use-loopback-test.yml
++++ b/.github/workflows/computer-use-loopback-test.yml
+@@ -1,5 +1,12 @@
+ name: computer-use-loopback-test
+ 
++# Least-privilege default: this workflow only checks out, builds, and runs
++# tests — it never writes to the repo, comments on PRs, or publishes
++# artifacts. Pin GITHUB_TOKEN to read-only so a compromised step cannot
++# escalate to repo writes.
++permissions:
++  contents: read
++
+ on:
+   pull_request:
+     types: [opened, synchronize, reopened, ready_for_review]
+diff --git a/.github/workflows/droid-wiki-refresh.yml b/.github/workflows/droid-wiki-refresh.yml
+index 16cf9f7ab3..ba4fb95b95 100644
+--- a/.github/workflows/droid-wiki-refresh.yml
++++ b/.github/workflows/droid-wiki-refresh.yml
+@@ -1,5 +1,15 @@
+ name: Droid Wiki Refresh
+ 
++# Least-privilege default: the wiki refresh runs Droid against the
++# checked-out tree and writes only to $GITHUB_STEP_SUMMARY — it intentionally
++# carries no write token (the "Generate wiki" step comment relies on this:
++# "The workflow has no write token, so this only permits the checked-out
++# read-only wiki generation run to proceed unattended"). Pin GITHUB_TOKEN to
++# read-only so the unattended --skip-permissions-unsafe Droid run cannot push
++# commits or mutate repo state.
++permissions:
++  contents: read
++
+ on:
+   push:
+     branches: [main]
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 52bd3b6d9c..97e58755ac 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -696,6 +696,26 @@ jobs:
+           echo "sig_path=${CHECKSUMS_PATH}.asc" >> "$GITHUB_OUTPUT"
+           echo "Checksums signed successfully."
+ 
++      # Fail-loud guard for an accidentally-cleared RELEASE_SIGNING_KEY secret.
++      # The sign step above is conditionally skipped when the key is absent, so
++      # a silently-rotated-away secret would otherwise produce an unsigned
++      # release with no signal. Emit a GitHub ::warning:: annotation (visible on
++      # the run and in the job summary) so the gap is noticed. This does NOT
++      # hard-fail: cosign/SLSA attestation of the checksums (below) remains the
++      # unconditional integrity root for every release.
++      - name: Warn if checksum GPG signing was skipped
++        if: env.RELEASE_SIGNING_KEY == ''
++        env:
++          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
++        run: |
++          echo "::warning title=GPG checksum signature missing::RELEASE_SIGNING_KEY is not set; the GPG-signed checksums (.asc) were not produced for this release. cosign/SLSA attestation still covers the checksums, but verify the RELEASE_SIGNING_KEY secret was not accidentally cleared."
++          {
++            echo "## :warning: GPG checksum signature skipped"
++            echo ""
++            echo "\`RELEASE_SIGNING_KEY\` was absent, so this release has **no detached GPG signature** for its checksums."
++            echo "cosign/SLSA attestation remains the integrity root, but confirm the secret was not accidentally cleared."
++          } >> "$GITHUB_STEP_SUMMARY"
++
+       - name: Generate SBOM
+         id: sbom
+         env:
+-- 
+2.54.0 (Apple Git-156)
+

@@ -8,15 +8,18 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.MainActivity
+import kotlinx.coroutines.tasks.await
 
-internal fun MercuryFcmService.buildAgentReplyNotification(data: Map<String, String>): Notification? {
+internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<String, String>): Notification? {
     ensureAgentReplyChannel()
     val eventId = data["event_id"] ?: return null
-    val threadId = data["thread_id"] ?: return null
     val runtime = data["runtime"] ?: "hermes"
     val title = data["title"] ?: "Agent replied"
     val preview = data["preview"] ?: ""
+    val threadId = data["thread_id"] ?: resolveThreadId(eventId) ?: return null
     val deepLink = data["deep_link"] ?: "burnbar://assistants/$runtime?threadId=$threadId"
     if (AgentReplyNotificationState.shouldSuppressLocal(runtime, threadId)) return null
 
@@ -71,7 +74,7 @@ internal fun MercuryFcmService.buildAgentReplyNotification(data: Map<String, Str
         .build()
 }
 
-internal fun MercuryFcmService.postAgentReplyNotification(data: Map<String, String>) {
+internal suspend fun MercuryFcmService.postAgentReplyNotification(data: Map<String, String>) {
     val notification = buildAgentReplyNotification(data) ?: return
     val eventId = data["event_id"] ?: return
     try {
@@ -85,5 +88,20 @@ internal fun MercuryFcmService.postAgentReplyNotification(data: Map<String, Stri
             "agent_reply_notification_post_denied event=$eventId reason=${error.message}",
         )
         AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = false)
+    }
+}
+
+private suspend fun resolveThreadId(eventId: String): String? {
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
+    return try {
+        val snapshot = FirebaseFirestore.getInstance()
+            .collection("users").document(uid)
+            .collection("agent_notification_events").document(eventId)
+            .get()
+            .await()
+        val threadId = snapshot.getString("threadId")?.trim()
+        if (threadId.isNullOrEmpty()) null else threadId
+    } catch (_: Exception) {
+        null
     }
 }

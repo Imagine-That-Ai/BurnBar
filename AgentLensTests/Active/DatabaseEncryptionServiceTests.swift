@@ -90,7 +90,10 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
     /// to fail against); skipped on a plain-SQLite build.
     func testPlaintextPoolCannotOpenEncryptedFile() throws {
         try XCTSkipUnless(Self.sqlCipherIsActive(), "Requires a SQLCipher-linked build to produce an encrypted file.")
-        let key = DatabaseEncryptionService.getOrCreateKey()
+        let key = try XCTUnwrap(
+            DatabaseEncryptionService.getOrCreateKey(),
+            "Keychain-backed encryption key creation must succeed before writing an encrypted test database."
+        )
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-enc-\(UUID().uuidString).sqlite")
         defer {
             for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
@@ -236,12 +239,18 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
 
     // MARK: - Key Lifecycle Tests
 
-    func testGetOrCreateKey_generatesNewKey() {
-        let key1 = DatabaseEncryptionService.getOrCreateKey()
+    func testGetOrCreateKey_generatesNewKey() throws {
+        let key1 = try XCTUnwrap(
+            DatabaseEncryptionService.getOrCreateKey(),
+            "getOrCreateKey must return a persisted key."
+        )
         XCTAssertFalse(key1.isEmpty)
         XCTAssertEqual(key1.count, 44, "Base64 encoding of 32 bytes should be 44 characters")
 
-        let key2 = DatabaseEncryptionService.getOrCreateKey()
+        let key2 = try XCTUnwrap(
+            DatabaseEncryptionService.getOrCreateKey(),
+            "A second getOrCreateKey call must return the existing persisted key."
+        )
         XCTAssertEqual(key1, key2, "Second call should return the existing key")
     }
 
@@ -263,8 +272,11 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
 
     // MARK: - Recovery Bundle Tests
 
-    func testExportRecoveryBundle_roundTripsKey() {
-        let originalKey = DatabaseEncryptionService.getOrCreateKey()
+    func testExportRecoveryBundle_roundTripsKey() throws {
+        let originalKey = try XCTUnwrap(
+            DatabaseEncryptionService.getOrCreateKey(),
+            "Recovery bundle tests require a persisted source key."
+        )
         let password = "unit test recovery phrase 42"
 
         guard let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: password) else {
@@ -283,7 +295,7 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
     }
 
     func testImportRecoveryBundle_wrongPasswordReturnsNil() {
-        let originalKey = DatabaseEncryptionService.getOrCreateKey()
+        XCTAssertNotNil(DatabaseEncryptionService.getOrCreateKey())
         let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: "right-password")
         XCTAssertNotNil(bundle)
 
@@ -339,9 +351,22 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertEqual(recovered1, recovered2)
     }
 
+    /// A generated key must be persisted to the Keychain so subsequent calls
+    /// return the same key. If persistence silently failed, the next launch would
+    /// generate a different key and brick the encrypted database.
+    func testGetOrCreateKey_isIdempotentAfterPersistence() {
+        let first = DatabaseEncryptionService.getOrCreateKey()
+        XCTAssertNotNil(first, "getOrCreateKey must return a key when Keychain persistence succeeds")
+        let second = DatabaseEncryptionService.getOrCreateKey()
+        XCTAssertEqual(first, second, "Repeated calls must return the same persisted key")
+    }
+
     func testDatabaseOpensAfterKeychainRecovery() throws {
         try XCTSkipUnless(Self.sqlCipherIsActive(), "Requires a SQLCipher-linked build to create + reopen an encrypted database.")
-        let testKey = DatabaseEncryptionService.getOrCreateKey()
+        let testKey = try XCTUnwrap(
+            DatabaseEncryptionService.getOrCreateKey(),
+            "Database recovery tests require a persisted SQLCipher key."
+        )
         let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: testKey)
         let dbPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-recovery-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(atPath: dbPath) }

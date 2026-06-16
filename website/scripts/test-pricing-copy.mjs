@@ -82,6 +82,22 @@ assert.match(
   /50 relay-accounting GB/,
   "Cloud Pro relay allowance must be explicit"
 );
+for (const [tier, cap] of [
+  ["Local", 1],
+  ["Cloud", 3],
+  ["Cloud Pro", 8],
+  ["Ultra", 16]
+]) {
+  assert.match(site, new RegExp(`wandParallelMax:\\s*${cap}`), `${tier} Wand cap must be in site data`);
+}
+assert.match(publicPricingCopy, /Cloud opens 3/i, "Cloud Wand cap must be public");
+assert.match(publicPricingCopy, /Cloud Pro opens 8/i, "Cloud Pro Wand cap must be public");
+assert.match(publicPricingCopy, /Ultra opens 16/i, "Ultra Wand cap must be public");
+assert.match(
+  publicPricingCopy,
+  /provider subscriptions or keys/i,
+  "Wand copy must say model tokens come from the user's own providers"
+);
 assert.match(publicPricingCopy, /prepaid before use/i, "top-up copy must say prepaid before use");
 assert.match(
   publicPricingCopy,

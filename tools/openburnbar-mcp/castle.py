@@ -17,10 +17,10 @@ import subprocess
 import tempfile
 import time
 import tomllib
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
+from collections.abc import Callable, Iterable
 
 import ministry
 
@@ -42,6 +42,12 @@ SCRATCH_EXCLUDES = [
 ]
 
 RUNTIMES = ("droid", "codex", "claude", "gemini", "opencode", "cursor-agent", "kimi", "pi")
+
+
+def _default_run_dir() -> Path:
+    run_id = f"{int(time.time())}-{os.getpid()}"
+    return CASTLE_CACHE_DIR / "runs" / run_id
+
 
 RUNTIME_LABELS = {
     "droid": "House Droid",
@@ -240,8 +246,7 @@ class BaseCLIAdapter:
         autonomy: str = "medium",
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
-        run_id = f"{int(time.time())}-{os.getpid()}"
-        base_dir = Path("/tmp") / f"bb-castle-{run_id}"
+        base_dir = _default_run_dir()
         prompt_path = prompt_path or str(base_dir / "prompt.txt")
         result_path = result_path or str(base_dir / "result.json")
         done_path = done_path or str(base_dir / "result.done")
@@ -323,6 +328,7 @@ class DroidAdapter:
         autonomy: str = "medium",
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
+        status_path = status_path or str(_default_run_dir() / "status.json")
         payload = ministry.build_droid_command(
             ministry.default_wands_path(),
             task_prompt=task_prompt,
@@ -441,6 +447,7 @@ class ClaudeAdapter(BaseCLIAdapter):
         return [
             "claude",
             "-p",
+            "--verbose",
             "--output-format",
             "stream-json",
             "--permission-mode",
@@ -953,20 +960,38 @@ def adapter_smoke_probe(
             done_path=str(done_path),
             status_path=str(status_path),
         )
+        landed_commit = bool(result.get("landedCommit"))
+        committed_files = _head_commit_files(repo) if landed_commit else []
+        clean_commit = committed_files == ["castle_probe.txt"] if landed_commit else None
+        commit_polluted = landed_commit and not clean_commit
+        status_record = result.get("statusRecord")
+        if commit_polluted and isinstance(status_record, dict):
+            status_record = dict(status_record)
+            status_record["phase"] = "failed"
+            status_record["landsCommit"] = False
+            status_record["errorReason"] = "commit_pollution"
+            honesty = list(status_record.get("honesty") or [])
+            if "failed" not in honesty:
+                honesty.append("failed")
+            status_record["honesty"] = honesty
+            write_status_record(status_path, status_record)
         payload = {
-            "status": result.get("status"),
+            "status": "failed" if commit_polluted else result.get("status"),
+            "code": "CASTLE_PROBE_COMMIT_POLLUTION" if commit_polluted else None,
             "runtime": adapter.runtime,
             "arg": arg,
             "autonomy": autonomy,
-            "landsCommit": bool(result.get("landedCommit")),
+            "landsCommit": landed_commit and not commit_polluted,
             "isError": result.get("isError"),
             "exitCode": proc.returncode,
             "baseSHA": base,
             "headSHA": result.get("headSHA"),
+            "committedFiles": committed_files,
+            "cleanCommit": clean_commit,
             "durationSeconds": round(time.time() - started, 3),
             "cacheHit": False,
             "stderrTail": ((result.get("stderr") or "") + proc.stderr)[-2000:],
-            "statusRecord": result.get("statusRecord"),
+            "statusRecord": status_record,
         }
         _SMOKE_CACHE[cache_key] = {**payload, "fetchedAtEpoch": now}
         return payload
@@ -1314,6 +1339,13 @@ def _done_value(path: Path, key: str) -> str | None:
 
 def _run(cmd: list[str], cwd: Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, timeout=timeout)
+
+
+def _head_commit_files(repo: Path) -> list[str]:
+    proc = _run(["git", "show", "--name-only", "--format=", "HEAD"], repo, timeout=15)
+    if proc.returncode != 0:
+        return []
+    return [line for line in proc.stdout.splitlines() if line.strip()]
 
 
 def json_dumps(payload: Any) -> str:

@@ -50,6 +50,14 @@ else
   FAILED=1
 fi
 
+echo "==> verify-firestore-app-check-enforcement"
+if bash scripts/ops/verify-firestore-app-check-enforcement.sh; then
+  record "verify-firestore-app-check-enforcement:pass"
+else
+  record "verify-firestore-app-check-enforcement:fail"
+  FAILED=1
+fi
+
 if [[ "${FULL_LAUNCH_GATE:-0}" == "1" ]]; then
   echo "==> commercial-launch-gate (FULL_LAUNCH_GATE=1)"
   if node scripts/commercial-launch-gate.mjs >"$GATE_JSON"; then

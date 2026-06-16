@@ -298,6 +298,9 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.antigravity/bin",
             "\(homeDirectory)/.gemini/antigravity-cli",
             "\(homeDirectory)/.cursor-agent/bin",
+            "\(homeDirectory)/.gemini/bin",
+            "\(homeDirectory)/.kimi/bin",
+            "\(homeDirectory)/.pi/bin",
             "\(homeDirectory)/.cargo/bin",
             "\(homeDirectory)/.npm-global/bin",
             "\(homeDirectory)/.bun/bin",
@@ -771,6 +774,12 @@ public enum CLILaunchAdapter {
             return ["GROK_HOME", "XAI_API_KEY"]
         case .cursorAgent:
             return ["CURSOR_AGENT_HOME", "CURSOR_AGENT_CONFIG_PATH"]
+        case .gemini:
+            return ["GEMINI_HOME", "GEMINI_API_KEY", "GOOGLE_API_KEY"]
+        case .kimi:
+            return ["KIMI_HOME", "KIMI_API_KEY", "MOONSHOT_API_KEY"]
+        case .pi:
+            return ["PI_HOME", "PI_CONFIG_HOME"]
         }
     }
 }

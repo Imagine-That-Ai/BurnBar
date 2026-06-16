@@ -62,10 +62,12 @@ const BANNED_PUSH_KEYS = [
   "paired_device_id",
   "displayName",
   "display_name",
+  "thread_id",
+  "threadId",
 ];
 
 /** Push payload builders to scan for BANNED_PUSH_KEYS. */
-const PUSH_PAYLOAD_BUILDERS = ["buildVoipApnsPayload", "buildFcmCallPayload"];
+const PUSH_PAYLOAD_BUILDERS = ["buildVoipApnsPayload", "buildFcmCallPayload", "buildFcmMessage"];
 
 const failures = [];
 const fail = (invariant, msg) => failures.push(`  ✗ [${invariant}] ${msg}`);
@@ -277,14 +279,31 @@ if (
 }
 
 // === I5: push payload builders omit stable correlators ======================
-const voipPushPath = join(FUNCTIONS_SRC, "voipPush.ts");
-const voipPushText = readOrDie(voipPushPath);
+// Map builder name to the file that defines it.
+const PUSH_BUILDER_FILES = {
+  buildVoipApnsPayload: "voipPush.ts",
+  buildFcmCallPayload: "voipPush.ts",
+  buildFcmMessage: "agentNotifications.ts",
+};
+const pushSourceCache = {};
+function pushSourceText(fileName) {
+  if (pushSourceCache[fileName] == null) {
+    const path = join(FUNCTIONS_SRC, fileName);
+    pushSourceCache[fileName] = readOrDie(path);
+  }
+  return pushSourceCache[fileName];
+}
 for (const builder of PUSH_PAYLOAD_BUILDERS) {
-  const body = extractFunctionBody(voipPushText, builder);
+  const fileName = PUSH_BUILDER_FILES[builder];
+  if (!fileName) {
+    fail("I5", `${builder}() is not mapped to a source file in PUSH_BUILDER_FILES`);
+    continue;
+  }
+  const body = extractFunctionBody(pushSourceText(fileName), builder);
   if (body === null) {
     fail(
       "I5",
-      `voipPush.ts no longer defines ${builder}() — the push-payload-minimization invariant cannot be checked`,
+      `${fileName} no longer defines ${builder}() — the push-payload-minimization invariant cannot be checked`,
     );
     continue;
   }
@@ -298,17 +317,17 @@ for (const builder of PUSH_PAYLOAD_BUILDERS) {
   if (offending.length > 0) {
     fail(
       "I5",
-      `${builder}() includes banned correlator key(s) [${offending.join(", ")}] — these must never ride to APNs/FCM (F-RR09-008)`,
+      `${builder}() in ${fileName} includes banned correlator key(s) [${offending.join(", ")}] — these must never ride to APNs/FCM (F-RR09-008)`,
     );
   } else if (spreads) {
     fail(
       "I5",
-      `${builder}() spreads an object into the payload (\`...\`) — it must enumerate fields explicitly so a correlator cannot leak through a spread (F-RR09-008)`,
+      `${builder}() in ${fileName} spreads an object into the payload (\`...\`) — it must enumerate fields explicitly so a correlator cannot leak through a spread (F-RR09-008)`,
     );
   } else {
     ok(
       "I5",
-      `${builder}() omits stable correlators and uses no spread (F-RR09-008)`,
+      `${builder}() in ${fileName} omits stable correlators and uses no spread (F-RR09-008)`,
     );
   }
 }

@@ -35,14 +35,33 @@ if [[ "$DSN" != https://* ]]; then
     exit 1
 fi
 
+validate_plist() {
+    local plist="$1"
+    if [[ ! -f "$plist" ]]; then
+        return 0
+    fi
+    if ! plutil -lint "$plist" >/dev/null; then
+        echo "::error::Plist syntax validation failed for $plist"
+        exit 1
+    fi
+}
+
 inject_into_plist() {
     local plist="$1"
     if [[ ! -f "$plist" ]]; then
         echo "::warning::Sentry target plist not found: $plist"
         return 0
     fi
+
+    # Reject pre-existing malformed plists before mutating them.
+    validate_plist "$plist"
+
     /usr/libexec/PlistBuddy -c "Delete :sentry.dsn" "$plist" >/dev/null 2>&1 || true
     /usr/libexec/PlistBuddy -c "Add :sentry.dsn string $DSN" "$plist"
+
+    # Ensure the mutation did not corrupt the file.
+    validate_plist "$plist"
+
     echo "::notice::Sentry DSN injected into $plist"
 }
 

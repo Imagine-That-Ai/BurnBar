@@ -101,30 +101,35 @@ def main() -> int:
             query = pcm.get_symbol(conn, query_name, str(repo), limit=5)
             query_seconds = time.perf_counter() - query_started
 
-        failure_codes: list[str] = []
+        failures: list[str] = []
         if result["indexedFiles"] != FILE_COUNT:
-            failure_codes.append("indexed_file_count_mismatch")
+            failures.append(f"indexedFiles={result['indexedFiles']} expected {FILE_COUNT}")
         if symbol_count < MIN_SYMBOLS:
-            failure_codes.append("symbol_count_below_floor")
+            failures.append(f"symbolCount={symbol_count} expected >= {MIN_SYMBOLS}")
         if not status["storageWithinBudget"]:
-            failure_codes.append("storage_budget_exceeded")
+            failures.append("storageWithinBudget=false")
         if not query["symbols"]:
-            failure_codes.append("symbol_query_empty")
+            failures.append(f"query returned no symbols for {query_name}")
         if query_seconds > QUERY_LATENCY_SECONDS:
-            failure_codes.append("symbol_query_too_slow")
+            failures.append(f"queryLatency={query_seconds:.3f}s expected <= {QUERY_LATENCY_SECONDS:.3f}s")
         if before_non_code != after_non_code:
-            failure_codes.append("non_code_rows_changed")
+            failures.append(f"nonCodeRows changed from {before_non_code} to {after_non_code}")
 
         print(
             {
-                "status": "failed" if failure_codes else "passed",
+                "status": "failed" if failures else "passed",
+                "indexedFiles": result["indexedFiles"],
+                "symbolCount": symbol_count,
+                "storageByteCount": status["storageByteCount"],
+                "storageBudgetBytes": status["storageBudgetBytes"],
                 "indexSeconds": round(index_seconds, 3),
                 "querySeconds": round(query_seconds, 6),
-                "failureCount": len(failure_codes),
-                "failureCodes": failure_codes,
+                "nonCodeRowsBefore": before_non_code,
+                "nonCodeRowsAfter": after_non_code,
+                "failures": failures,
             }
         )
-        return 1 if failure_codes else 0
+        return 1 if failures else 0
     finally:
         shutil.rmtree(temp, ignore_errors=True)
 

@@ -343,7 +343,10 @@ export const verifyAuditLog = onCall(
 /** Action-name constants so every appender uses the same vocabulary. */
 export const AUDIT_ACTIONS = {
   dataExport: "data.export",
+  /** @deprecated Use {@link domainDeleteIntent} + {@link domainDeleteComplete}. */
   domainDelete: "data.delete",
+  domainDeleteIntent: "data.delete.intent",
+  domainDeleteComplete: "data.delete.complete",
   recoverySetup: "recovery.setup",
   recoveryConfirm: "recovery.confirm",
   panicRevoke: "access.revoke_all",

@@ -1072,6 +1072,12 @@ struct ConnectionsSettingsView: View {
             return .xAI
         case .cursorAgent:
             return ProviderID(rawValue: "cursor-agent")
+        case .gemini:
+            return AgentProvider.geminiCLI.providerID
+        case .kimi:
+            return .kimi
+        case .pi:
+            return AgentProvider.piAgent.providerID
         }
     }
 
@@ -1362,6 +1368,12 @@ struct ConnectionsSettingsView: View {
             return .xAI
         case .cursorAgent:
             return ProviderID(rawValue: "cursor-agent")
+        case .gemini:
+            return AgentProvider.geminiCLI.providerID
+        case .kimi:
+            return .kimi
+        case .pi:
+            return AgentProvider.piAgent.providerID
         }
     }
 

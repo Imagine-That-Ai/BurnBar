@@ -45,7 +45,7 @@ public enum ComputerUseMode: String, Codable, CaseIterable, Hashable, Sendable {
 /// a fresh session is started — `.trusted` is never sticky across
 /// sessions (Decision 2, "Trust modes, chosen per session, never per
 /// agent").
-public enum ComputerUseTrustMode: String, Codable, CaseIterable, Hashable, Sendable {
+public enum ComputerUseTrustMode: String, Codable, CaseIterable, Hashable, Sendable, Comparable {
     /// Every action gates through `BurnBarApprovalRequest`. Default.
     case manual
 
@@ -56,6 +56,20 @@ public enum ComputerUseTrustMode: String, Codable, CaseIterable, Hashable, Senda
     /// Actions covered by an active scope rule dispatch without
     /// per-action approval; out-of-scope actions fall back to Manual.
     case trusted
+
+    // MARK: Comparable (lowest trust → highest trust: manual < step < trusted)
+
+    public static func < (lhs: ComputerUseTrustMode, rhs: ComputerUseTrustMode) -> Bool {
+        lhs.rank < rhs.rank
+    }
+
+    private var rank: Int {
+        switch self {
+        case .manual: return 0
+        case .step: return 1
+        case .trusted: return 2
+        }
+    }
 }
 
 /// Why a session ended. Reported by `ComputerUseSessionLogger` and to

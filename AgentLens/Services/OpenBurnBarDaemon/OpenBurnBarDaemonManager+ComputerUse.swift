@@ -26,6 +26,18 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
+    func provisionPhoneControlPin(
+        _ request: DaemonPhoneControlPinProvisionRequest
+    ) async throws -> DaemonPhoneControlPinProvisionResponse {
+        guard case .healthy = status else {
+            throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before provisioning phone-control pins.")
+        }
+        let socketURL = paths.socketURL
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.provisionPhoneControlPin(request, at: socketURL)
+        }
+    }
+
     func pendingComputerUseApprovals(
         _ request: ComputerUseApprovalPendingRequest = ComputerUseApprovalPendingRequest()
     ) async throws -> ComputerUseApprovalPendingResponse {

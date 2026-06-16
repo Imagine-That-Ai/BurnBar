@@ -14,12 +14,15 @@
  * ever read from `args`.
  *
  * Server-honoured filters carry NO content (privacy-leak-remediation-2026-06-02
- * §3): `sourceKind` (one of three coarse buckets) + `embeddingModelVersion`, and
+ * §3): `sourceKind` (one of three prose buckets) + `embeddingModelVersion`, and
  * the source filter is the vault-keyed `slugHmac` the shim computes on-device —
- * NOT the cleartext `sourceSlug`. sourcePath/section/category live in the sealed
- * metadata and are applied on-device after decrypt; the tool accepts them for
- * forward-compatible client post-filtering but the server cannot read them. The
- * cleartext `sourceSlug`/`contentHash` filters and returns have been dropped.
+ * NOT the cleartext `sourceSlug`. Hosted code memory is deliberately split into
+ * burnbar_search_code / burnbar_get_code_document, requires `code:read`, and
+ * must be scoped by a vault-keyed `projectHmac`. sourcePath/section/category live
+ * in the sealed metadata and are applied on-device after decrypt; the tool
+ * accepts them for forward-compatible client post-filtering but the server cannot
+ * read them. The cleartext `sourceSlug`/`contentHash` filters and returns have
+ * been dropped.
  */
 
 import type { Firestore, Query } from "firebase-admin/firestore";
@@ -29,6 +32,8 @@ import { HttpError } from "./errors.js";
 import { KNOWLEDGE_VECTOR_DIM } from "./knowledgeVector.js";
 
 const KNOWLEDGE_RESOURCE_RE = /^burnbar:\/\/knowledge\/([A-Za-z0-9_.:-]+)$/u;
+const CODE_RESOURCE_RE = /^burnbar:\/\/code\/([A-Za-z0-9_.:-]+)$/u;
+const HEX_DIGEST_RE = /^[a-f0-9]{64}$/iu;
 const SEARCH_READ_CAP = 150;
 const CURSOR_TTL_MS = 15 * 60_000;
 const LOCAL_DECRYPT_MODE = "local_decrypt_shim";
@@ -40,6 +45,8 @@ export interface KnowledgeSearchArgs {
   sourceKind?: unknown;
   /** Vault-keyed HMAC of the slug the shim computes on-device (replaces cleartext sourceSlug). */
   slugHmac?: unknown;
+  /** Vault-keyed HMAC of the project/repo identity. Required for hosted code memory. */
+  projectHmac?: unknown;
   embeddingModelVersion?: unknown;
   // Sealed-only (applied on-device): present for forward-compat, ignored server-side.
   sourcePath?: unknown;
@@ -91,6 +98,8 @@ export interface KnowledgeSearchHit {
   sourceKind: unknown;
   /** Vault-keyed HMAC of the slug — opaque to the server; the shim correlates on it. */
   slugHmac: unknown;
+  /** Vault-keyed HMAC of the project/repo identity. Present for code rows only. */
+  projectHmac: unknown;
   score: number;
   decryptMode: "local_decrypt_shim";
 }
@@ -129,7 +138,9 @@ function firestoreKnowledgeQuery(query: Query): KnowledgeVectorQuery {
   };
 }
 
-export function knowledgeSearchFirestoreFrom(db: Firestore): KnowledgeSearchFirestore {
+export function knowledgeSearchFirestoreFrom(
+  db: Firestore,
+): KnowledgeSearchFirestore {
   return {
     collection(collectionPath) {
       return firestoreKnowledgeQuery(db.collection(collectionPath));
@@ -140,36 +151,144 @@ export function knowledgeSearchFirestoreFrom(db: Firestore): KnowledgeSearchFire
 /** Validate the device-cloaked query vector: exactly KNOWLEDGE_VECTOR_DIM finite numbers. */
 function requireQueryVector(raw: unknown): number[] {
   if (!Array.isArray(raw) || raw.length !== KNOWLEDGE_VECTOR_DIM) {
-    throw new HttpError(400, `queryVector must be a ${KNOWLEDGE_VECTOR_DIM}-dimension array.`, "invalid_input");
+    throw new HttpError(
+      400,
+      `queryVector must be a ${KNOWLEDGE_VECTOR_DIM}-dimension array.`,
+      "invalid_input",
+    );
   }
   const vec = raw.map((v) => Number(v));
   if (vec.some((v) => !Number.isFinite(v))) {
-    throw new HttpError(400, "queryVector must contain only finite numbers.", "invalid_input");
+    throw new HttpError(
+      400,
+      "queryVector must contain only finite numbers.",
+      "invalid_input",
+    );
   }
   return vec;
 }
 
 function boundedString(raw: unknown, max: number): string | undefined {
-  if (typeof raw !== "string") {return undefined;}
+  if (typeof raw !== "string") {
+    return undefined;
+  }
   const trimmed = raw.trim();
-  if (!trimmed) {return undefined;}
+  if (!trimmed) {
+    return undefined;
+  }
   return trimmed.slice(0, max);
 }
 
-export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string, args: KnowledgeSearchArgs): Promise<KnowledgeSearchResult> {
+function requireOptionalHexDigest(
+  raw: unknown,
+  fieldName: string,
+): string | undefined {
+  const value = boundedString(raw, 64);
+  if (!value) {
+    return undefined;
+  }
+  if (!HEX_DIGEST_RE.test(value)) {
+    throw new HttpError(
+      400,
+      `${fieldName} must be a 64-character hex HMAC.`,
+      "invalid_input",
+    );
+  }
+  return value.toLowerCase();
+}
+
+function recordFilters(args: KnowledgeSearchArgs): Record<string, unknown> {
+  return typeof args.filters === "object" &&
+    args.filters !== null &&
+    !Array.isArray(args.filters)
+    ? args.filters
+    : {};
+}
+
+interface KnowledgeSearchOptions {
+  cursorTool: "burnbar_search_knowledge" | "burnbar_search_code";
+  resourceScheme: "knowledge" | "code";
+  fixedSourceKind?: "code";
+  requireEmbeddingModelVersion?: boolean;
+  requireProjectHmac?: boolean;
+  allowCodeSourceKind?: boolean;
+}
+
+export async function searchKnowledge(
+  db: KnowledgeSearchFirestore,
+  uid: string,
+  args: KnowledgeSearchArgs,
+  options: KnowledgeSearchOptions = {
+    cursorTool: "burnbar_search_knowledge",
+    resourceScheme: "knowledge",
+  },
+): Promise<KnowledgeSearchResult> {
   const queryVector = requireQueryVector(args.queryVector);
   const limit = Math.max(1, Math.min(Math.floor(Number(args.limit ?? 10)), 50));
   const offset = args.cursor
-    ? verifyCursor(String(args.cursor), uid, "burnbar_search_knowledge").offset
+    ? verifyCursor(String(args.cursor), uid, options.cursorTool).offset
     : 0;
 
   // Content-free server filters. Accept both top-level and nested `filters`. The
   // source filter is the vault-keyed `slugHmac` (no cleartext `sourceSlug`); the
   // shim computes it on-device (privacy-leak-remediation-2026-06-02 §3).
-  const filters = args.filters ?? {};
-  const sourceKind = boundedString(args.sourceKind ?? filters.sourceKind, 64);
+  const filters = recordFilters(args);
+  const requestedSourceKind = boundedString(
+    args.sourceKind ?? filters.sourceKind,
+    64,
+  );
+  const filterSourceKind = boundedString(filters.sourceKind, 64);
+  let sourceKind = requestedSourceKind;
+  if (options.fixedSourceKind) {
+    if (
+      requestedSourceKind &&
+      requestedSourceKind !== options.fixedSourceKind
+    ) {
+      throw new HttpError(
+        400,
+        `sourceKind must be ${options.fixedSourceKind} for ${options.cursorTool}.`,
+        "invalid_input",
+      );
+    }
+    if (filterSourceKind && filterSourceKind !== options.fixedSourceKind) {
+      throw new HttpError(
+        400,
+        `filters.sourceKind must be ${options.fixedSourceKind} for ${options.cursorTool}.`,
+        "invalid_input",
+      );
+    }
+    sourceKind = options.fixedSourceKind;
+  }
+  if (sourceKind === "code" && !options.allowCodeSourceKind) {
+    throw new HttpError(
+      400,
+      "Code memory must be queried with burnbar_search_code and a code:read grant.",
+      "invalid_input",
+    );
+  }
   const slugHmac = boundedString(args.slugHmac ?? filters.slugHmac, 64);
-  const embeddingModelVersion = boundedString(args.embeddingModelVersion ?? filters.embeddingModelVersion, 120);
+  const projectHmac = requireOptionalHexDigest(
+    args.projectHmac ?? filters.projectHmac,
+    "projectHmac",
+  );
+  const embeddingModelVersion = boundedString(
+    args.embeddingModelVersion ?? filters.embeddingModelVersion,
+    120,
+  );
+  if (options.requireProjectHmac && !projectHmac) {
+    throw new HttpError(
+      400,
+      "projectHmac is required for hosted code memory search.",
+      "invalid_input",
+    );
+  }
+  if (options.requireEmbeddingModelVersion && !embeddingModelVersion) {
+    throw new HttpError(
+      400,
+      "embeddingModelVersion is required for hosted code memory search.",
+      "invalid_input",
+    );
+  }
 
   // FLAG-DAY (dedup-v0 retirement): hard-floor `dedupHashVersion == 1` so a
   // non-shim OAuth caller can NEVER query a stranded legacy v0 row (a row whose
@@ -186,9 +305,18 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
   let query: KnowledgeVectorQuery = db
     .collection(`users/${uid}/cloud_search_knowledge`)
     .where("dedupHashVersion", "==", 1);
-  if (sourceKind) {query = query.where("sourceKind", "==", sourceKind);}
-  if (slugHmac) {query = query.where("slugHmac", "==", slugHmac);}
-  if (embeddingModelVersion) {query = query.where("embeddingModelVersion", "==", embeddingModelVersion);}
+  if (sourceKind) {
+    query = query.where("sourceKind", "==", sourceKind);
+  }
+  if (slugHmac) {
+    query = query.where("slugHmac", "==", slugHmac);
+  }
+  if (projectHmac) {
+    query = query.where("projectHmac", "==", projectHmac);
+  }
+  if (embeddingModelVersion) {
+    query = query.where("embeddingModelVersion", "==", embeddingModelVersion);
+  }
 
   // Fetch one extra beyond the page so we can tell whether a nextCursor is warranted
   // (findNearest caps the result set, so "is there more?" must be probed explicitly).
@@ -208,12 +336,13 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
     const distance = Number(doc.get("_distance") ?? 1);
     return {
       vectorId: doc.id,
-      resourceUri: `burnbar://knowledge/${doc.id}`,
+      resourceUri: `burnbar://${options.resourceScheme}/${doc.id}`,
       ciphertext: doc.get("sealedCiphertext"),
       sealedMetadata: doc.get("sealedMetadata"),
       sourceKind: doc.get("sourceKind"),
       // Vault-keyed HMAC only — no cleartext slug returned (§3).
       slugHmac: doc.get("slugHmac"),
+      projectHmac: doc.get("projectHmac"),
       score: 1 - distance, // COSINE distance -> similarity (higher = closer)
       decryptMode: LOCAL_DECRYPT_MODE,
     };
@@ -224,7 +353,12 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
   return {
     hits,
     nextCursor: hasMore
-      ? signCursor({ uid, tool: "burnbar_search_knowledge", offset: offset + limit, exp: Date.now() + CURSOR_TTL_MS })
+      ? signCursor({
+          uid,
+          tool: options.cursorTool,
+          offset: offset + limit,
+          exp: Date.now() + CURSOR_TTL_MS,
+        })
       : undefined,
     storageReads: 0,
     readBudget: {
@@ -236,6 +370,26 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
   };
 }
 
+export async function searchHostedCode(
+  db: KnowledgeSearchFirestore,
+  uid: string,
+  args: KnowledgeSearchArgs,
+): Promise<KnowledgeSearchResult> {
+  return searchKnowledge(
+    db,
+    uid,
+    { ...args, sourceKind: "code" },
+    {
+      cursorTool: "burnbar_search_code",
+      resourceScheme: "code",
+      fixedSourceKind: "code",
+      requireEmbeddingModelVersion: true,
+      requireProjectHmac: true,
+      allowCodeSourceKind: true,
+    },
+  );
+}
+
 export async function readKnowledgeDocument(
   db: KnowledgeDocumentFirestore,
   uid: string,
@@ -244,16 +398,35 @@ export async function readKnowledgeDocument(
   const uri = typeof args.resourceUri === "string" ? args.resourceUri : "";
   const match = KNOWLEDGE_RESOURCE_RE.exec(uri);
   if (!match) {
-    throw new HttpError(400, "resourceUri must be a burnbar://knowledge/<id> URI returned by search.", "invalid_resource_uri");
+    throw new HttpError(
+      400,
+      "resourceUri must be a burnbar://knowledge/<id> URI returned by search.",
+      "invalid_resource_uri",
+    );
   }
   const docId = match[1];
 
   // A knowledge chunk is a single bounded, sealed envelope stored INLINE in the
   // Firestore doc (no Cloud Storage coupling, no string paging) — the doc id is
   // the only owner-scoped lookup needed. The shim decrypts the returned envelope.
-  const snap = await db.doc(`users/${uid}/cloud_search_knowledge/${docId}`).get();
-  if (!snap.exists) {throw new HttpError(404, "Knowledge resource not found.", "resource_not_found");}
+  const snap = await db
+    .doc(`users/${uid}/cloud_search_knowledge/${docId}`)
+    .get();
+  if (!snap.exists) {
+    throw new HttpError(
+      404,
+      "Knowledge resource not found.",
+      "resource_not_found",
+    );
+  }
   const data = snap.data() ?? {};
+  if (data.sourceKind === "code") {
+    throw new HttpError(
+      404,
+      "Knowledge resource not found.",
+      "resource_not_found",
+    );
+  }
 
   return {
     resourceUri: uri,
@@ -264,9 +437,61 @@ export async function readKnowledgeDocument(
     sealedMetadata: data.sealedMetadata,
     sourceKind: data.sourceKind,
     slugHmac: data.slugHmac,
+    projectHmac: data.projectHmac,
     encrypted: true,
     decryptMode: LOCAL_DECRYPT_MODE,
     storageReads: 0,
-    readBudget: { firestoreDocumentReads: 1, storageReads: 0, bodyStorageReadCap: 0, withinBodyReadBudget: true },
+    readBudget: {
+      firestoreDocumentReads: 1,
+      storageReads: 0,
+      bodyStorageReadCap: 0,
+      withinBodyReadBudget: true,
+    },
+  };
+}
+
+export async function readHostedCodeDocument(
+  db: KnowledgeDocumentFirestore,
+  uid: string,
+  args: { resourceUri?: string },
+) {
+  const uri = typeof args.resourceUri === "string" ? args.resourceUri : "";
+  const match = CODE_RESOURCE_RE.exec(uri);
+  if (!match) {
+    throw new HttpError(
+      400,
+      "resourceUri must be a burnbar://code/<id> URI returned by search.",
+      "invalid_resource_uri",
+    );
+  }
+  const docId = match[1];
+  const snap = await db
+    .doc(`users/${uid}/cloud_search_knowledge/${docId}`)
+    .get();
+  if (!snap.exists) {
+    throw new HttpError(404, "Code resource not found.", "resource_not_found");
+  }
+  const data = snap.data() ?? {};
+  if (data.sourceKind !== "code") {
+    throw new HttpError(404, "Code resource not found.", "resource_not_found");
+  }
+
+  return {
+    resourceUri: uri,
+    dedupHash: typeof data.dedupHash === "string" ? data.dedupHash : "",
+    sealedCiphertext: data.sealedCiphertext,
+    sealedMetadata: data.sealedMetadata,
+    sourceKind: data.sourceKind,
+    slugHmac: data.slugHmac,
+    projectHmac: data.projectHmac,
+    encrypted: true,
+    decryptMode: LOCAL_DECRYPT_MODE,
+    storageReads: 0,
+    readBudget: {
+      firestoreDocumentReads: 1,
+      storageReads: 0,
+      bodyStorageReadCap: 0,
+      withinBodyReadBudget: true,
+    },
   };
 }

@@ -75,4 +75,44 @@ final class VisibleTerminalSessionWorkspaceTests: XCTestCase {
 
         XCTAssertFalse(fileManager.fileExists(atPath: workspace.sessionURL.path))
     }
+
+    func testPrepareThrowsOnEmptySessionID() {
+        XCTAssertThrowsError(
+            try VisibleTerminalSessionWorkspace.prepare(sessionID: "", fileManager: fileManager)
+        ) { error in
+            XCTAssertEqual(
+                error as? VisibleTerminalSessionWorkspace.PreparationError,
+                .emptySessionID
+            )
+        }
+    }
+
+    func testPrepareThrowsWhenLogFileCreationFails() throws {
+        let failingFileManager = FailingCreateFileManager()
+
+        XCTAssertThrowsError(
+            try VisibleTerminalSessionWorkspace.prepare(
+                sessionID: "test-log-failure-\(UUID().uuidString)",
+                fileManager: failingFileManager
+            )
+        ) { error in
+            guard case let .logFileCreationFailed(url) = error as? VisibleTerminalSessionWorkspace.PreparationError else {
+                XCTFail("expected logFileCreationFailed, got \(error)")
+                return
+            }
+            XCTAssertTrue(url.lastPathComponent.hasSuffix(".log"))
+        }
+    }
+}
+
+// MARK: - Test doubles
+
+private final class FailingCreateFileManager: FileManager {
+    override func createFile(
+        atPath path: String,
+        contents data: Data?,
+        attributes attr: [FileAttributeKey: Any]? = nil
+    ) -> Bool {
+        false
+    }
 }

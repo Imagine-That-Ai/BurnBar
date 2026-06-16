@@ -843,10 +843,14 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             return "OPENAI_API_KEY"
         case .claude:
             return "ANTHROPIC_API_KEY"
-        case .opencode, .droid, .forge, .antigravity, .cursorAgent:
+        case .opencode, .droid, .forge, .antigravity, .cursorAgent, .pi:
             return nil
         case .grok:
             return "XAI_API_KEY"
+        case .gemini:
+            return "GEMINI_API_KEY"
+        case .kimi:
+            return "KIMI_API_KEY"
         }
     }
 

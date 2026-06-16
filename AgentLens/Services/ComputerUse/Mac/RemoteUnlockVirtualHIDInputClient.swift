@@ -182,6 +182,23 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
         }
         guard connected == 0 else { throw Error.daemonUnavailable }
 
+        // Authenticate the server BEFORE writing anything: the envelope can
+        // carry the macOS login password for typeCredential actions. This
+        // mirrors the preferred XPC lane's validateServerPeer call and closes
+        // OPUS-F-008. The server must be root-owned (getpeereid) and carry a
+        // valid first-party code signature.
+        do {
+            try OpenBurnBarPrivilegedTrust.validateServerPeer(
+                socketFD: fd,
+                expectedUID: 0,
+                codeSignatureValidator: { token in
+                    try OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken: token)
+                }
+            )
+        } catch {
+            throw Error.serverPeerValidationFailed
+        }
+
         var data = try JSONEncoder().encode(request)
         data.append(0x0A)
         try data.withUnsafeBytes { pointer in
@@ -236,6 +253,7 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
         case readFailed
         case rejected(String)
         case responseTooLarge
+        case serverPeerValidationFailed
         case socketPathTooLong
         case socketUnavailable
         case timedOut

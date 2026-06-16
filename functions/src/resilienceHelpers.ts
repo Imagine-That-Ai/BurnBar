@@ -4,7 +4,7 @@
  */
 
 import { externalApiPolicy, firestorePolicy, pushPolicy, stripePolicy, withResilience } from "./resilience.js";
-import { assertOutboundFetchTarget } from "./ssrfGuard.js";
+import { assertOutboundFetchTargetResolved } from "./ssrfGuard.js";
 
 interface ResilientFetchOptions {
   /** Permit private/link-local/metadata hosts (e.g. the GCP metadata identity fetch). */
@@ -36,6 +36,6 @@ export async function resilientFetch(
 ): Promise<Response> {
   // L5: defense-in-depth SSRF guard. Blocks cloud metadata + private/link-local
   // hosts unless explicitly opted in (the GCP metadata identity fetch).
-  assertOutboundFetchTarget(url, options?.allowPrivateHosts ?? false);
+  await assertOutboundFetchTargetResolved(url, options?.allowPrivateHosts ?? false);
   return externalApiWithResilience(label, () => fetch(url, init));
 }

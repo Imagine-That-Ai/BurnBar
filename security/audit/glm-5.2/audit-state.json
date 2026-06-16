@@ -1,0 +1,102 @@
+{
+  "run_mode": "FULL_BASELINE",
+  "date": "2026-06-16T01:45:00Z",
+  "commit": "60faa70227",
+  "branch": "security/run-09-privacy-invariants-hardening",
+  "model": "glm-5.2",
+  "previous_audit_reference": "security-audit/merged/FINAL_REPORT.md (2026-06-14)",
+  "score": {
+    "raw": 72,
+    "final": 71,
+    "confidence": "medium-high",
+    "caps_applied": [
+      {
+        "cap": "engineering-maturity-cap-max-79",
+        "reason": "Security controls exist but local-auth-proof is dormant; kill-switch watchdog lacks peer auth; live verification gaps; product-decision residuals open"
+      }
+    ]
+  },
+  "findings": {
+    "critical": [],
+    "high": [
+      {
+        "id": "FINDING-001",
+        "title": "Kill-switch watchdog socket has no peer authentication",
+        "severity": "high",
+        "status": "open",
+        "first_seen": "2026-06-16"
+      }
+    ],
+    "medium": [
+      {"id": "FINDING-002", "title": "Local-auth-proof verifier dormant in production daemon", "severity": "medium", "status": "open"},
+      {"id": "FINDING-003", "title": "Phone-side trust mode picker not downgrade-only", "severity": "medium", "status": "open"},
+      {"id": "FINDING-004", "title": "CloudVault first-vault creation not server-mediated (M-008 residual)", "severity": "medium", "status": "accepted-risk"},
+      {"id": "FINDING-005", "title": "iroh first-contact safety-number not default-on (M-018 residual)", "severity": "medium", "status": "accepted-risk"},
+      {"id": "FINDING-006", "title": "CLI executable provenance without signing policy (M-030 residual)", "severity": "medium", "status": "accepted-risk"},
+      {"id": "FINDING-007", "title": "App Check attestation max-age 30 days (M-031 residual)", "severity": "medium", "status": "open"},
+      {"id": "FINDING-008", "title": "Path-bound AAD not enforced on chat_threads and cli_sessions (M-007 partial residual)", "severity": "medium", "status": "open"},
+      {"id": "FINDING-009", "title": "SSRF guard does not pin DNS (TOCTOU / DNS rebinding / redirect gap)", "severity": "medium", "status": "open"},
+      {"id": "FINDING-010", "title": "Stable APNs/FCM routing IDs visible to push providers (M-021 residual)", "severity": "medium", "status": "accepted-risk"}
+    ],
+    "low": [
+      {"id": "FINDING-011", "title": "Extension beforeSend lacks recursive payload scrubber", "severity": "low", "status": "open"},
+      {"id": "FINDING-012", "title": "androidDeviceId persisted in fcm_outbound docs", "severity": "low", "status": "open"},
+      {"id": "FINDING-013", "title": "Account-deletion Cloud Storage purge is best-effort", "severity": "low", "status": "open"},
+      {"id": "FINDING-014", "title": "Audit chain dual-file naming (head.json vs signed_head.json)", "severity": "low", "status": "open"},
+      {"id": "FINDING-015", "title": "pop_nonces relies solely on TTL policy for reaping", "severity": "low", "status": "open"}
+    ],
+    "informational": [
+      {"id": "FINDING-016", "title": "Two workflows lack explicit permissions block", "severity": "informational", "status": "open"},
+      {"id": "FINDING-017", "title": "Branch protection is operator-only to verify/enable", "severity": "informational", "status": "open"}
+    ]
+  },
+  "previous_findings_preserved": true,
+  "previous_findings_mapping": {
+    "M-001": "fixed-in-source, live-verification-residual",
+    "M-002": "fixed-with-tests",
+    "M-003": "fixed-in-source, live-TTL-readback-needed",
+    "M-004": "fixed-in-working-tree, history-purge-unproven",
+    "M-005": "fixed-with-tests (allowlist now wired as first conjunct)",
+    "M-006": "fixed-with-tests",
+    "M-007": "partially-fixed (conversations+mobile_assistant_chats path-bound; chat_threads+cli_sessions still global AAD = FINDING-008)",
+    "M-008": "accepted-risk (FINDING-004)",
+    "M-009": "fixed-with-tests",
+    "M-010": "fixed-with-tests",
+    "M-011": "fixed-with-tests",
+    "M-012": "fixed-with-tests",
+    "M-013": "fixed-with-tests",
+    "M-014": "fixed-in-code, shipped-state-unproven",
+    "M-015": "fixed-with-tests (framing change is real protection; denylist is defense-in-depth only)",
+    "M-016": "fixed-with-tests",
+    "M-017": "fixed-with-tests",
+    "M-018": "accepted-risk (FINDING-005)",
+    "M-019": "fixed-with-tests",
+    "M-020": "fixed-with-tests",
+    "M-021": "accepted-risk (FINDING-010)",
+    "M-022": "fixed-with-tests",
+    "M-023": "fixed-in-source",
+    "M-024": "fixed-with-tests",
+    "M-025": "fixed-with-tests (BOLA harness now executes runtime cross-user proofs)",
+    "M-026": "fixed-with-tests",
+    "M-027": "fixed-with-tests",
+    "M-028": "fixed-with-tests",
+    "M-029": "fixed-with-tests",
+    "M-030": "accepted-risk (FINDING-006)",
+    "M-031": "open (FINDING-007)",
+    "M-032": "process-residual",
+    "M-037": "fixed-with-tests",
+    "M-038": "fixed-with-tests",
+    "M-039": "fixed-with-tests",
+    "M-040": "fixed-with-tests"
+  },
+  "new_findings_vs_previous": [
+    "FINDING-001 (kill-switch watchdog socket - new finding, not covered in prior 9-model audit)",
+    "FINDING-002 (local-auth-proof dormant - new finding, related to T-DMN-04 but not previously tracked)",
+    "FINDING-003 (phone trust mode UI - new finding, prior audit focused on code-level enforcement not UI)"
+  ],
+  "fixed_findings_count": 27,
+  "reopened_findings": [],
+  "threats_count": 18,
+  "claims_count": 15,
+  "unknowns_count": 8
+}

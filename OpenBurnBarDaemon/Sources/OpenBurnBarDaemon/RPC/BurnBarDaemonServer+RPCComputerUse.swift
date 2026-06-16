@@ -26,6 +26,10 @@ extension BurnBarDaemonServer {
                 return denial
             }
             let result: ComputerUseSessionStartResponse = try await computerUseService.startSession(typedRequest.params)
+            rememberLocalAuthVerifiedSession(
+                sessionId: result.sessionId,
+                requestedTimeoutSeconds: typedRequest.params.sessionTimeoutSeconds
+            )
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -37,14 +41,14 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<ComputerUseInvokeRequest>.self,
                 from: requestData
             )
-            // T-DMN-04: fail closed unless a fresh, op-hash-bound, pinned-key
-            // local-auth proof authorizes dispatching this high-risk action.
-            if let denial = enforceLocalAuthProof(
+            // T-DMN-04: fail closed unless this session was started with a fresh,
+            // op-hash-bound, pinned-key local-auth proof. The proof is single-use;
+            // per-action replay would correctly fail, so invokes bind to the
+            // daemon session established by the verified start request.
+            if let denial = enforceLocalAuthVerifiedSession(
                 requestId: typedRequest.id,
                 method: method,
-                proof: typedRequest.params.localAuthProof,
-                sourceDeviceId: typedRequest.params.sourceDeviceId,
-                intentHashHex: typedRequest.params.intentHashHex
+                sessionId: typedRequest.params.sessionId
             ) {
                 return denial
             }
@@ -103,9 +107,155 @@ extension BurnBarDaemonServer {
                 result: result
             )
             return encode(response)
+        case .phoneControlPinProvision:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<DaemonPhoneControlPinProvisionRequest>.self,
+                from: requestData
+            )
+            do {
+                let result = try await provisionPhoneControlPin(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            } catch let failure as PhoneControlPinProvisionFailure {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: failure.code,
+                    message: failure.message
+                )
+            }
         default:
             preconditionFailure("Unhandled computer use RPC method: \(method.rawValue)")
         }
+    }
+
+    private struct PhoneControlPinProvisionFailure: Error {
+        let code: Int
+        let message: String
+    }
+
+    /// T-DMN-04: persist the first-party Mac app's pinned phone-control verifying
+    /// key into the daemon-owned pin store. Fail closed on malformed keys or
+    /// keychain/backing-store errors.
+    private func provisionPhoneControlPin(
+        _ request: DaemonPhoneControlPinProvisionRequest
+    ) async throws -> DaemonPhoneControlPinProvisionResponse {
+        guard let pinStore = phoneControlPinStore else {
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.methodNotFound,
+                message: "Phone-control pin provisioning is not enabled for this daemon instance."
+            )
+        }
+        guard let publicKeyData = Data(base64Encoded: request.publicKeyBase64),
+              let verifyingKey = try? PhoneControlVerifyingKey(
+                kind: request.keyKind,
+                publicKeyRepresentation: publicKeyData
+              ) else {
+            logger.warning(
+                "phone_control_pin_provision_malformed",
+                metadata: [
+                    "device_id": request.deviceId,
+                    "key_kind": request.keyKind.rawValue
+                ]
+            )
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.invalidParams,
+                message: "Malformed publicKeyBase64 or keyKind for device \(request.deviceId)."
+            )
+        }
+        switch pinStore.pin(deviceId: request.deviceId, key: verifyingKey) {
+        case .pinned:
+            logger.notice(
+                "phone_control_pin_provisioned",
+                metadata: [
+                    "device_id": request.deviceId,
+                    "key_kind": request.keyKind.rawValue
+                ]
+            )
+            return DaemonPhoneControlPinProvisionResponse(pinned: true, deviceId: request.deviceId)
+        case .malformed:
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.invalidParams,
+                message: "Malformed device id for phone-control pin provisioning."
+            )
+        case .absent:
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.internalError,
+                message: "Unexpected absent pin result for device \(request.deviceId)."
+            )
+        case .storeError(let status):
+            logger.error(
+                "phone_control_pin_provision_failed",
+                metadata: [
+                    "device_id": request.deviceId,
+                    "status": "\(status)"
+                ]
+            )
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.internalError,
+                message: "Could not persist phone-control pin for device \(request.deviceId)."
+            )
+        }
+    }
+
+    private static var maxLocalAuthVerifiedSessionLifetime: TimeInterval {
+        AgentCapabilityGrantRequest.defaultGrantDuration
+    }
+
+    func rememberLocalAuthVerifiedSession(
+        sessionId: String,
+        requestedTimeoutSeconds: Int,
+        now: Date = Date()
+    ) {
+        guard localAuthProofVerifier != nil else { return }
+        let requestedLifetime = requestedTimeoutSeconds > 0
+            ? TimeInterval(requestedTimeoutSeconds)
+            : Self.maxLocalAuthVerifiedSessionLifetime
+        let lifetime = min(requestedLifetime, Self.maxLocalAuthVerifiedSessionLifetime)
+        localAuthVerifiedComputerUseSessions = localAuthVerifiedComputerUseSessions.filter { $0.value > now }
+        localAuthVerifiedComputerUseSessions[sessionId] = now.addingTimeInterval(lifetime)
+        logger.notice(
+            "computer_use_local_auth_session_authorized",
+            metadata: [
+                "session_id": sessionId,
+                "expires_in_seconds": "\(Int(lifetime))"
+            ]
+        )
+    }
+
+    func enforceLocalAuthVerifiedSession(
+        requestId: String,
+        method: BurnBarRPCMethod,
+        sessionId: String,
+        now: Date = Date()
+    ) -> Data? {
+        guard localAuthProofVerifier != nil else {
+            // Proof enforcement is not wired for this daemon instance (dev/test).
+            return nil
+        }
+
+        localAuthVerifiedComputerUseSessions = localAuthVerifiedComputerUseSessions.filter { $0.value > now }
+        if let expiresAt = localAuthVerifiedComputerUseSessions[sessionId], expiresAt > now {
+            return nil
+        }
+
+        BurnBarDaemonMetricsCounters.recordRPCError()
+        logger.warning(
+            "computer_use_local_auth_session_missing",
+            metadata: [
+                "request_id": requestId,
+                "method": method.rawValue,
+                "session_id": sessionId
+            ]
+        )
+        return encodeErrorResponse(
+            id: requestId,
+            code: BurnBarRPCErrorCode.unauthorized,
+            message: "OpenBurnBar RPC method '\(method.rawValue)' requires a local-auth-verified Computer Use session."
+        )
     }
 
     /// T-DMN-04 — gate a high-risk computer-use RPC on an independently-verified

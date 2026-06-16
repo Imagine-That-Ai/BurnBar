@@ -14,4 +14,3 @@ test("memory and code MCP buckets are explicit, not metadata fallback", () => {
     assert.equal(buckets.has(bucket), true, `${bucket} must be registered explicitly`);
   }
 });
-

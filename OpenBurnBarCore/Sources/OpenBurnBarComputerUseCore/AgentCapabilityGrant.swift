@@ -252,7 +252,9 @@ public struct AgentCapabilityGrantRequest: Codable, Hashable, Identifiable, Send
             workspaceRootPath: workspaceRootPath,
             sourceDeviceID: sourceDeviceID,
             now: now,
-            duration: grantDurationSeconds
+            duration: grantDurationSeconds,
+            localAuthProof: localAuthProof,
+            localAuthIntentHashHex: localAuthProof?.signedIntentHash
         )
     }
 }
@@ -269,6 +271,8 @@ public struct AgentCapabilityGrantReceipt: Codable, Hashable, Identifiable, Send
     public var receivedAt: Date
     public var grantExpiresAt: Date?
     public var sourceDeviceID: String?
+    public var localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
+    public var localAuthIntentHashHex: String?
     public var denialReason: AgentGrantDenialReason?
     public var message: String?
 
@@ -286,6 +290,8 @@ public struct AgentCapabilityGrantReceipt: Codable, Hashable, Identifiable, Send
         receivedAt: Date = Date(),
         grantExpiresAt: Date? = nil,
         sourceDeviceID: String? = nil,
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
+        localAuthIntentHashHex: String? = nil,
         denialReason: AgentGrantDenialReason? = nil,
         message: String? = nil
     ) {
@@ -300,6 +306,8 @@ public struct AgentCapabilityGrantReceipt: Codable, Hashable, Identifiable, Send
         self.receivedAt = receivedAt
         self.grantExpiresAt = grantExpiresAt
         self.sourceDeviceID = sourceDeviceID
+        self.localAuthProof = localAuthProof
+        self.localAuthIntentHashHex = localAuthIntentHashHex
         self.denialReason = denialReason
         self.message = message
     }
@@ -320,6 +328,14 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
     public let sourceDeviceID: String?
     public let workspaceRootPath: String?
     public let createdAt: Date
+    /// T-DMN-04: the phone-signed local-auth proof that authorized this grant.
+    /// Carried on daemon socket requests so the daemon can independently verify
+    /// the proof against its pinned phone key.
+    public let localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
+    /// T-DMN-04: the canonical intent hash the proof signed. Mirrors
+    /// `AgentCapabilityGrantReceipt.localAuthIntentHashHex` so every downstream
+    /// daemon call can bind the proof to the exact grant request.
+    public let localAuthIntentHashHex: String?
 
     public var id: String { grantID }
 
@@ -334,7 +350,9 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
         status: AgentCapabilityGrantStatus = .active,
         sourceDeviceID: String? = nil,
         workspaceRootPath: String? = nil,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
+        localAuthIntentHashHex: String? = nil
     ) {
         self.grantID = grantID
         self.runtimeID = runtimeID
@@ -347,6 +365,8 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
         self.sourceDeviceID = sourceDeviceID
         self.workspaceRootPath = workspaceRootPath
         self.createdAt = createdAt
+        self.localAuthProof = localAuthProof
+        self.localAuthIntentHashHex = localAuthIntentHashHex
     }
 
     public static func sessionGrant(
@@ -357,7 +377,9 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
         workspaceRootPath: String? = nil,
         sourceDeviceID: String? = nil,
         now: Date = Date(),
-        duration: TimeInterval = 30 * 60
+        duration: TimeInterval = 30 * 60,
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
+        localAuthIntentHashHex: String? = nil
     ) -> AgentCapabilityGrant {
         AgentCapabilityGrant(
             runtimeID: runtimeID,
@@ -367,7 +389,9 @@ public struct AgentCapabilityGrant: Codable, Hashable, Identifiable, Sendable {
             expiresAt: now.addingTimeInterval(duration),
             sourceDeviceID: sourceDeviceID,
             workspaceRootPath: workspaceRootPath,
-            createdAt: now
+            createdAt: now,
+            localAuthProof: localAuthProof,
+            localAuthIntentHashHex: localAuthIntentHashHex
         )
     }
 

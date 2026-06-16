@@ -3,12 +3,27 @@ import OpenBurnBarComputerUseCore
 
 /// LaunchDaemon-friendly watchdog that sets `PrivilegedInputKillSwitch` when the Mac app
 /// cannot (crash, wedged coordinator). Listens on a root-owned UNIX socket for activate/clear.
+///
+/// Every accepted connection is peer-authenticated: the connecting process must
+/// carry a valid first-party code signature (Team ID + hardened runtime + library
+/// validation). This mirrors `PrivilegedInputExecutionSocketServer.validateSocketPeer()`
+/// and closes the gap where any root process could send activate/clear to disarm
+/// or false-arm the kill switch.
 enum PrivilegedInputKillSwitchWatchdog {
     static let defaultSocketPath = "/var/run/openburnbar-killswitch-watch.sock"
 
     struct Command: Decodable {
         let action: String
         let reason: String?
+    }
+
+    /// Peer-authentication gate for incoming watchdog commands.
+    /// Requires a valid first-party code signature on the connecting process.
+    enum PeerAuthenticator {
+        static func validate(socketFD: Int32) throws {
+            let token = try OpenBurnBarPrivilegedTrust.peerAuditToken(socketFD: socketFD)
+            try OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken: token)
+        }
     }
 
     static func run(socketPath: String) throws {
@@ -68,6 +83,16 @@ enum PrivilegedInputKillSwitchWatchdog {
     }
 
     private static func handleClient(_ client: Int32) {
+        // Authenticate the peer before processing any command. Any root process
+        // can connect to the socket, but only first-party-signed processes should
+        // be able to activate/clear the kill switch. Closes FINDING-001.
+        do {
+            try PeerAuthenticator.validate(socketFD: client)
+        } catch {
+            fputs("killswitch-watchdog: peer rejected: \(error)\n", stderr)
+            writeResponse(client, ok: false, detail: "peer_unauthorized")
+            return
+        }
         var buffer = [UInt8](repeating: 0, count: 4096)
         let count = read(client, &buffer, buffer.count)
         guard count > 0 else { return }

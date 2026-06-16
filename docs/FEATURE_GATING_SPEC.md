@@ -104,6 +104,14 @@ honesty guardrails. This is the data for the shared `GatedFeature` catalog.
 - Sources, chunks, and storage you control, with one tap to delete any source or purge it all
 - **Honesty:** "sealed on-device; hosted recall searches cloaked structures." Cloak is NOT inversion-proof/fully-unlinkable, and hosted ANN is opt-in because structural signals remain visible. Vault key is device-only; loss = unrecoverable. Pro tier = 10 sources / 50,000 chunks / 1 GB.
 
+### `theWand` — The Wand — **cloud**
+- **One-liner:** Cast a Wand and send one job to a whole team of agents at once — BurnBar routes each worker to the right model by live quota across your connected providers, then brings back the work.
+- Start with one local worker for free; Cloud opens 3 in parallel, Cloud Pro opens 8, and Ultra opens 16
+- Cast the Headmaster's Wand to reach for the highest-capability models, or the Pareto Wand for the best quality per quota
+- Each worker runs in its own branch, so parallel work stays reviewable and recoverable
+- It runs on the provider subscriptions and keys you already have; BurnBar orchestrates and shows the work while you keep control
+- **Honesty:** The Wand is quota-aware orchestration, not Elder Wand fusion. The per-cast cap ladder is Free 1 / Cloud 3 / Cloud Pro 8 / Ultra 16. Do not imply BurnBar pays for model tokens; workers use the user's connected providers and local/runtime credentials.
+
 ### `tenXMemory` — 10× agent memory — **cloud_ultra**
 - **One-liner:** Give your agents a whole second brain — 10× the private memory they can recall while they work.
 - Jump from 10 sources to 100, from 50,000 memory chunks to 500,000, from 1 GB to 10 GB of recallable knowledge

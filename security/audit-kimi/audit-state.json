@@ -1,0 +1,94 @@
+{
+  "audit_run": {
+    "id": "kimi-cli-2026-06-16",
+    "auditor": "Kimi Code CLI",
+    "mode": "FULL_BASELINE",
+    "commit": "60faa7022767c7287458574765d71e4ecf5b83d9",
+    "branch": "security/run-09-privacy-invariants-hardening",
+    "date_started": "2026-06-16",
+    "date_completed": "2026-06-16",
+    "output_directory": "security/audit-kimi/",
+    "language": "en"
+  },
+  "repository_state": {
+    "dirty": true,
+    "note": "Large set of uncommitted changes present. Evidence drawn from tracked tree and working copy."
+  },
+  "tools_used": [
+    "gitleaks",
+    "grep/read/file inspection",
+    "prior audit integration (security-audit/)"
+  ],
+  "findings_summary": {
+    "total": 22,
+    "critical": 2,
+    "high": 3,
+    "medium": 12,
+    "low": 5,
+    "informational": 0,
+    "open": 20,
+    "accepted": 2
+  },
+  "score": {
+    "raw": 67,
+    "final": 59,
+    "grade": "D+ / Focused review ready; not yet external-audit ready",
+    "confidence": "Medium"
+  },
+  "caps_applied": [
+    {
+      "name": "Major Claim Cap",
+      "max_score": 59,
+      "rationale": "Multiple major claims depend on operational/console settings or lack complete evidence."
+    }
+  ],
+  "deliverables": [
+    "README.md",
+    "audit-state.json",
+    "repository-map.md",
+    "security-definition.md",
+    "architecture.md",
+    "assets.md",
+    "security-claims.md",
+    "authz-review.md",
+    "crypto-secrets-review.md",
+    "app-api-review.md",
+    "privacy-logging-review.md",
+    "cloud-ops-review.md",
+    "supply-chain-review.md",
+    "ai-agentic-review.md",
+    "threat-register.md",
+    "threat-register.csv",
+    "abuse-cases.md",
+    "findings.md",
+    "findings.json",
+    "evidence-map.md",
+    "security-test-plan.md",
+    "remediation-roadmap.md",
+    "security-score.md",
+    "security-score.json",
+    "release-gate.md",
+    "auditor-brief.md",
+    "open-questions.md",
+    "rerun-instructions.md"
+  ],
+  "prior_audit_integration": {
+    "source": "security-audit/merged/FINAL_REPORT.md and HANDOFF_REMAINING_RISKS_2026-06-14.md",
+    "items_integrated": [
+      "M-001 Remote Unlock helper missing",
+      "M-005 session_logs rule fail-open",
+      "M-006 Android iroh cached key",
+      "M-007 CloudVault AAD partial",
+      "M-013 data deletion incomplete",
+      "M-014 exported data more than expected",
+      "M-016 callable input validation gaps",
+      "M-017 rate limiting missing",
+      "M-018 session_logs validation",
+      "M-019 log parser memory exhaustion",
+      "M-023 agentNotifications UID leak",
+      "M-028 capability token HID binding",
+      "M-037 phone-control cross-pairing",
+      "M-040 dependency confusion"
+    ]
+  }
+}

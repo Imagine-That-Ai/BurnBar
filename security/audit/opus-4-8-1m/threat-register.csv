@@ -1,0 +1,17 @@
+id,title,stride,component,actor,severity,status,residual,maps_to
+THREAT-01,Cross-user data access via callable,Elevation/Info,Cloud Functions,authed malicious user,Low,mitigated,none found,TM-002
+THREAT-02,Client self-grants entitlement,Tampering,Firestore entitlements,authed user,Low,mitigated,none,TM-002
+THREAT-03,Forged/replayed billing event,Spoofing/Tampering,billing,attacker with JWS,Low,mitigated,legacy no-token S2S,TM-010
+THREAT-04,Firebase reads private user content,Info disclosure,CloudSync,cloud/insider,Medium,partial,shared artifacts + local DB plaintext,TM-006
+THREAT-05,Same-account ciphertext relocation,Tampering,CloudVault,account owner,Low-Med,partial,non-path-bound AAD surfaces,TM-006
+THREAT-06,Privileged-input credential capture,Spoofing/Elevation,Remote Unlock IPC,same-user/root malware,Low,mitigated,legacy /var/run lane,TM-004
+THREAT-07,Malicious software update,Tampering,DirectDownload updater,network/MITM,Low,mitigated,no spctl assess,TM-010
+THREAT-08,Untrusted content triggers agent action,Elevation,Computer Use/RAG,malicious content,Low,mitigated,none high,TM-004
+THREAT-09,SSRF to metadata via user URL,Info disclosure,functions fetch,authed user,Low,latent,alt-encoding/DNS rebinding unreachable today,TM-010
+THREAT-10,Full UID/PII in logs,Info disclosure,logging,log reader,Low,partial,accountDeletion console.warn,TM-009
+THREAT-11,Stable correlator to push processor,Linking,push,APNs/FCM,Low,partial,thread_id un-gated,TM-009
+THREAT-12,Unbounded retention of ephemeral PII,Non-compliance,Firestore TTL,-,Low,needs-evidence,live TTL state unverified,TM-009
+THREAT-13,Compromised CI ships malicious release,Tampering,CI/CD,malicious PR/runner,Low-Med,needs-evidence,branch protection unverified; single-signer,TM-010
+THREAT-14,Alert fires into a void during incident,Availability/Response,ops,-,Medium,needs-evidence,alert channel deliverability unverified,TM-010
+THREAT-15,Stolen device imports credentials,Spoofing,escrow,thief,Low,accepted/decision,first-vault/quorum product decision,TM-006
+THREAT-16,Quota cap evasion,Tampering,quota,authed user,Low,partial,1h client-mirror window,TM-002

@@ -1,0 +1,193 @@
+diff --git a/AgentLensTests/Active/MacSentryScrubberTests.swift b/AgentLensTests/Active/MacSentryScrubberTests.swift
+new file mode 100644
+index 0000000000..76ecc9bcea
+--- /dev/null
++++ b/AgentLensTests/Active/MacSentryScrubberTests.swift
+@@ -0,0 +1,185 @@
++import XCTest
++@testable import OpenBurnBar
++
++// MARK: - Sentry scrubber + consent (T-PRV-03, macOS half)
++//
++// Locks the privacy contract for crash reporting on the Mac app: user content
++// (prompts, vault data, tokens, emails, and absolute paths that carry the macOS
++// account short-name under /Users/<name>) is stripped from event payloads +
++// breadcrumbs before they leave the device, reporting is gated on consent, and
++// the per-install identifier carries no PII while staying stable.
++//
++// Mirrors `MobileSentryScrubberTests` so the macOS path cannot regress silently
++// and ship PII. The string / dictionary redaction is pure, so it is testable
++// without the Sentry SDK.
++
++final class MacSentryScrubberTests: XCTestCase {
++
++    // MARK: Consent
++
++    func testConsentDefaultsToEnabledWhenUnset() {
++        let defaults = makeDefaults()
++        XCTAssertTrue(MacCrashReportingConsent.isEnabled(defaults: defaults))
++    }
++
++    func testConsentRespectsOptOut() {
++        let defaults = makeDefaults()
++        defaults.set(false, forKey: MacCrashReportingConsent.defaultsKey)
++        XCTAssertFalse(MacCrashReportingConsent.isEnabled(defaults: defaults))
++    }
++
++    // MARK: Per-install anonymized ID
++
++    func testPerInstallIDIsStableAcrossCalls() {
++        let defaults = makeDefaults()
++        let first = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        let second = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        XCTAssertEqual(first, second)
++    }
++
++    func testPerInstallIDIsOpaqueHexOfFixedWidth() {
++        let defaults = makeDefaults()
++        let id = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        // 32 lowercase hex chars: opaque, no embedded human-readable identity.
++        XCTAssertEqual(id.count, 32)
++        XCTAssertTrue(id.allSatisfy { $0.isHexDigit && !$0.isUppercase })
++    }
++
++    func testPerInstallIDIsNotPII() {
++        let defaults = makeDefaults()
++        let id = MacCrashReportingConsent.perInstallAnonymizedID(defaults: defaults)
++        // It must not leak the account name, email, or the home-directory path
++        // that the old NSFullUserName() seed carried.
++        let seed = defaults.string(forKey: MacCrashReportingConsent.installIDDefaultsKey)
++        XCTAssertNotNil(seed)
++        XCTAssertFalse(id.contains("@"))
++        XCTAssertFalse(id.contains("/Users/"))
++        XCTAssertFalse(id.contains(NSUserName()))
++        XCTAssertFalse(id.contains(NSFullUserName()))
++    }
++
++    func testPerInstallIDDiffersAcrossInstalls() {
++        let a = MacCrashReportingConsent.perInstallAnonymizedID(defaults: makeDefaults())
++        let b = MacCrashReportingConsent.perInstallAnonymizedID(defaults: makeDefaults())
++        // Independent installs (distinct persisted seeds) must not collide.
++        XCTAssertNotEqual(a, b)
++    }
++
++    // MARK: String redaction
++
++    func testRedactsEmail() {
++        let redacted = MacSentryScrubber.redact("contact alberto8793@gmail.com now")
++        XCTAssertFalse(redacted.contains("@gmail.com"))
++        XCTAssertTrue(redacted.contains(MacSentryScrubber.redactionPlaceholder))
++    }
++
++    func testRedactsBearerToken() {
++        let fakeBearerToken = "sk-" + "live-ABCDEFGHIJ1234567890"
++        let authHeader = "Auth" + "orization: Bearer "
++        let redacted = MacSentryScrubber.redact("\(authHeader)\(fakeBearerToken)")
++        XCTAssertFalse(redacted.contains(fakeBearerToken))
++    }
++
++    func testRedactsLongOpaqueToken() {
++        let redacted = MacSentryScrubber.redact("token=ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")
++        XCTAssertFalse(redacted.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"))
++    }
++
++    func testRedactsUserPath() {
++        let redacted = MacSentryScrubber.redact("failed at /Users/alberto/vault/recovery.key")
++        XCTAssertFalse(redacted.contains("/Users/alberto"))
++    }
++
++    func testRedactsPrivateVarPath() {
++        let redacted = MacSentryScrubber.redact("temp at /private/var/folders/zz/secret")
++        XCTAssertFalse(redacted.contains("/private/var/folders/zz/secret"))
++        XCTAssertTrue(redacted.contains(MacSentryScrubber.redactionPlaceholder))
++    }
++
++    func testKeepsShortNonSensitiveText() {
++        XCTAssertEqual(MacSentryScrubber.redact("network error 503"), "network error 503")
++    }
++
++    // MARK: Dictionary redaction
++
++    func testRedactsSensitiveKeys() {
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("authToken"))
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("user_email"))
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("prompt"))
++        XCTAssertTrue(MacSentryScrubber.isSensitiveKey("vaultKey"))
++        XCTAssertFalse(MacSentryScrubber.isSensitiveKey("statusCode"))
++    }
++
++    func testRedactDictionaryDropsSensitiveValuesAndWalksNested() {
++        let input: [String: Any] = [
++            "statusCode": 503,
++            "authToken": "supersecret",
++            "nested": [
++                "email": "x@y.com",
++                "note": "ping /Users/bob/secret"
++            ]
++        ]
++        let out = MacSentryScrubber.redactDictionary(input)
++        XCTAssertEqual(out["statusCode"] as? Int, 503)
++        XCTAssertEqual(out["authToken"] as? String, MacSentryScrubber.redactionPlaceholder)
++        let nested = out["nested"] as? [String: Any]
++        XCTAssertEqual(nested?["email"] as? String, MacSentryScrubber.redactionPlaceholder)
++        XCTAssertFalse((nested?["note"] as? String ?? "").contains("/Users/bob"))
++    }
++
++    func testRedactDictionaryWalksArrays() {
++        let input: [String: Any] = [
++            "trail": [
++                "first /Users/carol/notes",
++                "alberto8793@gmail.com",
++                "plain status"
++            ]
++        ]
++        let out = MacSentryScrubber.redactDictionary(input)
++        let trail = out["trail"] as? [Any]
++        XCTAssertEqual(trail?.count, 3)
++        let joined = (trail ?? []).compactMap { $0 as? String }.joined(separator: " ")
++        XCTAssertFalse(joined.contains("/Users/carol"))
++        XCTAssertFalse(joined.contains("@gmail.com"))
++        XCTAssertTrue(joined.contains("plain status"))
++    }
++
++    // MARK: Sensitive values never survive scrubbing
++
++    func testSensitiveValuesDoNotSurviveScrubbing() {
++        let input: [String: Any] = [
++            "sessionToken": "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
++            "vaultMnemonic": "abandon ability able about above absent absorb abstract",
++            "message": "user typed alberto8793@gmail.com",
++            "path": "/Users/alberto/Library/secret"
++        ]
++        let out = MacSentryScrubber.redactDictionary(input)
++        let serialized = stringify(out)
++        XCTAssertFalse(serialized.contains("tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"))
++        XCTAssertFalse(serialized.contains("abandon ability able about"))
++        XCTAssertFalse(serialized.contains("alberto8793@gmail.com"))
++        XCTAssertFalse(serialized.contains("/Users/alberto"))
++    }
++
++    // MARK: Helpers
++
++    private func makeDefaults() -> UserDefaults {
++        let suite = "MacSentryScrubberTests.\(UUID().uuidString)"
++        let defaults = UserDefaults(suiteName: suite)!
++        defaults.removePersistentDomain(forName: suite)
++        return defaults
++    }
++
++    /// Flattens an arbitrary redacted map to a single string so a test can assert
++    /// no raw sensitive substring survives anywhere in the output.
++    private func stringify(_ value: Any) -> String {
++        switch value {
++        case let string as String:
++            return string
++        case let dict as [String: Any]:
++            return dict.map { "\($0.key)=\(stringify($0.value))" }.joined(separator: ";")
++        case let array as [Any]:
++            return array.map(stringify).joined(separator: ",")
++        default:
++            return String(describing: value)
++        }
++    }
++}

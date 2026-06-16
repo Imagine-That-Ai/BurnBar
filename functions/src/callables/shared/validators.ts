@@ -349,7 +349,19 @@ export function boundedHttpsURL(raw: unknown, fieldName: string): string {
   } catch {
     throw new HttpsError("invalid-argument", `${fieldName} must be a valid URL.`);
   }
-  if (url.protocol !== "https:" && !url.hostname.includes("localhost")) {
+  if (url.username || url.password) {
+    throw new HttpsError("invalid-argument", `${fieldName} must not include credentials.`);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new HttpsError("invalid-argument", `${fieldName} must be HTTPS.`);
+  }
+
+  const rawAuthority = value.slice(value.indexOf("//") + 2).split(/[/?#]/u, 1)[0] ?? "";
+  const rawHost = rawAuthority.startsWith("[")
+    ? rawAuthority.slice(0, rawAuthority.indexOf("]") + 1)
+    : rawAuthority.split(":", 1)[0];
+  const isExactLoopback = rawHost === "localhost" || rawHost === "127.0.0.1" || rawHost === "[::1]";
+  if (url.protocol !== "https:" && !isExactLoopback) {
     throw new HttpsError("invalid-argument", `${fieldName} must be HTTPS.`);
   }
   return url.toString();

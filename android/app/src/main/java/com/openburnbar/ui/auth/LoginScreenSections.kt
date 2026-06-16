@@ -772,7 +772,7 @@ internal fun LoginScreenScrollContent(userStore: UserStore, state: LoginScreenCo
     ) {
         // iOS: Spacer(minLength: MobileTheme.Spacing.lg) = 16
         Spacer(modifier = Modifier.height(16.dp))
-        EmberLogo(modifier = Modifier.size(width = 184.dp, height = 132.dp))
+        BurnBarLogoFormation(modifier = Modifier.fillMaxWidth().height(300.dp))
         // iOS: .padding(.bottom, MobileTheme.Spacing.lg) = 16
         Spacer(modifier = Modifier.height(16.dp))
         Wordmark()

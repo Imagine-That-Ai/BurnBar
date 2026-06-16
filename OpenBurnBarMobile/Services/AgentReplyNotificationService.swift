@@ -48,6 +48,17 @@ private struct AgentReplyNotificationPayload: Sendable {
         deepLink.flatMap(URL.init(string:)) ?? URL(string: "burnbar://assistants/\(runtime)?threadId=\(threadID)")
     }
 
+    private init(type: String, eventID: String, runtime: String, threadID: String, title: String, preview: String, provider: AgentProvider?, deepLink: String?) {
+        self.type = type
+        self.eventID = eventID
+        self.runtime = runtime
+        self.threadID = threadID
+        self.title = title
+        self.preview = preview
+        self.provider = provider
+        self.deepLink = deepLink
+    }
+
     private static func string(_ value: Any?) -> String? {
         switch value {
         case let string as String:
@@ -431,9 +442,39 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let payload = AgentReplyNotificationPayload(userInfo: response.notification.request.content.userInfo)
+        let resolved = await resolvedPayloadForPush(payload)
         let actionIdentifier = response.actionIdentifier
         let replyText = (response as? UNTextInputNotificationResponse)?.userText
-        await handleResponse(payload: payload, actionIdentifier: actionIdentifier, replyText: replyText)
+        await handleResponse(payload: resolved ?? payload, actionIdentifier: actionIdentifier, replyText: replyText)
+    }
+
+    /// Resolve a push payload to a full payload, fetching the thread id from the
+    /// durable agent_notification_events document when the push omits it for
+    /// privacy (OPUS-F-006).
+    private nonisolated func resolvedPayloadForPush(_ payload: AgentReplyNotificationPayload?) async -> AgentReplyNotificationPayload? {
+        guard let payload, payload.threadID.isEmpty, !payload.eventID.isEmpty else { return payload }
+        guard let uid = Auth.auth().currentUser?.uid else { return payload }
+        do {
+            let snapshot = try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("agent_notification_events").document(payload.eventID)
+                .getDocument(source: .server)
+            guard let data = snapshot.data(),
+                  let threadID = string(data["threadId"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !threadID.isEmpty else { return payload }
+            return AgentReplyNotificationPayload(
+                type: payload.type,
+                eventID: payload.eventID,
+                runtime: payload.runtime,
+                threadID: threadID,
+                title: payload.title,
+                preview: payload.preview,
+                provider: payload.provider,
+                deepLink: nil
+            )
+        } catch {
+            return payload
+        }
     }
 }
 

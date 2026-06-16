@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tightened local MCP memory/code writes to fail closed at the daemon boundary; legacy direct-write override env vars no longer bypass the daemon for `burnbar_remember`, `burnbar_forget`, `burnbar_index_project`, `burnbar_watch_project`, or `burnbar_explore`.
 - Added Cursor to the hosted MCP installer target list and registered explicit hosted memory/code rate-limit buckets so future tools do not fall through to the generic metadata bucket.
 - Added encrypted Project Memory cloud deletion with opaque doc IDs, content-free tombstone receipts, Functions BOLA coverage, and a local MCP `burnbar_cloud_delete_project_memory` tool.
+- Added an animated BurnBar launch identity: a 3D isometric glass-cube logo formation where converging dots assemble the flame, the flame solidifies inside an Apple Liquid Glass cube (with an obsidian-glass fallback) lit by a domain-warped oil-on-water sheen, and three color-matched provider dot-glyphs drift beneath the glass and re-form on collision. Shipped as a shared SwiftUI component (`BurnBarLogoFormationView`) plus a Jetpack Compose port (`BurnBarLogoFormation`), now driving the iOS/iPad sign-in hero, the macOS first-launch onboarding popover, and the Android login screen.
+- Added a one-shot full-screen iOS launch splash (`View.burnBarLaunchSplash()`) that plays the logo formation over a dark backdrop on cold start, then crossfades to reveal the app; skipped entirely under Reduce Motion.
 
 ### Security & Launch Readiness Hardening
 
