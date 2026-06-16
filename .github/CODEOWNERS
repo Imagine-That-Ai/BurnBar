@@ -20,3 +20,30 @@ extensions/openburnbar/ @Ajnunezg
 # Infrastructure
 firestore.rules @Ajnunezg
 project.yml @Ajnunezg
+
+# Security-sensitive trees — same owner today, but routed explicitly so a
+# change here is an intentional, reviewable security decision (not swept up by
+# the catch-all). CODEOWNERS is last-match-wins, so these stay at the bottom.
+
+# Authorization / BOLA coverage catalog
+functions/src/security/ @Ajnunezg
+
+# Crypto callables (Hermes gateway + computer-use security crypto)
+functions/src/callables/hermesGatewayCrypto.ts @Ajnunezg
+functions/src/callables/computerUseSecurityCrypto.ts @Ajnunezg
+
+# Billing / entitlements (paid tier gating)
+functions/src/callables/googlePlayBillingPaths.ts @Ajnunezg
+functions/src/callables/shared/entitlements.ts @Ajnunezg
+functions/src/types/generated/entitlements.ts @Ajnunezg
+packages/entitlements/ @Ajnunezg
+
+# CI helper scripts (release preflight, config injection, supply-chain checks)
+scripts/ci/ @Ajnunezg
+
+# Vendored libsignal crypto core
+Vendor/libsignal/ @Ajnunezg
+
+# Firestore index + rules definitions
+firestore.indexes.json @Ajnunezg
+firestore.rules @Ajnunezg

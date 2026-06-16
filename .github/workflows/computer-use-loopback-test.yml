@@ -1,5 +1,12 @@
 name: computer-use-loopback-test
 
+# Least-privilege default: this workflow only checks out, builds, and runs
+# tests — it never writes to the repo, comments on PRs, or publishes
+# artifacts. Pin GITHUB_TOKEN to read-only so a compromised step cannot
+# escalate to repo writes.
+permissions:
+  contents: read
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]

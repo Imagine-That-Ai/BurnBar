@@ -1,5 +1,15 @@
 name: Droid Wiki Refresh
 
+# Least-privilege default: the wiki refresh runs Droid against the
+# checked-out tree and writes only to $GITHUB_STEP_SUMMARY — it intentionally
+# carries no write token (the "Generate wiki" step comment relies on this:
+# "The workflow has no write token, so this only permits the checked-out
+# read-only wiki generation run to proceed unattended"). Pin GITHUB_TOKEN to
+# read-only so the unattended --skip-permissions-unsafe Droid run cannot push
+# commits or mutate repo state.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]

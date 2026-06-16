@@ -696,6 +696,26 @@ jobs:
           echo "sig_path=${CHECKSUMS_PATH}.asc" >> "$GITHUB_OUTPUT"
           echo "Checksums signed successfully."
 
+      # Fail-loud guard for an accidentally-cleared RELEASE_SIGNING_KEY secret.
+      # The sign step above is conditionally skipped when the key is absent, so
+      # a silently-rotated-away secret would otherwise produce an unsigned
+      # release with no signal. Emit a GitHub ::warning:: annotation (visible on
+      # the run and in the job summary) so the gap is noticed. This does NOT
+      # hard-fail: cosign/SLSA attestation of the checksums (below) remains the
+      # unconditional integrity root for every release.
+      - name: Warn if checksum GPG signing was skipped
+        if: env.RELEASE_SIGNING_KEY == ''
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          echo "::warning title=GPG checksum signature missing::RELEASE_SIGNING_KEY is not set; the GPG-signed checksums (.asc) were not produced for this release. cosign/SLSA attestation still covers the checksums, but verify the RELEASE_SIGNING_KEY secret was not accidentally cleared."
+          {
+            echo "## :warning: GPG checksum signature skipped"
+            echo ""
+            echo "\`RELEASE_SIGNING_KEY\` was absent, so this release has **no detached GPG signature** for its checksums."
+            echo "cosign/SLSA attestation remains the integrity root, but confirm the secret was not accidentally cleared."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Generate SBOM
         id: sbom
         env:
