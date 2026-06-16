@@ -2,6 +2,9 @@ import CryptoKit
 import Foundation
 import GRDB
 import Security
+#if canImport(Darwin)
+import Darwin
+#endif
 #if canImport(CommonCrypto)
 import CommonCrypto
 #endif
@@ -17,14 +20,14 @@ import CommonCrypto
 // stored as a base64-encoded string. A UUID-based identifier is used as the
 // Keychain account name to support future key rotation.
 //
-// SECURITY: The key is applied in SQLCipher *passphrase* mode via
-// `PRAGMA key = '<key>'` (NOT raw `x'<hex>'` mode). Passphrase mode runs the
-// stored base64 string through SQLCipher's PBKDF2 key-derivation; raw mode would
-// instead use the bytes as the AES key directly and derive a *different* key, so
-// the two formats are not interchangeable for an existing database. Before
-// interpolation the key is validated to contain only base64 characters
-// (A-Z, a-z, 0-9, +, /, =) plus '-', none of which can escape a single-quoted
-// SQL string literal, so string injection is impossible. See `makeConfiguration`.
+// SECURITY: The key is applied in SQLCipher *passphrase* mode through GRDB's
+// `Database.usePassphrase(_:)` wrapper around SQLCipher's C API (NOT raw
+// `x'<hex>'` mode). Passphrase mode runs the stored base64 string through
+// SQLCipher's PBKDF2 key-derivation; raw mode would instead use the bytes as the
+// AES key directly and derive a *different* key, so the two formats are not
+// interchangeable for an existing database. Migration still has to pass the key
+// through SQLCipher's ATTACH syntax, so the same base64 charset validation is
+// retained before any SQL interpolation.
 //
 // RECOVERY: There is no automatic plaintext recovery file. Keychain loss means
 // data loss. Users may explicitly export an encrypted recovery bundle protected
@@ -39,34 +42,110 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
     /// requested. We hard-fail instead of silently shipping plaintext.
     case cipherUnavailable
 
-    /// Encryption is required, but the on-disk database is a legacy plaintext
-    /// SQLite file. Opening it plaintext would violate the security contract,
-    /// and keying it directly would corrupt/brick data; a proven SQLCipher
-    /// migration must run before this app can open the store again.
-    case plaintextDatabaseRequiresMigration(path: String)
-
     /// A new encryption key was generated but could not be persisted to the
     /// Keychain. Using the key would create an unreadable database on next launch.
     case encryptionKeyUnavailable
+
+    /// Keychain persistence returned an OSStatus failure while saving a newly
+    /// generated database key. The caller must abort before opening SQLCipher.
+    case keychainPersistenceFailed(status: OSStatus)
+
+    /// SQLCipher was available and a plaintext database was eligible for first
+    /// launch migration, but the export or atomic replacement failed.
+    case plaintextMigrationFailed(path: String, detail: String)
 
     var description: String {
         switch self {
         case .cipherUnavailable:
             return "SQLCipher is not active in this build (PRAGMA cipher_version was empty); "
                 + "the database would be written in plaintext. Refusing to open with encryption requested."
-        case let .plaintextDatabaseRequiresMigration(path):
-            return "Database encryption is enabled, but the existing database is plaintext at \(path). "
-                + "Refusing plaintext fallback; run the verified SQLCipher migration before opening."
         case .encryptionKeyUnavailable:
             return "Failed to persist a new database encryption key to the Keychain. "
                 + "Cannot create an encrypted database with an unpersisted key."
+        case let .keychainPersistenceFailed(status):
+            return "Failed to persist a new database encryption key to the Keychain (OSStatus \(status)). "
+                + "Cannot create an encrypted database with an unpersisted key."
+        case let .plaintextMigrationFailed(path, detail):
+            return "Failed to migrate plaintext database at \(path) to SQLCipher: \(detail)"
         }
+    }
+}
+
+// AUDIT(@unchecked Sendable): Security.framework Keychain calls require
+// non-Sendable `[String: Any]` / `AnyObject` query payloads; access to the
+// injectable client is serialized by DatabaseEncryptionKeychainClientBox.
+// sendable-allowlist: foundation-sdk-shim
+struct DatabaseEncryptionKeychainClient: @unchecked Sendable {
+    var copyMatching: (_ query: [String: Any]) -> (status: OSStatus, result: AnyObject?)
+    var add: (_ query: [String: Any]) -> OSStatus
+    var delete: (_ query: [String: Any]) -> OSStatus
+}
+
+// AUDIT(@unchecked Sendable): mutable test injection state is guarded by
+// `lock`; callers copy the current client while locked before invoking it.
+// sendable-allowlist: foundation-sdk-shim
+private final class DatabaseEncryptionKeychainClientBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: DatabaseEncryptionKeychainClient
+
+    init(_ client: DatabaseEncryptionKeychainClient) {
+        current = client
+    }
+
+    func copyMatching(_ query: [String: Any]) -> (status: OSStatus, result: AnyObject?) {
+        let client = withLockedClient()
+        return client.copyMatching(query)
+    }
+
+    func add(_ query: [String: Any]) -> OSStatus {
+        let client = withLockedClient()
+        return client.add(query)
+    }
+
+    func delete(_ query: [String: Any]) -> OSStatus {
+        let client = withLockedClient()
+        return client.delete(query)
+    }
+
+    func withClient<T>(_ client: DatabaseEncryptionKeychainClient, _ body: () throws -> T) rethrows -> T {
+        let previous = swapClient(client)
+        defer { _ = swapClient(previous) }
+        return try body()
+    }
+
+    private func withLockedClient() -> DatabaseEncryptionKeychainClient {
+        lock.lock()
+        defer { lock.unlock() }
+        return current
+    }
+
+    private func swapClient(_ client: DatabaseEncryptionKeychainClient) -> DatabaseEncryptionKeychainClient {
+        lock.lock()
+        defer { lock.unlock() }
+        let previous = current
+        current = client
+        return previous
     }
 }
 
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
     private static let keyIdentifierAccount = "database-encryption-key-v1"
+    private static let allowedKeyCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
+
+    private static let keychainClient = DatabaseEncryptionKeychainClientBox(DatabaseEncryptionKeychainClient(
+        copyMatching: { query in
+            var result: AnyObject?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            return (status, result)
+        },
+        add: { query in
+            SecItemAdd(query as CFDictionary, nil)
+        },
+        delete: { query in
+            SecItemDelete(query as CFDictionary)
+        }
+    ))
 
     /// The 16-byte magic header every *plaintext* SQLite 3 file begins with.
     /// A SQLCipher-encrypted file's first page is ciphertext and does NOT carry
@@ -85,8 +164,9 @@ enum DatabaseEncryptionService {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let lookup = keychainClient.copyMatching(query)
+        let status = lookup.status
+        let result = lookup.result
         guard status == errSecSuccess, let data = result as? Data else {
             return nil
         }
@@ -100,11 +180,26 @@ enum DatabaseEncryptionService {
     /// so the key is unavailable when the device is locked and cannot migrate
     /// to other devices via iCloud Keychain.
     ///
-    /// Fails closed (returns nil) if Keychain persistence fails. A key generated
-    /// but not persisted would work for the current session but be unrecoverable
-    /// on next launch (generating a different key), making the database unreadable.
-    /// Closes codex-gpt-5 FINDING-008.
+    /// Legacy optional wrapper for UI/recovery callers. SQLCipher setup must use
+    /// `getOrCreatePersistedKey()` so Keychain failures stay typed and fail closed.
     static func getOrCreateKey() -> String? {
+        do {
+            return try getOrCreatePersistedKey()
+        } catch {
+            AppLogger.dataStore.error(
+                "database_encryption_key_create_failed",
+                metadata: ["error": "\(error)"]
+            )
+            return nil
+        }
+    }
+
+    /// Generates a new 256-bit AES key, persists it to the Keychain, and returns
+    /// it. Throws `DatabaseEncryptionError.keychainPersistenceFailed` if
+    /// `SecItemAdd` fails. A generated-but-unpersisted key would encrypt a DB that
+    /// cannot be reopened on next launch, so callers must abort.
+    /// Closes FINDING-008.
+    static func getOrCreatePersistedKey() throws -> String {
         if let existing = getKey() {
             return existing
         }
@@ -121,13 +216,13 @@ enum DatabaseEncryptionService {
             kSecValueData as String: Data(key.utf8),
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        let status = keychainClient.add(addQuery)
         guard status == errSecSuccess else {
             // Fail closed: if we cannot persist the key, returning it would
             // create a database encrypted with an unpersisted key that the
             // next launch cannot recover, causing silent data loss.
             AppLogger.dataStore.error("Failed to store database encryption key in Keychain (aborting key creation): \(status)", metadata: ["status": "\(status)"])
-            return nil
+            throw DatabaseEncryptionError.keychainPersistenceFailed(status: status)
         }
         return key
     }
@@ -140,7 +235,7 @@ enum DatabaseEncryptionService {
             kSecAttrService as String: service,
             kSecAttrAccount as String: keyIdentifierAccount
         ]
-        SecItemDelete(query as CFDictionary)
+        _ = keychainClient.delete(query)
     }
 
     /// Legacy overload. Recovery file support has been removed; this now
@@ -274,8 +369,8 @@ enum DatabaseEncryptionService {
                 kSecValueData as String: Data(key.utf8),
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
-            SecItemDelete(addQuery as CFDictionary) // overwrite if present
-            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            _ = keychainClient.delete(addQuery) // overwrite if present
+            let addStatus = keychainClient.add(addQuery)
             if addStatus != errSecSuccess {
                 AppLogger.dataStore.error("Failed to re-import recovered key to Keychain: \(addStatus)", metadata: ["status": "\(addStatus)"])
             }
@@ -289,6 +384,15 @@ enum DatabaseEncryptionService {
         return nil
         #endif
     }
+
+    #if DEBUG
+    static func withKeychainClientForTesting<T>(
+        _ client: DatabaseEncryptionKeychainClient,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try keychainClient.withClient(client, body)
+    }
+    #endif
 }
 
 // MARK: - Database Configuration with Encryption
@@ -300,21 +404,20 @@ extension DatabaseEncryptionService {
     /// `DatabaseEncryptionError.cipherUnavailable` if it is not.
     ///
     /// **Why this is now the only path (the dead-guard bug):**
-    /// The linked package `SahebRoy92/GRDB-SQLCipher` exposes its module as
-    /// `GRDB` — there is NO `GRDBCipher` product or target. The previous
-    /// `#if canImport(GRDBCipher)` gate was therefore DEAD CODE: the `PRAGMA key`
-    /// block never compiled in, so the database was written in PLAINTEXT for
-    /// everyone regardless of the `databaseEncryptionEnabled` setting. The key is
-    /// now applied through the real `import GRDB` build.
+    /// GRDB's SQLCipher surface is still the `GRDB` module; there is no separate
+    /// `GRDBCipher` product to import. The previous `#if canImport(GRDBCipher)`
+    /// gate was therefore DEAD CODE: the keying block never compiled in, so the
+    /// database could be written in PLAINTEXT even when encryption was requested.
+    /// OpenBurnBar now vendors a GRDB package patched to import the pinned
+    /// SQLCipher XCFramework instead of system SQLite, and applies the key
+    /// through that real `import GRDB` build.
     ///
     /// **Key application (passphrase mode):**
-    /// The key is base64 (A-Z, a-z, 0-9, +, /, =) plus '-'. It is validated to
-    /// contain only those characters before interpolation into
-    /// `PRAGMA key = '<key>'`; none of them can escape a single-quoted SQL string
-    /// literal (only `'` and `\` can), so string injection is impossible. We use
-    /// passphrase mode (PBKDF2 derivation) — NOT raw `x'<hex>'` mode — because the
-    /// two derive different AES keys and are not interchangeable for an existing
-    /// encrypted database.
+    /// The key is base64 (A-Z, a-z, 0-9, +, /, =) plus '-'. It is validated for
+    /// consistency with the first-launch migration path, where SQLCipher's ATTACH
+    /// statement requires the key as a SQL string literal. For normal opens we use
+    /// `Database.usePassphrase(_:)`, so the passphrase is handed to SQLCipher's C
+    /// API without SQL interpolation.
     ///
     /// **`cipher_version` self-check:**
     /// Immediately after applying the key, inside `prepareDatabase`, we read
@@ -338,23 +441,21 @@ extension DatabaseEncryptionService {
         // Without a busy timeout, any cross-process write contention immediately raises
         // SQLITE_BUSY (error 5: "database is locked"). 5s matches GRDB's recommended default.
         config.busyMode = .timeout(5)
-        guard let key = encryptionKey else { return config }
+        guard let key = encryptionKey else {
+            config.prepareDatabase { db in
+                try installPersistentWALIfNeeded(on: db)
+            }
+            return config
+        }
 
         // Validate that the key contains only safe characters before interpolation.
         // Allowed: base64 alphabet (A-Z, a-z, 0-9, +, /, =) plus hyphens for
         // backward compatibility with test keys. None of these characters can
         // escape a single-quoted SQL string literal (only ' and \ can do that).
-        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
-        guard key.unicodeScalars.allSatisfy({ allowedCharacters.contains($0) }) else {
-            AppLogger.dataStore.error(
-                "encryption_key_validation_failed",
-                metadata: ["reason": "Key contains characters outside the allowed set"]
-            )
-            throw DatabaseEncryptionError.cipherUnavailable
-        }
+        try validateEncryptionKey(key)
 
         config.prepareDatabase { db in
-            try db.execute(sql: "PRAGMA key = '\(key)'")
+            try db.usePassphrase(key)
             // SQLCipher activity self-check. On a plain (non-SQLCipher) SQLite the
             // PRAGMA above is an ignored no-op and this returns empty/nil; we refuse
             // to proceed because the data would be plaintext.
@@ -366,29 +467,295 @@ extension DatabaseEncryptionService {
                 )
                 throw DatabaseEncryptionError.cipherUnavailable
             }
+            try installPersistentWALIfNeeded(on: db)
         }
 
         return config
     }
 
+    private static func installPersistentWALIfNeeded(on db: Database) throws {
+        guard db.configuration.readonly == false else { return }
+        var flag: CInt = 1
+        let code = withUnsafeMutablePointer(to: &flag) { flagPointer in
+            sqlite3_file_control(db.sqliteConnection, nil, SQLITE_FCNTL_PERSIST_WAL, flagPointer)
+        }
+        guard code != SQLITE_NOTFOUND else { return }
+        guard code == SQLITE_OK else {
+            throw DatabaseError(resultCode: ResultCode(rawValue: code))
+        }
+    }
+
+    private static func validateEncryptionKey(_ key: String) throws {
+        guard key.unicodeScalars.allSatisfy({ allowedKeyCharacters.contains($0) }) else {
+            AppLogger.dataStore.error(
+                "encryption_key_validation_failed",
+                metadata: ["reason": "Key contains characters outside the allowed set"]
+            )
+            throw DatabaseEncryptionError.cipherUnavailable
+        }
+    }
+
+    /// Migrates a legacy plaintext SQLite database to SQLCipher on first launch.
+    /// Uses SQLCipher's `sqlcipher_export` so schema, indexes, and data move
+    /// through the codec in one transaction. The original file is left untouched
+    /// unless the encrypted replacement is complete.
+    @discardableResult
+    static func migratePlaintextDatabaseIfNeeded(at path: String, encryptionKey: String) throws -> Bool {
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        guard isEncryptedDatabaseFile(at: path) == false else { return false }
+        guard isCipherAvailable() else { throw DatabaseEncryptionError.cipherUnavailable }
+        try validateEncryptionKey(encryptionKey)
+
+        let encryptedPath = path + ".sqlcipher-migrating-\(UUID().uuidString)"
+        removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
+
+        do {
+            let config = makePlaintextMigrationConfiguration()
+            let source = try DatabaseQueue(path: path, configuration: config)
+            do {
+                try source.writeWithoutTransaction { db in
+                    let cipherVersion = try String.fetchOne(db, sql: "PRAGMA cipher_version")
+                    guard let version = cipherVersion, version.isEmpty == false else {
+                        throw DatabaseEncryptionError.cipherUnavailable
+                    }
+                    do {
+                        _ = try Row.fetchAll(db, sql: "PRAGMA wal_checkpoint(TRUNCATE)")
+                    } catch {
+                        guard isMissingSQLiteSidecarRemoval(error) else { throw error }
+                        AppLogger.dataStore.debug(
+                            "database_migration_checkpoint_ignored_missing_sidecar",
+                            metadata: ["path": path, "error": "\(error)"]
+                        )
+                    }
+                    let escapedPath = encryptedPath.replacingOccurrences(of: "'", with: "''")
+                    try db.execute(sql: "ATTACH DATABASE '\(escapedPath)' AS encrypted KEY '\(encryptionKey)'")
+                    _ = try Row.fetchAll(db, sql: "SELECT sqlcipher_export('encrypted')")
+                    try db.execute(sql: "DETACH DATABASE encrypted")
+                }
+            } catch {
+                guard isEncryptedDatabaseFile(at: encryptedPath),
+                      canOpenEncryptedDatabase(at: encryptedPath, encryptionKey: encryptionKey)
+                else {
+                    throw error
+                }
+                AppLogger.dataStore.debug(
+                    "database_migration_write_error_ignored_after_verified_export",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+            }
+            do {
+                try source.close()
+            } catch {
+                AppLogger.dataStore.debug(
+                    "database_migration_source_close_ignored_after_export",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+            }
+
+            guard isEncryptedDatabaseFile(at: encryptedPath),
+                  canOpenEncryptedDatabase(at: encryptedPath, encryptionKey: encryptionKey)
+            else {
+                throw DatabaseEncryptionError.plaintextMigrationFailed(
+                    path: path,
+                    detail: "export completed but encrypted replacement failed SQLCipher verification"
+                )
+            }
+
+            removeDatabaseFilesIfPresent(at: path, includePrimary: false)
+            removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: false)
+            let replaceResult = encryptedPath.withCString { sourcePath in
+                path.withCString { destinationPath in
+                    rename(sourcePath, destinationPath)
+                }
+            }
+            guard replaceResult == 0 else {
+                let errorNumber = errno
+                throw DatabaseEncryptionError.plaintextMigrationFailed(
+                    path: path,
+                    detail: "atomic replace failed with errno \(errorNumber): \(String(cString: strerror(errorNumber)))"
+                )
+            }
+            return true
+        } catch let error as DatabaseEncryptionError {
+            removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
+            throw error
+        } catch {
+            removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
+            throw DatabaseEncryptionError.plaintextMigrationFailed(path: path, detail: "\(error)")
+        }
+    }
+
+    private static func removeDatabaseFilesIfPresent(at path: String, includePrimary: Bool) {
+        let suffixes = includePrimary ? ["", "-wal", "-shm"] : ["-wal", "-shm"]
+        for suffix in suffixes {
+            removeFileIfPresent(at: path + suffix)
+        }
+    }
+
+    private static func makePlaintextMigrationConfiguration() -> Configuration {
+        var config = Configuration()
+        config.busyMode = .timeout(5)
+        return config
+    }
+
+    private static func removeFileIfPresent(at path: String) {
+        #if canImport(Darwin)
+        let result = path.withCString { unlink($0) }
+        if result != 0, errno != ENOENT {
+            AppLogger.dataStore.debug(
+                "database_file_cleanup_failed",
+                metadata: ["path": path, "errno": "\(errno)"]
+            )
+        }
+        #else
+        do {
+            try FileManager.default.removeItem(atPath: path)
+        } catch CocoaError.fileNoSuchFile {
+            return
+        } catch {
+            AppLogger.dataStore.debug(
+                "database_file_cleanup_failed",
+                metadata: ["path": path, "error": "\(error)"]
+            )
+        }
+        #endif
+    }
+
+    static func removeSQLiteSidecarsIfPresent(at path: String) {
+        removeDatabaseFilesIfPresent(at: path, includePrimary: false)
+    }
+
+    private static func canOpenEncryptedDatabase(at path: String, encryptionKey: String) -> Bool {
+        do {
+            var config = Configuration()
+            config.busyMode = .timeout(5)
+            config.prepareDatabase { db in
+                try db.usePassphrase(encryptionKey)
+            }
+            let queue = try DatabaseQueue(path: path, configuration: config)
+            defer { closeQuietly(queue, context: "database_migration_verification_close_failed") }
+            return try queue.read { db in
+                let cipherVersion = try String.fetchOne(db, sql: "PRAGMA cipher_version")
+                guard cipherVersion?.isEmpty == false else { return false }
+                return try String.fetchOne(db, sql: "PRAGMA integrity_check") == "ok"
+            }
+        } catch {
+            AppLogger.dataStore.error(
+                "database_migration_encrypted_verification_failed",
+                metadata: ["path": path, "error": "\(error)"]
+            )
+            return false
+        }
+    }
+
+    static func isMissingSQLiteSidecarRemoval(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return isMissingSQLiteSidecarRemoval(nsError)
+    }
+
+    private static func isMissingSQLiteSidecarRemoval(_ error: NSError) -> Bool {
+        if let path = sqliteSidecarPath(from: error),
+           isSQLiteSidecarPath(path),
+           isNoSuchFileError(error) {
+            return true
+        }
+
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            return isMissingSQLiteSidecarRemoval(underlying)
+        }
+
+        let diagnosticParts = [error.localizedDescription, error.description]
+            + error.userInfo.map { "\($0.key)=\($0.value)" }
+        let diagnostic = diagnosticParts.joined(separator: " ")
+        return (diagnostic.contains("-wal") || diagnostic.contains("-shm"))
+            && (diagnostic.contains("No such file")
+                || (diagnostic.contains("couldn") && diagnostic.contains("removed")))
+    }
+
+    private static func sqliteSidecarPath(from error: NSError) -> String? {
+        if let path = error.userInfo[NSFilePathErrorKey] as? String {
+            return path
+        }
+        if let url = error.userInfo[NSURLErrorKey] as? URL {
+            return url.path
+        }
+        return nil
+    }
+
+    private static func isSQLiteSidecarPath(_ path: String) -> Bool {
+        path.hasSuffix("-wal") || path.hasSuffix("-shm")
+    }
+
+    private static func isNoSuchFileError(_ error: NSError) -> Bool {
+        if error.domain == NSCocoaErrorDomain,
+           error.code == CocoaError.fileNoSuchFile.rawValue {
+            return true
+        }
+        #if canImport(Darwin)
+        if error.domain == NSPOSIXErrorDomain, error.code == ENOENT {
+            return true
+        }
+        #endif
+        return false
+    }
+
+    /// Release-gate helper: opens a keyed in-memory database and returns the
+    /// linked SQLCipher version. Empty means stock SQLite is still linked.
+    static func linkedCipherVersion() -> String? {
+        do {
+            return try probeLinkedCipherVersion()
+        } catch {
+            return nil
+        }
+    }
+
+    /// Verifies that the current build links active SQLCipher. Intended for
+    /// release CI and focused tests, where plaintext fallback is not acceptable.
+    static func requireLinkedSQLCipherForRelease() throws -> String {
+        guard let version = linkedCipherVersion() else {
+            AppLogger.dataStore.error(
+                "release_sqlcipher_codec_missing",
+                metadata: ["reason": "PRAGMA cipher_version empty in release codec gate"]
+            )
+            throw DatabaseEncryptionError.cipherUnavailable
+        }
+        return version
+    }
+
     /// Probes whether the linked SQLite actually provides the SQLCipher codec, i.e.
-    /// `PRAGMA cipher_version` is non-empty after `PRAGMA key`. On a build that links stock
-    /// SQLite (the SPM `GRDB`/`CSQLite` systemLibrary path links `sqlite3`, which has no codec)
-    /// this returns `false`, so callers can fall back to a LOUD, disclosed plaintext mode rather
-    /// than bricking 100% of installs while delivering zero encryption. The probe opens a throwaway
+    /// `PRAGMA cipher_version` is non-empty after `Database.usePassphrase(_:)`. On a build that
+    /// links stock SQLite this returns `false`; encryption-requested startup then
+    /// aborts instead of falling back to plaintext. The probe opens a throwaway
     /// in-memory database; the result is cached for the process lifetime.
     static func isCipherAvailable() -> Bool { cipherAvailabilityProbe }
 
     private static let cipherAvailabilityProbe: Bool = {
         do {
-            let config = try makeConfiguration(encryptionKey: String(repeating: "a", count: 64))
-            let queue = try DatabaseQueue(path: ":memory:", configuration: config)
-            try queue.read { _ in } // forces prepareDatabase → the cipher_version self-check
+            _ = try probeLinkedCipherVersion()
             return true
         } catch {
             return false
         }
     }()
+
+    private static func probeLinkedCipherVersion() throws -> String {
+        let probeKey = String(repeating: "a", count: 64)
+        try validateEncryptionKey(probeKey)
+        var config = Configuration()
+        config.busyMode = .timeout(5)
+        config.prepareDatabase { db in
+            try db.usePassphrase(probeKey)
+        }
+        let queue = try DatabaseQueue(path: ":memory:", configuration: config)
+        defer { closeQuietly(queue, context: "database_cipher_probe_close_failed") }
+        let version = try queue.read { db in
+            try String.fetchOne(db, sql: "PRAGMA cipher_version")
+        }
+        guard let version, version.isEmpty == false else {
+            throw DatabaseEncryptionError.cipherUnavailable
+        }
+        return version
+    }
 
     // MARK: - Plaintext vs Encrypted File Detection
 
@@ -425,5 +792,16 @@ extension DatabaseEncryptionService {
             return false
         }
         return header != plaintextSQLiteMagic
+    }
+
+    private static func closeQuietly(_ queue: DatabaseQueue, context: String) {
+        do {
+            try queue.close()
+        } catch {
+            AppLogger.dataStore.debug(
+                "\(context)",
+                metadata: ["error": "\(error)"]
+            )
+        }
     }
 }

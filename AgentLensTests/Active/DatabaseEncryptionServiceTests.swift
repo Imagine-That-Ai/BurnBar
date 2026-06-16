@@ -3,7 +3,7 @@ import XCTest
 
 @testable import OpenBurnBar
 
-/// Verifies the GRDB+SQLCipher SPM build applies `PRAGMA key` and reports `cipher_version`,
+/// Verifies the GRDB+SQLCipher SPM build applies the SQLCipher passphrase and reports `cipher_version`,
 /// and validates the SOTA key recovery design (Keychain-only + explicit passphrase bundle).
 final class DatabaseEncryptionServiceTests: XCTestCase {
     override func setUp() {
@@ -17,55 +17,64 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Whether the current build links a real SQLCipher. Determined by opening a
-    /// keyed in-memory database and reading `PRAGMA cipher_version`: non-empty means
-    /// SQLCipher is active. Used to branch tests that can only assert encrypted
-    /// behavior on a SQLCipher-linked build.
-    private static func sqlCipherIsActive() -> Bool {
+    /// Opens the app target's GRDB module and reads `PRAGMA cipher_version`.
+    /// A non-empty value proves GRDB is backed by SQLCipher rather than stock
+    /// SQLite. This must stay hard-required now that SQLCipher is vendored.
+    private static func readGRDBCipherVersion() throws -> String? {
         var config = Configuration()
         config.prepareDatabase { db in
-            try db.execute(sql: "PRAGMA key = 'probe'")
+            try db.usePassphrase("probe")
         }
-        guard let pool = try? DatabaseQueue(path: ":memory:", configuration: config) else { return false }
-        let version = try? pool.read { db in
+        let pool = try DatabaseQueue(path: ":memory:", configuration: config)
+        defer { try? pool.close() }
+        return try pool.read { db in
             try String.fetchOne(db, sql: "PRAGMA cipher_version")
         }
-        return (version ?? nil).map { $0.isEmpty == false } ?? false
     }
 
-    /// (a) With a key applied, either `cipher_version` is non-empty (SQLCipher
-    /// active) OR `makeConfiguration` throws `cipherUnavailable` when the cipher is
-    /// genuinely unavailable. Both outcomes are correct; silently shipping plaintext
-    /// is not — and that third outcome is exactly what the dead `#if canImport`
-    /// guard used to produce.
-    func testMakeConfigurationWithKey_eitherReportsCipherVersionOrHardFails() throws {
+    private static func sqlCipherIsActive() -> Bool {
+        do {
+            guard let version = try readGRDBCipherVersion() else { return false }
+            return version.isEmpty == false
+        } catch {
+            return false
+        }
+    }
+
+    func testGRDBRuntimeReportsSQLCipherVersion() throws {
+        let version = try XCTUnwrap(
+            try Self.readGRDBCipherVersion(),
+            "The app target's GRDB module must report SQLCipher through PRAGMA cipher_version."
+        )
+        XCTAssertFalse(version.isEmpty)
+        XCTAssertNotNil(
+            version.range(of: #"^\d+\.\d+\.\d+"#, options: .regularExpression),
+            "Unexpected SQLCipher version format: \(version)"
+        )
+    }
+
+    /// (a) With a key applied, `cipher_version` must be non-empty. Vendoring the
+    /// SQLCipher-backed GRDB package means a missing codec is no longer an
+    /// acceptable local or release-build outcome.
+    func testMakeConfigurationWithKey_reportsCipherVersion() throws {
         let key = "k3y-" + String(repeating: "a", count: 32)
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-enc-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(atPath: path) }
 
-        do {
-            let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: key)
-            // Cipher reported available; opening must yield a non-empty cipher_version.
-            let pool = try DatabasePool(path: path, configuration: config)
-            let version = try pool.read { db in
-                try String.fetchOne(db, sql: "PRAGMA cipher_version")
-            }
-            XCTAssertNotNil(version)
-            XCTAssertFalse(version?.isEmpty ?? true, "cipher_version should be set when using SQLCipher")
-            try pool.close()
-        } catch DatabaseEncryptionError.cipherUnavailable {
-            // Acceptable: this build has no SQLCipher and we hard-failed rather than
-            // writing plaintext. This is the check that catches the dead-guard bug.
+        let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: key)
+        let pool = try DatabasePool(path: path, configuration: config)
+        defer { try? pool.close() }
+        let version = try pool.read { db in
+            try String.fetchOne(db, sql: "PRAGMA cipher_version")
         }
+        XCTAssertNotNil(version)
+        XCTAssertFalse(version?.isEmpty ?? true, "cipher_version should be set when using SQLCipher")
     }
 
-    /// (a) When the cipher is unavailable, opening a keyed pool throws
-    /// `DatabaseEncryptionError.cipherUnavailable` (the `cipher_version` self-check
-    /// runs in `prepareDatabase`, which GRDB evaluates lazily when the first
-    /// connection opens — so the hard-fail surfaces at pool-open, never as a silent
-    /// plaintext config). On a SQLCipher-linked build the open succeeds instead.
-    /// Either way, a keyed open never silently produces plaintext.
-    func testKeyedOpen_hardFailsWhenCipherUnavailable() throws {
+    /// (a) A keyed open must succeed through SQLCipher and write an encrypted file.
+    /// Stock-SQLite fallback would either make this test fail at open time or leave
+    /// the SQLite magic header on disk.
+    func testKeyedOpen_writesEncryptedDatabase() throws {
         let key = "k3y-" + String(repeating: "a", count: 32)
         let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: key)
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-hardfail-\(UUID().uuidString).sqlite")
@@ -73,16 +82,16 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
             for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
         }
 
-        if Self.sqlCipherIsActive() {
-            XCTAssertNoThrow(try DatabasePool(path: path, configuration: config))
-        } else {
-            XCTAssertThrowsError(try DatabasePool(path: path, configuration: config)) { error in
-                XCTAssertTrue(
-                    error is DatabaseEncryptionError,
-                    "A keyed open on a non-SQLCipher build must hard-fail with DatabaseEncryptionError, got \(error)"
-                )
-            }
+        let pool = try DatabasePool(path: path, configuration: config)
+        try pool.write { db in
+            try db.execute(sql: "CREATE TABLE keyed (value INTEGER)")
+            try db.execute(sql: "INSERT INTO keyed (value) VALUES (7)")
         }
+        try pool.close()
+        XCTAssertTrue(
+            DatabaseEncryptionService.isEncryptedDatabaseFile(at: path),
+            "A keyed open must produce a SQLCipher-encrypted file, not plaintext SQLite."
+        )
     }
 
     /// (c) A plaintext `DatabasePool` cannot open a file written with encryption on.
@@ -162,12 +171,11 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         try reopened.close()
     }
 
-    /// With encryption enabled and an existing PLAINTEXT database, behavior depends on whether the
-    /// build actually links the SQLCipher codec:
-    ///   • codec available  → refuse to open it unmigrated (migration is a per-user data decision);
-    ///   • codec ABSENT     → must NOT brick — fall back to DISCLOSED plaintext (data stays
-    ///     readable) and set the acknowledgement flag so the UI can warn the user (loud, not silent).
-    /// This is correct in both the codec-absent dev/CI build and a future codec-present release build.
+    #if DEBUG
+    /// With encryption enabled and an existing PLAINTEXT database, startup must
+    /// migrate to SQLCipher on first launch and keep data. The SQLCipher runtime
+    /// assertion above covers the codec, so this test must exercise the migration
+    /// branch rather than accepting a skipped/codec-absent path.
     @MainActor
     func testCoordinatorHandlesExistingPlaintextDatabaseWhenEncryptionEnabled() throws {
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-refuse-\(UUID().uuidString).sqlite")
@@ -189,38 +197,41 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
             }
         }
 
-        let plainConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
-        let plaintext = try DatabasePool(path: path, configuration: plainConfig)
+        var plainConfig = Configuration()
+        plainConfig.busyMode = .timeout(5)
+        let plaintext = try DatabaseQueue(path: path, configuration: plainConfig)
         try plaintext.write { db in
             try db.execute(sql: "CREATE TABLE t (value TEXT)")
             try db.execute(sql: "INSERT INTO t (value) VALUES ('plain')")
         }
-        try plaintext.close()
+        try? plaintext.close()
 
         defaults.set(true, forKey: "databaseEncryptionEnabled")
 
-        if DatabaseEncryptionService.isCipherAvailable() {
-            do {
-                let opened = try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
-                try opened.close()
-                XCTFail("With the SQLCipher codec available, the coordinator must refuse an unmigrated plaintext database.")
-            } catch DatabaseEncryptionError.plaintextDatabaseRequiresMigration(let refusedPath) {
-                XCTAssertEqual(refusedPath, path)
-            } catch {
-                XCTFail("Expected plaintextDatabaseRequiresMigration, got \(error)")
-            }
-        } else {
-            // Codec absent: never brick. Open disclosed plaintext, keep the data, set the flag.
-            let opened = try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
-            defer { try? opened.close() }
-            let value = try opened.read { db in try String.fetchOne(db, sql: "SELECT value FROM t") }
-            XCTAssertEqual(value, "plain", "Existing plaintext data must remain readable, not bricked, when the codec is unavailable.")
-            XCTAssertTrue(
-                defaults.bool(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey),
-                "Codec-absent plaintext fallback must be DISCLOSED via the acknowledgement flag (loud, not silent)."
-            )
+        let testKey = String(repeating: "a", count: 64)
+        let keychain = DatabaseEncryptionKeychainClient(
+            copyMatching: { _ in (errSecSuccess, Data(testKey.utf8) as AnyObject) },
+            add: { _ in errSecSuccess },
+            delete: { _ in errSecSuccess }
+        )
+
+        XCTAssertTrue(DatabaseEncryptionService.isCipherAvailable())
+        let opened = try DatabaseEncryptionService.withKeychainClientForTesting(keychain) {
+            try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
         }
+        defer { try? opened.close() }
+        let value = try opened.read { db in try String.fetchOne(db, sql: "SELECT value FROM t") }
+        XCTAssertEqual(value, "plain", "First-launch SQLCipher migration must preserve existing plaintext data.")
+        XCTAssertTrue(
+            DatabaseEncryptionService.isEncryptedDatabaseFile(at: path),
+            "First-launch migration must replace the plaintext file with an encrypted SQLCipher file."
+        )
+        XCTAssertFalse(
+            defaults.bool(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey),
+            "Encryption-requested startup must not set or rely on the retired plaintext fallback disclosure flag."
+        )
     }
+    #endif
 
     func testMakeConfigurationWithoutKey_allowsPlainDatabase() throws {
         let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
@@ -359,6 +370,80 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertNotNil(first, "getOrCreateKey must return a key when Keychain persistence succeeds")
         let second = DatabaseEncryptionService.getOrCreateKey()
         XCTAssertEqual(first, second, "Repeated calls must return the same persisted key")
+    }
+
+    #if DEBUG
+    func testGetOrCreatePersistedKey_throwsTypedErrorWhenKeychainAddFails() {
+        let failingKeychain = DatabaseEncryptionKeychainClient(
+            copyMatching: { _ in (errSecItemNotFound, nil) },
+            add: { _ in errSecAuthFailed },
+            delete: { _ in errSecSuccess }
+        )
+
+        XCTAssertThrowsError(
+            try DatabaseEncryptionService.withKeychainClientForTesting(failingKeychain) {
+                try DatabaseEncryptionService.getOrCreatePersistedKey()
+            }
+        ) { error in
+            guard case DatabaseEncryptionError.keychainPersistenceFailed(let status) = error else {
+                return XCTFail("Expected keychainPersistenceFailed, got \(error)")
+            }
+            XCTAssertEqual(status, errSecAuthFailed)
+        }
+    }
+
+    @MainActor
+    func testCoordinatorSetupAbortsWhenKeychainPersistenceFails() throws {
+        XCTAssertTrue(
+            DatabaseEncryptionService.isCipherAvailable(),
+            "This setup-abort regression requires the vendored SQLCipher codec to reach the Keychain path."
+        )
+
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-keychain-abort-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
+        }
+
+        let defaults = UserDefaults.standard
+        let previousEncryptionDefault = defaults.object(forKey: "databaseEncryptionEnabled")
+        defer {
+            if let previousEncryptionDefault {
+                defaults.set(previousEncryptionDefault, forKey: "databaseEncryptionEnabled")
+            } else {
+                defaults.removeObject(forKey: "databaseEncryptionEnabled")
+            }
+        }
+        defaults.set(true, forKey: "databaseEncryptionEnabled")
+
+        let failingKeychain = DatabaseEncryptionKeychainClient(
+            copyMatching: { _ in (errSecItemNotFound, nil) },
+            add: { _ in errSecAuthFailed },
+            delete: { _ in errSecSuccess }
+        )
+
+        XCTAssertThrowsError(
+            try DatabaseEncryptionService.withKeychainClientForTesting(failingKeychain) {
+                try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
+            }
+        ) { error in
+            guard case DatabaseEncryptionError.keychainPersistenceFailed(let status) = error else {
+                return XCTFail("Expected coordinator setup to abort with keychainPersistenceFailed, got \(error)")
+            }
+            XCTAssertEqual(status, errSecAuthFailed)
+        }
+
+        for suffix in ["", "-wal", "-shm"] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: path + suffix),
+                "Coordinator must not create a database file when the generated SQLCipher key was not persisted."
+            )
+        }
+    }
+    #endif
+
+    func testReleaseGateRequiresActiveSQLCipherWhenEnabled() throws {
+        let version = try DatabaseEncryptionService.requireLinkedSQLCipherForRelease()
+        XCTAssertFalse(version.isEmpty)
     }
 
     func testDatabaseOpensAfterKeychainRecovery() throws {

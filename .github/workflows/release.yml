@@ -234,6 +234,9 @@ jobs:
       - name: Run OpenBurnBar app tests
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
 
+      - name: Verify SQLCipher codec in Release configuration
+        run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
+
       - name: Run OpenBurnBar mobile unit tests
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh

@@ -9,7 +9,7 @@ name: PR Security Gate
 #   2. GitHub Dependency Review (blocks PRs that introduce known CVEs)
 #   3. npm audit on all PR-gated Node package locks (high/critical only)
 #   4. OSV-Scanner on package-lock.json files
-#   5. Remote installer / Signal activation / Browser target policy gates
+#   5. Remote installer / CODEOWNERS / Signal activation / Browser target policy gates
 #   6. Hosted-MCP isolation: smoke (always) + local deterministic adversarial
 #      proofs (cross-tenant / revocation / entitlement / cap / at-rest) — RR-11
 #   7. Firestore security-rules emulator tests — RR-12
@@ -156,6 +156,28 @@ jobs:
 
       - name: Reject curl-pipe-shell installers
         run: scripts/ci/verify-no-remote-shell-installers.sh
+
+  production-deploy-auth-policy:
+    name: Production Deploy Auth Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+
+      - name: Verify production deploy auth is WIF-only
+        run: bash scripts/ci/verify-production-deploy-auth.sh
+
+  codeowners-security-trees:
+    name: CODEOWNERS Security Trees
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+
+      - name: Verify security-sensitive CODEOWNERS rules
+        run: bash scripts/ci/verify-codeowners-security-trees.sh
 
   vendored-agent-provenance:
     name: Vendored Agent Provenance

@@ -11,6 +11,7 @@ import XCTest
 /// open + migration.
 final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    private static let testEncryptionKey = "daemon-test-" + String(repeating: "a", count: 32)
 
     // MARK: - Plaintext vs Encrypted File Detection (no key required)
 
@@ -95,14 +96,18 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
         defer { try? FileManager.default.removeItem(atPath: path) }
 
         let logger = BurnBarDaemonLogger(category: "cipher-test")
-        XCTAssertTrue(try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(at: path, logger: logger))
+        XCTAssertTrue(try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+            at: path,
+            logger: logger,
+            key: Self.testEncryptionKey
+        ))
         XCTAssertTrue(BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: path), "file must be encrypted after migration")
 
         // Keyed open reads the original rows back.
         var keyed: OpaquePointer?
         XCTAssertEqual(sqlite3_open_v2(path, &keyed, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
         defer { sqlite3_close(keyed) }
-        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: keyed!)
+        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: keyed!, key: Self.testEncryptionKey)
         XCTAssertEqual(try readAllRows(keyed!), ["secret-row"])
 
         // A keyless plaintext open must NOT be able to read the table.
