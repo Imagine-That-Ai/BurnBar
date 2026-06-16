@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  resolveDataTierFromEntitlements,
-  wandParallelMaxForDataTier,
-  type DataTier,
-} from "../callables/dataDomainUsage.js";
+import { resolveDataTierFromEntitlements, wandParallelMaxForDataTier } from "../callables/dataDomainUsage.js";
+
+type DataTier = Parameters<typeof wandParallelMaxForDataTier>[0];
 
 const FAR_FUTURE = "2999-01-01T00:00:00.000Z";
 

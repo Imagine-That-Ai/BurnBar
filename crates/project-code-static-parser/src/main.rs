@@ -1049,7 +1049,9 @@ mod tests {
             }
         ]);
 
-        let references = parse_lsp_references_result(&result, Some("/tmp/Burn Bar")).unwrap();
+        let Some(references) = parse_lsp_references_result(&result, Some("/tmp/Burn Bar")) else {
+            panic!("expected LSP reference locations to parse");
+        };
 
         assert_eq!(references.len(), 1);
         assert_eq!(references[0].file_path, "Sources/App.swift");

@@ -1683,7 +1683,9 @@ def burnbar_search_code(query: str, project_path: str | None = None, limit: int 
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
-        return json.dumps(pcm.search_code(conn, query=query, project_path=project_path, limit=limit), indent=2, default=str)
+        return json.dumps(
+            pcm.search_code(conn, query=query, project_path=project_path, limit=limit), indent=2, default=str
+        )
 
 
 @mcp.tool()
@@ -1727,7 +1729,9 @@ def burnbar_get_symbol(name: str, project_path: str | None = None, limit: int = 
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
-        return json.dumps(pcm.get_symbol(conn, name=name, project_path=project_path, limit=limit), indent=2, default=str)
+        return json.dumps(
+            pcm.get_symbol(conn, name=name, project_path=project_path, limit=limit), indent=2, default=str
+        )
 
 
 @mcp.tool()
@@ -1762,7 +1766,9 @@ def burnbar_diagnostics(project_path: str | None = None, tool: str | None = None
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
-        return json.dumps(pcm.diagnostics(conn, project_path=project_path, tool=tool, limit=limit), indent=2, default=str)
+        return json.dumps(
+            pcm.diagnostics(conn, project_path=project_path, tool=tool, limit=limit), indent=2, default=str
+        )
 
 
 @mcp.tool()

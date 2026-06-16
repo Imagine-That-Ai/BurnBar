@@ -245,12 +245,15 @@ object GatedFeatureCatalog {
                 publicName = "The Wand",
                 requiredTier = CloudTier.CLOUD,
                 oneLineBenefit =
-                "Cast a Wand and send one job to a whole team of agents at once — BurnBar routes each worker to the right model by live quota across your connected providers, then brings back the work.",
+                "Cast a Wand and send one job to a whole team of agents at once — " +
+                    "BurnBar routes each worker to the right model by live quota across your connected providers, then brings back the work.",
                 benefitBullets =
                 listOf(
                     "Start with one local worker for free; Cloud opens 3 in parallel, Cloud Pro opens 8, and Ultra opens 16",
-                    "Cast the Headmaster's Wand to reach for the highest-capability models, or the Pareto Wand for the best quality per quota — the routing chooses each agent's model for you",
-                    "It runs on the provider subscriptions and keys you already have; BurnBar orchestrates and shows the work while you keep control",
+                    "Cast the Headmaster's Wand to reach for the highest-capability models, " +
+                        "or the Pareto Wand for the best quality per quota — the routing chooses each agent's model for you",
+                    "It runs on the provider subscriptions and keys you already have; " +
+                        "BurnBar orchestrates and shows the work while you keep control",
                     "Each worker runs in its own branch, so parallel work stays reviewable and recoverable",
                 ),
                 imageVector = Icons.Filled.AutoAwesome,

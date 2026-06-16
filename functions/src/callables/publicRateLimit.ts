@@ -18,7 +18,7 @@ type PublicHttpRateLimitAction = "cli_link_start" | "hermes_gateway_device_start
  * `endpointAuthorizationCatalog.generated.ts` (camelCase).
  * Closes codex-gpt-5 FINDING-005 / kimi FINDING-012.
  */
-export type PublicHttpEndpointName =
+type PublicHttpEndpointName =
   | "burnBarHermesGateway"
   | "healthCheck"
   | "healthLive"
@@ -197,5 +197,13 @@ export function isPublicRateLimitExceeded(err: unknown): boolean {
  * Used by the static inventory test to ensure every public endpoint is bounded.
  */
 export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpointName> = Object.freeze(
-  Object.keys(PUBLIC_HTTP_ENDPOINT_LIMITS) as Array<PublicHttpEndpointName>,
+  [
+    "burnBarHermesGateway",
+    "healthCheck",
+    "healthLive",
+    "healthReady",
+    "latestRouterRundown",
+    "pollCliLink",
+    "startCliLink",
+  ],
 );
