@@ -9,6 +9,8 @@
 import type { CollectionReference, DocumentReference, Firestore, Query, WriteBatch } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
+import { ROOT_COLLECTIONS_KEYED_BY_UID } from "./accountDeletionRootCollections.js";
+
 interface AccountDeletionSummary {
   destroyedSecrets: number;
   failedSecretDestroys: number;
@@ -33,12 +35,10 @@ interface DeleteUserAccountOptions extends AccountDeletionOptions {
 
 const BATCH_LIMIT = 400;
 
-/**
- * Root (non-`users/{uid}`) collections that carry per-document `uid` ownership
- * and therefore are not reached by the `users/{uid}` subtree walk. Account erase
- * must delete the caller's documents in each (GDPR Art.17).
- */
-const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound"] as const;
+// Root (non-`users/{uid}`) collections keyed by per-document `uid` are declared
+// in `accountDeletionRootCollections.ts` (the single source of truth) and the
+// generic-sweep subset is imported above. A CI completeness test fails if a new
+// root uid-keyed collection is added without classifying it in that manifest.
 
 export function userWorkspaceID(uid: string): string {
   return `workspace-${uid}`;
