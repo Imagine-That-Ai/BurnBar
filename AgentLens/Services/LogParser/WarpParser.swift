@@ -42,7 +42,7 @@ final class WarpParser: LogParser, Sendable {
         var seenConversationIDs = Set<String>()
 
         for file in logFiles {
-            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable log)
+            guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded read, skip unreadable/oversized log)
                   let content = String(data: data, encoding: .utf8) else {
                 continue
             }

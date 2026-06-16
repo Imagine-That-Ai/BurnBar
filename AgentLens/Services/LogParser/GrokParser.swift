@@ -66,7 +66,7 @@ final class GrokParser: LogParser, Sendable {
         projectName: String
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
-        guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
+        guard let summaryData = ParserInputLimits.boundedContents(of: summaryURL), // try?-ok(size-guarded read, missing/oversized summary skipped)
               let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else { // try?-ok(malformed JSON skipped)
             return nil
         }
@@ -160,7 +160,7 @@ final class GrokParser: LogParser, Sendable {
 
     private func loadSignals(at url: URL) -> GrokSignals? {
         guard FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url), // try?-ok(missing signals skipped)
+              let data = ParserInputLimits.boundedContents(of: url), // try?-ok(size-guarded read, missing/oversized signals skipped)
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON skipped)
             return nil
         }

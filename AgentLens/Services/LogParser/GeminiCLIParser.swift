@@ -91,7 +91,7 @@ final class GeminiCLIParser: LogParser, Sendable {
         sessionId: String,
         projectName: String
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
+        guard let data = ParserInputLimits.boundedContents(of: file) else { return nil } // try?-ok(size-guarded read, guard nil)
 
         let mtime = modificationDate(of: file)
         var acc = GeminiSessionAccumulator()

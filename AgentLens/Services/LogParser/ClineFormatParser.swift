@@ -62,7 +62,7 @@ final class ClineFormatParser: LogParser, Sendable {
         taskId: String,
         historyFile: URL
     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let data = try? Data(contentsOf: historyFile), // try?-ok(skip unreadable log)
+        guard let data = ParserInputLimits.boundedContents(of: historyFile), // try?-ok(size-guarded read, skip unreadable/oversized log)
               let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed log skip)
             return nil
         }

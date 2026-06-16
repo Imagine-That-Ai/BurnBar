@@ -161,7 +161,7 @@ final class FactoryDroidParser: LogParser, Sendable {
         // VAL-TOKEN-003: Settings/metadata exact totals suppress per-message fallback accumulation
         // VAL-TOKEN-011: Cache-only exact totals also suppress fallback (any non-zero bucket counts)
         if let settingsFileURL = settingsFile {
-            if let data = try? Data(contentsOf: settingsFileURL), // try?-ok(missing settings skipped)
+            if let data = ParserInputLimits.boundedContents(of: settingsFileURL), // try?-ok(size-guarded settings read, missing/oversized skipped)
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
                 if let model = json["model"] as? String {
                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
@@ -189,7 +189,7 @@ final class FactoryDroidParser: LogParser, Sendable {
         if !usedSettingsTotals {
             let metadataURL = jsonlFile.deletingLastPathComponent()
                 .appendingPathComponent("\(sessionId).metadata.json")
-            if let data = try? Data(contentsOf: metadataURL), // try?-ok(missing metadata skipped)
+            if let data = ParserInputLimits.boundedContents(of: metadataURL), // try?-ok(size-guarded metadata read, missing/oversized skipped)
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
                 if tokenData.model == "unknown", let model = json["model"] as? String {
                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)

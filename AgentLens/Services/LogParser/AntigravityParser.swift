@@ -30,7 +30,7 @@ final class AntigravityParser: LogParser, Sendable {
         // Fetch settings for active model (fallback when per-session model unavailable)
         let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
         let fallbackModelName: String = {
-            guard let data = try? Data(contentsOf: settingsURL), // try?-ok(settings read, model fallback)
+            guard let data = ParserInputLimits.boundedContents(of: settingsURL), // try?-ok(size-guarded settings read, model fallback)
                   let settings = try? JSONDecoder().decode(SettingsFile.self, from: data), // try?-ok(optional decode, model fallback)
                   let model = settings.model, !model.isEmpty else {
                 return "Claude Opus 4.6 (Thinking)"

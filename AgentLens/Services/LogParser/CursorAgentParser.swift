@@ -93,7 +93,7 @@ final class CursorAgentParser: LogParser, Sendable {
 
         if let summaryURL,
            FileManager.default.fileExists(atPath: summaryURL.path),
-           let data = try? Data(contentsOf: summaryURL), // try?-ok(optional sidecar read)
+           let data = ParserInputLimits.boundedContents(of: summaryURL), // try?-ok(size-guarded optional sidecar read)
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(optional summary decode)
             summaryModel = json["model"] as? String ?? (json["current_model_id"] as? String)
             summaryTitle = json["title"] as? String ?? (json["generated_title"] as? String) ?? (json["session_summary"] as? String)
