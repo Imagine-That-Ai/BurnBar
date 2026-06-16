@@ -1,5 +1,4 @@
 {
-  "originHash" : "5c5792be9fb56f1ddd24a2731a825b128d77dbb3315a2fd8e71c77e1e63ab0ea",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -83,15 +82,6 @@
       }
     },
     {
-      "identity" : "grdb-sqlcipher",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SahebRoy92/GRDB-SQLCipher",
-      "state" : {
-        "revision" : "2cf6c756e1e5ef6901ebae16576a7e4e4b834622",
-        "version" : "6.29.3"
-      }
-    },
-    {
       "identity" : "grpc-binary",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/google/grpc-binary.git",
@@ -164,6 +154,15 @@
       }
     },
     {
+      "identity" : "sqlcipher.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sqlcipher/SQLCipher.swift.git",
+      "state" : {
+        "revision" : "07bf6bc2191a063d6f1e7c3b5f276a3fadfe36b7",
+        "version" : "4.16.0"
+      }
+    },
+    {
       "identity" : "swift-custom-dump",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-custom-dump",
@@ -227,5 +226,5 @@
       }
     }
   ],
-  "version" : 3
+  "version" : 2
 }

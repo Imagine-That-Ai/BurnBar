@@ -86,6 +86,27 @@ website/src/scripts/pretextShrinkwrap.ts | ts-suppress
 # Allowlisted rather than annotated inline because crates/openburnbar-iroh/** changes trigger a full
 # AAR rebuild-parity gate; the justification lives here instead of churning the FFI source.
 crates/openburnbar-iroh/src/lib.rs | rust-allow
+
+# --- Vendored GRDB SQLCipher fork (token-scoped) ---
+# Upstream GRDB carries SwiftLint waivers for compatibility with its own lint profile. Keep exact
+# path entries so the vendor tree remains visible; re-check and delete stale entries on GRDB updates.
+Vendor/GRDB-SQLCipher/GRDB/Core/Database+Schema.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseError.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/DatabasePool.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseSnapshotPool.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/Statement.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/Support/StandardLibrary/JSONRequiredEncoder.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/TransactionObserver.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/WALSnapshot.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Core/WALSnapshotTransaction.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/FTS/FTS4.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/FTS/FTS5CustomTokenizer.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Fixits.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Record/EncodableRecord+Encodable.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/Record/FetchableRecord+Decodable.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Observers/ValueConcurrentObserver.swift | swiftlint-disable
+Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/Trace.swift | swiftlint-disable
 ```
 <!-- END:suppression-allowlist -->
 

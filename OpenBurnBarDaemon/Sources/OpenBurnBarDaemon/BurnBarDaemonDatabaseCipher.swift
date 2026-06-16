@@ -1,8 +1,7 @@
 import Foundation
+import GRDB
 import Security
-import SQLite3
-
-private let cipherSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+import SQLCipher
 
 // MARK: - Daemon Database Cipher
 //
@@ -24,7 +23,7 @@ private let cipherSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_typ
 // key + migration paths activate with no other code change.
 //
 // SECURITY: the key is the app's base64 string applied in PASSPHRASE mode
-// (`PRAGMA key = '<key>'`, PBKDF2 derivation), NOT raw `x'<hex>'` mode — the two
+// (`sqlite3_key` with UTF-8 passphrase bytes, PBKDF2 derivation), NOT raw `x'<hex>'` mode — the two
 // derive different AES keys and are not interchangeable for an existing database,
 // so this must match `DatabaseEncryptionService.makeConfiguration` exactly. The
 // key is validated to contain only base64 characters (A-Z, a-z, 0-9, +, /, =)
@@ -134,29 +133,21 @@ enum BurnBarDaemonDatabaseCipher {
     /// other statement runs.
     ///
     /// - Throws: `BurnBarDaemonDatabaseCipherError.keyApplicationFailed` when the
-    ///   codec is present and a key exists but `PRAGMA key` does not take.
-    static func applyKeyIfAvailable(to handle: OpaquePointer) throws {
-        guard isCipherAvailable(), let key = resolveKey() else { return }
+    ///   codec is present and a key exists but SQLCipher rejects the key.
+    static func applyKeyIfAvailable(to handle: OpaquePointer, key explicitKey: String? = nil) throws {
+        guard isCipherAvailable() else { return }
+        guard let key = explicitKey ?? resolveKey() else { return }
         try applyKey(key, to: handle)
     }
 
-    /// Apply `PRAGMA key` (passphrase mode) to `handle` and verify the codec is
+    /// Apply the SQLCipher passphrase to `handle` and verify the codec is
     /// genuinely active by reading `PRAGMA cipher_version`. Throws if the key
-    /// fails charset validation, the PRAGMA errors, or `cipher_version` is empty
+    /// fails charset validation, the C API errors, or `cipher_version` is empty
     /// (codec not active — the key would have been a silent no-op).
     static func applyKey(_ key: String, to handle: OpaquePointer) throws {
-        // Validate the key charset before interpolation. Allowed: base64 alphabet
-        // (A-Z, a-z, 0-9, +, /, =) plus '-'. None of these can escape a
-        // single-quoted SQL string literal (only ' and \ can), so interpolation
-        // is injection-safe — identical to the app-side validation.
-        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
-        guard key.unicodeScalars.allSatisfy({ allowedCharacters.contains($0) }) else {
-            throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(detail: "key contains characters outside the allowed set")
-        }
+        try applySQLCipherKey(key, databaseName: nil, to: handle)
 
-        try exec("PRAGMA key = '\(key)'", on: handle, context: "apply key")
-
-        // SQLCipher activity self-check: on a plain SQLite the PRAGMA above is an
+        // SQLCipher activity self-check: on a plain SQLite the key call is an
         // ignored no-op and this returns empty/nil; refuse to proceed because the
         // data would be plaintext under the caller's belief it is encrypted.
         let cipherVersion = querySingleString("PRAGMA cipher_version", on: handle)
@@ -227,48 +218,77 @@ enum BurnBarDaemonDatabaseCipher {
     @discardableResult
     static func migratePlaintextDatabaseIfNeeded(
         at path: String,
-        logger: BurnBarDaemonLogger
+        logger: BurnBarDaemonLogger,
+        key explicitKey: String? = nil
     ) throws -> Bool {
         guard isCipherAvailable() else { return false }
-        guard let key = resolveKey() else { return false }
+        guard let key = explicitKey ?? resolveKey() else { return false }
+        try validateKey(key)
         guard isPlaintextDatabaseFile(at: path) else { return false }
 
-        // cov:ignore-start -- SQLCipher migration body only executes when the daemon links a SQLITE_HAS_CODEC build; current CI links stock SQLite and gates the no-codec no-op and unsafe-key rejection paths.
         let encryptedPath = path + ".sqlcipher-migrating-\(UUID().uuidString)"
-        try? FileManager.default.removeItem(atPath: encryptedPath)
-
-        var source: OpaquePointer?
-        guard sqlite3_open_v2(path, &source, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK, let source else {
-            if let source { sqlite3_close(source) }
-            throw BurnBarDaemonDatabaseCipherError.migrationFailed(detail: "could not open plaintext source")
-        }
-        defer { sqlite3_close(source) }
-        sqlite3_busy_timeout(source, 5000)
+        removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
 
         do {
-            // ATTACH a new file keyed with the app key, copy all pages through the
-            // codec, DETACH. `sqlcipher_export` is the SQLCipher-sanctioned way to
-            // re-encrypt an entire database in one pass.
-            let escapedPath = encryptedPath.replacingOccurrences(of: "'", with: "''")
-            try exec("ATTACH DATABASE '\(escapedPath)' AS encrypted KEY '\(key)'", on: source, context: "attach encrypted")
-            try exec("SELECT sqlcipher_export('encrypted')", on: source, context: "sqlcipher_export")
-            try exec("DETACH DATABASE encrypted", on: source, context: "detach encrypted")
+            let source = try DatabaseQueue(path: path, configuration: makePlaintextMigrationConfiguration())
+            do {
+                try source.writeWithoutTransaction { db in
+                    let cipherVersion = try String.fetchOne(db, sql: "PRAGMA cipher_version")
+                    guard let version = cipherVersion, version.isEmpty == false else {
+                        throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(
+                            detail: "PRAGMA cipher_version empty; SQLCipher codec not active on migration handle"
+                        )
+                    }
+                    _ = try Row.fetchAll(db, sql: "PRAGMA wal_checkpoint(TRUNCATE)")
+                    // ATTACH a new file keyed with the app key, copy all pages through the
+                    // codec, DETACH. `sqlcipher_export` is the SQLCipher-sanctioned way to
+                    // re-encrypt an entire database in one pass.
+                    let escapedPath = encryptedPath.replacingOccurrences(of: "'", with: "''")
+                    try db.execute(sql: "ATTACH DATABASE '\(escapedPath)' AS encrypted KEY '\(key)'")
+                    _ = try Row.fetchAll(db, sql: "SELECT sqlcipher_export('encrypted')")
+                    try db.execute(sql: "DETACH DATABASE encrypted")
+                }
+            } catch {
+                removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
+                throw BurnBarDaemonDatabaseCipherError.migrationFailed(detail: "\(error)")
+            }
+            do {
+                try source.close()
+            } catch {
+                removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
+                throw BurnBarDaemonDatabaseCipherError.migrationFailed(detail: "close plaintext source failed: \(error)")
+            }
+        } catch let error as BurnBarDaemonDatabaseCipherError {
+            throw error
         } catch {
-            try? FileManager.default.removeItem(atPath: encryptedPath)
+            removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
             throw BurnBarDaemonDatabaseCipherError.migrationFailed(detail: "\(error)")
         }
 
-        // Atomically swap the encrypted file into place. The plaintext source FD
-        // stays valid (old inode) until `deinit`; the path resolves to a complete
-        // file (old plaintext or new encrypted) throughout the rename.
-        do {
-            _ = try FileManager.default.replaceItemAt(
-                URL(fileURLWithPath: path),
-                withItemAt: URL(fileURLWithPath: encryptedPath)
+        guard isEncryptedDatabaseFile(at: encryptedPath),
+              canOpenEncryptedDatabase(at: encryptedPath, key: key)
+        else {
+            removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
+            throw BurnBarDaemonDatabaseCipherError.migrationFailed(
+                detail: "export completed but encrypted replacement failed SQLCipher verification"
             )
-        } catch {
-            try? FileManager.default.removeItem(atPath: encryptedPath)
-            throw BurnBarDaemonDatabaseCipherError.migrationFailed(detail: "atomic swap failed: \(error)")
+        }
+
+        // Atomically swap the encrypted file into place. The path resolves to a
+        // complete file (old plaintext or new encrypted) throughout the rename.
+        removeDatabaseFilesIfPresent(at: path, includePrimary: false)
+        removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: false)
+        let replaceResult = encryptedPath.withCString { sourcePath in
+            path.withCString { destinationPath in
+                rename(sourcePath, destinationPath)
+            }
+        }
+        guard replaceResult == 0 else {
+            let errorNumber = errno
+            removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
+            throw BurnBarDaemonDatabaseCipherError.migrationFailed(
+                detail: "atomic replace failed with errno \(errorNumber): \(String(cString: strerror(errorNumber)))"
+            )
         }
 
         logger.notice(
@@ -276,10 +296,70 @@ enum BurnBarDaemonDatabaseCipher {
             metadata: ["path": path]
         )
         return true
-        // cov:ignore-end
     }
 
     // MARK: - Raw SQLite Helpers
+
+    private static func validateKey(_ key: String) throws {
+        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
+        guard key.unicodeScalars.allSatisfy({ allowedCharacters.contains($0) }) else {
+            throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(detail: "key contains characters outside the allowed set")
+        }
+    }
+
+    private static func applySQLCipherKey(_ key: String, databaseName: String?, to handle: OpaquePointer) throws {
+        try validateKey(key)
+        guard var keyData = key.data(using: .utf8) else {
+            throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(detail: "key is not valid UTF-8")
+        }
+        defer {
+            keyData.resetBytes(in: 0..<keyData.count)
+        }
+        let code = keyData.withUnsafeBytes { rawBuffer in
+            if let databaseName {
+                return databaseName.withCString { databaseNameCString in
+                    sqlite3_key_v2(handle, databaseNameCString, rawBuffer.baseAddress, CInt(rawBuffer.count))
+                }
+            }
+            return sqlite3_key(handle, rawBuffer.baseAddress, CInt(rawBuffer.count))
+        }
+        guard code == SQLITE_OK else {
+            throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(
+                detail: "sqlite3_key failed with sqlite error \(code): \(String(cString: sqlite3_errmsg(handle)))"
+            )
+        }
+    }
+
+    private static func makePlaintextMigrationConfiguration() -> Configuration {
+        var configuration = Configuration()
+        configuration.busyMode = .timeout(5)
+        return configuration
+    }
+
+    private static func canOpenEncryptedDatabase(at path: String, key: String) -> Bool {
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let handle else {
+            if let handle { sqlite3_close(handle) }
+            return false
+        }
+        defer { sqlite3_close(handle) }
+        do {
+            try applyKey(key, to: handle)
+            return querySingleString("PRAGMA integrity_check", on: handle) == "ok"
+        } catch {
+            return false
+        }
+    }
+
+    private static func removeDatabaseFilesIfPresent(at path: String, includePrimary: Bool) {
+        let suffixes = includePrimary ? ["", "-wal", "-shm"] : ["-wal", "-shm"]
+        for suffix in suffixes {
+            let result = (path + suffix).withCString { unlink($0) }
+            if result != 0, errno != ENOENT {
+                continue
+            }
+        }
+    }
 
     private static func exec(_ sql: String, on handle: OpaquePointer, context: String) throws {
         var errorMessage: UnsafeMutablePointer<CChar>?

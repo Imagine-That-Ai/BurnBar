@@ -39,8 +39,6 @@ jobs:
     environment: production
     env:
       FIREBASE_PROJECT: burnbar
-      HAS_GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' }}
-      HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
       SHOULD_DEPLOY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -62,27 +60,23 @@ jobs:
       - name: Run Firestore rules emulator tests
         run: npm --prefix functions run test:firestore-rules
 
-      - name: Authenticate to Google Cloud (service account)
-        if: ${{ env.HAS_GCP_SA_KEY == 'true' }}
+      - name: Authenticate to Google Cloud (WIF/OIDC only)
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Authenticate to Google Cloud (legacy Play service account)
-        if: ${{ env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
-        with:
-          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
 
       - name: Set up gcloud
-        if: ${{ env.HAS_GCP_SA_KEY == 'true' || env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
-      - name: Require deploy credentials
-        if: ${{ env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != 'true' }}
+      - name: Require WIF credentials
         run: |
-          echo "::error::No Firebase deploy auth configured. Set GCP_SA_KEY (preferred) or GOOGLE_PLAY_SERVICE_ACCOUNT_JSON."
-          exit 1
+          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "::error::No Google application credentials from WIF/OIDC auth. Production Firestore deploy/drift checks require workload identity federation."
+            exit 1
+          fi
 
       - name: Deploy Firestore rules, indexes, and Storage rules
         if: ${{ env.SHOULD_DEPLOY == 'true' }}
