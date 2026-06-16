@@ -557,7 +557,7 @@ test("escrow public keys and envelopes are schema-constrained encrypted docs", a
   );
 });
 
-test("L41 Signal prekey/session directory is path-bound, public-only, and rotation-aware", async () => {
+test("L41 Signal prekey/session directory is server-only, owner-readable, and rotation-aware", async () => {
   const ownerDb = authedDb("signal-dir-owner");
   const now = Timestamp.fromDate(new Date("2026-06-05T12:00:00.000Z"));
   const soon = Timestamp.fromDate(new Date("2030-01-01T00:00:00.000Z"));
@@ -647,8 +647,12 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
     status: "active",
     expiresAt: soon,
   };
-  await assertSucceeds(setDoc(doc(ownerDb, signedPreKeyPath), signedPreKey));
-  await assertSucceeds(
+  await assertFails(setDoc(doc(ownerDb, signedPreKeyPath), signedPreKey));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), signedPreKeyPath), signedPreKey);
+  });
+  await assertSucceeds(getDoc(doc(ownerDb, signedPreKeyPath)));
+  await assertFails(
     updateDoc(doc(ownerDb, signedPreKeyPath), {
       status: "retired",
       updatedAt: now,
@@ -672,8 +676,12 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
     status: "available",
     expiresAt: soon,
   };
-  await assertSucceeds(setDoc(doc(ownerDb, oneTimePreKeyPath), oneTimePreKey));
-  await assertSucceeds(
+  await assertFails(setDoc(doc(ownerDb, oneTimePreKeyPath), oneTimePreKey));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), oneTimePreKeyPath), oneTimePreKey);
+  });
+  await assertSucceeds(getDoc(doc(ownerDb, oneTimePreKeyPath)));
+  await assertFails(
     updateDoc(doc(ownerDb, oneTimePreKeyPath), {
       status: "claimed",
       claimedBySessionId: "session-1",
@@ -701,7 +709,11 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
     status: "available",
     expiresAt: soon,
   };
-  await assertSucceeds(setDoc(doc(ownerDb, kyberPreKeyPath), kyberPreKey));
+  await assertFails(setDoc(doc(ownerDb, kyberPreKeyPath), kyberPreKey));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), kyberPreKeyPath), kyberPreKey);
+  });
+  await assertSucceeds(getDoc(doc(ownerDb, kyberPreKeyPath)));
   await assertFails(
     setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-1_1/kyber_prekeys/kpk-nosig"), {
       ...kyberPreKey,
@@ -709,7 +721,7 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
       signatureB64: "",
     })
   );
-  await assertSucceeds(
+  await assertFails(
     updateDoc(doc(ownerDb, kyberPreKeyPath), {
       status: "exhausted",
       claimedBySessionId: "session-1",
@@ -731,7 +743,11 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
     status: "active",
     lastMessageAt: now,
   };
-  await assertSucceeds(setDoc(doc(ownerDb, sessionPath), sessionDirectoryDoc));
+  await assertFails(setDoc(doc(ownerDb, sessionPath), sessionDirectoryDoc));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), sessionPath), sessionDirectoryDoc);
+  });
+  await assertSucceeds(getDoc(doc(ownerDb, sessionPath)));
   await assertFails(
     setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-1_1/sessions/session-private"), {
       ...sessionDirectoryDoc,
@@ -739,7 +755,7 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
       sessionStateB64: "SERIALIZED_SIGNAL_SESSION_MUST_STAY_ON_DEVICE",
     })
   );
-  await assertSucceeds(
+  await assertFails(
     updateDoc(doc(ownerDb, sessionPath), {
       status: "archived",
       archivedAt: now,
@@ -764,7 +780,11 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
     rewrapRequired: true,
     rewrapJobId: "rewrap-1",
   };
-  await assertSucceeds(setDoc(doc(ownerDb, rotationPath), rotationEvent));
+  await assertFails(setDoc(doc(ownerDb, rotationPath), rotationEvent));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), rotationPath), rotationEvent);
+  });
+  await assertSucceeds(getDoc(doc(ownerDb, rotationPath)));
   await assertFails(updateDoc(doc(ownerDb, rotationPath), { status: "running", updatedAt: now }));
   await assertFails(deleteDoc(doc(ownerDb, rotationPath)));
   await assertFails(

@@ -367,6 +367,7 @@ public enum CLIAgentSessionCodec {
 
     public static func decodeSealed(
         documentID: String,
+        uid: String,
         data: [String: Any],
         vaultKey: Data
     ) -> CLIAgentSessionRecord? {
@@ -374,7 +375,13 @@ public enum CLIAgentSessionCodec {
             return nil
         }
         do {
-            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            let aadContext = try CloudVaultAADContext(
+                uid: uid,
+                collection: "cli_sessions",
+                docID: documentID,
+                field: sealedPayloadField
+            )
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
             let record = try JSONDecoder.openBurnBarCloudPayload.decode(CLIAgentSessionRecord.self, from: payload)
             guard record.schemaVersion <= CLIAgentSessionRecord.currentSchemaVersion else { return nil }
             return record.id.isEmpty ? nil : record
@@ -432,16 +439,25 @@ public enum CLIAgentSessionCodec {
     public static func encodeSealed(
         _ record: CLIAgentSessionRecord,
         vaultKey: Data,
-        vaultKeyID: String
+        vaultKeyID: String,
+        uid: String,
+        documentID: String
     ) throws -> [String: Any] {
         let payload = try JSONEncoder.openBurnBarCloudPayload.encode(record)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "cli_sessions",
+            docID: documentID,
+            field: sealedPayloadField
+        )
         let sealed = try CloudVaultCrypto.sealPayload(
             payload,
             keyData: vaultKey,
-            vaultKeyID: vaultKeyID
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
         )
         var dict: [String: Any] = [
-            "id": record.id,
+            "id": documentID,
             "agent": record.agent.rawValue,
             "sourceKind": record.sourceKind.rawValue,
             "createdAt": record.createdAt,

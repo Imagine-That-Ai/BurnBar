@@ -64,13 +64,19 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         assertNoPlaintextSecrets(in: docData)
 
         let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: docData["sealedPayload"]))
-        XCTAssertEqual(envelope.aad, CloudVaultCrypto.sealedPayloadAADContext)
-        let opened = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData)
+        let aadContext = try chatThreadAADContext(docId: "test-device-1_thread-1")
+        XCTAssertEqual(envelope.aad, aadContext.stringValue)
+        let opened = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData, aadContext: aadContext)
         let payload = try Self.sealedPayloadDecoder.decode(DecodedChatThreadPayload.self, from: opened)
         XCTAssertEqual(payload.threadId, "thread-1")
         XCTAssertEqual(payload.messages.count, 2)
         XCTAssertEqual(payload.messages.first?.content, "secret prompt")
         XCTAssertEqual(payload.messages.last?.content, "secret response")
+
+        let relocatedContext = try chatThreadAADContext(docId: "test-device-1_thread-relocated")
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData, aadContext: relocatedContext)
+        )
     }
 
     func test_syncAfterChatContentConsentRevokedDeletesCloudContentFields() async throws {
@@ -118,7 +124,8 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         let path = "users/test-uid-1/chat_threads/test-device-1_thread-1"
         let priorData = try XCTUnwrap(fakeGateway.documentData(at: path))
         let priorSealed = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: priorData["sealedPayload"]))
-        let priorOpened = try CloudVaultCrypto.openPayload(priorSealed, keyData: vaultKeyProvider.keyData)
+        let aadContext = try chatThreadAADContext(docId: "test-device-1_thread-1")
+        let priorOpened = try CloudVaultCrypto.openPayload(priorSealed, keyData: vaultKeyProvider.keyData, aadContext: aadContext)
         let priorPayload = try Self.sealedPayloadDecoder.decode(DecodedChatThreadPayload.self, from: priorOpened)
         XCTAssertEqual(priorPayload.messages.count, 2)
 
@@ -133,7 +140,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         // The prior good record must be intact — NOT replaced by an empty-content payload.
         let afterData = try XCTUnwrap(fakeGateway.documentData(at: path))
         let afterSealed = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: afterData["sealedPayload"]))
-        let afterOpened = try CloudVaultCrypto.openPayload(afterSealed, keyData: vaultKeyProvider.keyData)
+        let afterOpened = try CloudVaultCrypto.openPayload(afterSealed, keyData: vaultKeyProvider.keyData, aadContext: aadContext)
         let afterPayload = try Self.sealedPayloadDecoder.decode(DecodedChatThreadPayload.self, from: afterOpened)
         XCTAssertEqual(afterPayload.messages.count, 2, "failed fetch must not overwrite prior content with an empty payload")
         XCTAssertEqual(afterPayload.messages.first?.content, "secret prompt")
@@ -194,7 +201,11 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         )
         XCTAssertEqual(healthyData["contentIncluded"] as? Bool, true)
         let healthySealed = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: healthyData["sealedPayload"]))
-        let healthyOpened = try CloudVaultCrypto.openPayload(healthySealed, keyData: vaultKeyProvider.keyData)
+        let healthyOpened = try CloudVaultCrypto.openPayload(
+            healthySealed,
+            keyData: vaultKeyProvider.keyData,
+            aadContext: chatThreadAADContext(docId: "test-device-1_thread-2")
+        )
         let healthyPayload = try Self.sealedPayloadDecoder.decode(DecodedChatThreadPayload.self, from: healthyOpened)
         XCTAssertEqual(healthyPayload.threadId, "thread-2")
         XCTAssertEqual(healthyPayload.messages.first?.content, "second secret")
@@ -208,6 +219,15 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+
+    private func chatThreadAADContext(docId: String) throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: "chat_threads",
+            docID: docId,
+            field: "sealedPayload"
+        )
     }
 
     private func assertNoPlaintextSecrets(in value: Any, file: StaticString = #filePath, line: UInt = #line) {

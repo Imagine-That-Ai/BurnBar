@@ -81,6 +81,110 @@ final class CLIAgentSessionCodecTests: XCTestCase {
         XCTAssertTrue(decoded.encryptedTranscriptAvailable)
     }
 
+    func test_sealedRoundTrip_bindsPayloadToCliSessionPath() throws {
+        let uid = "user-1"
+        let documentID = "archive_codex_thread_123"
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let record = CLIAgentSessionRecord(
+            id: "archive:codex:thread-123",
+            agent: .codex,
+            sourceKind: .archivedLog,
+            title: "Sensitive archived session",
+            preview: "Private preview",
+            createdAt: Date(timeIntervalSince1970: 1_730_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_730_000_060),
+            messages: [
+                CLIAgentMessage(
+                    id: "m-1",
+                    role: .assistant,
+                    text: "Private transcript",
+                    timestamp: Date(timeIntervalSince1970: 1_730_000_060)
+                )
+            ],
+            encryptedTranscriptAvailable: true
+        )
+
+        let sealed = try CLIAgentSessionCodec.encodeSealed(
+            record,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            uid: uid,
+            documentID: documentID
+        )
+
+        XCTAssertEqual(sealed["id"] as? String, documentID)
+        let envelope = try XCTUnwrap(sealed["sealedPayload"] as? [String: Any])
+        XCTAssertEqual(
+            envelope["aad"] as? String,
+            "OpenBurnBar-CloudVault-aad-v2|\(uid)|cli_sessions|\(documentID)|sealedPayload|2|sealedPayload"
+        )
+
+        let decoded = try XCTUnwrap(
+            CLIAgentSessionCodec.decodeSealed(
+                documentID: documentID,
+                uid: uid,
+                data: sealed,
+                vaultKey: vaultKey
+            )
+        )
+        XCTAssertEqual(decoded.id, record.id)
+        XCTAssertEqual(decoded.messages.first?.text, "Private transcript")
+        XCTAssertNil(
+            CLIAgentSessionCodec.decodeSealed(
+                documentID: "archive_codex_thread_relocated",
+                uid: uid,
+                data: sealed,
+                vaultKey: vaultKey
+            )
+        )
+    }
+
+    func test_decodeSealed_opensLegacyGlobalAADWhenPathContextProvided() throws {
+        let uid = "user-1"
+        let documentID = "session-legacy"
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let record = CLIAgentSessionRecord(
+            id: documentID,
+            agent: .claude,
+            title: "Legacy global AAD",
+            preview: "Legacy preview",
+            createdAt: Date(timeIntervalSince1970: 1_730_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_730_000_030),
+            messages: [
+                CLIAgentMessage(
+                    id: "m-1",
+                    role: .assistant,
+                    text: "Legacy payload",
+                    timestamp: Date(timeIntervalSince1970: 1_730_000_030)
+                )
+            ]
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let payload = try encoder.encode(record)
+        let legacyEnvelope = try CloudVaultCrypto.sealPayload(
+            payload,
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+        let data = [
+            "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(legacyEnvelope)
+        ]
+
+        let decoded = try XCTUnwrap(
+            CLIAgentSessionCodec.decodeSealed(
+                documentID: documentID,
+                uid: uid,
+                data: data,
+                vaultKey: vaultKey
+            )
+        )
+        XCTAssertEqual(decoded.id, documentID)
+        XCTAssertEqual(decoded.messages.first?.text, "Legacy payload")
+    }
+
     func test_decode_returnsNilForFutureSchemaVersion() {
         let payload: [String: Any] = [
             "id": "x",
