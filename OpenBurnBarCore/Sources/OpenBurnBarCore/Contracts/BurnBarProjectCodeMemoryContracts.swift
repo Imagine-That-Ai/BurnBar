@@ -589,6 +589,83 @@ public struct BurnBarProjectCodeIndexStatusRequest: Codable, Hashable, Sendable 
     }
 }
 
+/// Operator-only request for global code-store diagnostics. Gated by the
+/// `code_operator` capability (first-party controller only).
+public struct BurnBarProjectCodeOpsDiagnosticsRequest: Codable, Hashable, Sendable {
+    public init() {}
+}
+
+/// Per-project rollup inside the operator diagnostics payload.
+public struct BurnBarProjectCodeStoreProjectStat: Codable, Hashable, Sendable {
+    public let projectID: String
+    public let projectRoot: String?
+    public let artifactCount: Int
+    public let symbolCount: Int
+    public let referenceCount: Int
+    public let storageByteCount: Int
+    public let storageBudgetBytes: Int
+    public let pendingForgetCount: Int
+    public let indexedAt: String?
+
+    public init(
+        projectID: String,
+        projectRoot: String?,
+        artifactCount: Int,
+        symbolCount: Int,
+        referenceCount: Int,
+        storageByteCount: Int,
+        storageBudgetBytes: Int,
+        pendingForgetCount: Int,
+        indexedAt: String?
+    ) {
+        self.projectID = projectID
+        self.projectRoot = projectRoot
+        self.artifactCount = artifactCount
+        self.symbolCount = symbolCount
+        self.referenceCount = referenceCount
+        self.storageByteCount = storageByteCount
+        self.storageBudgetBytes = storageBudgetBytes
+        self.pendingForgetCount = pendingForgetCount
+        self.indexedAt = indexedAt
+    }
+}
+
+/// Global, operator-gated view of the code-memory store: schema version, on-disk
+/// size, aggregate counts, the cross-tier forget backlog, and a per-project rollup.
+public struct BurnBarProjectCodeOpsDiagnosticsResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let schemaVersion: Int
+    public let databaseFileBytes: Int
+    public let totalArtifactCount: Int
+    public let totalSymbolCount: Int
+    public let totalStorageByteCount: Int
+    public let agentMemoryCount: Int
+    public let pendingCloudForgetCount: Int
+    public let projects: [BurnBarProjectCodeStoreProjectStat]
+
+    public init(
+        traceID: String,
+        schemaVersion: Int,
+        databaseFileBytes: Int,
+        totalArtifactCount: Int,
+        totalSymbolCount: Int,
+        totalStorageByteCount: Int,
+        agentMemoryCount: Int,
+        pendingCloudForgetCount: Int,
+        projects: [BurnBarProjectCodeStoreProjectStat]
+    ) {
+        self.traceID = traceID
+        self.schemaVersion = schemaVersion
+        self.databaseFileBytes = databaseFileBytes
+        self.totalArtifactCount = totalArtifactCount
+        self.totalSymbolCount = totalSymbolCount
+        self.totalStorageByteCount = totalStorageByteCount
+        self.agentMemoryCount = agentMemoryCount
+        self.pendingCloudForgetCount = pendingCloudForgetCount
+        self.projects = projects
+    }
+}
+
 public struct BurnBarProjectCodeIndexStatusResponse: Codable, Hashable, Sendable {
     public let traceID: String
     public let projectID: String

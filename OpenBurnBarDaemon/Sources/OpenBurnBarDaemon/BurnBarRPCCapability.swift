@@ -46,6 +46,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case codeRead = "code_read"
     /// Project code indexing writes.
     case codeWrite = "code_write"
+    /// Operator-only code-store diagnostics (schema version, store sizes, forget
+    /// backlog). Excluded from the readOnly/runClient profiles so only the trusted
+    /// first-party controller can inspect store internals.
+    case codeOperator = "code_operator"
 
     /// The single capability group that gates `method`. Every method maps to
     /// exactly one group so the attenuation set is total and unambiguous — a new
@@ -102,6 +106,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .codeSearch, .codeContextPack, .codeGetSymbol, .codeFindReferences,
              .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore:
             return .codeRead
+        case .codeOpsDiagnostics:
+            return .codeOperator
         }
     }
 }

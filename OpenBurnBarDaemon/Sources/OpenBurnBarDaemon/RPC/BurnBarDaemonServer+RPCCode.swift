@@ -116,6 +116,16 @@ extension BurnBarDaemonServer {
             } catch {
                 return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
             }
+        case .codeOpsDiagnostics:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProjectCodeOpsDiagnosticsRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.opsDiagnostics(typedRequest.params)))
+            } catch {
+                return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
+            }
         default:
             preconditionFailure("Unhandled code RPC method: \(method.rawValue)")
         }

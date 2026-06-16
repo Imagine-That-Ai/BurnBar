@@ -74,7 +74,12 @@ def _make_repo(path: Path, body: str) -> Path:
     return path
 
 
-def test_project_code_index_search_symbols_references_and_bleed(tmp_path: Path) -> None:
+def test_project_code_index_search_symbols_references_and_bleed(tmp_path: Path, monkeypatch) -> None:
+    # When the static parser helper is built, point production at it so symbol
+    # resolution is exercised at the earned tree-sitter tier rather than silently lexical.
+    helper = _static_parser_helper()
+    if helper is not None:
+        monkeypatch.setenv("OPENBURNBAR_CODE_STATIC_PARSER_PATH", str(helper))
     repo_a = _make_repo(
         tmp_path / "repo-a",
         """
@@ -114,11 +119,18 @@ def foreign_feature():
         assert all("repo-b-only" not in json.dumps(hit) for hit in bleed["results"])
 
         symbol = pcm.get_symbol(conn, "alpha_feature", str(repo_a), limit=10)
-        assert symbol["symbols"][0]["confidenceTier"] in {"lexical_fallback", "static_tree_sitter"}
         assert symbol["symbols"][0]["filePath"] == "main.py"
-        if symbol["symbols"][0]["confidenceTier"] == "static_tree_sitter":
+        if helper is not None:
+            # The helper is built, so the tier MUST be earned at tree-sitter. A
+            # tautological `in {lexical_fallback, static_tree_sitter}` would let a
+            # silent parser break degrade to lexical and still pass green. shaMatch is
+            # now computed (git blob SHA-1), so asserting True proves the parsed text
+            # actually corresponds to the indexed blob.
+            assert symbol["symbols"][0]["confidenceTier"] == "static_tree_sitter"
             assert symbol["symbols"][0]["tierEvidence"]["parser"] == "tree-sitter"
             assert symbol["symbols"][0]["tierEvidence"]["shaMatch"] is True
+        else:
+            assert symbol["symbols"][0]["confidenceTier"] == "lexical_fallback"
 
         refs = pcm.find_references(conn, "beta_helper", str(repo_a), limit=20)
         assert any(ref["filePath"] == "main.py" for ref in refs["references"])
@@ -425,11 +437,13 @@ def test_direct_memory_helpers_keep_plaintext_out_of_agent_index(tmp_path: Path)
         assert recalled["results"][0]["memoryID"] == remembered["memoryID"]
 
         agent_rows = conn.execute("SELECT body_redacted FROM agent_memories").fetchall()
-        fts_rows = conn.execute("SELECT bodyText FROM agent_memories_fts").fetchall()
         snapshots = conn.execute("SELECT snapshotJSON FROM project_memory_snapshots").fetchall()
+        # The vestigial body-search index is dropped, not left dead.
+        assert "agent_memories_fts" not in pcm.table_names(conn)
 
+    # Redacted-index invariant: the plaintext body lives ONLY in the snapshot, never
+    # in the agent index.
     assert raw_body not in "\n".join(row[0] for row in agent_rows)
-    assert raw_body not in "\n".join(row[0] for row in fts_rows)
     assert raw_body in snapshots[0][0]
 
     with sqlite3.connect(db_path) as conn:
@@ -440,4 +454,79 @@ def test_direct_memory_helpers_keep_plaintext_out_of_agent_index(tmp_path: Path)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         recalled_again = pcm.recall(conn, "helper memory", project_path=str(repo), limit=20)
+        snapshots_after = conn.execute("SELECT snapshotJSON FROM project_memory_snapshots").fetchall()
     assert recalled_again["results"] == []
+    # forget must purge the canonical plaintext body from the snapshot, not merely drop
+    # the index row (which would leave recall empty while the body survived on disk).
+    assert all(raw_body not in row[0] for row in snapshots_after)
+
+
+def test_get_symbol_tier_is_lexical_fallback_when_no_helper_or_lsp(tmp_path: Path, monkeypatch) -> None:
+    # Negative tier proof: with neither the static parser helper nor an LSP available,
+    # the tier MUST be exactly lexical_fallback. A tier is only assigned when earned —
+    # nothing may falsely elevate to static_tree_sitter / exact_lsp on the lexical path.
+    monkeypatch.setattr(pcm, "static_parser_path", lambda: None)
+    monkeypatch.delenv("OPENBURNBAR_CODE_LSP_COMMANDS", raising=False)
+    repo = _make_repo(tmp_path / "repo-lexical", "def lonely_symbol():\n    return 1\n")
+    db_path = tmp_path / "openburnbar.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        pcm.index_project(conn, str(repo), max_files=25)
+        symbol = pcm.get_symbol(conn, "lonely_symbol", str(repo), limit=10)["symbols"][0]
+        assert symbol["confidenceTier"] == "lexical_fallback"
+        assert symbol["tierEvidence"]["parser"] == "regex"
+        assert symbol["tierEvidence"]["shaMatch"] is False
+        assert symbol["tierEvidence"]["lspResponded"] is False
+
+
+def test_remember_rejects_secret_bearing_memory_with_label_only_audit(tmp_path: Path) -> None:
+    # The memory-write secret gate (pcm.remember) must reject a secret-bearing body
+    # before any persistence, with label-only audit evidence (no raw secret material).
+    repo = _make_repo(tmp_path / "repo-secret-mem", "def durable_fact(): return 1\n")
+    db_path = tmp_path / "openburnbar.sqlite"
+    fake_token = "ghp_" + ("9" * 36)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        result = pcm.remember(
+            conn,
+            f"Use the deploy token {fake_token} for releases.",
+            project_path=str(repo),
+            kind="fact",
+            scope="personal",
+            tags=["secret"],
+            confidence=1.0,
+            source_path=None,
+        )
+        assert result["status"] == "rejected"
+        assert result["code"] == "SECRET_DETECTED"
+        assert any("GitHub" in label for label in result["labels"])
+        # Nothing was persisted by the rejected write.
+        assert conn.execute("SELECT COUNT(*) FROM agent_memories").fetchone()[0] == 0
+        # The rejection is audited with label-only evidence — never the raw secret.
+        audit = pcm.audit_trail(conn, str(repo), limit=10)
+        event = next(item for item in audit["events"] if item["action"] == "memory.secret_rejected")
+        assert any("GitHub" in label for label in event["labels"])
+        assert "ghp_" not in json.dumps(event)
+
+
+def test_index_project_evicts_oldest_files_first_under_budget(tmp_path: Path) -> None:
+    # Age-aware eviction: when a project exceeds its storage budget, the NEWEST
+    # (most relevant) files are kept and the OLDEST are evicted — deterministic,
+    # not whatever order the filesystem walk yields.
+    repo = tmp_path / "repo-evict"
+    repo.mkdir()
+    (repo / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    older = repo / "older.py"
+    newer = repo / "newer.py"
+    older.write_text("def older_symbol():\n    return 1\n", encoding="utf-8")
+    newer.write_text("def newer_symbol():\n    return 1\n", encoding="utf-8")
+    os.utime(older, (1_000, 1_000))
+    os.utime(newer, (2_000, 2_000))
+    db_path = tmp_path / "openburnbar.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        # Budget fits exactly one ~33-byte file, forcing one eviction.
+        result = pcm.index_project(conn, str(repo), max_files=25, storage_budget_bytes=40)
+        assert result["indexedFiles"] == 1
+        assert [r["filePath"] for r in result["rejectedFiles"]] == ["older.py"]
+        assert result["rejectedFiles"][0]["labels"] == ["Storage budget cap reached"]

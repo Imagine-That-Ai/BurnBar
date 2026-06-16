@@ -79,6 +79,35 @@ run_swift_tests() {
     args+=(--filter "$filter")
   fi
 
+  if [[ "$package_path" == "$repo_root/OpenBurnBarDaemon" ]]; then
+    local build_args=(--package-path "$package_path" --build-tests)
+    if ((${#coverage_flags[@]})); then
+      build_args+=("${coverage_flags[@]}")
+    fi
+    if ((${#libsignal_linker_flags[@]})); then
+      build_args+=("${libsignal_linker_flags[@]}")
+    fi
+
+    swift build "${build_args[@]}"
+
+    local bin_path
+    bin_path="$(swift build --package-path "$package_path" --show-bin-path)"
+
+    local sqlcipher_framework_src="${package_path}/.build/artifacts/sqlcipher.swift/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
+    local sqlcipher_framework_dst="${bin_path}/PackageFrameworks/SQLCipher.framework"
+    if [[ ! -d "$sqlcipher_framework_src" ]]; then
+      echo "Missing SQLCipher.framework at ${sqlcipher_framework_src}; SwiftPM did not resolve the SQLCipher binary artifact." >&2
+      exit 1
+    fi
+
+    mkdir -p "$(dirname "$sqlcipher_framework_dst")"
+    rm -rf "$sqlcipher_framework_dst"
+    cp -R "$sqlcipher_framework_src" "$sqlcipher_framework_dst"
+
+    swift test "${args[@]}" --skip-build
+    return
+  fi
+
   swift test "${args[@]}"
 }
 
