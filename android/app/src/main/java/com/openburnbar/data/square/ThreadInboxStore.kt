@@ -467,13 +467,12 @@ class ThreadInboxStore private constructor(
         else -> null
     }
 
-    private fun cliSessionSealedPayloadAAD(uid: String, documentID: String) =
-        CloudVaultAADContext(
-            uid = uid,
-            collection = "cli_sessions",
-            docID = documentID,
-            field = "sealedPayload",
-        )
+    private fun cliSessionSealedPayloadAAD(uid: String, documentID: String) = CloudVaultAADContext(
+        uid = uid,
+        collection = "cli_sessions",
+        docID = documentID,
+        field = "sealedPayload",
+    )
 
     companion object {
         @Volatile
