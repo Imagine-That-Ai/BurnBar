@@ -279,7 +279,13 @@ final class CLIAgentChatReaderTests: XCTestCase {
             isPinned: nil,
             priorityOrder: nil
         )
-        let sealed = try CLIAgentSessionCodec.encodeSealed(renamed, vaultKey: key, vaultKeyID: vaultKeyID)
+        let sealed = try CLIAgentSessionCodec.encodeSealed(
+            renamed,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID,
+            uid: "user-1",
+            documentID: "s1"
+        )
 
         // Sealed envelope present; no plaintext title/preview/customTitle/messages.
         XCTAssertEqual(sealed["contentSealed"] as? Bool, true)
@@ -291,7 +297,7 @@ final class CLIAgentChatReaderTests: XCTestCase {
 
         // Round-trips back to the new custom title with the vault key.
         let decoded = try XCTUnwrap(
-            CLIAgentSessionCodec.decodeSealed(documentID: "s1", data: sealed, vaultKey: key)
+            CLIAgentSessionCodec.decodeSealed(documentID: "s1", uid: "user-1", data: sealed, vaultKey: key)
         )
         XCTAssertEqual(decoded.customTitle, "My private rename")
         XCTAssertEqual(decoded.messages.first?.text, "Private prompt")
@@ -310,11 +316,18 @@ final class CLIAgentChatReaderTests: XCTestCase {
             isPinned: nil,
             priorityOrder: nil
         )
-        let sealed = try CLIAgentSessionCodec.encodeSealed(renamed, vaultKey: key, vaultKeyID: vaultKeyID)
+        let sealed = try CLIAgentSessionCodec.encodeSealed(
+            renamed,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID,
+            uid: "user-1",
+            documentID: "s1"
+        )
 
         // The legacy/plaintext decode path can't surface any private text.
         let decoded = CLIAgentChatFirestoreSource.decodeDocument(
             documentID: "s1",
+            uid: "user-1",
             data: sealed,
             vaultKey: nil
         )

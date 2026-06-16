@@ -131,10 +131,11 @@ final class CLIAgentChatReader {
                     self?.sessions = snapshot?.documents.compactMap { document in
                         CLIAgentChatFirestoreSource.decodeDocument(
                             documentID: document.documentID,
-	                            data: document.data(),
-	                            vaultKey: key?.keyData
-	                        )
-	                    } ?? []
+                            uid: uid,
+                            data: document.data(),
+                            vaultKey: key?.keyData
+                        )
+                    } ?? []
                     self?.lastRefreshedAt = Date()
                     self?.lastError = nil
                 }
@@ -172,6 +173,7 @@ final class CLIAgentChatReader {
             guard let data = snapshot.data(),
                   let record = CLIAgentChatFirestoreSource.decodeDocument(
                     documentID: id,
+                    uid: uid,
                     data: data,
                     vaultKey: key?.keyData
                   ) else {
@@ -196,7 +198,9 @@ final class CLIAgentChatReader {
             var sealed = try CLIAgentSessionCodec.encodeSealed(
                 updated,
                 vaultKey: key.keyData,
-                vaultKeyID: key.vaultKeyID
+                vaultKeyID: key.vaultKeyID,
+                uid: uid,
+                documentID: id
             )
             // `merge:true` keeps untouched fields, so explicitly delete any
             // legacy plaintext `customTitle` (and the legacy plaintext `title`/
@@ -291,28 +295,29 @@ final class CLIAgentChatFirestoreSource: CLIAgentChatRemoteSource {
         if let filter {
             query = query.whereField("agent", isEqualTo: filter.rawValue)
         }
-	        let snapshot = try await query.getDocuments()
-	        let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
-	        return snapshot.documents.compactMap { document in
-	            Self.decodeDocument(
-	                documentID: document.documentID,
-	                data: document.data(),
-	                vaultKey: key?.keyData
-	            )
-	        }
-	    }
+        let snapshot = try await query.getDocuments()
+        let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid)
+        return snapshot.documents.compactMap { document in
+            Self.decodeDocument(
+                documentID: document.documentID,
+                uid: uid,
+                data: document.data(),
+                vaultKey: key?.keyData
+            )
+        }
+    }
 
-	    static func decodeDocument(documentID: String, data: [String: Any], vaultKey: Data?) -> CLIAgentSessionRecord? {
-	        if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
-	            guard let vaultKey else { return nil }
-	            return CLIAgentSessionCodec.decodeSealed(documentID: documentID, data: data, vaultKey: vaultKey)
-	        }
-	        return CLIAgentSessionCodec.decode(
-	            documentID: documentID,
-	            data: data,
-	            timestampDecoder: Self.firestoreTimestampDecoder
-	        )
-	    }
+    static func decodeDocument(documentID: String, uid: String, data: [String: Any], vaultKey: Data?) -> CLIAgentSessionRecord? {
+        if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
+            guard let vaultKey else { return nil }
+            return CLIAgentSessionCodec.decodeSealed(documentID: documentID, uid: uid, data: data, vaultKey: vaultKey)
+        }
+        return CLIAgentSessionCodec.decode(
+            documentID: documentID,
+            data: data,
+            timestampDecoder: Self.firestoreTimestampDecoder
+        )
+    }
 
     /// Firestore returns `Timestamp` (not Foundation `Date`). The codec
     /// stays SDK-free; we plug an SDK-aware decoder here.

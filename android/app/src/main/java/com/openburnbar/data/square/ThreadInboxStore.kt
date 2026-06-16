@@ -10,6 +10,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.missions.MobileMissionConsoleHost
@@ -156,7 +157,7 @@ class ThreadInboxStore private constructor(
                     AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData
                 }.getOrNull()
 
-            val parsed = snapshot.documents.mapNotNull { document -> parseCLISession(document.data.orEmpty(), document.id, vaultKey) }
+            val parsed = snapshot.documents.mapNotNull { document -> parseCLISession(document.data.orEmpty(), document.id, uid, vaultKey) }
             val parts = buildThreadInboxRefreshParts(parsed, historyStore, missionHost)
             cliSessionsByItemID = parts.cliSessionsByItemID
             items = parts.items
@@ -247,17 +248,23 @@ class ThreadInboxStore private constructor(
             runCatching {
                 cliAgentSealedSessionJson.decodeFromString(
                     CLIAgentSealedSessionPayload.serializer(),
-                    CloudVaultCrypto.openPayload(envelope, resolvedKey.keyData).toString(Charsets.UTF_8),
+                    CloudVaultCrypto.openPayload(
+                        envelope,
+                        resolvedKey.keyData,
+                        cliSessionSealedPayloadAAD(uid, docRef.id),
+                    ).toString(Charsets.UTF_8),
                 )
             }.getOrNull() ?: return false
 
         val updated = current.copy(customTitle = customTitle.ifEmpty { null })
+        val aadContext = cliSessionSealedPayloadAAD(uid, docRef.id)
         val sealed =
             CloudVaultCrypto.sealPayload(
                 cliAgentSealedSessionJson.encodeToString(CLIAgentSealedSessionPayload.serializer(), updated)
                     .toByteArray(Charsets.UTF_8),
                 resolvedKey.keyData,
                 resolvedKey.vaultKeyID,
+                aadContext,
             )
 
         val payload =
@@ -298,14 +305,14 @@ class ThreadInboxStore private constructor(
 
     fun cliSessionFor(item: ThreadInboxItem): CLIAgentSessionRecord? = cliSessionsByItemID[item.id]
 
-    private fun parseCLISession(data: Map<String, Any>, documentID: String, vaultKey: ByteArray? = null): CLIAgentSessionRecord? {
+    private fun parseCLISession(data: Map<String, Any>, documentID: String, uid: String, vaultKey: ByteArray? = null): CLIAgentSessionRecord? {
         // Sealed branch (current Mac/iOS writers): the whole record — transcript,
         // customTitle, workspace label — lives inside `sealedPayload`. Top-level
         // fields carry only non-private routing/sort metadata. Mirror the iOS
         // reader (`CLIAgentSessionCodec.decodeSealed`) and the Android assistant
         // sealed-read in `AssistantChatHistoryStore.decodeThread`.
         if (data["contentSealed"] == true || data["sealedPayload"] != null) {
-            return parseSealedCLISession(data, documentID, vaultKey)
+            return parseSealedCLISession(data, documentID, uid, vaultKey)
         }
 
         // Legacy plaintext branch — kept so in-flight/legacy docs written before
@@ -348,12 +355,13 @@ class ThreadInboxStore private constructor(
      * fail-soft contract the plaintext branch and the iOS reader use.
      */
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
-    private fun parseSealedCLISession(data: Map<String, Any>, documentID: String, vaultKey: ByteArray?): CLIAgentSessionRecord? {
+    private fun parseSealedCLISession(data: Map<String, Any>, documentID: String, uid: String, vaultKey: ByteArray?): CLIAgentSessionRecord? {
         val key = vaultKey ?: return null
         val envelope = CloudVaultCrypto.sealedPayloadFromMap(data["sealedPayload"] as? Map<*, *>) ?: return null
+        val aadContext = cliSessionSealedPayloadAAD(uid, documentID)
         val payload =
             runCatching {
-                val bytes = CloudVaultCrypto.openPayload(envelope, key)
+                val bytes = CloudVaultCrypto.openPayload(envelope, key, aadContext)
                 cliAgentSealedSessionJson.decodeFromString(
                     CLIAgentSealedSessionPayload.serializer(),
                     bytes.toString(Charsets.UTF_8),
@@ -458,6 +466,14 @@ class ThreadInboxStore private constructor(
         is String -> runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrNull()
         else -> null
     }
+
+    private fun cliSessionSealedPayloadAAD(uid: String, documentID: String) =
+        CloudVaultAADContext(
+            uid = uid,
+            collection = "cli_sessions",
+            docID = documentID,
+            field = "sealedPayload",
+        )
 
     companion object {
         @Volatile

@@ -74,21 +74,21 @@ final class CLIAgentSessionMirror: Sendable {
         let account = await MainActor.run {
             (
                 accountManager.isFirebaseAvailable,
-	                accountManager.isSignedIn,
-	                accountManager.isCloudSyncEnabled,
-	                accountManager.userID,
-	                accountManager.deviceId
-	            )
-	        }
+                accountManager.isSignedIn,
+                accountManager.isCloudSyncEnabled,
+                accountManager.userID,
+                accountManager.deviceId
+            )
+        }
         guard account.0,
               account.1,
               account.2,
               isEnabled,
               let agent = Self.cliAgent(for: backend),
-	              let uid = account.3,
-	              !messages.isEmpty else {
-	            return
-	        }
+              let uid = account.3,
+              !messages.isEmpty else {
+            return
+        }
 
         let record = Self.build(
             threadID: threadID,
@@ -100,23 +100,26 @@ final class CLIAgentSessionMirror: Sendable {
             endedAt: endedAt
         )
 
-	        let firestore = firestoreProvider()
-	        let docRef = firestore
-	            .collection("users").document(uid)
-	            .collection("cli_sessions").document(threadID)
-	        do {
-	            let resolvedKey = try await MacCloudVaultKeyAccess.keyForWriting(
-	                uid: uid,
-	                deviceId: account.4,
-	                firestore: firestore
-	            )
-	            let payload = try CLIAgentSessionCodec.encodeSealed(
-	                record,
-	                vaultKey: resolvedKey.keyData,
-	                vaultKeyID: resolvedKey.vaultKeyID
-	            )
-	            try await docRef.setData(payload, merge: true)
-	            logger.debug("mirrored CLI session \(threadID, privacy: .public) agent=\(record.agent.rawValue, privacy: .public) messages=\(record.messages.count)")
+        let firestore = firestoreProvider()
+        let documentID = threadID
+        let docRef = firestore
+            .collection("users").document(uid)
+            .collection("cli_sessions").document(documentID)
+        do {
+            let resolvedKey = try await MacCloudVaultKeyAccess.keyForWriting(
+                uid: uid,
+                deviceId: account.4,
+                firestore: firestore
+            )
+            let payload = try CLIAgentSessionCodec.encodeSealed(
+                record,
+                vaultKey: resolvedKey.keyData,
+                vaultKeyID: resolvedKey.vaultKeyID,
+                uid: uid,
+                documentID: documentID
+            )
+            try await docRef.setData(payload, merge: true)
+            logger.debug("mirrored CLI session \(threadID, privacy: .public) agent=\(record.agent.rawValue, privacy: .public) messages=\(record.messages.count)")
         } catch {
             logger.warning("CLI mirror upload failed for \(threadID, privacy: .public): \(String(describing: error), privacy: .public)")
         }
@@ -131,40 +134,43 @@ final class CLIAgentSessionMirror: Sendable {
         let account = await MainActor.run {
             (
                 accountManager.isFirebaseAvailable,
-	                accountManager.isSignedIn,
-	                accountManager.isCloudSyncEnabled,
-	                accountManager.userID,
-	                accountManager.deviceId
-	            )
-	        }
+                accountManager.isSignedIn,
+                accountManager.isCloudSyncEnabled,
+                accountManager.userID,
+                accountManager.deviceId
+            )
+        }
         guard account.0,
               account.1,
               account.2,
               isEnabled,
-	              let uid = account.3,
-	              let record = Self.buildArchivedLogRecord(
+              let uid = account.3,
+              let record = Self.buildArchivedLogRecord(
                 conversation: conversation,
                 cloudLogDocumentID: cloudLogDocumentID
               ) else {
             return
         }
 
-	        let firestore = firestoreProvider()
-	        let docRef = firestore
-	            .collection("users").document(uid)
-	            .collection("cli_sessions").document(Self.firestoreDocumentID(for: record))
-	        do {
-	            let resolvedKey = try await MacCloudVaultKeyAccess.keyForWriting(
-	                uid: uid,
-	                deviceId: account.4,
-	                firestore: firestore
-	            )
-	            let payload = try CLIAgentSessionCodec.encodeSealed(
-	                record,
-	                vaultKey: resolvedKey.keyData,
-	                vaultKeyID: resolvedKey.vaultKeyID
-	            )
-	            try await docRef.setData(payload, merge: true)
+        let firestore = firestoreProvider()
+        let documentID = Self.firestoreDocumentID(for: record)
+        let docRef = firestore
+            .collection("users").document(uid)
+            .collection("cli_sessions").document(documentID)
+        do {
+            let resolvedKey = try await MacCloudVaultKeyAccess.keyForWriting(
+                uid: uid,
+                deviceId: account.4,
+                firestore: firestore
+            )
+            let payload = try CLIAgentSessionCodec.encodeSealed(
+                record,
+                vaultKey: resolvedKey.keyData,
+                vaultKeyID: resolvedKey.vaultKeyID,
+                uid: uid,
+                documentID: documentID
+            )
+            try await docRef.setData(payload, merge: true)
             logger.debug("mirrored archived CLI log \(record.id, privacy: .public) agent=\(record.agent.rawValue, privacy: .public)")
         } catch {
             logger.warning("Archived CLI mirror upload failed for \(record.id, privacy: .public): \(String(describing: error), privacy: .public)")
