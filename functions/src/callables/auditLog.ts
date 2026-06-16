@@ -347,6 +347,8 @@ export const AUDIT_ACTIONS = {
   domainDelete: "data.delete",
   domainDeleteIntent: "data.delete.intent",
   domainDeleteComplete: "data.delete.complete",
+  accountDeleteIntent: "account.delete.intent",
+  accountDeleteComplete: "account.delete.complete",
   recoverySetup: "recovery.setup",
   recoveryConfirm: "recovery.confirm",
   panicRevoke: "access.revoke_all",

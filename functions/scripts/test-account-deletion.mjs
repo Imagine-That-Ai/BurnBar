@@ -108,6 +108,15 @@ function doc(path, data = {}, childCollections = []) {
   return value;
 }
 
+function auditOptions() {
+  return {
+    actor: "user:test",
+    domain: "account",
+    appendAuditEventRequired: async () => ({ seq: 0, hash: "intent" }),
+    appendAuditEvent: async () => ({ seq: 1, hash: "complete" }),
+  };
+}
+
 assert.equal(userWorkspaceID("alice"), "workspace-alice");
 assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_work");
 
@@ -244,6 +253,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     deleteAuthUser: async (uid) => {
       deletedAuthUsers.push(uid);
     },
+    audit: auditOptions(),
     logger: { warn() {} },
   });
 
@@ -273,6 +283,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     deleteAuthUser: async (uid) => {
       deletedAuthUsers.push(uid);
     },
+    audit: auditOptions(),
     logger: { warn() {} },
   });
 
@@ -296,6 +307,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     deleteAuthUser: async () => {
       throw userNotFound;
     },
+    audit: auditOptions(),
     logger: { warn() {} },
   });
 
