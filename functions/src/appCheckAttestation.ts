@@ -21,8 +21,24 @@ const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
 
 export const APP_CHECK_ATTESTATION_CLAIM_KEY = "obb_app_check" as const;
 const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
-/** Re-bind after this many days so stale device attestations expire. */
-export const APP_CHECK_ATTESTATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Re-bind after this window so a stolen device cannot retain high-risk access.
+ * Default tightened to 7 days (was 30); replay WITHIN the window is separately
+ * defeated by the single-use high-risk nonce (`requireHighRiskNonce`). Operators
+ * may tune via the `APP_CHECK_ATTESTATION_MAX_AGE_MS` env var; a missing,
+ * non-finite, or non-positive value falls back to the secure default — freshness
+ * enforcement can never be disabled.
+ */
+const APP_CHECK_ATTESTATION_MAX_AGE_DEFAULT_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function resolveAppCheckAttestationMaxAgeMs(
+  raw: string | undefined = process.env.APP_CHECK_ATTESTATION_MAX_AGE_MS,
+): number {
+  const parsed = raw === undefined || raw.trim() === "" ? Number.NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : APP_CHECK_ATTESTATION_MAX_AGE_DEFAULT_MS;
+}
+
+export const APP_CHECK_ATTESTATION_MAX_AGE_MS = resolveAppCheckAttestationMaxAgeMs();
 
 /** Per-call replay-resistance nonce TTL (single-use, short-lived). */
 export const HIGH_RISK_NONCE_TTL_MS = 2 * 60 * 1000; // 2 minutes
