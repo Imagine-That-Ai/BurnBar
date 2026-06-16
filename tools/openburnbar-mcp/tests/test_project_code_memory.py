@@ -54,7 +54,9 @@ def _load_server():
         sys.modules["mcp.server"] = server_mod
         sys.modules["mcp.server.fastmcp"] = fastmcp_mod
 
-    spec = importlib.util.spec_from_file_location("openburnbar_mcp_server_project_memory_test", str(_PARENT / "server.py"))
+    spec = importlib.util.spec_from_file_location(
+        "openburnbar_mcp_server_project_memory_test", str(_PARENT / "server.py")
+    )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules["openburnbar_mcp_server_project_memory_test"] = module
@@ -126,7 +128,7 @@ def foreign_feature():
         assert all(edge["hop"] == 1 for edge in graph["edges"])
 
         pack = pcm.context_pack(conn, "beta_helper", str(repo_a), token_budget=2000, limit=5)
-        assert "<file path=\"main.py\"" in pack["contextPack"]
+        assert '<file path="main.py"' in pack["contextPack"]
 
 
 def test_call_graph_depth_traverses_multi_hop_chain(tmp_path: Path) -> None:
@@ -171,7 +173,7 @@ def test_exact_lsp_tier_and_references_when_configured(tmp_path: Path, monkeypat
         pytest.skip("project-code-static-parser helper has not been built")
     fake_lsp = tmp_path / "fake_lsp.py"
     fake_lsp.write_text(
-        r'''
+        r"""
 import json
 import sys
 
@@ -214,7 +216,7 @@ while True:
         write_message({"jsonrpc": "2.0", "id": msg["id"], "result": None})
     elif method == "exit":
         break
-''',
+""",
         encoding="utf-8",
     )
     repo = _make_repo(
@@ -361,7 +363,9 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
     json.loads(server.burnbar_remember("Remember method names.", project_path=str(repo)))
     json.loads(server.burnbar_forget("mem_fixture", project_path=str(repo)))
     json.loads(server.burnbar_index_project(project_path=str(repo), storage_budget_bytes=4096))
-    json.loads(server.burnbar_watch_project(project_path=str(repo), storage_budget_bytes=4096, poll_interval_seconds=0.5))
+    json.loads(
+        server.burnbar_watch_project(project_path=str(repo), storage_budget_bytes=4096, poll_interval_seconds=0.5)
+    )
     json.loads(server.burnbar_explore("method", project_path=str(repo)))
 
     assert [method for method, _ in calls] == [
@@ -376,7 +380,9 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
     assert calls[4][1]["maxBytes"] == 6000
 
 
-def test_write_tools_do_not_fall_back_to_direct_sqlite_even_with_legacy_override_env(tmp_path: Path, monkeypatch) -> None:
+def test_write_tools_do_not_fall_back_to_direct_sqlite_even_with_legacy_override_env(
+    tmp_path: Path, monkeypatch
+) -> None:
     db_path = tmp_path / "openburnbar.sqlite"
     sqlite3.connect(db_path).close()
     repo = _make_repo(tmp_path / "repo-no-direct", "def durable_fact(): return 1\n")

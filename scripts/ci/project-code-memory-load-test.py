@@ -49,7 +49,20 @@ def seed_non_code_row(conn: sqlite3.Connection) -> None:
             (id, sourceKind, sourceID, sourceVersionID, provider, projectName, title, bodyPreview, indexedAt, contentHash, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        ("conversation-sentinel", "conversation", "conversation-sentinel", "", "test", "sentinel", "Conversation sentinel", "untouched", ts, "sentinel", ts, ts),
+        (
+            "conversation-sentinel",
+            "conversation",
+            "conversation-sentinel",
+            "",
+            "test",
+            "sentinel",
+            "Conversation sentinel",
+            "untouched",
+            ts,
+            "sentinel",
+            ts,
+            ts,
+        ),
     )
 
 
@@ -63,7 +76,9 @@ def main() -> int:
             conn.row_factory = sqlite3.Row
             pcm.ensure_schema(conn)
             seed_non_code_row(conn)
-            before_non_code = conn.execute("SELECT COUNT(*) FROM search_documents WHERE sourceKind != 'code'").fetchone()[0]
+            before_non_code = conn.execute(
+                "SELECT COUNT(*) FROM search_documents WHERE sourceKind != 'code'"
+            ).fetchone()[0]
 
             started = time.perf_counter()
             result = pcm.index_project(
@@ -77,7 +92,9 @@ def main() -> int:
 
             symbol_count = conn.execute("SELECT COUNT(*) FROM code_symbols").fetchone()[0]
             status = pcm.index_status(conn, str(repo))
-            after_non_code = conn.execute("SELECT COUNT(*) FROM search_documents WHERE sourceKind != 'code'").fetchone()[0]
+            after_non_code = conn.execute(
+                "SELECT COUNT(*) FROM search_documents WHERE sourceKind != 'code'"
+            ).fetchone()[0]
 
             query_name = f"load_symbol_{FILE_COUNT - 1:03d}_{SYMBOLS_PER_FILE - 1:04d}"
             query_started = time.perf_counter()

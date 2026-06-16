@@ -67,7 +67,9 @@ def test_pareto_guard_keeps_unknown_zero_price_below_real_priced_capability() ->
         "costUnknown": True,
     }
 
-    ranked = sorted([unknown_zero, real_priced], key=lambda candidate: ministry._candidate_sort_key(candidate, "pareto"))
+    ranked = sorted(
+        [unknown_zero, real_priced], key=lambda candidate: ministry._candidate_sort_key(candidate, "pareto")
+    )
 
     assert ranked[0]["arg"] == "real-priced"
 

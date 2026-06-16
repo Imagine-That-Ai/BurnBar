@@ -97,7 +97,10 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----"),
     ),
     ("database URI credentials", re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^@\s]+@[^/\s]+", re.IGNORECASE)),
-    ("generic long secret assignment", re.compile(r"\b(?:api[_-]?key|secret|token|password|passwd)\s*[:=]\s*[\"']?[^\"'\s]{32,}", re.IGNORECASE)),
+    (
+        "generic long secret assignment",
+        re.compile(r"\b(?:api[_-]?key|secret|token|password|passwd)\s*[:=]\s*[\"']?[^\"'\s]{32,}", re.IGNORECASE),
+    ),
     ("dotenv secret assignment", re.compile(r"(?m)^\s*[A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD)\s*=\s*[^#\n]{16,}")),
     ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
     ("email address", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")),
@@ -197,7 +200,7 @@ def redact_for_memory(text: str) -> tuple[str, list[str]]:
 
 
 def make_blob_sha(data: bytes) -> str:
-    header = f"blob {len(data)}\0".encode("utf-8")
+    header = f"blob {len(data)}\0".encode()
     return hashlib.sha1(header + data).hexdigest()
 
 
@@ -334,7 +337,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)"
+    )
     conn.execute(
         """
         CREATE VIRTUAL TABLE IF NOT EXISTS agent_memories_fts USING fts5(
@@ -377,7 +382,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS code_artifacts_project_path_idx ON code_artifacts(project_id, file_path)")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS code_artifacts_project_path_idx ON code_artifacts(project_id, file_path)"
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS code_symbols (
@@ -423,7 +430,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS code_call_edges_project_idx ON code_call_edges(project_id, caller_symbol_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS code_call_edges_project_idx ON code_call_edges(project_id, caller_symbol_id)"
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS code_diagnostics_cache (
@@ -471,7 +480,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS project_memory_snapshots_updated_idx ON project_memory_snapshots(updatedAt)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS project_memory_snapshots_updated_idx ON project_memory_snapshots(updatedAt)"
+    )
     ensure_embedding_version(conn)
     migrate_legacy_plaintext_agent_memories(conn)
 
@@ -506,7 +517,7 @@ def deterministic_embedding(text: str, dimensions: int = EMBEDDING_DIMENSIONS) -
     source_tokens = tokens if tokens else [normalized]
     vector = [0.0] * max(1, int(dimensions))
     for position, token in enumerate(source_tokens):
-        digest = hashlib.sha256(f"{EMBEDDING_SEED}|{position}|{token}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(f"{EMBEDDING_SEED}|{position}|{token}".encode()).hexdigest()
         byte_values = digest.encode("utf-8")
         weight = 1.0 / float(max(1, position + 1))
         for lane in range(min(16, len(byte_values))):
@@ -538,7 +549,7 @@ def cosine(lhs: list[float], rhs: list[float]) -> float:
     denom = math.sqrt(sum(v * v for v in lhs)) * math.sqrt(sum(v * v for v in rhs))
     if denom <= 0:
         return float("-inf")
-    return sum(a * b for a, b in zip(lhs, rhs)) / denom
+    return sum(a * b for a, b in zip(lhs, rhs, strict=False)) / denom
 
 
 def fts_query(query: str) -> str:
@@ -655,7 +666,7 @@ def memory_citations(memory_id: str, source_path: str | None, ts: str) -> list[d
         return []
     return [
         {
-            "id": f"cite_{sha256_hex(f'{memory_id}:{source_path}'.encode('utf-8'))[:16]}",
+            "id": f"cite_{sha256_hex(f'{memory_id}:{source_path}'.encode())[:16]}",
             "sourceID": source_path,
             "sourceKind": "code",
             "title": source_path,
@@ -665,7 +676,9 @@ def memory_citations(memory_id: str, source_path: str | None, ts: str) -> list[d
     ]
 
 
-def load_project_memory_snapshot(conn: sqlite3.Connection, project_id: str, project_display_name: str, ts: str) -> dict[str, Any]:
+def load_project_memory_snapshot(
+    conn: sqlite3.Connection, project_id: str, project_display_name: str, ts: str
+) -> dict[str, Any]:
     row = conn.execute(
         "SELECT snapshotJSON FROM project_memory_snapshots WHERE projectSlug = ? LIMIT 1",
         (project_memory_slug(project_id),),
@@ -680,7 +693,9 @@ def load_project_memory_snapshot(conn: sqlite3.Connection, project_id: str, proj
     return project_memory_base_snapshot(project_id, project_display_name, ts)
 
 
-def write_project_memory_snapshot(conn: sqlite3.Connection, project_id: str, project_display_name: str, snapshot: dict[str, Any], ts: str) -> None:
+def write_project_memory_snapshot(
+    conn: sqlite3.Connection, project_id: str, project_display_name: str, snapshot: dict[str, Any], ts: str
+) -> None:
     updated = dict(snapshot)
     updated["projectSlug"] = project_memory_slug(project_id)
     updated["projectDisplayName"] = str(updated.get("projectDisplayName") or project_display_name)
@@ -692,8 +707,12 @@ def write_project_memory_snapshot(conn: sqlite3.Connection, project_id: str, pro
     content_hash = sha256_hex(json.dumps(hash_payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     updated["contentHash"] = content_hash
     snapshot_json = json.dumps(updated, sort_keys=True, separators=(",", ":"))
-    source_session_count = len(updated.get("sourceSessionIDs") if isinstance(updated.get("sourceSessionIDs"), list) else [])
-    source_conversation_count = len(updated.get("sourceConversationIDs") if isinstance(updated.get("sourceConversationIDs"), list) else [])
+    source_session_count = len(
+        updated.get("sourceSessionIDs") if isinstance(updated.get("sourceSessionIDs"), list) else []
+    )
+    source_conversation_count = len(
+        updated.get("sourceConversationIDs") if isinstance(updated.get("sourceConversationIDs"), list) else []
+    )
     conn.execute(
         """
         INSERT INTO project_memory_snapshots
@@ -764,7 +783,9 @@ def upsert_project_memory_section(
     write_project_memory_snapshot(conn, project_id, project_display_name, snapshot, ts)
 
 
-def remove_project_memory_section(conn: sqlite3.Connection, *, project_id: str, project_display_name: str, memory_id: str, ts: str) -> None:
+def remove_project_memory_section(
+    conn: sqlite3.Connection, *, project_id: str, project_display_name: str, memory_id: str, ts: str
+) -> None:
     snapshot = load_project_memory_snapshot(conn, project_id, project_display_name, ts)
     pages = snapshot.get("pages") if isinstance(snapshot.get("pages"), list) else []
     changed = False
@@ -886,27 +907,33 @@ def write_authority(method: str, params: dict[str, Any]) -> dict[str, Any]:
         }
 
 
-def insert_fts(conn: sqlite3.Connection, chunk_id: str, document_id: str, title: str, text: str, project_name: str, provider: str) -> None:
+def insert_fts(
+    conn: sqlite3.Connection, chunk_id: str, document_id: str, title: str, text: str, project_name: str, provider: str
+) -> None:
     cols = table_columns(conn, "search_chunks_fts")
-    values: dict[str, Any] = {
-        "chunkID": chunk_id,
-        "documentID": document_id,
-        "title": title,
-        "chunkText": text,
-        "projectName": project_name,
-        "provider": provider,
-    }
-    selected = [col for col in ["chunkID", "documentID", "title", "chunkText", "projectName", "provider"] if col in cols]
-    placeholders = ", ".join("?" for _ in selected)
-    conn.execute(
-        f"INSERT INTO search_chunks_fts ({', '.join(selected)}) VALUES ({placeholders})",
-        [values[col] for col in selected],
-    )
+    if "provider" in cols:
+        conn.execute(
+            """
+            INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (chunk_id, document_id, title, text, project_name, provider),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (chunk_id, document_id, title, text, project_name),
+        )
 
 
 def delete_search_document(conn: sqlite3.Connection, document_id: str) -> None:
     conn.execute("DELETE FROM search_chunks_fts WHERE documentID = ?", (document_id,))
-    chunk_ids = [str(row[0]) for row in conn.execute("SELECT id FROM search_chunks WHERE documentID = ?", (document_id,))]
+    chunk_ids = [
+        str(row[0]) for row in conn.execute("SELECT id FROM search_chunks WHERE documentID = ?", (document_id,))
+    ]
     if chunk_ids:
         conn.executemany("DELETE FROM chunk_embeddings WHERE chunkID = ?", [(chunk_id,) for chunk_id in chunk_ids])
     conn.execute("DELETE FROM search_chunks WHERE documentID = ?", (document_id,))
@@ -944,7 +971,16 @@ def active_embedding_version(conn: sqlite3.Connection) -> str:
     return str(row[0]) if row else ensure_embedding_version(conn)
 
 
-def remember(conn: sqlite3.Connection, text: str, project_path: str | None, kind: str, scope: str, tags: list[str], confidence: float, source_path: str | None) -> dict[str, Any]:
+def remember(
+    conn: sqlite3.Connection,
+    text: str,
+    project_path: str | None,
+    kind: str,
+    scope: str,
+    tags: list[str],
+    confidence: float,
+    source_path: str | None,
+) -> dict[str, Any]:
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
@@ -952,7 +988,14 @@ def remember(conn: sqlite3.Connection, text: str, project_path: str | None, kind
     if not cleaned:
         return {"status": "unavailable", "code": "EMPTY_MEMORY", "reason": "memory text is empty"}
     if labels:
-        audit_event(conn, action="memory.secret_rejected", domain="memory", project_id=project_id, subject_id=None, labels=labels)
+        audit_event(
+            conn,
+            action="memory.secret_rejected",
+            domain="memory",
+            project_id=project_id,
+            subject_id=None,
+            labels=labels,
+        )
         return {"status": "rejected", "code": "SECRET_DETECTED", "labels": labels, **project_payload(root)}
     ts = now_iso()
     body_ref = sha256_hex(cleaned)
@@ -1009,7 +1052,12 @@ def remember(conn: sqlite3.Connection, text: str, project_path: str | None, kind
         (memory_id, project_id, cleaned, " ".join(json.loads(tags_json))),
     )
     audit_event(conn, action="memory.remember", domain="memory", project_id=project_id, subject_id=memory_id, labels=[])
-    return {"status": "ok", "memoryID": memory_id, "storageMode": "project_memory_snapshot_ref", **project_payload(root)}
+    return {
+        "status": "ok",
+        "memoryID": memory_id,
+        "storageMode": "project_memory_snapshot_ref",
+        **project_payload(root),
+    }
 
 
 def recall_fts_candidate_ids(conn: sqlite3.Connection, query: str) -> list[str]:
@@ -1032,7 +1080,14 @@ def recall_fts_candidate_ids(conn: sqlite3.Connection, query: str) -> list[str]:
     return [str(row[0]) for row in rows]
 
 
-def recall(conn: sqlite3.Connection, query: str, project_path: str | None, limit: int, scope: str = "all", include_cross_project: bool = False) -> dict[str, Any]:
+def recall(
+    conn: sqlite3.Connection,
+    query: str,
+    project_path: str | None,
+    limit: int,
+    scope: str = "all",
+    include_cross_project: bool = False,
+) -> dict[str, Any]:
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
@@ -1059,16 +1114,21 @@ def recall(conn: sqlite3.Connection, query: str, project_path: str | None, limit
             local_clauses.append(f"m.id IN ({placeholders})")
             local_args.extend(candidate_ids)
         where = f"WHERE {' AND '.join(local_clauses)}" if local_clauses else ""
-        return conn.execute(
-            f"""
+        query = (
+            """
             SELECT
                 m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
                 m.tags_json, m.source_path, m.valid_from, m.updated_at
             FROM agent_memories AS m
-            {where}
+            """
+            + where
+            + """
             ORDER BY m.updated_at DESC
             LIMIT 1000
-            """,
+            """
+        )
+        return conn.execute(
+            query,
             local_args,
         ).fetchall()
 
@@ -1116,20 +1176,37 @@ def recall(conn: sqlite3.Connection, query: str, project_path: str | None, limit
         )
     results.sort(key=lambda item: (int(item.get("rank") or 0), str(item.get("updatedAt") or "")))
     results = results[:lim]
-    return {"status": "ok", "query": query, "results": results, "crossProject": include_cross_project, **project_payload(root)}
+    return {
+        "status": "ok",
+        "query": query,
+        "results": results,
+        "crossProject": include_cross_project,
+        **project_payload(root),
+    }
 
 
 def forget(conn: sqlite3.Connection, memory_id: str, project_path: str | None) -> dict[str, Any]:
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
-    row = conn.execute("SELECT id FROM agent_memories WHERE id = ? AND project_id = ?", (memory_id, project_id)).fetchone()
+    row = conn.execute(
+        "SELECT id FROM agent_memories WHERE id = ? AND project_id = ?", (memory_id, project_id)
+    ).fetchone()
     if row is None:
         return {"status": "not_found", "memoryID": memory_id, **project_payload(root)}
-    remove_project_memory_section(conn, project_id=project_id, project_display_name=root.name, memory_id=memory_id, ts=now_iso())
+    remove_project_memory_section(
+        conn, project_id=project_id, project_display_name=root.name, memory_id=memory_id, ts=now_iso()
+    )
     conn.execute("DELETE FROM agent_memories_fts WHERE memoryID = ?", (memory_id,))
     conn.execute("DELETE FROM agent_memories WHERE id = ?", (memory_id,))
-    audit_event(conn, action="memory.forget", domain="memory", project_id=project_id, subject_id=memory_id, labels=["local hard delete"])
+    audit_event(
+        conn,
+        action="memory.forget",
+        domain="memory",
+        project_id=project_id,
+        subject_id=memory_id,
+        labels=["local hard delete"],
+    )
     return {"status": "ok", "memoryID": memory_id, "cloudDelete": "not_configured", **project_payload(root)}
 
 
@@ -1169,8 +1246,18 @@ def memory_analytics(conn: sqlite3.Connection, project_path: str | None) -> dict
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
-    by_kind = {str(row[0]): int(row[1]) for row in conn.execute("SELECT kind, COUNT(*) FROM agent_memories WHERE project_id = ? GROUP BY kind", (project_id,))}
-    by_scope = {str(row[0]): int(row[1]) for row in conn.execute("SELECT scope, COUNT(*) FROM agent_memories WHERE project_id = ? GROUP BY scope", (project_id,))}
+    by_kind = {
+        str(row[0]): int(row[1])
+        for row in conn.execute(
+            "SELECT kind, COUNT(*) FROM agent_memories WHERE project_id = ? GROUP BY kind", (project_id,)
+        )
+    }
+    by_scope = {
+        str(row[0]): int(row[1])
+        for row in conn.execute(
+            "SELECT scope, COUNT(*) FROM agent_memories WHERE project_id = ? GROUP BY scope", (project_id,)
+        )
+    }
     total = sum(by_kind.values())
     return {"status": "ok", "total": total, "byKind": by_kind, "byScope": by_scope, **project_payload(root)}
 
@@ -1200,7 +1287,11 @@ def ignored(rel: str, is_dir: bool, patterns: list[str]) -> bool:
         p = pattern.strip("/")
         if not p:
             continue
-        if pattern.endswith("/") and is_dir and (fnmatch.fnmatch(rel, p) or any(fnmatch.fnmatch(part, p) for part in parts)):
+        if (
+            pattern.endswith("/")
+            and is_dir
+            and (fnmatch.fnmatch(rel, p) or any(fnmatch.fnmatch(part, p) for part in parts))
+        ):
             return True
         if fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(Path(rel).name, p) or fnmatch.fnmatch(rel, f"*/{p}"):
             return True
@@ -1233,9 +1324,7 @@ def iter_project_files(root: Path, max_files: int, max_file_bytes: int) -> list[
         current = Path(dirpath)
         rel_dir = str(current.relative_to(root)) if current != root else ""
         dirnames[:] = [
-            name
-            for name in dirnames
-            if not ignored(str(Path(rel_dir) / name) if rel_dir else name, True, patterns)
+            name for name in dirnames if not ignored(str(Path(rel_dir) / name) if rel_dir else name, True, patterns)
         ]
         for name in filenames:
             path = current / name
@@ -1261,14 +1350,26 @@ def iter_project_files(root: Path, max_files: int, max_file_bytes: int) -> list[
 
 
 SYMBOL_PATTERNS: dict[str, re.Pattern[str]] = {
-    "swift": re.compile(r"(?m)^\s*(?:public|private|internal|fileprivate|open|static|\s)*\b(class|struct|enum|protocol|actor|func|var|let)\s+([A-Za-z_][A-Za-z0-9_]*)"),
-    "typescript": re.compile(r"(?m)^\s*(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)"),
-    "tsx": re.compile(r"(?m)^\s*(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)"),
-    "javascript": re.compile(r"(?m)^\s*(?:export\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)"),
+    "swift": re.compile(
+        r"(?m)^\s*(?:public|private|internal|fileprivate|open|static|\s)*\b(class|struct|enum|protocol|actor|func|var|let)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    ),
+    "typescript": re.compile(
+        r"(?m)^\s*(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    ),
+    "tsx": re.compile(
+        r"(?m)^\s*(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    ),
+    "javascript": re.compile(
+        r"(?m)^\s*(?:export\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    ),
     "python": re.compile(r"(?m)^\s*(class|def)\s+([A-Za-z_][A-Za-z0-9_]*)"),
     "rust": re.compile(r"(?m)^\s*(?:pub\s+)?(?:fn|struct|enum|trait|impl)\s+([A-Za-z_][A-Za-z0-9_]*)"),
-    "kotlin": re.compile(r"(?m)^\s*(?:public|private|internal|protected|data|sealed|open|\s)*\b(class|interface|object|fun|val|var)\s+([A-Za-z_][A-Za-z0-9_]*)"),
-    "java": re.compile(r"(?m)^\s*(?:public|private|protected|static|final|\s)*\b(class|interface|enum|void|[A-Za-z_][A-Za-z0-9_<>, ?]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(|\{)"),
+    "kotlin": re.compile(
+        r"(?m)^\s*(?:public|private|internal|protected|data|sealed|open|\s)*\b(class|interface|object|fun|val|var)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    ),
+    "java": re.compile(
+        r"(?m)^\s*(?:public|private|protected|static|final|\s)*\b(class|interface|enum|void|[A-Za-z_][A-Za-z0-9_<>, ?]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(|\{)"
+    ),
     "go": re.compile(r"(?m)^\s*(?:func|type)\s+(?:\([^)]+\)\s*)?([A-Za-z_][A-Za-z0-9_]*)"),
 }
 
@@ -1364,7 +1465,12 @@ def static_tree_sitter_symbols(
         response = json.loads(first_line)
     except json.JSONDecodeError:
         return None
-    if not response.get("ok") or response.get("blobSha") != blob_sha or response.get("filePath") != rel or response.get("errors"):
+    if (
+        not response.get("ok")
+        or response.get("blobSha") != blob_sha
+        or response.get("filePath") != rel
+        or response.get("errors")
+    ):
         return None
     symbols: list[dict[str, Any]] = []
     starts = line_start_offsets(text)
@@ -1429,7 +1535,9 @@ def line_start_offsets(text: str) -> list[int]:
     return offsets
 
 
-def extract_symbols(text: str, lang: str, rel: str, project_id: str, artifact_id: str, blob_sha: str, root: Path | None = None) -> list[dict[str, Any]]:
+def extract_symbols(
+    text: str, lang: str, rel: str, project_id: str, artifact_id: str, blob_sha: str, root: Path | None = None
+) -> list[dict[str, Any]]:
     static_symbols = static_tree_sitter_symbols(text, lang, rel, project_id, artifact_id, blob_sha, root=root)
     if static_symbols:
         return static_symbols
@@ -1446,7 +1554,13 @@ def extract_symbols(text: str, lang: str, rel: str, project_id: str, artifact_id
             name = match.group(2)
         start = match.start()
         end = match.end()
-        range_json = {"start": line_col(text, start), "end": line_col(text, end), "byteStart": start, "byteEnd": end, "filePath": rel}
+        range_json = {
+            "start": line_col(text, start),
+            "end": line_col(text, end),
+            "byteStart": start,
+            "byteEnd": end,
+            "filePath": rel,
+        }
         symbols.append(
             {
                 "id": f"sym_{sha256_hex(f'{project_id}:{artifact_id}:{name}:{start}'.encode())[:32]}",
@@ -1555,8 +1669,14 @@ def exact_lsp_references_for_symbol(
                 "referenceID": f"lsp_ref_{sha256_hex(f'{project_id}:{symbol_name}:{file_path}:{idx}:{ref}'.encode())[:32]}",
                 "symbol": symbol_name,
                 "range": {
-                    "start": {"line": int(ref.get("startLine") or 1), "column": int(ref.get("startCharacter") or 0) + 1},
-                    "end": {"line": int(ref.get("endLine") or ref.get("startLine") or 1), "column": int(ref.get("endCharacter") or 0) + 1},
+                    "start": {
+                        "line": int(ref.get("startLine") or 1),
+                        "column": int(ref.get("startCharacter") or 0) + 1,
+                    },
+                    "end": {
+                        "line": int(ref.get("endLine") or ref.get("startLine") or 1),
+                        "column": int(ref.get("endCharacter") or 0) + 1,
+                    },
                     "filePath": file_path,
                     "startLine": int(ref.get("startLine") or 1),
                     "endLine": int(ref.get("endLine") or ref.get("startLine") or 1),
@@ -1629,7 +1749,14 @@ def index_project(
                 continue
             if labels:
                 rejected.append({"filePath": rel, "labels": labels})
-                audit_event(conn, action="code.secret_rejected", domain="code", project_id=project_id, subject_id=artifact_id, labels=labels)
+                audit_event(
+                    conn,
+                    action="code.secret_rejected",
+                    domain="code",
+                    project_id=project_id,
+                    subject_id=artifact_id,
+                    labels=labels,
+                )
                 continue
             blob_sha = make_blob_sha(data)
             content_hash = sha256_hex(data)
@@ -1743,9 +1870,27 @@ def index_project(
                 storage_budget_bytes = excluded.storage_budget_bytes,
                 vacuumed_at = excluded.vacuumed_at
             """,
-            (project_id, str(root), commit_sha, ts, indexed, chunk_count, len(rejected), storage_byte_count, budget, ts),
+            (
+                project_id,
+                str(root),
+                commit_sha,
+                ts,
+                indexed,
+                chunk_count,
+                len(rejected),
+                storage_byte_count,
+                budget,
+                ts,
+            ),
         )
-        audit_event(conn, action="code.index", domain="code", project_id=project_id, subject_id=str(root), labels=[f"indexed:{indexed}", f"rejected:{len(rejected)}"])
+        audit_event(
+            conn,
+            action="code.index",
+            domain="code",
+            project_id=project_id,
+            subject_id=str(root),
+            labels=[f"indexed:{indexed}", f"rejected:{len(rejected)}"],
+        )
         try:
             conn.execute("PRAGMA incremental_vacuum(256)")
         except sqlite3.DatabaseError:
@@ -1779,7 +1924,9 @@ def build_references(conn: sqlite3.Connection, project_id: str, root: Path, ts: 
     ).fetchall()
     symbol_ranges_by_artifact: dict[str, list[tuple[int, str]]] = {}
     for sym_id, artifact_id, _name, range_raw in symbols:
-        symbol_ranges_by_artifact.setdefault(str(artifact_id), []).append((int(json.loads(str(range_raw)).get("byteStart", 0)), str(sym_id)))
+        symbol_ranges_by_artifact.setdefault(str(artifact_id), []).append(
+            (int(json.loads(str(range_raw)).get("byteStart", 0)), str(sym_id))
+        )
     for values in symbol_ranges_by_artifact.values():
         values.sort()
     for artifact_id, rel, blob_sha in artifacts:
@@ -1797,13 +1944,18 @@ def build_references(conn: sqlite3.Connection, project_id: str, root: Path, ts: 
                     continue
                 start = line_start + match.start()
                 end = line_start + match.end()
-                range_json = {"start": line_col(text, start), "end": line_col(text, end), "byteStart": start, "byteEnd": end, "filePath": str(rel)}
+                range_json = {
+                    "start": line_col(text, start),
+                    "end": line_col(text, end),
+                    "byteStart": start,
+                    "byteEnd": end,
+                    "filePath": str(rel),
+                }
                 caller = enclosing_symbol(symbol_ranges_by_artifact.get(str(artifact_id), []), start)
                 for target_id, _target_artifact, target_range in target_symbols:
-                    if (
-                        target_range.get("filePath") == str(rel)
-                        and int(target_range.get("byteStart", -1)) <= start <= int(target_range.get("byteEnd", -1))
-                    ):
+                    if target_range.get("filePath") == str(rel) and int(
+                        target_range.get("byteStart", -1)
+                    ) <= start <= int(target_range.get("byteEnd", -1)):
                         continue
                     ref_id = f"ref_{sha256_hex(f'{project_id}:{artifact_id}:{target_id}:{start}'.encode())[:32]}"
                     conn.execute(
@@ -1812,7 +1964,16 @@ def build_references(conn: sqlite3.Connection, project_id: str, root: Path, ts: 
                             (id, project_id, from_artifact_id, to_symbol_id, range_json, blob_sha, confidence_tier, indexed_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (ref_id, project_id, artifact_id, target_id, json.dumps(range_json, separators=(",", ":")), blob_sha, "lexical_fallback", ts),
+                        (
+                            ref_id,
+                            project_id,
+                            artifact_id,
+                            target_id,
+                            json.dumps(range_json, separators=(",", ":")),
+                            blob_sha,
+                            "lexical_fallback",
+                            ts,
+                        ),
                     )
                     if caller and caller != target_id:
                         edge_id = f"edge_{sha256_hex(f'{project_id}:{caller}:{target_id}'.encode())[:32]}"
@@ -1840,7 +2001,9 @@ def current_blob_for(conn: sqlite3.Connection, artifact_id: str) -> str | None:
     row = conn.execute("SELECT project_id, file_path FROM code_artifacts WHERE id = ?", (artifact_id,)).fetchone()
     if row is None:
         return None
-    checkpoint = conn.execute("SELECT project_root FROM code_index_checkpoints WHERE project_id = ?", (row[0],)).fetchone()
+    checkpoint = conn.execute(
+        "SELECT project_root FROM code_index_checkpoints WHERE project_id = ?", (row[0],)
+    ).fetchone()
     if checkpoint is None:
         return None
     path = Path(str(checkpoint[0])) / str(row[1])
@@ -2004,7 +2167,9 @@ def search_code(conn: sqlite3.Connection, query: str, project_path: str | None, 
     }
 
 
-def context_pack(conn: sqlite3.Connection, query: str, project_path: str | None, token_budget: int, limit: int) -> dict[str, Any]:
+def context_pack(
+    conn: sqlite3.Connection, query: str, project_path: str | None, token_budget: int, limit: int
+) -> dict[str, Any]:
     payload = search_code(conn, query, project_path, limit)
     if payload.get("status") != "ok":
         return payload
@@ -2023,7 +2188,7 @@ def context_pack(conn: sqlite3.Connection, query: str, project_path: str | None,
             source_tool="burnbar_context_pack",
             record_id=str(hit.get("chunkID") or "unknown"),
         )
-        sections.append(f"<file path=\"{hit['filePath']}\" tier=\"{hit['confidenceTier']}\">\n{wrapped_text}\n</file>")
+        sections.append(f'<file path="{hit["filePath"]}" tier="{hit["confidenceTier"]}">\n{wrapped_text}\n</file>')
     return {**payload, "tokenBudget": budget, "estimatedTokens": used, "contextPack": "\n".join(sections)}
 
 
@@ -2103,7 +2268,9 @@ def find_references(conn: sqlite3.Connection, symbol_name: str, project_path: st
     return {"status": "ok", "references": refs, **project_payload(root)}
 
 
-def call_graph(conn: sqlite3.Connection, symbol_name: str, project_path: str | None, depth: int, limit: int) -> dict[str, Any]:
+def call_graph(
+    conn: sqlite3.Connection, symbol_name: str, project_path: str | None, depth: int, limit: int
+) -> dict[str, Any]:
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
@@ -2128,7 +2295,9 @@ def call_graph(conn: sqlite3.Connection, symbol_name: str, project_path: str | N
     ).fetchall()
 
     def _is_current(row: tuple[Any, ...]) -> bool:
-        return artifact_is_current(conn, str(row[5]), str(row[6])) and artifact_is_current(conn, str(row[7]), str(row[8]))
+        return artifact_is_current(conn, str(row[5]), str(row[6])) and artifact_is_current(
+            conn, str(row[7]), str(row[8])
+        )
 
     def _edge_obj(row: tuple[Any, ...], hop: int) -> dict[str, Any]:
         return {
@@ -2163,14 +2332,19 @@ def call_graph(conn: sqlite3.Connection, symbol_name: str, project_path: str | N
         return discovered
 
     frontier = _add_edges(seed_rows, hop=1)
+    conn.execute("CREATE TEMP TABLE IF NOT EXISTS temp_code_call_frontier (name TEXT PRIMARY KEY)")
 
     # Multi-hop BFS: expand neighbors until depth is exhausted or edge limit reached.
     for hop in range(2, effective_depth + 1):
         if not frontier or len(edges) >= edge_limit:
             break
-        placeholders = ", ".join("?" for _ in frontier)
+        conn.execute("DELETE FROM temp_code_call_frontier")
+        conn.executemany(
+            "INSERT OR IGNORE INTO temp_code_call_frontier (name) VALUES (?)",
+            [(name,) for name in frontier],
+        )
         hop_rows = conn.execute(
-            f"""
+            """
             SELECT caller.name, callee.name, caller_art.file_path, callee_art.file_path, e.confidence_tier,
                    caller_art.id, caller.blob_sha, callee_art.id, callee.blob_sha,
                    caller.tier_evidence_json, callee.tier_evidence_json
@@ -2179,10 +2353,11 @@ def call_graph(conn: sqlite3.Connection, symbol_name: str, project_path: str | N
             JOIN code_symbols AS callee ON callee.id = e.callee_symbol_id
             JOIN code_artifacts AS caller_art ON caller_art.id = caller.artifact_id
             JOIN code_artifacts AS callee_art ON callee_art.id = callee.artifact_id
-            WHERE e.project_id = ? AND caller.name IN ({placeholders})
+            WHERE e.project_id = ?
+              AND caller.name IN (SELECT name FROM temp_code_call_frontier)
             ORDER BY caller.name, callee.name
             """,
-            (project_id, *frontier),
+            (project_id,),
         ).fetchall()
         frontier = _add_edges(hop_rows, hop=hop)
         if len(edges) >= edge_limit:
@@ -2203,22 +2378,28 @@ def diagnostics(conn: sqlite3.Connection, project_path: str | None, tool: str | 
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
-    clauses = ["project_id = ?"]
-    args: list[Any] = [project_id]
     if tool:
-        clauses.append("tool = ?")
-        args.append(tool)
-    args.append(max(1, min(int(limit), 100)))
-    rows = conn.execute(
-        f"""
-        SELECT file_path, tool, payload_json, blob_sha, cached_at
-        FROM code_diagnostics_cache
-        WHERE {' AND '.join(clauses)}
-        ORDER BY cached_at DESC
-        LIMIT ?
-        """,
-        args,
-    ).fetchall()
+        rows = conn.execute(
+            """
+            SELECT file_path, tool, payload_json, blob_sha, cached_at
+            FROM code_diagnostics_cache
+            WHERE project_id = ? AND tool = ?
+            ORDER BY cached_at DESC
+            LIMIT ?
+            """,
+            (project_id, tool, max(1, min(int(limit), 100))),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT file_path, tool, payload_json, blob_sha, cached_at
+            FROM code_diagnostics_cache
+            WHERE project_id = ?
+            ORDER BY cached_at DESC
+            LIMIT ?
+            """,
+            (project_id, max(1, min(int(limit), 100))),
+        ).fetchall()
     return {
         "status": "ok",
         "diagnostics": [
@@ -2250,8 +2431,14 @@ def index_status(conn: sqlite3.Connection, project_path: str | None) -> dict[str
                 (project_id,),
             ).fetchone()[0]
         )
-    storage_byte_count = int(checkpoint[5]) if checkpoint else int(
-        conn.execute("SELECT COALESCE(SUM(byte_count), 0) FROM code_artifacts WHERE project_id = ?", (project_id,)).fetchone()[0]
+    storage_byte_count = (
+        int(checkpoint[5])
+        if checkpoint
+        else int(
+            conn.execute(
+                "SELECT COALESCE(SUM(byte_count), 0) FROM code_artifacts WHERE project_id = ?", (project_id,)
+            ).fetchone()[0]
+        )
     )
     stored_budget = int(checkpoint[6]) if checkpoint else 0
     storage_budget = stored_budget if stored_budget > 0 else DEFAULT_PROJECT_STORAGE_BUDGET_BYTES
@@ -2273,7 +2460,9 @@ def index_status(conn: sqlite3.Connection, project_path: str | None) -> dict[str
     }
 
 
-def explore(conn: sqlite3.Connection, query: str, project_path: str | None, token_budget: int, limit: int) -> dict[str, Any]:
+def explore(
+    conn: sqlite3.Connection, query: str, project_path: str | None, token_budget: int, limit: int
+) -> dict[str, Any]:
     status = index_status(conn, project_path)
     if not status.get("indexed"):
         index_project(conn, project_path)

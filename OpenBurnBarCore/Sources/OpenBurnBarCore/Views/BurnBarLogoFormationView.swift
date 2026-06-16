@@ -33,7 +33,7 @@ public struct BurnBarLogoFormationView: View {
         logoName: String = "AppLogo",
         providerNames: [String] = [
             "AnthropicLogo", "OpenAILogo", "GoogleLogo", "MistralLogo",
-            "MetaLogo", "GrokLogo", "DeepSeekLogo", "QwenLogo",
+            "MetaLogo", "GrokLogo", "DeepSeekLogo", "QwenLogo"
         ]
     ) {
         self.logoName = logoName
@@ -214,8 +214,7 @@ private func sampleGlyphDots(_ name: String, grid: Int = 40, maxDots: Int = 220)
         let lum = 0.299 * r + 0.587 * g + 0.114 * b
         if a > 0.4 && lum < 0.985 {
             let mx = max(r, max(g, b))
-            if mx < 0.06 { r = 0.92; g = 0.94; b = 0.97 }
-            else if mx < 0.62 { let s = 0.62 / mx; r = min(1, r * s); g = min(1, g * s); b = min(1, b * s) }
+            if mx < 0.06 { r = 0.92; g = 0.94; b = 0.97 } else if mx < 0.62 { let s = 0.62 / mx; r = min(1, r * s); g = min(1, g * s); b = min(1, b * s) }
             pts.append(GDot(p: CGPoint(x: Double(gx) / Double(grid - 1) - 0.5, y: Double(gy) / Double(grid - 1) - 0.5), r: r, g: g, b: b))
         }
     }}
@@ -246,13 +245,30 @@ private func scatterOffset(_ seed: UInt64, _ k: Int) -> CGPoint {
 
 // MARK: - Isometric cube geometry
 
-private struct CubePts { let A, B, C, D, E, F, G: CGPoint }
+private struct CubePts {
+    let topBackLeft: CGPoint
+    let topBackRight: CGPoint
+    let topFrontRight: CGPoint
+    let topFrontLeft: CGPoint
+    let bottomBackRight: CGPoint
+    let bottomFrontRight: CGPoint
+    let bottomFrontLeft: CGPoint
+}
+
 private func cubePoints() -> CubePts {
     let cx = FormationLayout.cubeCX, cy = FormationLayout.cubeCY, s = FormationLayout.cubeS
-    func P(_ x: CGFloat, _ y: CGFloat, _ z: CGFloat) -> CGPoint {
+    func point(_ x: CGFloat, _ y: CGFloat, _ z: CGFloat) -> CGPoint {
         CGPoint(x: cx + (x - y) * 0.866 * s, y: cy + ((x + y) * 0.5 - z) * s)
     }
-    return CubePts(A: P(0, 0, 1), B: P(1, 0, 1), C: P(1, 1, 1), D: P(0, 1, 1), E: P(1, 0, 0), F: P(1, 1, 0), G: P(0, 1, 0))
+    return CubePts(
+        topBackLeft: point(0, 0, 1),
+        topBackRight: point(1, 0, 1),
+        topFrontRight: point(1, 1, 1),
+        topFrontLeft: point(0, 1, 1),
+        bottomBackRight: point(1, 0, 0),
+        bottomFrontRight: point(1, 1, 0),
+        bottomFrontLeft: point(0, 1, 0)
+    )
 }
 private func roundedPoly(_ pts: [CGPoint], _ rad: CGFloat) -> Path {
     var path = Path(); let n = pts.count
@@ -268,12 +284,12 @@ private func roundedPoly(_ pts: [CGPoint], _ rad: CGFloat) -> Path {
     }
     path.closeSubpath(); return path
 }
-private struct CubeSil: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.A, p.B, p.E, p.F, p.G, p.D], FormationLayout.cubeS * 0.09) } }
-private struct CubeTopF: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.A, p.B, p.C, p.D], FormationLayout.cubeS * 0.05) } }
-private struct CubeLeftF: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.D, p.C, p.F, p.G], FormationLayout.cubeS * 0.05) } }
-private struct CubeRightF: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.B, p.E, p.F, p.C], FormationLayout.cubeS * 0.05) } }
-private struct CubeTopEdge: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); var pa = Path(); pa.move(to: p.D); pa.addLine(to: p.C); pa.addLine(to: p.B); return pa } }
-private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); var pa = Path(); pa.move(to: p.C); pa.addLine(to: p.F); return pa } }
+private struct CubeSil: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.topBackLeft, p.topBackRight, p.bottomBackRight, p.bottomFrontRight, p.bottomFrontLeft, p.topFrontLeft], FormationLayout.cubeS * 0.09) } }
+private struct CubeTopF: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.topBackLeft, p.topBackRight, p.topFrontRight, p.topFrontLeft], FormationLayout.cubeS * 0.05) } }
+private struct CubeLeftF: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.topFrontLeft, p.topFrontRight, p.bottomFrontRight, p.bottomFrontLeft], FormationLayout.cubeS * 0.05) } }
+private struct CubeRightF: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); return roundedPoly([p.topBackRight, p.bottomBackRight, p.bottomFrontRight, p.topFrontRight], FormationLayout.cubeS * 0.05) } }
+private struct CubeTopEdge: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); var pa = Path(); pa.move(to: p.topFrontLeft); pa.addLine(to: p.topFrontRight); pa.addLine(to: p.topBackRight); return pa } }
+private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); var pa = Path(); pa.move(to: p.topFrontRight); pa.addLine(to: p.bottomFrontRight); return pa } }
 
 // MARK: - Glyph physics
 
@@ -299,9 +315,9 @@ private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = 
 
     private func seed() {
         let n = providerCount
-        let W = FormationLayout.W
+        let width = FormationLayout.W
         glyphs = (0 ..< 3).map { i in
-            Glyph(pos: CGPoint(x: .random(in: 120 ... (W - 120)), y: .random(in: 115 ... 345)),
+            Glyph(pos: CGPoint(x: .random(in: 120 ... (width - 120)), y: .random(in: 115 ... 345)),
                   vel: CGVector(dx: .random(in: -14 ... 14), dy: .random(in: -14 ... 14)),
                   prov: (i * 3) % n, flash: 0, formT: 0, seed: .random(in: 0 ... UInt64.max))
         }
@@ -309,12 +325,12 @@ private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = 
     private func step() {
         t += dt
         guard t > glyphStartT else { return }
-        let r: CGFloat = 44, n = providerCount, W = FormationLayout.W
+        let r: CGFloat = 44, n = providerCount, width = FormationLayout.W
         for i in glyphs.indices {
             glyphs[i].pos.x += glyphs[i].vel.dx * CGFloat(dt)
             glyphs[i].pos.y += glyphs[i].vel.dy * CGFloat(dt)
             if glyphs[i].pos.x < 85 { glyphs[i].pos.x = 85; glyphs[i].vel.dx = abs(glyphs[i].vel.dx) }
-            if glyphs[i].pos.x > W - 85 { glyphs[i].pos.x = W - 85; glyphs[i].vel.dx = -abs(glyphs[i].vel.dx) }
+            if glyphs[i].pos.x > width - 85 { glyphs[i].pos.x = width - 85; glyphs[i].vel.dx = -abs(glyphs[i].vel.dx) }
             if glyphs[i].pos.y < 100 { glyphs[i].pos.y = 100; glyphs[i].vel.dy = abs(glyphs[i].vel.dy) }
             if glyphs[i].pos.y > 360 { glyphs[i].pos.y = 360; glyphs[i].vel.dy = -abs(glyphs[i].vel.dy) }
             if glyphs[i].flash > 0 { glyphs[i].flash = max(0, glyphs[i].flash - dt * 2.2) }
@@ -385,7 +401,8 @@ private struct FormationHero: View {
 
     private var solidFade: Double { smooth((p - 0.60) / 0.20) }
     private var glass: Double { smooth((p - 0.80) / 0.20) }
-    private let W = FormationLayout.W, H = FormationLayout.H
+    private let width = FormationLayout.W
+    private let height = FormationLayout.H
     private let cubeS = FormationLayout.cubeS, cubeCX = FormationLayout.cubeCX, cubeCY = FormationLayout.cubeCY
     private let logoCX = FormationLayout.logoCX, logoCY = FormationLayout.logoCY, logoSize = FormationLayout.logoSize
 
@@ -398,13 +415,13 @@ private struct FormationHero: View {
                     .blur(radius: 2.5).blendMode(.plusLighter).opacity(0.95)
             }
         }
-        .frame(width: W, height: H)
+        .frame(width: width, height: height)
         .clipShape(CubeSil())
     }
 
     var body: some View {
         ZStack {
-            RadialGradient(colors: [Color(hex: "F25205").opacity(0.18 * solidFade + 0.05), .clear], center: UnitPoint(x: logoCX / W, y: logoCY / H), startRadius: 0, endRadius: 240)
+            RadialGradient(colors: [Color(hex: "F25205").opacity(0.18 * solidFade + 0.05), .clear], center: UnitPoint(x: logoCX / width, y: logoCY / height), startRadius: 0, endRadius: 240)
                 .blendMode(.plusLighter)
 
             Canvas { ctx, _ in
@@ -425,14 +442,14 @@ private struct FormationHero: View {
                     ctx.fill(Path(ellipseIn: CGRect(x: x - ds / 2, y: y - ds / 2, width: ds, height: ds)), with: .color(Color(.sRGB, red: cr, green: cg, blue: cb, opacity: 1)))
                 }
             }
-            .frame(width: W, height: H)
+            .frame(width: width, height: height)
 
             if glass > 0.001 {
                 let pts = cubePoints()
                 ZStack {
                     Ellipse().fill(Color.black.opacity(0.5))
                         .frame(width: cubeS * 1.7, height: cubeS * 0.46).blur(radius: cubeS * 0.18)
-                        .position(x: cubeCX, y: pts.F.y + cubeS * 0.1)
+                        .position(x: cubeCX, y: pts.bottomFrontRight.y + cubeS * 0.1)
                     ZStack {
                         CubeRightF().fill(LinearGradient(colors: [Color(hex: "171924"), Color(hex: "0C0D14")], startPoint: .top, endPoint: .bottom))
                         CubeLeftF().fill(LinearGradient(colors: [Color(hex: "21232F"), Color(hex: "15161F")], startPoint: .top, endPoint: .bottom))
@@ -460,11 +477,11 @@ private struct FormationHero: View {
                                 }
                             }
                         }
-                        .frame(width: W, height: H).blendMode(.plusLighter).allowsHitTesting(false)
+                        .frame(width: width, height: height).blendMode(.plusLighter).allowsHitTesting(false)
                     }
 
                     if #available(iOS 26.0, macOS 26.0, *) {
-                        Color.clear.frame(width: W, height: H).glassEffect(.regular, in: CubeSil())
+                        Color.clear.frame(width: width, height: height).glassEffect(.regular, in: CubeSil())
                     }
 
                     ZStack {
@@ -478,7 +495,7 @@ private struct FormationHero: View {
                         CubeTopEdge().stroke(Color.white.opacity(0.16), lineWidth: max(0.5, cubeS * 0.004))
                         CubeFrontEdge().stroke(LinearGradient(colors: [Color(hex: "5C5E6C"), Color(hex: "23242C")], startPoint: .top, endPoint: .bottom), lineWidth: max(1, cubeS * 0.012))
                     }.clipShape(CubeSil())
-                }.frame(width: W, height: H).opacity(glass)
+                }.frame(width: width, height: height).opacity(glass)
             }
 
             if solidFade > 0.001 {
@@ -495,9 +512,9 @@ private struct FormationHero: View {
                     oilSheen()
                     CubeSil().stroke(Color.black.opacity(0.5), lineWidth: max(0.6, cubeS * 0.006))
                     CubeSil().stroke(LinearGradient(colors: [Color.white.opacity(0.3), .clear, Color.black.opacity(0.3)], startPoint: .top, endPoint: .bottom), lineWidth: max(0.8, cubeS * 0.006))
-                }.frame(width: W, height: H).opacity(glass)
+                }.frame(width: width, height: height).opacity(glass)
             }
         }
-        .frame(width: W, height: H)
+        .frame(width: width, height: height)
     }
 }

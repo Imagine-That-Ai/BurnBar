@@ -15,7 +15,10 @@ vi.mock("firebase-functions/logger", () => ({
 }));
 
 import { buildFcmMessage } from "../agentNotifications.js";
-import type { AgentReplyNotificationEvent, DeviceNotificationState } from "../agentNotifications.js";
+
+type BuildFcmMessageArgs = Parameters<typeof buildFcmMessage>[0];
+type AgentReplyNotificationEvent = BuildFcmMessageArgs["event"];
+type DeviceNotificationState = BuildFcmMessageArgs["device"];
 
 function makeEvent(): AgentReplyNotificationEvent {
   const now = Timestamp.fromMillis(1_700_000_000_000);

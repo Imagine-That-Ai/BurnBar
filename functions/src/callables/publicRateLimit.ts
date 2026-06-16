@@ -18,7 +18,7 @@ type PublicHttpRateLimitAction = "cli_link_start" | "hermes_gateway_device_start
  * `endpointAuthorizationCatalog.generated.ts` (camelCase).
  * Closes codex-gpt-5 FINDING-005 / kimi FINDING-012.
  */
-export type PublicHttpEndpointName =
+type PublicHttpEndpointName =
   | "burnBarHermesGateway"
   | "healthCheck"
   | "healthLive"

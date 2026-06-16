@@ -32,7 +32,7 @@ import {
 import { PENSIEVE_LIMITS } from "./knowledgeMemory.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-export type DataTier = "ultra" | "pro" | "cloud" | "free";
+type DataTier = "ultra" | "pro" | "cloud" | "free";
 
 const HOSTED_QUOTA_SYNC_ENTITLEMENT_ID = "hosted_quota_sync";
 
@@ -108,7 +108,7 @@ interface UsageSource {
  * Server-authoritative per-domain usage sources. Ids MUST match the canonical
  * registry (packages/data-domains/registry.json) — enforced by the unit test.
  */
-export const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
+const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
   usage_spend: { countCollection: "usage" },
   conversations_chat: { countCollection: "chat_threads" },
   session_logs: { countCollection: "cloud_search_documents" },
@@ -148,7 +148,7 @@ function timestampString(value: unknown): string | undefined {
   return optionalString(value);
 }
 
-export function summarizeCloudProfile(data: Record<string, unknown> | undefined | null): CloudProfileSummary {
+function summarizeCloudProfile(data: Record<string, unknown> | undefined | null): CloudProfileSummary {
   if (!data) return { state: "missing" };
 
   return {

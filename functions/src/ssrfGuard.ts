@@ -183,9 +183,10 @@ export function assertOutboundFetchTarget(url: string | URL, allowPrivateHosts =
  * @returns The resolved IP addresses (for caller-side DNS pinning if desired).
  * @throws {SsrfBlockedError} if any resolved IP is private/link-local/metadata.
  */
-export async function assertOutboundFetchTargetResolved(url: string | URL): Promise<string[]> {
+export async function assertOutboundFetchTargetResolved(url: string | URL, allowPrivateHosts = false): Promise<string[]> {
   const parsed = typeof url === "string" ? new URL(url) : url;
-  assertOutboundFetchTarget(parsed);
+  assertOutboundFetchTarget(parsed, allowPrivateHosts);
+  if (allowPrivateHosts) return [];
 
   const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
 

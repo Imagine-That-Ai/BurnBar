@@ -64,7 +64,7 @@ enum CastleStatusReader {
 
         var candidates: [(url: URL, modifiedAt: Date)] = []
         for case let url as URL in enumerator where url.lastPathComponent == "status.json" {
-            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey]) // try?-ok(optional file metadata probe)
             guard values?.isRegularFile == true else { continue }
             candidates.append((url, values?.contentModificationDate ?? .distantPast))
         }

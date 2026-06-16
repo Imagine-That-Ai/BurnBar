@@ -36,10 +36,7 @@ import kotlinx.coroutines.delay
  * accessibility setting) the splash is skipped and the app is shown at once.
  */
 @Composable
-fun LaunchSplashGate(
-    durationMillis: Long = 4200L,
-    content: @Composable () -> Unit,
-) {
+fun LaunchSplashGate(durationMillis: Long = 4200L, content: @Composable () -> Unit) {
     val context = LocalContext.current
     val animationsEnabled = remember {
         Settings.Global.getFloat(

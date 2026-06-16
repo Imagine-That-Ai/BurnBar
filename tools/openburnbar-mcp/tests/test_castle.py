@@ -164,7 +164,9 @@ def test_worktree_isolation_and_scoped_add_keep_hook_scratch_out_of_commit(tmp_p
     subprocess.run(["git", "add", "castle_probe.txt"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "scoped"], cwd=repo, check=True)
 
-    tree = subprocess.check_output(["git", "show", "--name-only", "--format=", "HEAD"], cwd=repo, text=True).splitlines()
+    tree = subprocess.check_output(
+        ["git", "show", "--name-only", "--format=", "HEAD"], cwd=repo, text=True
+    ).splitlines()
 
     assert tree == ["castle_probe.txt"]
 
@@ -209,7 +211,7 @@ class _FakeProbeAdapter:
                 add,
                 "git commit -q -m 'castle smoke probe'",
                 f"printf '{{\"error\":null}}\\n' > {shlex.quote(result_path)}",
-                f"printf '{{\"exitCode\":0,\"runtime\":\"codex\",\"modelArg\":\"fake\"}}\\n' > {shlex.quote(done_path)}",
+                f'printf \'{{"exitCode":0,"runtime":"codex","modelArg":"fake"}}\\n\' > {shlex.quote(done_path)}',
             ]
         )
         return {"command": command}

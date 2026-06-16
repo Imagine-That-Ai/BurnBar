@@ -862,7 +862,6 @@ private struct ProviderFilterChip: View {
         case .xAI:          return "Grok"
         case .mimo:         return "MiMo"
         case .cursorAgent:  return "Cursor Agent"
-        case .openBurnBar:  return "BurnBar"
         }
     }
 }
