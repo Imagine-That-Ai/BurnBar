@@ -54,6 +54,48 @@ test_filter="${OPENBURNBAR_MOBILE_TEST_FILTER:-OpenBurnBarMobileTests}"
 test_scheme="${OPENBURNBAR_MOBILE_TEST_SCHEME:-OpenBurnBarMobileUnitTests}"
 simulator_name="${OPENBURNBAR_MOBILE_SIMULATOR:-iPhone 17 Pro Max}"
 ios_destination=""
+test_filters=()
+
+trim_whitespace() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
+parse_test_filters() {
+    local raw="$1"
+    local entry
+    test_filters=()
+    while IFS= read -r entry; do
+        entry="$(trim_whitespace "$entry")"
+        if [[ -z "$entry" ]]; then
+            echo "ERROR: OPENBURNBAR_MOBILE_TEST_FILTER contains an empty filter entry." >&2
+            exit 64
+        fi
+        test_filters+=("$entry")
+    done < <(python3 - "$raw" <<'PY'
+import re
+import sys
+
+for part in re.split(r"[\s,]+", sys.argv[1]):
+    part = part.strip()
+    if part:
+        print(part)
+PY
+)
+    if [[ "${#test_filters[@]}" -eq 0 ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_TEST_FILTER must include at least one filter." >&2
+        exit 64
+    fi
+}
+
+print_test_filters() {
+    echo ">>> Mobile XCTest filter(s):"
+    for entry in "${test_filters[@]}"; do
+        echo "  - $entry"
+    done
+}
 
 normalize_ios_destination() {
     local raw="$1"
@@ -179,6 +221,8 @@ resolve_ios_destination() {
 simulator_udid=""
 simulator_destination="platform=iOS Simulator,name=${simulator_name}"
 
+parse_test_filters "$test_filter"
+
 resolve_simulator_udid() {
     simulator_udid="$(python3 - "$simulator_name" <<'PY'
 import json, subprocess, sys
@@ -230,8 +274,11 @@ fi
 if [[ "${OPENBURNBAR_MOBILE_DRY_RUN:-}" == "1" ]]; then
     echo ">>> Dry run: would test OpenBurnBarMobile at destination:"
     echo "$ios_destination"
+    print_test_filters
     exit 0
 fi
+
+print_test_filters
 
 mkdir -p "$cache_dir"
 mkdir -p "$artifact_root"
@@ -368,22 +415,10 @@ populate_xcodebuild_args() {
         -parallel-testing-enabled NO
     )
     test_selectors=()
-    while IFS= read -r selector; do
-        if [[ -n "$selector" ]]; then
-            test_selectors+=("$selector")
-            xcodebuild_args+=(-only-testing:"$selector")
-        fi
-    done < <(python3 - "$test_filter" <<'PY'
-import re
-import sys
-
-raw = sys.argv[1]
-for part in re.split(r"[\s,]+", raw):
-    part = part.strip()
-    if part:
-        print(part)
-PY
-)
+    for selector in "${test_filters[@]}"; do
+        test_selectors+=("$selector")
+        xcodebuild_args+=(-only-testing:"$selector")
+    done
     if [[ "${#test_selectors[@]}" -eq 0 ]]; then
         echo "ERROR: OPENBURNBAR_MOBILE_TEST_FILTER resolved to zero -only-testing selectors." >&2
         return 64
@@ -521,7 +556,8 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if [ "$last_test_exit_code" -eq 0 ]; then
         if is_zero_test_pass "$xcodebuild_log"; then
             emit_attempt_event "$test_attempt" 65 "zero_tests_failed" "$attempt_duration" "$attempt_xcresult"
-            echo "ERROR: XCTest reported Selected tests passed but executed 0 tests for filter '$test_filter'." >&2
+            echo "ERROR: XCTest reported Selected tests passed but executed 0 tests for OPENBURNBAR_MOBILE_TEST_FILTER." >&2
+            print_test_filters >&2
             echo "ERROR: Regenerate the Xcode project or fix OPENBURNBAR_MOBILE_TEST_FILTER before accepting this run." >&2
             final_exit_code=65
             final_outcome="failed"
