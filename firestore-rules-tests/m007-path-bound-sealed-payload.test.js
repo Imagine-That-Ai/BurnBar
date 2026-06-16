@@ -4,6 +4,7 @@
  * Regression tests for same-account ciphertext relocation on the sealedPayload
  * surfaces whose WRITERS already emit a path-bound AAD:
  *   - conversations            (Mac: ConversationCloudVaultPayload)
+ *   - chat_threads             (Mac: ChatThreadSyncService; targeted test)
  *   - mobile_assistant_chats   (iOS: MobileChatHistoryStore + Android)
  *
  * Each surface must now accept ONLY a sealedPayload whose `aad` equals
@@ -12,10 +13,8 @@
  * docId in the AAD) and (b) the legacy/global `OpenBurnBar-CloudVaultSealedPayload-v2`
  * AAD that `validCloudSealedPayload` still tolerates structurally.
  *
- * chat_threads is intentionally NOT covered here: its writers still seal with
- * the global AAD, so it remains on the lenient validator. cli_sessions has its
- * own targeted test in cli-session-path-bound.test.js because it has mobile
- * readers and phone-side reseal writers.
+ * chat_threads and cli_sessions have their own targeted tests because those
+ * surfaces had separate writer/reader migration histories.
  *
  * Run with:
  *   cd firestore-rules-tests && npm run test:m007-path-bound-sealed-payload
@@ -45,8 +44,7 @@ function payloadAad(uid, collection, docId) {
   return `OpenBurnBar-CloudVault-aad-v2|${uid}|${collection}|${docId}|sealedPayload|2|sealedPayload`;
 }
 
-// The legacy/global AAD that sealPayload emits when called WITHOUT an aadContext
-// (still emitted by chat_threads writers).
+// The legacy/global AAD that sealPayload emits when called WITHOUT an aadContext.
 const GLOBAL_SEALED_PAYLOAD_AAD = "OpenBurnBar-CloudVaultSealedPayload-v2";
 
 function sealedPayload(aad) {

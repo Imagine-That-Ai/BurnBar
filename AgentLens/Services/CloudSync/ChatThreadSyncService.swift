@@ -133,10 +133,17 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                         messages: messages.map(ChatThreadSealedPayload.Message.init)
                     )
                     let payloadData = try Self.sealedPayloadEncoder.encode(payload)
+                    let aadContext = try CloudVaultAADContext(
+                        uid: uid,
+                        collection: "chat_threads",
+                        docID: docId,
+                        field: "sealedPayload"
+                    )
                     let sealedPayload = try CloudVaultCrypto.sealPayload(
                         payloadData,
                         keyData: resolvedKey.keyData,
-                        vaultKeyID: resolvedKey.vaultKeyID
+                        vaultKeyID: resolvedKey.vaultKeyID,
+                        aadContext: aadContext
                     )
                     data["contentSealed"] = true
                     data["sealedSchemaVersion"] = 2

@@ -4,9 +4,9 @@
  * already landed (firestore.rules:3479-3883, docs/signalification/
  * L41_SIGNAL_PREKEY_SESSION_DIRECTORY.md).
  *
- * The Firestore rules already let a trusted owner write these docs directly, but
- * two runtime flows MUST be server-owned and a few more benefit from a uniform,
- * cross-checked surface:
+ * Firestore rules keep the prekey/session subcollections server-only. These
+ * callables are the write surface so every mutation gets uniform,
+ * cross-checked validation:
  *
  *   - publishSignalPrekeyBundle  — admin-validated batch publish of the device's
  *     PUBLIC signed prekey + one-time prekeys + Kyber prekeys under an already

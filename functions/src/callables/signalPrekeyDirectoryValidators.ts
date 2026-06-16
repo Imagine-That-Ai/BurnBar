@@ -41,9 +41,9 @@ export const MIN_AVAILABLE_ONE_TIME_PREKEYS = 10;
 export const MIN_AVAILABLE_KYBER_PREKEYS = 3;
 
 // Forbidden secret/private/session-state fields — a SUPERSET of the union of
-// hasNoPlaintextSecretFields() (firestore.rules:56-69) and
-// signalDirectoryDocumentLimits() (firestore.rules:3564-3574). Verified against
-// those line ranges; "privateKey" is an extra (harmless) superset member.
+// hasNoPlaintextSecretFields() and the historical signalDirectoryDocumentLimits()
+// rules-side helper. Firestore prekey/session subcollections are now server-only,
+// but the callable preserves the same shape validation before Admin SDK writes.
 export const FORBIDDEN_FIELDS = [
   "apiKey",
   "token",
