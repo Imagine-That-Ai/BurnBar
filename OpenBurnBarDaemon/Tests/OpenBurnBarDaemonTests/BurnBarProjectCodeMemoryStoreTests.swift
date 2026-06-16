@@ -214,16 +214,23 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path, requireCloudDelete: true)
         )
         XCTAssertTrue(forgotten.localDeleted)
-        XCTAssertTrue(forgotten.cloudDeletePending)
+        // Local hard-delete + snapshot-section removal is the complete cross-tier forget for
+        // PCM (no separate sealed knowledge row exists), so there is no pending tombstone.
+        XCTAssertFalse(forgotten.cloudDeletePending)
 
         let afterForget = try store.recall(
             BurnBarProjectMemoryRecallRequest(query: "lexical symbol", projectPath: fixture.project.path)
         )
         XCTAssertTrue(afterForget.hits.isEmpty)
 
+        // forget must purge the canonical plaintext body from the snapshot, not merely
+        // empty recall (recall is index-driven and would pass even if the body survived).
+        let snapshotsAfterForget = try sqliteStrings(database: fixture.database, sql: "SELECT snapshotJSON FROM project_memory_snapshots")
+        XCTAssertFalse(snapshotsAfterForget.joined(separator: "\n").contains("lexical symbol fallback"))
+
         let audit = try store.auditTrail(BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path))
         XCTAssertTrue(audit.events.contains { $0.action == "memory.remember" })
-        XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("cloud hard delete pending") })
+        XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("snapshot section removed") })
     }
 
     func testRememberStoresBodyInProjectMemorySnapshotNotAgentIndex() throws {
@@ -240,8 +247,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertFalse(agentIndex.joined(separator: "\n").contains(body))
         XCTAssertTrue(agentIndex[0].contains(remembered.memoryID))
 
-        let memoryFTS = try sqliteStrings(database: fixture.database, sql: "SELECT bodyText FROM agent_memories_fts")
-        XCTAssertFalse(memoryFTS.joined(separator: "\n").contains(body))
+        // The vestigial body-search index is dropped, not left dead — it must not exist.
+        let ftsTables = try sqliteStrings(
+            database: fixture.database,
+            sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='agent_memories_fts'"
+        )
+        XCTAssertTrue(ftsTables.isEmpty)
 
         let snapshots = try sqliteStrings(database: fixture.database, sql: "SELECT snapshotJSON FROM project_memory_snapshots")
         XCTAssertEqual(snapshots.count, 1)
@@ -288,8 +299,13 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "alpha memory alphaonlymemoryterm.", projectPath: repoA.path))
         _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "beta memory betaonlymemoryterm.", projectPath: repoB.path))
 
+        // Hybrid semantic search returns repoA's OWN nearest chunks for any query (a general
+        // embedder rates even unrelated short code as somewhat similar), so the bleed invariant
+        // is project isolation — NO repoB file or content may appear in a repoA search — not
+        // emptiness. (The Python sibling test already asserts no-foreign-content, not empty.)
         let codeBleed = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "betauniqueterm", projectPath: repoA.path))
-        XCTAssertTrue(codeBleed.hits.isEmpty)
+        XCTAssertTrue(codeBleed.hits.allSatisfy { $0.filePath == "A.swift" })
+        XCTAssertFalse(codeBleed.hits.contains { $0.snippet.contains("betauniqueterm") })
 
         let memoryBleed = try store.recall(BurnBarProjectMemoryRecallRequest(query: "betaonlymemoryterm", projectPath: repoA.path))
         XCTAssertTrue(memoryBleed.hits.isEmpty)
@@ -383,6 +399,31 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertNotNil(status.lastVacuumedAt)
     }
 
+    func testIndexProjectEvictsOldestFilesFirstUnderBudget() throws {
+        let fixture = try makeFixture()
+        let sources = fixture.project.appendingPathComponent("Sources")
+        let older = sources.appendingPathComponent("Older.swift")
+        let newer = sources.appendingPathComponent("Newer.swift")
+        try write("func olderSymbol() {}\n", to: older)
+        try write("func newerSymbol() {}\n", to: newer)
+        // Deterministic ages: the budget fits exactly one ~22-byte file, forcing one eviction.
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: older.path)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 2_000)], ofItemAtPath: newer.path)
+
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let indexed = try store.indexProject(
+            BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20, maxFileBytes: 10_000, storageBudgetBytes: 30)
+        )
+
+        // Age-aware eviction: the NEWEST file is kept, the OLDEST is evicted — not whatever
+        // the filesystem walk happened to encounter first.
+        XCTAssertEqual(indexed.indexedFiles, 1)
+        XCTAssertFalse(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "newerSymbol", projectPath: fixture.project.path)).symbols.isEmpty)
+        XCTAssertTrue(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "olderSymbol", projectPath: fixture.project.path)).symbols.isEmpty)
+        XCTAssertEqual(indexed.rejectedFiles.map(\.filePath), ["Sources/Older.swift"])
+        XCTAssertEqual(indexed.rejectedFiles.first?.labels, ["Storage budget cap reached"])
+    }
+
     func testWatchProjectReindexesWhenSourceChanges() throws {
         let fixture = try makeFixture()
         let source = fixture.project.appendingPathComponent("Sources").appendingPathComponent("Watched.swift")
@@ -417,6 +458,32 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(reindexed)
         XCTAssertTrue(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "watchedOld", projectPath: fixture.project.path)).symbols.isEmpty)
         XCTAssertFalse(try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "watchedNew", projectPath: fixture.project.path)).symbols.isEmpty)
+    }
+
+    func testReWatchingProjectTearsDownPreviousWatcherCleanly() throws {
+        let fixture = try makeFixture()
+        let source = fixture.project.appendingPathComponent("Sources").appendingPathComponent("Rewatch.swift")
+        try write("func rewatchOne() {}\n", to: source)
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+
+        // Watching the same project twice must tear down the first watcher's FSEvents
+        // stream + timer without crashing (validates the retained-info lifecycle).
+        _ = try store.watchProject(BurnBarProjectCodeWatchProjectRequest(projectPath: fixture.project.path, maxFiles: 20, pollIntervalSeconds: 0.25))
+        let second = try store.watchProject(BurnBarProjectCodeWatchProjectRequest(projectPath: fixture.project.path, maxFiles: 20, pollIntervalSeconds: 0.25))
+        XCTAssertTrue(second.watching)
+
+        // A change after re-watch still reindexes via the surviving watcher.
+        try write("func rewatchTwo() {}\n", to: source)
+        let deadline = Date().addingTimeInterval(4.0)
+        var reindexed = false
+        while Date() < deadline {
+            if try !store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "rewatchTwo", projectPath: fixture.project.path)).symbols.isEmpty {
+                reindexed = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        XCTAssertTrue(reindexed)
     }
 
     func testSecretScannerCoversSharedCorpusWithLabelOnlyAudit() throws {
@@ -468,6 +535,151 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertFalse(serializedAudit.contains("ghp_"))
         XCTAssertFalse(serializedAudit.contains("sk_live_"))
         XCTAssertFalse(serializedAudit.contains(fakeAWSKey))
+    }
+
+    func testOperatorDiagnosticsReportSchemaSizesAndProjects() throws {
+        let fixture = try makeFixture()
+        try write("func diagSymbol() {}\n", to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Diag.swift"))
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+        _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "Operator diagnostics fixture memory.", projectPath: fixture.project.path))
+
+        let ops = try store.opsDiagnostics(BurnBarProjectCodeOpsDiagnosticsRequest())
+        XCTAssertEqual(ops.schemaVersion, BurnBarProjectCodeMemoryStore.schemaVersion)
+        XCTAssertGreaterThan(ops.databaseFileBytes, 0)
+        XCTAssertGreaterThanOrEqual(ops.totalArtifactCount, 1)
+        XCTAssertGreaterThanOrEqual(ops.totalSymbolCount, 1)
+        XCTAssertGreaterThan(ops.totalStorageByteCount, 0)
+        XCTAssertEqual(ops.agentMemoryCount, 1)
+        XCTAssertEqual(ops.projects.count, 1)
+        XCTAssertGreaterThanOrEqual(ops.projects[0].artifactCount, 1)
+        XCTAssertEqual(ops.pendingCloudForgetCount, 0)
+    }
+
+    func testOperatorDiagnosticsRequireOperatorCapability() {
+        // code.ops_diagnostics is operator-only: in the full first-party profile,
+        // absent from readOnly and runClient so hosted/read peers cannot inspect store internals.
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeOpsDiagnostics), .codeOperator)
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.full.permits(.codeOpsDiagnostics))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.codeOpsDiagnostics))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.codeOpsDiagnostics))
+    }
+
+    func testReindexDoesNotOrphanFTSRowsInCodeStore() throws {
+        // §2.1 data-lifecycle: the shared AgentLens DB accumulated FTS orphans via
+        // INSERT OR REPLACE bypassing delete triggers. The PCM store lives in its own
+        // daemon DB and its full-replace reindex EXPLICITLY deletes FTS rows, so orphans
+        // must never accumulate across reindexes. This regression test locks that.
+        let fixture = try makeFixture()
+        let source = fixture.project.appendingPathComponent("Sources").appendingPathComponent("Lifecycle.swift")
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        for iteration in 0..<4 {
+            try write("func lifecycle\(iteration)() { print(\"iteration-\(iteration)\") }\n", to: source)
+            _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+        }
+        func count(_ table: String) throws -> Int {
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM \(table)").first.flatMap { Int($0) } ?? -1
+        }
+        let chunkCount = try count("search_chunks")
+        XCTAssertGreaterThan(chunkCount, 0)
+        // One FTS row per chunk, and no leftovers from the three superseded reindexes.
+        XCTAssertEqual(try count("search_chunks_fts"), chunkCount)
+    }
+
+    // A deterministic bag-of-tokens embedder for version-floor / mechanics tests (the OS
+    // NLEmbedding is non-deterministic across environments). Shared tokens => higher cosine.
+    private struct StableBagEmbeddingProvider: BurnBarCodeEmbeddingProvider {
+        let versionID: String
+        let dimension: Int
+        init(versionID: String = "test-stable-1", dimension: Int = 64) {
+            self.versionID = versionID
+            self.dimension = dimension
+        }
+        func embed(_ text: String) -> [Float]? {
+            let tokens = text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+            guard tokens.isEmpty == false else { return nil }
+            var vector = [Float](repeating: 0, count: dimension)
+            for token in tokens { vector[Self.stableHash(token) % dimension] += 1 }
+            let norm = Double(vector.reduce(0) { $0 + $1 * $1 }).squareRoot()
+            if norm > 0 { for index in 0..<dimension { vector[index] /= Float(norm) } }
+            return vector
+        }
+        static func stableHash(_ value: String) -> Int {
+            var hash: UInt64 = 1_469_598_103_934_665_603 // FNV-1a offset basis
+            for byte in value.utf8 { hash = (hash ^ UInt64(byte)) &* 1_099_511_628_211 }
+            return Int(hash % UInt64(Int.max))
+        }
+    }
+
+    private struct DisabledEmbeddingProvider: BurnBarCodeEmbeddingProvider {
+        let versionID = "disabled"
+        let dimension = 0
+        func embed(_ text: String) -> [Float]? { nil }
+    }
+
+    func testHybridSemanticSearchFindsCodeByMeaningNotJustKeywords() throws {
+        // Function named/commented so NONE of the query words appear literally in it.
+        let body = "func resilientFetch() {\n  // reattempt the connection, waiting longer after each failure\n  connect()\n}\n"
+        let query = "retry broken network socket" // zero word overlap with the code (incl. no "the")
+
+        guard NLSentenceEmbeddingProvider().dimension > 0 else {
+            throw XCTSkip("NLEmbedding sentence model unavailable in this environment")
+        }
+
+        // (a) Daemon's own NL embedder: the meaning-related code is found despite no shared words.
+        let f1 = try makeFixture()
+        try write(body, to: f1.project.appendingPathComponent("Sources").appendingPathComponent("Net.swift"))
+        let withEmbeddings = try BurnBarProjectCodeMemoryStore(databasePath: f1.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        _ = try withEmbeddings.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: f1.project.path, maxFiles: 20))
+        let semanticHits = try withEmbeddings.searchCode(BurnBarProjectCodeSearchRequest(query: query, projectPath: f1.project.path, limit: 10)).hits
+        XCTAssertTrue(semanticHits.contains { $0.filePath == "Sources/Net.swift" })
+
+        // (b) Same code + query, embeddings DISABLED -> lexical-only finds nothing, proving
+        //     the recall above came from the embeddings, not coincidental keyword overlap.
+        let f2 = try makeFixture()
+        try write(body, to: f2.project.appendingPathComponent("Sources").appendingPathComponent("Net.swift"))
+        let noEmbeddings = try BurnBarProjectCodeMemoryStore(databasePath: f2.database.path, logger: BurnBarDaemonLogger(category: "test"), embeddingProvider: DisabledEmbeddingProvider())
+        _ = try noEmbeddings.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: f2.project.path, maxFiles: 20))
+        let lexicalHits = try noEmbeddings.searchCode(BurnBarProjectCodeSearchRequest(query: query, projectPath: f2.project.path, limit: 10)).hits
+        XCTAssertTrue(lexicalHits.isEmpty)
+    }
+
+    func testSemanticSearchRespectsEmbeddingVersionFloor() throws {
+        let fixture = try makeFixture()
+        try write("func versionFloorTarget() { networkRetry() }\n", to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("V.swift"))
+
+        // Index under embedding version A.
+        let storeA = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"), embeddingProvider: StableBagEmbeddingProvider(versionID: "ver-A"))
+        _ = try storeA.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        // A store running embedding version B reads the same DB. Its semantic search must
+        // IGNORE the version-A vectors (the floor): a no-word-overlap query returns nothing
+        // because no version-B vectors exist and version-A vectors are floored out.
+        let storeB = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"), embeddingProvider: StableBagEmbeddingProvider(versionID: "ver-B"))
+        let crossVersion = try storeB.searchCode(BurnBarProjectCodeSearchRequest(query: "qwxyzabsentterm", projectPath: fixture.project.path, limit: 10)).hits
+        XCTAssertTrue(crossVersion.isEmpty)
+
+        // The lexical path is unaffected by the embedding version.
+        let lexical = try storeB.searchCode(BurnBarProjectCodeSearchRequest(query: "versionFloorTarget", projectPath: fixture.project.path, limit: 10)).hits
+        XCTAssertFalse(lexical.isEmpty)
+    }
+
+    func testReciprocalRankFusionPrefersItemsStrongInBothRetrievers() {
+        let lexical = ["C", "B", "A"]
+        let semantic = ["C", "A", "B"]
+        let fused = BurnBarReciprocalRankFusion.fuse([lexical, semantic])
+        // C is rank 1 in both lists -> highest fused score.
+        XCTAssertEqual(fused.first, "C")
+        XCTAssertEqual(Set(fused), Set(["A", "B", "C"]))
+    }
+
+    func testVectorCodecRoundTripsAndCosineIsMeaningful() throws {
+        let vector: [Float] = [0.1, -0.4, 0.7, 0.2, -0.9]
+        let decoded = try XCTUnwrap(BurnBarCodeVectorCodec.decode(BurnBarCodeVectorCodec.encode(vector), dimension: vector.count))
+        XCTAssertEqual(decoded, vector)
+        XCTAssertEqual(BurnBarCodeVectorCodec.cosine(vector, vector), 1.0, accuracy: 1e-6)
+        XCTAssertEqual(BurnBarCodeVectorCodec.cosine(vector, vector.map { -$0 }), -1.0, accuracy: 1e-6)
+        XCTAssertNil(BurnBarCodeVectorCodec.decode(Data([1, 2, 3]), dimension: vector.count))
     }
 
     private func makeFixture() throws -> (root: URL, project: URL, database: URL) {

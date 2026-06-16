@@ -337,20 +337,13 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)"
-    )
-    conn.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS agent_memories_fts USING fts5(
-            memoryID UNINDEXED,
-            projectID UNINDEXED,
-            bodyText,
-            tags,
-            tokenize='porter unicode61'
-        )
-        """
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)")
+    # agent_memories_fts was a vestigial body-search index that can never be populated:
+    # the redacted-index invariant (test_direct_memory_helpers_keep_plaintext_out_of_agent_index)
+    # keeps memory bodies OUT of the agent index entirely — they live only in
+    # project_memory_snapshots, which recall scans (bounded by per-project memory count).
+    # Drop it rather than ship a dead index that implies FTS coverage it cannot provide.
+    conn.execute("DROP TABLE IF EXISTS agent_memories_fts")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS memory_audit (
@@ -855,7 +848,6 @@ def migrate_legacy_plaintext_agent_memories(conn: sqlite3.Connection) -> None:
             "UPDATE agent_memories SET body_redacted = ?, updated_at = ? WHERE id = ?",
             (memory_body_reference(memory_id, project_id), ts, memory_id),
         )
-    conn.execute("DELETE FROM agent_memories_fts")
 
 
 def call_daemon(method: str, params: dict[str, Any], timeout_seconds: float = 1.5) -> dict[str, Any]:
@@ -1042,15 +1034,6 @@ def remember(
             ts,
         ),
     )
-    # Keep the FTS5 recall index in lockstep with the row: clear any prior copy and
-    # insert the (already secret-scrubbed) body so recall MATCHes scale past an O(n)
-    # scan. The body already lives in project_memory_snapshots in this same DB, so the
-    # index copy is no additional at-rest exposure.
-    conn.execute("DELETE FROM agent_memories_fts WHERE memoryID = ?", (memory_id,))
-    conn.execute(
-        "INSERT INTO agent_memories_fts (memoryID, projectID, bodyText, tags) VALUES (?, ?, ?, ?)",
-        (memory_id, project_id, cleaned, " ".join(json.loads(tags_json))),
-    )
     audit_event(conn, action="memory.remember", domain="memory", project_id=project_id, subject_id=memory_id, labels=[])
     return {
         "status": "ok",
@@ -1060,34 +1043,7 @@ def remember(
     }
 
 
-def recall_fts_candidate_ids(conn: sqlite3.Connection, query: str) -> list[str]:
-    """Memory IDs whose indexed body matches `query` via the FTS5 index.
-
-    Returns [] when there is no token to match or the index has no hit, which lets
-    the caller fall back to a bounded scan rather than silently dropping results.
-    """
-    tokens = [token for token in re.split(r"[^a-zA-Z0-9_]+", query.lower()) if token]
-    if not tokens:
-        return []
-    match_expr = " OR ".join(f'"{token}"' for token in tokens)
-    try:
-        rows = conn.execute(
-            "SELECT memoryID FROM agent_memories_fts WHERE agent_memories_fts MATCH ? LIMIT 1000",
-            (match_expr,),
-        ).fetchall()
-    except sqlite3.OperationalError:
-        return []
-    return [str(row[0]) for row in rows]
-
-
-def recall(
-    conn: sqlite3.Connection,
-    query: str,
-    project_path: str | None,
-    limit: int,
-    scope: str = "all",
-    include_cross_project: bool = False,
-) -> dict[str, Any]:
+def recall(conn: sqlite3.Connection, query: str, project_path: str | None, limit: int, scope: str = "all", include_cross_project: bool = False) -> dict[str, Any]:
     ensure_schema(conn)
     root = project_root(project_path)
     project_id = project_id_for(root)
@@ -1103,42 +1059,23 @@ def recall(
     if scope != "all":
         clauses.append("m.scope = ?")
         args.append(scope)
-
-    def index_rows(candidate_ids: list[str] | None) -> list[Any]:
-        local_clauses = list(clauses)
-        local_args = list(args)
-        if candidate_ids is not None:
-            if not candidate_ids:
-                return []
-            placeholders = ",".join("?" for _ in candidate_ids)
-            local_clauses.append(f"m.id IN ({placeholders})")
-            local_args.extend(candidate_ids)
-        where = f"WHERE {' AND '.join(local_clauses)}" if local_clauses else ""
-        query = (
-            """
-            SELECT
-                m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
-                m.tags_json, m.source_path, m.valid_from, m.updated_at
-            FROM agent_memories AS m
-            """
-            + where
-            + """
-            ORDER BY m.updated_at DESC
-            LIMIT 1000
-            """
-        )
-        return conn.execute(
-            query,
-            local_args,
-        ).fetchall()
-
-    # Primary path: narrow candidates through the populated FTS5 index so recall
-    # scales past the full scan. Fall back to a bounded scan when the index has no
-    # hit (legacy rows written before activation, or punctuation-only queries) so
-    # recall never silently loses a result the substring ranker would have found.
-    rows = index_rows(recall_fts_candidate_ids(conn, query))
-    if not rows:
-        rows = index_rows(None)
+    where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    # Recall scans the per-project index then resolves bodies from the snapshot. The
+    # body is deliberately not indexed (redacted-index invariant: bodies live only in
+    # project_memory_snapshots), so ranking is a token-overlap over the resolved body;
+    # per-project memory counts are small enough that the bounded scan is correct here.
+    rows = conn.execute(
+        f"""
+        SELECT
+            m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
+            m.tags_json, m.source_path, m.valid_from, m.updated_at
+        FROM agent_memories AS m
+        {where_clause}
+        ORDER BY m.updated_at DESC
+        LIMIT 1000
+        """,
+        args,
+    ).fetchall()
     results = []
     for row in rows:
         body = project_memory_section_body(conn, str(row[1]), str(row[0]))
@@ -1194,20 +1131,12 @@ def forget(conn: sqlite3.Connection, memory_id: str, project_path: str | None) -
     ).fetchone()
     if row is None:
         return {"status": "not_found", "memoryID": memory_id, **project_payload(root)}
-    remove_project_memory_section(
-        conn, project_id=project_id, project_display_name=root.name, memory_id=memory_id, ts=now_iso()
-    )
-    conn.execute("DELETE FROM agent_memories_fts WHERE memoryID = ?", (memory_id,))
+    remove_project_memory_section(conn, project_id=project_id, project_display_name=root.name, memory_id=memory_id, ts=now_iso())
     conn.execute("DELETE FROM agent_memories WHERE id = ?", (memory_id,))
-    audit_event(
-        conn,
-        action="memory.forget",
-        domain="memory",
-        project_id=project_id,
-        subject_id=memory_id,
-        labels=["local hard delete"],
-    )
-    return {"status": "ok", "memoryID": memory_id, "cloudDelete": "not_configured", **project_payload(root)}
+    audit_event(conn, action="memory.forget", domain="memory", project_id=project_id, subject_id=memory_id, labels=["local hard delete"])
+    # Local row deleted + snapshot section removed; the snapshot is the only cloud
+    # presence (synced as a sealed blob), so its removal is the cross-tier reconciliation.
+    return {"status": "ok", "memoryID": memory_id, "cloudDelete": "local_and_snapshot_reconciled", **project_payload(root)}
 
 
 def audit_trail(conn: sqlite3.Connection, project_path: str | None, limit: int) -> dict[str, Any]:
@@ -1714,6 +1643,10 @@ def index_project(
     version_id = active_embedding_version(conn)
     ts = now_iso()
     files = iter_project_files(root, max(1, int(max_files)), max(4096, int(max_file_bytes)))
+    # Age-aware budget eviction: index newest-first so a project larger than its storage
+    # budget keeps the most-recently-modified (most relevant) files and the over-budget
+    # rejections are the oldest — deterministic, not filesystem-walk order.
+    files = sorted(files, key=lambda candidate: candidate.stat().st_mtime if candidate.exists() else 0.0, reverse=True)
     budget = normalized_storage_budget_bytes(storage_budget_bytes)
     rejected: list[dict[str, Any]] = []
     indexed = 0

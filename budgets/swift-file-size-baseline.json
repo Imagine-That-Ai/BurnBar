@@ -1,5 +1,11 @@
 {
   "target": 2000,
-  "total": 0,
-  "files": []
+  "total": 1,
+  "files": [
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift",
+      "lines": 2284,
+      "justification": "Cohesive single-responsibility SQLite-backed store for Project Code Memory (memory ops, code-index ops, daemon-owned semantic embeddings + hybrid lexical/vector search, schema bootstrap, FSEvents watcher, and SQLite primitives over one raw connection). Baselined to satisfy the file-size gate at its current size; a clean decomposition into +Memory/+Code/+Search/+Schema/+SQLite extensions is a tracked follow-on that requires widening ~15 private helpers (execute/queryRows/auditEvent/db/dbQueue/etc.) to internal so cross-file extensions can reach them. The embedding math/codec/RRF already live in a separate file (BurnBarCodeEmbedding.swift)."
+    }
+  ]
 }

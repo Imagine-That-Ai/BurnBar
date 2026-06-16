@@ -585,7 +585,7 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .codeIndexProject, .codeWatchProject, .codeSearch, .codeContextPack, .codeGetSymbol, .codeFindReferences,
-                 .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore:
+                 .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore, .codeOpsDiagnostics:
                 return try await handleCodeRPC(
                     method: method,
                     decoder: decoder,

@@ -310,6 +310,19 @@ CREATE TABLE code_diagnostics_cache (
   cached_at    TEXT NOT NULL
 );
 
+-- Daemon-owned semantic vectors for code chunks (one row per chunk per embedding
+-- generation). `embedding_version` is the §5.9 floor: search compares only the active
+-- generation, and a version bump re-embeds on the next index. Vectors are base64 float32.
+CREATE TABLE code_chunk_embeddings (
+  chunk_id          TEXT NOT NULL,
+  project_id        TEXT NOT NULL,
+  embedding_version TEXT NOT NULL,
+  dimension         INTEGER NOT NULL,
+  vector            TEXT NOT NULL,
+  PRIMARY KEY (chunk_id, embedding_version)
+);
+CREATE INDEX code_chunk_embeddings_project_idx ON code_chunk_embeddings(project_id, embedding_version);
+
 CREATE TABLE code_index_checkpoints (
   project_id       TEXT NOT NULL PRIMARY KEY,
   project_root     TEXT NOT NULL,

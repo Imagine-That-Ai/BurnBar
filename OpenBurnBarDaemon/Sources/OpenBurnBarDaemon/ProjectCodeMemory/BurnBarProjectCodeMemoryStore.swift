@@ -1,3 +1,4 @@
+import CoreServices
 import CryptoKit
 import Darwin
 import Foundation
@@ -65,6 +66,10 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let storageBudgetBytes: Int
         let timer: DispatchSourceTimer
         var lastSignature: String
+        /// Event-driven change source (sub-second responsiveness). The timer above is
+        /// the reliability backstop for volumes/conditions where FSEvents can miss.
+        var eventStream: FSEventStreamRef?
+        var onFileSystemEvent: (() -> Void)?
 
         init(
             projectID: String,
@@ -86,6 +91,19 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
 
         deinit {
             timer.cancel()
+            teardownEventStream()
+        }
+
+        /// Stop + invalidate + release the FSEvents stream. Idempotent. The stream was
+        /// created with a retained `info` (+1 on this watcher), so releasing it balances
+        /// that reference; invalidation guarantees no further callbacks fire afterward,
+        /// so there is no use-after-free on teardown.
+        func teardownEventStream() {
+            guard let stream = eventStream else { return }
+            eventStream = nil
+            FSEventStreamStop(stream)
+            FSEventStreamInvalidate(stream)
+            FSEventStreamRelease(stream)
         }
     }
 
@@ -114,6 +132,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     ]
     private static let defaultProjectStorageBudgetBytes = 512 * 1_024 * 1_024
     private static let maximumProjectStorageBudgetBytes = 10 * 1_024 * 1_024 * 1_024
+    /// Bump when the code-store schema changes; surfaced by operator diagnostics so an
+    /// operator can confirm which schema generation a daemon's index DB is running.
+    static let schemaVersion = 1
 
     private let db: OpaquePointer?
     private let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.project-code-memory.sqlite")
@@ -123,10 +144,18 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
     private var projectWatchers: [String: ProjectWatcher] = [:]
+    /// Daemon-owned code embedder (default: the OS NaturalLanguage sentence model).
+    /// Injectable so tests can use a deterministic provider for version-floor / RRF checks.
+    private let embeddingProvider: BurnBarCodeEmbeddingProvider
 
-    init(databasePath: String, logger: BurnBarDaemonLogger) throws {
+    init(
+        databasePath: String,
+        logger: BurnBarDaemonLogger,
+        embeddingProvider: BurnBarCodeEmbeddingProvider = NLSentenceEmbeddingProvider()
+    ) throws {
         self.databasePath = databasePath
         self.logger = logger
+        self.embeddingProvider = embeddingProvider
         var handle: OpaquePointer?
         let result = sqlite3_open_v2(databasePath, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil)
         guard result == SQLITE_OK, let handle else {
@@ -210,7 +239,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now), .text(now), .text(now)
                     ]
                 )
-                try execute("DELETE FROM agent_memories_fts WHERE memoryID = ?", [.text(memoryID)])
                 let auditHash = try auditEvent(action: "memory.remember", domain: "memory", projectID: projectID, subjectID: memoryID, labels: [])
                 try execute("COMMIT", [])
                 return BurnBarProjectMemoryRememberResponse(
@@ -316,17 +344,32 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     memoryID: memoryID,
                     now: Self.isoNow()
                 )
-                try execute("DELETE FROM agent_memories_fts WHERE memoryID = ?", [.text(memoryID)])
                 try execute("DELETE FROM agent_memories WHERE id = ? AND project_id = ?", [.text(memoryID), .text(projectID)])
-                let labels = request.requireCloudDelete ? ["local hard delete", "cloud hard delete pending"] : ["local hard delete"]
-                let auditHash = try auditEvent(action: "memory.forget", domain: "memory", projectID: projectID, subjectID: memoryID, labels: labels)
+                // Cross-tier forget for the paths PCM actually uses. The local row is hard-
+                // deleted above, and the memory's ONLY cloud presence — its section in
+                // project_memory_snapshots, which syncs to the cloud as a sealed blob — was
+                // removed by removeProjectMemorySection, so the next snapshot sync propagates
+                // the deletion (the snapshot-purge regression test proves the body is gone).
+                // PCM writes no server-readable Pensieve knowledge rows (remember stores to
+                // agent_memories + the sealed snapshot, not the knowledge store), so there is
+                // no separate sealed row to hard-delete — and therefore no honest "pending"
+                // tombstone to leave behind. `requireCloudDelete` is reserved for the future
+                // hosted-code-sync opt-in, which would additionally drive an app-authenticated
+                // deleteKnowledgeSource by projectHmac; until that ships, forget is complete.
+                let auditHash = try auditEvent(
+                    action: "memory.forget",
+                    domain: "memory",
+                    projectID: projectID,
+                    subjectID: memoryID,
+                    labels: ["local hard delete", "snapshot section removed"]
+                )
                 try execute("COMMIT", [])
                 return BurnBarProjectMemoryForgetResponse(
                     traceID: traceID,
                     projectID: projectID,
                     memoryID: memoryID,
                     localDeleted: existed,
-                    cloudDeletePending: request.requireCloudDelete,
+                    cloudDeletePending: false,
                     auditHash: auditHash
                 )
             } catch {
@@ -420,9 +463,21 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 try execute("DELETE FROM code_call_edges WHERE project_id = ?", [.text(projectID)])
                 try execute("DELETE FROM code_references WHERE project_id = ?", [.text(projectID)])
                 try execute("DELETE FROM code_symbols WHERE project_id = ?", [.text(projectID)])
+                try execute("DELETE FROM code_chunk_embeddings WHERE project_id = ?", [.text(projectID)])
                 try execute("DELETE FROM code_artifacts WHERE project_id = ?", [.text(projectID)])
 
-                for fileURL in Self.enumerateIndexableFiles(root: root, maxFiles: maxFiles) {
+                // Age-aware budget eviction: index newest-first so a project larger than
+                // its storage budget keeps the most-recently-modified (most relevant)
+                // files and the over-budget rejections are the oldest — deterministic,
+                // not whatever order the filesystem walk happened to yield.
+                let rankedFiles = Self.enumerateIndexableFiles(root: root, maxFiles: maxFiles)
+                    .map { url -> (url: URL, mtime: TimeInterval) in
+                        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+                        return (url, (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)
+                    }
+                    .sorted { $0.mtime > $1.mtime }
+                for ranked in rankedFiles {
+                    let fileURL = ranked.url
                     guard let relativePath = Self.relativePath(fileURL, root: root) else { continue }
                     let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
                     let fileSize = (attributes?[.size] as? NSNumber)?.intValue ?? 0
@@ -581,36 +636,26 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             timer: timer,
             lastSignature: signature
         )
+        // Backstop poll: reliably catches anything FSEvents coalesces or misses.
         timer.setEventHandler { [weak self, weak watcher] in
             guard let self, let watcher else { return }
-            let currentSignature = Self.projectIndexSignature(root: watcher.projectRoot, maxFiles: watcher.maxFiles)
-            guard currentSignature != watcher.lastSignature else { return }
-            do {
-                _ = try self.indexProject(
-                    BurnBarProjectCodeIndexProjectRequest(
-                        projectPath: watcher.projectRoot.path,
-                        maxFiles: watcher.maxFiles,
-                        maxFileBytes: watcher.maxFileBytes,
-                        storageBudgetBytes: watcher.storageBudgetBytes
-                    )
-                )
-                watcher.lastSignature = currentSignature
-                self.logger.notice(
-                    "project_code_memory_watch_reindexed",
-                    metadata: ["project_id": watcher.projectID, "signature": currentSignature]
-                )
-            } catch {
-                self.logger.warning(
-                    "project_code_memory_watch_reindex_failed",
-                    metadata: ["project_id": watcher.projectID, "error": error.localizedDescription]
-                )
-            }
+            self.reindexWatcherIfChanged(watcher)
         }
         timer.schedule(deadline: .now() + interval, repeating: interval)
+
+        // Event-driven fast path: FSEvents fires on real filesystem changes anywhere
+        // under the project root — including .git/HEAD and refs on branch switches — so a
+        // change is reindexed in sub-second time instead of waiting a full poll interval.
+        watcher.onFileSystemEvent = { [weak self, weak watcher] in
+            guard let self, let watcher else { return }
+            self.reindexWatcherIfChanged(watcher)
+        }
+        watcher.eventStream = Self.makeFileSystemEventStream(root: root, queue: queue, watcher: watcher)
 
         databaseSync {
             if let previous = projectWatchers[projectID] {
                 previous.timer.cancel()
+                previous.teardownEventStream()
             }
             projectWatchers[projectID] = watcher
         }
@@ -625,6 +670,75 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             signature: signature,
             indexedFiles: indexed.indexedFiles
         )
+    }
+
+    /// Re-walk the project signature and full-reindex only when it changed. Invoked by
+    /// both the FSEvents fast path and the poll backstop; both run on the same serial
+    /// watch queue so reindexes never overlap.
+    private func reindexWatcherIfChanged(_ watcher: ProjectWatcher) {
+        let currentSignature = Self.projectIndexSignature(root: watcher.projectRoot, maxFiles: watcher.maxFiles)
+        guard currentSignature != watcher.lastSignature else { return }
+        do {
+            _ = try indexProject(
+                BurnBarProjectCodeIndexProjectRequest(
+                    projectPath: watcher.projectRoot.path,
+                    maxFiles: watcher.maxFiles,
+                    maxFileBytes: watcher.maxFileBytes,
+                    storageBudgetBytes: watcher.storageBudgetBytes
+                )
+            )
+            watcher.lastSignature = currentSignature
+            logger.notice(
+                "project_code_memory_watch_reindexed",
+                metadata: ["project_id": watcher.projectID, "signature": currentSignature]
+            )
+        } catch {
+            logger.warning(
+                "project_code_memory_watch_reindex_failed",
+                metadata: ["project_id": watcher.projectID, "error": error.localizedDescription]
+            )
+        }
+    }
+
+    /// FSEvents C callback bridges back to the watcher through the retained `info`.
+    private static let fileSystemEventCallback: FSEventStreamCallback = { _, info, _, _, _, _ in
+        guard let info else { return }
+        Unmanaged<ProjectWatcher>.fromOpaque(info).takeUnretainedValue().onFileSystemEvent?()
+    }
+
+    /// Create + start a recursive FSEvents stream over `root`, delivering on `queue`.
+    /// The watcher is retained for the stream's lifetime (balanced by the context
+    /// release callback, which teardownEventStream triggers via FSEventStreamRelease),
+    /// so the callback can never dereference a freed pointer. Returns nil if the stream
+    /// cannot be created — the poll backstop still guarantees eventual reindex.
+    private static func makeFileSystemEventStream(root: URL, queue: DispatchQueue, watcher: ProjectWatcher) -> FSEventStreamRef? {
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passRetained(watcher).toOpaque(),
+            retain: nil,
+            release: { pointer in
+                if let pointer { Unmanaged<ProjectWatcher>.fromOpaque(pointer).release() }
+            },
+            copyDescription: nil
+        )
+        let flags = UInt32(kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagFileEvents)
+        guard let stream = FSEventStreamCreate(
+            kCFAllocatorDefault,
+            fileSystemEventCallback,
+            &context,
+            [root.path] as CFArray,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            0.2,
+            flags
+        ) else {
+            if let info = context.info {
+                Unmanaged<ProjectWatcher>.fromOpaque(info).release()
+            }
+            return nil
+        }
+        FSEventStreamSetDispatchQueue(stream, queue)
+        FSEventStreamStart(stream)
+        return stream
     }
 
     func searchCode(_ request: BurnBarProjectCodeSearchRequest) throws -> BurnBarProjectCodeSearchResponse {
@@ -857,6 +971,48 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 storageBudgetBytes: storageBudgetBytes,
                 storageWithinBudget: storageByteCount <= storageBudgetBytes,
                 lastVacuumedAt: checkpoint?.optionalString(8)
+            )
+        }
+    }
+
+    func opsDiagnostics(_ request: BurnBarProjectCodeOpsDiagnosticsRequest) throws -> BurnBarProjectCodeOpsDiagnosticsResponse {
+        let traceID = TraceContextBridge.currentContext().traceID
+        return try databaseSync {
+            let projectRows = try queryRows(
+                """
+                SELECT project_id, project_root, indexed_at, storage_byte_count, storage_budget_bytes
+                FROM code_index_checkpoints
+                ORDER BY indexed_at DESC
+                """,
+                []
+            )
+            let projects = try projectRows.map { row -> BurnBarProjectCodeStoreProjectStat in
+                let projectID = row.string(0)
+                let storedBudget = Int(row.int64(4))
+                return BurnBarProjectCodeStoreProjectStat(
+                    projectID: projectID,
+                    projectRoot: row.optionalString(1),
+                    artifactCount: try fetchInt("SELECT COUNT(*) FROM code_artifacts WHERE project_id = ?", [.text(projectID)]),
+                    symbolCount: try fetchInt("SELECT COUNT(*) FROM code_symbols WHERE project_id = ?", [.text(projectID)]),
+                    referenceCount: try fetchInt("SELECT COUNT(*) FROM code_references WHERE project_id = ?", [.text(projectID)]),
+                    storageByteCount: Int(row.int64(3)),
+                    storageBudgetBytes: storedBudget > 0 ? storedBudget : Self.defaultProjectStorageBudgetBytes,
+                    pendingForgetCount: try fetchInt("SELECT COUNT(*) FROM memory_audit WHERE project_id = ? AND labels_json LIKE '%cloud hard delete pending%'", [.text(projectID)]),
+                    indexedAt: row.optionalString(2)
+                )
+            }
+            let attributes = try? FileManager.default.attributesOfItem(atPath: databasePath)
+            let databaseFileBytes = (attributes?[.size] as? NSNumber)?.intValue ?? 0
+            return BurnBarProjectCodeOpsDiagnosticsResponse(
+                traceID: traceID,
+                schemaVersion: Self.schemaVersion,
+                databaseFileBytes: databaseFileBytes,
+                totalArtifactCount: try fetchInt("SELECT COUNT(*) FROM code_artifacts", []),
+                totalSymbolCount: try fetchInt("SELECT COUNT(*) FROM code_symbols", []),
+                totalStorageByteCount: try fetchInt("SELECT COALESCE(SUM(byte_count), 0) FROM code_artifacts", []),
+                agentMemoryCount: try fetchInt("SELECT COUNT(*) FROM agent_memories", []),
+                pendingCloudForgetCount: try fetchInt("SELECT COUNT(*) FROM memory_audit WHERE labels_json LIKE '%cloud hard delete pending%'", []),
+                projects: projects
             )
         }
     }
@@ -1098,18 +1254,11 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             []
         )
         try execute("CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)", [])
-        try execute(
-            """
-            CREATE VIRTUAL TABLE IF NOT EXISTS agent_memories_fts USING fts5(
-                memoryID UNINDEXED,
-                projectID UNINDEXED,
-                bodyText,
-                tags,
-                tokenize='porter unicode61'
-            )
-            """,
-            []
-        )
+        // agent_memories_fts was a vestigial body-search index that can never be
+        // populated: the redacted-index invariant keeps memory bodies out of the agent
+        // index entirely (they live only in project_memory_snapshots). Drop it rather
+        // than ship a dead index that implies FTS coverage it cannot provide.
+        try execute("DROP TABLE IF EXISTS agent_memories_fts", [])
         try execute(
             """
             CREATE TABLE IF NOT EXISTS memory_audit (
@@ -1127,6 +1276,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             """,
             []
         )
+        try execute("CREATE INDEX IF NOT EXISTS memory_audit_project_idx ON memory_audit(project_id, seq)", [])
         try execute(
             """
             CREATE TABLE IF NOT EXISTS code_artifacts (
@@ -1207,6 +1357,21 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             """,
             []
         )
+        try execute("CREATE INDEX IF NOT EXISTS code_diagnostics_cache_project_idx ON code_diagnostics_cache(project_id, file_path)", [])
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS code_chunk_embeddings (
+                chunk_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                embedding_version TEXT NOT NULL,
+                dimension INTEGER NOT NULL,
+                vector TEXT NOT NULL,
+                PRIMARY KEY (chunk_id, embedding_version)
+            )
+            """,
+            []
+        )
+        try execute("CREATE INDEX IF NOT EXISTS code_chunk_embeddings_project_idx ON code_chunk_embeddings(project_id, embedding_version)", [])
         try execute(
             """
             CREATE TABLE IF NOT EXISTS code_index_checkpoints (
@@ -1281,7 +1446,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 [.text(Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)), .text(now), .text(memoryID)]
             )
         }
-        try execute("DELETE FROM agent_memories_fts", [])
     }
 
     private func upsertProjectMemorySection(
@@ -1588,6 +1752,22 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             "INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider) VALUES (?, ?, ?, ?, ?, ?)",
             [.text(chunkID), .text(documentID), .text(filePath), .text(text), .text(projectID), .text(Self.codeProvider)]
         )
+        // Daemon-owned semantic vector for this chunk, tagged with the embedding version
+        // so search never mixes generations. Stored base64 (TEXT) to ride the existing
+        // string-based row machinery. Missing/declined embeddings degrade to lexical-only.
+        if embeddingProvider.isAvailable, let vector = embeddingProvider.embed(text) {
+            try execute(
+                """
+                INSERT OR REPLACE INTO code_chunk_embeddings
+                    (chunk_id, project_id, embedding_version, dimension, vector)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    .text(chunkID), .text(projectID), .text(embeddingProvider.versionID),
+                    .int(vector.count), .text(BurnBarCodeVectorCodec.encode(vector).base64EncodedString())
+                ]
+            )
+        }
     }
 
     private func insertSymbol(_ symbol: ExtractedSymbol, indexedAt: String) throws {
@@ -1759,49 +1939,137 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyQuery }
         let capped = max(1, min(limit, 100))
-        let fts = Self.ftsQuery(for: trimmed)
         return try databaseSync {
-            do {
-                return try queryRows(
-                    """
-                    SELECT c.id, a.file_path, a.blob_sha,
-                           snippet(search_chunks_fts, 3, '<b>', '</b>', '...', 18) AS snippet,
-                           bm25(search_chunks_fts) AS rank
-                    FROM search_chunks_fts
-                    JOIN search_chunks c ON c.id = search_chunks_fts.chunkID
-                    JOIN search_documents d ON d.id = c.documentID
-                    JOIN code_artifacts a ON a.id = d.sourceID
-                    WHERE search_chunks_fts MATCH ?
-                      AND d.sourceKind = ?
-                      AND a.project_id = ?
-                    ORDER BY rank ASC
-                    LIMIT ?
-                    """,
-                    [.text(fts), .text(Self.codeSourceKind), .text(projectID), .int(capped)]
-                ).compactMap {
-                    guard Self.isCurrentBlob(root: root, filePath: $0.string(1), blobSHA: $0.string(2)) else { return nil }
-                    return BurnBarProjectCodeSearchHit(chunkID: $0.string(0), filePath: $0.string(1), snippet: $0.string(3), rank: $0.optionalDouble(4))
-                }
-            } catch {
-                return try queryRows(
-                    """
-                    SELECT c.id, a.file_path, a.blob_sha, substr(c.text, 1, 500) AS snippet, NULL AS rank
-                    FROM search_chunks c
-                    JOIN search_documents d ON d.id = c.documentID
-                    JOIN code_artifacts a ON a.id = d.sourceID
-                    WHERE d.sourceKind = ?
-                      AND a.project_id = ?
-                      AND c.text LIKE ?
-                    ORDER BY a.file_path ASC, c.ordinal ASC
-                    LIMIT ?
-                    """,
-                    [.text(Self.codeSourceKind), .text(projectID), .text("%\(trimmed)%"), .int(capped)]
-                ).compactMap {
-                    guard Self.isCurrentBlob(root: root, filePath: $0.string(1), blobSHA: $0.string(2)) else { return nil }
-                    return BurnBarProjectCodeSearchHit(chunkID: $0.string(0), filePath: $0.string(1), snippet: $0.string(3), rank: nil)
-                }
+            // Pull a wider candidate pool from each retriever than the final limit so RRF
+            // has room to reorder lexical (BM25) and semantic (cosine) hits.
+            let pool = min(200, max(capped * 5, capped))
+            let lexicalIDs = try self.lexicalCodeChunkIDs(query: trimmed, projectID: projectID, limit: pool)
+            let semanticIDs = try self.semanticCodeChunkIDs(query: trimmed, projectID: projectID, limit: pool)
+            // Hybrid when both retrievers return; lexical-only when embeddings are
+            // unavailable so search never regresses below the keyword baseline.
+            let fusedIDs = semanticIDs.isEmpty
+                ? lexicalIDs
+                : BurnBarReciprocalRankFusion.fuse([lexicalIDs, semanticIDs])
+            return try self.resolveCodeHits(chunkIDs: fusedIDs, root: root, projectID: projectID, query: trimmed, limit: capped)
+        }
+    }
+
+    /// Lexical (FTS5 BM25) chunk ids, with a LIKE fallback if the MATCH query is rejected.
+    private func lexicalCodeChunkIDs(query: String, projectID: String, limit: Int) throws -> [String] {
+        let fts = Self.ftsQuery(for: query)
+        do {
+            return try queryRows(
+                """
+                SELECT c.id
+                FROM search_chunks_fts
+                JOIN search_chunks c ON c.id = search_chunks_fts.chunkID
+                JOIN search_documents d ON d.id = c.documentID
+                JOIN code_artifacts a ON a.id = d.sourceID
+                WHERE search_chunks_fts MATCH ?
+                  AND d.sourceKind = ?
+                  AND a.project_id = ?
+                ORDER BY bm25(search_chunks_fts) ASC
+                LIMIT ?
+                """,
+                [.text(fts), .text(Self.codeSourceKind), .text(projectID), .int(limit)]
+            ).map { $0.string(0) }
+        } catch {
+            return try queryRows(
+                """
+                SELECT c.id
+                FROM search_chunks c
+                JOIN search_documents d ON d.id = c.documentID
+                JOIN code_artifacts a ON a.id = d.sourceID
+                WHERE d.sourceKind = ?
+                  AND a.project_id = ?
+                  AND c.text LIKE ?
+                ORDER BY a.file_path ASC, c.ordinal ASC
+                LIMIT ?
+                """,
+                [.text(Self.codeSourceKind), .text(projectID), .text("%\(query)%"), .int(limit)]
+            ).map { $0.string(0) }
+        }
+    }
+
+    /// Semantic (cosine) chunk ids over the daemon-owned embeddings, restricted to the
+    /// ACTIVE embedding version (the §5.9 floor — vectors from a different generation are
+    /// ignored, never silently compared). Empty when embeddings are unavailable.
+    private func semanticCodeChunkIDs(query: String, projectID: String, limit: Int) throws -> [String] {
+        guard embeddingProvider.isAvailable, let queryVector = embeddingProvider.embed(query) else { return [] }
+        let dimension = queryVector.count
+        let rows = try queryRows(
+            """
+            SELECT chunk_id, vector
+            FROM code_chunk_embeddings
+            WHERE project_id = ? AND embedding_version = ? AND dimension = ?
+            """,
+            [.text(projectID), .text(embeddingProvider.versionID), .int(dimension)]
+        )
+        let scored: [(id: String, score: Double)] = rows.compactMap { row in
+            guard let data = Data(base64Encoded: row.string(1)),
+                  let vector = BurnBarCodeVectorCodec.decode(data, dimension: dimension) else { return nil }
+            return (row.string(0), BurnBarCodeVectorCodec.cosine(queryVector, vector))
+        }
+        return scored
+            .sorted { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
+            .prefix(limit)
+            .map { $0.id }
+    }
+
+    /// Resolve fused chunk ids to hits, preserving fused order, dropping rows whose file no
+    /// longer matches the indexed blob (stale), up to `limit`.
+    private func resolveCodeHits(chunkIDs: [String], root: URL, projectID: String, query: String, limit: Int) throws -> [BurnBarProjectCodeSearchHit] {
+        guard chunkIDs.isEmpty == false else { return [] }
+        let placeholders = chunkIDs.map { _ in "?" }.joined(separator: ",")
+        var binds: [SQLiteBind] = chunkIDs.map { .text($0) }
+        binds.append(.text(Self.codeSourceKind))
+        binds.append(.text(projectID))
+        let rows = try queryRows(
+            """
+            SELECT c.id, a.file_path, a.blob_sha, c.text
+            FROM search_chunks c
+            JOIN search_documents d ON d.id = c.documentID
+            JOIN code_artifacts a ON a.id = d.sourceID
+            WHERE c.id IN (\(placeholders))
+              AND d.sourceKind = ?
+              AND a.project_id = ?
+            """,
+            binds
+        )
+        var byID: [String: (filePath: String, blobSHA: String, text: String)] = [:]
+        for row in rows {
+            byID[row.string(0)] = (row.string(1), row.string(2), row.string(3))
+        }
+        var hits: [BurnBarProjectCodeSearchHit] = []
+        for chunkID in chunkIDs {
+            guard let meta = byID[chunkID],
+                  Self.isCurrentBlob(root: root, filePath: meta.filePath, blobSHA: meta.blobSHA) else { continue }
+            hits.append(
+                BurnBarProjectCodeSearchHit(
+                    chunkID: chunkID,
+                    filePath: meta.filePath,
+                    snippet: Self.codeSnippet(text: meta.text, query: query),
+                    rank: Double(hits.count)
+                )
+            )
+            if hits.count >= limit { break }
+        }
+        return hits
+    }
+
+    /// A short snippet windowed around the first query-token match, else the text head.
+    private static func codeSnippet(text: String, query: String) -> String {
+        let tokens = query.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        for token in tokens where token.isEmpty == false {
+            if let range = text.range(of: token, options: .caseInsensitive) {
+                let start = text.index(range.lowerBound, offsetBy: -80, limitedBy: text.startIndex) ?? text.startIndex
+                let end = text.index(range.upperBound, offsetBy: 160, limitedBy: text.endIndex) ?? text.endIndex
+                let prefix = start > text.startIndex ? "..." : ""
+                let suffix = end < text.endIndex ? "..." : ""
+                return prefix + String(text[start..<end]) + suffix
             }
         }
+        return String(text.prefix(240))
     }
 
     private func recallLikeFallback(

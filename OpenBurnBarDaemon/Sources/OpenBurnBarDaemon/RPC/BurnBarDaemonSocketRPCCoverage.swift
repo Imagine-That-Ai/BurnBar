@@ -128,7 +128,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .codeCallGraph,
         .codeDiagnostics,
         .codeIndexStatus,
-        .codeExplore
+        .codeExplore,
+        .codeOpsDiagnostics
     ]
 
     static var allHandled: Set<BurnBarRPCMethod> {
