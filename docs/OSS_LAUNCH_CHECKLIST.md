@@ -17,7 +17,9 @@ Re-check every item immediately before changing repository visibility.
 - Topics: `ai-agents`, `burnbar`, `developer-tools`, `local-first`, `macos`, `openburnbar`, `swiftui`, `vscode-extension`
 - Branch protection on `main`: enabled
 - Required status checks on `main`: `openburnbar-pr` with strict mode enabled
-- Required pull request reviews on `main`: 1 approval
+- Required pull request reviews on `main`: 1 approval for non-admins; the
+  solo admin has an explicit bypass and required status checks are the merge
+  gate
 - Dismiss stale reviews: enabled
 - Enforce admins: enabled
 - Force pushes: disabled
