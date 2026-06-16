@@ -143,7 +143,8 @@ final class SettingsRouter {
             return [route]
 
         // Tabs whose root view *is* the destination.
-        case .accountRoot,
+        case .updatesRoot,
+             .accountRoot,
              .cloudRoot,
              .agentsRoot,
              .alertsRoot,

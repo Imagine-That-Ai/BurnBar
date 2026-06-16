@@ -17,21 +17,24 @@ struct UpdatesSettingsView: View {
     var body: some View {
         let checker = DirectDownloadUpdateChecker.shared
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                versionCard(channel: checker.channel)
+        SettingsDeepLinkScrollContainer(route: .updatesRoot) { _ in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    versionCard(channel: checker.channel)
+                        .settingsAnchor(SettingsAnchor.updatesOverview)
 
-                UpdateBannerCard()
+                    UpdateBannerCard()
 
-                preferences(channel: checker.channel)
+                    preferences(channel: checker.channel)
 
-                actions(checker: checker)
+                    actions(checker: checker)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
+                .padding(DesignSystem.Spacing.xl)
+                .frame(maxWidth: 640, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(DesignSystem.Spacing.xl)
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -98,6 +101,7 @@ struct UpdatesSettingsView: View {
                 icon: "clock.arrow.circlepath",
                 isOn: $automaticChecks
             )
+            .settingsAnchor(SettingsAnchor.updatesAutomaticChecks)
 
             if channel == .dmg || channel == .homebrew {
                 SettingsToggle(
@@ -143,6 +147,7 @@ struct UpdatesSettingsView: View {
 
             Spacer(minLength: 0)
         }
+        .settingsAnchor(SettingsAnchor.updatesReleaseNotes)
     }
 
     // MARK: Styling

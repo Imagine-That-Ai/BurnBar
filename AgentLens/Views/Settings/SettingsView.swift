@@ -269,7 +269,7 @@ struct SettingsView: View {
              .switcherRoot, .hermesRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
              .dataControlCenterRoot,
-             .textExpansionRoot, .computerUseRoot:
+             .textExpansionRoot, .computerUseRoot, .updatesRoot:
             // Roots are reachable via the sidebar tab selection — the path
             // stays empty for these. Legacy roots (`connectionsRoot`,
             // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,
