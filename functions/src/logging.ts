@@ -12,6 +12,8 @@
 import { randomUUID } from "node:crypto";
 import { onCall, type CallableOptions, type CallableRequest } from "firebase-functions/v2/https";
 
+import type { CallableRateLimit } from "./callables/publicRateLimit.js";
+
 // Patterns for PII and sensitive data scrubbing
 const SCRUB_PATTERNS: Array<[RegExp, string]> = [
   // Email addresses
@@ -269,13 +271,25 @@ export function wrapCallableHandler<Data, R>(
 }
 
 /**
- * Production callable factory: v2 onCall + structured logs + Sentry capture.
+ * Production callable factory: v2 onCall + structured logs + Sentry capture +
+ * optional per-UID/App Check sliding-window rate limit.
  * Prefer for new exports; existing exports can keep onCall(..., wrapCallableHandler(...)).
  */
 export function onCallProduction<Data, R>(
   name: string,
-  options: CallableOptions,
+  options: CallableOptions & { rateLimit?: CallableRateLimit },
   handler: (request: CallableRequest<Data>) => Promise<R>,
 ) {
-  return onCall(options, wrapCallableHandler(name, handler));
+  const { rateLimit, ...callableOptions } = options;
+  const rateLimitedHandler = rateLimit
+    ? async (request: CallableRequest<Data>) => {
+        // Dynamic import keeps logging.ts out of the adminRuntime/publicRateLimit
+        // import cycle; checkCallableRateLimit is only loaded when a rate limit
+        // is actually configured.
+        const { checkCallableRateLimit } = await import("./callables/publicRateLimit.js");
+        await checkCallableRateLimit(request.auth?.uid, request.app?.appId, rateLimit);
+        return handler(request);
+      }
+    : handler;
+  return onCall(callableOptions, wrapCallableHandler(name, rateLimitedHandler));
 }

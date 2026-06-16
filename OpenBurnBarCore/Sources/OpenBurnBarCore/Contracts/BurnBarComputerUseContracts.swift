@@ -11,6 +11,37 @@ import Foundation
 /// allocates a `ComputerUseSessionID`, writes the manifest into the
 /// audit directory, and replies with the seeded chain head hash so the
 /// Mac UI can render "Audit · b3:<hex>" immediately.
+/// T-DMN-04: provision the daemon's pinned phone-control verifying key for a
+/// source device. The first-party Mac app calls this once per paired phone so
+/// the daemon can independently verify local-auth proofs.
+public struct DaemonPhoneControlPinProvisionRequest: Codable, Hashable, Sendable {
+    public let deviceId: String
+    /// Base64 of the canonical published public-key bytes (32-byte raw for
+    /// Ed25519, 65-byte X9.63 for SE-P256).
+    public let publicKeyBase64: String
+    public let keyKind: PhoneControlSigningKeyKind
+
+    public init(
+        deviceId: String,
+        publicKeyBase64: String,
+        keyKind: PhoneControlSigningKeyKind = .ed25519
+    ) {
+        self.deviceId = deviceId
+        self.publicKeyBase64 = publicKeyBase64
+        self.keyKind = keyKind
+    }
+}
+
+public struct DaemonPhoneControlPinProvisionResponse: Codable, Hashable, Sendable {
+    public let pinned: Bool
+    public let deviceId: String
+
+    public init(pinned: Bool, deviceId: String) {
+        self.pinned = pinned
+        self.deviceId = deviceId
+    }
+}
+
 public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     public let mode: String  // ComputerUseMode raw value
     public let trustMode: String  // ComputerUseTrustMode raw value

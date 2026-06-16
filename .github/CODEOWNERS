@@ -19,4 +19,40 @@ extensions/openburnbar/ @Ajnunezg
 
 # Infrastructure
 firestore.rules @Ajnunezg
+firestore.indexes.json @Ajnunezg
+project.yml @Ajnunezg
+
+# Security-sensitive trees — explicit rules so review routing is intentional
+# for the highest-risk surfaces (closes OPUS-F-012). Keep this block last:
+# GitHub CODEOWNERS uses the final matching rule.
+.github/CODEOWNERS @Ajnunezg
+.github/workflows/ @Ajnunezg
+functions/src/security/ @Ajnunezg
+functions/src/auth.ts @Ajnunezg
+functions/src/appCheckAttestation.ts @Ajnunezg
+functions/src/ssrfGuard.ts @Ajnunezg
+functions/src/logging.ts @Ajnunezg
+functions/src/resilienceHelpers.ts @Ajnunezg
+functions/src/providers/httpClient.ts @Ajnunezg
+functions/src/computerUseRemoteConfig.ts @Ajnunezg
+functions/src/callables/dataExport.ts @Ajnunezg
+functions/src/callables/dataDeletion.ts @Ajnunezg
+functions/src/callables/accountDeletion.ts @Ajnunezg
+functions/src/callables/auditLog.ts @Ajnunezg
+functions/src/callables/stripe* @Ajnunezg
+functions/src/callables/shared/validators.ts @Ajnunezg
+functions/src/callables/publicRateLimit.ts @Ajnunezg
+functions/src/hermesGateway.ts @Ajnunezg
+AgentLens/Services/CloudVaultCrypto.swift @Ajnunezg
+AgentLens/Services/DataStore/DatabaseEncryptionService.swift @Ajnunezg
+OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ @Ajnunezg
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift @Ajnunezg
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift @Ajnunezg
+scripts/ci/ @Ajnunezg
+Vendor/libsignal @Ajnunezg
+Vendor/libsignal/ @Ajnunezg
+budgets/ @Ajnunezg
+docs/security/ @Ajnunezg
+firestore.rules @Ajnunezg
+firestore.indexes.json @Ajnunezg
 project.yml @Ajnunezg

@@ -49,6 +49,19 @@ function toNum(v: unknown, def: number): number {
   return Number.isFinite(n) ? n : def;
 }
 
+function parseStringArray(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is string => typeof item === "string" && item.length > 0);
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    return raw
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+  return [];
+}
+
 function parseAppleId(raw: unknown): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const n = Number(raw);
@@ -203,6 +216,15 @@ function buildAppleProductIds(
   };
 }
 
+function stripePriceID(
+  envVar: string | undefined,
+  configKey: string,
+  stripe: Record<string, unknown>,
+  fallback?: string,
+): string {
+  return envVar ?? configString(stripe, configKey) ?? fallback ?? "";
+}
+
 /** Stripe price identifiers and webhook/secret keys. */
 function buildStripeSettings(
   stripe: Record<string, unknown>,
@@ -219,42 +241,60 @@ function buildStripeSettings(
   | "stripeElderWandSearches500PriceID"
   | "stripeSecretKey"
   | "stripeWebhookSecret"
+  | "stripeRedirectURLAllowlist"
 > {
   return {
-    stripeBurnBarProPriceID:
-      process.env.STRIPE_BURNBAR_PRO_PRICE_ID ?? configString(stripe, "burnbar_pro_price_id") ?? "",
-    stripeBurnBarCloudMonthlyPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID ??
-      configString(stripe, "burnbar_cloud_monthly_price_id") ??
-      process.env.STRIPE_BURNBAR_PRO_PRICE_ID ??
-      configString(stripe, "burnbar_pro_price_id") ??
-      "",
-    stripeBurnBarCloudAnnualPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID ?? configString(stripe, "burnbar_cloud_annual_price_id") ?? "",
-    stripeBurnBarCloudProMonthlyPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID ??
-      configString(stripe, "burnbar_cloud_pro_monthly_price_id") ??
-      "",
-    stripeBurnBarCloudProAnnualPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID ??
-      configString(stripe, "burnbar_cloud_pro_annual_price_id") ??
-      "",
-    stripeAgentControl100ActionsPriceID:
-      process.env.STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID ??
-      configString(stripe, "agent_control_100_actions_price_id") ??
-      "",
-    stripeFlooRelay50GBPriceID:
-      process.env.STRIPE_FLOO_RELAY_50GB_PRICE_ID ?? configString(stripe, "floo_relay_50gb_price_id") ?? "",
-    stripeElderWandSearches100PriceID:
-      process.env.STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID ??
-      configString(stripe, "elder_wand_searches_100_price_id") ??
-      "",
-    stripeElderWandSearches500PriceID:
-      process.env.STRIPE_ELDER_WAND_SEARCHES_500_PRICE_ID ??
-      configString(stripe, "elder_wand_searches_500_price_id") ??
-      "",
-    stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? configString(stripe, "secret_key") ?? "",
-    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? configString(stripe, "webhook_secret") ?? "",
+    stripeBurnBarProPriceID: stripePriceID(
+      process.env.STRIPE_BURNBAR_PRO_PRICE_ID,
+      "burnbar_pro_price_id",
+      stripe,
+    ),
+    stripeBurnBarCloudMonthlyPriceID: stripePriceID(
+      process.env.STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID,
+      "burnbar_cloud_monthly_price_id",
+      stripe,
+      stripePriceID(process.env.STRIPE_BURNBAR_PRO_PRICE_ID, "burnbar_pro_price_id", stripe),
+    ),
+    stripeBurnBarCloudAnnualPriceID: stripePriceID(
+      process.env.STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID,
+      "burnbar_cloud_annual_price_id",
+      stripe,
+    ),
+    stripeBurnBarCloudProMonthlyPriceID: stripePriceID(
+      process.env.STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID,
+      "burnbar_cloud_pro_monthly_price_id",
+      stripe,
+    ),
+    stripeBurnBarCloudProAnnualPriceID: stripePriceID(
+      process.env.STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID,
+      "burnbar_cloud_pro_annual_price_id",
+      stripe,
+    ),
+    stripeAgentControl100ActionsPriceID: stripePriceID(
+      process.env.STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID,
+      "agent_control_100_actions_price_id",
+      stripe,
+    ),
+    stripeFlooRelay50GBPriceID: stripePriceID(
+      process.env.STRIPE_FLOO_RELAY_50GB_PRICE_ID,
+      "floo_relay_50gb_price_id",
+      stripe,
+    ),
+    stripeElderWandSearches100PriceID: stripePriceID(
+      process.env.STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID,
+      "elder_wand_searches_100_price_id",
+      stripe,
+    ),
+    stripeElderWandSearches500PriceID: stripePriceID(
+      process.env.STRIPE_ELDER_WAND_SEARCHES_500_PRICE_ID,
+      "elder_wand_searches_500_price_id",
+      stripe,
+    ),
+    stripeSecretKey: stripePriceID(process.env.STRIPE_SECRET_KEY, "secret_key", stripe),
+    stripeWebhookSecret: stripePriceID(process.env.STRIPE_WEBHOOK_SECRET, "webhook_secret", stripe),
+    stripeRedirectURLAllowlist: parseStringArray(
+      process.env.STRIPE_REDIRECT_URL_ALLOWLIST ?? stripe.redirect_url_allowlist,
+    ),
   };
 }
 

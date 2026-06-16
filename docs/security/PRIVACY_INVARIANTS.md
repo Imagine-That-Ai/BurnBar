@@ -27,11 +27,12 @@ of uid+token docs, and no unscrubbed client crash egress.
 | **I4** | `functions/src/logging.ts` defines and applies `redactUidPaths()` so a UID embedded in any path/message/error string value is redacted. | F-RR09-002 | static gate + `loggingScrubber.test.ts` |
 | **I5** | The outbound push payload builders (`buildVoipApnsPayload`, `buildFcmCallPayload`) never include `connection_id` / `pairedDeviceId` / a real display name. | F-RR09-008 | static gate + `voipPushMetadata.test.ts` |
 | **I6** | Every declared `ttl:true` override is a **live** Firestore TTL policy (ACTIVE/CREATING) in the deployed project. | F-RR09-001 / F-RR09-007 | deploy gate (`verify-firestore-ttl-state.mjs`) |
+| **I7** | Account-deletion warnings route through the structured logger and never log raw UIDs or Cloud Storage paths (`document_id`, `storage_prefix`, `${uid}` interpolation). | OPUS-F-005 | static gate + `accountDeletionLogScrub.test.ts` |
 
 ## Where they run
 
-- **Per-PR (fast):** `.github/workflows/fast-feedback.yml` → `no-suppressions` job self-tests then runs `check-privacy-invariants.mjs` (I1–I5).
-- **Ops meta-gate:** `scripts/ci/verify-ops-readiness.sh` (run by `ops-confidence.yml`) self-tests then runs the gate (I1–I5).
+- **Per-PR (fast):** `.github/workflows/fast-feedback.yml` → `no-suppressions` job self-tests then runs `check-privacy-invariants.mjs` (I1–I5 + I7).
+- **Ops meta-gate:** `scripts/ci/verify-ops-readiness.sh` (run by `ops-confidence.yml`) self-tests then runs the gate (I1–I5 + I7).
 - **On deploy:** `.github/workflows/deploy-firestore.yml` runs `verify-firestore-ttl-state.mjs` after the index deploy (I6) — the automated form of the "B3 deploy readback".
 
 ## Extending the gate
@@ -42,6 +43,8 @@ Adding coverage is a one-line edit in `scripts/ci/check-privacy-invariants.mjs`:
   (forces I1 + I2 + I6 for it automatically).
 - A new banned push-payload key → add to `BANNED_PUSH_KEYS`.
 - A new push payload builder → add to `PUSH_PAYLOAD_BUILDERS`.
+- A new account-deletion log field that carries a raw UID/path → add it to the
+  I7 scan in `check-privacy-invariants.mjs`.
 
 Always add a matching positive control in `check-privacy-invariants.test.mjs`
 so the gate is proven to catch the regression (it must never pass vacuously).

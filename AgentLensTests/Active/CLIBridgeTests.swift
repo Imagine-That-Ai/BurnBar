@@ -442,6 +442,43 @@ final class CLIBridgeTests: XCTestCase {
         ])
     }
 
+    // MARK: - Model Allowlist (T-AI-08)
+
+    func test_modelAllowlist_allowsExactMatch() {
+        let allowlist = OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: ["hermes", "claude-sonnet-4-6"])
+        XCTAssertTrue(allowlist.allows("hermes"))
+        XCTAssertTrue(allowlist.allows("claude-sonnet-4-6"))
+    }
+
+    func test_modelAllowlist_allowsProviderScopedBareID() {
+        let allowlist = OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: ["anthropic/claude-sonnet-4-6"])
+        XCTAssertTrue(allowlist.allows("claude-sonnet-4-6"))
+        XCTAssertFalse(allowlist.allows("glm-5"))
+    }
+
+    func test_modelAllowlist_isCaseInsensitive() {
+        let allowlist = OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: ["Hermes", "CLAUDE-SONNET-4-6"])
+        XCTAssertTrue(allowlist.allows("hermes"))
+        XCTAssertTrue(allowlist.allows("claude-sonnet-4-6"))
+    }
+
+    func test_modelAllowlist_rejectsEmptyModelID() {
+        let allowlist = OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: ["hermes"])
+        XCTAssertFalse(allowlist.allows(""))
+        XCTAssertFalse(allowlist.allows("   "))
+    }
+
+    func test_modelAllowlist_emptyAllowlistDisablesEnforcement() {
+        let allowlist = OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: [])
+        XCTAssertTrue(allowlist.allows("anything"))
+    }
+
+    func test_modelAllowlist_rejectsWhitespacePaddingInAllowedEntry() {
+        let allowlist = OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: ["  hermes  "])
+        XCTAssertTrue(allowlist.allows("hermes"))
+        XCTAssertFalse(allowlist.allows("  hermes  "))
+    }
+
     func test_agentToolBroker_deniesWorkspaceReadThroughSymlinkEscape() async throws {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)

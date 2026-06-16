@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 import types
 from pathlib import Path
+
+import pytest
 
 
 _HERE = Path(__file__).resolve().parent
@@ -15,6 +18,16 @@ if str(_PARENT) not in sys.path:
     sys.path.insert(0, str(_PARENT))
 
 import project_code_memory as pcm  # noqa: E402
+
+
+def _static_parser_helper() -> Path | None:
+    candidates = [
+        _PARENT.parent.parent / "crates/project-code-static-parser/target/debug/project-code-static-parser",
+        _PARENT.parent.parent / "crates/project-code-static-parser/target/release/project-code-static-parser",
+        Path.cwd() / "crates/project-code-static-parser/target/debug/project-code-static-parser",
+        Path.cwd() / "crates/project-code-static-parser/target/release/project-code-static-parser",
+    ]
+    return next((path for path in candidates if path.exists() and os.access(path, os.X_OK)), None)
 
 
 def _load_server():
@@ -41,9 +54,7 @@ def _load_server():
         sys.modules["mcp.server"] = server_mod
         sys.modules["mcp.server.fastmcp"] = fastmcp_mod
 
-    spec = importlib.util.spec_from_file_location(
-        "openburnbar_mcp_server_project_memory_test", str(_PARENT / "server.py")
-    )
+    spec = importlib.util.spec_from_file_location("openburnbar_mcp_server_project_memory_test", str(_PARENT / "server.py"))
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules["openburnbar_mcp_server_project_memory_test"] = module
@@ -112,9 +123,126 @@ def foreign_feature():
 
         graph = pcm.call_graph(conn, "beta_helper", str(repo_a), depth=1, limit=20)
         assert any(edge["caller"] == "alpha_feature" and edge["callee"] == "beta_helper" for edge in graph["edges"])
+        assert all(edge["hop"] == 1 for edge in graph["edges"])
 
         pack = pcm.context_pack(conn, "beta_helper", str(repo_a), token_budget=2000, limit=5)
-        assert '<file path="main.py"' in pack["contextPack"]
+        assert "<file path=\"main.py\"" in pack["contextPack"]
+
+
+def test_call_graph_depth_traverses_multi_hop_chain(tmp_path: Path) -> None:
+    repo = _make_repo(
+        tmp_path / "repo-chain",
+        """
+def alpha_chain():
+    return beta_chain()
+
+def beta_chain():
+    return gamma_chain()
+
+def gamma_chain():
+    return 42
+""",
+    )
+    db_path = tmp_path / "openburnbar.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        pcm.index_project(conn, str(repo), max_files=25)
+
+        shallow = pcm.call_graph(conn, "alpha_chain", str(repo), depth=1, limit=50)
+        deep = pcm.call_graph(conn, "alpha_chain", str(repo), depth=3, limit=50)
+
+        # depth=1 returns only the direct edge alpha_chain -> beta_chain.
+        shallow_pairs = {(e["caller"], e["callee"]) for e in shallow["edges"]}
+        assert shallow_pairs == {("alpha_chain", "beta_chain")}
+
+        # depth=3 follows the chain alpha_chain -> beta_chain -> gamma_chain.
+        deep_pairs = {(e["caller"], e["callee"]) for e in deep["edges"]}
+        assert ("alpha_chain", "beta_chain") in deep_pairs
+        assert ("beta_chain", "gamma_chain") in deep_pairs
+        assert len(deep["edges"]) > len(shallow["edges"])
+        assert deep["depth"] == 3
+        assert shallow["depth"] == 1
+        assert any(e["hop"] == 2 for e in deep["edges"])
+
+
+def test_exact_lsp_tier_and_references_when_configured(tmp_path: Path, monkeypatch) -> None:
+    helper = _static_parser_helper()
+    if helper is None:
+        pytest.skip("project-code-static-parser helper has not been built")
+    fake_lsp = tmp_path / "fake_lsp.py"
+    fake_lsp.write_text(
+        r'''
+import json
+import sys
+
+def read_message():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        if line in (b"\r\n", b"\n"):
+            break
+        key, value = line.decode("ascii").split(":", 1)
+        headers[key.lower()] = value.strip()
+    body = sys.stdin.buffer.read(int(headers["content-length"]))
+    return json.loads(body)
+
+def write_message(payload):
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+    sys.stdout.buffer.flush()
+
+while True:
+    msg = read_message()
+    if msg is None:
+        break
+    method = msg.get("method")
+    if "id" in msg and method == "initialize":
+        write_message({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {"documentSymbolProvider": True, "referencesProvider": True}}})
+    elif "id" in msg and method == "textDocument/documentSymbol":
+        write_message({"jsonrpc": "2.0", "id": msg["id"], "result": [
+            {"name": "exact_target", "kind": 12, "range": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 16}}, "selectionRange": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 16}}}
+        ]})
+    elif "id" in msg and method == "textDocument/references":
+        uri = msg["params"]["textDocument"]["uri"]
+        write_message({"jsonrpc": "2.0", "id": msg["id"], "result": [
+            {"uri": uri, "range": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 16}}},
+            {"uri": uri, "range": {"start": {"line": 2, "character": 11}, "end": {"line": 2, "character": 23}}}
+        ]})
+    elif "id" in msg and method == "shutdown":
+        write_message({"jsonrpc": "2.0", "id": msg["id"], "result": None})
+    elif method == "exit":
+        break
+''',
+        encoding="utf-8",
+    )
+    repo = _make_repo(
+        tmp_path / "repo-lsp",
+        """
+def exact_target():
+    return 1
+
+value = exact_target()
+""",
+    )
+    monkeypatch.setenv("OPENBURNBAR_CODE_STATIC_PARSER_PATH", str(helper))
+    monkeypatch.setenv("OPENBURNBAR_CODE_LSP_COMMANDS", json.dumps({"python": [sys.executable, str(fake_lsp)]}))
+    monkeypatch.setenv("OPENBURNBAR_CODE_LSP_TIMEOUT_MS", "1500")
+
+    db_path = tmp_path / "openburnbar.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        pcm.index_project(conn, str(repo), max_files=25)
+        symbol = pcm.get_symbol(conn, "exact_target", str(repo), limit=10)["symbols"][0]
+        assert symbol["confidenceTier"] == "exact_lsp"
+        assert symbol["tierEvidence"]["parser"] == "lsp"
+        assert symbol["tierEvidence"]["lspResponded"] is True
+
+        refs = pcm.find_references(conn, "exact_target", str(repo), limit=10)["references"]
+        assert len(refs) == 2
+        assert {ref["confidenceTier"] for ref in refs} == {"exact_lsp"}
+        assert all(ref["tierEvidence"]["lspResponded"] is True for ref in refs)
 
 
 def test_code_index_enforces_storage_budget_and_reports_status(tmp_path: Path) -> None:
@@ -149,8 +277,8 @@ def clean_symbol():
     return 1
 """,
     )
-    fake_pat = "ghp_" + "123456789012345678901234567890123456"
-    (repo / "secret.py").write_text(f'TOKEN = "{fake_pat}"\n', encoding="utf-8")
+    fake_github_token = "ghp_" + ("1" * 36)
+    (repo / "secret.py").write_text(f'TOKEN = "{fake_github_token}"\n', encoding="utf-8")
     db_path = tmp_path / "openburnbar.sqlite"
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -233,9 +361,7 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
     json.loads(server.burnbar_remember("Remember method names.", project_path=str(repo)))
     json.loads(server.burnbar_forget("mem_fixture", project_path=str(repo)))
     json.loads(server.burnbar_index_project(project_path=str(repo), storage_budget_bytes=4096))
-    json.loads(
-        server.burnbar_watch_project(project_path=str(repo), storage_budget_bytes=4096, poll_interval_seconds=0.5)
-    )
+    json.loads(server.burnbar_watch_project(project_path=str(repo), storage_budget_bytes=4096, poll_interval_seconds=0.5))
     json.loads(server.burnbar_explore("method", project_path=str(repo)))
 
     assert [method for method, _ in calls] == [
@@ -250,9 +376,7 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
     assert calls[4][1]["maxBytes"] == 6000
 
 
-def test_write_tools_do_not_fall_back_to_direct_sqlite_even_with_legacy_override_env(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_write_tools_do_not_fall_back_to_direct_sqlite_even_with_legacy_override_env(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "openburnbar.sqlite"
     sqlite3.connect(db_path).close()
     repo = _make_repo(tmp_path / "repo-no-direct", "def durable_fact(): return 1\n")

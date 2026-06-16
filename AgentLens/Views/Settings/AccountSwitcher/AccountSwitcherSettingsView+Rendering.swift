@@ -534,7 +534,10 @@ extension AccountSwitcherSettingsView {
             (.forge, "Forge", "flame.fill", Color(hex: "F97316")),
             (.antigravity, "Antigravity", "terminal.fill", Color(hex: "6C63FF")),
             (.grok, "Grok Build", "terminal.fill", Color(hex: "111111")),
-            (.cursorAgent, "Cursor Agent", "terminal.fill", Color(hex: "00E5FF"))
+            (.cursorAgent, "Cursor Agent", "terminal.fill", Color(hex: "00E5FF")),
+            (.gemini, "Gemini CLI", "terminal.fill", Color(hex: "4285F4")),
+            (.kimi, "Kimi", "terminal.fill", Color(hex: "6366F1")),
+            (.pi, "Pi", "terminal.fill", Color(hex: "7C3AED"))
         ]
 
         var groups: [ProfileGroup] = []
@@ -551,6 +554,9 @@ extension AccountSwitcherSettingsView {
                 case .antigravity: "AntigravityLogo"
                 case .grok: "GrokLogo"
                 case .cursorAgent: "CursorLogo"
+                case .gemini: "GeminiCLILogo"
+                case .kimi: "KimiLogo"
+                case .pi: "PiAgentLogo"
                 }
                 groups.append(ProfileGroup(
                     key: cliType.rawValue,

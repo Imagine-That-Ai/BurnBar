@@ -1294,21 +1294,24 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "latestRouterRundown",
-    trigger: "scheduled",
-    authMethod: "Cloud Scheduler / platform trigger",
-    appCheck: "not-applicable",
-    tenantSource: "job-owned collection scans",
+    trigger: "http",
+    authMethod: "public read-only JSON endpoint",
+    appCheck: "not-required",
+    tenantSource: "none",
     objectIdsFromClient: [],
-    ownershipCheck: "server-side collection filters and per-document uid fields",
+    ownershipCheck: "no tenant data returned; date parameter validated against calendar range",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
-        test: "platform triggers are not client-callable",
-        kind: "platform-trigger",
+        test: "public health endpoints do not expose tenant objects",
+        kind: "not-applicable-public",
         covers: ["latestRouterRundown"],
+        publicJustification: "Public read-only rundown endpoint exposes no user objects.",
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "routerRundown.ts",
+    publicJustification: "Public read-only rundown endpoint exposes no user objects.",
   },
   {
     exportedName: "listEncryptedProjectMemorySnapshots",
@@ -1470,12 +1473,13 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "onKnowledgeRepoPush",
-    trigger: "firestore-trigger",
-    authMethod: "Firestore event trigger",
+    trigger: "provider-webhook",
+    authMethod: "GitHub HMAC signature verification",
     appCheck: "not-applicable",
-    tenantSource: "event document path",
+    tenantSource: "repoMatchToken resolves to uid via collection-group query",
     objectIdsFromClient: [],
-    ownershipCheck: "server derives uid/object path from triggering document",
+    ownershipCheck:
+      "server verifies HMAC and resolves repo to users via opaque token; writes only users/{uid}/knowledge_sync_manifests",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -1485,6 +1489,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    handlerModule: "callables/knowledgeSync.ts",
+    publicJustification:
+      "Provider webhook endpoint is internet-facing by design and authenticated by GitHub HMAC signature.",
   },
   {
     exportedName: "onMobileAssistantAgentReplyNotification",

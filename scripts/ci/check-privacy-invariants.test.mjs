@@ -63,8 +63,47 @@ const w = db.collection("voip_outbound").add({ uid, expireAt: x });
 const f = db.collection("fcm_outbound").add({ uid, expireAt: x });
 `;
 const GOOD_AGENTNOTIF = `const EVENT_COLLECTION = "agent_notification_events";
-const e = { expireAt: Timestamp.fromMillis(n + TTL) };`;
+const e = { expireAt: Timestamp.fromMillis(n + TTL) };
+export function buildFcmMessage(args: { event: { id: string; runtime: string; providerLabel: string; preview: string; replyEnabled: boolean }; device: { fcmToken?: string; platform: string } }) {
+  const data = {
+    type: "agent_reply",
+    event_id: args.event.id,
+    runtime: args.event.runtime,
+    title: args.event.providerLabel,
+    preview: args.event.preview,
+    reply_enabled: args.event.replyEnabled ? "true" : "false",
+  };
+  const base = {
+    token: args.device.fcmToken ?? "",
+    data,
+    android: { priority: "high", collapseKey: "agent-reply", ttl: 600000 },
+  };
+  if (args.device.platform === "android") return base;
+  return {
+    token: base.token,
+    data: base.data,
+    android: base.android,
+    notification: { title: data.title, body: data.preview },
+    apns: { payload: { aps: { category: "AGENT_REPLY", sound: "default" } }, headers: { "apns-push-type": "alert", "apns-priority": "10" } },
+  };
+}`;
 const GOOD_LOGGING = `function redactUidPaths(v){return v;} function scrubString(v){return redactUidPaths(v);}`;
+// Minimal account-deletion fixture: routes through logWarn, never logs document_id
+// or a raw storage_prefix, and keeps \`${uid}\` out of log arguments.
+const GOOD_ACCOUNT_DELETION = `
+import { logWarn } from "./logging.js";
+function safeWarn(user_id_hash, msg, err, extra) {
+  logWarn({ event: "account_deletion_warning", user_id_hash, message: msg, error: String(err), ...extra });
+}
+export async function eraseUserCloudData(db, uid, options) {
+  safeWarn(uid.slice(0, 8), "Failed to destroy provider credential secret", new Error("boom"), { account_id_hash: "abc", collection: "provider_account_secret_refs" });
+  for (const prefix of [\`users/\${uid}/\`, \`avatars/\${uid}\`]) {
+    await options.deleteStorageObjects(prefix).catch((err) =>
+      safeWarn(uid.slice(0, 8), "Failed to delete Cloud Storage objects", err, { storage_prefix_kind: prefix.startsWith("avatars/") ? "avatars" : "users" })
+    );
+  }
+}
+`;
 
 /** Write a fixture tree under a fresh temp dir; `mut` may mutate the files map. */
 function buildTree(mut = (f) => f) {
@@ -75,6 +114,7 @@ function buildTree(mut = (f) => f) {
     "functions/src/voipPush.ts": GOOD_VOIPPUSH,
     "functions/src/agentNotifications.ts": GOOD_AGENTNOTIF,
     "functions/src/logging.ts": GOOD_LOGGING,
+    "functions/src/accountDeletion.ts": GOOD_ACCOUNT_DELETION,
   });
   for (const [rel, content] of Object.entries(files)) {
     if (content === null) continue;
@@ -190,6 +230,56 @@ expect(
     f["functions/src/voipPush.ts"] = f["functions/src/voipPush.ts"].replace(
       'aps: { "content-available": 1 }, type: "media_incoming_call", callId: args.callId, correlationId: args.correlationId, isVideo: args.isVideo',
       '...args, type: "media_incoming_call"',
+    );
+    return f;
+  }),
+  1,
+);
+
+// I7: a raw console.warn in accountDeletion.ts must FAIL.
+expect(
+  "I7 — raw console.warn in accountDeletion.ts fails",
+  buildTree((f) => {
+    f["functions/src/accountDeletion.ts"] =
+      `console.warn("leaked uid", uid);\n` + f["functions/src/accountDeletion.ts"];
+    return f;
+  }),
+  1,
+);
+
+// I7: logging a document_id (which embeds the full UID) must FAIL.
+expect(
+  "I7 — document_id in accountDeletion.ts logWarn fails",
+  buildTree((f) => {
+    f["functions/src/accountDeletion.ts"] = f["functions/src/accountDeletion.ts"].replace(
+      'account_id_hash: "abc"',
+      'document_id: doc.id',
+    );
+    return f;
+  }),
+  1,
+);
+
+// I7: a raw storage_prefix field (carries `users/${uid}/`) must FAIL.
+expect(
+  "I7 — storage_prefix in accountDeletion.ts logWarn fails",
+  buildTree((f) => {
+    f["functions/src/accountDeletion.ts"] = f["functions/src/accountDeletion.ts"].replace(
+      'storage_prefix_kind: prefix.startsWith("avatars/") ? "avatars" : "users"',
+      'storage_prefix: prefix',
+    );
+    return f;
+  }),
+  1,
+);
+
+// I7: \`${uid}\` inside a logWarn argument must FAIL.
+expect(
+  "I7 — ${uid} interpolation in accountDeletion.ts logWarn fails",
+  buildTree((f) => {
+    f["functions/src/accountDeletion.ts"] = f["functions/src/accountDeletion.ts"].replace(
+      'message: msg',
+      'message: `failed for ${uid}`',
     );
     return f;
   }),

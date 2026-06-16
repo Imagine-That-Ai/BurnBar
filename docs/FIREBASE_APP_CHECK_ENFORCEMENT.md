@@ -25,8 +25,10 @@ Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.
 `scripts/commercial-launch-gate.mjs` probes the live Firebase App Check service
 configuration through the Firebase App Check API (`evaluateFirebaseAppCheckEnforcement`)
 and fails launch unless `firestore.googleapis.com` reports `ENFORCED`. The probe is
-also covered by `scripts/test-commercial-launch-gate-appcheck.mjs`. Set
-`OPENBURNBAR_SKIP_LIVE_APP_CHECK_GATE=1` only for offline dry-runs that cannot call
+also covered by `scripts/test-commercial-launch-gate-appcheck.mjs`, and it is now
+integrated into the release ops-readiness meta-gate (`scripts/ci/verify-ops-readiness.sh`)
+so a production deploy fails closed if enforcement is off or cannot be determined.
+Set `OPENBURNBAR_SKIP_LIVE_APP_CHECK_GATE=1` only for offline dry-runs that cannot call
 `gcloud` (never for production launch).
 
 ## Callable attestation binding (Computer Use / grants)

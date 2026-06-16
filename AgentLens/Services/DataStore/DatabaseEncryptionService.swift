@@ -45,6 +45,10 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
     /// migration must run before this app can open the store again.
     case plaintextDatabaseRequiresMigration(path: String)
 
+    /// A new encryption key was generated but could not be persisted to the
+    /// Keychain. Using the key would create an unreadable database on next launch.
+    case encryptionKeyUnavailable
+
     var description: String {
         switch self {
         case .cipherUnavailable:
@@ -53,6 +57,9 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
         case let .plaintextDatabaseRequiresMigration(path):
             return "Database encryption is enabled, but the existing database is plaintext at \(path). "
                 + "Refusing plaintext fallback; run the verified SQLCipher migration before opening."
+        case .encryptionKeyUnavailable:
+            return "Failed to persist a new database encryption key to the Keychain. "
+                + "Cannot create an encrypted database with an unpersisted key."
         }
     }
 }
@@ -92,7 +99,12 @@ enum DatabaseEncryptionService {
     /// The Keychain item uses `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
     /// so the key is unavailable when the device is locked and cannot migrate
     /// to other devices via iCloud Keychain.
-    static func getOrCreateKey() -> String {
+    ///
+    /// Fails closed (returns nil) if Keychain persistence fails. A key generated
+    /// but not persisted would work for the current session but be unrecoverable
+    /// on next launch (generating a different key), making the database unreadable.
+    /// Closes codex-gpt-5 FINDING-008.
+    static func getOrCreateKey() -> String? {
         if let existing = getKey() {
             return existing
         }
@@ -110,8 +122,12 @@ enum DatabaseEncryptionService {
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         let status = SecItemAdd(addQuery as CFDictionary, nil)
-        if status != errSecSuccess {
-            AppLogger.dataStore.error("Failed to store database encryption key in Keychain: \(status)", metadata: ["status": "\(status)"])
+        guard status == errSecSuccess else {
+            // Fail closed: if we cannot persist the key, returning it would
+            // create a database encrypted with an unpersisted key that the
+            // next launch cannot recover, causing silent data loss.
+            AppLogger.dataStore.error("Failed to store database encryption key in Keychain (aborting key creation): \(status)", metadata: ["status": "\(status)"])
+            return nil
         }
         return key
     }
@@ -134,7 +150,7 @@ enum DatabaseEncryptionService {
     /// an explicit passphrase-protected backup, or `importRecoveryBundle(data:password:)`
     /// to restore from one.
     @available(*, deprecated, message: "Recovery file support removed. Use getOrCreateKey() or exportRecoveryBundle(password:).")
-    static func getOrCreateKey(recoveryURL: URL) -> String {
+    static func getOrCreateKey(recoveryURL: URL) -> String? {
         _ = recoveryURL
         return getOrCreateKey()
     }

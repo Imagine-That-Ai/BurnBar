@@ -535,6 +535,7 @@ struct DashboardView: View {
                             )
                         }
                         liveCostCurveBand
+                        CastleGreatHallContainer()
                         NarrativeCardView(dataStore: dataStore)
                         if overviewUsesStackedLanes {
                             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
@@ -655,36 +656,41 @@ struct DashboardView: View {
     private var overviewEmptyState: some View {
         VStack(spacing: DesignSystem.Spacing.xl) {
             Spacer()
-            VStack(spacing: DesignSystem.Spacing.lg) {
-                Image(systemName: "chart.bar.xaxis")
-                    .font(.system(size: 48, weight: .thin))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                Text("Welcome to OpenBurnBar")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Start a session with any AI agent and click the refresh button to track your first usage.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 400)
-                Button(action: runScan) {
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Scan for Sessions")
-                            .font(DesignSystem.Typography.caption)
+            VStack(spacing: DesignSystem.Spacing.xl) {
+                VStack(spacing: DesignSystem.Spacing.lg) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.system(size: 48, weight: .thin))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text("Welcome to OpenBurnBar")
+                        .font(DesignSystem.Typography.title)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Start a session with any AI agent and click the refresh button to track your first usage.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 400)
+                    Button(action: runScan) {
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Scan for Sessions")
+                                .font(DesignSystem.Typography.caption)
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                        .padding(.vertical, DesignSystem.Spacing.md)
+                        .background(
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                                .fill(DesignSystem.Colors.primaryGradient)
+                        )
+                        .shadow(color: DesignSystem.Colors.blaze.opacity(0.3), radius: 10, y: 3)
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, DesignSystem.Spacing.lg)
-                    .padding(.vertical, DesignSystem.Spacing.md)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .fill(DesignSystem.Colors.primaryGradient)
-                    )
-                    .shadow(color: DesignSystem.Colors.blaze.opacity(0.3), radius: 10, y: 3)
+                    .buttonStyle(.plain)
+                    .disabled(isScanning)
                 }
-                .buttonStyle(.plain)
-                .disabled(isScanning)
+                CastleGreatHallContainer()
+                    .frame(maxWidth: 900)
+                    .padding(.horizontal, DesignSystem.Spacing.xl)
             }
             .opacity(overviewEmptyStateAppeared ? 1 : 0)
             .offset(y: overviewEmptyStateAppeared ? 0 : 10)

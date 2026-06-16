@@ -67,9 +67,7 @@ def test_pareto_guard_keeps_unknown_zero_price_below_real_priced_capability() ->
         "costUnknown": True,
     }
 
-    ranked = sorted(
-        [unknown_zero, real_priced], key=lambda candidate: ministry._candidate_sort_key(candidate, "pareto")
-    )
+    ranked = sorted([unknown_zero, real_priced], key=lambda candidate: ministry._candidate_sort_key(candidate, "pareto"))
 
     assert ranked[0]["arg"] == "real-priced"
 
@@ -199,8 +197,23 @@ def test_wand_sanitizer_falls_back_and_has_one_default_with_headless_floor() -> 
 
     assert warnings
     assert sum(1 for wand in wands if wand["isDefault"]) == 1
-    council = next(wand for wand in wands if wand["id"] == "council")
-    assert council["constraints"]["minCapabilityRank"] <= 10
+    headmaster = next(wand for wand in wands if wand["id"] == "headmaster")
+    assert headmaster["constraints"]["minCapabilityRank"] <= 10
+
+
+def test_resolved_wand_parallel_max_env_and_clamp(monkeypatch) -> None:
+    monkeypatch.delenv("OPENBURNBAR_WAND_PARALLEL_MAX", raising=False)
+    assert ministry.resolved_wand_parallel_max() == 16  # ceiling fallback
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "3")
+    assert ministry.resolved_wand_parallel_max() == 3  # Cloud cap
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "8")
+    assert ministry.resolved_wand_parallel_max() == 8  # Cloud Pro cap
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "999")
+    assert ministry.resolved_wand_parallel_max() == 16  # clamped to ceiling
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "0")
+    assert ministry.resolved_wand_parallel_max() == 1  # floor
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "garbage")
+    assert ministry.resolved_wand_parallel_max() == 16  # invalid → ceiling
 
 
 def test_selector_can_probe_past_first_failure(monkeypatch, tmp_path: Path) -> None:
@@ -210,8 +223,8 @@ def test_selector_can_probe_past_first_failure(monkeypatch, tmp_path: Path) -> N
             {
                 "wands": [
                     {
-                        "id": "council",
-                        "name": "Council Wand",
+                        "id": "headmaster",
+                        "name": "Headmaster's Wand",
                         "selector": "best",
                         "constraints": {"minCapabilityRank": 10},
                         "autonomy": "medium",
@@ -264,8 +277,8 @@ def test_multi_selector_preserves_provider_diversity_with_proof(monkeypatch, tmp
             {
                 "wands": [
                     {
-                        "id": "council",
-                        "name": "Council Wand",
+                        "id": "headmaster",
+                        "name": "Headmaster's Wand",
                         "selector": "best",
                         "constraints": {"minCapabilityRank": 10},
                         "autonomy": "medium",

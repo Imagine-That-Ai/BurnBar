@@ -7,6 +7,17 @@ import Foundation
 import OpenBurnBarCore
 import UserNotifications
 
+private func agentReplyNotificationString(_ value: Any?) -> String? {
+    switch value {
+    case let string as String:
+        return string
+    case let number as NSNumber:
+        return number.stringValue
+    default:
+        return nil
+    }
+}
+
 private struct MacAgentReplyNotificationPayload: Sendable {
     let eventID: String
     let runtime: String
@@ -528,8 +539,36 @@ extension MacAgentReplyNotificationListener: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let payload = MacAgentReplyNotificationPayload(userInfo: response.notification.request.content.userInfo)
+        let resolved = await resolvedPayloadForPush(payload)
         let actionIdentifier = response.actionIdentifier
         let replyText = (response as? UNTextInputNotificationResponse)?.userText
-        await handleResponse(payload: payload, actionIdentifier: actionIdentifier, replyText: replyText)
+        await handleResponse(payload: resolved ?? payload, actionIdentifier: actionIdentifier, replyText: replyText)
+    }
+
+    /// Resolve a push payload to a full payload, fetching the thread id from the
+    /// durable agent_notification_events document when the push omits it for
+    /// privacy (OPUS-F-006).
+    private nonisolated func resolvedPayloadForPush(_ payload: MacAgentReplyNotificationPayload?) async -> MacAgentReplyNotificationPayload? {
+        guard let payload, payload.threadID.isEmpty, !payload.eventID.isEmpty else { return payload }
+        guard let uid = Auth.auth().currentUser?.uid else { return payload }
+        do {
+            let snapshot = try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("agent_notification_events").document(payload.eventID)
+                .getDocument(source: .server)
+            guard let data = snapshot.data(),
+                  let threadID = agentReplyNotificationString(data["threadId"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !threadID.isEmpty else { return payload }
+            return MacAgentReplyNotificationPayload(
+                eventID: payload.eventID,
+                runtime: payload.runtime,
+                threadID: threadID,
+                title: payload.title,
+                preview: payload.preview,
+                deepLink: payload.deepLink
+            )
+        } catch {
+            return payload
+        }
     }
 }

@@ -1,7 +1,8 @@
 # Hosted Remote MCP
 
 OpenBurnBar Hosted Remote MCP is a BurnBar Pro cloud service that lets coding
-agents search a user's encrypted hosted session memory.
+agents search a user's encrypted hosted session memory and explicitly opted-in,
+sealed hosted code memory.
 
 The production endpoint is:
 
@@ -33,6 +34,10 @@ The hosted service implements the 2025-11-25 MCP Streamable HTTP shape:
 - `burnbar_recent_usage`
 - `burnbar_list_resumable_conversations`
 - `burnbar_resume_conversation`
+- `burnbar_search_knowledge`
+- `burnbar_get_knowledge_document`
+- `burnbar_search_code`
+- `burnbar_get_code_document`
 - `burnbar_resolve_capabilities`
 
 Every tool has required scopes, an entitlement check, a rate-limit bucket, a
@@ -43,10 +48,17 @@ Firestore/Storage paths; the token `sub` selects the user namespace.
 
 The default mode is `local_decrypt_shim`.
 
-The hosted service searches opaque token/semantic hashes and returns sealed
-titles, snippets, previews, and encrypted body pages. Plaintext decrypt happens
-inside OpenBurnBar or the local shim after the user has an allowed vault-key
-wrapper. Silent hosted plaintext decrypt is not implemented.
+The hosted service searches opaque token/semantic hashes, cloaked knowledge
+vectors, and explicitly opted-in cloaked code vectors. It returns sealed titles,
+snippets, previews, encrypted body pages, and sealed knowledge/code chunks.
+Plaintext decrypt happens inside OpenBurnBar or the local shim after the user has
+an allowed vault-key wrapper. Silent hosted plaintext decrypt is not implemented.
+
+Hosted code memory is not part of the general knowledge tools. `burnbar_search_code`
+requires `code:read`, a vault-keyed `projectHmac`, and a pinned
+`embeddingModelVersion`; `burnbar_get_code_document` only reads
+`burnbar://code/...` resources returned by that search path. The general
+knowledge tools refuse `sourceKind = code` rows.
 
 Hosted resume follows the same rule. The server composes only a sealed resume
 envelope; `openburnbar-mcp-remote resume ...` checks for a local vault key before

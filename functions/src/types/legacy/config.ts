@@ -182,6 +182,14 @@ export interface EnvConfig {
   /** Stripe webhook signing secret for subscription entitlement updates. */
   stripeWebhookSecret: string;
 
+  /**
+   * Optional production allowlist of hostname[:port] values for Stripe checkout
+   * and billing-portal redirect URLs. When non-empty, non-loopback redirect
+   * destinations must match an entry exactly. Empty (default) permits any HTTPS
+   * host so existing deployments without an explicit allowlist keep working.
+   */
+  stripeRedirectURLAllowlist: string[];
+
   /** Google Play package name used for Android subscription verification. */
   googlePlayPackageName: string;
 

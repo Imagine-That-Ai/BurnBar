@@ -180,6 +180,44 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  latestRouterRundown: {
+    trigger: "http",
+    authMethod: "public read-only JSON endpoint",
+    appCheck: "not-required",
+    tenantSource: "none",
+    objectIdsFromClient: [],
+    ownershipCheck: "no tenant data returned; date parameter validated against calendar range",
+    handlerModule: "routerRundown.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "public health endpoints do not expose tenant objects",
+        kind: "not-applicable-public",
+        covers: ["latestRouterRundown"],
+        publicJustification: "Public read-only rundown endpoint exposes no user objects.",
+      },
+    ],
+    publicJustification: "Public read-only rundown endpoint exposes no user objects.",
+  },
+  onKnowledgeRepoPush: {
+    trigger: "provider-webhook",
+    authMethod: "GitHub HMAC signature verification",
+    appCheck: "not-applicable",
+    tenantSource: "repoMatchToken resolves to uid via collection-group query",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "server verifies HMAC and resolves repo to users via opaque token; writes only users/{uid}/knowledge_sync_manifests",
+    handlerModule: "callables/knowledgeSync.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["onKnowledgeRepoPush"],
+      },
+    ],
+    publicJustification: "Provider webhook endpoint is internet-facing by design and authenticated by GitHub HMAC signature.",
+  },
   sendFcmOutbound: {
     trigger: "firestore-trigger",
     authMethod: "Firebase Functions event trigger (not client-callable)",

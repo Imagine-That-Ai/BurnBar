@@ -143,8 +143,8 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_watch_project` | **Write** start daemon-owned automatic reindexing for source/git-ref changes |
 | `burnbar_search_code` | Hybrid lexical/vector search over local-only indexed project code |
 | `burnbar_context_pack` / `burnbar_code_context_pack` | Build token-budgeted code context packs |
-| `burnbar_get_symbol` | Lexical-tier symbol lookup with blob-staleness evidence |
-| `burnbar_find_references` | Lexical-tier reference lookup for a project symbol |
+| `burnbar_get_symbol` | Symbol lookup with `exact_lsp` / `static_tree_sitter` / `lexical_fallback` tier evidence |
+| `burnbar_find_references` | Reference lookup for a project symbol, using exact LSP when a configured language server answers for the current buffer |
 | `burnbar_call_graph` | Lexical-tier call graph edges |
 | `burnbar_diagnostics` | Read cached diagnostics for a project |
 | `burnbar_index_status` | Read project-scoped code-memory index status |
@@ -168,10 +168,17 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_pause_budget_gate` | **Write** a pause window for one budget gate |
 | `burnbar_resume_budget_gate` | **Write** a previously paused budget gate back into enforcement |
 | `burnbar_org_spend` | Aggregate organization spend and usage over a bounded window |
+
+Project Code Memory is local-only by default. The Rust helper
+`crates/project-code-static-parser` provides the static tier for Swift,
+TypeScript/TSX, and Python. Set `OPENBURNBAR_CODE_LSP_COMMANDS` to a JSON map
+like `{"python":["pyright-langserver","--stdio"],"swift":["sourcekit-lsp"]}` to
+enable opt-in `exact_lsp` symbol/reference tiers; the helper falls back when the
+language server is unavailable, slow, or stale.
 | `burnbar_list_resumable_conversations` | Return recent conversations eligible for native or ported resume |
 | `burnbar_resume_conversation` | Compose a native command hint or deterministic cross-harness briefing |
 | `burnbar_spawn_resume` | Spawn the selected native or ported resume command after an explicit tool call |
-| `ministry_list_wands` | List Council/Pareto wands or a sanitized local wand store |
+| `ministry_list_wands` | List Headmaster/Pareto wands or a sanitized local wand store |
 | `ministry_validate_wands` | Validate the local Ministry wand store without writing |
 | `ministry_save_wands` | **Write** an operator-gated sanitized Ministry wand store |
 | `ministry_list_launchable` | List droid launch candidates from Factory `customModels[]` plus the built-in allowlist |
@@ -182,6 +189,14 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `ministry_build_droid_command` | Build a droid worker command with namespaced disabled tools and a done marker |
 | `ministry_collect_result` | Classify worker completion from `result.done`, JSON output, and HEAD-vs-base |
 | `ministry_cleanup_plan` | Emit post-capture cleanup commands for worktree, branch, files, and exact transcript candidates |
+| `castle_list_runtimes` | List Castle runtime Houses with install/auth preconditions |
+| `castle_list_launchable` | List runtime-stamped `(runtime, model)` candidates across supported CLI Houses |
+| `castle_select_models_for_wand` | Select N Castle workers for a wand, optionally proving each with a disposable landed-commit probe |
+| `castle_smoke_probe` | Run a disposable runtime probe and verify it lands a scoped commit |
+| `castle_build_command` | Build a wrapped worker command with prompt, result, done, stderr, and status sentinels |
+| `castle_collect_result` | Classify a Castle worker from `result.done`, parsed completion, and HEAD-vs-base; writes Swift-readable status JSON |
+| `castle_status_snapshot` | Read Castle status records for dashboard/debug surfaces |
+| `castle_seed_worktree_isolation` | Seed `.git/info/exclude` with known agent scratch paths before launching a worker |
 
 Write-capable tools are explicit, daemon-scoped, and disabled until
 `OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE=true` or
@@ -219,6 +234,23 @@ tombstone receipt; local Project Memory stays authoritative and unchanged.
 native command hint, a rendered cross-harness briefing, or a structured error.
 `burnbar_spawn_resume` is intentionally separate so agents must make an explicit
 second tool call before launching a process.
+
+## Castle multi-runtime fan-out
+
+Castle extends the Ministry selector from `model` to `(runtime, model)` without
+weakening the success gate. A worker counts as landed only when the done marker
+exists, the runtime parser says the run did not error, and the worker worktree
+HEAD differs from the recorded base SHA. The same verdict is written into the
+Castle status record that AgentLens reads; dashboard green states must come from
+`landsCommit`, not from process exit or a generic completed phase.
+
+Runtime wrappers write durable sentinels under
+`~/Library/Application Support/OpenBurnBar/castle/runs/<run-id>/` unless a
+caller supplies explicit paths. AgentLens can discover recent `status.json`
+records from that directory, or can be pointed at exact files with
+`OPENBURNBAR_CASTLE_STATUS_PATHS` using colon-separated paths. See
+[`docs/THE_CASTLE.md`](../../docs/THE_CASTLE.md) for adapter contracts,
+status-record semantics, and launch-readiness checks.
 
 The `BurnBarUsageEvent` JSON shape matches Swift's default `JSONEncoder`
 output exactly:

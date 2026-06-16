@@ -683,6 +683,9 @@ jobs:
           CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
           VERSION: ${{ steps.version.outputs.version }}
+        # Fail closed: GPG signing is required for release provenance. If the
+        # signing key is missing, the release must not ship without a signature.
+        # Closes OPUS-F-016.
         if: env.RELEASE_SIGNING_KEY != ''
         run: |
           # Import the GPG signing key
@@ -695,6 +698,12 @@ jobs:
 
           echo "sig_path=${CHECKSUMS_PATH}.asc" >> "$GITHUB_OUTPUT"
           echo "Checksums signed successfully."
+
+      - name: Verify GPG signing (fail closed)
+        if: env.RELEASE_SIGNING_KEY == ''
+        run: |
+          echo "::error::RELEASE_SIGNING_KEY is not set. GPG checksum signing is required for release provenance. Refusing to ship unsigned checksums."
+          exit 1
 
       - name: Generate SBOM
         id: sbom

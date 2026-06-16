@@ -64,7 +64,12 @@ import {
   resolveGatewayGrant,
   resolveGatewayWriteBody,
 } from "./hermesGatewayResolve.js";
-import { checkHermesGatewayBearerRateLimit } from "./publicRateLimit.js";
+import {
+  checkHermesGatewayBearerRateLimit,
+  checkPublicHttpEndpointRateLimit,
+  clientIpFromHttpRequest,
+  isPublicRateLimitExceeded,
+} from "./publicRateLimit.js";
 import { handleDevicePoll, handleDeviceStart } from "./hermesGatewayDeviceRoutes.js";
 import {
   handleArmApproval,
@@ -617,6 +622,16 @@ export const burnBarHermesGateway = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
+    try {
+      await checkPublicHttpEndpointRateLimit("burnBarHermesGateway", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      res.status(500).json({ error: "internal" });
+      return;
+    }
     await dispatchHermesGatewayRequest(toHermesHttpRequest(req), toHermesHttpResponse(res));
   },
 );

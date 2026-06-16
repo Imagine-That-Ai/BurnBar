@@ -78,7 +78,6 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "refreshAllProviderQuotas",
   "refreshModelLandscapeBenchmarks",
   "anchorAuditLogHeads",
-  "latestRouterRundown",
   "reconcileHostedEntitlementsDaily",
   "backfillPrivacyPlaintextScheduled",
   "reapHermesGatewayApprovals",
@@ -91,7 +90,13 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "appStoreServerNotificationsV2",
 ] as const;
 
-export const PUBLIC_HEALTH_ENDPOINTS = ["healthCheck", "healthLive", "healthReady", "startCliLink"] as const;
+export const PUBLIC_HEALTH_ENDPOINTS = [
+  "healthCheck",
+  "healthLive",
+  "healthReady",
+  "startCliLink",
+  "latestRouterRundown",
+] as const;
 
 describe("auth-only BOLA coverage", () => {
   it("rejects unauthenticated callable access", () => {

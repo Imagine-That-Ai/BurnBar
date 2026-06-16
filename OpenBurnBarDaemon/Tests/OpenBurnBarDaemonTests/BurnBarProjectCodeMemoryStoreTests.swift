@@ -7,6 +7,7 @@ import XCTest
 final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     func testIndexSearchSymbolsReferencesCallGraphAndStatus() throws {
         let fixture = try makeFixture()
+        let fakeIndexedOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
         try write(
             """
             struct Runner {
@@ -20,7 +21,9 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("App.swift")
         )
         try write(
-            #"let token = "sk-abcdefghijklmnopqrstuvwxyz123456""#,
+            """
+            let token = "\(fakeIndexedOpenAIKey)"
+            """,
             to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Secret.swift")
         )
 
@@ -102,6 +105,93 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(symbol?.tierEvidence?.details["helper"], "project-code-static-parser")
     }
 
+    func testExactLSPTierAndReferencesWhenLanguageServerConfigured() throws {
+        let helper = try staticParserHelperPath()
+        let fixture = try makeFixture()
+        let fakeLSP = fixture.root.appendingPathComponent("fake_lsp.py", isDirectory: false)
+        try write(
+            #"""
+            import json
+            import sys
+
+            def read_message():
+                headers = {}
+                while True:
+                    line = sys.stdin.buffer.readline()
+                    if not line:
+                        return None
+                    if line in (b"\r\n", b"\n"):
+                        break
+                    key, value = line.decode("ascii").split(":", 1)
+                    headers[key.lower()] = value.strip()
+                body = sys.stdin.buffer.read(int(headers["content-length"]))
+                return json.loads(body)
+
+            def write_message(payload):
+                body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+                sys.stdout.buffer.flush()
+
+            while True:
+                msg = read_message()
+                if msg is None:
+                    break
+                method = msg.get("method")
+                if "id" in msg and method == "initialize":
+                    write_message({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {"documentSymbolProvider": True, "referencesProvider": True}}})
+                elif "id" in msg and method == "textDocument/documentSymbol":
+                    write_message({"jsonrpc": "2.0", "id": msg["id"], "result": [
+                        {"name": "exactTarget", "kind": 12, "range": {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 16}}, "selectionRange": {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 16}}}
+                    ]})
+                elif "id" in msg and method == "textDocument/references":
+                    uri = msg["params"]["textDocument"]["uri"]
+                    write_message({"jsonrpc": "2.0", "id": msg["id"], "result": [
+                        {"uri": uri, "range": {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 16}}},
+                        {"uri": uri, "range": {"start": {"line": 4, "character": 8}, "end": {"line": 4, "character": 19}}}
+                    ]})
+                elif "id" in msg and method == "shutdown":
+                    write_message({"jsonrpc": "2.0", "id": msg["id"], "result": None})
+                elif method == "exit":
+                    break
+            """#,
+            to: fakeLSP
+        )
+        try write(
+            """
+            func exactTarget() -> Int {
+                1
+            }
+
+            let value = exactTarget()
+            """,
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Exact.swift")
+        )
+
+        setenv("OPENBURNBAR_CODE_STATIC_PARSER_PATH", helper.path, 1)
+        setenv("OPENBURNBAR_CODE_LSP_COMMANDS", #"{"swift":["/usr/bin/env","python3","\#(fakeLSP.path)"]}"#, 1)
+        setenv("OPENBURNBAR_CODE_LSP_TIMEOUT_MS", "1500", 1)
+        addTeardownBlock {
+            unsetenv("OPENBURNBAR_CODE_STATIC_PARSER_PATH")
+            unsetenv("OPENBURNBAR_CODE_LSP_COMMANDS")
+            unsetenv("OPENBURNBAR_CODE_LSP_TIMEOUT_MS")
+        }
+
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+
+        let symbol = try store.getSymbol(BurnBarProjectCodeSymbolRequest(name: "exactTarget", projectPath: fixture.project.path))
+            .symbols
+            .first
+        XCTAssertEqual(symbol?.confidenceTier, "exact_lsp")
+        XCTAssertEqual(symbol?.tierEvidence?.parser, "lsp")
+        XCTAssertEqual(symbol?.tierEvidence?.lspResponded, true)
+
+        let refs = try store.findReferences(BurnBarProjectCodeSymbolRequest(name: "exactTarget", projectPath: fixture.project.path))
+            .references
+        XCTAssertEqual(refs.count, 2)
+        XCTAssertTrue(refs.allSatisfy { $0.confidenceTier == "exact_lsp" })
+    }
+
     func testRememberRecallForgetAndAuditTrail() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
@@ -165,11 +255,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     func testRememberRejectsSecretsWithLabelOnlyAudit() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let fakeRememberedOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
 
         XCTAssertThrowsError(
             try store.remember(
                 BurnBarProjectMemoryRememberRequest(
-                    text: "token sk-abcdefghijklmnopqrstuvwxyz123456",
+                    text: "token \(fakeRememberedOpenAIKey)",
                     projectPath: fixture.project.path
                 )
             )
@@ -330,16 +421,25 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
 
     func testSecretScannerCoversSharedCorpusWithLabelOnlyAudit() throws {
         let fixture = try makeFixture()
+        let fakeOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+        let fakeAnthropicKey = "sk-ant-" + "abcdefghijklmnopqrstuvwxyz123456"
+        let fakeStripeKey = "sk_" + "live_" + "abcdefghijklmnopqrstuvwxyz123456"
+        let fakeGitHubToken = "ghp_" + String(repeating: "1", count: 36)
+        let fakeGoogleKey = "AI" + "za12345678901234567890123456789012345"
+        let fakeSlackToken = "xox" + "b-1234567890-abcdefghijklmnop"
+        let fakeXAIKey = "xai-" + "abcdefghijklmnopqrstuvwxyz123456"
+        let fakeAWSKey = "AK" + "IA1234567890ABCDEF"
+        let fakePrivateKeyBlock = "-----BEGIN " + "PRIVATE KEY-----\nabc\n-----END " + "PRIVATE KEY-----"
         let cases: [(String, String)] = [
-            ("openai sk-abcdefghijklmnopqrstuvwxyz123456", "OpenAI API key detected"),
-            ("anthropic sk-ant-abcdefghijklmnopqrstuvwxyz123456", "Anthropic API key detected"),
-            ("stripe " + "sk_live_" + "abcdefghijklmnopqrstuvwxyz123456", "Stripe secret key detected"),
-            ("github " + "ghp_" + "123456789012345678901234567890123456", "GitHub token detected"),
-            ("google AIza12345678901234567890123456789012345", "Google API key detected"),
-            ("slack " + "xoxb-" + "1234567890-abcdefghijklmnop", "Slack token detected"),
-            ("xai xai-abcdefghijklmnopqrstuvwxyz123456", "xAI API key detected"),
-            ("aws AKIA1234567890ABCDEF", "AWS access key detected"),
-            ("pem -----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----", "Private key block detected"),
+            ("openai \(fakeOpenAIKey)", "OpenAI API key detected"),
+            ("anthropic \(fakeAnthropicKey)", "Anthropic API key detected"),
+            ("stripe \(fakeStripeKey)", "Stripe secret key detected"),
+            ("github \(fakeGitHubToken)", "GitHub token detected"),
+            ("google \(fakeGoogleKey)", "Google API key detected"),
+            ("slack \(fakeSlackToken)", "Slack token detected"),
+            ("xai \(fakeXAIKey)", "xAI API key detected"),
+            ("aws \(fakeAWSKey)", "AWS access key detected"),
+            ("pem \(fakePrivateKeyBlock)", "Private key block detected"),
             ("db postgres://user:supersecretpassword@localhost/db", "Database URI credentials detected"),
             ("generic api_key=abcdefghijklmnopqrstuvwxyz123456", "Generic long secret assignment detected"),
             ("dotenv\nOPENBURNBAR_TOKEN=abcdefghijklmnopqrstuvwxyz123456", "Dotenv secret assignment detected"),
@@ -366,9 +466,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         }
         let serializedAudit = String(data: try JSONEncoder().encode(audit.events), encoding: .utf8) ?? ""
         XCTAssertFalse(serializedAudit.contains("ghp_"))
-        let stripePrefix = "sk" + "_live_"
-        XCTAssertFalse(serializedAudit.contains(stripePrefix))
-        XCTAssertFalse(serializedAudit.contains("AKIA1234567890ABCDEF"))
+        XCTAssertFalse(serializedAudit.contains("sk_live_"))
+        XCTAssertFalse(serializedAudit.contains(fakeAWSKey))
     }
 
     private func makeFixture() throws -> (root: URL, project: URL, database: URL) {
@@ -411,6 +510,10 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     }
 
     private func skipUnlessStaticParserHelperExists() throws {
+        _ = try staticParserHelperPath()
+    }
+
+    private func staticParserHelperPath() throws -> URL {
         let cwd = FileManager.default.currentDirectoryPath
         let candidates = [
             "\(cwd)/crates/project-code-static-parser/target/debug/project-code-static-parser",
@@ -418,8 +521,9 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             "\(cwd)/../crates/project-code-static-parser/target/debug/project-code-static-parser",
             "\(cwd)/../crates/project-code-static-parser/target/release/project-code-static-parser"
         ]
-        guard candidates.contains(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+        guard let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             throw XCTSkip("project-code-static-parser helper has not been built")
         }
+        return URL(fileURLWithPath: path)
     }
 }

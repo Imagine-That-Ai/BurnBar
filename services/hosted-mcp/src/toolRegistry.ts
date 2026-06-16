@@ -1,12 +1,21 @@
 import type { Firestore } from "firebase-admin/firestore";
 import type { AccessTokenClaims } from "./auth.js";
 import { requireScope } from "./auth.js";
-import { requireActiveBurnBarPro, requireActiveRemoteMcpAccess } from "./entitlements.js";
+import {
+  requireActiveBurnBarPro,
+  requireActiveRemoteMcpAccess,
+} from "./entitlements.js";
 import { enforceRateLimit } from "./rateLimits.js";
 import { listFacets, listIndexStatus, searchConversations } from "./search.js";
 import { readConversationBody, recentUsage } from "./resources.js";
 import { listResumable, resumeConversation } from "./resume.js";
-import { knowledgeSearchFirestoreFrom, searchKnowledge, readKnowledgeDocument } from "./knowledge.js";
+import {
+  knowledgeSearchFirestoreFrom,
+  searchKnowledge,
+  readKnowledgeDocument,
+  searchHostedCode,
+  readHostedCodeDocument,
+} from "./knowledge.js";
 
 export type CostClass = "metadata" | "standard" | "body";
 
@@ -34,14 +43,19 @@ function schema(properties: Record<string, unknown>, required: string[] = []) {
 export const tools: RegisteredTool[] = [
   {
     name: "burnbar_search_conversations",
-    description: "Search encrypted OpenBurnBar hosted session memory. Sealed results require the local shim for decrypted previews.",
+    description:
+      "Search encrypted OpenBurnBar hosted session memory. Sealed results require the local shim for decrypted previews.",
     requiredScopes: ["search:read"],
     costClass: "standard",
     rateLimitBucket: "search:standard",
     inputSchema: schema({
       query: { type: "string", maxLength: 512 },
       tokenHashes: { type: "array", items: { type: "string" }, maxItems: 10 },
-      semanticHashes: { type: "array", items: { type: "string" }, maxItems: 12 },
+      semanticHashes: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 12,
+      },
       provider: { type: "string", maxLength: 80 },
       model: { type: "string", maxLength: 120 },
       projectName: { type: "string", maxLength: 512 },
@@ -50,49 +64,67 @@ export const tools: RegisteredTool[] = [
       to: { type: "string" },
       limit: { type: "integer", minimum: 1, maximum: 50 },
       cursor: { type: "string" },
-      includeBodyPreview: { type: "boolean" }
+      includeBodyPreview: { type: "boolean" },
     }),
-    handler: async ({ db, claims }, args) => searchConversations(db, claims.sub, args)
+    handler: async ({ db, claims }, args) =>
+      searchConversations(db, claims.sub, args),
   },
   {
     name: "burnbar_get_conversation_body",
-    description: "Fetch one encrypted session body page for a resource returned by search.",
+    description:
+      "Fetch one encrypted session body page for a resource returned by search.",
     requiredScopes: ["conversation:read", "search:read"],
     costClass: "body",
     rateLimitBucket: "body:standard",
-    inputSchema: schema({
-      resourceUri: { type: "string", pattern: "^burnbar://conversation/" },
-      maxChars: { type: "integer", minimum: 1024, maximum: 96000 },
-      cursor: { type: "string" }
-    }, ["resourceUri"]),
-    handler: async ({ db, claims }, args) => readConversationBody(db, claims.sub, args)
+    inputSchema: schema(
+      {
+        resourceUri: { type: "string", pattern: "^burnbar://conversation/" },
+        maxChars: { type: "integer", minimum: 1024, maximum: 96000 },
+        cursor: { type: "string" },
+      },
+      ["resourceUri"],
+    ),
+    handler: async ({ db, claims }, args) =>
+      readConversationBody(db, claims.sub, args),
   },
   {
     name: "burnbar_list_search_index_status",
-    description: "Return encrypted search index freshness, counts, active commits, and stale-state warnings.",
+    description:
+      "Return encrypted search index freshness, counts, active commits, and stale-state warnings.",
     requiredScopes: ["index:status"],
     costClass: "metadata",
     rateLimitBucket: "metadata:standard",
     inputSchema: schema({}),
-    handler: async ({ db, claims }) => listIndexStatus(db, claims.sub)
+    handler: async ({ db, claims }) => listIndexStatus(db, claims.sub),
   },
   {
     name: "burnbar_list_search_facets",
-    description: "List bounded provider/model/project/harness facets for narrowing hosted search.",
+    description:
+      "List bounded provider/model/project/harness facets for narrowing hosted search.",
     requiredScopes: ["search:read"],
     costClass: "metadata",
     rateLimitBucket: "metadata:standard",
-    inputSchema: schema({ kind: { type: "string", enum: ["provider", "model", "project", "harness"] } }, ["kind"]),
-    handler: async ({ db, claims }, args) => listFacets(db, claims.sub, String(args.kind ?? "provider"))
+    inputSchema: schema(
+      {
+        kind: {
+          type: "string",
+          enum: ["provider", "model", "project", "harness"],
+        },
+      },
+      ["kind"],
+    ),
+    handler: async ({ db, claims }, args) =>
+      listFacets(db, claims.sub, String(args.kind ?? "provider")),
   },
   {
     name: "burnbar_recent_usage",
-    description: "Read recent provider/model usage metadata without provider credentials.",
+    description:
+      "Read recent provider/model usage metadata without provider credentials.",
     requiredScopes: ["usage:read"],
     costClass: "metadata",
     rateLimitBucket: "metadata:standard",
     inputSchema: schema({}),
-    handler: async ({ db, claims }) => recentUsage(db, claims.sub)
+    handler: async ({ db, claims }) => recentUsage(db, claims.sub),
   },
   {
     name: "burnbar_list_resumable_conversations",
@@ -104,27 +136,34 @@ export const tools: RegisteredTool[] = [
       provider: { type: "string", maxLength: 80 },
       project: { type: "string", maxLength: 512 },
       since: { type: "string" },
-      limit: { type: "integer", minimum: 1, maximum: 50 }
+      limit: { type: "integer", minimum: 1, maximum: 50 },
     }),
-    handler: async ({ db, claims }, args) => listResumable(db, claims.sub, args)
+    handler: async ({ db, claims }, args) =>
+      listResumable(db, claims.sub, args),
   },
   {
     name: "burnbar_resume_conversation",
-    description: "Compose a sealed resume plan. The local shim decrypts and renders on device.",
+    description:
+      "Compose a sealed resume plan. The local shim decrypts and renders on device.",
     requiredScopes: ["conversation:read", "search:read"],
     costClass: "body",
     rateLimitBucket: "body:standard",
     inputSchema: schema({
       session_id: { type: "string", maxLength: 256 },
       tokenHashes: { type: "array", items: { type: "string" }, maxItems: 10 },
-      semanticHashes: { type: "array", items: { type: "string" }, maxItems: 12 },
+      semanticHashes: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 12,
+      },
       provider: { type: "string", maxLength: 80 },
       projectName: { type: "string", maxLength: 512 },
       target_harness: { type: "string", maxLength: 64 },
       target_model: { type: "string", maxLength: 120 },
-      max_tokens: { type: "integer", minimum: 1024, maximum: 32000 }
+      max_tokens: { type: "integer", minimum: 1024, maximum: 32000 },
     }),
-    handler: async ({ db, claims }, args) => resumeConversation(db, claims.sub, args)
+    handler: async ({ db, claims }, args) =>
+      resumeConversation(db, claims.sub, args),
   },
   {
     name: "burnbar_search_knowledge",
@@ -136,39 +175,98 @@ export const tools: RegisteredTool[] = [
     ultraRateLimitBucket: "search:ultra",
     inputSchema: schema(
       {
-        queryVector: { type: "array", items: { type: "number" }, minItems: 384, maxItems: 384 },
+        queryVector: {
+          type: "array",
+          items: { type: "number" },
+          minItems: 384,
+          maxItems: 384,
+        },
         filters: { type: "object", additionalProperties: true },
-        sourceKind: { type: "string", enum: ["repo_docs", "notes", "chat_memory"] },
-        sourceSlug: { type: "string", maxLength: 256 },
+        sourceKind: {
+          type: "string",
+          enum: ["repo_docs", "notes", "chat_memory"],
+        },
+        slugHmac: { type: "string", pattern: "^[A-Fa-f0-9]{64}$" },
         embeddingModelVersion: { type: "string", maxLength: 120 },
         // Sealed-only; applied on-device after decrypt (forward-compat).
         sourcePath: { type: "string", maxLength: 512 },
         section: { type: "string", maxLength: 256 },
         category: { type: "string", maxLength: 120 },
         limit: { type: "integer", minimum: 1, maximum: 50 },
-        cursor: { type: "string" }
+        cursor: { type: "string" },
       },
-      ["queryVector"]
+      ["queryVector"],
     ),
-    handler: async ({ db, claims }, args) => searchKnowledge(knowledgeSearchFirestoreFrom(db), claims.sub, args)
+    handler: async ({ db, claims }, args) =>
+      searchKnowledge(knowledgeSearchFirestoreFrom(db), claims.sub, args),
   },
   {
     name: "burnbar_get_knowledge_document",
-    description: "Fetch one encrypted Pensieve knowledge chunk (atomic sealed envelope) for a resource returned by burnbar_search_knowledge.",
+    description:
+      "Fetch one encrypted Pensieve knowledge chunk (atomic sealed envelope) for a resource returned by burnbar_search_knowledge.",
     requiredScopes: ["knowledge:read"],
     costClass: "body",
     rateLimitBucket: "body:standard",
     inputSchema: schema(
       {
-        resourceUri: { type: "string", pattern: "^burnbar://knowledge/" }
+        resourceUri: { type: "string", pattern: "^burnbar://knowledge/" },
       },
-      ["resourceUri"]
+      ["resourceUri"],
     ),
-    handler: async ({ db, claims }, args) => readKnowledgeDocument(db, claims.sub, args)
+    handler: async ({ db, claims }, args) =>
+      readKnowledgeDocument(db, claims.sub, args),
+  },
+  {
+    name: "burnbar_search_code",
+    description:
+      "Search opted-in hosted project code memory by an on-device-cloaked query vector. Results are sealed and scoped by a vault-keyed project HMAC.",
+    requiredScopes: ["code:read"],
+    costClass: "standard",
+    rateLimitBucket: "code:standard",
+    inputSchema: schema(
+      {
+        queryVector: {
+          type: "array",
+          items: { type: "number" },
+          minItems: 384,
+          maxItems: 384,
+        },
+        filters: { type: "object", additionalProperties: true },
+        projectHmac: { type: "string", pattern: "^[A-Fa-f0-9]{64}$" },
+        slugHmac: { type: "string", pattern: "^[A-Fa-f0-9]{64}$" },
+        embeddingModelVersion: { type: "string", maxLength: 120 },
+        // Sealed-only; applied on-device after decrypt (forward-compat).
+        sourcePath: { type: "string", maxLength: 512 },
+        symbolName: { type: "string", maxLength: 256 },
+        language: { type: "string", maxLength: 64 },
+        limit: { type: "integer", minimum: 1, maximum: 50 },
+        cursor: { type: "string" },
+      },
+      ["queryVector", "projectHmac", "embeddingModelVersion"],
+    ),
+    handler: async ({ db, claims }, args) =>
+      searchHostedCode(knowledgeSearchFirestoreFrom(db), claims.sub, args),
+  },
+  {
+    name: "burnbar_get_code_document",
+    description:
+      "Fetch one sealed hosted code-memory chunk for a resource returned by burnbar_search_code. Decryption happens only in the local shim.",
+    requiredScopes: ["code:read"],
+    costClass: "body",
+    rateLimitBucket: "code:body",
+    inputSchema: schema(
+      {
+        resourceUri: { type: "string", pattern: "^burnbar://code/" },
+      },
+      ["resourceUri"],
+    ),
+    handler: async ({ db, claims }, args) =>
+      readHostedCodeDocument(db, claims.sub, args),
   },
   {
     name: "burnbar_resolve_capabilities",
-    description: "Describe the current user's hosted MCP availability, decrypt mode, scopes, and limits.",
+    description:
+      "Describe the current user's hosted MCP availability, decrypt mode, scopes, and limits.",
     requiredScopes: ["index:status"],
     costClass: "metadata",
     rateLimitBucket: "metadata:standard",
@@ -178,10 +276,17 @@ export const tools: RegisteredTool[] = [
       hostedMcpAvailable: true,
       decryptMode: claims.grant_mode,
       supportedTools: tools.map((tool) => tool.name),
-      maxLimits: { searchResults: 50, tokenHashes: 10, semanticHashes: 12, bodyPageChars: 96_000 },
-      compatibilityNotes: "Use openburnbar-mcp-remote for stdio-only clients and local decryption."
-    })
-  }
+      maxLimits: {
+        searchResults: 50,
+        tokenHashes: 10,
+        semanticHashes: 12,
+        bodyPageChars: 96_000,
+        codeResults: 50,
+      },
+      compatibilityNotes:
+        "Use openburnbar-mcp-remote for stdio-only clients and local decryption.",
+    }),
+  },
 ];
 
 export function listMcpTools() {
@@ -189,22 +294,40 @@ export function listMcpTools() {
     tools: tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
-      inputSchema: tool.inputSchema
-    }))
+      inputSchema: tool.inputSchema,
+    })),
   };
 }
 
-export async function callTool(ctx: ToolContext, name: string, args: Record<string, unknown>) {
+export async function callTool(
+  ctx: ToolContext,
+  name: string,
+  args: Record<string, unknown>,
+) {
   const tool = tools.find((candidate) => candidate.name === name);
   if (!tool) {
-    return { content: [{ type: "text", text: `Unknown OpenBurnBar MCP tool: ${name}` }], isError: true };
+    return {
+      content: [
+        { type: "text", text: `Unknown OpenBurnBar MCP tool: ${name}` },
+      ],
+      isError: true,
+    };
   }
-  for (const scope of tool.requiredScopes) {requireScope(ctx.claims, scope);}
-  await requireActiveRemoteMcpAccess(ctx.claims.sub, ctx.claims.client_id, ctx.claims.scopes, ctx.db);
+  for (const scope of tool.requiredScopes) {
+    requireScope(ctx.claims, scope);
+  }
+  await requireActiveRemoteMcpAccess(
+    ctx.claims.sub,
+    ctx.claims.client_id,
+    ctx.claims.scopes,
+    ctx.db,
+  );
   const entitlement = await requireActiveBurnBarPro(ctx.claims.sub, ctx.db);
   // Ultra members get the richer rate bucket (e.g. search:ultra 180/min) when the tool offers one.
   const bucket =
-    entitlement.tier === "ultra" && tool.ultraRateLimitBucket ? tool.ultraRateLimitBucket : tool.rateLimitBucket;
+    entitlement.tier === "ultra" && tool.ultraRateLimitBucket
+      ? tool.ultraRateLimitBucket
+      : tool.rateLimitBucket;
   await enforceRateLimit(ctx.db, ctx.claims.sub, ctx.claims.client_id, bucket);
   const result = await tool.handler(ctx, args);
   return { content: [{ type: "text", text: JSON.stringify(result) }] };

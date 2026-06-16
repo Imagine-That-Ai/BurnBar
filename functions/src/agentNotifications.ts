@@ -38,7 +38,7 @@ const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
 export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
+export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
 
 interface AgentReplyMessage {
   id: string;
@@ -48,7 +48,7 @@ interface AgentReplyMessage {
   isError?: boolean;
 }
 
-interface AgentReplyNotificationEvent {
+export interface AgentReplyNotificationEvent {
   id: string;
   uid: string;
   sourceKind: AgentNotificationSourceKind;
@@ -71,7 +71,7 @@ interface AgentReplyNotificationEvent {
   schemaVersion: 1;
 }
 
-interface DeviceNotificationState {
+export interface DeviceNotificationState {
   id: string;
   platform: string;
   fcmToken?: string;
@@ -204,16 +204,18 @@ export function buildFcmMessage(args: {
   device: DeviceNotificationState;
 }): Message {
   const title = `${args.event.providerLabel} replied`;
+  // Privacy: push payloads must not carry stable conversation correlators.
+  // The client resolves the conversation handle from the durable
+  // agent_notification_events/{event_id} document after delivery (OPUS-F-006).
   const data: Record<string, string> = {
     type: "agent_reply",
     event_id: args.event.id,
-    thread_id: args.event.threadId,
     runtime: args.event.runtime,
     source_kind: args.event.sourceKind,
     title,
     preview: args.event.preview,
     reply_enabled: args.event.replyEnabled ? "true" : "false",
-    deep_link: `burnbar://assistants/${encodeURIComponent(args.event.runtime)}?threadId=${encodeURIComponent(args.event.threadId)}`,
+    deep_link: `burnbar://assistants/${encodeURIComponent(args.event.runtime)}?eventId=${encodeURIComponent(args.event.id)}`,
   };
 
   const base: Message = {
@@ -221,7 +223,7 @@ export function buildFcmMessage(args: {
     data,
     android: {
       priority: "high",
-      collapseKey: `agent-${args.event.threadId}`,
+      collapseKey: "agent-reply",
       ttl: 10 * 60 * 1000,
     },
   };
@@ -231,7 +233,9 @@ export function buildFcmMessage(args: {
   }
 
   return {
-    ...base,
+    token: base.token,
+    data: base.data,
+    android: base.android,
     notification: {
       title,
       body: args.event.preview,
@@ -241,7 +245,6 @@ export function buildFcmMessage(args: {
         aps: {
           category: "AGENT_REPLY",
           sound: "default",
-          "thread-id": args.event.threadId,
         },
       },
       headers: {

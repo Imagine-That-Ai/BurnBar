@@ -21,15 +21,55 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import {
+  BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_ULTRA_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+  isActiveHostedQuotaEntitlement,
+  isActivePremiumEntitlement,
   isActiveBurnBarUltraEntitlement,
   isActiveBurnBarCloudProEntitlement,
 } from "./shared.js";
 import { PENSIEVE_LIMITS } from "./knowledgeMemory.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-type DataTier = "ultra" | "pro" | "free";
+export type DataTier = "ultra" | "pro" | "cloud" | "free";
+
+const HOSTED_QUOTA_SYNC_ENTITLEMENT_ID = "hosted_quota_sync";
+
+// The Wand's per-tier parallel fan-out ceiling, mirrored from OpenBurnBarCore
+// WandFanOut.maxParallel + website site.ts. Tunable via Remote Config in a
+// follow-up; these are the compiled defaults.
+const WAND_PARALLEL_MAX_BY_TIER: Record<DataTier, number> = {
+  ultra: 16,
+  pro: 8,
+  cloud: 3,
+  free: 1,
+};
+
+export function wandParallelMaxForDataTier(tier: DataTier): number {
+  return WAND_PARALLEL_MAX_BY_TIER[tier];
+}
+
+export function resolveDataTierFromEntitlements(raw: {
+  ultra?: Record<string, unknown> | null;
+  cloudPro?: Record<string, unknown> | null;
+  cloud?: Record<string, unknown> | null;
+  legacyCloud?: Record<string, unknown> | null;
+}): DataTier {
+  if (isActiveBurnBarUltraEntitlement(raw.ultra ?? undefined)) {
+    return "ultra";
+  }
+  if (isActiveBurnBarCloudProEntitlement(raw.cloudPro ?? undefined)) {
+    return "pro";
+  }
+  if (
+    isActiveHostedQuotaEntitlement(raw.cloud ?? undefined) ||
+    isActivePremiumEntitlement(raw.legacyCloud ?? undefined)
+  ) {
+    return "cloud";
+  }
+  return "free";
+}
 type CloudProfileState = "published" | "missing";
 
 interface CloudProfileSummary {
@@ -51,7 +91,7 @@ type DataDomainUsageResponse = {
     totalCount: number;
     totalBytes: number;
   };
-  limits: { pensieve: PensieveLimits };
+  limits: { pensieve: PensieveLimits; wandParallelMax: number };
   domains: Array<{ id: string; count: number; bytes: number }>;
   schemaVersion: number;
 };
@@ -126,13 +166,18 @@ async function cloudProfileSnapshot(uid: string): Promise<CloudProfileSummary> {
 }
 
 async function resolveDataTier(uid: string): Promise<DataTier> {
-  const [ultra, proMax] = await Promise.all([
+  const [ultra, proMax, cloud, legacyCloud] = await Promise.all([
     db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${HOSTED_QUOTA_SYNC_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
   ]);
-  if (isActiveBurnBarUltraEntitlement(ultra.data())) return "ultra";
-  if (isActiveBurnBarCloudProEntitlement(proMax.data())) return "pro";
-  return "free";
+  return resolveDataTierFromEntitlements({
+    ultra: ultra.data(),
+    cloudPro: proMax.data(),
+    cloud: cloud.data(),
+    legacyCloud: legacyCloud.data(),
+  });
 }
 
 async function domainSnapshot(
@@ -183,6 +228,7 @@ export const getDataDomainUsage = onCall(
 
     // Pensieve caps are the only tiered hard limits today; free users see the Pro shape (upsell).
     const pensieveLimits = PENSIEVE_LIMITS[tier === "ultra" ? "ultra" : "pro"];
+    const wandParallelMax = wandParallelMaxForDataTier(tier);
 
     return {
       ok: true,
@@ -193,7 +239,7 @@ export const getDataDomainUsage = onCall(
         totalCount: totals.count,
         totalBytes: totals.bytes,
       },
-      limits: { pensieve: pensieveLimits },
+      limits: { pensieve: pensieveLimits, wandParallelMax },
       domains,
       schemaVersion: 1,
     };

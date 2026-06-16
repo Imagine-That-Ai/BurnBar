@@ -132,6 +132,9 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .antigravity: cliKind = .antigravityCLI
                     case .grok: cliKind = .grokCLI
                     case .cursorAgent: cliKind = .cursorAgentCLI
+                    case .gemini: cliKind = .geminiCLI
+                    case .kimi: cliKind = .kimiCLI
+                    case .pi: cliKind = .piCLI
                     }
                     guard enforceCap(for: cliKind) else { return }
                     withAnimation(DesignSystem.Animation.snappy) {
@@ -359,6 +362,39 @@ struct SwitcherOnboardingScanAddStep: View {
                 ) {
                     await connectDifferentCLI(.cursorAgent)
                 }
+
+            case .geminiCLI:
+                differentAccountButton(
+                    title: "Connect Gemini CLI",
+                    subtitle: "Verify the local Gemini CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "4285F4"),
+                    isLoading: connectingCLIType == .gemini
+                ) {
+                    await connectDifferentCLI(.gemini)
+                }
+
+            case .kimiCLI:
+                differentAccountButton(
+                    title: "Connect Kimi",
+                    subtitle: "Verify the local Kimi CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "6366F1"),
+                    isLoading: connectingCLIType == .kimi
+                ) {
+                    await connectDifferentCLI(.kimi)
+                }
+
+            case .piCLI:
+                differentAccountButton(
+                    title: "Connect Pi",
+                    subtitle: "Verify the local Pi CLI profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color(hex: "7C3AED"),
+                    isLoading: connectingCLIType == .pi
+                ) {
+                    await connectDifferentCLI(.pi)
+                }
             }
         }
     }
@@ -417,6 +453,9 @@ struct SwitcherOnboardingScanAddStep: View {
         case (.antigravity, .antigravityCLI): return true
         case (.grok, .grokCLI): return true
         case (.cursorAgent, .cursorAgentCLI): return true
+        case (.gemini, .geminiCLI): return true
+        case (.kimi, .kimiCLI): return true
+        case (.pi, .piCLI): return true
         default: return false
         }
     }
@@ -514,7 +553,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -533,7 +572,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -557,6 +596,9 @@ struct SwitcherOnboardingScanAddStep: View {
         case .antigravity: return .antigravityCLI
         case .grok: return .grokCLI
         case .cursorAgent: return .cursorAgentCLI
+        case .gemini: return .geminiCLI
+        case .kimi: return .kimiCLI
+        case .pi: return .piCLI
         }
     }
 
@@ -593,6 +635,12 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .grokCLI
         case .cursorAgent:
             kind = .cursorAgentCLI
+        case .gemini:
+            kind = .geminiCLI
+        case .kimi:
+            kind = .kimiCLI
+        case .pi:
+            kind = .piCLI
         }
 
         guard enforceCap(for: kind) else { return }
@@ -820,7 +868,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
             return "Connect another account for this provider?"
         }
     }
@@ -870,6 +918,18 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "00E5FF"))
+        case .gemini:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "4285F4"))
+        case .kimi:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "6366F1"))
+        case .pi:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "7C3AED"))
         }
     }
 
@@ -1158,7 +1218,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1188,7 +1248,10 @@ private extension DiscoveredIdentity {
              .forge(let executablePath, let configDirectory),
              .antigravity(let executablePath, let configDirectory),
              .grok(let executablePath, let configDirectory),
-             .cursorAgent(let executablePath, let configDirectory):
+             .cursorAgent(let executablePath, let configDirectory),
+             .gemini(let executablePath, let configDirectory),
+             .kimi(let executablePath, let configDirectory),
+             .pi(let executablePath, let configDirectory):
             return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }

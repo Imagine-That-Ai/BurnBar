@@ -11,6 +11,11 @@ import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
 import { externalApiWithResilience, stripeWithResilience } from "../resilienceHelpers.js";
 import {
+  checkPublicHttpEndpointRateLimit,
+  clientIpFromHttpRequest,
+  isPublicRateLimitExceeded,
+} from "./publicRateLimit.js";
+import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
   BURNBAR_ULTRA_ENTITLEMENT_ID,
@@ -249,8 +254,9 @@ export const createStripeBurnBarProCheckoutSession = onCall(
       enforceAuthAndAppCheck(request, uid);
 
       const stripe = requireConfiguredStripe();
-      const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl");
-      const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl");
+      const cfg = getConfig();
+      const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl", cfg.stripeRedirectURLAllowlist);
+      const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl", cfg.stripeRedirectURLAllowlist);
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
       const topUpKind = optionalChoice(
         request.data.topUpKind,
@@ -330,7 +336,8 @@ export const createStripeBurnBarProPortalSession = onCall(
       enforceAuthAndAppCheck(request, uid);
 
       const stripe = requireConfiguredStripe();
-      const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl");
+      const cfg = getConfig();
+      const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl", cfg.stripeRedirectURLAllowlist);
       const customerID = await getOrCreateStripeCustomer(uid, stripe);
       const session = await stripeWithResilience("billingPortal.sessions.create", () =>
         stripe.billingPortal.sessions.create({
@@ -541,6 +548,18 @@ export const stripeBurnBarProWebhook = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
+    try {
+      await checkPublicHttpEndpointRateLimit("stripeBurnBarProWebhook", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "stripe.webhook.rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
+      return;
+    }
+
     let stripe: Stripe;
     let webhookSecret: string;
     try {

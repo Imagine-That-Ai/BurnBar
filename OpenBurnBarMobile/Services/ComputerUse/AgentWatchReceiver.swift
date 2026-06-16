@@ -100,6 +100,11 @@ public final class AgentWatchReceiver: ObservableObject {
     }
 
     public func downgradeTrustMode(_ mode: ComputerUseTrustMode) {
+        // Enforce downgrade-only: the phone may lower trust (Trusted -> Step ->
+        // Manual) but never elevate. Elevation requires the Mac. Closes FINDING-003.
+        guard mode <= state.liveTrustMode else {
+            return
+        }
         state.setTrustMode(mode)
     }
 

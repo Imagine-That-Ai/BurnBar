@@ -18,12 +18,8 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.lg) {
-            GemLogoView(size: 88) {
-                Image("AppLogo")
-                    .resizable()
-                    .renderingMode(.original)
-                    .scaledToFit()
-            }
+            BurnBarLogoFormationView()
+                .frame(width: 240, height: 200)
 
             VStack(spacing: DesignSystem.Spacing.sm) {
                 Text("Welcome to OpenBurnBar")

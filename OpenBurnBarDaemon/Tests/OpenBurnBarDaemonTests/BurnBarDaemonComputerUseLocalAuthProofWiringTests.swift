@@ -45,7 +45,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
 
     private func makeServer(
         socketPath: String,
-        verifier: DaemonLocalAuthProofVerifier?
+        verifier: DaemonLocalAuthProofVerifier?,
+        pinStore: DaemonPhoneKeyPinStore? = nil
     ) -> BurnBarDaemonServer {
         BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
@@ -54,7 +55,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
                 startsMissionControlBackgroundLoops: false
             ),
             logger: BurnBarDaemonLogger(category: "cu-proof-wiring-tests"),
-            localAuthProofVerifier: verifier
+            localAuthProofVerifier: verifier,
+            phoneControlPinStore: pinStore
         )
     }
 
@@ -75,6 +77,46 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
                 localAuthProof: proof,
                 sourceDeviceId: sourceDeviceId,
                 intentHashHex: intentHashHex
+            )
+        )
+    }
+
+    private func invokeRequest(
+        sessionId: String,
+        id: String
+    ) -> BurnBarRPCRequestEnvelopeWithParams<ComputerUseInvokeRequest> {
+        BurnBarRPCRequestEnvelopeWithParams(
+            id: id,
+            method: .computerUseInvoke,
+            authToken: "test-token",
+            params: ComputerUseInvokeRequest(
+                sessionId: sessionId,
+                invocation: BurnBarToolInvocation(
+                    callID: "call-\(id)",
+                    runID: BurnBarRunID(rawValue: "run-\(id)"),
+                    tool: .browserScreenshot,
+                    arguments: .object([:]),
+                    requestedBy: BurnBarClientID(rawValue: "test-client"),
+                    requestedAt: Date()
+                )
+            )
+        )
+    }
+
+    private func pinProvisionRequest(
+        deviceId: String,
+        publicKeyBase64: String,
+        keyKind: PhoneControlSigningKeyKind = .ed25519,
+        id: String
+    ) -> BurnBarRPCRequestEnvelopeWithParams<DaemonPhoneControlPinProvisionRequest> {
+        BurnBarRPCRequestEnvelopeWithParams(
+            id: id,
+            method: .phoneControlPinProvision,
+            authToken: "test-token",
+            params: DaemonPhoneControlPinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: publicKeyBase64,
+                keyKind: keyKind
             )
         )
     }
@@ -222,6 +264,148 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         XCTAssertFalse(
             isProofRefusal(response.error),
             "a valid pinned-key proof must pass the proof gate (error: \(String(describing: response.error)))"
+        )
+    }
+
+    func test_enforcedDaemon_refusesInvokeWithoutVerifiedSession() async throws {
+        let socketPath = makeSocketPath(name: "invoke-no-session")
+        let key = Curve25519.Signing.PrivateKey()
+        let verifier = DaemonLocalAuthProofVerifier(
+            resolvePinnedKey: { [deviceId] in $0 == deviceId ? .ed25519(key.publicKey) : nil },
+            consumeProof: { _, _ in true }
+        )
+        let server = makeServer(socketPath: socketPath, verifier: verifier)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<ComputerUseInvokeResponse> = try sendEnvelope(
+            invokeRequest(sessionId: "unverified-session", id: "invoke-no-session"),
+            socketPath: socketPath
+        )
+        XCTAssertNil(response.result)
+        XCTAssertTrue(isProofRefusal(response.error), "invoke must fail closed unless session start was proof-verified")
+    }
+
+    func test_enforcedDaemon_allowsInvokeForVerifiedSessionWithoutReplayingProof() async throws {
+        // The local-auth proof is single-use. A verified session start records a
+        // bounded daemon session authorization, and subsequent invokes must not
+        // try to replay the same proof for every tool call.
+        let socketPath = makeSocketPath(name: "invoke-ok")
+        let key = Curve25519.Signing.PrivateKey()
+        let verifier = DaemonLocalAuthProofVerifier(
+            resolvePinnedKey: { [deviceId] in $0 == deviceId ? .ed25519(key.publicKey) : nil },
+            consumeProof: { _, _ in true }
+        )
+        let server = makeServer(socketPath: socketPath, verifier: verifier)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+        await server.rememberLocalAuthVerifiedSession(
+            sessionId: "verified-session",
+            requestedTimeoutSeconds: 1800
+        )
+
+        let response: BurnBarRPCResponseEnvelope<ComputerUseInvokeResponse> = try sendEnvelope(
+            invokeRequest(sessionId: "verified-session", id: "invoke-verified-session"),
+            socketPath: socketPath
+        )
+        XCTAssertFalse(
+            isProofRefusal(response.error),
+            "a proof-verified session may invoke without replaying the single-use proof (error: \(String(describing: response.error)))"
+        )
+    }
+
+    func test_phoneControlPinProvision_persistsPinnedKeyForDaemonResolver() async throws {
+        let socketPath = makeSocketPath(name: "pin-ok")
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "pin-ok"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertEqual(response.result?.pinned, true)
+        guard case .pinned(let resolved) = pinStore.pinnedKey(deviceId: deviceId) else {
+            XCTFail("expected key to be pinned")
+            return
+        }
+        XCTAssertEqual(resolved.publicKeyRepresentation, privateKey.publicKey.rawRepresentation)
+    }
+
+    func test_phoneControlPinProvision_rejectsMalformedPublicKey() async throws {
+        let socketPath = makeSocketPath(name: "pin-bad")
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: "not-base64",
+                id: "pin-bad"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.invalidParams)
+    }
+
+    func test_provisionedPin_enablesEndToEndProofVerification() async throws {
+        // T-DMN-04 full loop: provision the daemon's pinned phone key via RPC,
+        // then send a session-start request carrying a proof signed by that key.
+        // The daemon must resolve the pinned key independently and verify the proof.
+        let socketPath = makeSocketPath(name: "provision-then-verify")
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let pinStore = DaemonPhoneKeyPinStore(backing: DaemonPhoneKeyInMemoryPinBacking())
+        let verifier = DaemonLocalAuthProofVerifier(
+            resolvePinnedKey: { requestedDeviceId in
+                if case .pinned(let key) = pinStore.pinnedKey(deviceId: requestedDeviceId) {
+                    return key
+                }
+                return nil
+            },
+            consumeProof: { _, _ in true }
+        )
+        let server = makeServer(socketPath: socketPath, verifier: verifier, pinStore: pinStore)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        // 1. Provision the pinned key.
+        let provision: BurnBarRPCResponseEnvelope<DaemonPhoneControlPinProvisionResponse> = try sendEnvelope(
+            pinProvisionRequest(
+                deviceId: deviceId,
+                publicKeyBase64: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+                id: "provision"
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(provision.result?.pinned, true)
+
+        // 2. Send a proof-bound session-start request.
+        let now = Date()
+        let proof = try makeProof(
+            privateKey: privateKey,
+            deviceId: deviceId,
+            intentHash: intentHash,
+            authenticatedAt: now,
+            expiresAt: now.addingTimeInterval(120)
+        )
+        let response: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try sendEnvelope(
+            sessionStartRequest(proof: proof, sourceDeviceId: deviceId, intentHashHex: intentHash, id: "verify"),
+            socketPath: socketPath
+        )
+        XCTAssertFalse(
+            isProofRefusal(response.error),
+            "a provisioned pinned key must enable end-to-end proof verification (error: \(String(describing: response.error)))"
         )
     }
 

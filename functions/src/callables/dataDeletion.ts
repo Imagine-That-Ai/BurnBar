@@ -26,7 +26,12 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { DATA_DOMAIN_PATHS } from "./dataExport.js";
-import { appendAuditEvent, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
+import {
+  appendAuditEvent,
+  appendAuditEventRequired,
+  auditActorLabel,
+  AUDIT_ACTIONS,
+} from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 /**
@@ -79,6 +84,15 @@ export const deleteDomainData = onCall(
         throw new HttpsError("failed-precondition", "Set confirm: true to delete this domain's data.");
       }
 
+      // Fail-closed intent: an irreversible deletion must leave a durable audit
+      // record. If the intent cannot be persisted, refuse the action rather than
+      // silently deleting data without evidence (codex-gpt-5 FINDING-006).
+      await appendAuditEventRequired(uid, {
+        actor: auditActorLabel(request),
+        action: AUDIT_ACTIONS.domainDeleteIntent,
+        domain: domainId,
+      });
+
       // Recursive delete so nested subcollections are purged too (e.g.
       // knowledge_sync_manifests/{slug}/entries, cli_sessions/{id}/snapshots).
       // A top-level query-delete would orphan descendants — residual PII after a
@@ -102,14 +116,17 @@ export const deleteDomainData = onCall(
         }
       }
 
+      // Best-effort completion record: the intent is the fail-closed guard; the
+      // completion record improves forensics but cannot undo the deletion.
       try {
         await appendAuditEvent(uid, {
           actor: auditActorLabel(request),
-          action: AUDIT_ACTIONS.domainDelete,
+          action: AUDIT_ACTIONS.domainDeleteComplete,
           domain: domainId,
         });
       } catch {
-        // Audit-write failure must not fail the deletion itself.
+        // Completion audit is best-effort; the intent audit already guarantees
+        // a durable record of the irreversible action.
       }
 
       return { ok: true, domainId, deleted: { firestoreDocs, storageObjects } };

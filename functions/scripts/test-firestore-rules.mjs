@@ -97,6 +97,22 @@ async function seedBurnBarProMaxEntitlement(
   });
 }
 
+async function seedBurnBarUltraEntitlement(
+  uid,
+  productID = "com.openburnbar.ultra.monthly"
+) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}/entitlements/burnbar_ultra`), {
+      id: "burnbar_ultra",
+      active: true,
+      productID,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      expireAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+      schemaVersion: 2,
+    });
+  });
+}
+
 async function seedHostedComputerUseEntitlement(
   uid,
   entitlementId = "hosted_computer_use_sync",
@@ -1022,6 +1038,55 @@ test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async ()
       schemaVersion: 1,
     })
   );
+});
+
+function sealedMissionGroup(ownerUid, id, width, overrides = {}) {
+  const childMissionIDs = Array.from({ length: width }, (_, index) => `${id}-child-${index}`);
+  return {
+    id,
+    missionKind: "fan_out",
+    childMissionIDs,
+    runtimeTokens: childMissionIDs.map((childID) => `runtime:${childID}`),
+    parallelismLimit: width,
+    mergeStrategy: "keep_all",
+    phase: "queued",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    schemaVersion: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(
+      TEST_VAULT_KEY_ID,
+      "c2VhbGVkLW1pc3Npb24tZ3JvdXA=",
+      cloudVaultAAD(ownerUid, "mission_groups", id, "sealedPayload")
+    ),
+    ...overrides,
+  };
+}
+
+async function assertMissionGroupCap(uid, allowedWidth, deniedWidth) {
+  await seedCloudVaultState(uid);
+  const db = authedDb(uid);
+  await assertSucceeds(
+    setDoc(doc(db, `users/${uid}/mission_groups/${uid}-ok`), sealedMissionGroup(uid, `${uid}-ok`, allowedWidth))
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${uid}/mission_groups/${uid}-too-wide`), sealedMissionGroup(uid, `${uid}-too-wide`, deniedWidth))
+  );
+}
+
+test("Wand mission groups enforce Free, Cloud, Cloud Pro, and Ultra fan-out caps", async () => {
+  await assertMissionGroupCap("wand-free", 1, 2);
+
+  await seedHostedCloudEntitlement("wand-cloud");
+  await assertMissionGroupCap("wand-cloud", 3, 4);
+
+  await seedBurnBarProMaxEntitlement("wand-pro");
+  await assertMissionGroupCap("wand-pro", 8, 9);
+
+  await seedBurnBarUltraEntitlement("wand-ultra");
+  await assertMissionGroupCap("wand-ultra", 16, 17);
 });
 
 test("no subscription tier bypasses server-owned computer-use authority writes", async () => {

@@ -971,6 +971,15 @@ def _snippet(text: str | None, max_chars: int = 320) -> str | None:
     return collapsed[: max_chars - 1].rstrip() + "…"
 
 
+def _wrap_untrusted_snippet(
+    content: str | None,
+    source_tool: str,
+    record_id: str | None = None,
+) -> str | None:
+    """Thin re-export of the project_code_memory wrapper for conversation search tools."""
+    return pcm.wrap_untrusted_snippet(content, source_tool=source_tool, record_id=record_id)
+
+
 def _active_deterministic_embedding(conn: sqlite3.Connection) -> dict[str, Any] | None:
     conn.row_factory = sqlite3.Row
     row = conn.execute(
@@ -1143,12 +1152,21 @@ def _semantic_search_payload(
         if not math.isfinite(score):
             continue
         text = record.get("chunkText") or record.get("bodyPreview")
+        record_id = str(record.get("chunkID") or record.get("documentID") or "unknown")
         result = {
             "chunkID": record.get("chunkID"),
             "documentID": record.get("documentID"),
             "score": score,
-            "snippet": _snippet(text),
-            "title": record.get("inferredTaskTitle") or record.get("title"),
+            "snippet": _wrap_untrusted_snippet(
+                _snippet(text),
+                source_tool="burnbar_semantic_search_conversations",
+                record_id=record_id,
+            ),
+            "title": _wrap_untrusted_snippet(
+                record.get("inferredTaskTitle") or record.get("title"),
+                source_tool="burnbar_semantic_search_conversations",
+                record_id=record_id,
+            ),
             "provider": record.get("documentProvider") or record.get("conversationProvider"),
             "projectName": record.get("documentProjectName") or record.get("conversationProjectName"),
             "source": {
@@ -1177,6 +1195,11 @@ def _semantic_search_payload(
             "distanceMetric": selection["distanceMetric"],
         },
         "results": best,
+        "trustSignal": {
+            "untrustedContentWrapped": True,
+            "wrappedCount": len(best),
+            "sourceTool": "burnbar_semantic_search_conversations",
+        },
     }
 
 
@@ -1236,13 +1259,31 @@ def burnbar_search_conversations(
             sql += " ORDER BY rank ASC LIMIT ?"
             args.append(lim)
             cur = conn.execute(sql, args)
-            out = [_row_to_dict(row) for row in cur.fetchall()]
+            out = []
+            for row in cur.fetchall():
+                record = _row_to_dict(row)
+                record["snippet"] = _wrap_untrusted_snippet(
+                    record.get("snippet"),
+                    source_tool="burnbar_search_conversations",
+                    record_id=str(record.get("id") or "unknown"),
+                )
+                out.append(record)
         except sqlite3.OperationalError as e:
             return json.dumps(
                 {"error": str(e), "hint": "FTS missing or DB schema mismatch; is this a OpenBurnBar DB?"},
                 indent=2,
             )
-    return json.dumps({"results": out}, indent=2)
+    return json.dumps(
+        {
+            "results": out,
+            "trustSignal": {
+                "untrustedContentWrapped": True,
+                "wrappedCount": len(out),
+                "sourceTool": "burnbar_search_conversations",
+            },
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1339,13 +1380,22 @@ def burnbar_cloud_semantic_search_conversations(
                 )
             except (KeyError, TypeError, ValueError, RuntimeError):
                 continue
+            record_id = str(hit.get("chunkID") or hit.get("documentID") or hit.get("id") or "unknown")
             hits.append(
                 {
                     "id": hit.get("id"),
                     "chunkID": hit.get("chunkID"),
                     "documentID": hit.get("documentID"),
-                    "title": title,
-                    "snippet": snippet,
+                    "title": _wrap_untrusted_snippet(
+                        title,
+                        source_tool="burnbar_cloud_semantic_search_conversations",
+                        record_id=record_id,
+                    ),
+                    "snippet": _wrap_untrusted_snippet(
+                        snippet,
+                        source_tool="burnbar_cloud_semantic_search_conversations",
+                        record_id=record_id,
+                    ),
                     "provider": hit.get("provider"),
                     "projectName": hit.get("projectName"),
                     "score": hit.get("score"),
@@ -1368,6 +1418,11 @@ def burnbar_cloud_semantic_search_conversations(
             "query": query,
             "results": hits,
             "privacy": "query plaintext and vault key stayed local; Firebase received only keyed token/semantic hashes",
+            "trustSignal": {
+                "untrustedContentWrapped": True,
+                "wrappedCount": len(hits),
+                "sourceTool": "burnbar_cloud_semantic_search_conversations",
+            },
         },
         indent=2,
         default=str,
@@ -1628,9 +1683,7 @@ def burnbar_search_code(query: str, project_path: str | None = None, limit: int 
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
-        return json.dumps(
-            pcm.search_code(conn, query=query, project_path=project_path, limit=limit), indent=2, default=str
-        )
+        return json.dumps(pcm.search_code(conn, query=query, project_path=project_path, limit=limit), indent=2, default=str)
 
 
 @mcp.tool()
@@ -1674,9 +1727,7 @@ def burnbar_get_symbol(name: str, project_path: str | None = None, limit: int = 
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
-        return json.dumps(
-            pcm.get_symbol(conn, name=name, project_path=project_path, limit=limit), indent=2, default=str
-        )
+        return json.dumps(pcm.get_symbol(conn, name=name, project_path=project_path, limit=limit), indent=2, default=str)
 
 
 @mcp.tool()
@@ -1711,9 +1762,7 @@ def burnbar_diagnostics(project_path: str | None = None, tool: str | None = None
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
-        return json.dumps(
-            pcm.diagnostics(conn, project_path=project_path, tool=tool, limit=limit), indent=2, default=str
-        )
+        return json.dumps(pcm.diagnostics(conn, project_path=project_path, tool=tool, limit=limit), indent=2, default=str)
 
 
 @mcp.tool()
@@ -2361,7 +2410,7 @@ def _json_arg(raw: str | None, default: Any) -> Any:
 
 @mcp.tool()
 def ministry_list_wands() -> str:
-    """List Ministry wands, falling back to the in-memory Council/Pareto seed."""
+    """List Ministry wands, falling back to the in-memory Headmaster/Pareto seed."""
     return ministry_core.json_dumps(ministry_core.load_wands(_ministry_wands_path()))
 
 
@@ -2461,7 +2510,7 @@ def ministry_select_models_for_wand(
         payload = ministry_core.select_models_for_wand(
             _ministry_wands_path(),
             wand_id=wand_id,
-            count=max(1, min(int(count), 12)),
+            count=max(1, min(int(count), ministry_core.resolved_wand_parallel_max())),
             require_provider_diversity=bool(require_provider_diversity),
             exclude_args=[str(item) for item in exclude_args],
             prove_headless=prove_headless,
@@ -2597,7 +2646,7 @@ def castle_select_models_for_wand(
         payload = castle_core.select_models_for_wand(
             _ministry_wands_path(),
             wand_id=wand_id,
-            count=max(1, min(int(count), 12)),
+            count=max(1, min(int(count), ministry_core.resolved_wand_parallel_max())),
             require_provider_diversity=bool(require_provider_diversity),
             require_runtime_diversity=bool(require_runtime_diversity),
             allow_runtimes=[str(item) for item in allow_runtimes] if allow_runtimes is not None else None,

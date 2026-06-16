@@ -282,7 +282,10 @@ final class AgentToolBroker: Sendable {
                         actionCap: ComputerUseBudgetEnvelope.initialNormal.activeActionsPerRun,
                         sessionTimeoutSeconds: 1800,
                         clientID: BurnBarClientID(rawValue: "agent-\(grant.runtimeID.rawValue)"),
-                        runID: invocation.runID
+                        runID: invocation.runID,
+                        localAuthProof: grant.localAuthProof,
+                        sourceDeviceId: grant.sourceDeviceID,
+                        intentHashHex: grant.localAuthIntentHashHex
                     )
                 )
                 // Publish atomically: if a concurrent first-call already created a
@@ -296,7 +299,13 @@ final class AgentToolBroker: Sendable {
                 }
             }
             let response = try await OpenBurnBarDaemonManager.shared.invokeComputerUse(
-                ComputerUseInvokeRequest(sessionId: sessionID, invocation: invocation)
+                ComputerUseInvokeRequest(
+                    sessionId: sessionID,
+                    invocation: invocation,
+                    localAuthProof: grant.localAuthProof,
+                    sourceDeviceId: grant.sourceDeviceID,
+                    intentHashHex: grant.localAuthIntentHashHex
+                )
             )
             return Self.payload(name: invocation.tool.rawValue, response: response)
         } catch {
@@ -1074,7 +1083,9 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         bearerToken: String?,
         unavailableError: CLIBridgeError,
         missingModelError: CLIBridgeError,
+        disallowedModelError: CLIBridgeError? = nil,
         httpStreamID: UInt64,
+        allowedModels: ModelAllowlist? = nil,
         attachmentBytes: [String: Data] = [:],
         capabilities: HermesBackendCapabilities = .default,
         workspaceURL: URL? = nil,
@@ -1097,6 +1108,10 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         let selectedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !selectedModel.isEmpty else {
             continuation.finish(throwing: missingModelError)
+            return
+        }
+        if let allowedModels, !allowedModels.allows(selectedModel) {
+            continuation.finish(throwing: disallowedModelError ?? CLIBridgeError.disallowedModel(backend: "OpenAI-compatible gateway", model: selectedModel))
             return
         }
 
@@ -1252,6 +1267,33 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         let id: String
         let name: String
         let arguments: String
+    }
+
+    /// T-AI-08: fail-closed model allowlist. The gateway advertises which
+    /// models it is willing to serve via `/v1/models`; callers pass that
+    /// catalog here so a poisoned or attacker-chosen model id cannot be
+    /// forwarded upstream. An empty allowlist disables enforcement.
+    struct ModelAllowlist: Sendable {
+        let modelIDs: Set<String>
+
+        init(modelIDs: [String]) {
+            self.modelIDs = Set(modelIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        }
+
+        /// Normalize provider-scoped ids (`anthropic/claude-sonnet-4-6`) and
+        /// bare ids against the allowed set.
+        func allows(_ modelID: String) -> Bool {
+            let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            if modelIDs.isEmpty { return true }
+            let lower = trimmed.lowercased()
+            for allowed in modelIDs {
+                if allowed.lowercased() == lower { return true }
+                let scoped = allowed.split(separator: "/").map(String.init)
+                if scoped.count > 1, scoped.last?.lowercased() == lower { return true }
+            }
+            return false
+        }
     }
 
     static func runToolEnabledLoop(

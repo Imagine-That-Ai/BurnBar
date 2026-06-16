@@ -63,6 +63,36 @@ public enum CloudTier: Int, Codable, Sendable, Hashable, CaseIterable {
     }
 }
 
+// MARK: - WandFanOut
+
+/// The per-tier ceiling on how many agents a single Wand cast may fan out in
+/// parallel — the marketable Free → Cloud → Cloud Pro → Ultra ladder, and the single source of
+/// truth the app, `website/src/data/site.ts`, and `firestore.rules` must agree
+/// on. The live value is also served by `getDataDomainUsage` (`wandParallelMax`)
+/// so it can be tuned via Remote Config; this compiled table is the offline
+/// fallback and the cross-platform reference.
+public enum WandFanOut {
+    /// Max parallel workers per Wand cast for a tier. Free 1 · Cloud 3 · Pro 8 · Ultra 16.
+    public static func maxParallel(for tier: CloudTier) -> Int {
+        switch tier {
+        case .none:  return 1
+        case .cloud: return 3
+        case .pro:   return 8
+        case .ultra: return 16
+        }
+    }
+
+    /// The smallest tier whose cap can run `width` agents at once — drives the
+    /// "go wider" upsell target when a user asks for more parallelism than their
+    /// current tier allows. Returns `.ultra` for anything above the ceiling.
+    public static func minimumTier(forParallel width: Int) -> CloudTier {
+        for tier in CloudTier.allCases where maxParallel(for: tier) >= width {
+            return tier
+        }
+        return .ultra
+    }
+}
+
 // MARK: - GatedFeatureID
 
 /// Stable identifiers for every gated feature. `rawValue` is a stable string
@@ -76,6 +106,7 @@ public enum GatedFeatureID: String, CaseIterable, Sendable, Codable, Hashable {
     case hostedMCP
     case dataVault
     case elderWand
+    case theWand
     case tenXMemory
 }
 
@@ -260,6 +291,22 @@ public extension GatedFeature {
             ],
             iconSystemName: "wand.and.stars",
             crestAssetName: CloudTier.pro.crestAssetName
+        ),
+
+        // MARK: theWand — The Wand (quota-aware parallel routing) — cloud
+        GatedFeature(
+            id: .theWand,
+            publicName: "The Wand",
+            requiredTier: .cloud,
+            oneLineBenefit: "Cast a Wand and send one job to a whole team of agents at once — BurnBar routes each worker to the right model by live quota across your connected providers, then brings back the work.",
+            benefitBullets: [
+                "Start with one local worker for free; Cloud opens 3 in parallel, Cloud Pro opens 8, and Ultra opens 16",
+                "Cast the Headmaster's Wand to reach for the highest-capability models, or the Pareto Wand for the best quality per quota — the routing chooses each agent's model for you",
+                "It runs on the provider subscriptions and keys you already have; BurnBar orchestrates and shows the work while you keep control",
+                "Each worker runs in its own branch, so parallel work stays reviewable and recoverable"
+            ],
+            iconSystemName: "wand.and.rays",
+            crestAssetName: CloudTier.cloud.crestAssetName
         ),
 
         // MARK: tenXMemory — 10× agent memory — cloud_ultra

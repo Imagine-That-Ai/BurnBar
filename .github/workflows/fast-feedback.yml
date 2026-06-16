@@ -537,14 +537,26 @@ jobs:
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          workspaces: crates/openburnbar-iroh -> target
+          workspaces: |
+            crates/openburnbar-iroh -> target
+            crates/project-code-static-parser -> target
 
       - name: cargo fmt check (openburnbar-iroh)
         run: cd crates/openburnbar-iroh && cargo fmt --check
 
+      - name: cargo fmt check (project-code-static-parser)
+        run: cargo fmt --manifest-path crates/project-code-static-parser/Cargo.toml --check
+
       - name: cargo clippy deny warnings (openburnbar-iroh)
         run: |
           cd crates/openburnbar-iroh && cargo clippy --all-targets -- \
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used
+
+      - name: cargo clippy deny warnings (project-code-static-parser)
+        run: |
+          cargo clippy --manifest-path crates/project-code-static-parser/Cargo.toml --all-targets -- \
             -D warnings \
             -D clippy::unwrap_used \
             -D clippy::expect_used
@@ -554,6 +566,9 @@ jobs:
         # two-endpoint loopback ALPN handshake + length-prefixed frame round-trip.
         # Fails on ALPN drift, length-prefix changes, or handshake regressions.
         run: cd crates/openburnbar-iroh && cargo test --test loopback_handshake
+
+      - name: cargo test — project code static parser
+        run: cargo test --manifest-path crates/project-code-static-parser/Cargo.toml
 
       - name: Install cargo-deny
         run: |

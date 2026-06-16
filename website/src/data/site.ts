@@ -27,7 +27,10 @@ export const SITE = {
         period: "forever",
         productIds: [],
         summary: "Local-first cost and quota tracking. No account. No cloud.",
-        cta: "Get OpenBurnBar"
+        cta: "Get OpenBurnBar",
+        allowance: {
+          wandParallelMax: 1
+        }
       },
       {
         id: "cloud",
@@ -39,7 +42,10 @@ export const SITE = {
         productIds: ["com.openburnbar.pro.monthly", "com.openburnbar.pro.annual"],
         entitlementId: "burnbar_pro",
         summary: "Sync your quota, encrypted history, and agent memory across devices.",
-        cta: "Choose Cloud"
+        cta: "Choose Cloud",
+        allowance: {
+          wandParallelMax: 3
+        }
       },
       {
         id: "cloud_pro",
@@ -56,7 +62,8 @@ export const SITE = {
           hostedAgentActionsMonthly: 500,
           relayGBMonthly: 50,
           hostedAgentActionMonthlyCap: 2000,
-          relayGBMonthlyCap: 300
+          relayGBMonthlyCap: 300,
+          wandParallelMax: 8
         }
       },
       {
@@ -78,7 +85,8 @@ export const SITE = {
           relayGBMonthlyCap: 300,
           knowledgeSources: 100,
           memoryChunks: 500000,
-          encryptedStorageMB: 10240
+          encryptedStorageMB: 10240,
+          wandParallelMax: 16
         }
       }
     ],

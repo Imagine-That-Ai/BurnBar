@@ -1,5 +1,8 @@
 name: Droid Wiki Refresh
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]

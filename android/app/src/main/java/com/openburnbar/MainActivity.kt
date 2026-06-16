@@ -15,6 +15,7 @@ import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.services.media.AgentReplyNotificationState
+import com.openburnbar.ui.auth.LaunchSplashGate
 import com.openburnbar.ui.navigation.BurnBarNavHost
 import com.openburnbar.ui.theme.AuroraTheme
 
@@ -43,7 +44,9 @@ class MainActivity : FragmentActivity() {
         handleIntent(intent)
         setContent {
             AuroraTheme {
-                BurnBarNavHost()
+                LaunchSplashGate {
+                    BurnBarNavHost()
+                }
             }
         }
     }

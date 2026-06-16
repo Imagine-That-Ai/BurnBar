@@ -418,6 +418,19 @@ enum OpenBurnBarDaemonSocketClient {
         ) as ComputerUseInvokeResponse
     }
 
+    static func provisionPhoneControlPin(
+        _ request: DaemonPhoneControlPinProvisionRequest,
+        at socketURL: URL
+    ) throws -> DaemonPhoneControlPinProvisionResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .phoneControlPinProvision,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as DaemonPhoneControlPinProvisionResponse
+    }
+
     static func pendingComputerUseApprovals(
         _ request: ComputerUseApprovalPendingRequest,
         at socketURL: URL

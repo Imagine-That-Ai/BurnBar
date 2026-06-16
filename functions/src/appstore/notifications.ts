@@ -33,6 +33,11 @@ import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { getAppleJWSVerifier, JWSVerificationFailure } from "./verifier.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
+import {
+  checkPublicHttpEndpointRateLimit,
+  clientIpFromHttpRequest,
+  isPublicRateLimitExceeded,
+} from "../callables/publicRateLimit.js";
 
 const REGION = FUNCTIONS_REGION;
 
@@ -134,6 +139,18 @@ export const appStoreServerNotificationsV2 = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res) => {
+    try {
+      await checkPublicHttpEndpointRateLimit("appStoreServerNotificationsV2", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "appstore.notifications.rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
+      return;
+    }
+
     const rawSignedPayload = extractSignedPayload(req, res);
     if (rawSignedPayload === undefined) {
       return;

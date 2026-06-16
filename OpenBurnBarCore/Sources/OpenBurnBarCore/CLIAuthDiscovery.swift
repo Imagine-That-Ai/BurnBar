@@ -213,9 +213,31 @@ public enum CLIAuthDiscovery {
                 accountDescription: exists ? "Antigravity local profile" : nil
             )
         case .cursorAgent:
+            let primaryConfigDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.cursor"
+            )
+            let dataDir = "\(home)/.local/share/cursor-agent"
+            let legacyConfigDir = "\(home)/.cursor-agent"
+            let exists = FileManager.default.fileExists(atPath: primaryConfigDir)
+                || FileManager.default.fileExists(atPath: dataDir)
+                || FileManager.default.fileExists(atPath: legacyConfigDir)
+            let configDir = FileManager.default.fileExists(atPath: primaryConfigDir)
+                ? primaryConfigDir
+                : (FileManager.default.fileExists(atPath: dataDir) ? dataDir : legacyConfigDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Cursor Agent local profile" : nil
+            )
+        case .gemini:
             let configDir = normalizedConfigDirectory(
                 configDirectoryOverride,
-                fallback: "\(home)/.cursor-agent"
+                fallback: "\(home)/.gemini"
             )
             let exists = FileManager.default.fileExists(atPath: configDir)
             let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
@@ -225,7 +247,43 @@ public enum CLIAuthDiscovery {
                 executablePath: executablePath,
                 authState: authState,
                 configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
-                accountDescription: exists ? "Cursor Agent local profile" : nil
+                accountDescription: exists ? "Gemini CLI local profile" : nil
+            )
+        case .kimi:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.kimi"
+            )
+            let altConfigDir = "\(home)/.config/kimi"
+            let exists = FileManager.default.fileExists(atPath: configDir)
+                || FileManager.default.fileExists(atPath: altConfigDir)
+            let resolvedDir = FileManager.default.fileExists(atPath: configDir) ? configDir : altConfigDir
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? resolvedDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Kimi local profile" : nil
+            )
+        case .pi:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.pi"
+            )
+            let altConfigDir = "\(home)/.config/pi"
+            let exists = FileManager.default.fileExists(atPath: configDir)
+                || FileManager.default.fileExists(atPath: altConfigDir)
+            let resolvedDir = FileManager.default.fileExists(atPath: configDir) ? configDir : altConfigDir
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? resolvedDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Pi local profile" : nil
             )
         case .grok:
             let configDir = normalizedConfigDirectory(

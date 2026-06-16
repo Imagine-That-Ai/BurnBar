@@ -79,6 +79,15 @@ const relayTopUp = SITE.pricing.topUps[1]!;
           </dd>
         </div>
         <div>
+          <dt>How does The Wand scale across plans?</dt>
+          <dd>
+            Every user can cast The Wand with one local worker. BurnBar Cloud opens 3 agents in
+            parallel, Cloud Pro opens 8, and Ultra opens 16. The Wand routes workers by live quota
+            and model fit across the providers you connect; model tokens still come from your own
+            provider subscriptions or keys.
+          </dd>
+        </div>
+        <div>
           <dt>How do top-ups work?</dt>
           <dd>
             Cloud Pro includes {allowance.hostedAgentActionsMonthly} hosted Agent Control actions and

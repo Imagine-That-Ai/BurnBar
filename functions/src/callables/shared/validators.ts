@@ -341,7 +341,11 @@ export function requireCloudVaultBlobEnvelope(
   };
 }
 
-export function boundedHttpsURL(raw: unknown, fieldName: string): string {
+export function boundedHttpsURL(
+  raw: unknown,
+  fieldName: string,
+  allowedHosts?: readonly string[],
+): string {
   const value = boundedTrimmedString(raw, fieldName, 2048, true);
   let url: URL;
   try {
@@ -349,8 +353,31 @@ export function boundedHttpsURL(raw: unknown, fieldName: string): string {
   } catch {
     throw new HttpsError("invalid-argument", `${fieldName} must be a valid URL.`);
   }
-  if (url.protocol !== "https:" && !url.hostname.includes("localhost")) {
+  if (url.username || url.password) {
+    throw new HttpsError("invalid-argument", `${fieldName} must not include credentials.`);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new HttpsError("invalid-argument", `${fieldName} must be HTTPS.`);
   }
+
+  const rawAuthority = value.slice(value.indexOf("//") + 2).split(/[/?#]/u, 1)[0] ?? "";
+  const rawHost = rawAuthority.startsWith("[")
+    ? rawAuthority.slice(0, rawAuthority.indexOf("]") + 1)
+    : rawAuthority.split(":", 1)[0];
+  const isExactLoopback = rawHost === "localhost" || rawHost === "127.0.0.1" || rawHost === "[::1]";
+  if (url.protocol !== "https:" && !isExactLoopback) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be HTTPS.`);
+  }
+
+  // Optional production origin allowlist. Loopback is always permitted so local
+  // dev and simulator builds keep working; non-loopback hosts must match an
+  // explicitly configured hostname[:port] entry.
+  if (allowedHosts && allowedHosts.length > 0 && !isExactLoopback) {
+    const allowed = new Set(allowedHosts.map((host) => host.toLowerCase()));
+    if (!allowed.has(url.host.toLowerCase())) {
+      throw new HttpsError("invalid-argument", `${fieldName} is not an allowed redirect destination.`);
+    }
+  }
+
   return url.toString();
 }

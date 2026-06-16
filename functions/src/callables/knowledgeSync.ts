@@ -22,8 +22,13 @@ import { db } from "../adminRuntime.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { stripUndefinedObject } from "../guards.js";
-import { wrapCallableHandler } from "../logging.js";
+import { logError, wrapCallableHandler } from "../logging.js";
 import { runScheduledJob } from "../scheduledOps.js";
+import {
+  checkPublicHttpEndpointRateLimit,
+  clientIpFromHttpRequest,
+  isPublicRateLimitExceeded,
+} from "./publicRateLimit.js";
 import {
   assertActiveBurnBarCloudProEntitlement,
   boundedTrimmedString,
@@ -156,6 +161,18 @@ export const onKnowledgeRepoPush = onRequest(
     invoker: "public",
   },
   async (req, res): Promise<void> => {
+    try {
+      await checkPublicHttpEndpointRateLimit("onKnowledgeRepoPush", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "knowledge_repo_push.rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
+      return;
+    }
+
     const secret = KNOWLEDGE_GITHUB_WEBHOOK_SECRET.value();
     if (!secret || !KNOWLEDGE_REPO_MATCH_KEY.value()) {
       res.status(503).send("Knowledge webhook is not configured.");

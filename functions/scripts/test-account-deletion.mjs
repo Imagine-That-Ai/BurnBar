@@ -7,6 +7,14 @@ import {
   userWorkspaceID,
 } from "../lib/accountDeletion.js";
 
+/** No-op audit appenders so integration tests exercise deletion without Firestore. */
+const noopAudit = {
+  actor: "user:test",
+  domain: "account",
+  appendAuditEvent: async () => ({ seq: 0, hash: "00" }),
+  appendAuditEventRequired: async () => ({ seq: 0, hash: "00" }),
+};
+
 class FakeDocument {
   constructor(path, data = {}) {
     this.path = path;
@@ -184,7 +192,6 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     destroyCredential: async (secretVersionName) => {
       destroyedSecrets.push(secretVersionName);
     },
-    logger: { warn() {} },
   });
 
   assert.deepEqual(destroyedSecrets, ["projects/p/secrets/codex/versions/1"]);
@@ -216,13 +223,15 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   db.addRootCollection(collection("workspaces", []));
 
   const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
   const summary = await eraseUserCloudData(db, "alice", {
     deleteStorageObjects: async () => {},
     destroyCredential: async () => {
       throw new Error("destroy failed");
     },
-    logger: { warn: (...args) => warnings.push(args) },
   });
+  console.warn = originalWarn;
 
   assert.equal(summary.destroyedSecrets, 0);
   assert.equal(summary.failedSecretDestroys, 1);
@@ -244,7 +253,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     deleteAuthUser: async (uid) => {
       deletedAuthUsers.push(uid);
     },
-    logger: { warn() {} },
+    audit: noopAudit,
   });
 
   assert.deepEqual(deletedAuthUsers, ["alice"]);
@@ -273,7 +282,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     deleteAuthUser: async (uid) => {
       deletedAuthUsers.push(uid);
     },
-    logger: { warn() {} },
+    audit: noopAudit,
   });
 
   assert.deepEqual(deletedAuthUsers, []);
@@ -296,7 +305,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     deleteAuthUser: async () => {
       throw userNotFound;
     },
-    logger: { warn() {} },
+    audit: noopAudit,
   });
 
   assert.equal(summary.deletedAuthUser, false);
@@ -336,13 +345,15 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   db.addRootCollection(collection("workspaces", []));
 
   const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
   const summary = await eraseUserCloudData(db, "alice", {
     destroyCredential: async () => {},
     deleteStorageObjects: async () => {
       throw new Error("storage unavailable");
     },
-    logger: { warn: (...args) => warnings.push(args) },
   });
+  console.warn = originalWarn;
 
   assert.equal(summary.failedSecretDestroys, 0, "storage failure is not a secret failure");
   assert.equal(warnings.length, 2, "one warning per failed storage prefix");

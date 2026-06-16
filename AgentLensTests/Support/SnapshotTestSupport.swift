@@ -37,12 +37,35 @@ func renderViewSnapshot<V: View>(
     size: CGSize,
     colorScheme: ColorScheme
 ) -> NSImage {
+    let appearance = NSAppearance(
+        named: colorScheme == .dark ? .darkAqua : .aqua
+    )
+
+    var image = NSImage(size: size)
+    if let appearance {
+        appearance.performAsCurrentDrawingAppearance {
+            image = renderViewSnapshotBody(view, size: size, colorScheme: colorScheme, appearance: appearance)
+        }
+        return image
+    }
+
+    return renderViewSnapshotBody(view, size: size, colorScheme: colorScheme, appearance: nil)
+}
+
+@MainActor
+private func renderViewSnapshotBody<V: View>(
+    _ view: V,
+    size: CGSize,
+    colorScheme: ColorScheme,
+    appearance: NSAppearance?
+) -> NSImage {
     let wrapped = view
         .environment(\.colorScheme, colorScheme)
         .transaction { $0.disablesAnimations = true }
         .frame(width: size.width, height: size.height)
 
     let hostingView = NSHostingView(rootView: wrapped)
+    hostingView.appearance = appearance
     hostingView.frame = CGRect(origin: .zero, size: size)
     hostingView.setNeedsDisplay(hostingView.bounds)
     hostingView.displayIfNeeded()
@@ -84,6 +107,7 @@ func assertAdaptiveSnapshot<V: View>(
             of: image,
             as: .image(precision: precision),
             named: "\(named).\(suffix)",
+            record: snapshotRecordMode(),
             file: file,
             testName: testName,
             line: line
@@ -112,10 +136,17 @@ func assertViewSnapshot<V: View>(
         of: image,
         as: .image(precision: precision),
         named: named,
+        record: snapshotRecordMode(),
         file: file,
         testName: testName,
         line: line
     )
+}
+
+private func snapshotRecordMode() -> SnapshotTestingConfiguration.Record? {
+    let environment = ProcessInfo.processInfo.environment
+    return environment["SNAPSHOT_TESTING_RECORD"].flatMap(SnapshotTestingConfiguration.Record.init(rawValue:))
+        ?? environment["TEST_RUNNER_SNAPSHOT_TESTING_RECORD"].flatMap(SnapshotTestingConfiguration.Record.init(rawValue:))
 }
 
 // MARK: - Snapshot Naming
@@ -135,6 +166,7 @@ enum SnapshotName {
     static let narrativeCard = "narrativeCard"
     static let dashboardOverview = "dashboardOverview"
     static let dashboardNavStrip = "dashboardNavStrip"
+    static let castleGreatHall = "castleGreatHall"
     static let miniSparklineFlat = "miniSparkline.flat"
     static let miniSparklineRising = "miniSparkline.rising"
     static let miniSparklineFalling = "miniSparkline.falling"

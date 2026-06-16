@@ -27,8 +27,9 @@ struct CLIAgentMissionEventFactory {
             "title": title ?? phase.replacingOccurrences(of: "_", with: " ").capitalized,
             "message": shortMessage,
             "fullMessage": fullMessage,
-            "messageLength": fullMessage.count,
-            "messageTruncated": fullMessage.count < message.count,
+            // messageLength/messageTruncated moved into the sealed private payload
+            // so the cleartext Firestore doc does not leak the byte-length of the
+            // sealed body (content-size side-channel). Closes OPUS-F-020.
             "source": "mac",
             "isError": isError
         ]

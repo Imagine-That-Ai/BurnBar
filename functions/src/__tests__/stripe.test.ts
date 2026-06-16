@@ -87,6 +87,7 @@ vi.mock("../config.js", () => ({
     elderWandSearches100ProductID: "elder_wand_searches_100",
     googlePlayElderWandSearches500ProductID: "gp_elder_wand_searches_500",
     elderWandSearches500ProductID: "elder_wand_searches_500",
+    stripeRedirectURLAllowlist: [],
   }),
 }));
 vi.mock("../resilienceHelpers.js", () => ({

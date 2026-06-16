@@ -131,6 +131,7 @@ struct OpenBurnBarMobileApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
                     agentNotifications.updateLifecycle("background")
                 }
+                .burnBarLaunchSplash()
         }
     }
 

@@ -109,6 +109,10 @@ enum CLIBridgeError: LocalizedError {
     case openClawUnavailable
     case piAgentUnavailable
     case noSelectedModel(String)
+    /// T-AI-08: the requested model is not in the gateway's advertised/approved
+    /// allowlist. Fail closed rather than letting a poisoned or typo model id
+    /// reach an upstream provider.
+    case disallowedModel(backend: String, model: String)
     case hermesSSEError(String)
     case emptyResponse
 
@@ -133,6 +137,8 @@ enum CLIBridgeError: LocalizedError {
             return "Pi agent is not running. Open Settings → Chat Gateway and choose Open Pi + Gateway, or enable the startup toggle there."
         case .noSelectedModel(let backend):
             return "No model selected for \(backend). Choose a live advertised model before sending."
+        case .disallowedModel(let backend, let model):
+            return "Model \"\(model)\" is not allowed for \(backend). Pick a model advertised by the gateway."
         case .hermesSSEError(let detail):
             return "Chat server error: \(detail)"
         case .emptyResponse:

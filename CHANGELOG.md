@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tightened local MCP memory/code writes to fail closed at the daemon boundary; legacy direct-write override env vars no longer bypass the daemon for `burnbar_remember`, `burnbar_forget`, `burnbar_index_project`, `burnbar_watch_project`, or `burnbar_explore`.
 - Added Cursor to the hosted MCP installer target list and registered explicit hosted memory/code rate-limit buckets so future tools do not fall through to the generic metadata bucket.
 - Added encrypted Project Memory cloud deletion with opaque doc IDs, content-free tombstone receipts, Functions BOLA coverage, and a local MCP `burnbar_cloud_delete_project_memory` tool.
+- Added an animated BurnBar launch identity: a 3D isometric glass-cube logo formation where converging dots assemble the flame, the flame solidifies inside an Apple Liquid Glass cube (with an obsidian-glass fallback) lit by a domain-warped oil-on-water sheen, and three color-matched provider dot-glyphs drift beneath the glass and re-form on collision. Shipped as a shared SwiftUI component (`BurnBarLogoFormationView`) plus a Jetpack Compose port (`BurnBarLogoFormation`), now driving the iOS/iPad sign-in hero, the macOS first-launch onboarding popover, and the Android login screen.
+- Added a one-shot full-screen iOS launch splash (`View.burnBarLaunchSplash()`) that plays the logo formation over a dark backdrop on cold start, then crossfades to reveal the app; skipped entirely under Reduce Motion.
 
 ### Security & Launch Readiness Hardening
 
@@ -25,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced Sentry DSN configuration: added fallback lookup from `GoogleService-Info.plist` inside `AgentLensApp` and `AppDelegate` if the main Info.plist DSN is unpopulated.
 - Refactored subject fragment sanitization in `ComputerUseSecurityCallableClient` to utilize Unicode scalar parsing instead of Regex matching, ensuring broad Swift version compatibility.
 - Fixed Firebase config injection script to apply PlistBuddy updates across all build targets in the loop.
+- Hardened Stripe checkout and billing-portal redirect URL validation: exact raw-host loopback allowlist (`localhost`, `127.0.0.1`, `[::1]`), HTTPS-only for non-loopback, blocked parser-differential bypasses (e.g. `localhost.attacker.example`, IP obfuscation, userinfo tricks), and added an optional production origin allowlist (`STRIPE_REDIRECT_URL_ALLOWLIST`).
+- Scrubbed account-deletion logs in `functions/src/accountDeletion.ts`: warnings now route through the structured PII scrubber with hashed `user_id_hash`/`account_id_hash` correlation fields; removed raw `document_id` and UID-bearing storage-path logging (OPUS-F-005). Added `functions/src/__tests__/accountDeletionLogScrub.test.ts` regression tests.
+- Extended the run-09 privacy-invariants gate with **I7**, which fail-closed detects any raw UID/path logging regression in `accountDeletion.ts`.
+- Integrated the Firestore App Check enforcement probe into the ops-readiness release gate: `scripts/ci/verify-ops-readiness.sh` now runs the evaluator unit test and the live `scripts/ops/verify-firestore-app-check-enforcement.sh` probe, so a release fails if Firestore App Check enforcement is off or unknown (C.1 / FINDING-004).
+- Added product-layer sliding-window rate limits for all public HTTPS endpoints (`functions/src/callables/publicRateLimit.ts`): per-IP limits for health probes, the router rundown, the Hermes Gateway, CLI link bootstrap/poll, and provider webhooks (Apple App Store, Stripe, GitHub). The endpoint authorization catalog now correctly classifies `latestRouterRundown` and `onKnowledgeRepoPush` as public HTTP, and the inventory test fails CI if any public endpoint lacks a declared limit (B.2 / FINDING-005).
 
 ### Changed
 

@@ -34,12 +34,17 @@ bash -n scripts/ops/activate-production-ops-plane.sh
 bash -n scripts/ops/verify-production-ops-plane.sh
 bash -n scripts/ops/verify-firestore-disaster-recovery.sh
 bash -n scripts/ops/verify-github-governance.sh
+bash -n scripts/ops/verify-firestore-app-check-enforcement.sh
 bash -n scripts/ops/resolve-functions-base-url.sh
 bash -n scripts/ops/deploy-health-functions.sh
 bash -n scripts/ops/discover-gcp-access.sh
 node --check scripts/ops/check-ops-alerts.mjs
 node --check scripts/lib/ops-alerts-gate.mjs
 node --test scripts/lib/ops-alerts-gate.test.mjs
+
+echo "==> Firestore App Check enforcement probe (C.1 / FINDING-004)"
+node --test scripts/test-commercial-launch-gate-appcheck.mjs
+bash scripts/ops/verify-firestore-app-check-enforcement.sh
 
 echo "==> release attestation verifier"
 bash -n scripts/ci/verify-release-attestations.sh
