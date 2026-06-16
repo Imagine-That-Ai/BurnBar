@@ -187,6 +187,66 @@ final class UpdaterLogicTests: XCTestCase {
         XCTAssertTrue(script.contains("SRC='/Volumes/OpenBurnBar 1.0.2/OpenBurnBar.app'"))
         XCTAssertTrue(script.contains("MOUNT='/Volumes/OpenBurnBar 1.0.2'"))
         XCTAssertTrue(script.contains("DEST='/Applications/OpenBurnBar.app'"))
+        // Bounded wait so a vetoed terminate can't hang forever with the DMG mounted.
+        XCTAssertTrue(script.contains("WAITED"))
+        XCTAssertTrue(script.contains("aborting (terminate vetoed?)"))
+    }
+
+    /// Behavioral (not string-containment) test of the swap core the trampoline
+    /// runs: ditto the new app in, back up the old, rename into place, clean up.
+    func testSwapSequenceReplacesAppAndCleansUp() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("OBBSwap-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let dest = root.appendingPathComponent("OpenBurnBar.app", isDirectory: true)
+        let src = root.appendingPathComponent("Source.app", isDirectory: true)
+        try fileManager.createDirectory(at: dest, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: src, withIntermediateDirectories: true)
+        try "OLD".write(to: dest.appendingPathComponent("marker.txt"), atomically: true, encoding: .utf8)
+        try "NEW".write(to: src.appendingPathComponent("marker.txt"), atomically: true, encoding: .utf8)
+
+        // Mirrors the trampoline's ditto -> mv-backup -> mv-stage -> cleanup.
+        let script = """
+        set -e
+        STAGE="$DEST.new"; BACKUP="$DEST.bak"
+        /bin/rm -rf "$STAGE" "$BACKUP"
+        /usr/bin/ditto "$SRC" "$STAGE"
+        if [ -e "$DEST" ]; then /bin/mv "$DEST" "$BACKUP"; fi
+        if /bin/mv "$STAGE" "$DEST"; then /bin/rm -rf "$BACKUP"; else /bin/rm -rf "$DEST"; [ -e "$BACKUP" ] && /bin/mv "$BACKUP" "$DEST"; exit 1; fi
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
+        process.environment = ["DEST": dest.path, "SRC": src.path]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0)
+
+        let marker = try String(contentsOf: dest.appendingPathComponent("marker.txt"), encoding: .utf8)
+        XCTAssertEqual(marker, "NEW", "the swapped-in app should be the new one")
+        XCTAssertFalse(fileManager.fileExists(atPath: dest.path + ".bak"), "backup should be cleaned up")
+        XCTAssertFalse(fileManager.fileExists(atPath: dest.path + ".new"), "stage should be cleaned up")
+    }
+
+    // MARK: - Writability gate (auto-install vs DMG fallback)
+
+    func testIsWritableForReplacementTrueForFreshTempTarget() {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OBBWritable-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let target = dir.appendingPathComponent("OpenBurnBar.app").path
+        // Writable parent, target absent → safe to place.
+        XCTAssertTrue(DirectDownloadUpdateInstaller.isWritableForReplacement(target))
+    }
+
+    func testIsWritableForReplacementFalseForSIPProtectedPath() {
+        // /System is SIP-protected and never user-writable, so auto-install must
+        // decline and fall back to opening the DMG.
+        XCTAssertFalse(DirectDownloadUpdateInstaller.isWritableForReplacement("/System/OpenBurnBar.app"))
     }
 
     // MARK: - Helpers

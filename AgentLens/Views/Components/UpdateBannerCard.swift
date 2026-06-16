@@ -64,7 +64,10 @@ struct UpdateBannerCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(compact ? DesignSystem.Spacing.sm : DesignSystem.Spacing.md)
         }
-        .accessibilityElement(children: .combine)
+        // `.contain` (not `.combine`) so the Install / Later / View-Changes
+        // buttons stay individually reachable by VoiceOver; the label gives the
+        // group context when focus enters the card.
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel(for: phase, channel: channel))
     }
 
