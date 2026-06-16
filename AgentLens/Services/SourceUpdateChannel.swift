@@ -77,9 +77,9 @@ struct SourceUpdateChannel {
     }
 
     private func command(in sourceRoot: URL) -> String {
-        let path = sourceRoot.path.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "cd \"\(path)\" && \(Self.manualUpdateCommand)"
+        // Single-quote the path: double quotes still expand $(), backticks, and
+        // $VAR if the checkout path contains them.
+        "cd \(DirectDownloadUpdateInstaller.shellSingleQuoted(sourceRoot.path)) && \(Self.manualUpdateCommand)"
     }
 
     private func sourceRootURL() throws -> URL {

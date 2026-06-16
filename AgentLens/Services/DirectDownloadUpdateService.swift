@@ -34,6 +34,10 @@ final class DirectDownloadUpdateChecker {
 
     /// The single source of truth every surface renders from.
     private(set) var phase: UpdatePhase = .idle
+    /// True only while a user-initiated "Check for Updates" is in flight, so the
+    /// Settings button can show inline feedback. Kept separate from `phase` so a
+    /// failed check can never leave the banner stuck on a checking state.
+    private(set) var isChecking = false
     /// How this copy was installed — decides what "update" means.
     @ObservationIgnored let channel: UpdateChannel
 
@@ -116,13 +120,32 @@ final class DirectDownloadUpdateChecker {
         recheckTimer = timer
     }
 
+    /// Live toggle from Settings: persists the preference and starts or tears
+    /// down the scheduler immediately, rather than only taking effect next launch.
+    func setAutomaticChecksEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.automaticChecksKey)
+        if enabled {
+            startAutomaticChecks()
+        } else {
+            launchCheckTask?.cancel()
+            launchCheckTask = nil
+            recheckTimer?.invalidate()
+            recheckTimer = nil
+            // Allow a later re-enable to start the scheduler again.
+            hasStartedAutomaticChecks = false
+        }
+    }
+
     /// User-initiated "Check for Updates..." — bypasses the "Later" deferral
     /// and surfaces the up-to-date / unreachable states automatic checks keep
     /// silent.
     func checkForUpdatesNow() {
         guard !OpenBurnBarRuntime.isRunningTests else { return }
         Task { [weak self] in
-            await self?.runCheck(userInitiated: true)
+            guard let self else { return }
+            self.isChecking = true
+            await self.runCheck(userInitiated: true)
+            self.isChecking = false
         }
     }
 
@@ -186,7 +209,9 @@ final class DirectDownloadUpdateChecker {
     /// uses its `latest-macos.json` asset. Falls back to the stable feed when
     /// the API lookup fails so a rate-limit never blocks stable updates.
     private func resolveFeedURL() async throws -> URL {
-        guard prereleaseChannelEnabled else { return configuredFeedURL() }
+        // Pre-release only applies to the DMG channel — Homebrew installs the
+        // stable cask regardless, so surfacing a prerelease there would mislead.
+        guard prereleaseChannelEnabled, channel == .dmg else { return configuredFeedURL() }
         if let prerelease = try? await Self.resolvePrereleaseFeedURL() { // try?-ok(prerelease lookup falls back to stable feed)
             return prerelease
         }
@@ -232,6 +257,9 @@ final class DirectDownloadUpdateChecker {
         userInitiated: Bool,
         homebrew: Bool
     ) {
+        // A download/verify/install that began while this check was in flight
+        // owns `phase` now — don't let a late result clobber it back to .available.
+        guard !isBusy else { return }
         guard release.isNewerThanCurrentBundle else {
             phase = .upToDate
             if userInitiated { presentUpToDateAlert() }
@@ -276,6 +304,7 @@ final class DirectDownloadUpdateChecker {
     private func runSourceCheck(userInitiated: Bool) async {
         do {
             let status = try await sourceChannel.fetchStatus()
+            guard !isBusy else { return }
             if status.behindBy > 0 {
                 phase = .available(.source(status))
             } else {
@@ -416,13 +445,19 @@ final class DirectDownloadUpdateChecker {
     }
 
     private nonisolated static func downloadDestination(for release: DirectDownloadRelease) -> URL {
-        let destinationDir = FileManager.default.temporaryDirectory
+        // Feed metadata is untrusted (only the DMG bytes are Ed25519-signed), so
+        // never let `build` or the URL basename contribute raw path components —
+        // a malicious feed could path-traverse out of the temp dir before the
+        // file is ever verified. Collapse to one sanitized component + a fixed
+        // filename.
+        let safeBuild = release.build.unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "_" }
+            .reduce(into: "") { $0.append($1) }
+        let component = safeBuild.isEmpty ? "pending" : String(safeBuild.prefix(64))
+        return FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenBurnBarUpdates", isDirectory: true)
-            .appendingPathComponent(release.build, isDirectory: true)
-        let fileName = release.downloadUrl.lastPathComponent
-        return destinationDir.appendingPathComponent(
-            fileName.hasSuffix(".dmg") ? fileName : "OpenBurnBar-\(release.version).dmg"
-        )
+            .appendingPathComponent(component, isDirectory: true)
+            .appendingPathComponent("OpenBurnBar-update.dmg")
     }
 
     // MARK: Alerts
@@ -507,13 +542,16 @@ private struct GitHubReleaseSummary: Decodable {
 /// `URLSession.shared.download(from:)` exposes no progress and `.shared` cannot
 /// take a delegate, so this drives a dedicated session as its own download
 /// delegate. It verifies nothing — the caller verifies the bytes afterward.
+///
 /// AUDIT(@unchecked Sendable): URLSession retains this NSObject delegate; mutable
-/// continuation state is resumed once by the delegate callback path.
+/// continuation state is resumed once by the delegate callback path (now also
+/// NSLock-guarded).
 /// sendable-allowlist: foundation-sdk-shim
 final class DirectDownloadProgressDownloader: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let expectedLength: Int
     private let destination: URL
     private let onProgress: @Sendable (Double) -> Void
+    private let lock = NSLock()
     private var continuation: CheckedContinuation<URL, Error>?
     private var didResume = false
 
@@ -530,7 +568,9 @@ final class DirectDownloadProgressDownloader: NSObject, URLSessionDownloadDelega
         let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         return try await withCheckedThrowingContinuation { continuation in
+            self.lock.lock()
             self.continuation = continuation
+            self.lock.unlock()
             session.downloadTask(with: url).resume()
         }
     }
@@ -577,9 +617,11 @@ final class DirectDownloadProgressDownloader: NSObject, URLSessionDownloadDelega
     }
 
     private func resume(_ result: Result<URL, Error>) {
-        guard !didResume, let continuation else { return }
+        lock.lock()
+        guard !didResume, let continuation else { lock.unlock(); return }
         didResume = true
         self.continuation = nil
+        lock.unlock()
         continuation.resume(with: result)
     }
 }
