@@ -222,7 +222,15 @@ private fun scatterOffset(seed: Long, k: Int): Offset {
 }
 
 // ---- isometric cube geometry ----
-private class CubePts(val A: Offset, val B: Offset, val C: Offset, val D: Offset, val E: Offset, val F: Offset, val G: Offset)
+private class CubePts(
+    val a: Offset,
+    val b: Offset,
+    val c: Offset,
+    val d: Offset,
+    val e: Offset,
+    val f: Offset,
+    val g: Offset,
+)
 private fun cubePoints(): CubePts {
     fun p(x: Float, y: Float, z: Float) = Offset(CUBE_CX + (x - y) * 0.866f * CUBE_S, CUBE_CY + ((x + y) * 0.5f - z) * CUBE_S)
     return CubePts(p(0f, 0f, 1f), p(1f, 0f, 1f), p(1f, 1f, 1f), p(0f, 1f, 1f), p(1f, 0f, 0f), p(1f, 1f, 0f), p(0f, 1f, 0f))
@@ -249,10 +257,10 @@ private fun roundedPoly(pts: List<Offset>, rad: Float): Path {
     path.close()
     return path
 }
-private fun cubeSil(p: CubePts) = roundedPoly(listOf(p.A, p.B, p.E, p.F, p.G, p.D), CUBE_S * 0.09f)
-private fun cubeTop(p: CubePts) = roundedPoly(listOf(p.A, p.B, p.C, p.D), CUBE_S * 0.05f)
-private fun cubeLeft(p: CubePts) = roundedPoly(listOf(p.D, p.C, p.F, p.G), CUBE_S * 0.05f)
-private fun cubeRight(p: CubePts) = roundedPoly(listOf(p.B, p.E, p.F, p.C), CUBE_S * 0.05f)
+private fun cubeSil(p: CubePts) = roundedPoly(listOf(p.a, p.b, p.e, p.f, p.g, p.d), CUBE_S * 0.09f)
+private fun cubeTop(p: CubePts) = roundedPoly(listOf(p.a, p.b, p.c, p.d), CUBE_S * 0.05f)
+private fun cubeLeft(p: CubePts) = roundedPoly(listOf(p.d, p.c, p.f, p.g), CUBE_S * 0.05f)
+private fun cubeRight(p: CubePts) = roundedPoly(listOf(p.b, p.e, p.f, p.c), CUBE_S * 0.05f)
 private fun lineP(a: Offset, b: Offset): Path = Path().apply {
     moveTo(a.x, a.y)
     lineTo(b.x, b.y)
@@ -427,15 +435,15 @@ private fun DrawScope.drawFormation(
         // contact shadow
         drawOval(
             Color.Black.copy(alpha = 0.5f * glass.toFloat()),
-            topLeft = Offset(CUBE_CX - CUBE_S * 0.85f, pts.F.y + CUBE_S * 0.1f - CUBE_S * 0.23f),
+            topLeft = Offset(CUBE_CX - CUBE_S * 0.85f, pts.f.y + CUBE_S * 0.1f - CUBE_S * 0.23f),
             size = Size(CUBE_S * 1.7f, CUBE_S * 0.46f),
         )
         clipPath(sil) {
             drawPath(cubeRight(pts), hx("0C0D14"))
             drawPath(cubeRight(pts), hx("171924").copy(alpha = glass.toFloat()))
-            drawPath(cubeRight(pts), brushVert(hx("171924"), hx("0C0D14"), pts.B.y, pts.F.y))
-            drawPath(cubeLeft(pts), brushVert(hx("21232F"), hx("15161F"), pts.D.y, pts.G.y))
-            drawPath(cubeTop(pts), brushVert(hx("3B3D49"), hx("2C2E38"), pts.A.y, pts.C.y))
+            drawPath(cubeRight(pts), brushVert(hx("171924"), hx("0C0D14"), pts.b.y, pts.f.y))
+            drawPath(cubeLeft(pts), brushVert(hx("21232F"), hx("15161F"), pts.d.y, pts.g.y))
+            drawPath(cubeTop(pts), brushVert(hx("3B3D49"), hx("2C2E38"), pts.a.y, pts.c.y))
         }
         // provider glyphs UNDER the glass
         val glyphAppear = smooth((t - GLYPH_START_T) / 1.2)
@@ -466,13 +474,13 @@ private fun DrawScope.drawFormation(
         // internal edges (clipped)
         clipPath(sil) {
             val topEdge = Path().apply {
-                moveTo(pts.D.x, pts.D.y)
-                lineTo(pts.C.x, pts.C.y)
-                lineTo(pts.B.x, pts.B.y)
+                moveTo(pts.d.x, pts.d.y)
+                lineTo(pts.c.x, pts.c.y)
+                lineTo(pts.b.x, pts.b.y)
             }
             drawPath(topEdge, hx("6E7180").copy(alpha = 0.85f), style = Stroke(width = maxOf(1f, CUBE_S * 0.012f)))
             drawPath(topEdge, Color.White.copy(alpha = 0.16f), style = Stroke(width = maxOf(0.5f, CUBE_S * 0.004f)))
-            drawPath(lineP(pts.C, pts.F), brushVert(hx("5C5E6C"), hx("23242C"), pts.C.y, pts.F.y), style = Stroke(width = maxOf(1f, CUBE_S * 0.012f)))
+            drawPath(lineP(pts.c, pts.f), brushVert(hx("5C5E6C"), hx("23242C"), pts.c.y, pts.f.y), style = Stroke(width = maxOf(1f, CUBE_S * 0.012f)))
         }
     }
 
