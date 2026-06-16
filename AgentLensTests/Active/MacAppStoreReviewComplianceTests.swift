@@ -27,17 +27,17 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testMacCloudStoreHasNativeStoreKitPurchaseAndLegalLinks() throws {
-        let viewSource = try bundledTextResource(named: "CloudStoreSettingsView")
-        let supportSource = try bundledTextResource(named: "CloudStoreSettingsViewSupport")
-        let source = [viewSource, supportSource].joined(separator: "\n")
+        let source = try bundledTextResource(named: "CloudStoreSettingsView")
+        let supportSource = try bundledTextResource(named: "CloudStoreSettingsView+Support")
+        let purchaseSource = source + "\n" + supportSource
         let linksSource = try bundledTextResource(named: "MacCloudStoreLegalLinks")
 
-        XCTAssertTrue(source.contains("import StoreKit"))
-        XCTAssertTrue(source.contains("guard let productID = tier.monthlyProductID"))
-        XCTAssertTrue(source.contains("Product.products(for: [productID])"))
-        XCTAssertTrue(source.contains("purchaseTarget.purchase(options: purchaseOptions)"))
-        XCTAssertTrue(source.contains("beginEntitlementBinding"))
-        XCTAssertTrue(source.contains("verifyHostedQuotaEntitlement"))
+        XCTAssertTrue(purchaseSource.contains("import StoreKit"))
+        XCTAssertTrue(purchaseSource.contains("guard let productID = tier.monthlyProductID"))
+        XCTAssertTrue(purchaseSource.contains("Product.products(for: [productID])"))
+        XCTAssertTrue(purchaseSource.contains("purchaseTarget.purchase(options: purchaseOptions)"))
+        XCTAssertTrue(purchaseSource.contains("beginEntitlementBinding"))
+        XCTAssertTrue(purchaseSource.contains("verifyHostedQuotaEntitlement"))
         XCTAssertTrue(source.contains("Restore Purchases"))
         XCTAssertTrue(linksSource.contains("Privacy Policy"))
         XCTAssertTrue(linksSource.contains("Terms of Use (EULA)"))

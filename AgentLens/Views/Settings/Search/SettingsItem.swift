@@ -194,6 +194,8 @@ enum SettingsAnchor {
 
     // Updates
     static let updatesOverview = "updates.overview"
+    static let updatesAutomaticChecks = "updates.automaticChecks"
+    static let updatesReleaseNotes = "updates.releaseNotes"
 
     // Daemon → Lifecycle
     static let daemonStatus = "daemon.lifecycle.status"
