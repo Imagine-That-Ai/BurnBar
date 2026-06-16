@@ -182,6 +182,32 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
         }
         guard connected == 0 else { throw Error.daemonUnavailable }
 
+        // Authenticate the SERVER peer BEFORE writing the envelope. The legacy
+        // bridge envelope can carry the macOS login `password`, and connect(2)
+        // by itself proves only that *something* is listening at the path. This
+        // mirrors the preferred (XPC/socket) lane's `PrivilegedInputSocketClient`
+        // check exactly: peer UID must match the expected owner AND the peer
+        // process must satisfy the first-party designated requirement (audit-token
+        // + `SecCodeCreateWithAuditToken`-class validation — never a PID check).
+        //
+        // The `/var/run/openburnbar-virtual-hid.sock` bridge is a launchd SYSTEM
+        // daemon (plist in `/Library/LaunchDaemons`, no `UserName` key), so it
+        // runs as root: the expected server UID is 0. Fail closed if the peer
+        // fails either gate.
+        do {
+            try OpenBurnBarPrivilegedTrust.validateServerPeer(
+                socketFD: fd,
+                expectedUID: 0,
+                codeSignatureValidator: OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken:)
+            )
+        } catch {
+            AppLogger.daemon.error(
+                "remote_unlock_virtual_hid_legacy_server_untrusted",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+            throw Error.serverUntrusted
+        }
+
         var data = try JSONEncoder().encode(request)
         data.append(0x0A)
         try data.withUnsafeBytes { pointer in
@@ -236,6 +262,12 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
         case readFailed
         case rejected(String)
         case responseTooLarge
+        /// The process listening at `/var/run/openburnbar-virtual-hid.sock`
+        /// failed server authentication (wrong UID or code signature) — something
+        /// is impersonating the privileged bridge. Terminal by design: the legacy
+        /// envelope can carry the login credential, so we never write to an
+        /// unauthenticated peer.
+        case serverUntrusted
         case socketPathTooLong
         case socketUnavailable
         case timedOut
