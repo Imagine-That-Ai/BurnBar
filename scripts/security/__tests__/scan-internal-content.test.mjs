@@ -57,8 +57,13 @@ test("blocks open-vuln working notes and remediation/audit docs", () => {
     "OpenBurnBar SOTA Remediation Plan.md",
     "plans/2026-06-01-sota-10-10-security-remediation.md",
     "docs/plans/HOSTED_REMOTE_MCP_WAVE8_AUDIT_REPORT.md",
+    "SECURITY_AUDIT_CRYPTO_KEYMGMT_CLOUDVAULT.md",
     "security-audit/merged/FINAL_REPORT.md",
     "security-audit/model-runs/run-01/02_candidate_findings.jsonl",
+    "security/audit/glm-5.2/findings.md",
+    "security/audit-kimi/findings.json",
+    "security/audit-remediation-kimi-2026-06-16/REMEDIATION_PLAN.md",
+    "security/remediation/opus-4-8-1m-2026-06-16/IMPLEMENTED-changes.patch",
   ]) {
     const v = classify(p, noContent);
     assert.ok(v, `${p} should be flagged`);
@@ -188,7 +193,7 @@ test("publishableFiles includes untracked files and excludes ignored internal wo
   execFileSync("git", ["config", "user.email", "audit@example.invalid"], { cwd: root });
   execFileSync("git", ["config", "user.name", "Audit"], { cwd: root });
 
-  writeFileSync(join(root, ".gitignore"), "security-audit/\n.agent/runs/\n");
+  writeFileSync(join(root, ".gitignore"), "security-audit/\nsecurity/audit*/\nsecurity/remediation/\n.agent/runs/\n");
   writeFileSync(join(root, "README.md"), "# fixture\n");
   execFileSync("git", ["add", ".gitignore", "README.md"], { cwd: root });
   execFileSync("git", ["commit", "-m", "fixture"], { cwd: root, stdio: "ignore" });
@@ -197,9 +202,12 @@ test("publishableFiles includes untracked files and excludes ignored internal wo
   writeFileSync(join(root, "docs/security/HERMES_GATEWAY_SECURITY_SCAN_2026-06-14.md"), "audit\n");
   mkdirSync(join(root, "security-audit/merged"), { recursive: true });
   writeFileSync(join(root, "security-audit/merged/FINAL_REPORT.md"), "local\n");
+  mkdirSync(join(root, "security/audit/glm-5.2"), { recursive: true });
+  writeFileSync(join(root, "security/audit/glm-5.2/findings.md"), "local\n");
 
   const files = publishableFiles(root);
   assert.ok(files.includes("README.md"));
   assert.ok(files.includes("docs/security/HERMES_GATEWAY_SECURITY_SCAN_2026-06-14.md"));
   assert.equal(files.includes("security-audit/merged/FINAL_REPORT.md"), false);
+  assert.equal(files.includes("security/audit/glm-5.2/findings.md"), false);
 });

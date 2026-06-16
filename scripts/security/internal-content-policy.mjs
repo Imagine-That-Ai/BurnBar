@@ -110,7 +110,11 @@ export const INTERNAL_RULES = [
       /^docs\/plans\/HOSTED_REMOTE_MCP_.*AUDIT.*\.md$/i,
       /^OpenBurnBar SOTA Remediation Plan\.md$/,
       /^plans\/.*(security-remediation|10-security|sota-security).*\.md$/i,
+      /^SECURITY_AUDIT_.*\.md$/i,
       /^security-audit\//,
+      /^security\/audit[^/]*\//,
+      /^security\/audit-remediation-[^/]+\//,
+      /^security\/remediation\//,
     ],
   },
   {
