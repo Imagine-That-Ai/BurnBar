@@ -332,6 +332,10 @@ jobs:
             -derivedDataPath "$DERIVED_DATA"
 
       - name: Build Release .app (unsigned)
+        env:
+          # Marks this as a notarized release build so the in-app updater's
+          # Stamp Build Provenance phase records channel=release (not "source").
+          OPENBURNBAR_BUILD_CHANNEL: release
         run: |
           xcodebuild \
             -project "$PROJECT" \
