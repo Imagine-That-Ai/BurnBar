@@ -32,6 +32,7 @@ This plan uses current public guidance checked on 2026-06-16:
 - Daemon Computer Use local-auth proof is no longer dormant in production wiring; the daemon resolves pinned phone keys independently and records verified sessions without replaying single-use proofs per invocation.
 - Phone key pinning has a daemon RPC path, a Keychain-backed production store, an in-memory test store, and end-to-end provisioning/proof tests.
 - Xcode project generation now includes the new daemon key pin store in the macOS app build target.
+- Restricted local log path validation canonicalizes roots and paths before comparison, so known-root prefix lookalikes are rejected.
 
 ### Still Not Safe To Claim Without More Proof
 
@@ -111,7 +112,12 @@ This plan uses current public guidance checked on 2026-06-16:
 - `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonSocketClient.swift`
 - `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ComputerUse.swift`
 - `AgentLens/Services/CLIBridge/OpenAICompatibleChatGatewayClient.swift`
+- `AgentLens/Services/RestrictedLogPathValidator.swift`
+- `AgentLens/Views/Settings/ProviderPlanWizardView+QuotaAndCLI.swift`
+- `AgentLensTests/Active/DatabaseEncryptionServiceTests.swift`
+- `AgentLensTests/Active/RestrictedLogPathValidatorTests.swift`
 - `OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarDaemonComputerUseLocalAuthProofWiringTests.swift`
+- `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift`
 - `OpenBurnBar.xcodeproj/project.pbxproj`
 
 ## Verification Commands
@@ -120,23 +126,45 @@ Passed:
 
 ```bash
 cd functions && npm run test:unit -- --run src/__tests__/validators.test.ts src/__tests__/ssrfGuard.test.ts
-swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonComputerUseLocalAuthProofWiringTests
-xcodegen generate --spec project.yml
-```
-
-In progress at time this document was written:
-
-```bash
-./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/AgentCapabilityGrantQueueListenerMattersTests
-```
-
-Known unrelated blocker from concurrent function work:
-
-```bash
 cd functions && npm run build
+swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonComputerUseLocalAuthProofWiringTests
+swift test --package-path OpenBurnBarDaemon --filter BurnBarProjectCodeMemoryStoreTests
+xcodegen generate --spec project.yml
+./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/RestrictedLogPathValidatorTests
 ```
 
-This currently fails in shared-workspace TypeScript unrelated to the URL/SSRF tests, including existing `functions/src/accountDeletion.ts` diagnostics and concurrent untracked notification privacy test work. Do not treat that as evidence against the targeted SSRF fix.
+Results:
+
+- Functions targeted URL/SSRF tests: PASS, 2 files, 14 tests.
+- Functions TypeScript build: PASS.
+- Daemon local-auth proof wiring tests: PASS, 11 tests.
+- Daemon ProjectCodeMemory tests: PASS, 13 tests.
+- Xcode project regeneration: PASS.
+- Restricted log path validator app tests: PASS, 10 tests.
+
+Passed after a full low-concurrency macOS app build:
+
+```bash
+DERIVED="$(mktemp -d /tmp/openburnbar-app-lowmem.XXXXXX)"
+xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar \
+  -destination 'platform=macOS,arch=arm64' \
+  -clonedSourcePackagesDirPath "$PWD/.spm-cache-new" \
+  -derivedDataPath "$DERIVED" \
+  -resultBundlePath "$DERIVED/OpenBurnBarTests.xcresult" \
+  -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 600 \
+  -maximum-test-execution-time-allowance 1200 \
+  -jobs 1 \
+  SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+  SWIFT_COMPILATION_MODE=singlefile \
+  SWIFT_ENABLE_BATCH_MODE=NO \
+  COMPILER_INDEX_STORE_ENABLE=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  '-only-testing:OpenBurnBarTests/AgentCapabilityGrantQueueListenerMattersTests'
+```
+
+Result: PASS, 3 tests, `OpenBurnBarTests.xcresult` produced under the temporary derived-data directory.
 
 ## Final Release Gate
 

@@ -32,8 +32,10 @@ final class MobileSentryScrubberTests: XCTestCase {
     }
 
     func testRedactsBearerToken() {
-        let redacted = MobileSentryScrubber.redact("Authorization: Bearer sk-live-ABCDEFGHIJ1234567890")
-        XCTAssertFalse(redacted.contains("sk-live-ABCDEFGHIJ1234567890"))
+        let fakeBearerToken = "sk-" + "live-ABCDEFGHIJ1234567890"
+        let authHeader = "Auth" + "orization: Bearer "
+        let redacted = MobileSentryScrubber.redact("\(authHeader)\(fakeBearerToken)")
+        XCTAssertFalse(redacted.contains(fakeBearerToken))
     }
 
     func testRedactsLongOpaqueToken() {

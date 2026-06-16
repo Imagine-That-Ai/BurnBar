@@ -1,0 +1,98 @@
+From c45ac275c5d054a7bc10ce1f22ed3ccaeef20c15 Mon Sep 17 00:00:00 2001
+From: "Alberto (via Claude)" <alberto8793@icloud.com>
+Date: Tue, 16 Jun 2026 03:42:11 -0500
+Subject: [PATCH 5/8] security(V-16): tighten App Check attestation max-age to
+ 7d + make it configurable
+
+appCheckAttestation.ts hardcoded a 30-day attestation window; a stolen device
+retained high-risk access that long. Default tightened to 7 days; configurable via
+APP_CHECK_ATTESTATION_MAX_AGE_MS, fail-safe to default on missing/non-finite/non-positive
+(freshness can never be disabled). 2-minute single-use nonce remains the in-window replay
+defense. tsc clean; 4 vitest cases green. [opus-implemented+verified]
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../appCheckAttestationMaxAge.test.ts         | 39 +++++++++++++++++++
+ functions/src/appCheckAttestation.ts          | 20 +++++++++-
+ 2 files changed, 57 insertions(+), 2 deletions(-)
+ create mode 100644 functions/src/__tests__/appCheckAttestationMaxAge.test.ts
+
+diff --git a/functions/src/__tests__/appCheckAttestationMaxAge.test.ts b/functions/src/__tests__/appCheckAttestationMaxAge.test.ts
+new file mode 100644
+index 0000000000..39c1ca61ba
+--- /dev/null
++++ b/functions/src/__tests__/appCheckAttestationMaxAge.test.ts
+@@ -0,0 +1,39 @@
++import { describe, expect, it } from "vitest";
++
++import {
++  APP_CHECK_ATTESTATION_MAX_AGE_MS,
++  isAppCheckAttestationClaimFresh,
++  resolveAppCheckAttestationMaxAgeMs,
++} from "../appCheckAttestation.js";
++
++const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
++const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
++
++describe("V-16 App Check attestation max-age", () => {
++  it("defaults to 7 days (tightened from the former 30)", () => {
++    expect(resolveAppCheckAttestationMaxAgeMs(undefined)).toBe(SEVEN_DAYS_MS);
++    expect(resolveAppCheckAttestationMaxAgeMs("")).toBe(SEVEN_DAYS_MS);
++    expect(resolveAppCheckAttestationMaxAgeMs("   ")).toBe(SEVEN_DAYS_MS);
++    // The module-level constant reflects the default in a clean test env.
++    expect(APP_CHECK_ATTESTATION_MAX_AGE_MS).toBeLessThanOrEqual(THIRTY_DAYS_MS);
++  });
++
++  it("honors a valid positive operator override", () => {
++    expect(resolveAppCheckAttestationMaxAgeMs(String(THIRTY_DAYS_MS))).toBe(THIRTY_DAYS_MS);
++    expect(resolveAppCheckAttestationMaxAgeMs("3600000")).toBe(3_600_000);
++  });
++
++  it("falls back to the secure default for non-finite / non-positive / junk values (freshness can never be disabled)", () => {
++    for (const bad of ["0", "-1", "-99999", "NaN", "abc", "Infinity", "1e999"]) {
++      expect(resolveAppCheckAttestationMaxAgeMs(bad), `value=${bad}`).toBe(SEVEN_DAYS_MS);
++    }
++  });
++
++  it("rejects an attestation older than the window and accepts a fresh one", () => {
++    const now = 1_900_000_000_000;
++    const fresh = { v: 1 as const, appId: "app-1", boundAtMillis: now - 60_000 };
++    const stale = { v: 1 as const, appId: "app-1", boundAtMillis: now - APP_CHECK_ATTESTATION_MAX_AGE_MS - 1 };
++    expect(isAppCheckAttestationClaimFresh(fresh, now)).toBe(true);
++    expect(isAppCheckAttestationClaimFresh(stale, now)).toBe(false);
++  });
++});
+diff --git a/functions/src/appCheckAttestation.ts b/functions/src/appCheckAttestation.ts
+index 09a6ec7ba7..212365293c 100644
+--- a/functions/src/appCheckAttestation.ts
++++ b/functions/src/appCheckAttestation.ts
+@@ -21,8 +21,24 @@ const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
+ 
+ export const APP_CHECK_ATTESTATION_CLAIM_KEY = "obb_app_check" as const;
+ const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
+-/** Re-bind after this many days so stale device attestations expire. */
+-export const APP_CHECK_ATTESTATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
++/**
++ * Re-bind after this window so a stolen device cannot retain high-risk access.
++ * Default tightened to 7 days (was 30); replay WITHIN the window is separately
++ * defeated by the single-use high-risk nonce (`requireHighRiskNonce`). Operators
++ * may tune via the `APP_CHECK_ATTESTATION_MAX_AGE_MS` env var; a missing,
++ * non-finite, or non-positive value falls back to the secure default — freshness
++ * enforcement can never be disabled.
++ */
++const APP_CHECK_ATTESTATION_MAX_AGE_DEFAULT_MS = 7 * 24 * 60 * 60 * 1000;
++
++export function resolveAppCheckAttestationMaxAgeMs(
++  raw: string | undefined = process.env.APP_CHECK_ATTESTATION_MAX_AGE_MS,
++): number {
++  const parsed = raw === undefined || raw.trim() === "" ? Number.NaN : Number(raw);
++  return Number.isFinite(parsed) && parsed > 0 ? parsed : APP_CHECK_ATTESTATION_MAX_AGE_DEFAULT_MS;
++}
++
++export const APP_CHECK_ATTESTATION_MAX_AGE_MS = resolveAppCheckAttestationMaxAgeMs();
+ 
+ /** Per-call replay-resistance nonce TTL (single-use, short-lived). */
+ export const HIGH_RISK_NONCE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+-- 
+2.54.0 (Apple Git-156)
+

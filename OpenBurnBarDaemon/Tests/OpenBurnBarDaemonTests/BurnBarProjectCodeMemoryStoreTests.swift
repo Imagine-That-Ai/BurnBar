@@ -421,12 +421,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
 
     func testSecretScannerCoversSharedCorpusWithLabelOnlyAudit() throws {
         let fixture = try makeFixture()
-        let fakeOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
-        let fakeAnthropicKey = "sk-ant-" + "abcdefghijklmnopqrstuvwxyz123456"
-        let fakeStripeKey = "sk_" + "live_" + "abcdefghijklmnopqrstuvwxyz123456"
+        let fakeOpenAIKey = "sk-" + String(repeating: "a", count: 32)
+        let fakeAnthropicKey = ["sk", "ant", String(repeating: "a", count: 32)].joined(separator: "-")
+        let fakeStripeKey = ["sk", "live", String(repeating: "a", count: 32)].joined(separator: "_")
         let fakeGitHubToken = "ghp_" + String(repeating: "1", count: 36)
         let fakeGoogleKey = "AI" + "za12345678901234567890123456789012345"
-        let fakeSlackToken = "xox" + "b-1234567890-abcdefghijklmnop"
+        let fakeSlackToken = ["xoxb", String(repeating: "1", count: 10), String(repeating: "a", count: 24)].joined(separator: "-")
         let fakeXAIKey = "xai-" + "abcdefghijklmnopqrstuvwxyz123456"
         let fakeAWSKey = "AK" + "IA1234567890ABCDEF"
         let fakePrivateKeyBlock = "-----BEGIN " + "PRIVATE KEY-----\nabc\n-----END " + "PRIVATE KEY-----"

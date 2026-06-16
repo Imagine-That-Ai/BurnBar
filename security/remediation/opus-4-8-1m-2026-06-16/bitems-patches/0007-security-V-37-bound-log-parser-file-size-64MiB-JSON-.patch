@@ -1,0 +1,511 @@
+From 2c8282ae351be69bb2978cad6ba04b3056e99c23 Mon Sep 17 00:00:00 2001
+From: "Alberto (via Claude)" <alberto8793@icloud.com>
+Date: Tue, 16 Jun 2026 03:55:17 -0500
+Subject: [PATCH 7/8] =?UTF-8?q?security(V-37):=20bound=20log-parser=20file?=
+ =?UTF-8?q?=20size=20(64MiB)=20+=20JSON=20depth=20(64)=20=E2=80=94=20DoS?=
+ =?UTF-8?q?=20hardening?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Local log parsers read whole files via Data(contentsOf:) and recursed unbounded; a huge/
+deeply-nested file in a watched dir could exhaust memory/stack. Adds ParserInputLimits
+(pre-flight stat size cap + depth cap) at each unbounded read + the flattenSessionObjects
+recursion, matching each parser's skip/throw convention. New files wired into Xcode targets.
+[workflow-implemented; Swift not compiled in this env — APIs cross-checked vs real call sites]
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../LogParser/AntigravityParser.swift         |   2 +-
+ .../Services/LogParser/AugmentParser.swift    |   2 +-
+ .../LogParser/ClineFormatParser.swift         |   2 +-
+ .../LogParser/CursorAgentParser.swift         |   2 +-
+ .../LogParser/FactoryDroidParser.swift        |   4 +-
+ .../Services/LogParser/GeminiCLIParser.swift  |   2 +-
+ AgentLens/Services/LogParser/GrokParser.swift |   4 +-
+ .../Services/LogParser/HermesParser.swift     |   4 +-
+ .../LogParser/ParserInputLimits.swift         |  72 ++++++++++
+ AgentLens/Services/LogParser/WarpParser.swift |   2 +-
+ .../UsageAggregatorParsers+Codex.swift        |  24 ++--
+ .../Parsers/ParserInputLimitsTests.swift      | 128 ++++++++++++++++++
+ OpenBurnBar.xcodeproj/project.pbxproj         |   8 ++
+ 13 files changed, 232 insertions(+), 24 deletions(-)
+ create mode 100644 AgentLens/Services/LogParser/ParserInputLimits.swift
+ create mode 100644 AgentLensTests/Active/Parsers/ParserInputLimitsTests.swift
+
+diff --git a/AgentLens/Services/LogParser/AntigravityParser.swift b/AgentLens/Services/LogParser/AntigravityParser.swift
+index 974cd8d558..0ac849bdb7 100644
+--- a/AgentLens/Services/LogParser/AntigravityParser.swift
++++ b/AgentLens/Services/LogParser/AntigravityParser.swift
+@@ -30,7 +30,7 @@ final class AntigravityParser: LogParser, Sendable {
+         // Fetch settings for active model (fallback when per-session model unavailable)
+         let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
+         let fallbackModelName: String = {
+-            guard let data = try? Data(contentsOf: settingsURL), // try?-ok(settings read, model fallback)
++            guard let data = ParserInputLimits.boundedContents(of: settingsURL), // try?-ok(size-guarded settings read, model fallback)
+                   let settings = try? JSONDecoder().decode(SettingsFile.self, from: data), // try?-ok(optional decode, model fallback)
+                   let model = settings.model, !model.isEmpty else {
+                 return "Claude Opus 4.6 (Thinking)"
+diff --git a/AgentLens/Services/LogParser/AugmentParser.swift b/AgentLens/Services/LogParser/AugmentParser.swift
+index 622b9cc4d8..3fea3613cf 100644
+--- a/AgentLens/Services/LogParser/AugmentParser.swift
++++ b/AgentLens/Services/LogParser/AugmentParser.swift
+@@ -109,7 +109,7 @@ final class AugmentParser: LogParser, Sendable {
+         file: URL,
+         sessionId: String
+     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+-        guard let data = try? Data(contentsOf: file), // try?-ok(log read guard-return-nil)
++        guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded read, guard-return-nil)
+               let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(malformed JSON guard-return-nil)
+             return nil
+         }
+diff --git a/AgentLens/Services/LogParser/ClineFormatParser.swift b/AgentLens/Services/LogParser/ClineFormatParser.swift
+index da83489914..13d689c10c 100644
+--- a/AgentLens/Services/LogParser/ClineFormatParser.swift
++++ b/AgentLens/Services/LogParser/ClineFormatParser.swift
+@@ -62,7 +62,7 @@ final class ClineFormatParser: LogParser, Sendable {
+         taskId: String,
+         historyFile: URL
+     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+-        guard let data = try? Data(contentsOf: historyFile), // try?-ok(skip unreadable log)
++        guard let data = ParserInputLimits.boundedContents(of: historyFile), // try?-ok(size-guarded read, skip unreadable/oversized log)
+               let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed log skip)
+             return nil
+         }
+diff --git a/AgentLens/Services/LogParser/CursorAgentParser.swift b/AgentLens/Services/LogParser/CursorAgentParser.swift
+index 4c120fd6dd..ee0006eae3 100644
+--- a/AgentLens/Services/LogParser/CursorAgentParser.swift
++++ b/AgentLens/Services/LogParser/CursorAgentParser.swift
+@@ -93,7 +93,7 @@ final class CursorAgentParser: LogParser, Sendable {
+ 
+         if let summaryURL,
+            FileManager.default.fileExists(atPath: summaryURL.path),
+-           let data = try? Data(contentsOf: summaryURL), // try?-ok(optional sidecar read)
++           let data = ParserInputLimits.boundedContents(of: summaryURL), // try?-ok(size-guarded optional sidecar read)
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(optional summary decode)
+             summaryModel = json["model"] as? String ?? (json["current_model_id"] as? String)
+             summaryTitle = json["title"] as? String ?? (json["generated_title"] as? String) ?? (json["session_summary"] as? String)
+diff --git a/AgentLens/Services/LogParser/FactoryDroidParser.swift b/AgentLens/Services/LogParser/FactoryDroidParser.swift
+index a1452c6e59..12d7f881e4 100644
+--- a/AgentLens/Services/LogParser/FactoryDroidParser.swift
++++ b/AgentLens/Services/LogParser/FactoryDroidParser.swift
+@@ -161,7 +161,7 @@ final class FactoryDroidParser: LogParser, Sendable {
+         // VAL-TOKEN-003: Settings/metadata exact totals suppress per-message fallback accumulation
+         // VAL-TOKEN-011: Cache-only exact totals also suppress fallback (any non-zero bucket counts)
+         if let settingsFileURL = settingsFile {
+-            if let data = try? Data(contentsOf: settingsFileURL), // try?-ok(missing settings skipped)
++            if let data = ParserInputLimits.boundedContents(of: settingsFileURL), // try?-ok(size-guarded settings read, missing/oversized skipped)
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
+                 if let model = json["model"] as? String {
+                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
+@@ -189,7 +189,7 @@ final class FactoryDroidParser: LogParser, Sendable {
+         if !usedSettingsTotals {
+             let metadataURL = jsonlFile.deletingLastPathComponent()
+                 .appendingPathComponent("\(sessionId).metadata.json")
+-            if let data = try? Data(contentsOf: metadataURL), // try?-ok(missing metadata skipped)
++            if let data = ParserInputLimits.boundedContents(of: metadataURL), // try?-ok(size-guarded metadata read, missing/oversized skipped)
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
+                 if tokenData.model == "unknown", let model = json["model"] as? String {
+                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
+diff --git a/AgentLens/Services/LogParser/GeminiCLIParser.swift b/AgentLens/Services/LogParser/GeminiCLIParser.swift
+index 8561165bb6..0c2837259f 100644
+--- a/AgentLens/Services/LogParser/GeminiCLIParser.swift
++++ b/AgentLens/Services/LogParser/GeminiCLIParser.swift
+@@ -91,7 +91,7 @@ final class GeminiCLIParser: LogParser, Sendable {
+         sessionId: String,
+         projectName: String
+     ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+-        guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
++        guard let data = ParserInputLimits.boundedContents(of: file) else { return nil } // try?-ok(size-guarded read, guard nil)
+ 
+         let mtime = modificationDate(of: file)
+         var acc = GeminiSessionAccumulator()
+diff --git a/AgentLens/Services/LogParser/GrokParser.swift b/AgentLens/Services/LogParser/GrokParser.swift
+index 2c47fc6401..ddbecf299f 100644
+--- a/AgentLens/Services/LogParser/GrokParser.swift
++++ b/AgentLens/Services/LogParser/GrokParser.swift
+@@ -66,7 +66,7 @@ final class GrokParser: LogParser, Sendable {
+         projectName: String
+     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+         let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
+-        guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
++        guard let summaryData = ParserInputLimits.boundedContents(of: summaryURL), // try?-ok(size-guarded read, missing/oversized summary skipped)
+               let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+             return nil
+         }
+@@ -160,7 +160,7 @@ final class GrokParser: LogParser, Sendable {
+ 
+     private func loadSignals(at url: URL) -> GrokSignals? {
+         guard FileManager.default.fileExists(atPath: url.path),
+-              let data = try? Data(contentsOf: url), // try?-ok(missing signals skipped)
++              let data = ParserInputLimits.boundedContents(of: url), // try?-ok(size-guarded read, missing/oversized signals skipped)
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+             return nil
+         }
+diff --git a/AgentLens/Services/LogParser/HermesParser.swift b/AgentLens/Services/LogParser/HermesParser.swift
+index 487e84c73c..c219075bf0 100644
+--- a/AgentLens/Services/LogParser/HermesParser.swift
++++ b/AgentLens/Services/LogParser/HermesParser.swift
+@@ -377,7 +377,7 @@ final class HermesParser: LogParser, Sendable {
+         excluding seenSessionIds: Set<String>,
+         scope: HermesHomeScope
+     ) -> ParseResult {
+-        guard let data = try? Data(contentsOf: indexURL), // try?-ok(optional index read)
++        guard let data = ParserInputLimits.boundedContents(of: indexURL), // try?-ok(size-guarded optional index read)
+               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
+             return ParseResult(usages: [], conversations: [])
+         }
+@@ -507,7 +507,7 @@ final class HermesParser: LogParser, Sendable {
+         excluding seenSessionIds: Set<String>,
+         scope: HermesHomeScope
+     ) -> ParseResult {
+-        guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
++        guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded optional snapshot read)
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
+             return ParseResult(usages: [], conversations: [])
+         }
+diff --git a/AgentLens/Services/LogParser/ParserInputLimits.swift b/AgentLens/Services/LogParser/ParserInputLimits.swift
+new file mode 100644
+index 0000000000..8727fa1ce6
+--- /dev/null
++++ b/AgentLens/Services/LogParser/ParserInputLimits.swift
+@@ -0,0 +1,72 @@
++import Foundation
++
++// MARK: - Parser Input Limits (DoS hardening)
++
++/// Shared, pre-flight resource bounds for local log parsers.
++///
++/// Several provider parsers read entire on-disk files with `Data(contentsOf:)`
++/// (or `FileHandle.readDataToEndOfFile()`) and recurse over decoded JSON without
++/// a bound. A maliciously huge or deeply-nested file dropped into a watched
++/// directory (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`, `~/.openclaw`,
++/// …) can therefore exhaust memory or blow the stack before any parsing logic
++/// runs. These limits add a cheap pre-flight `stat()` check before the read and
++/// a recursion-depth ceiling for the JSON flatten walk.
++enum ParserInputLimits {
++    /// Maximum on-disk size (bytes) a parser will read into memory in one shot.
++    ///
++    /// 64 MiB comfortably exceeds any legitimate single session/log file we have
++    /// observed (multi-megabyte at the extreme) while bounding worst-case memory
++    /// for one file. Files above this are skipped rather than read.
++    static let maxFileSizeBytes: UInt64 = 64 * 1024 * 1024
++
++    /// Maximum nesting depth the recursive JSON object flatten will descend.
++    ///
++    /// Real session transcripts nest a handful of levels deep; 64 leaves ample
++    /// headroom for legitimate documents while preventing unbounded recursion
++    /// (and stack exhaustion) on adversarially nested arrays/objects.
++    static let maxJSONDepth = 64
++
++    /// Typed error thrown when a candidate file exceeds `maxFileSizeBytes`.
++    struct FileTooLarge: Error {
++        let path: String
++        let sizeBytes: UInt64
++        let limitBytes: UInt64
++    }
++
++    /// Reads a file's contents only after a pre-flight size check.
++    ///
++    /// Throws `FileTooLarge` when the file is larger than `maxFileSizeBytes`, so
++    /// the call site never allocates the full buffer for an oversized file.
++    /// Other read/stat failures propagate as their underlying `Error`.
++    ///
++    /// - Parameters:
++    ///   - path: Absolute filesystem path to read.
++    ///   - fileManager: Injected for testability; defaults to `.default`.
++    /// - Returns: The file contents, guaranteed at most `maxFileSizeBytes`.
++    static func guardedContents(
++        ofFile path: String,
++        fileManager: FileManager = .default
++    ) throws -> Data {
++        let size = (try fileManager.attributesOfItem(atPath: path)[.size] as? NSNumber)?.uint64Value ?? 0
++        guard size <= maxFileSizeBytes else {
++            throw FileTooLarge(path: path, sizeBytes: size, limitBytes: maxFileSizeBytes)
++        }
++        return try Data(contentsOf: URL(fileURLWithPath: path))
++    }
++
++    /// Optional-returning convenience that matches the `try? … else { return nil }`
++    /// skip convention used by most parsers: returns `nil` when the file is
++    /// missing, unreadable, or exceeds `maxFileSizeBytes`.
++    static func boundedContents(
++        of url: URL,
++        fileManager: FileManager = .default
++    ) -> Data? {
++        try? guardedContents(ofFile: url.path, fileManager: fileManager)
++    }
++
++    /// Returns `true` while `depth` is still within `maxJSONDepth`, i.e. the
++    /// recursive walk may descend one more level.
++    static func depthWithinLimit(_ depth: Int) -> Bool {
++        depth < maxJSONDepth
++    }
++}
+diff --git a/AgentLens/Services/LogParser/WarpParser.swift b/AgentLens/Services/LogParser/WarpParser.swift
+index 812becb648..0fd4fde8b0 100644
+--- a/AgentLens/Services/LogParser/WarpParser.swift
++++ b/AgentLens/Services/LogParser/WarpParser.swift
+@@ -42,7 +42,7 @@ final class WarpParser: LogParser, Sendable {
+         var seenConversationIDs = Set<String>()
+ 
+         for file in logFiles {
+-            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable log)
++            guard let data = ParserInputLimits.boundedContents(of: file), // try?-ok(size-guarded read, skip unreadable/oversized log)
+                   let content = String(data: data, encoding: .utf8) else {
+                 continue
+             }
+diff --git a/AgentLens/Services/UsageAggregatorParsers+Codex.swift b/AgentLens/Services/UsageAggregatorParsers+Codex.swift
+index 27b679dacc..cb91d90b48 100644
+--- a/AgentLens/Services/UsageAggregatorParsers+Codex.swift
++++ b/AgentLens/Services/UsageAggregatorParsers+Codex.swift
+@@ -493,15 +493,9 @@ final class OpenClawParser: LogParser, Sendable {
+     }
+ 
+     private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: ConversationRecord)? {
+-        let data: Data
+-        if file.pathExtension.lowercased() == "jsonl" || file.pathExtension.lowercased() == "log" {
+-            guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
+-            defer { try? handle.close() } // try?-ok(handle teardown)
+-            data = handle.readDataToEndOfFile()
+-        } else {
+-            guard let fileData = try? Data(contentsOf: file) else { return nil } // try?-ok(session read, skip if absent)
+-            data = fileData
+-        }
++        // Pre-flight size guard for both the streaming (jsonl/log) and whole-file
++        // (json) paths so a maliciously huge session file can't exhaust memory.
++        guard let data = ParserInputLimits.boundedContents(of: file) else { return nil } // try?-ok(size-guarded read, skip if absent/oversized)
+ 
+         var turns: [(role: String, text: String, timestamp: Date?)] = []
+         var inputTokens = 0
+@@ -611,16 +605,22 @@ final class OpenClawParser: LogParser, Sendable {
+         return flattenSessionObjects(root)
+     }
+ 
+-    private static func flattenSessionObjects(_ value: Any) -> [[String: Any]] {
++    private static func flattenSessionObjects(_ value: Any, depth: Int = 0) -> [[String: Any]] {
++        // Bound recursion so adversarially nested arrays/objects can't blow the
++        // stack. Beyond the limit we stop descending: a dictionary is emitted as
++        // a leaf, an array contributes nothing further.
++        guard ParserInputLimits.depthWithinLimit(depth) else {
++            return (value as? [String: Any]).map { [$0] } ?? []
++        }
+         if let array = value as? [Any] {
+-            return array.flatMap(flattenSessionObjects)
++            return array.flatMap { flattenSessionObjects($0, depth: depth + 1) }
+         }
+         guard let object = value as? [String: Any] else { return [] }
+ 
+         let nestedKeys = ["messages", "turns", "events", "conversation", "history", "items"]
+         let nested = nestedKeys.flatMap { key -> [[String: Any]] in
+             guard let value = object[key] else { return [] }
+-            return flattenSessionObjects(value)
++            return flattenSessionObjects(value, depth: depth + 1)
+         }
+         return nested.isEmpty ? [object] : nested
+     }
+diff --git a/AgentLensTests/Active/Parsers/ParserInputLimitsTests.swift b/AgentLensTests/Active/Parsers/ParserInputLimitsTests.swift
+new file mode 100644
+index 0000000000..408d7235cb
+--- /dev/null
++++ b/AgentLensTests/Active/Parsers/ParserInputLimitsTests.swift
+@@ -0,0 +1,128 @@
++import XCTest
++@testable import OpenBurnBar
++
++/// Covers the DoS-hardening guard shared by the local log parsers
++/// (`ParserInputLimits`): a pre-flight file-size cap and a JSON
++/// recursion-depth cap (finding V-37).
++final class ParserInputLimitsTests: XCTestCase {
++    private var tempDirectory: URL!
++
++    override func setUpWithError() throws {
++        try super.setUpWithError()
++        tempDirectory = FileManager.default.temporaryDirectory
++            .appendingPathComponent("obb-parser-limits-\(UUID().uuidString)", isDirectory: true)
++        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
++    }
++
++    override func tearDownWithError() throws {
++        if let tempDirectory {
++            try? FileManager.default.removeItem(at: tempDirectory)
++        }
++        tempDirectory = nil
++        try super.tearDownWithError()
++    }
++
++    private func writeFile(named name: String, bytes: Int) throws -> URL {
++        let url = tempDirectory.appendingPathComponent(name)
++        let data = Data(count: bytes)
++        try data.write(to: url)
++        return url
++    }
++
++    // MARK: - Size cap
++
++    func test_guardedContents_readsFileWithinLimit() throws {
++        let url = try writeFile(named: "ok.json", bytes: 1_024)
++
++        let data = try ParserInputLimits.guardedContents(ofFile: url.path)
++
++        XCTAssertEqual(data.count, 1_024)
++    }
++
++    func test_guardedContents_throwsFileTooLargeAboveLimit() throws {
++        // One byte over the cap must be rejected by the pre-flight stat,
++        // never allocated into memory.
++        let overLimitURL = tempDirectory.appendingPathComponent("huge.json")
++        let size = Int(ParserInputLimits.maxFileSizeBytes) + 1
++        // Sparse write keeps the test cheap while still reporting the true size.
++        let handle = FileManager.default
++        XCTAssertTrue(handle.createFile(atPath: overLimitURL.path, contents: nil))
++        let fileHandle = try FileHandle(forWritingTo: overLimitURL)
++        defer { try? fileHandle.close() }
++        try fileHandle.truncate(atOffset: UInt64(size))
++
++        XCTAssertThrowsError(try ParserInputLimits.guardedContents(ofFile: overLimitURL.path)) { error in
++            guard let tooLarge = error as? ParserInputLimits.FileTooLarge else {
++                return XCTFail("Expected FileTooLarge, got \(error)")
++            }
++            XCTAssertEqual(tooLarge.limitBytes, ParserInputLimits.maxFileSizeBytes)
++            XCTAssertGreaterThan(tooLarge.sizeBytes, ParserInputLimits.maxFileSizeBytes)
++            XCTAssertEqual(tooLarge.path, overLimitURL.path)
++        }
++    }
++
++    func test_boundedContents_returnsDataWithinLimit() throws {
++        let url = try writeFile(named: "small.json", bytes: 16)
++
++        let data = ParserInputLimits.boundedContents(of: url)
++
++        XCTAssertEqual(data?.count, 16)
++    }
++
++    func test_boundedContents_returnsNilAboveLimit() throws {
++        let overLimitURL = tempDirectory.appendingPathComponent("huge2.json")
++        XCTAssertTrue(FileManager.default.createFile(atPath: overLimitURL.path, contents: nil))
++        let fileHandle = try FileHandle(forWritingTo: overLimitURL)
++        defer { try? fileHandle.close() }
++        try fileHandle.truncate(atOffset: ParserInputLimits.maxFileSizeBytes + 1)
++
++        XCTAssertNil(ParserInputLimits.boundedContents(of: overLimitURL))
++    }
++
++    func test_boundedContents_returnsNilForMissingFile() {
++        let missing = tempDirectory.appendingPathComponent("does-not-exist.json")
++
++        XCTAssertNil(ParserInputLimits.boundedContents(of: missing))
++    }
++
++    // MARK: - Depth cap
++
++    func test_depthWithinLimit_boundary() {
++        XCTAssertTrue(ParserInputLimits.depthWithinLimit(0))
++        XCTAssertTrue(ParserInputLimits.depthWithinLimit(ParserInputLimits.maxJSONDepth - 1))
++        XCTAssertFalse(ParserInputLimits.depthWithinLimit(ParserInputLimits.maxJSONDepth))
++        XCTAssertFalse(ParserInputLimits.depthWithinLimit(ParserInputLimits.maxJSONDepth + 1))
++    }
++
++    /// A deeply-nested OpenClaw session JSON must parse without crashing: the
++    /// flatten walk is bounded by `maxJSONDepth`, so an adversarial document
++    /// returns rather than recursing until the stack is exhausted.
++    func test_openClawParser_boundedDepth_doesNotCrashOnDeepNesting() async throws {
++        let sessionsDir = tempDirectory.appendingPathComponent("sessions", isDirectory: true)
++        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
++
++        // Build JSON nested far deeper than the cap under an "items" key, which
++        // the flatten walk descends. A top-level array makes the per-line JSONL
++        // decode fail (it is not a `[String: Any]`), so the parser falls through
++        // to the whole-file `flattenSessionObjects` recursion under test.
++        let depth = ParserInputLimits.maxJSONDepth + 50
++        var json = "{\"role\":\"user\",\"content\":\"hi\"}"
++        for _ in 0..<depth {
++            json = "{\"items\":[\(json)]}"
++        }
++        json = "[\(json)]"
++        let file = sessionsDir.appendingPathComponent("deep.json")
++        try json.data(using: .utf8)!.write(to: file)
++
++        let parser = OpenClawParser(sessionsDirectory: sessionsDir)
++        // The load-bearing assertion is that parse() returns at all: an
++        // unbounded recursive flatten would exhaust the stack on this input.
++        // Because the walk stops at maxJSONDepth (emitting the wrapper dict as a
++        // leaf rather than the innermost turn), no usable turns are recovered and
++        // the oversized session simply yields no conversation — which is the
++        // intended fail-safe behaviour.
++        let result = try await parser.parse()
++        XCTAssertTrue(result.conversations.isEmpty)
++        XCTAssertTrue(result.usages.isEmpty)
++    }
++}
+diff --git a/OpenBurnBar.xcodeproj/project.pbxproj b/OpenBurnBar.xcodeproj/project.pbxproj
+index 31a14c7303..b6e76402c2 100644
+--- a/OpenBurnBar.xcodeproj/project.pbxproj
++++ b/OpenBurnBar.xcodeproj/project.pbxproj
+@@ -364,6 +364,7 @@
+ 		2E944B00E883F6665F8EBC75 /* PiAgentRuntimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277BCA08DBFCB71B451DECAA /* PiAgentRuntimeAdapter.swift */; };
+ 		2EA8300923D54A683EE8E947 /* ClaudeCodeParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E955F9A39FDDAA9DBCAD8E1 /* ClaudeCodeParser.swift */; };
+ 		2ED623E8EDE2E2381645F2AD /* GrokParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 196452BEE01A780E32E3BD30 /* GrokParserTests.swift */; };
++		AAAA000000000000000000F3 /* ParserInputLimitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000F4 /* ParserInputLimitsTests.swift */; };
+ 		2EE22500AED2C33CF0384334 /* ConstellationBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031913828125C6D25DFE02CA /* ConstellationBackgroundView.swift */; };
+ 		2F13CB3BB3DAEFB3D6ACE742 /* CrossEncoderConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1597C5A76F003D0179ECED1 /* CrossEncoderConfiguration.swift */; };
+ 		2F29F1D741822449231674A2 /* ScreenShareAutoTypeFollowPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1EA87EE0285381B93CF8B3 /* ScreenShareAutoTypeFollowPolicyTests.swift */; };
+@@ -825,6 +826,7 @@
+ 		6DFC275E75A36E738EC66231 /* ProviderSummaryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71572A2FAF48A3693C8E2E02 /* ProviderSummaryStore.swift */; };
+ 		6DFD0F276B1381DF134A4F5E /* AccountSwitcherSettingsView+Rendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CD0438947285776A3C7856 /* AccountSwitcherSettingsView+Rendering.swift */; };
+ 		6E1123D0B6818A0C30207F08 /* GrokParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFF351EEEB5F8E8F6282C54 /* GrokParser.swift */; };
++		AAAA000000000000000000F1 /* ParserInputLimits.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000F2 /* ParserInputLimits.swift */; };
+ 		6E349804410013AEB14E4785 /* RoutedClientWiringSentryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFE589D3CA8D5587EAD02898 /* RoutedClientWiringSentryTests.swift */; };
+ 		6E3AFA5E930C70848DF2E381 /* HomeAssistantWebhookID.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED9965E71446A574EEF3E4E2 /* HomeAssistantWebhookID.swift */; };
+ 		6E65CAA3EB40C27F6140DC1A /* RemoteUnlockVirtualHIDBridgeInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39DB5ECF63B47C9E64B0292E /* RemoteUnlockVirtualHIDBridgeInstaller.swift */; };
+@@ -2231,6 +2233,7 @@
+ 		1943AC72B589202ACCD5EE2E /* OpenBurnBarPaidTiers.storekit */ = {isa = PBXFileReference; path = OpenBurnBarPaidTiers.storekit; sourceTree = "<group>"; };
+ 		1957B6E4D998481C940FBD90 /* OnboardingVisualSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingVisualSnapshotTests.swift; sourceTree = "<group>"; };
+ 		196452BEE01A780E32E3BD30 /* GrokParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokParserTests.swift; sourceTree = "<group>"; };
++		AAAA000000000000000000F4 /* ParserInputLimitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserInputLimitsTests.swift; sourceTree = "<group>"; };
+ 		199300606EC1D6D3C39BB254 /* test_chatMessageView_user.chatVisual-userMessage-light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_chatMessageView_user.chatVisual-userMessage-light.png"; sourceTree = "<group>"; };
+ 		19AE61CB1273F74B88D4D050 /* SummaryCostEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryCostEstimator.swift; sourceTree = "<group>"; };
+ 		19C20476A62A5664C533FD29 /* HomeAssistantRecoveryProvisioner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantRecoveryProvisioner.swift; sourceTree = "<group>"; };
+@@ -2735,6 +2738,7 @@
+ 		5CCC1633F91DDF010E7E260F /* BurnBarDaemonComputerUseLocalAuthProofWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarDaemonComputerUseLocalAuthProofWiringTests.swift; sourceTree = "<group>"; };
+ 		5CF3160391F31C3B80701EA6 /* ComputerUsePanicHaltCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUsePanicHaltCoordinator.swift; sourceTree = "<group>"; };
+ 		5CFF351EEEB5F8E8F6282C54 /* GrokParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokParser.swift; sourceTree = "<group>"; };
++		AAAA000000000000000000F2 /* ParserInputLimits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserInputLimits.swift; sourceTree = "<group>"; };
+ 		5D02E22FF9813E331D19F0FC /* MercuryActionVisibilityList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryActionVisibilityList.swift; sourceTree = "<group>"; };
+ 		5D1F601074335E0C1F306736 /* CloudSyncSharedArtifactModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSharedArtifactModels.swift; sourceTree = "<group>"; };
+ 		5D405188BAFA3114FEA17DB5 /* CLIAgentChatReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentChatReaderTests.swift; sourceTree = "<group>"; };
+@@ -4956,6 +4960,7 @@
+ 				AB9331768D88BB9102B4FD75 /* FactoryDroidParserTests.swift */,
+ 				9B427729C36B8A8FA171EBA5 /* GeminiCLIParserTests.swift */,
+ 				196452BEE01A780E32E3BD30 /* GrokParserTests.swift */,
++				AAAA000000000000000000F4 /* ParserInputLimitsTests.swift */,
+ 				D2D72B1A14659695BB38F037 /* HermesParserIntegrationTests.swift */,
+ 				06087AC2E5683D4901505028 /* KimiParserTests.swift */,
+ 				E592D243A3CC0C0A5E0A4CFC /* ProviderCockpitParserTests.swift */,
+@@ -5023,6 +5028,7 @@
+ 				6CADF307FDCC5741291339A0 /* HermesParser.swift */,
+ 				2DDBA3FEAD1455D1A7AA6227 /* KimiParser.swift */,
+ 				42E5B6AA30134697E7725164 /* LogParserProtocol.swift */,
++				AAAA000000000000000000F2 /* ParserInputLimits.swift */,
+ 				EB8B255D17F136C61C21E628 /* TokenExtractionUtility.swift */,
+ 				AD2B5094E9BB6A9FE57E86B9 /* WarpParser.swift */,
+ 				0DCE2847583E5D90D7BA9EFB /* WindsurfParser.swift */,
+@@ -9139,6 +9145,7 @@
+ 				2993ED121DF9627A925E3635 /* FusionWireContractTests.swift in Sources */,
+ 				F94CE5FD451479A951CF5236 /* GeminiCLIParserTests.swift in Sources */,
+ 				2ED623E8EDE2E2381645F2AD /* GrokParserTests.swift in Sources */,
++				AAAA000000000000000000F3 /* ParserInputLimitsTests.swift in Sources */,
+ 				2979FEDEDE68B7AE5D9CE082 /* HermesInventoryImportServiceTests.swift in Sources */,
+ 				3F8A66FA3077AD336B5863A3 /* HermesIrohRelayHostClientMattersTests.swift in Sources */,
+ 				8116E58C1839BA92D537F09A /* HermesParserIntegrationTests.swift in Sources */,
+@@ -9644,6 +9651,7 @@
+ 				37D529B959A202A96E467357 /* GitHubCopilotUsageAPI.swift in Sources */,
+ 				E744562F328864DC70FF668D /* GooseParser.swift in Sources */,
+ 				6E1123D0B6818A0C30207F08 /* GrokParser.swift in Sources */,
++				AAAA000000000000000000F1 /* ParserInputLimits.swift in Sources */,
+ 				A554098D1518E76BB0E24798 /* HermesAtomComponents.swift in Sources */,
+ 				13104F035EF1D35EDD8E99E6 /* HermesAttachmentLoader.swift in Sources */,
+ 				B569E46F427460840B69F5E5 /* HermesDataFolder.swift in Sources */,
+-- 
+2.54.0 (Apple Git-156)
+

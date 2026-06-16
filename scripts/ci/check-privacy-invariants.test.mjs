@@ -63,7 +63,30 @@ const w = db.collection("voip_outbound").add({ uid, expireAt: x });
 const f = db.collection("fcm_outbound").add({ uid, expireAt: x });
 `;
 const GOOD_AGENTNOTIF = `const EVENT_COLLECTION = "agent_notification_events";
-const e = { expireAt: Timestamp.fromMillis(n + TTL) };`;
+const e = { expireAt: Timestamp.fromMillis(n + TTL) };
+export function buildFcmMessage(args: { event: { id: string; runtime: string; providerLabel: string; preview: string; replyEnabled: boolean }; device: { fcmToken?: string; platform: string } }) {
+  const data = {
+    type: "agent_reply",
+    event_id: args.event.id,
+    runtime: args.event.runtime,
+    title: args.event.providerLabel,
+    preview: args.event.preview,
+    reply_enabled: args.event.replyEnabled ? "true" : "false",
+  };
+  const base = {
+    token: args.device.fcmToken ?? "",
+    data,
+    android: { priority: "high", collapseKey: "agent-reply", ttl: 600000 },
+  };
+  if (args.device.platform === "android") return base;
+  return {
+    token: base.token,
+    data: base.data,
+    android: base.android,
+    notification: { title: data.title, body: data.preview },
+    apns: { payload: { aps: { category: "AGENT_REPLY", sound: "default" } }, headers: { "apns-push-type": "alert", "apns-priority": "10" } },
+  };
+}`;
 const GOOD_LOGGING = `function redactUidPaths(v){return v;} function scrubString(v){return redactUidPaths(v);}`;
 
 /** Write a fixture tree under a fresh temp dir; `mut` may mutate the files map. */

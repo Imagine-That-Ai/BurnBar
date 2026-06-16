@@ -12,6 +12,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * High-priority FCM listener for Mercury incoming calls. iOS uses APNs +
@@ -37,11 +42,13 @@ import com.google.firebase.messaging.RemoteMessage
  * ```
  */
 class MercuryFcmService : FirebaseMessagingService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         val type = data["type"]
         if (type == "agent_reply") {
-            postAgentReplyNotification(data)
+            serviceScope.launch { postAgentReplyNotification(data) }
             return
         }
         if (type != "media_incoming_call") return
@@ -60,6 +67,11 @@ class MercuryFcmService : FirebaseMessagingService() {
         // Persist the FCM token under the same stable device document that
         // the foreground app heartbeat updates.
         AgentReplyNotificationState.persistToken(applicationContext, token)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
     }
 
     private fun postIncomingCall(connectionId: String, callerName: String, callerInitial: String) {

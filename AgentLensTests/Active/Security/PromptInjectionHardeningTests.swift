@@ -6,6 +6,7 @@ import OpenBurnBarCore
 /// Added as part of 2026-06-01 AI-Agent/LLM Security specialist review.
 /// Verifies untrusted content (RAG, logs, user messages, summaries, focus) is wrapped with provenance + explicit "ignore instructions inside" rules.
 /// Run via: ./scripts/test-openburnbar-app.sh (normalizes to OpenBurnBarTests target).
+@MainActor
 final class PromptInjectionHardeningTests: XCTestCase {
 
     // MARK: - LLMSafeContent (ContextBuilder)

@@ -1,0 +1,584 @@
+From c1af67df9f7e33b904350f14225a7eca8843bc96 Mon Sep 17 00:00:00 2001
+From: "Alberto (via Claude)" <alberto8793@icloud.com>
+Date: Tue, 16 Jun 2026 03:39:07 -0500
+Subject: [PATCH 1/8] security(V-24): SSRF guard canonicalizes alt IP encodings
+ + DNS-pins outbound client
+
+assertOutboundFetchTarget blocked private ranges only for dotted-decimal IPv4 and did no
+DNS resolution; decimal/octal/hex/short-form/IPv4-mapped encodings + DNS-rebinding bypassed
+it. Adds host canonicalization (normalizeIpv4/isPublicUnicastAddress), metadata-hostname
+denylist, and a DNS-pinning undici client (ssrfAgent.ts). allowPrivateHosts (GCP metadata
+fetch) preserved. tsc clean; 14 vitest cases green. [workflow-implemented, opus-verified]
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ functions/package.json                    |   3 +-
+ functions/src/__tests__/ssrfAgent.test.ts |  26 +++
+ functions/src/__tests__/ssrfGuard.test.ts | 110 ++++++++++
+ functions/src/ssrfAgent.ts                |  98 +++++++++
+ functions/src/ssrfGuard.ts                | 247 ++++++++++++++++++++--
+ 5 files changed, 460 insertions(+), 24 deletions(-)
+ create mode 100644 functions/src/__tests__/ssrfAgent.test.ts
+ create mode 100644 functions/src/__tests__/ssrfGuard.test.ts
+ create mode 100644 functions/src/ssrfAgent.ts
+
+diff --git a/functions/package.json b/functions/package.json
+index b309548f0d..f95fc0b2b4 100644
+--- a/functions/package.json
++++ b/functions/package.json
+@@ -79,7 +79,8 @@
+     "firebase-admin": "13.10.0",
+     "firebase-functions": "^7.2.5",
+     "googleapis": "173.0.0",
+-    "stripe": "19.3.0"
++    "stripe": "19.3.0",
++    "undici": "^6.25.0"
+   },
+   "devDependencies": {
+     "@firebase/rules-unit-testing": "^5.0.1",
+diff --git a/functions/src/__tests__/ssrfAgent.test.ts b/functions/src/__tests__/ssrfAgent.test.ts
+new file mode 100644
+index 0000000000..5ec130f367
+--- /dev/null
++++ b/functions/src/__tests__/ssrfAgent.test.ts
+@@ -0,0 +1,26 @@
++import { describe, expect, it } from "vitest";
++import { Agent } from "undici";
++
++import { ssrfHardenedAgent, ssrfHardenedFetch } from "../ssrfAgent.js";
++
++describe("ssrfHardenedAgent", () => {
++  it("is a redirect-disabled undici Agent reused as a singleton", () => {
++    const a = ssrfHardenedAgent();
++    const b = ssrfHardenedAgent();
++    expect(a).toBeInstanceOf(Agent);
++    expect(a).toBe(b); // singleton — connection pool is shared
++  });
++});
++
++describe("ssrfHardenedFetch", () => {
++  it("runs the synchronous SSRF string gate before any network I/O", async () => {
++    // Metadata + private hosts are rejected by the string gate, so no socket is
++    // ever opened (the DNS-pin lookup would also catch a rebind, but we never
++    // get that far).
++    await expect(ssrfHardenedFetch("http://169.254.169.254/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("http://metadata.google.internal/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("http://10.0.0.1/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("http://[::ffff:169.254.169.254]/")).rejects.toThrow(/SSRF guard/);
++    await expect(ssrfHardenedFetch("file:///etc/passwd")).rejects.toThrow(/SSRF guard/);
++  });
++});
+diff --git a/functions/src/__tests__/ssrfGuard.test.ts b/functions/src/__tests__/ssrfGuard.test.ts
+new file mode 100644
+index 0000000000..3075a2724b
+--- /dev/null
++++ b/functions/src/__tests__/ssrfGuard.test.ts
+@@ -0,0 +1,110 @@
++import { describe, expect, it } from "vitest";
++
++import { assertOutboundFetchTarget, isPublicUnicastAddress, normalizeIpv4 } from "../ssrfGuard.js";
++
++describe("normalizeIpv4", () => {
++  it("normalizes decimal, hex, octal, and short-form IPv4 literals", () => {
++    expect(normalizeIpv4("2130706433")).toBe("127.0.0.1");
++    expect(normalizeIpv4("0x7f000001")).toBe("127.0.0.1");
++    expect(normalizeIpv4("017700000001")).toBe("127.0.0.1");
++    expect(normalizeIpv4("0177.0.0.1")).toBe("127.0.0.1");
++    expect(normalizeIpv4("127.1")).toBe("127.0.0.1");
++    expect(normalizeIpv4("127.0.1")).toBe("127.0.0.1");
++    expect(normalizeIpv4("10.1")).toBe("10.0.0.1");
++    expect(normalizeIpv4("192.168.1")).toBe("192.168.0.1");
++  });
++
++  it("rejects invalid IPv4 literals", () => {
++    expect(normalizeIpv4("256.0.0.1")).toBeNull();
++    expect(normalizeIpv4("1.16777216")).toBeNull();
++    expect(normalizeIpv4("1.2.65536")).toBeNull();
++    expect(normalizeIpv4("1.2.3.256")).toBeNull();
++    expect(normalizeIpv4("example.com")).toBeNull();
++  });
++});
++
++describe("assertOutboundFetchTarget", () => {
++  it("blocks the cloud metadata service in every spelling", () => {
++    // dotted-decimal, decimal, hex, and the metadata hostnames.
++    expect(() => assertOutboundFetchTarget("http://169.254.169.254/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://2852039166/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://0xa9fea9fe/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://metadata.google.internal/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://metadata/")).toThrow(/SSRF guard/);
++  });
++
++  it("blocks loopback encoded as alternate IPv4 literals", () => {
++    expect(() => assertOutboundFetchTarget("http://0x7f000001")).not.toThrow(); // 127.x is the dev exception
++    // ...but every other private/link-local alt-encoding is blocked:
++    expect(() => assertOutboundFetchTarget("http://0x0a000001")).toThrow(/SSRF guard/); // 10.0.0.1
++    expect(() => assertOutboundFetchTarget("http://0300.0250.0.1")).toThrow(/SSRF guard/); // 192.168.0.1
++    expect(() => assertOutboundFetchTarget("http://0251.0376.0251.0376")).toThrow(/SSRF guard/);
++  });
++
++  it("blocks IPv4-mapped IPv6 forms of loopback and private ranges", () => {
++    expect(() => assertOutboundFetchTarget("http://[::ffff:169.254.169.254]/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://[::ffff:10.0.0.1]/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://[::ffff:192.168.0.1]/")).toThrow(/SSRF guard/);
++    // hextet form of 169.254.169.254 -> ::ffff:a9fe:a9fe
++    expect(() => assertOutboundFetchTarget("http://[::ffff:a9fe:a9fe]/")).toThrow(/SSRF guard/);
++  });
++
++  it("blocks RFC1918, CGNAT, link-local, ULA, multicast, and reserved ranges", () => {
++    expect(() => assertOutboundFetchTarget("http://10.1.2.3/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://172.16.0.1/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://172.31.255.255/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://192.168.5.5/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://100.64.0.1/")).toThrow(/SSRF guard/); // CGNAT
++    expect(() => assertOutboundFetchTarget("http://0.0.0.0/")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("http://224.0.0.1/")).toThrow(/SSRF guard/); // multicast
++    expect(() => assertOutboundFetchTarget("http://240.0.0.1/")).toThrow(/SSRF guard/); // reserved
++    expect(() => assertOutboundFetchTarget("http://[fc00::1]/")).toThrow(/SSRF guard/); // ULA
++    expect(() => assertOutboundFetchTarget("http://[fe80::1]/")).toThrow(/SSRF guard/); // link-local
++    expect(() => assertOutboundFetchTarget("http://[febf::1]/")).toThrow(/SSRF guard/); // fe80::/10 upper
++    expect(() => assertOutboundFetchTarget("http://[ff02::1]/")).toThrow(/SSRF guard/); // multicast
++    expect(() => assertOutboundFetchTarget("http://[::]/")).toThrow(/SSRF guard/); // unspecified
++  });
++
++  it("rejects non-http(s) protocols", () => {
++    expect(() => assertOutboundFetchTarget("file:///etc/passwd")).toThrow(/SSRF guard/);
++    expect(() => assertOutboundFetchTarget("gopher://evil/")).toThrow(/SSRF guard/);
++  });
++
++  it("lets a normal public host through the string gate", () => {
++    expect(() => assertOutboundFetchTarget("https://api.openai.com/v1/models")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("https://example.com/")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://8.8.8.8/")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://1.1.1.1/")).not.toThrow();
++  });
++
++  it("preserves the explicit local-development loopback exception", () => {
++    expect(() => assertOutboundFetchTarget("http://127.1:8080")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://0x7f000001:8080")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://localhost:8080")).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://[::1]:8080")).not.toThrow();
++  });
++
++  it("preserves the sanctioned metadata fetch via allowPrivateHosts", () => {
++    expect(() => assertOutboundFetchTarget("http://metadata.google.internal/computeMetadata/v1/", true)).not.toThrow();
++    expect(() => assertOutboundFetchTarget("http://169.254.169.254/", true)).not.toThrow();
++  });
++});
++
++describe("isPublicUnicastAddress (DNS-pin allowlist)", () => {
++  it("accepts public unicast IPs", () => {
++    expect(isPublicUnicastAddress("8.8.8.8")).toBe(true);
++    expect(isPublicUnicastAddress("1.1.1.1")).toBe(true);
++    expect(isPublicUnicastAddress("2606:4700:4700::1111")).toBe(true);
++  });
++
++  it("rejects loopback, private, link-local, and metadata addresses", () => {
++    // Loopback is NOT public — even the dev-exception loopback is rejected here.
++    expect(isPublicUnicastAddress("127.0.0.1")).toBe(false);
++    expect(isPublicUnicastAddress("::1")).toBe(false);
++    expect(isPublicUnicastAddress("10.0.0.1")).toBe(false);
++    expect(isPublicUnicastAddress("169.254.169.254")).toBe(false);
++    expect(isPublicUnicastAddress("::ffff:169.254.169.254")).toBe(false);
++    expect(isPublicUnicastAddress("fc00::1")).toBe(false);
++    expect(isPublicUnicastAddress("fe80::1")).toBe(false);
++  });
++});
+diff --git a/functions/src/ssrfAgent.ts b/functions/src/ssrfAgent.ts
+new file mode 100644
+index 0000000000..4006464b58
+--- /dev/null
++++ b/functions/src/ssrfAgent.ts
+@@ -0,0 +1,98 @@
++/**
++ * Hardened outbound HTTP client for user/config-supplied URLs.
++ *
++ * SECURITY (L5): `assertOutboundFetchTarget` is the synchronous string gate, but a
++ * hostname that passes the string check can still resolve to a private/metadata IP
++ * (classic DNS-rebinding / TOCTOU). Per the OWASP SSRF Prevention Cheat Sheet, the
++ * only robust defense is to resolve DNS once and connect to *that exact validated
++ * address*. This module provides an undici `Agent` whose `connect.lookup` hook
++ * resolves the name, rejects the connection unless the resolved IP passes the
++ * strict public-unicast allowlist, and pins the socket to the validated address —
++ * so the name cannot rebind to a private IP between the check and the connect.
++ * Redirects are disabled (`maxRedirections: 0`) so a 30x cannot bounce the request
++ * to an unchecked internal host.
++ *
++ * This is intentionally NOT wired into the legacy provider quota path (which only
++ * ever fetches fixed public hosts and the sanctioned GCP metadata endpoint via
++ * `allowPrivateHosts: true`); it is the client a future user-URL feature must use.
++ */
++
++import type { LookupAddress, LookupOptions } from "node:dns";
++import { lookup as dnsLookup } from "node:dns";
++import { Agent } from "undici";
++
++import {
++  SsrfBlockedError,
++  assertOutboundFetchTarget,
++  assertOutboundFetchTargetResolved,
++  isPublicUnicastAddress,
++} from "./ssrfGuard.js";
++
++type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
++
++/**
++ * DNS lookup wrapper that resolves a hostname and errors unless EVERY resolved
++ * address is a public unicast IP. Returning only validated addresses to undici
++ * pins the connection to a checked IP, closing the rebind window between the
++ * string check and the socket connect.
++ */
++function pinnedLookup(hostname: string, options: LookupOptions, callback: LookupCallback): void {
++  // `all: true` so undici receives the full validated address set (and so we
++  // validate every address a name resolves to, not just the first).
++  dnsLookup(hostname, { ...options, all: true }, (err, addresses) => {
++    if (err) {
++      callback(err, []);
++      return;
++    }
++    const resolved = addresses as LookupAddress[];
++    if (resolved.length === 0) {
++      callback(new SsrfBlockedError(hostname), []);
++      return;
++    }
++    for (const { address } of resolved) {
++      if (!isPublicUnicastAddress(address)) {
++        callback(new SsrfBlockedError(`${hostname} -> ${address}`), []);
++        return;
++      }
++    }
++    callback(null, resolved);
++  });
++}
++
++let cachedAgent: Agent | undefined;
++
++/**
++ * The singleton DNS-pinning, redirect-disabled outbound dispatcher. Use this as
++ * the `dispatcher` for any `fetch` of a user/config-supplied URL.
++ */
++export function ssrfHardenedAgent(): Agent {
++  cachedAgent ??= new Agent({
++    connect: { lookup: pinnedLookup },
++    maxRedirections: 0,
++  });
++  return cachedAgent;
++}
++
++/**
++ * `fetch` for user/config-supplied URLs that layers all three OWASP defenses:
++ *  1. the synchronous SSRF string/canonicalization gate ({@link assertOutboundFetchTarget}),
++ *  2. an application-layer resolved-IP gate ({@link assertOutboundFetchTargetResolved}),
++ *     which resolves DNS and rejects if any address is private/metadata, then
++ *  3. dispatch through the DNS-pinning, redirect-disabled agent so a hostname that
++ *     rebinds between the gate and the connect (TOCTOU), or a 30x redirect, still
++ *     cannot reach an internal/metadata endpoint — the socket binds only to a
++ *     freshly-revalidated public-unicast address.
++ *
++ * Unlike `resilientFetch`, this path never exposes an `allowPrivateHosts` escape:
++ * the sanctioned GCP metadata fetch stays on its own dedicated path.
++ */
++export async function ssrfHardenedFetch(url: string | URL, init?: RequestInit): Promise<Response> {
++  assertOutboundFetchTarget(url);
++  await assertOutboundFetchTargetResolved(url);
++  return fetch(url, {
++    ...init,
++    redirect: "error",
++    // undici reads the dispatcher off the init bag in Node's global fetch.
++    dispatcher: ssrfHardenedAgent(),
++  } as RequestInit & { dispatcher: Agent });
++}
+diff --git a/functions/src/ssrfGuard.ts b/functions/src/ssrfGuard.ts
+index 54539fa8dd..86d066f671 100644
+--- a/functions/src/ssrfGuard.ts
++++ b/functions/src/ssrfGuard.ts
+@@ -12,32 +12,193 @@
+  * Loopback is intentionally allowed so the local emulator / dev quota runner and
+  * localhost-configured endpoints keep working; the metadata identity fetch opts in
+  * explicitly via `allowPrivateHosts`.
++ *
++ * SOTA hardening (2026), per the OWASP SSRF Prevention Cheat Sheet:
++ *  1. CANONICALIZE the host before any range check — IPv4 alternative encodings
++ *     (decimal `2130706433`, hex `0x7f000001`, octal, dword, short-form) AND
++ *     IPv4-mapped IPv6 (`::ffff:127.0.0.1`, `::ffff:7f00:1`) all normalize to a
++ *     single dotted-decimal so they are treated identically to `127.0.0.1`.
++ *  2. REJECT every host that is (or, for {@link assertOutboundFetchTargetResolved},
++ *     resolves to) a non-public-unicast address: loopback `127/8` + `::1`,
++ *     RFC1918 `10/8` / `172.16/12` / `192.168/16`, CGNAT `100.64/10`,
++ *     link-local `169.254/16` (incl. GCP metadata `169.254.169.254`) + `fe80::/10`,
++ *     "this network" `0/8`, ULA `fc00::/7`, multicast (`224/4`, `ff00::/8`),
++ *     reserved `240/4`, broadcast, unspecified `::`/`0.0.0.0`, and the metadata
++ *     hostnames (`metadata.google.internal`, etc.).
++ *  3. DNS rebinding / TOCTOU: a hostname string check alone cannot stop a name
++ *     that resolves to a private IP. User-supplied URL fetches must additionally
++ *     go through the DNS-pinning client in `ssrfAgent.ts` (or call
++ *     {@link assertOutboundFetchTargetResolved} and connect only to a checked IP),
++ *     which resolves once, validates the resolved address, and disables redirects.
++ *
++ * `assertOutboundFetchTarget` stays the synchronous string/canonicalization gate.
+  */
+ 
+-const BLOCKED_HOSTNAMES = new Set(["metadata.google.internal", "metadata", "metadata.goog"]);
++import { lookup } from "node:dns/promises";
+ 
+-const BLOCKED_IPV4_PREFIXES = [
+-  "169.254.", // link-local incl. 169.254.169.254 cloud metadata
+-  "10.", // RFC1918
+-  "192.168.", // RFC1918
+-  "0.", // "this network"
+-];
++const BLOCKED_HOSTNAMES = new Set(["metadata.google.internal", "metadata", "metadata.goog"]);
+ 
+ function isBlockedIpv4(host: string): boolean {
+-  // 172.16.0.0/12 is 172.16.x.x .. 172.31.x.x
+-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+-  return BLOCKED_IPV4_PREFIXES.some((prefix) => host.startsWith(prefix));
++  // `host` is canonical dotted-decimal "a.b.c.d".
++  const octets = host.split(".").map((part) => Number.parseInt(part, 10));
++  if (octets.length !== 4 || octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
++    return true; // not parseable as a clean IPv4 -> fail closed
++  }
++  const [a, b] = octets;
++  if (a === 0) return true; // 0.0.0.0/8 "this network" / unspecified
++  if (a === 127) return true; // 127.0.0.0/8 loopback
++  if (a === 10) return true; // 10.0.0.0/8 RFC1918
++  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 RFC1918
++  if (a === 192 && b === 168) return true; // 192.168.0.0/16 RFC1918
++  if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local (incl. metadata)
++  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT (RFC6598)
++  if (a >= 224 && a <= 239) return true; // 224.0.0.0/4 multicast
++  if (a >= 240) return true; // 240.0.0.0/4 reserved + 255.255.255.255 broadcast
++  return false;
++}
++
++/** True only for loopback `127.0.0.0/8` (the sanctioned local-dev exception). */
++function isLoopbackIpv4(host: string): boolean {
++  return /^127\./.test(host);
++}
++
++function dottedIpv4FromInteger(value: number): string {
++  const a = Math.floor(value / 2 ** 24) % 256;
++  const b = Math.floor(value / 2 ** 16) % 256;
++  const c = Math.floor(value / 2 ** 8) % 256;
++  const d = value % 256;
++  return `${a}.${b}.${c}.${d}`;
++}
++
++/**
++ * Canonicalize an IPv6 literal that actually carries an IPv4 address
++ * (`::ffff:127.0.0.1`, `::ffff:7f00:1`, the deprecated `::127.0.0.1`) into the
++ * embedded dotted-decimal IPv4 so IPv4 range rules apply. Returns `null` when the
++ * literal is a genuine IPv6 address.
++ */
++function ipv4FromMappedIpv6(host: string): string | null {
++  const h = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
++  // Embedded dotted-decimal form: ::ffff:127.0.0.1 or ::127.0.0.1
++  const dotted = /^(?:::ffff:|::)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
++  if (dotted) return normalizeIpv4(dotted[1]);
++  // Hextet form of the mapped range: ::ffff:7f00:1
++  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
++  if (hex) {
++    const high = Number.parseInt(hex[1], 16);
++    const low = Number.parseInt(hex[2], 16);
++    if (Number.isNaN(high) || Number.isNaN(low)) return null;
++    const value = high * 0x10000 + low;
++    return dottedIpv4FromInteger(value);
++  }
++  return null;
+ }
+ 
+ function isBlockedIpv6(host: string): boolean {
+   const h = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+-  if (h === "::") return true;
+-  if (h.startsWith("fe80:")) return true; // link-local
++  if (h === "::" || h === "::0") return true; // unspecified
++  if (h === "::1") return true; // loopback
++  // Link-local fe80::/10 covers fe80:: .. febf::
++  if (/^fe[89ab][0-9a-f]?:/.test(h)) return true;
+   if (h.startsWith("fc") || h.startsWith("fd")) return true; // unique local fc00::/7
+-  if (h.includes("169.254.")) return true; // IPv4-mapped link-local/metadata
++  if (h.startsWith("ff")) return true; // multicast ff00::/8
+   return false;
+ }
+ 
++function parseIpv4NumericPart(part: string): number | null {
++  let value: number;
++  if (/^0x[0-9a-f]+$/i.test(part)) {
++    value = Number.parseInt(part, 16);
++  } else if (/^0[0-7]+$/.test(part) && part.length > 1) {
++    value = Number.parseInt(part, 8);
++  } else if (/^\d+$/.test(part)) {
++    value = Number.parseInt(part, 10);
++  } else {
++    return null;
++  }
++  return Number.isSafeInteger(value) && value >= 0 ? value : null;
++}
++
++/**
++ * Normalize IPv4 literals from dotted-decimal, decimal integer, hexadecimal,
++ * octal, and legacy short-form encodings to canonical dotted-decimal. Returns
++ * `null` when the input is not a valid IPv4 literal.
++ */
++export function normalizeIpv4(host: string): string | null {
++  const parts = host.split(".");
++  if (parts.length < 1 || parts.length > 4 || parts.some((part) => part.length === 0)) {
++    return null;
++  }
++
++  const numericParts = parts.map(parseIpv4NumericPart);
++  if (numericParts.some((part) => part === null)) return null;
++  const nums = numericParts as number[];
++
++  let value: number;
++  switch (nums.length) {
++    case 1:
++      if (nums[0] > 0xffffffff) return null;
++      value = nums[0];
++      break;
++    case 2:
++      if (nums[0] > 0xff || nums[1] > 0xffffff) return null;
++      value = nums[0] * 2 ** 24 + nums[1];
++      break;
++    case 3:
++      if (nums[0] > 0xff || nums[1] > 0xff || nums[2] > 0xffff) return null;
++      value = nums[0] * 2 ** 24 + nums[1] * 2 ** 16 + nums[2];
++      break;
++    case 4:
++      if (nums.some((part) => part > 0xff)) return null;
++      value = nums[0] * 2 ** 24 + nums[1] * 2 ** 16 + nums[2] * 2 ** 8 + nums[3];
++      break;
++    default:
++      return null;
++  }
++
++  return dottedIpv4FromInteger(value);
++}
++
++/** Verdict for a single canonicalized host literal. */
++type HostVerdict = "loopback" | "blocked" | "public";
++
++/**
++ * Canonicalize `host` (an IP literal or hostname) and classify it. IPv4 in any
++ * encoding and IPv4-mapped IPv6 are folded to dotted-decimal first; genuine IPv6
++ * is checked against the IPv6 block list. Non-IP hostnames return "public" unless
++ * they are a known metadata name (callers still resolve DNS for rebinding).
++ */
++function classifyHostLiteral(host: string): HostVerdict {
++  const lower = host.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
++
++  if (BLOCKED_HOSTNAMES.has(lower)) return "blocked";
++
++  // IPv4-mapped IPv6 (::ffff:127.0.0.1, ::ffff:7f00:1) folds to IPv4 rules.
++  const mappedV4 = lower.includes(":") ? ipv4FromMappedIpv6(lower) : null;
++  const canonicalV4 = mappedV4 ?? normalizeIpv4(lower);
++  if (canonicalV4) {
++    if (isLoopbackIpv4(canonicalV4)) return "loopback";
++    return isBlockedIpv4(canonicalV4) ? "blocked" : "public";
++  }
++
++  if (lower.includes(":")) {
++    if (lower === "::1") return "loopback";
++    return isBlockedIpv6(lower) ? "blocked" : "public";
++  }
++
++  if (lower === "localhost") return "loopback";
++  return "public";
++}
++
++/**
++ * True when `address` (a resolved IP literal — v4 in any encoding / v6 / mapped)
++ * is a public unicast address safe to connect to. Loopback is NOT public: this is
++ * the strict allowlist used by the DNS-pinning outbound client in `ssrfAgent.ts`,
++ * where even loopback must be opted into explicitly.
++ */
++export function isPublicUnicastAddress(address: string): boolean {
++  return classifyHostLiteral(address) === "public";
++}
++
+ class SsrfBlockedError extends Error {
+   constructor(host: string) {
+     super(`Outbound request to '${host}' is blocked (SSRF guard).`);
+@@ -45,10 +206,19 @@ class SsrfBlockedError extends Error {
+   }
+ }
+ 
++export { SsrfBlockedError };
++
+ /**
+  * Throws {@link SsrfBlockedError} when `url` targets a disallowed host.
+  * Allows http/https only. Loopback is permitted; private/link-local/metadata are
+  * blocked unless `allowPrivateHosts` is set (the GCP metadata identity fetch).
++ *
++ * SOTA (2026): canonicalizes IPv4 alternative encodings (decimal, hex, octal,
++ * short-form) AND IPv4-mapped IPv6 (`::ffff:127.0.0.1`) before range checks, so
++ * `0x7f000001`, `2130706433`, and `::ffff:7f00:1` are all treated identically to
++ * `127.0.0.1`. For DNS-rebinding protection on user-supplied URLs, fetch via the
++ * DNS-pinning client in `ssrfAgent.ts` (or call
++ * {@link assertOutboundFetchTargetResolved} and connect only to a checked IP).
+  */
+ export function assertOutboundFetchTarget(url: string | URL, allowPrivateHosts = false): void {
+   let parsed: URL;
+@@ -62,18 +232,49 @@ export function assertOutboundFetchTarget(url: string | URL, allowPrivateHosts =
+   }
+   if (allowPrivateHosts) return;
+ 
+-  const host = parsed.hostname.toLowerCase();
+-  if (BLOCKED_HOSTNAMES.has(host)) {
+-    throw new SsrfBlockedError(host);
+-  }
+   // Loopback is allowed (local dev/emulator); everything private/link-local is not.
+-  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") {
+-    return;
++  if (classifyHostLiteral(parsed.hostname) === "blocked") {
++    throw new SsrfBlockedError(parsed.hostname.toLowerCase());
+   }
+-  if (host.includes(":") && isBlockedIpv6(host)) {
+-    throw new SsrfBlockedError(host);
++}
++
++/**
++ * DNS-resolution-aware SSRF check for user-supplied URLs.
++ *
++ * Resolves the hostname to its IP addresses and checks each against the SSRF
++ * block list. This closes the DNS-rebinding / TOCTOU window where a hostname
++ * string check passes but the resolved IP is a private/metadata endpoint.
++ *
++ * **Note:** Full DNS pinning (forcing the request to connect to the resolved IP)
++ * is provided by the outbound client in `ssrfAgent.ts`. This function is the
++ * resolution + re-check gate; prefer the pinning client for user/config URLs.
++ *
++ * @returns The resolved IP addresses (for caller-side DNS pinning if desired).
++ * @throws {SsrfBlockedError} if any resolved IP is private/link-local/metadata.
++ */
++export async function assertOutboundFetchTargetResolved(url: string | URL): Promise<string[]> {
++  const parsed = typeof url === "string" ? new URL(url) : url;
++  assertOutboundFetchTarget(parsed);
++
++  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
++
++  // Skip DNS resolution for literal IPs (already checked above).
++  if (normalizeIpv4(host) || host.includes(":")) return [host];
++  if (host === "localhost") return ["127.0.0.1"];
++
++  let addresses: { address: string }[];
++  try {
++    addresses = await lookup(host, { all: true });
++  } catch {
++    // DNS failure is not a security event — the fetch will fail on its own.
++    return [];
+   }
+-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && isBlockedIpv4(host)) {
+-    throw new SsrfBlockedError(host);
++
++  for (const { address } of addresses) {
++    if (classifyHostLiteral(address) === "blocked") {
++      throw new SsrfBlockedError(`${host} -> ${address}`);
++    }
+   }
++
++  return addresses.map((a) => a.address);
+ }
+-- 
+2.54.0 (Apple Git-156)
+
