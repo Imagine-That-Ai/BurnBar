@@ -120,6 +120,10 @@ internal/
 # See docs/security/CONFIDENTIALITY_POLICY.md and docs/security/PUBLIC_REPO_HISTORY_PURGE_RUNBOOK.md.
 # (The sanitized, intentionally-public doc is docs/security/BurnBar-threat-model.md, not these.)
 security-audit/
+SECURITY_AUDIT_*.md
+security/audit*/
+security/audit-remediation-*/
+security/remediation/
 security/threat-model/
 security/threat-model.bak-*/
 security/mdash-*.md
