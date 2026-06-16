@@ -782,7 +782,7 @@ assertSectionIncludes(
   "Firestore rules must require the CloudVault sealedPayload v2 AAD context",
 );
 assertIncludes(
-  "functions/src/callables/shared.ts",
+  "functions/src/callables/shared/validators.ts",
   'const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2"',
   "Functions validators must use the six-part aad-v2 context",
 );
@@ -967,7 +967,9 @@ assertRulesBlockDeniesClientWrite(
 // enforced in the callable. Pin the gate so a regression that drops it (lets a
 // relay-capable client smuggle plaintext, or hardcodes the legacy protocol)
 // fails red here. (F8 — close the scanner's server-source blind spot.)
-const HERMES_GATEWAY_CALLABLE = "functions/src/callables/hermesGateway.ts";
+const HERMES_GATEWAY_CALLABLE = "functions/src/callables/hermesGatewayResolve.ts";
+const HERMES_GATEWAY_ROUTES = "functions/src/callables/hermesGatewayRoutes.ts";
+const HERMES_GATEWAY_OVERSIGHT = "functions/src/callables/hermesGatewayAttachmentRoutes.ts";
 assertIncludes(
   HERMES_GATEWAY_CALLABLE,
   "requireProductionGatewayRelayEnvelope(",
@@ -994,12 +996,12 @@ assertIncludes(
   "gateway callable must reject plaintext with ciphertext_required once sealing is mandatory",
 );
 assertIncludes(
-  HERMES_GATEWAY_CALLABLE,
+  HERMES_GATEWAY_ROUTES,
   "protocolVersion: HERMES_GATEWAY_PROTOCOL_VERSION",
   "gateway /state must advertise the constant protocol version (sealed contract = 2)",
 );
 assertNotIncludes(
-  HERMES_GATEWAY_CALLABLE,
+  HERMES_GATEWAY_ROUTES,
   "protocolVersion: 1",
   "gateway callable must NOT hardcode the legacy plaintext protocol version 1",
 );
@@ -1008,12 +1010,12 @@ assertNotIncludes(
 // sealed over the message channel). Pin that the leak path is gone so a
 // regression re-adding it fails red here.
 assertNotIncludes(
-  HERMES_GATEWAY_CALLABLE,
+  HERMES_GATEWAY_OVERSIGHT,
   "sanitizeHermesGatewayApprovalSummary(body.summary)",
   "oversight gate must NOT persist client-supplied summary text (control-plane only)",
 );
 assertIncludes(
-  HERMES_GATEWAY_CALLABLE,
+  HERMES_GATEWAY_OVERSIGHT,
   "CONTROL-PLANE only",
   "oversight gate must document the control-plane privacy boundary",
 );
@@ -1116,32 +1118,32 @@ for (const gatewayEventFile of [
   );
 }
 assertIncludes(
-  "functions/src/hermesGateway.ts",
+  "functions/src/hermesGatewayCore.ts",
   "return false;",
   "gateway plaintext write gate must be permanently closed",
 );
 assertIncludes(
-  "functions/src/hermesGateway.ts",
+  "functions/src/hermesGatewayEnvelope.ts",
   "HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS",
   "gateway validation must have an explicit production relay-envelope version set",
 );
 assertIncludes(
-  "functions/src/hermesGateway.ts",
+  "functions/src/hermesGatewayEnvelope.ts",
   "HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION = 3",
   "gateway negotiation must prefer the HPKE-auth v3 relay envelope",
 );
 assertIncludes(
-  "functions/src/hermesGateway.ts",
+  "functions/src/hermesGatewayEnvelope.ts",
   'HERMES_GATEWAY_RELAY_ENCRYPTION_V3 = "hpke-auth-p256-hkdfsha256-aes256gcm"',
   "gateway validation must know the HPKE-auth v3 encryption marker",
 );
 assertIncludes(
-  "functions/src/hermesGateway.ts",
+  "functions/src/hermesGatewayEnvelope.ts",
   "negotiateGatewayRelayEnvelopeCapabilities",
   "gateway clients must negotiate v2/v3 relay-envelope capabilities",
 );
 assertIncludes(
-  "functions/src/hermesGateway.ts",
+  "functions/src/hermesGatewayDocs.ts",
   "preferredRelayEnvelopeVersion: client.preferredRelayEnvelopeVersion",
   "gateway /state public client view must advertise the negotiated preferred relay envelope",
 );
@@ -1268,17 +1270,17 @@ for (const rotationFile of [
 // response.error. Pin both directions: senders emit only errorCode, receivers
 // ignore the legacy plaintext field and map known codes to fixed public text.
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
   "public enum HermesRealtimeRelayErrorCode",
   "Swift iroh relay frame model must carry fixed public error codes",
 );
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
   "public var errorCode: String?",
   "Swift iroh relay payload must expose errorCode",
 );
 assertIncludes(
-  "android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/HermesRealtimeRelayFrame.kt",
+  "android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt",
   "val errorCode: String? = null",
   "Android iroh relay payload must expose errorCode",
 );
