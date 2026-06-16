@@ -839,6 +839,7 @@ private struct ProviderFilterChip: View {
         case .minimax:      return "MiniMax"
         case .zai:          return "Z.ai"
         case .cursor:       return "Cursor"
+        case .windsurf:     return "Windsurf"
         case .warp:         return "Warp"
         case .ollama:       return "Ollama"
         case .kimi:         return "Kimi"
@@ -858,10 +859,10 @@ private struct ProviderFilterChip: View {
         case .antigravity:  return "Antigravity"
         case .goose:        return "Goose"
         case .openClaw:     return "OpenClaw"
-        case .windsurf:     return "Windsurf"
         case .xAI:          return "Grok"
         case .mimo:         return "MiMo"
         case .cursorAgent:  return "Cursor Agent"
+        case .openBurnBar:  return "BurnBar"
         }
     }
 }

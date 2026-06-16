@@ -19,6 +19,11 @@ import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { sourceMetadata } from "./sourceMetadata.js";
 import { sentryStatus } from "./sentry.js";
 import { setPublicJsonSecurityHeaders } from "./publicHttpSecurityHeaders.js";
+import {
+  checkPublicHttpEndpointRateLimit,
+  clientIpFromHttpRequest,
+  isPublicRateLimitExceeded,
+} from "./callables/publicRateLimit.js";
 
 const FUNCTION_VERSION = process.env.FUNCTION_VERSION ?? "unknown";
 
@@ -45,8 +50,19 @@ async function probeFirestore(timeoutMs = 3000): Promise<number> {
 }
 
 /** Liveness probe — returns 200 if the function process is alive. */
-export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, (_req, res) => {
+export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, async (req, res) => {
   setPublicJsonSecurityHeaders(res);
+  try {
+    await checkPublicHttpEndpointRateLimit("healthLive", clientIpFromHttpRequest(req));
+  } catch (err) {
+    if (isPublicRateLimitExceeded(err)) {
+      res.status(429).json({ error: "too_many_requests" });
+      return;
+    }
+    logError({ event: "health_live_rate_limit_failed", error: String(err) });
+    res.status(500).json({ error: "internal" });
+    return;
+  }
   res.status(200).json({ status: "alive", timestamp: new Date().toISOString(), ...sourceMetadata() });
 });
 
@@ -56,8 +72,19 @@ export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, inv
  */
 export const healthReady = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
-  async (_req, res) => {
+  async (req, res) => {
     setPublicJsonSecurityHeaders(res);
+    try {
+      await checkPublicHttpEndpointRateLimit("healthReady", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "health_ready_rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
+      return;
+    }
     // H13: surface whether crash reporting is actually enabled so the
     // post-deploy gate can probe the live endpoint for sentry.enabled=true and
     // fail closed when functions ship with SENTRY_DSN unset (shipping dark).
@@ -95,8 +122,19 @@ export const healthReady = onRequest(
  */
 export const healthCheck = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
-  async (_req, res) => {
+  async (req, res) => {
     setPublicJsonSecurityHeaders(res);
+    try {
+      await checkPublicHttpEndpointRateLimit("healthCheck", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "health_check_rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
+      return;
+    }
     let firestoreStatus: "ok" | "error" = "ok";
     let latencyMs = 0;
 

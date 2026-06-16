@@ -51,13 +51,10 @@ struct SignInScene: View {
                         Spacer(minLength: MobileTheme.Spacing.lg)
 
                         VStack(spacing: 0) {
-                            GemLogoView(size: 132) {
-                                Image("AppLogo")
-                                    .resizable()
-                                    .renderingMode(.original)
-                                    .scaledToFit()
-                            }
-                            .padding(.bottom, MobileTheme.Spacing.lg)
+                            BurnBarLogoFormationView()
+                                .frame(maxWidth: 360)
+                                .frame(height: 300)
+                                .padding(.bottom, MobileTheme.Spacing.lg)
 
                             wordmark
                                 .padding(.bottom, MobileTheme.Spacing.sm)
@@ -684,12 +681,9 @@ struct FirebaseUnavailableScene: View {
                 .ignoresSafeArea()
 
             VStack(spacing: MobileTheme.Spacing.xl) {
-                GemLogoView(size: 132) {
-                    Image("AppLogo")
-                        .resizable()
-                        .renderingMode(.original)
-                        .scaledToFit()
-                }
+                BurnBarLogoFormationView()
+                    .frame(maxWidth: 320)
+                    .frame(height: 260)
 
                 Text("Cloud sync isn't configured")
                     .font(.system(.title2, design: .rounded).weight(.bold))

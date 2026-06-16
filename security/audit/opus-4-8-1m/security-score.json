@@ -1,0 +1,33 @@
+{
+  "lane": "opus-4-8-1m",
+  "commit": "60faa70227",
+  "date": "2026-06-16",
+  "run_mode": "FULL_BASELINE",
+  "categories": [
+    {"name": "Architecture and Threat Model", "weight": 0.10, "score": 82, "weighted": 8.20, "confidence": "high"},
+    {"name": "Security Claims and Evidence", "weight": 0.10, "score": 70, "weighted": 7.00, "confidence": "medium"},
+    {"name": "Authentication, Authorization, and Identity", "weight": 0.12, "score": 85, "weighted": 10.20, "confidence": "high"},
+    {"name": "Cryptography, Secrets, and Protocols", "weight": 0.10, "score": 74, "weighted": 7.40, "confidence": "medium"},
+    {"name": "Application/API/Data Validation", "weight": 0.10, "score": 77, "weighted": 7.70, "confidence": "medium"},
+    {"name": "Cloud, Infrastructure, and Operations", "weight": 0.08, "score": 48, "weighted": 3.84, "confidence": "low"},
+    {"name": "Privacy, Logging, and Data Governance", "weight": 0.08, "score": 77, "weighted": 6.16, "confidence": "medium"},
+    {"name": "Supply Chain and Secure SDLC", "weight": 0.08, "score": 78, "weighted": 6.24, "confidence": "medium-high"},
+    {"name": "Security Testing and Verification", "weight": 0.10, "score": 74, "weighted": 7.40, "confidence": "medium"},
+    {"name": "AI/Agentic Security", "weight": 0.10, "score": 83, "weighted": 8.30, "confidence": "high"},
+    {"name": "Audit Readiness and Documentation", "weight": 0.04, "score": 66, "weighted": 2.64, "confidence": "medium"}
+  ],
+  "raw_score": 75,
+  "final_score": 73,
+  "caps": {
+    "catastrophic_max39": false,
+    "critical_max49": false,
+    "major_claim_max59": false,
+    "audit_readiness_max69": false,
+    "engineering_maturity_max79": true
+  },
+  "binding_cap": "engineering-maturity-cap (ceiling 79, non-binding)",
+  "run1_confidence_hold": -2,
+  "confidence": "medium-high",
+  "auditor_readiness": "code: strong candidate for external audit; operational: not yet full-audit-ready",
+  "counts": {"critical": 0, "high": 0, "medium": 2, "low": 12, "informational": 6, "unknowns": 7}
+}

@@ -41,6 +41,9 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case computerUseApprovalRespond = "daemon.computer_use.approval.respond"
     case computerUsePanicHalt = "daemon.computer_use.panic_halt"
     case computerUseAuditExport = "daemon.computer_use.audit_export"
+    /// T-DMN-04: provision the daemon's pinned phone-control verifying key for a
+    /// source device. First-party Mac app only; mutates daemon keychain trust state.
+    case phoneControlPinProvision = "daemon.phone_control.pin.provision"
     case controllerSummary = "daemon.controller.summary"
     /// Aggregated controller runtime (summary + questions + followups +
     /// missions + notification health + simulator runs) in one round trip.

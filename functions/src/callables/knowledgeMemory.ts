@@ -49,7 +49,7 @@
  * cleartext-SHA-256 oracle therefore no longer exists in any served or queryable
  * row. No server-side backfill is needed for the re-seal — the server never
  * holds the vault key; the device re-ingests under the bumped model tag.
- * `sourceKind` (one of three coarse buckets) and `byteCount` (a length) remain
+ * `sourceKind` (one of four coarse buckets) and `byteCount` (a length) remain
  * cleartext as ACCEPTED leakage — they are server-side filter / cap inputs and
  * carry no content; see docs/pensieve-leakage-analysis.md and docs/PENSIEVE.md.
  */
@@ -85,7 +85,7 @@ const MAX_CHUNK_BYTES = 64 * 1024; // generous per-chunk plaintext ceiling
 const MAX_BATCH_VECTORS = 800;
 type KnowledgeReviewStatus = "quarantined" | "approved" | "rejected";
 
-const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory"]);
+const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory", "code"]);
 const REVIEW_STATUSES = new Set(["quarantined", "approved", "rejected"]);
 
 /**
@@ -318,6 +318,15 @@ function resolveDedupHash(
   };
 }
 
+function requireOptionalProjectHmac(raw: unknown, fieldName: string): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const value = requireHexDigest(raw, fieldName);
+  if (value.length !== 64) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be a 64-character lowercase hex HMAC.`);
+  }
+  return value;
+}
+
 /**
  * commitKnowledgeBatch — store a batch of cloaked + sealed knowledge chunks.
  * The server never decrypts; it enforces the tier chunk/byte caps and is
@@ -332,6 +341,7 @@ export const commitKnowledgeBatch = onCall(
         sourceManifestId?: unknown;
         sourceSlug?: unknown;
         slugHmac?: unknown;
+        projectHmac?: unknown;
         vectors?: unknown;
         embeddingModelVersion?: unknown;
         deviceId?: unknown;
@@ -352,6 +362,7 @@ export const commitKnowledgeBatch = onCall(
       // remediation-2026-06-02 §3) — a cleartext slug is no longer stored on the
       // per-vector rows, so a not-yet-updated client that omits it is rejected.
       const slugHmac = requireHexDigest(request.data.slugHmac, "slugHmac");
+      const requestProjectHmac = requireOptionalProjectHmac(request.data.projectHmac, "projectHmac");
       const embeddingModelVersion = boundedTrimmedString(
         request.data.embeddingModelVersion,
         "embeddingModelVersion",
@@ -374,6 +385,11 @@ export const commitKnowledgeBatch = onCall(
         const { dedupHash, dedupHashVersion } = resolveDedupHash(raw, `vectors[${i}]`);
         const vectorId = safeCloudDocumentID(raw.vectorId ?? dedupHash, `vectors[${i}].vectorId`);
         const sourceKind = requireSourceKind(raw.sourceKind, `vectors[${i}].sourceKind`);
+        const projectHmac =
+          requireOptionalProjectHmac(raw.projectHmac, `vectors[${i}].projectHmac`) ?? requestProjectHmac;
+        if (sourceKind === "code" && !projectHmac) {
+          throw new HttpsError("invalid-argument", `vectors[${i}].projectHmac is required for code memory vectors.`);
+        }
         let reviewStatus: KnowledgeReviewStatus | undefined;
         let memoryProvenance: Record<string, unknown> | undefined;
         if (sourceKind === "chat_memory") {
@@ -414,6 +430,7 @@ export const commitKnowledgeBatch = onCall(
           dedupHash,
           dedupHashVersion,
           sourceKind,
+          projectHmac,
           chunkIndex: requireBoundedNumber(raw.chunkIndex, `vectors[${i}].chunkIndex`, 0, 1_000_000),
           byteCount: requireBoundedNumber(raw.byteCount, `vectors[${i}].byteCount`, 0, MAX_CHUNK_BYTES),
           reviewStatus,
@@ -476,6 +493,7 @@ export const commitKnowledgeBatch = onCall(
           // Vault-keyed HMAC(slug) — the search/delete filter key (B-SEC-2). No
           // cleartext `sourceSlug`/`sourcePath` is stored: the path is sealed.
           slugHmac,
+          projectHmac: v.projectHmac,
           sourceKind: v.sourceKind,
           chunkIndex: v.chunkIndex,
           // Vault-keyed HMAC(plaintext) — always v1; the write path no longer
@@ -525,6 +543,7 @@ export const commitKnowledgeBatch = onCall(
             // L40 migration: clear any stale legacy field on merge.
             sourceSlug: FieldValue.delete(),
             slugHmac,
+            projectHmac: requestProjectHmac,
             embeddingModelVersion,
             chunkCount: FieldValue.increment(creates),
             byteCount: FieldValue.increment(bytesDelta),
@@ -560,12 +579,17 @@ export const configureKnowledgeSource = onCall(
         globs?: unknown;
         sourceManifestId?: unknown;
         sourceSlug?: unknown;
+        projectHmac?: unknown;
       }>,
     ) => {
       const uid = requireUid(request);
       await assertActiveBurnBarCloudProEntitlement(uid);
 
       const sourceKind = requireSourceKind(request.data.sourceKind, "sourceKind");
+      const projectHmac = requireOptionalProjectHmac(request.data.projectHmac, "projectHmac");
+      if (sourceKind === "code" && !projectHmac) {
+        throw new HttpsError("invalid-argument", "projectHmac is required for code knowledge sources.");
+      }
       if (request.data.rootPath !== undefined && request.data.rootPath !== null) {
         throw new HttpsError("invalid-argument", "rootPath is private and must stay sealed on device.");
       }
@@ -594,6 +618,7 @@ export const configureKnowledgeSource = onCall(
           // L40 migration: clear any stale legacy field on merge.
           sourceSlug: FieldValue.delete(),
           sourceKind,
+          projectHmac,
           repoInstallId,
           chunkCount: existing.exists ? (existing.get("chunkCount") ?? 0) : 0,
           byteCount: existing.exists ? (existing.get("byteCount") ?? 0) : 0,
@@ -607,12 +632,19 @@ export const configureKnowledgeSource = onCall(
   ),
 );
 
-/** deleteKnowledgeSource — drop all vectors for one source + its manifest. */
+/** deleteKnowledgeSource — drop all vectors for one source/project + its manifest. */
 export const deleteKnowledgeSource = onCall(
   CALLABLE_OPTS,
   wrapCallableHandler(
     "deleteKnowledgeSource",
-    async (request: CallableRequest<{ sourceManifestId?: unknown; sourceSlug?: unknown; slugHmac?: unknown }>) => {
+    async (
+      request: CallableRequest<{
+        sourceManifestId?: unknown;
+        sourceSlug?: unknown;
+        slugHmac?: unknown;
+        projectHmac?: unknown;
+      }>,
+    ) => {
       const uid = requireUid(request);
       await assertActiveBurnBarCloudProEntitlement(uid);
       const sourceManifestId = requireHexDigest(
@@ -622,20 +654,32 @@ export const deleteKnowledgeSource = onCall(
       const coll = db.collection(`users/${uid}/cloud_search_knowledge`);
 
       // B-SEC-2 rows are filter-keyed by `slugHmac` (not the cleartext slug).
-      // Resolve it from the device (preferred) or the manifest, then also sweep
-      // any legacy `sourceSlug`-keyed rows so pre-B-SEC-2 sources fully delete.
+      // Resolve it from the device (preferred) or the manifest; hosted code rows
+      // also carry `projectHmac`, which is the project-scoped hard-delete key
+      // when a source-level slug is unavailable. Finally sweep legacy
+      // `sourceSlug`-keyed rows so pre-B-SEC-2 sources fully delete.
       const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceManifestId}`);
-      const manifestSlugHmac = (await manifestRef.get()).get("slugHmac");
+      const manifest = await manifestRef.get();
+      const manifestSlugHmac = manifest.get("slugHmac");
+      const manifestProjectHmac = manifest.get("projectHmac");
       const slugHmac =
         request.data.slugHmac !== undefined
           ? requireHexDigest(request.data.slugHmac, "slugHmac")
           : typeof manifestSlugHmac === "string"
             ? manifestSlugHmac
             : undefined;
+      const projectHmac =
+        request.data.projectHmac !== undefined
+          ? requireOptionalProjectHmac(request.data.projectHmac, "projectHmac")
+          : typeof manifestProjectHmac === "string"
+            ? requireOptionalProjectHmac(manifestProjectHmac, "projectHmac")
+            : undefined;
 
       let deleted = 0;
       if (slugHmac) {
         deleted += await deleteQueryInBatches(coll.where("slugHmac", "==", slugHmac));
+      } else if (projectHmac) {
+        deleted += await deleteQueryInBatches(coll.where("projectHmac", "==", projectHmac));
       }
       deleted += await deleteQueryInBatches(coll.where("sourceSlug", "==", sourceManifestId));
       await manifestRef.delete();
@@ -658,6 +702,7 @@ export const __testing__ = {
   requireReviewStatus,
   requireChatMemoryProvenance,
   requireCloakedVector,
+  requireOptionalProjectHmac,
   resolveDedupHash,
   purgeLegacyKnowledgeVectorsForUser,
   slugify,

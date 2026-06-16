@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import tempfile
 import time
 import tomllib
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 import ministry
 
@@ -42,6 +42,11 @@ SCRATCH_EXCLUDES = [
 ]
 
 RUNTIMES = ("droid", "codex", "claude", "gemini", "opencode", "cursor-agent", "kimi", "pi")
+
+
+def _default_run_dir() -> Path:
+    run_id = f"{int(time.time())}-{os.getpid()}"
+    return CASTLE_CACHE_DIR / "runs" / run_id
 
 RUNTIME_LABELS = {
     "droid": "House Droid",
@@ -127,9 +132,11 @@ class RuntimeAdapter(Protocol):
     runtime: str
     executable_name: str
 
-    def enumerate_launchable_models(self, include_quota: bool = True) -> list[dict[str, Any]]: ...
+    def enumerate_launchable_models(self, include_quota: bool = True) -> list[dict[str, Any]]:
+        ...
 
-    def resolve_model_arg(self, candidate_or_arg: dict[str, Any] | str) -> str: ...
+    def resolve_model_arg(self, candidate_or_arg: dict[str, Any] | str) -> str:
+        ...
 
     def build_command(
         self,
@@ -143,11 +150,14 @@ class RuntimeAdapter(Protocol):
         status_path: str | None = None,
         autonomy: str = "medium",
         reasoning_effort: str | None = None,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]:
+        ...
 
-    def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]: ...
+    def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]:
+        ...
 
-    def auth_precondition(self) -> dict[str, Any]: ...
+    def auth_precondition(self) -> dict[str, Any]:
+        ...
 
 
 @dataclass(frozen=True)
@@ -240,8 +250,7 @@ class BaseCLIAdapter:
         autonomy: str = "medium",
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
-        run_id = f"{int(time.time())}-{os.getpid()}"
-        base_dir = Path("/tmp") / f"bb-castle-{run_id}"
+        base_dir = _default_run_dir()
         prompt_path = prompt_path or str(base_dir / "prompt.txt")
         result_path = result_path or str(base_dir / "result.json")
         done_path = done_path or str(base_dir / "result.done")
@@ -323,6 +332,7 @@ class DroidAdapter:
         autonomy: str = "medium",
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
+        status_path = status_path or str(_default_run_dir() / "status.json")
         payload = ministry.build_droid_command(
             ministry.default_wands_path(),
             task_prompt=task_prompt,
@@ -342,11 +352,7 @@ class DroidAdapter:
         parsed = _parse_json_object(stdout)
         if parsed is not None:
             return {"is_error": bool(parsed.get("is_error")), "jsonOutput": parsed}
-        return {
-            "is_error": exit_code != 0,
-            "reason": "invalid_json" if stdout.strip() else None,
-            "stderrTail": stderr[-1200:],
-        }
+        return {"is_error": exit_code != 0, "reason": "invalid_json" if stdout.strip() else None, "stderrTail": stderr[-1200:]}
 
     def auth_precondition(self) -> dict[str, Any]:
         executable = _which(self.executable_name)
@@ -397,9 +403,7 @@ class CodexAdapter(BaseCLIAdapter):
             )
         return candidates
 
-    def argv(
-        self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str
-    ) -> list[str]:
+    def argv(self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str) -> list[str]:
         args = ["codex", "exec"]
         if cwd:
             args.extend(["-C", cwd])
@@ -435,12 +439,11 @@ class ClaudeAdapter(BaseCLIAdapter):
     def auth_paths(self) -> list[Path]:
         return [_home_path(".claude"), _home_path(".config", "claude")]
 
-    def argv(
-        self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str
-    ) -> list[str]:
+    def argv(self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str) -> list[str]:
         return [
             "claude",
             "-p",
+            "--verbose",
             "--output-format",
             "stream-json",
             "--permission-mode",
@@ -453,22 +456,11 @@ class ClaudeAdapter(BaseCLIAdapter):
     def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]:
         events = _parse_json_lines(stdout)
         if events:
-            has_error = exit_code != 0 or any(
-                bool(event.get("is_error")) or event.get("type") == "error" for event in events
-            )
-            return {
-                "is_error": has_error,
-                "eventCount": len(events),
-                "terminalEvent": events[-1],
-                "stderrTail": stderr[-1200:],
-            }
+            has_error = exit_code != 0 or any(bool(event.get("is_error")) or event.get("type") == "error" for event in events)
+            return {"is_error": has_error, "eventCount": len(events), "terminalEvent": events[-1], "stderrTail": stderr[-1200:]}
         parsed = _parse_json_object(stdout)
         if parsed is not None:
-            return {
-                "is_error": bool(parsed.get("is_error")) or exit_code != 0,
-                "jsonOutput": parsed,
-                "stderrTail": stderr[-1200:],
-            }
+            return {"is_error": bool(parsed.get("is_error")) or exit_code != 0, "jsonOutput": parsed, "stderrTail": stderr[-1200:]}
         return {"is_error": True, "reason": "empty_or_invalid_stdout", "stderrTail": stderr[-1200:]}
 
 
@@ -477,34 +469,15 @@ class GeminiAdapter(BaseCLIAdapter):
     executable_name = "gemini"
     provider = "google"
     default_models = (
-        CLIModel(
-            "gemini-3.1-pro-preview",
-            "gemini-3.1-pro-preview",
-            "Gemini 3.1 Pro Preview",
-            "google",
-            "gemini-3.1-pro-preview",
-        ),
+        CLIModel("gemini-3.1-pro-preview", "gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", "google", "gemini-3.1-pro-preview"),
         CLIModel("gemini-2.5-pro", "gemini-2.5-pro", "Gemini 2.5 Pro", "google", "gemini-2.5-pro"),
     )
 
     def auth_paths(self) -> list[Path]:
         return [_home_path(".gemini"), _home_path(".config", "gemini")]
 
-    def argv(
-        self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str
-    ) -> list[str]:
-        return [
-            "gemini",
-            "-p",
-            PROMPT_PLACEHOLDER,
-            "-m",
-            model_arg,
-            "-o",
-            "json",
-            "--approval-mode",
-            "yolo",
-            "--skip-trust",
-        ]
+    def argv(self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str) -> list[str]:
+        return ["gemini", "-p", PROMPT_PLACEHOLDER, "-m", model_arg, "-o", "json", "--approval-mode", "yolo", "--skip-trust"]
 
     def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]:
         if exit_code != 0:
@@ -529,114 +502,76 @@ class OpenCodeAdapter(BaseCLIAdapter):
     def auth_paths(self) -> list[Path]:
         return [_home_path(".config", "opencode"), _home_path(".local", "share", "opencode")]
 
-    def argv(
-        self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str
-    ) -> list[str]:
-        return [
-            "opencode",
-            "run",
-            "--prompt",
-            PROMPT_PLACEHOLDER,
-            "-m",
-            model_arg,
-            "--format",
-            "json",
-            "--dangerously-skip-permissions",
-        ]
+    def argv(self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str) -> list[str]:
+        return ["opencode", "run", "--prompt", PROMPT_PLACEHOLDER, "-m", model_arg, "--format", "json", "--dangerously-skip-permissions"]
 
     def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]:
         events = _parse_json_lines(stdout)
         has_error = exit_code != 0 or any(event.get("error") or event.get("type") == "error" for event in events)
-        return {
-            "is_error": bool(has_error),
-            "eventCount": len(events),
-            "terminalEvent": events[-1] if events else None,
-            "stderrTail": stderr[-1200:],
-        }
+        return {"is_error": bool(has_error), "eventCount": len(events), "terminalEvent": events[-1] if events else None, "stderrTail": stderr[-1200:]}
 
 
 class CursorAgentAdapter(BaseCLIAdapter):
     runtime = "cursor-agent"
     executable_name = "cursor-agent"
     provider = "cursor"
-    default_models = (CLIModel("auto", "auto", "Cursor Agent Auto", "cursor", "cursor-agent"),)
+    default_models = (
+        CLIModel("auto", "auto", "Cursor Agent Auto", "cursor", "cursor-agent"),
+    )
 
     def auth_paths(self) -> list[Path]:
         return [_home_path(".cursor"), _home_path(".local", "share", "cursor-agent"), _home_path(".cursor-agent")]
 
-    def argv(
-        self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str
-    ) -> list[str]:
+    def argv(self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str) -> list[str]:
         return ["cursor-agent", "-p", "--model", model_arg, "--output-format", "json", "--force", PROMPT_PLACEHOLDER]
 
     def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]:
         parsed = _parse_json_object(stdout)
         if parsed is not None:
-            return {
-                "is_error": bool(parsed.get("is_error") or parsed.get("error")) or exit_code != 0,
-                "jsonOutput": parsed,
-                "stderrTail": stderr[-1200:],
-            }
-        return {
-            "is_error": exit_code != 0 or not stdout.strip(),
-            "reason": "invalid_json",
-            "stderrTail": stderr[-1200:],
-        }
+            return {"is_error": bool(parsed.get("is_error") or parsed.get("error")) or exit_code != 0, "jsonOutput": parsed, "stderrTail": stderr[-1200:]}
+        return {"is_error": exit_code != 0 or not stdout.strip(), "reason": "invalid_json", "stderrTail": stderr[-1200:]}
 
 
 class KimiAdapter(BaseCLIAdapter):
     runtime = "kimi"
     executable_name = "kimi"
     provider = "moonshot"
-    default_models = (CLIModel("kimi-k2.6", "kimi-k2.6", "Kimi K2.6", "moonshot", "kimi-k2.6"),)
+    default_models = (
+        CLIModel("kimi-k2.6", "kimi-k2.6", "Kimi K2.6", "moonshot", "kimi-k2.6"),
+    )
 
     def auth_paths(self) -> list[Path]:
         return [_home_path(".kimi"), _home_path(".config", "kimi")]
 
-    def argv(
-        self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str
-    ) -> list[str]:
+    def argv(self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str) -> list[str]:
         return ["kimi", "-p", PROMPT_PLACEHOLDER, "-m", model_arg, "--output-format", "stream-json"]
 
     def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]:
         events = _parse_json_lines(stdout)
         has_error = exit_code != 0 or any(event.get("error") or event.get("is_error") for event in events)
-        return {
-            "is_error": bool(has_error),
-            "eventCount": len(events),
-            "terminalEvent": events[-1] if events else None,
-            "stderrTail": stderr[-1200:],
-        }
+        return {"is_error": bool(has_error), "eventCount": len(events), "terminalEvent": events[-1] if events else None, "stderrTail": stderr[-1200:]}
 
 
 class PiAdapter(BaseCLIAdapter):
     runtime = "pi"
     executable_name = "pi"
     provider = "pi"
-    default_models = (CLIModel("openai/gpt-5.5", "gpt-5.5", "Pi OpenAI GPT-5.5", "openai", "gpt-5-5"),)
+    default_models = (
+        CLIModel("openai/gpt-5.5", "gpt-5.5", "Pi OpenAI GPT-5.5", "openai", "gpt-5-5"),
+    )
 
     def auth_paths(self) -> list[Path]:
         return [_home_path(".pi"), _home_path(".config", "pi")]
 
-    def argv(
-        self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str
-    ) -> list[str]:
+    def argv(self, *, model_arg: str, cwd: str | None, autonomy: str, reasoning_effort: str | None, result_path: str) -> list[str]:
         provider, model = split_provider_model(model_arg, default_provider="openai")
         return ["pi", "-p", PROMPT_PLACEHOLDER, "--provider", provider, "--model", model, "--mode", "json"]
 
     def parse_completion(self, stdout: str, stderr: str = "", exit_code: int = 0) -> dict[str, Any]:
         parsed = _parse_json_object(stdout)
         if parsed is None:
-            return {
-                "is_error": True,
-                "reason": "invalid_json" if stdout.strip() else "empty_stdout",
-                "stderrTail": stderr[-1200:],
-            }
-        return {
-            "is_error": bool(parsed.get("error")) or exit_code != 0,
-            "jsonOutput": parsed,
-            "stderrTail": stderr[-1200:],
-        }
+            return {"is_error": True, "reason": "invalid_json" if stdout.strip() else "empty_stdout", "stderrTail": stderr[-1200:]}
+        return {"is_error": bool(parsed.get("error")) or exit_code != 0, "jsonOutput": parsed, "stderrTail": stderr[-1200:]}
 
 
 REGISTRY: dict[str, RuntimeAdapter] = {
@@ -707,10 +642,7 @@ def enrich_candidates(candidates: list[dict[str, Any]], include_quota: bool = Tr
         item = ministry.enrich_candidate(candidate, catalog_rows, models_index, None)
         item.setdefault("runtime", normalize_runtime(candidate.get("runtime") or "droid"))
         item.setdefault("runtimeDisplayName", runtime_label(item["runtime"]))
-        item.setdefault(
-            "quota",
-            candidate.get("quota") or {"state": "unavailable", "remainingPercent": None, "trust": "not_applicable"},
-        )
+        item.setdefault("quota", candidate.get("quota") or {"state": "unavailable", "remainingPercent": None, "trust": "not_applicable"})
         enriched.append(item)
     return enriched
 
@@ -764,11 +696,7 @@ def select_models_for_wand(
         and int(candidate.get("capabilityClassRank") or 0) >= min_rank
     ]
     ranked = sorted(candidates, key=lambda candidate: castle_sort_key(candidate, selector, runtime_preference))
-    ordered = (
-        sorted(ranked, key=lambda candidate: castle_probe_sort_key(candidate, selector, runtime_preference))
-        if prove_headless
-        else ranked
-    )
+    ordered = sorted(ranked, key=lambda candidate: castle_probe_sort_key(candidate, selector, runtime_preference)) if prove_headless else ranked
 
     selected: list[dict[str, Any]] = []
     probe_failures: list[dict[str, Any]] = []
@@ -804,16 +732,9 @@ def select_models_for_wand(
                 if probes_used >= max(1, max_probes):
                     break
                 probes_used += 1
-                probe = runner(
-                    _candidate_runtime(candidate),
-                    str(candidate["arg"]),
-                    str(wand.get("autonomy") or "medium"),
-                    probe_ttl,
-                )
+                probe = runner(_candidate_runtime(candidate), str(candidate["arg"]), str(wand.get("autonomy") or "medium"), probe_ttl)
                 if not probe.get("landsCommit"):
-                    probe_failures.append(
-                        {"runtime": _candidate_runtime(candidate), "arg": candidate.get("arg"), "probe": probe}
-                    )
+                    probe_failures.append({"runtime": _candidate_runtime(candidate), "arg": candidate.get("arg"), "probe": probe})
                     continue
                 candidate["smokeProbe"] = probe
             selected.append(candidate)
@@ -832,9 +753,7 @@ def select_models_for_wand(
         "selectedCount": len(selected),
         "reason": reason,
         "wand": wand,
-        "proofStatus": "proven_headless"
-        if prove_headless and len(selected) == count
-        else ("partial" if prove_headless else "unproven"),
+        "proofStatus": "proven_headless" if prove_headless and len(selected) == count else ("partial" if prove_headless else "unproven"),
         "allowRuntimes": sorted(runtime_filter),
         "providerDiversityRequired": require_provider_diversity,
         "runtimeDiversityRequired": require_runtime_diversity,
@@ -873,15 +792,11 @@ def build_command(
     )
 
 
-def smoke_probe(
-    runtime: str, arg: str, autonomy: str = "medium", ttl: int = 3600, timeout_seconds: int = 120
-) -> dict[str, Any]:
+def smoke_probe(runtime: str, arg: str, autonomy: str = "medium", ttl: int = 3600, timeout_seconds: int = 120) -> dict[str, Any]:
     return adapter_smoke_probe(adapter_for(runtime), arg, autonomy=autonomy, ttl=ttl, timeout_seconds=timeout_seconds)
 
 
-def adapter_smoke_probe(
-    adapter: RuntimeAdapter, arg: str, autonomy: str = "medium", ttl: int = 3600, timeout_seconds: int = 120
-) -> dict[str, Any]:
+def adapter_smoke_probe(adapter: RuntimeAdapter, arg: str, autonomy: str = "medium", ttl: int = 3600, timeout_seconds: int = 120) -> dict[str, Any]:
     cache_key = (normalize_runtime(adapter.runtime), arg, autonomy)
     now = time.time()
     cached = _SMOKE_CACHE.get(cache_key)
@@ -929,7 +844,8 @@ def adapter_smoke_probe(
                 cwd=str(repo),
                 shell=True,
                 text=True,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 timeout=max(30, min(int(timeout_seconds), 300)),
             )
         except subprocess.TimeoutExpired as exc:
@@ -953,20 +869,38 @@ def adapter_smoke_probe(
             done_path=str(done_path),
             status_path=str(status_path),
         )
+        landed_commit = bool(result.get("landedCommit"))
+        committed_files = _head_commit_files(repo) if landed_commit else []
+        clean_commit = committed_files == ["castle_probe.txt"] if landed_commit else None
+        commit_polluted = landed_commit and not clean_commit
+        status_record = result.get("statusRecord")
+        if commit_polluted and isinstance(status_record, dict):
+            status_record = dict(status_record)
+            status_record["phase"] = "failed"
+            status_record["landsCommit"] = False
+            status_record["errorReason"] = "commit_pollution"
+            honesty = list(status_record.get("honesty") or [])
+            if "failed" not in honesty:
+                honesty.append("failed")
+            status_record["honesty"] = honesty
+            write_status_record(status_path, status_record)
         payload = {
-            "status": result.get("status"),
+            "status": "failed" if commit_polluted else result.get("status"),
+            "code": "CASTLE_PROBE_COMMIT_POLLUTION" if commit_polluted else None,
             "runtime": adapter.runtime,
             "arg": arg,
             "autonomy": autonomy,
-            "landsCommit": bool(result.get("landedCommit")),
+            "landsCommit": landed_commit and not commit_polluted,
             "isError": result.get("isError"),
             "exitCode": proc.returncode,
             "baseSHA": base,
             "headSHA": result.get("headSHA"),
+            "committedFiles": committed_files,
+            "cleanCommit": clean_commit,
             "durationSeconds": round(time.time() - started, 3),
             "cacheHit": False,
             "stderrTail": ((result.get("stderr") or "") + proc.stderr)[-2000:],
-            "statusRecord": result.get("statusRecord"),
+            "statusRecord": status_record,
         }
         _SMOKE_CACHE[cache_key] = {**payload, "fetchedAtEpoch": now}
         return payload
@@ -1004,7 +938,8 @@ def collect_result(
         ["git", "rev-parse", "HEAD"],
         cwd=worktree_path,
         text=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         timeout=15,
     )
     head = head_proc.stdout.strip() if head_proc.returncode == 0 else None
@@ -1112,18 +1047,15 @@ def seed_worktree_isolation(worktree_path: str | Path, extra_patterns: Iterable[
 
 
 def scoped_probe_prompt(filename: str) -> str:
-    return (
-        "\n".join(
-            [
-                "This is an OpenBurnBar Castle smoke probe in a disposable git repository.",
-                f"Create or update {filename} with one short line.",
-                f"Then run exactly: git add {shlex.quote(filename)} && git commit -m 'castle smoke probe'.",
-                "Do not run git add -A.",
-                "Do not read or write files outside this repository.",
-            ]
-        )
-        + "\n"
-    )
+    return "\n".join(
+        [
+            "This is an OpenBurnBar Castle smoke probe in a disposable git repository.",
+            f"Create or update {filename} with one short line.",
+            f"Then run exactly: git add {shlex.quote(filename)} && git commit -m 'castle smoke probe'.",
+            "Do not run git add -A.",
+            "Do not read or write files outside this repository.",
+        ]
+    ) + "\n"
 
 
 def command_with_done_marker(
@@ -1145,29 +1077,27 @@ def command_with_done_marker(
     status_fragment = ""
     if status_path:
         status_fragment = (
-            f'printf \'{{"schemaVersion":{STATUS_SCHEMA_VERSION},"updatedAt":"%s",'
-            f'"runtime":{json.dumps(normalize_runtime(runtime))},'
-            f'"house":{json.dumps(runtime_label(runtime))},'
-            f'"modelArg":{json.dumps(model_arg)},"phase":"completed",'
-            f'"landsCommit":false,"resultPath":{json.dumps(result_path)},'
-            f'"donePath":{json.dumps(done_path)}}}\\n\' '
-            f'"$(date -u +%Y-%m-%dT%H:%M:%SZ)" > {ministry.shell_quote(status_path)}; '
+            f"printf '{{\"schemaVersion\":{STATUS_SCHEMA_VERSION},\"updatedAt\":\"%s\","
+            f"\"runtime\":{json.dumps(normalize_runtime(runtime))},"
+            f"\"house\":{json.dumps(runtime_label(runtime))},"
+            f"\"modelArg\":{json.dumps(model_arg)},\"phase\":\"completed\","
+            f"\"landsCommit\":false,\"resultPath\":{json.dumps(result_path)},"
+            f"\"donePath\":{json.dumps(done_path)}}}\\n' "
+            f"\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > {ministry.shell_quote(status_path)}; "
         )
     return (
         f"mkdir -p {ministry.shell_quote(Path(prompt_path).parent)} && "
         f"{prefix}{rendered} > {ministry.shell_quote(result_path)} 2> {ministry.shell_quote(stderr_path)}{stdin}; "
         "rc=$?; "
-        f'printf \'{{"exitCode":%s,"runtime":{json.dumps(normalize_runtime(runtime))},'
-        f'"modelArg":{json.dumps(model_arg)},"completedAt":"%s"}}\\n\' '
-        f'"$rc" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > {ministry.shell_quote(done_path)}; '
+        f"printf '{{\"exitCode\":%s,\"runtime\":{json.dumps(normalize_runtime(runtime))},"
+        f"\"modelArg\":{json.dumps(model_arg)},\"completedAt\":\"%s\"}}\\n' "
+        f"\"$rc\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > {ministry.shell_quote(done_path)}; "
         f"{status_fragment}"
         "exit $rc"
     )
 
 
-def castle_sort_key(
-    candidate: dict[str, Any], selector: str, runtime_preference: list[str] | None = None
-) -> tuple[Any, ...]:
+def castle_sort_key(candidate: dict[str, Any], selector: str, runtime_preference: list[str] | None = None) -> tuple[Any, ...]:
     runtime_preference = runtime_preference or []
     runtime_tier = _runtime_preference_tier(candidate, runtime_preference)
     qtier = ministry._quota_sort_tier(candidate)
@@ -1181,9 +1111,7 @@ def castle_sort_key(
     return (qtier, -rank, 1 if candidate.get("costUnknown") else 0, price, runtime_tier, arg)
 
 
-def castle_probe_sort_key(
-    candidate: dict[str, Any], selector: str, runtime_preference: list[str] | None = None
-) -> tuple[Any, ...]:
+def castle_probe_sort_key(candidate: dict[str, Any], selector: str, runtime_preference: list[str] | None = None) -> tuple[Any, ...]:
     proof_tier = 0 if _known_headless(candidate) else 1
     return (proof_tier, *castle_sort_key(candidate, selector, runtime_preference))
 
@@ -1288,7 +1216,7 @@ def _parse_json_lines(text: str) -> list[dict[str, Any]]:
 
 def _shell_arg(part: str, *, prompt_path: str) -> str:
     if part == PROMPT_PLACEHOLDER:
-        return f'"$(cat {ministry.shell_quote(prompt_path)})"'
+        return f"\"$(cat {ministry.shell_quote(prompt_path)})\""
     return ministry.shell_quote(part)
 
 
@@ -1313,7 +1241,14 @@ def _done_value(path: Path, key: str) -> str | None:
 
 
 def _run(cmd: list[str], cwd: Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, timeout=timeout)
+    return subprocess.run(cmd, cwd=str(cwd), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+
+
+def _head_commit_files(repo: Path) -> list[str]:
+    proc = _run(["git", "show", "--name-only", "--format=", "HEAD"], repo, timeout=15)
+    if proc.returncode != 0:
+        return []
+    return [line for line in proc.stdout.splitlines() if line.strip()]
 
 
 def json_dumps(payload: Any) -> str:

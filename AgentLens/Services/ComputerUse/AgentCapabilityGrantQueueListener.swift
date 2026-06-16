@@ -18,19 +18,27 @@ final class AgentCapabilityGrantQueueListener {
         _ requestPath: String,
         _ payload: [String: Any]
     ) async throws -> Void
+    typealias DaemonPinProvisioner = @Sendable (
+        _ request: DaemonPhoneControlPinProvisionRequest
+    ) async throws -> Void
 
     private let firestoreProvider: @Sendable () -> Firestore
     private let receiptWriter: ReceiptPayloadWriter
     private let validator = PhoneControlAuthorityValidator()
+    private let daemonPinProvisioner: DaemonPinProvisioner
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var listener: ListenerRegistration?
     private var activeUID: String?
 
     init(
         firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
-        receiptWriter: ReceiptPayloadWriter? = nil
+        receiptWriter: ReceiptPayloadWriter? = nil,
+        daemonPinProvisioner: DaemonPinProvisioner? = nil
     ) {
         self.firestoreProvider = firestoreProvider
+        self.daemonPinProvisioner = daemonPinProvisioner ?? { request in
+            _ = try await OpenBurnBarDaemonManager.shared.provisionPhoneControlPin(request)
+        }
         // Default writer: persists the receipt payload to the Firestore
         // document at `requestPath` (merging so the original request fields
         // survive) via the same provider the listener reads through.
@@ -140,6 +148,13 @@ final class AgentCapabilityGrantQueueListener {
             envelope: wireRequest.authority,
             grantRequest: wireRequest,
             now: Date()
+        )
+        try await daemonPinProvisioner(
+            DaemonPhoneControlPinProvisionRequest(
+                deviceId: wireRequest.sourceDeviceId,
+                publicKeyBase64: authority.publicKey.publicKeyRepresentation.base64EncodedString(),
+                keyKind: authority.publicKey.kind
+            )
         )
         let request = try AgentCapabilityGrantRequest(wire: wireRequest)
         return await AgentCapabilityGrantStore.shared.apply(request)

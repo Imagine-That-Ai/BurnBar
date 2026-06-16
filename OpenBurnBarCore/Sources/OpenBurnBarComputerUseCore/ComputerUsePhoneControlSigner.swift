@@ -155,6 +155,59 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     /// envelope is intentionally excluded because it is attached after
     /// signing, matching the `control.input` intent flow.
     public func canonicalAgentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest) throws -> String {
+        try canonicalAgentGrantRequestHashHex(
+            requestId: request.requestId,
+            runtime: request.runtime,
+            threadId: request.threadId,
+            preset: request.preset,
+            capabilities: request.capabilities.sorted(),
+            trustMode: request.trustMode,
+            deliveryMode: request.deliveryMode,
+            requestedAt: request.requestedAt,
+            expiresAt: request.expiresAt,
+            grantDurationSeconds: request.grantDurationSeconds,
+            sourceDeviceId: request.sourceDeviceId,
+            clientIntentId: request.clientIntentId,
+            localAuthenticationSatisfied: request.localAuthenticationSatisfied
+        )
+    }
+
+    /// Canonical hash for the app-side `AgentCapabilityGrantRequest`. Produces
+    /// byte-identical output to the wire-request overload so the daemon can
+    /// verify the same intent hash the phone signed.
+    public func canonicalAgentGrantRequestHashHex(request: AgentCapabilityGrantRequest) throws -> String {
+        try canonicalAgentGrantRequestHashHex(
+            requestId: request.requestID,
+            runtime: request.runtimeID.rawValue,
+            threadId: request.threadID,
+            preset: request.preset.rawValue,
+            capabilities: request.capabilities.map(\.rawValue).sorted(),
+            trustMode: request.trustMode.rawValue,
+            deliveryMode: request.deliveryMode.rawValue,
+            requestedAt: request.requestedAt,
+            expiresAt: request.expiresAt,
+            grantDurationSeconds: request.grantDurationSeconds,
+            sourceDeviceId: request.sourceDeviceID,
+            clientIntentId: request.clientIntentID,
+            localAuthenticationSatisfied: request.localAuthenticationSatisfied
+        )
+    }
+
+    private func canonicalAgentGrantRequestHashHex(
+        requestId: String,
+        runtime: String,
+        threadId: String,
+        preset: String,
+        capabilities: [String],
+        trustMode: String,
+        deliveryMode: String,
+        requestedAt: Date,
+        expiresAt: Date,
+        grantDurationSeconds: Double,
+        sourceDeviceId: String,
+        clientIntentId: String,
+        localAuthenticationSatisfied: Bool
+    ) throws -> String {
         struct SignableAgentGrantRequest: Encodable {
             let requestId: String
             let runtime: String
@@ -171,19 +224,19 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             let localAuthenticationSatisfied: Bool
         }
         return try canonicalIntentHashHex(intent: SignableAgentGrantRequest(
-            requestId: request.requestId,
-            runtime: request.runtime,
-            threadId: request.threadId,
-            preset: request.preset,
-            capabilities: request.capabilities.sorted(),
-            trustMode: request.trustMode,
-            deliveryMode: request.deliveryMode,
-            requestedAt: request.requestedAt,
-            expiresAt: request.expiresAt,
-            grantDurationSeconds: request.grantDurationSeconds,
-            sourceDeviceId: request.sourceDeviceId,
-            clientIntentId: request.clientIntentId,
-            localAuthenticationSatisfied: request.localAuthenticationSatisfied
+            requestId: requestId,
+            runtime: runtime,
+            threadId: threadId,
+            preset: preset,
+            capabilities: capabilities,
+            trustMode: trustMode,
+            deliveryMode: deliveryMode,
+            requestedAt: requestedAt,
+            expiresAt: expiresAt,
+            grantDurationSeconds: grantDurationSeconds,
+            sourceDeviceId: sourceDeviceId,
+            clientIntentId: clientIntentId,
+            localAuthenticationSatisfied: localAuthenticationSatisfied
         ))
     }
 

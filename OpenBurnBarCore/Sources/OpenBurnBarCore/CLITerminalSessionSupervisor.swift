@@ -129,6 +129,25 @@ public enum CLIQuotaExhaustionClassifier {
                 "cursor agent quota",
                 "cursor agent limit"
             ]
+        case .gemini:
+            cliSpecificPatterns = [
+                "gemini quota",
+                "google ai quota",
+                "approval-mode",
+                "yolo mode"
+            ]
+        case .kimi:
+            cliSpecificPatterns = [
+                "kimi quota",
+                "moonshot quota",
+                "kimi limit"
+            ]
+        case .pi:
+            cliSpecificPatterns = [
+                "pi quota",
+                "pi limit",
+                "provider quota"
+            ]
         }
 
         if genericPatterns.contains(where: normalized.contains) {

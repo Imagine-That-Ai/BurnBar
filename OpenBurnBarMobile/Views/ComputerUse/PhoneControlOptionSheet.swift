@@ -53,7 +53,10 @@ struct PhoneControlOptionSheet: View {
                 }
 
                 Section("Trust mode") {
-                    ForEach(ComputerUseTrustMode.allCases, id: \.self) { mode in
+                    // Show only modes at or below the current trust level.
+                    // The phone can only downgrade trust (Trusted -> Step ->
+                    // Manual); elevation requires the Mac. Closes FINDING-003.
+                    ForEach(ComputerUseTrustMode.allCases.filter { $0 <= snapshot.trustMode }, id: \.self) { mode in
                         Button {
                             onTrustMode(mode)
                             dismiss()

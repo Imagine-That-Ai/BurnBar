@@ -28,11 +28,31 @@ enum KnownLogRoots {
         "~/Library/Application Support/OpenBurnBar/"
     ]
 
-    /// Returns true if `path`, after tilde expansion, starts with one of the
-    /// known-safe root prefixes.
-    static func isKnownRoot(_ path: String) -> Bool {
+    /// Expanded, canonicalized versions of the roots for safe prefix comparison.
+    private static let expandedRoots: [String] = all.map {
+        ($0 as NSString).expandingTildeInPath
+    }
+
+    private static func canonicalPath(_ path: String) -> String {
         let expanded = (path as NSString).expandingTildeInPath
-        return all.contains { expanded.hasPrefix($0) }
+        let resolved = (expanded as NSString).resolvingSymlinksInPath
+        return (resolved as NSString).standardizingPath
+    }
+
+    /// Returns true if `path`, after tilde expansion and canonicalization, starts
+    /// with one of the known-safe root prefixes.
+    ///
+    /// Fixes OPUS-F-010: previously compared an expanded candidate path against
+    /// still-tilde-prefixed roots (`hasPrefix("~/.factory/")`), so every custom
+    /// path was over-rejected. Now expands both sides and canonicalizes
+    /// (`standardizingPath` + `resolvingSymlinksInPath`) to prevent traversal
+    /// bypass via `..` or symlink chains.
+    static func isKnownRoot(_ path: String) -> Bool {
+        let canonical = canonicalPath(path)
+        return expandedRoots.contains { rootExpanded in
+            let rootCanonical = canonicalPath(rootExpanded)
+            return canonical == rootCanonical || canonical.hasPrefix(rootCanonical + "/")
+        }
     }
 }
 

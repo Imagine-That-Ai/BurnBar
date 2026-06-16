@@ -297,7 +297,9 @@ final class CLIBridge: ObservableObject {
                     bearerToken: bearerToken,
                     unavailableError: .hermesUnavailable,
                     missingModelError: .noSelectedModel("Hermes"),
+                    disallowedModelError: .disallowedModel(backend: "Hermes", model: model),
                     httpStreamID: streamID,
+                    allowedModels: OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: self.hermesGatewayModels.map(\.id) + ["hermes"]),
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
@@ -354,7 +356,9 @@ final class CLIBridge: ObservableObject {
                     bearerToken: bearerToken,
                     unavailableError: .openClawUnavailable,
                     missingModelError: .noSelectedModel("OpenClaw"),
+                    disallowedModelError: .disallowedModel(backend: "OpenClaw", model: model),
                     httpStreamID: streamID,
+                    allowedModels: OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: self.openClawGatewayModels.map(\.id)),
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,
@@ -404,18 +408,21 @@ final class CLIBridge: ObservableObject {
                     return
                 }
                 let streamID = await streamIDTask.value
+                let selectedPiModel = {
+                    let t = model.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return t.isEmpty ? "pi" : t
+                }()
                 await OpenAICompatibleChatGatewayClient(runtime: self.streamRuntime).runStream(
                     baseURL: baseURL,
-                    model: {
-                        let t = model.trimmingCharacters(in: .whitespacesAndNewlines)
-                        return t.isEmpty ? "pi" : t
-                    }(),
+                    model: selectedPiModel,
                     systemPrompt: systemPrompt,
                     history: history,
                     bearerToken: bearerToken,
                     unavailableError: .piAgentUnavailable,
                     missingModelError: .noSelectedModel("Pi"),
+                    disallowedModelError: .disallowedModel(backend: "Pi", model: selectedPiModel),
                     httpStreamID: streamID,
+                    allowedModels: OpenAICompatibleChatGatewayClient.ModelAllowlist(modelIDs: self.piAgentGatewayModels.map(\.id) + ["pi"]),
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,
                     workspaceURL: workspaceURL,

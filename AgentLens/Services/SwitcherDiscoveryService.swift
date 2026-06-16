@@ -17,6 +17,9 @@ enum DiscoverySource: Equatable {
     case forge(executablePath: String?, configDirectory: String?)
     case antigravity(executablePath: String?, configDirectory: String?)
     case cursorAgent(executablePath: String?, configDirectory: String?)
+    case gemini(executablePath: String?, configDirectory: String?)
+    case kimi(executablePath: String?, configDirectory: String?)
+    case pi(executablePath: String?, configDirectory: String?)
 }
 
 /// Authentication state of a discovered identity.
@@ -193,6 +196,12 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .antigravity(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .cursorAgent:
                 source = .cursorAgent(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .gemini:
+                source = .gemini(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .kimi:
+                source = .kimi(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .pi:
+                source = .pi(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             }
 
             guard cliInfo.isInstalled else {
@@ -368,6 +377,42 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "Cursor Agent",
                     configDirectory: configDirectory,
                     accountDescription: "Cursor Agent local profile"
+                ),
+                sortKey: 0
+            )
+        case .gemini(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .gemini,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Gemini CLI",
+                    configDirectory: configDirectory,
+                    accountDescription: "Gemini CLI local profile"
+                ),
+                sortKey: 0
+            )
+        case .kimi(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .kimi,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Kimi",
+                    configDirectory: configDirectory,
+                    accountDescription: "Kimi local profile"
+                ),
+                sortKey: 0
+            )
+        case .pi(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .pi,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Pi",
+                    configDirectory: configDirectory,
+                    accountDescription: "Pi local profile"
                 ),
                 sortKey: 0
             )
@@ -756,6 +801,24 @@ final class SwitcherDiscoveryService: ObservableObject {
                 case .forge(_, let configDirectory):
                     return cliType == .forge
                         && configDirectory == saved.cliMetadata?.configDirectory
+                case .antigravity(_, let configDirectory):
+                    return cliType == .antigravity
+                        && configDirectory == saved.cliMetadata?.configDirectory
+                case .grok(_, let configDirectory):
+                    return cliType == .grok
+                        && configDirectory == saved.cliMetadata?.configDirectory
+                case .cursorAgent(_, let configDirectory):
+                    return cliType == .cursorAgent
+                        && configDirectory == saved.cliMetadata?.configDirectory
+                case .gemini(_, let configDirectory):
+                    return cliType == .gemini
+                        && configDirectory == saved.cliMetadata?.configDirectory
+                case .kimi(_, let configDirectory):
+                    return cliType == .kimi
+                        && configDirectory == saved.cliMetadata?.configDirectory
+                case .pi(_, let configDirectory):
+                    return cliType == .pi
+                        && configDirectory == saved.cliMetadata?.configDirectory
                 default:
                     return false
                 }
@@ -856,6 +919,12 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .grok(executablePath: CLILaunchAdapter.executablePath(for: .grok), configDirectory: nil)
         case .cursorAgent:
             return .cursorAgent(executablePath: CLILaunchAdapter.executablePath(for: .cursorAgent), configDirectory: nil)
+        case .gemini:
+            return .gemini(executablePath: CLILaunchAdapter.executablePath(for: .gemini), configDirectory: nil)
+        case .kimi:
+            return .kimi(executablePath: CLILaunchAdapter.executablePath(for: .kimi), configDirectory: nil)
+        case .pi:
+            return .pi(executablePath: CLILaunchAdapter.executablePath(for: .pi), configDirectory: nil)
         }
     }
 
@@ -880,7 +949,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -892,6 +961,9 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .antigravity: cliType = .antigravity
             case .grok: cliType = .grok
             case .cursorAgent: cliType = .cursorAgent
+            case .gemini: cliType = .gemini
+            case .kimi: cliType = .kimi
+            case .pi: cliType = .pi
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -962,6 +1034,12 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .xAI
         case .cursorAgent:
             return .cursorAgent
+        case .gemini:
+            return .geminiCLI
+        case .kimi:
+            return .kimi
+        case .pi:
+            return .piAgent
         }
     }
 
@@ -1112,6 +1190,9 @@ final class SwitcherDiscoveryService: ObservableObject {
         case (.antigravity, .antigravityCLI): return true
         case (.grok, .grokCLI): return true
         case (.cursorAgent, .cursorAgentCLI): return true
+        case (.gemini, .geminiCLI): return true
+        case (.kimi, .kimiCLI): return true
+        case (.pi, .piCLI): return true
         default: return false
         }
     }
@@ -1130,6 +1211,9 @@ extension DiscoverySource {
         case .antigravity: return .antigravity
         case .grok: return .grok
         case .cursorAgent: return .cursorAgent
+        case .gemini: return .gemini
+        case .kimi: return .kimi
+        case .pi: return .pi
         default: return nil
         }
     }

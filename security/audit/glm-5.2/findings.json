@@ -1,0 +1,161 @@
+{
+  "findings": [
+    {
+      "id": "FINDING-001",
+      "title": "Kill-switch watchdog socket has no peer authentication",
+      "severity": "high",
+      "category": "availability-safety-control-bypass",
+      "affected_component": "PrivilegedInputKillSwitchWatchdogMain.swift",
+      "affected_asset": "ASSET-009",
+      "status": "open",
+      "first_seen": "2026-06-16",
+      "last_seen": "2026-06-16",
+      "evidence": "PrivilegedInputKillSwitchWatchdogMain.swift:60-93",
+      "likelihood": "low",
+      "impact": "safety-control-disarmed",
+      "score_impact": -5,
+      "related_threats": ["THREAT-001"],
+      "related_claims": ["CLAIM-004", "CLAIM-015"]
+    },
+    {
+      "id": "FINDING-002",
+      "title": "Local-auth-proof verifier dormant in production daemon",
+      "severity": "medium",
+      "category": "authorization-defense-in-depth-gap",
+      "affected_component": "OpenBurnBarDaemonMain.swift",
+      "affected_asset": "ASSET-008",
+      "status": "open",
+      "first_seen": "2026-06-16",
+      "evidence": "OpenBurnBarDaemonMain.swift:69",
+      "likelihood": "low",
+      "impact": "unauthorized-hid-if-signed-process-compromised",
+      "score_impact": -3,
+      "related_threats": ["THREAT-002"],
+      "related_claims": []
+    },
+    {
+      "id": "FINDING-003",
+      "title": "Phone-side trust mode picker presents all modes including Trusted",
+      "severity": "medium-high",
+      "category": "authorization-bypass",
+      "affected_component": "PhoneControlOptionSheet.swift",
+      "affected_asset": "Computer Use trust state",
+      "status": "open",
+      "first_seen": "2026-06-16",
+      "evidence": "PhoneControlOptionSheet.swift ForEach(allCases); AgentWatchReceiver.swift:102-103",
+      "likelihood": "medium",
+      "impact": "trust-mode-elevation-from-phone",
+      "score_impact": -3,
+      "related_threats": ["THREAT-003"],
+      "related_claims": ["CLAIM-014"]
+    },
+    {
+      "id": "FINDING-004",
+      "title": "CloudVault first-vault creation not server-mediated (M-008)",
+      "severity": "medium",
+      "status": "accepted-risk",
+      "score_impact": -2
+    },
+    {
+      "id": "FINDING-005",
+      "title": "iroh first-contact safety-number not default-on (M-018)",
+      "severity": "medium",
+      "status": "accepted-risk",
+      "score_impact": -2
+    },
+    {
+      "id": "FINDING-006",
+      "title": "CLI executable provenance without signing policy (M-030)",
+      "severity": "medium",
+      "status": "accepted-risk",
+      "score_impact": -2
+    },
+    {
+      "id": "FINDING-007",
+      "title": "App Check attestation max-age 30 days (M-031)",
+      "severity": "medium",
+      "status": "open",
+      "score_impact": -1
+    },
+    {
+      "id": "FINDING-008",
+      "title": "Path-bound AAD not enforced on chat_threads and cli_sessions (M-007 partial)",
+      "severity": "medium",
+      "status": "open",
+      "evidence": "firestore.rules:ownerWritableChatThread uses validSealedPayloadForUser (global AAD)",
+      "score_impact": -2
+    },
+    {
+      "id": "FINDING-009",
+      "title": "SSRF guard does not pin DNS (TOCTOU/DNS rebinding/redirect gap)",
+      "severity": "medium",
+      "status": "open",
+      "evidence": "ssrfGuard.ts:88-118",
+      "score_impact": -1
+    },
+    {
+      "id": "FINDING-010",
+      "title": "Stable APNs/FCM routing IDs visible to push providers (M-021)",
+      "severity": "medium",
+      "status": "accepted-risk",
+      "score_impact": -1
+    },
+    {
+      "id": "FINDING-011",
+      "title": "Extension beforeSend lacks recursive payload scrubber",
+      "severity": "low",
+      "status": "open",
+      "score_impact": -0.5
+    },
+    {
+      "id": "FINDING-012",
+      "title": "androidDeviceId persisted in fcm_outbound docs",
+      "severity": "low",
+      "status": "open",
+      "score_impact": -0.5
+    },
+    {
+      "id": "FINDING-013",
+      "title": "Account-deletion Cloud Storage purge is best-effort",
+      "severity": "low",
+      "status": "open",
+      "score_impact": -0.5
+    },
+    {
+      "id": "FINDING-014",
+      "title": "Audit chain dual-file naming confusion",
+      "severity": "low",
+      "status": "open",
+      "score_impact": -0.5
+    },
+    {
+      "id": "FINDING-015",
+      "title": "pop_nonces relies solely on TTL for reaping",
+      "severity": "low",
+      "status": "open",
+      "score_impact": -0.5
+    },
+    {
+      "id": "FINDING-016",
+      "title": "Two workflows lack explicit permissions block",
+      "severity": "informational",
+      "status": "open",
+      "score_impact": -0.5
+    },
+    {
+      "id": "FINDING-017",
+      "title": "Branch protection is operator-only to verify/enable",
+      "severity": "informational",
+      "status": "open",
+      "score_impact": -0.5
+    }
+  ],
+  "summary": {
+    "critical": 0,
+    "high": 1,
+    "medium": 9,
+    "low": 5,
+    "informational": 2,
+    "total": 17
+  }
+}

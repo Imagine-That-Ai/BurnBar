@@ -21,8 +21,12 @@ const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
 
 export const APP_CHECK_ATTESTATION_CLAIM_KEY = "obb_app_check" as const;
 const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
-/** Re-bind after this many days so stale device attestations expire. */
-export const APP_CHECK_ATTESTATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Re-bind after this many days so stale device attestations expire.
+ * Tightened from 30 to 7 days per GLM FINDING-007: a stolen device should
+ * not retain high-risk callable access for a month. 7 days aligns with
+ * industry SOTA for attestation freshness (OWASP MASVS-R 2.0 / Google
+ * Play Integrity API best practices 2026). */
+export const APP_CHECK_ATTESTATION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Per-call replay-resistance nonce TTL (single-use, short-lived). */
 export const HIGH_RISK_NONCE_TTL_MS = 2 * 60 * 1000; // 2 minutes

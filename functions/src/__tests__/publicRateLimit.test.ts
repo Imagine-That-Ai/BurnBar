@@ -1,6 +1,23 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { HttpsError } from "firebase-functions/v2/https";
 
-import { clientIpFromHttpRequest } from "../callables/publicRateLimit.js";
+import { clientIpFromHttpRequest, isPublicRateLimitExceeded } from "../callables/publicRateLimit.js";
+
+describe("isPublicRateLimitExceeded", () => {
+  it("returns true for a firebase-functions resource-exhausted HttpsError", () => {
+    expect(isPublicRateLimitExceeded(new HttpsError("resource-exhausted", "slow down"))).toBe(true);
+  });
+
+  it("returns false for other HttpsError codes", () => {
+    expect(isPublicRateLimitExceeded(new HttpsError("internal", "boom"))).toBe(false);
+  });
+
+  it("returns false for plain errors and non-error values", () => {
+    expect(isPublicRateLimitExceeded(new Error("generic"))).toBe(false);
+    expect(isPublicRateLimitExceeded("resource-exhausted")).toBe(false);
+    expect(isPublicRateLimitExceeded(null)).toBe(false);
+  });
+});
 
 describe("clientIpFromHttpRequest", () => {
   afterEach(() => {

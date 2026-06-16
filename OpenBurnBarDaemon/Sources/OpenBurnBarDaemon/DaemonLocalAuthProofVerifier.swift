@@ -87,6 +87,31 @@ public struct DaemonLocalAuthProofVerifier: Sendable {
         self.logger = logger
     }
 
+    /// Production wiring helper. Release daemons that enforce the socket
+    /// code-signature gate also enforce local-auth proof verification using the
+    /// daemon-owned pinned phone-key store. Unsigned/debug daemons keep
+    /// enforcement disabled so local developer builds do not brick the control
+    /// path before pairing has produced pins.
+    public static func production(
+        enforced: Bool,
+        pinStore: DaemonPhoneKeyPinStore = DaemonPhoneKeyPinStore(),
+        ledger: DaemonConsumedLocalAuthProofLedger = DaemonConsumedLocalAuthProofLedger(),
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "local-auth-proof")
+    ) -> (verifier: DaemonLocalAuthProofVerifier?, pinStore: DaemonPhoneKeyPinStore) {
+        guard enforced else { return (nil, pinStore) }
+        let verifier = DaemonLocalAuthProofVerifier(
+            resolvePinnedKey: { deviceId in
+                if case .pinned(let key) = pinStore.pinnedKey(deviceId: deviceId) {
+                    return key
+                }
+                return nil
+            },
+            consumeProof: { proofId, expiresAt in ledger.consume(proofId: proofId, expiresAt: expiresAt) },
+            logger: logger
+        )
+        return (verifier, pinStore)
+    }
+
     /// Independently re-verify `proof` against the op (intent) hash the daemon is
     /// about to execute and the source device it claims to come from. Fail closed
     /// on every discrepancy; on success the proof id is consumed (single-use).

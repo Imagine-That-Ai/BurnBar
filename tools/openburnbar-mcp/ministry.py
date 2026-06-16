@@ -18,10 +18,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 _THIS_DIR = Path(__file__).resolve().parent
@@ -39,12 +38,29 @@ MINISTRY_CACHE_DIR = Path.home() / "Library" / "Application Support" / "OpenBurn
 AUTONOMY_LEVELS = {"low", "medium", "high"}
 SELECTORS = {"best", "pareto"}
 BACKENDS = {"gateway", "direct", "builtin"}
+
+# Hard ceiling on parallel workers per Wand cast — mirrors the
+# firestore.rules validMissionGroup() cap. The macOS app/daemon passes the
+# user's resolved per-tier cap (Free 1 / Cloud 3 / Cloud Pro 8 / Ultra 16, from
+# WandFanOut.maxParallel) via OPENBURNBAR_WAND_PARALLEL_MAX; absent it we fall
+# back to this ceiling. Always clamped to [1, WAND_PARALLEL_HARD_CEILING].
+WAND_PARALLEL_HARD_CEILING = 16
+
+
+def resolved_wand_parallel_max() -> int:
+    """Per-tier parallel fan-out ceiling for a Wand cast, from the env the app sets."""
+    raw = os.environ.get("OPENBURNBAR_WAND_PARALLEL_MAX", "").strip()
+    try:
+        value = int(raw) if raw else WAND_PARALLEL_HARD_CEILING
+    except ValueError:
+        value = WAND_PARALLEL_HARD_CEILING
+    return max(1, min(value, WAND_PARALLEL_HARD_CEILING))
 RUNTIMES = {"droid", "codex", "claude", "gemini", "opencode", "cursor-agent", "cursoragent", "kimi", "pi"}
 
 SEED_WANDS: list[dict[str, Any]] = [
     {
-        "id": "council",
-        "name": "Council Wand",
+        "id": "headmaster",
+        "name": "Headmaster's Wand",
         "selector": "best",
         "constraints": {"minCapabilityRank": 10},
         "target": "highest-capability proven-headless worker",
@@ -234,9 +250,7 @@ def sanitize_wands(raw: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
         if not isinstance(allow_backends, list):
             allow_backends = ["builtin", "direct", "gateway"]
             warnings.append({"code": "invalid_allow_backends", "id": wand_id})
-        allow_backends = [
-            str(value).strip().lower() for value in allow_backends if str(value).strip().lower() in BACKENDS
-        ]
+        allow_backends = [str(value).strip().lower() for value in allow_backends if str(value).strip().lower() in BACKENDS]
         if not allow_backends:
             allow_backends = ["builtin", "direct", "gateway"]
             warnings.append({"code": "empty_allow_backends", "id": wand_id})
@@ -367,9 +381,7 @@ def save_wands(store_path: Path, raw_wands: Any) -> dict[str, Any]:
     return {"status": "ok", "path": str(store_path), "wands": wands, "warnings": warnings}
 
 
-def read_factory_settings(
-    settings_path: Path = FACTORY_SETTINGS_PATH, config_path: Path = FACTORY_CONFIG_PATH
-) -> dict[str, Any]:
+def read_factory_settings(settings_path: Path = FACTORY_SETTINGS_PATH, config_path: Path = FACTORY_CONFIG_PATH) -> dict[str, Any]:
     for path in (settings_path, config_path):
         if not path.is_file():
             continue
@@ -537,16 +549,13 @@ def match_catalog_model(candidate: dict[str, Any], catalog_rows: list[dict[str, 
             if any(term in haystack_norm or normalize_key(term) in haystack_tokens for term in none_terms):
                 continue
             if all(term in haystack_norm or normalize_key(term) in haystack_tokens for term in all_terms) and (
-                not any_terms
-                or any(term in haystack_norm or normalize_key(term) in haystack_tokens for term in any_terms)
+                not any_terms or any(term in haystack_norm or normalize_key(term) in haystack_tokens for term in any_terms)
             ):
                 return row
     return None
 
 
-def match_models_metadata(
-    candidate: dict[str, Any], catalog_row: dict[str, Any] | None, models_index: dict[str, dict[str, Any]]
-) -> dict[str, Any] | None:
+def match_models_metadata(candidate: dict[str, Any], catalog_row: dict[str, Any] | None, models_index: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     keys = [candidate.get("catalog_id"), candidate.get("catalogID"), candidate.get("model"), candidate.get("arg")]
     if catalog_row:
         keys.extend([catalog_row.get("id"), catalog_row.get("canonicalModelID"), *(catalog_row.get("aliases") or [])])
@@ -660,11 +669,7 @@ def read_gateway_token(settings: dict[str, Any] | None = None) -> dict[str, Any]
                 "baseURL": base_url.rstrip("/") or GATEWAY_BASE_URL,
                 "sourcePath": settings.get("_sourcePath"),
             }
-    return {
-        "status": "unavailable",
-        "code": "GATEWAY_TOKEN_MISSING",
-        "reason": "No 127.0.0.1:8317 custom model apiKey found",
-    }
+    return {"status": "unavailable", "code": "GATEWAY_TOKEN_MISSING", "reason": "No 127.0.0.1:8317 custom model apiKey found"}
 
 
 def gateway_get(path: str = "/v1/models", ttl: int = 30) -> dict[str, Any]:
@@ -940,7 +945,7 @@ def select_models_for_wand(
     probe_ttl: int = 3600,
     probe_runner: Callable[[str, str, int], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    count = max(1, min(int(count), 12))
+    count = max(1, min(int(count), resolved_wand_parallel_max()))
     wands_payload = load_wands(store_path)
     wand = _wand_by_id(wands_payload, wand_id)
     if not wand:
@@ -1005,9 +1010,7 @@ def select_models_for_wand(
         "selectedCount": len(selected),
         "reason": reason,
         "wand": wand,
-        "proofStatus": "proven_headless"
-        if prove_headless and len(selected) == count
-        else ("partial" if prove_headless else "unproven"),
+        "proofStatus": "proven_headless" if prove_headless and len(selected) == count else ("partial" if prove_headless else "unproven"),
         "providerDiversityRequired": require_provider_diversity,
         "providerCount": len({str(item.get("provider") or item.get("backend") or "") for item in selected}),
         "probeOrdering": "known_headless_first" if prove_headless else "policy",
@@ -1018,7 +1021,7 @@ def select_models_for_wand(
 
 
 def _run(cmd: list[str], cwd: Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, timeout=timeout)
+    return subprocess.run(cmd, cwd=str(cwd), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
 
 
 def smoke_probe(arg: str, autonomy: str = "medium", ttl: int = 3600, timeout_seconds: int = 90) -> dict[str, Any]:
@@ -1165,7 +1168,7 @@ def build_droid_command(
         f"mkdir -p {shell_quote(Path(prompt_path).parent)} && "
         f"{' '.join(shell_quote(part) for part in args)} > {shell_quote(result_path)}; "
         "rc=$?; "
-        f'printf \'{{"exitCode":%s,"completedAt":"%s"}}\\n\' "$rc" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > {shell_quote(done_path)}; '
+        f"printf '{{\"exitCode\":%s,\"completedAt\":\"%s\"}}\\n' \"$rc\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > {shell_quote(done_path)}; "
         "exit $rc"
     )
     return {
@@ -1204,7 +1207,8 @@ def collect_result(worktree_path: str, base_sha: str, result_path: str, done_pat
         ["git", "rev-parse", "HEAD"],
         cwd=worktree_path,
         text=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         timeout=15,
     )
     head = head_proc.stdout.strip() if head_proc.returncode == 0 else None

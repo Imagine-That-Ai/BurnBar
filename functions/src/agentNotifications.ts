@@ -38,7 +38,7 @@ const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
 export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
+export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
 
 interface AgentReplyMessage {
   id: string;
@@ -48,7 +48,7 @@ interface AgentReplyMessage {
   isError?: boolean;
 }
 
-interface AgentReplyNotificationEvent {
+export interface AgentReplyNotificationEvent {
   id: string;
   uid: string;
   sourceKind: AgentNotificationSourceKind;
@@ -71,7 +71,7 @@ interface AgentReplyNotificationEvent {
   schemaVersion: 1;
 }
 
-interface DeviceNotificationState {
+export interface DeviceNotificationState {
   id: string;
   platform: string;
   fcmToken?: string;

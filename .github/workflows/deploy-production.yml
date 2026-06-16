@@ -31,8 +31,9 @@ jobs:
     environment: production
     env:
       HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
-      HAS_GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' }}
-      HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      # WIF-only: long-lived service account keys and FIREBASE_TOKEN fallbacks are
+      # removed (codex-gpt-5 FINDING-007). The google-github-actions/auth step
+      # below uses OIDC workload identity federation; no JSON keys are accepted.
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -81,6 +82,7 @@ jobs:
           npm run build --prefix functions
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
+          bash scripts/ci/verify-production-deploy-auth.sh
 
       - name: BurnBar product release preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py
@@ -106,17 +108,14 @@ jobs:
         env:
           REQUIRE_HIGH_RISK_NONCE: ${{ secrets.REQUIRE_HIGH_RISK_NONCE }}
 
-      - name: Authenticate to Google Cloud (service account)
-        if: steps.tag.outputs.dry_run != 'true' && env.HAS_GCP_SA_KEY == 'true'
+      - name: Authenticate to Google Cloud (WIF/OIDC only)
+        if: steps.tag.outputs.dry_run != 'true'
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Authenticate to Google Cloud (legacy Play service account)
-        if: steps.tag.outputs.dry_run != 'true' && env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true'
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
-        with:
-          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
 
       - name: Sentry release (Functions)
         if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
@@ -143,7 +142,6 @@ jobs:
         id: deploy
         if: steps.tag.outputs.dry_run != 'true'
         env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}
           OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}
           OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
@@ -190,18 +188,12 @@ jobs:
           } > "$ENV_FILE"
           export FUNCTION_VERSION="$TAG"
 
-          firebase_args=(--only functions --project burnbar --non-interactive --force)
-          if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
-            echo "Using legacy FIREBASE_TOKEN authentication. Prefer GCP_SA_KEY or workload credentials."
-            firebase_args+=(--token "$FIREBASE_TOKEN")
-          elif [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
-            echo "Using Google application credentials from google-github-actions/auth."
-          else
-            echo "::error::No Firebase deploy auth configured. Set GCP_SA_KEY (preferred), GOOGLE_PLAY_SERVICE_ACCOUNT_JSON, or legacy FIREBASE_TOKEN."
+          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "::error::No Google application credentials from WIF/OIDC auth. Production deploy requires workload identity federation."
             exit 1
           fi
 
-          npm --prefix functions exec -- firebase deploy "${firebase_args[@]}"
+          npm --prefix functions exec -- firebase deploy --only functions --project burnbar --non-interactive --force
 
       - name: Dry-run skip deploy
         if: steps.tag.outputs.dry_run == 'true'

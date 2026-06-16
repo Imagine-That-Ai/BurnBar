@@ -244,7 +244,8 @@ enum ContextBuilder {
         lines.append("## Where you left off")
 
         if let latest = latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
-            lines.append(latest.lastAssistantMessage)
+            // SECURITY HARDENING: assistant message text is prior AI output (untrusted in the prompt-injection sense).
+            lines.append(LLMSafeContent.wrapTranscriptForPrompt(latest.lastAssistantMessage, provenance: "latest_assistant_message:\(latest.id)"))
         } else {
             lines.append("(No recent assistant message indexed yet.)")
         }
@@ -377,7 +378,8 @@ enum ContextBuilder {
         lines.append("")
         lines.append("### Latest indexed assistant line (may be unrelated to the user question)")
         if let latest = latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
-            lines.append(latest.lastAssistantMessage)
+            // SECURITY HARDENING: prior assistant output is untrusted in the prompt-injection sense.
+            lines.append(LLMSafeContent.wrapTranscriptForPrompt(latest.lastAssistantMessage, provenance: "latest_assistant_message:\(latest.id)"))
         } else {
             lines.append("(None yet.)")
         }

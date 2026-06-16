@@ -204,8 +204,11 @@ final class SwitcherCLIAuthCoordinator {
             return false
         case .opencode:
             return false
-        case .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
             if case .authenticated = authInfo.authState {
+                return true
+            }
+            if case .apiKeyPresent = authInfo.authState {
                 return true
             }
             return false
@@ -391,7 +394,7 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
             candidates = []
         }
 
@@ -418,6 +421,12 @@ final class SwitcherCLIAuthCoordinator {
             return ["GROK_HOME", "XAI_API_KEY"]
         case .cursorAgent:
             return ["CURSOR_AGENT_HOME", "CURSOR_AGENT_CONFIG_PATH"]
+        case .gemini:
+            return ["GEMINI_HOME", "GEMINI_API_KEY", "GOOGLE_API_KEY"]
+        case .kimi:
+            return ["KIMI_HOME", "KIMI_API_KEY", "MOONSHOT_API_KEY"]
+        case .pi:
+            return ["PI_HOME", "PI_CONFIG_HOME"]
         }
     }
 
@@ -556,6 +565,12 @@ final class SwitcherCLIAuthCoordinator {
             installHint = "Reinstall Grok Build CLI, then retry Add Account."
         case .cursorAgent:
             installHint = "Reinstall Cursor Agent, then retry Add Account."
+        case .gemini:
+            installHint = "Reinstall Gemini CLI, then retry Add Account."
+        case .kimi:
+            installHint = "Reinstall Kimi, then retry Add Account."
+        case .pi:
+            installHint = "Reinstall Pi, then retry Add Account."
         }
 
         let reason: String

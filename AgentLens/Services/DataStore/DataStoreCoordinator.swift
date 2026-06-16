@@ -239,7 +239,12 @@ final class DataStoreCoordinator {
             throw DatabaseEncryptionError.plaintextDatabaseRequiresMigration(path: path)
         }
 
-        let encryptionKey = DatabaseEncryptionService.getOrCreateKey()
+        guard let encryptionKey = DatabaseEncryptionService.getOrCreateKey() else {
+            // Keychain persistence failed. Fail closed rather than creating a
+            // database with an unpersisted key that cannot be recovered.
+            AppLogger.dataStore.error("Failed to create or persist database encryption key in Keychain — cannot open encrypted database")
+            throw DatabaseEncryptionError.encryptionKeyUnavailable
+        }
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
         installDebugQueryTracer(on: &config)
         return try DatabasePool(path: path, configuration: config)

@@ -445,6 +445,120 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             .allowed(approvedBy: .mac)
         )
     }
+
+    // MARK: - Adversarial / red-team fixtures (FINDING-003-kimi)
+
+    /// Scope-rule deny must beat trust-mode escalation. An attacker who
+    /// forges a trusted-mode session cannot drive the browser to a built-in
+    /// deny URL such as the Google metadata endpoint.
+    func testTrustedModeStillRespectsScopeDeny() {
+        let session = makeSession(trust: .trusted)
+        let outcome = gate.check(
+            action: .browser(BrowserAction(kind: .goto, url: "https://metadata.google.internal/computeMetadata/v1")),
+            scopeOutcome: .denied(rule: ComputerUseScopeRuleID("builtin.google_metadata")),
+            accessibilityDeny: nil,
+            context: makeContext(session: session)
+        )
+        XCTAssertEqual(outcome, .denied(.scopeDenied))
+    }
+
+    /// A trusted-mode allow rule must still fail when the action targets
+    /// the macOS lock screen (built-in deny region / bundle id deny).
+    func testTrustedModeAllowRuleCannotOverrideLockScreenDeny() {
+        let session = makeSession(trust: .trusted)
+        let outcome = gate.check(
+            action: .macInput(MacInputAction(kind: .click, displayX: 100, displayY: 100)),
+            scopeOutcome: .allowed(rule: ComputerUseScopeRuleID("user.allow.everything")),
+            accessibilityDeny: .systemAuthSheet,
+            context: makeContext(session: session)
+        )
+        XCTAssertEqual(outcome, .denied(.denyRegion))
+    }
+
+    /// The entitlement kill-switch must override every other permission,
+    /// including a trusted grant and a matching allow rule.
+    func testKillSwitchBeatsTrustedScopeAllowRule() {
+        let session = makeSession(trust: .trusted)
+        let outcome = gate.check(
+            action: browserAction,
+            scopeOutcome: .allowed(rule: ComputerUseScopeRuleID("user.allow.github")),
+            accessibilityDeny: nil,
+            context: makeContext(session: session, kill: true)
+        )
+        XCTAssertEqual(outcome, .denied(.killSwitch))
+    }
+
+    /// Phone-control first action must raise a Mac approval sheet even when
+    /// the action falls inside a trusted-mode allow rule.
+    func testPhoneFirstActionRequiresApprovalDespiteAllowRule() {
+        let session = makeSession(trust: .trusted, phoneViewerNodeId: "phone-peer")
+        let outcome = gate.check(
+            action: macAction,
+            scopeOutcome: .allowed(rule: ComputerUseScopeRuleID("user.allow.desktop")),
+            accessibilityDeny: nil,
+            context: makeContext(
+                session: session,
+                originatedFromPhone: true,
+                phoneSessionFirstActionConfirmed: false
+            )
+        )
+        XCTAssertEqual(outcome, .allowed(approvedBy: .mac),
+            "First phone input must surface the Mac/overlay approval sheet regardless of scope rules.")
+    }
+
+    /// Once the phone session is confirmed, subsequent actions may be
+    /// phone-approved without re-approval, but they still cannot target
+    /// secure deny regions.
+    func testConfirmedPhoneInputStillBlockedByDenyRegion() {
+        let session = makeSession(trust: .trusted, phoneViewerNodeId: "phone-peer")
+        let outcome = gate.check(
+            action: .macInput(MacInputAction(kind: .type, displayX: 50, displayY: 50, text: "password")),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: .secureTextField,
+            context: makeContext(
+                session: session,
+                originatedFromPhone: true,
+                phoneSessionFirstActionConfirmed: true
+            )
+        )
+        XCTAssertEqual(outcome, ComputerUseCapabilityCheck.denied(.denyRegion))
+    }
+
+    /// A revoked/expired capability grant must fail closed even when all
+    /// other gates (scope, trust, entitlement) look permissive.
+    func testExpiredGrantDoesNotAuthorizeAction() {
+        let expired = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .codex,
+            threadID: "t1",
+            capabilities: [.desktopBrowser],
+            trustMode: .trusted,
+            now: Date(timeIntervalSince1970: 0),
+            duration: 1
+        ).revoked()
+        XCTAssertFalse(expired.isActive())
+        XCTAssertFalse(expired.supports(.desktopBrowser))
+    }
+
+    /// Scope budget exhaustion must downgrade a trusted allow rule to
+    /// `.notMatched`, forcing manual approval.
+    func testScopeBudgetExhaustionDowngradesTrustedAllow() {
+        let allowRule = ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("user.allow.github.budget"),
+            effect: .allow,
+            origin: .user,
+            label: "GitHub budget",
+            urlPrefix: "https://github.com",
+            actionBudget: 1
+        )
+        let exhaustedBudget = ComputerUseScopeBudgetState(ruleId: allowRule.id, actionsConsumed: 1)
+        let matcher = ComputerUseScopeMatcher()
+        let outcome = matcher.evaluate(
+            rules: [allowRule],
+            context: ComputerUseScopeContext(url: "https://github.com/openburnbar"),
+            budgetStates: [allowRule.id: exhaustedBudget]
+        )
+        XCTAssertEqual(outcome, .notMatched)
+    }
 }
 
 final class ComputerUseBudgetEnvelopeTests: XCTestCase {

@@ -1,0 +1,21 @@
+diff --git a/functions/src/types/legacy/config.ts b/functions/src/types/legacy/config.ts
+index 47b47fe689..f5b84a5bf1 100644
+--- a/functions/src/types/legacy/config.ts
++++ b/functions/src/types/legacy/config.ts
+@@ -89,6 +89,17 @@ export interface EnvConfig {
+   /** Require a single-use high-risk action nonce on high-risk callables (default false; staged rollout). */
+   requireHighRiskNonce: boolean;
+
++  /**
++   * Max age (ms) of an App Check attestation binding before high-risk callables
++   * require a fresh `bindAppCheckAttestation`. Default 7 days; a stolen device
++   * must not retain high-risk access for longer. Replay within the window is
++   * separately defeated by the single-use high-risk nonce (`requireHighRiskNonce`).
++   * Operators may tune via `APP_CHECK_ATTESTATION_MAX_AGE_MS` /
++   * `openburnbar.app_check_attestation_max_age_ms`; a non-positive or non-finite
++   * value falls back to the secure default (freshness can never be disabled).
++   */
++  appCheckAttestationMaxAgeMs: number;
++
+   /** Maximum credential string length (default 8192). */
+   maxCredentialLength: number;

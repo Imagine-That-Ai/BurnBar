@@ -358,6 +358,12 @@ struct CLIProcessStreamRunner: Sendable {
             return .xAI
         case .cursorAgent:
             return .cursorAgent
+        case .gemini:
+            return .geminiCLI
+        case .kimi:
+            return .kimi
+        case .pi:
+            return .piAgent
         }
     }
 

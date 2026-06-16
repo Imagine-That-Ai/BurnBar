@@ -165,6 +165,7 @@ extension BurnBarProjectCodeMemoryStore {
         text: String,
         lang: String?,
         relativePath: String,
+        rootPath: String,
         projectID: String,
         artifactID: String,
         blobSHA: String
@@ -173,6 +174,7 @@ extension BurnBarProjectCodeMemoryStore {
             text: text,
             lang: lang,
             relativePath: relativePath,
+            rootPath: rootPath,
             projectID: projectID,
             artifactID: artifactID,
             blobSHA: blobSHA
@@ -233,6 +235,7 @@ extension BurnBarProjectCodeMemoryStore {
         text: String,
         lang: String?,
         relativePath: String,
+        rootPath: String,
         projectID: String,
         artifactID: String,
         blobSHA: String
@@ -246,7 +249,8 @@ extension BurnBarProjectCodeMemoryStore {
             filePath: relativePath,
             language: lang,
             blobSha: blobSHA,
-            text: text
+            text: text,
+            rootPath: rootPath
         )
         guard let payload = try? JSONEncoder().encode(request) else { return nil }
         let process = Process()
@@ -292,7 +296,7 @@ extension BurnBarProjectCodeMemoryStore {
                 language: symbol.evidence.language ?? language,
                 blobSHA: symbol.evidence.blobSha ?? response.blobSha,
                 shaMatch: symbol.evidence.shaMatch ?? true,
-                lspResponded: nil,
+                lspResponded: symbol.evidence.lspResponded,
                 details: [
                     "helper": "project-code-static-parser",
                     "parseError": response.hasParseError ? "true" : "false"

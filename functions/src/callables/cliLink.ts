@@ -19,8 +19,9 @@ import { getConfig } from "../config.js";
 import { isSha256Hex, safeEqualHex } from "../hermesGateway.js";
 import {
   assertCallableApprovalNotLocked,
-  checkPublicHttpRateLimit,
+  checkPublicHttpEndpointRateLimit,
   clientIpFromHttpRequest,
+  isPublicRateLimitExceeded,
   recordCallableApprovalFailure,
 } from "./publicRateLimit.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
@@ -86,7 +87,17 @@ export const startCliLink = onRequest(
       return;
     }
     try {
-      await checkPublicHttpRateLimit(clientIpFromHttpRequest(req), "cli_link_start");
+      await checkPublicHttpEndpointRateLimit("startCliLink", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "cli_link.start_rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
+      return;
+    }
+    try {
       const { clientType, displayName, deviceSecretHash } = req.body;
       if (!deviceSecretHash || typeof deviceSecretHash !== "string" || !isSha256Hex(deviceSecretHash)) {
         res.status(400).json({ error: "invalid_device_secret_hash" });
@@ -138,6 +149,17 @@ export const pollCliLink = onRequest(
     setPublicJsonSecurityHeaders(res);
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
+      return;
+    }
+    try {
+      await checkPublicHttpEndpointRateLimit("pollCliLink", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        res.status(429).json({ error: "too_many_requests" });
+        return;
+      }
+      logError({ event: "cli_link.poll_rate_limit_failed", error: String(err) });
+      res.status(500).json({ error: "internal" });
       return;
     }
     try {
