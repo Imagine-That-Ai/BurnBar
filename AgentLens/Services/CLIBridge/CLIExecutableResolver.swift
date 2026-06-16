@@ -24,7 +24,20 @@ struct CLIExecutableResolver: Sendable {
 
     /// Blocking filesystem/login-shell probing runs off the main actor
     /// (`nonisolated` `async`, SE-0338); cancellation propagates from the awaiter.
-    func resolveExecutable(named name: String) async -> String? {
+    ///
+    /// - Parameter allowLoginShellFallback: when `true` (default — interactive
+    ///   resolution), a last-resort `zsh -lic "command -v ..."` probe is used if
+    ///   the fixed-directory + user-managed allowlists both miss, so common
+    ///   version-manager installs that only exist on the login `PATH` are found.
+    ///   That fallback sources `~/.zshrc` / `~/.zshenv`, so it is **dotfile-
+    ///   hijackable**: privileged / daemon / remote-triggered resolution paths
+    ///   pass `false` to get ONLY the deterministic fixed-directory allowlist and
+    ///   never execute the user's login shell. The absolute-path allowlist is
+    ///   always tried first regardless of this flag.
+    func resolveExecutable(
+        named name: String,
+        allowLoginShellFallback: Bool = true
+    ) async -> String? {
         let env = environmentProvider()
         let homeDirectory = homeDirectoryProvider()
         let fileManager = FileManager.default
@@ -64,7 +77,12 @@ struct CLIExecutableResolver: Sendable {
             return path
         }
 
-        if let path = Self.resolveExecutableFromLoginShell(
+        // The login-shell probe sources ~/.zshrc / ~/.zshenv and is therefore
+        // dotfile-hijackable; privileged / daemon / remote-triggered callers opt
+        // out via `allowLoginShellFallback: false` and stop at the deterministic
+        // fixed-directory allowlists above.
+        if allowLoginShellFallback,
+           let path = Self.resolveExecutableFromLoginShell(
             named: name,
             environment: env,
             fileManager: fileManager

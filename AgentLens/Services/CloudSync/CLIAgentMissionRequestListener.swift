@@ -1104,7 +1104,12 @@ final class CLIAgentMissionRequestListener {
         requestID: String,
         cancellationTracker: MissionCancellationTracker
     ) async -> DirectCLIMissionResult {
-        guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
+        // Remote/cloud-triggered mission resolution must be deterministic: do NOT
+        // fall back to the dotfile-hijackable login-shell (`zsh -lic`) probe here.
+        guard let executable = await CLIExecutableResolver().resolveExecutable(
+            named: executableName,
+            allowLoginShellFallback: false
+        ) else {
             return DirectCLIMissionResult(
                 status: "failed",
                 output: "",
@@ -1313,7 +1318,12 @@ final class CLIAgentMissionRequestListener {
         requestID: String,
         cancellationTracker: MissionCancellationTracker
     ) async -> DirectCLIMissionResult {
-        guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
+        // Remote/cloud-triggered mission resolution must be deterministic: do NOT
+        // fall back to the dotfile-hijackable login-shell (`zsh -lic`) probe here.
+        guard let executable = await CLIExecutableResolver().resolveExecutable(
+            named: executableName,
+            allowLoginShellFallback: false
+        ) else {
             return DirectCLIMissionResult(
                 status: "failed",
                 output: "",
