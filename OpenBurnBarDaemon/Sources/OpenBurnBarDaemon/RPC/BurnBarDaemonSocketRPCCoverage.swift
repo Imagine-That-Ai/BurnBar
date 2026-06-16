@@ -50,7 +50,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .computerUseApprovalPending,
         .computerUseApprovalRespond,
         .computerUsePanicHalt,
-        .computerUseAuditExport
+        .computerUseAuditExport,
+        .phoneControlPinProvision
     ]
 
     static let missionControl: Set<BurnBarRPCMethod> = [
