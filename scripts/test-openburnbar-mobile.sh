@@ -14,9 +14,14 @@
 #   OPENBURNBAR_IOS_DESTINATION=...      Explicit xcodebuild destination (e.g. platform=iOS,id=<UDID>).
 #   OPENBURNBAR_MOBILE_DRY_RUN=1         Print resolved destination and exit 0.
 #   OPENBURNBAR_MOBILE_TEST_ATTEMPTS=N   Override max attempts (default 4).
-#   OPENBURNBAR_MOBILE_TEST_FILTER=...   Pass a custom -only-testing target.
+#   OPENBURNBAR_MOBILE_TEST_FILTER=...   Pass one or more custom -only-testing
+#                                           targets. Separate multiple selectors
+#                                           with commas or whitespace.
 #   OPENBURNBAR_MOBILE_TEST_SCHEME=...   Override scheme (default: OpenBurnBarMobileUnitTests).
 #   OPENBURNBAR_MOBILE_SIMULATOR=...     Simulator name for CI fallback (default: iPhone 17 Pro Max).
+#   OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1
+#                                           Skip Signal FFI prep when the caller
+#                                           already prepared Vendor/OpenBurnBarSignalFfi.xcframework.
 #   OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES=0
 #                                           Disable Xcode automatic profile/device updates on physical-device runs.
 #
@@ -236,6 +241,7 @@ derived_data_dir="$(mktemp -d "$derived_data_root/openburnbar-mobile-tests.XXXXX
 xcodebuild_log=""
 xcodebuild_args=()
 last_test_exit_code=0
+test_selectors=()
 
 emit_attempt_event() {
     local attempt="$1"
@@ -345,6 +351,7 @@ trap 'cleanup' EXIT
 populate_xcodebuild_args() {
     local dd="$1"
     local attempt_result="$2"
+    local selector
     xcodebuild_args=(
         -project "$repo_root/OpenBurnBar.xcodeproj"
         -scheme "$test_scheme"
@@ -359,8 +366,28 @@ populate_xcodebuild_args() {
         SWIFT_COMPILATION_MODE=singlefile
         SWIFT_ENABLE_BATCH_MODE=NO
         -parallel-testing-enabled NO
-        -only-testing:"$test_filter"
     )
+    test_selectors=()
+    while IFS= read -r selector; do
+        if [[ -n "$selector" ]]; then
+            test_selectors+=("$selector")
+            xcodebuild_args+=(-only-testing:"$selector")
+        fi
+    done < <(python3 - "$test_filter" <<'PY'
+import re
+import sys
+
+raw = sys.argv[1]
+for part in re.split(r"[\s,]+", raw):
+    part = part.strip()
+    if part:
+        print(part)
+PY
+)
+    if [[ "${#test_selectors[@]}" -eq 0 ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_TEST_FILTER resolved to zero -only-testing selectors." >&2
+        return 64
+    fi
     if [[ "$test_scheme" == "OpenBurnBarMobile" ]]; then
         xcodebuild_args+=(-skip-testing:OpenBurnBarMobileUITests)
     fi
@@ -420,7 +447,15 @@ fi
 
 : > "$attempt_log_path"
 
-"$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+if [[ "${OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP:-}" == "1" ]]; then
+    if [[ ! -d "$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1 but Vendor/OpenBurnBarSignalFfi.xcframework is missing." >&2
+        exit 66
+    fi
+    echo ">>> Reusing prebuilt Signal FFI XCFramework."
+else
+    "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+fi
 
 openburnbar_app_test_hang_substrings+=(
     "test runner hung before establishing connection"
@@ -473,6 +508,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     fi
 
     populate_xcodebuild_args "$derived_data_dir" "$attempt_xcresult"
+    echo ">>> Mobile test selectors (${#test_selectors[@]}): ${test_selectors[*]}"
 
     attempt_start_epoch="$(date +%s)"
     set +e

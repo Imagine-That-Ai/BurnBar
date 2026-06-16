@@ -906,9 +906,11 @@ jobs:
     needs: [path-filter]
     if: needs.path-filter.outputs.mercury_media == 'true'
     runs-on: macos-26
-    # 35 min was sized when this job failed at gradle config in 2 min; the full
-    # JVM-tests + Signal FFI prep + iOS suite path needs more headroom.
-    timeout-minutes: 60
+    # This job intentionally proves both Android media and the iOS Mercury/media
+    # path. On macos-26 the iOS test bundle compile alone can take ~35 minutes,
+    # after Android JVM tests and Signal FFI prep, so keep enough headroom for
+    # actual XCTest execution instead of cancelling during link/install.
+    timeout-minutes: 90
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
@@ -970,6 +972,19 @@ jobs:
         run: bash ./scripts/ci/inject-firebase-config.sh
       - name: iOS Mercury/media unit tests
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
+        env:
+          OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP: "1"
+          OPENBURNBAR_MOBILE_TEST_ATTEMPTS: "1"
+          OPENBURNBAR_MOBILE_TEST_FILTER: >-
+            OpenBurnBarMobileTests/MercuryPersonalizationTests
+            OpenBurnBarMobileTests/MercuryTransferThumbnailCacheTests
+            OpenBurnBarMobileTests/MercuryConsentStoreMattersTests
+            OpenBurnBarMobileTests/MercuryEnvelopeCardTests
+            OpenBurnBarMobileTests/MercuryGradientSnapshotTests
+            OpenBurnBarMobileTests/MercuryRouterTests
+            OpenBurnBarMobileTests/MercuryShimmerModifierTests
+            OpenBurnBarMobileTests/OpenBurnBarMobileTests/testMercuryReceiverInstallIsRetainedByRelayTransport
+            OpenBurnBarMobileTests/OpenBurnBarMobileTests/testMercuryReceiverCanInstallWithoutBlobBackend
         run: ./scripts/test-openburnbar-mobile.sh
 
   targeted-e2e-gate:
