@@ -36,6 +36,11 @@ struct UpdatesSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        // Apply the auto-check toggle live (start/stop the scheduler now), not
+        // just on next launch.
+        .onChange(of: automaticChecks) { _, newValue in
+            checker.setAutomaticChecksEnabled(newValue)
+        }
     }
 
     // MARK: Version
@@ -104,7 +109,7 @@ struct UpdatesSettingsView: View {
             )
             .settingsAnchor(SettingsAnchor.updatesAutomaticChecks)
 
-            if channel == .dmg || channel == .homebrew {
+            if channel == .dmg {
                 SettingsToggle(
                     title: "Receive pre-release builds",
                     subtitle: "Get cutting-edge versions before they're promoted to stable",
@@ -135,11 +140,15 @@ struct UpdatesSettingsView: View {
             Button {
                 checker.checkForUpdatesNow()
             } label: {
-                Label("Check for Updates", systemImage: "arrow.triangle.2.circlepath")
+                Label(
+                    checker.isChecking ? "Checking…" : "Check for Updates",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
             }
             .buttonStyle(.borderedProminent)
             .tint(DesignSystem.Colors.ember)
             .controlSize(.large)
+            .disabled(checker.isChecking)
 
             Link(destination: Self.releasesPageURL) {
                 Label("Release Notes", systemImage: "doc.text")
