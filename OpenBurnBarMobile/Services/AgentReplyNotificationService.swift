@@ -48,6 +48,19 @@ private struct AgentReplyNotificationPayload: Sendable {
         deepLink.flatMap(URL.init(string:)) ?? URL(string: "burnbar://assistants/\(runtime)?threadId=\(threadID)")
     }
 
+    func withResolvedThreadID(_ threadID: String) -> AgentReplyNotificationPayload {
+        AgentReplyNotificationPayload(
+            type: type,
+            eventID: eventID,
+            runtime: runtime,
+            threadID: threadID,
+            title: title,
+            preview: preview,
+            provider: provider,
+            deepLink: nil
+        )
+    }
+
     private init(type: String, eventID: String, runtime: String, threadID: String, title: String, preview: String, provider: AgentProvider?, deepLink: String?) {
         self.type = type
         self.eventID = eventID
@@ -462,16 +475,7 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
             guard let data = snapshot.data(),
                   let threadID = string(data["threadId"])?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !threadID.isEmpty else { return payload }
-            return AgentReplyNotificationPayload(
-                type: payload.type,
-                eventID: payload.eventID,
-                runtime: payload.runtime,
-                threadID: threadID,
-                title: payload.title,
-                preview: payload.preview,
-                provider: payload.provider,
-                deepLink: nil
-            )
+            return payload.withResolvedThreadID(threadID)
         } catch {
             return payload
         }
