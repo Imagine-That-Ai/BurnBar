@@ -14,16 +14,16 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Legacy reference suites (ADR, not quarantined) | 2 | stable | — |
 | `@MainActor` on I/O facades (listed set) | 3 | 4 | 0 |
 | Empty `catch {}` blocks (app + daemon) | 0 | 0 | 0 |
-| `Task.detached` in `AgentLens/Services/` | 0 | ≤ 10 | 0 |
+| `Task.detached` in `AgentLens/Services/` | 2 | ≤ 10 | 0 |
 | `try?` in `AgentLens/Services/` | 0 | ≤ 120 | ≤ 50 |
 | Unsafe cast assert-zero gate | 0 | 0 | 0 |
 | Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 0 | 0 | 0 |
 | Schema `knownDrift` tokens (`tools/schema-sync/manifest.json`) | 0 | 0 | 0 |
-| `@unchecked Sendable` ratchet (assert-zero gate; 35 documented allowlist exceptions) | 0 | 0 | 0 |
-| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3786 | ≤ 5000 | ≤ 3500 |
+| `@unchecked Sendable` ratchet (assert-zero gate; 38 documented allowlist exceptions) | 0 | 0 | 0 |
+| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3791 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 8 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 19 | shrinking (TypeSpec migration) | — |
-| `functions/src/index.ts` LOC | 191 | modularize | — |
+| `functions/src/index.ts` LOC | 192 | modularize | — |
 | `import SwiftUI` in Services/ | 0 | 0 | 0 |
 | Phase 1 security register open items (`docs/governance/PHASE1_SECURITY_REGISTER.md`) | 0 | ≤ 3 | 0 |
 | Rust `unwrap()`/`expect()` in `crates/{burnbar-remote,openburnbar-iroh}` | 0 | 0 | 0 |
@@ -35,7 +35,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | `AgentLens/Services/CloudSyncService.swift` | 228 |
 | `AgentLens/Services/Search/` (SearchService + extensions) | 1405 |
 | `AgentLens/Services/UsageAggregator.swift` | 569 |
-| `AgentLens/Services/ProjectionPipeline/` | 1584 |
+| `AgentLens/Services/ProjectionPipeline/` | 1589 |
 
 ## Remediation links
 
