@@ -245,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         self.statusItem = item
         installStatusItemMouseFallback()
         observeMenuBarIconStyle()
+        observeUpdateBadge()
     }
 
     private var menuBarIconObservation: Any?
@@ -263,6 +264,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.observeMenuBarIconStyle()
             }
         }
+    }
+
+    private var updateBadgeObservation: Any?
+    private var updateBadgeView: NSView?
+
+    /// Overlays a small ember dot on the menu-bar icon whenever an update is
+    /// available or being applied, so users notice without opening anything.
+    /// Implemented as a subview so it never disturbs the base icon's template
+    /// tinting (which the icon-style observer keeps swapping).
+    private func observeUpdateBadge() {
+        #if !DISTRIBUTION_MAS
+        updateBadgeObservation = withObservationTracking {
+            _ = DirectDownloadUpdateChecker.shared.phase
+            return nil as Any?
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.refreshUpdateBadge()
+                self?.observeUpdateBadge()
+            }
+        }
+        refreshUpdateBadge()
+        #endif
+    }
+
+    @MainActor
+    private func refreshUpdateBadge() {
+        #if !DISTRIBUTION_MAS
+        guard let button = statusItem?.button else { return }
+        let shouldShow = DirectDownloadUpdateChecker.shared.phase.isActionable
+        guard shouldShow else {
+            updateBadgeView?.removeFromSuperview()
+            updateBadgeView = nil
+            return
+        }
+        let diameter: CGFloat = 6
+        let badge = updateBadgeView ?? {
+            let view = NSView(frame: NSRect(x: 0, y: 0, width: diameter, height: diameter))
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor(srgbRed: 0.98, green: 0.31, blue: 0.33, alpha: 1).cgColor
+            view.layer?.cornerRadius = diameter / 2
+            view.layer?.borderWidth = 0.5
+            view.layer?.borderColor = NSColor.black.withAlphaComponent(0.15).cgColor
+            return view
+        }()
+        if badge.superview == nil { button.addSubview(badge) }
+        badge.frame = NSRect(
+            x: button.bounds.width - diameter - 1,
+            y: button.bounds.height - diameter - 1,
+            width: diameter,
+            height: diameter
+        )
+        updateBadgeView = badge
+        #endif
     }
 
     @objc private func handleStatusItemClick(_ sender: Any?) {

@@ -9,8 +9,17 @@ const LIMITS: Record<string, { windowMs: number; max: number }> = {
   // Pensieve knowledge query buckets. Without these entries the bucket would
   // silently fall back to metadata:standard (120/min); they MUST be registered.
   "knowledge:standard": { windowMs: 60_000, max: 60 }, // Pro tier
+  "memory:metadata": { windowMs: 60_000, max: 120 },
+  "memory:standard": { windowMs: 60_000, max: 60 },
+  "code:metadata": { windowMs: 60_000, max: 90 },
+  "code:standard": { windowMs: 60_000, max: 45 },
+  "code:body": { windowMs: 60_000, max: 20 },
   "search:ultra": { windowMs: 60_000, max: 180 } // Ultra tier
 };
+
+export function registeredRateLimitBuckets(): string[] {
+  return Object.keys(LIMITS).sort();
+}
 
 export async function enforceRateLimit(db: HostedMcpFirestore, uid: string, clientId: string, bucket: string): Promise<void> {
   const spec = LIMITS[bucket] ?? LIMITS["metadata:standard"];

@@ -52,6 +52,9 @@ from resume_core import (  # noqa: E402
     list_resumable_conversations,
     spawn_resume,
 )
+import project_code_memory as pcm  # noqa: E402
+import ministry as ministry_core  # noqa: E402
+import castle as castle_core  # noqa: E402
 
 mcp = FastMCP("openburnbar-local")
 
@@ -1441,6 +1444,339 @@ def burnbar_cloud_get_conversation_body(
     )
 
 
+def _normalize_tags(tags: list[str] | str | None) -> list[str]:
+    if tags is None:
+        return []
+    if isinstance(tags, str):
+        return [part.strip() for part in re.split(r"[,;\n]", tags) if part.strip()]
+    return [str(part).strip() for part in tags if str(part).strip()]
+
+
+def _local_memory_write_authority(tool: str, method: str, params: dict[str, Any]) -> dict[str, Any] | str:
+    denied = _capability_denial(tool, "local_write")
+    if denied:
+        return denied
+    authority = pcm.write_authority(method, params)
+    if authority.get("status") == "denied":
+        return json.dumps(authority, indent=2, default=str)
+    return authority
+
+
+@mcp.tool()
+def burnbar_remember(
+    text: str,
+    project_path: str | None = None,
+    kind: str = "fact",
+    scope: str = "personal",
+    tags: list[str] | str | None = None,
+    confidence: float = 1.0,
+    source_path: str | None = None,
+) -> str:
+    """
+    Store a durable local agent memory for the active project.
+
+    Writes are disabled by default. Enable `local_write`; memory writes still
+    fail closed unless the OpenBurnBar daemon accepts the write over its socket.
+    """
+    normalized_tags = _normalize_tags(tags)
+    authority = _local_memory_write_authority(
+        "burnbar_remember",
+        "daemon.memory.remember",
+        {
+            "projectPath": project_path,
+            "kind": kind,
+            "scope": scope,
+            "tags": normalized_tags,
+            "confidence": confidence,
+            "sourcePath": source_path,
+            "text": text,
+        },
+    )
+    if isinstance(authority, str):
+        return authority
+    if authority.get("mode") == "daemon":
+        return json.dumps(authority["result"], indent=2, default=str)
+    return json.dumps(authority, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_recall(
+    query: str,
+    project_path: str | None = None,
+    scope: str = "all",
+    include_cross_project: bool = False,
+    limit: int = 20,
+) -> str:
+    """Recall durable local memories for one project. Cross-project recall is opt-in."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            pcm.recall(
+                conn,
+                query=query,
+                project_path=project_path,
+                scope=scope,
+                include_cross_project=include_cross_project,
+                limit=limit,
+            ),
+            indent=2,
+            default=str,
+        )
+
+
+@mcp.tool()
+def burnbar_forget(memory_id: str, project_path: str | None = None) -> str:
+    """Hard-delete one local memory for the active project and append a label-only audit event."""
+    authority = _local_memory_write_authority(
+        "burnbar_forget",
+        "daemon.memory.forget",
+        {"memoryID": memory_id, "projectPath": project_path},
+    )
+    if isinstance(authority, str):
+        return authority
+    if authority.get("mode") == "daemon":
+        return json.dumps(authority["result"], indent=2, default=str)
+    return json.dumps(authority, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_audit_trail(project_path: str | None = None, limit: int = 50) -> str:
+    """Return the local label-only memory/code audit hash chain for a project."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(pcm.audit_trail(conn, project_path=project_path, limit=limit), indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_analytics(project_path: str | None = None) -> str:
+    """Aggregate local durable memory counts by kind and scope for one project."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(pcm.memory_analytics(conn, project_path=project_path), indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_index_project(
+    project_path: str | None = None,
+    max_files: int = 2500,
+    max_file_bytes: int = 512_000,
+    storage_budget_bytes: int | None = None,
+) -> str:
+    """
+    Index source files for local-only project code memory.
+
+    The indexer is project-partitioned, gitignore-aware, stamps blob/commit
+    SHA, rejects secret-bearing files before persistence, and writes code chunks
+    into the existing local search substrate.
+    """
+    authority = _local_memory_write_authority(
+        "burnbar_index_project",
+        "daemon.code.index_project",
+        {
+            "projectPath": project_path,
+            "maxFiles": max_files,
+            "maxFileBytes": max_file_bytes,
+            "storageBudgetBytes": storage_budget_bytes,
+        },
+    )
+    if isinstance(authority, str):
+        return authority
+    if authority.get("mode") == "daemon":
+        return json.dumps(authority["result"], indent=2, default=str)
+    return json.dumps(authority, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_watch_project(
+    project_path: str | None = None,
+    max_files: int = 2500,
+    max_file_bytes: int = 512_000,
+    storage_budget_bytes: int | None = None,
+    poll_interval_seconds: float = 2.0,
+) -> str:
+    """
+    Start daemon-owned automatic reindexing for a project.
+
+    The watcher is daemon-only: it performs an initial index, then polls source
+    and git-ref signatures and reuses the daemon's transactional index path
+    when they change.
+    """
+    authority = _local_memory_write_authority(
+        "burnbar_watch_project",
+        "daemon.code.watch_project",
+        {
+            "projectPath": project_path,
+            "maxFiles": max_files,
+            "maxFileBytes": max_file_bytes,
+            "storageBudgetBytes": storage_budget_bytes,
+            "pollIntervalSeconds": poll_interval_seconds,
+        },
+    )
+    if isinstance(authority, str):
+        return authority
+    if authority.get("mode") == "daemon":
+        return json.dumps(authority["result"], indent=2, default=str)
+    return json.dumps(authority, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_search_code(query: str, project_path: str | None = None, limit: int = 20) -> str:
+    """Hybrid lexical/vector search over local-only project code memory."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            pcm.search_code(conn, query=query, project_path=project_path, limit=limit), indent=2, default=str
+        )
+
+
+@mcp.tool()
+def burnbar_context_pack(
+    query: str,
+    project_path: str | None = None,
+    token_budget: int = 6000,
+    limit: int = 12,
+) -> str:
+    """Build a token-budgeted code context pack from local project code memory."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            pcm.context_pack(
+                conn,
+                query=query,
+                project_path=project_path,
+                token_budget=token_budget,
+                limit=limit,
+            ),
+            indent=2,
+            default=str,
+        )
+
+
+@mcp.tool()
+def burnbar_code_context_pack(
+    query: str,
+    project_path: str | None = None,
+    token_budget: int = 6000,
+    limit: int = 12,
+) -> str:
+    """Alias for burnbar_context_pack kept explicit for code.* parity clients."""
+    return burnbar_context_pack(query=query, project_path=project_path, token_budget=token_budget, limit=limit)
+
+
+@mcp.tool()
+def burnbar_get_symbol(name: str, project_path: str | None = None, limit: int = 20) -> str:
+    """Return lexical-tier symbol matches for a project, with blob-staleness evidence."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            pcm.get_symbol(conn, name=name, project_path=project_path, limit=limit), indent=2, default=str
+        )
+
+
+@mcp.tool()
+def burnbar_find_references(symbol_name: str, project_path: str | None = None, limit: int = 100) -> str:
+    """Return lexical-tier references for a symbol name within one project."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            pcm.find_references(conn, symbol_name=symbol_name, project_path=project_path, limit=limit),
+            indent=2,
+            default=str,
+        )
+
+
+@mcp.tool()
+def burnbar_call_graph(symbol_name: str, project_path: str | None = None, depth: int = 1, limit: int = 100) -> str:
+    """Return the lexical-tier local call graph edges touching a symbol name."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            pcm.call_graph(conn, symbol_name=symbol_name, project_path=project_path, depth=depth, limit=limit),
+            indent=2,
+            default=str,
+        )
+
+
+@mcp.tool()
+def burnbar_diagnostics(project_path: str | None = None, tool: str | None = None, limit: int = 50) -> str:
+    """Read cached diagnostics for a project. This is a cached-file tier, not live LSP."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(
+            pcm.diagnostics(conn, project_path=project_path, tool=tool, limit=limit), indent=2, default=str
+        )
+
+
+@mcp.tool()
+def burnbar_index_status(project_path: str | None = None) -> str:
+    """Return project-scoped local code-memory index status and storage counts."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        return json.dumps(pcm.index_status(conn, project_path=project_path), indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_explore(
+    query: str,
+    project_path: str | None = None,
+    token_budget: int = 6000,
+    limit: int = 12,
+) -> str:
+    """Auto-index if needed, then search and return a code context pack."""
+    authority = _local_memory_write_authority(
+        "burnbar_explore",
+        "daemon.code.explore",
+        {"projectPath": project_path, "query": query, "maxBytes": token_budget, "limit": limit},
+    )
+    if isinstance(authority, str):
+        return authority
+    if authority.get("mode") == "daemon":
+        return json.dumps(authority["result"], indent=2, default=str)
+    return json.dumps(authority, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_doctor(project_path: str | None = None) -> str:
+    """Run local memory/code index checks for one project."""
+    path = _default_db_path()
+    with _connect_rw(path) as conn:
+        conn.row_factory = sqlite3.Row
+        status = pcm.index_status(conn, project_path=project_path)
+        tables = pcm.table_names(conn)
+    required = {
+        "agent_memories",
+        "memory_audit",
+        "code_artifacts",
+        "code_symbols",
+        "code_references",
+        "search_documents",
+        "search_chunks",
+        "search_chunks_fts",
+        "chunk_embeddings",
+    }
+    missing = sorted(required - tables)
+    return json.dumps(
+        {
+            "status": "ok" if not missing else "degraded",
+            "missingTables": missing,
+            "writePath": "daemon_required",
+            "index": status,
+        },
+        indent=2,
+        default=str,
+    )
+
+
 @mcp.tool()
 def burnbar_list_project_memory(limit: int = 20) -> str:
     """
@@ -1745,6 +2081,55 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
 
 
 @mcp.tool()
+def burnbar_cloud_delete_project_memory(project_slug: str) -> str:
+    """
+    Hard-delete one encrypted Project Memory snapshot from cloud storage.
+
+    This deletes only the hosted sealed snapshot keyed by the local vault-derived
+    opaque docID. Local project memory remains authoritative and unchanged.
+    """
+    denied = _capability_denial("burnbar_cloud_delete_project_memory", "cloud_sync")
+    if denied:
+        return denied
+
+    slug = project_slug.strip()
+    if not slug:
+        return json.dumps({"error": "project_slug is required"}, indent=2)
+
+    config = _cloud_config()
+    if config.get("status") != "ok":
+        return json.dumps(config, indent=2)
+
+    try:
+        normalized_slug = _normalize_project_slug(slug) or slug
+        doc_id = _cloud_vault_project_memory_doc_id(normalized_slug, config["vaultKey"])
+        result = _call_firebase_callable(
+            "deleteEncryptedProjectMemorySnapshot",
+            {"docID": doc_id},
+            config,
+        )
+    except (RuntimeError, ValueError, TypeError) as exc:
+        return _json_unavailable(
+            "PROJECT_MEMORY_CLOUD_DELETE_FAILED",
+            "cloud project memory snapshot could not be deleted",
+            error=str(exc),
+            projectSlug=slug,
+        )
+
+    return json.dumps(
+        {
+            "status": "ok",
+            "source": "cloud-delete",
+            "docID": doc_id,
+            "projectSlug": normalized_slug,
+            "result": result,
+        },
+        indent=2,
+        default=str,
+    )
+
+
+@mcp.tool()
 def burnbar_get_conversation(conversation_id: str, max_full_text_chars: int = 120_000) -> str:
     """Load one conversation row by id, including fullText (truncated if over max_full_text_chars)."""
     denied = _capability_denial(
@@ -1952,6 +2337,366 @@ def burnbar_resolve_usage_ledger_path() -> str:
         },
         indent=2,
     )
+
+
+# ---------------------------------------------------------------------------
+# Ministry tools
+# ---------------------------------------------------------------------------
+# The Ministry is an orchestration-layer selector/command builder for droid
+# workers. It does not touch app crypto, Firestore, or the Swift router.
+
+
+def _ministry_wands_path() -> Path:
+    return ministry_core.default_wands_path(_default_db_path())
+
+
+def _json_arg(raw: str | None, default: Any) -> Any:
+    if raw is None or raw == "":
+        return default
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return default
+
+
+@mcp.tool()
+def ministry_list_wands() -> str:
+    """List Ministry wands, falling back to the in-memory Council/Pareto seed."""
+    return ministry_core.json_dumps(ministry_core.load_wands(_ministry_wands_path()))
+
+
+@mcp.tool()
+def ministry_validate_wands() -> str:
+    """Validate the Ministry wand store and show the sanitized would-be result."""
+    return ministry_core.json_dumps(ministry_core.validate_wands(_ministry_wands_path()))
+
+
+@mcp.tool()
+def ministry_save_wands(wands_json: str) -> str:
+    """Persist a sanitized Ministry wand store. Disabled unless local writes are enabled."""
+    denied = _capability_denial("ministry_save_wands", "local_write")
+    if denied:
+        return denied
+    try:
+        raw = json.loads(wands_json)
+    except json.JSONDecodeError as exc:
+        return ministry_core.json_dumps({"status": "error", "code": "INVALID_WANDS_JSON", "reason": str(exc)})
+    return ministry_core.json_dumps(ministry_core.save_wands(_ministry_wands_path(), raw))
+
+
+@mcp.tool()
+def ministry_list_launchable(include_quota: bool = True) -> str:
+    """List droid-launchable candidates from Factory customModels plus the built-in allowlist."""
+    try:
+        payload = ministry_core.list_launchable(include_quota=include_quota)
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "MINISTRY_LAUNCHABLE_FAILED", "reason": str(exc)}
+    return ministry_core.json_dumps(payload)
+
+
+@mcp.tool()
+def ministry_provider_quota(ttl: int = 30) -> str:
+    """Read gateway /v1/models quota state using the co-located Factory custom model token."""
+    return ministry_core.json_dumps(ministry_core.gateway_quota(ttl=max(0, int(ttl))))
+
+
+@mcp.tool()
+def ministry_smoke_probe(arg: str, autonomy: str = "medium", ttl: int = 3600) -> str:
+    """Run a disposable droid exec probe and prove whether the model can land a commit."""
+    denied = _capability_denial("ministry_smoke_probe", "spawn_process")
+    if denied:
+        return denied
+    return ministry_core.json_dumps(ministry_core.smoke_probe(arg, autonomy=autonomy, ttl=max(0, int(ttl))))
+
+
+@mcp.tool()
+def ministry_select_model_for_wand(
+    wand_id: str | None = None,
+    exclude_args_json: str | None = None,
+    prove_headless: bool = False,
+    max_probes: int = 2,
+    probe_ttl: int = 3600,
+) -> str:
+    """Select a model for a Ministry wand; optionally prove headless commit ability."""
+    if prove_headless:
+        denied = _capability_denial("ministry_select_model_for_wand", "spawn_process")
+        if denied:
+            return denied
+    exclude_args = _json_arg(exclude_args_json, [])
+    if not isinstance(exclude_args, list):
+        exclude_args = []
+    try:
+        payload = ministry_core.select_model_for_wand(
+            _ministry_wands_path(),
+            wand_id=wand_id,
+            exclude_args=[str(item) for item in exclude_args],
+            prove_headless=prove_headless,
+            max_probes=max(1, min(int(max_probes), 5)),
+            probe_ttl=max(0, int(probe_ttl)),
+        )
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "MINISTRY_SELECT_FAILED", "reason": str(exc)}
+    return ministry_core.json_dumps(payload)
+
+
+@mcp.tool()
+def ministry_select_models_for_wand(
+    wand_id: str | None = None,
+    count: int = 2,
+    require_provider_diversity: bool = True,
+    exclude_args_json: str | None = None,
+    prove_headless: bool = False,
+    max_probes: int = 4,
+    probe_ttl: int = 3600,
+) -> str:
+    """Select multiple models for a Ministry wand, with optional provider diversity and proof."""
+    if prove_headless:
+        denied = _capability_denial("ministry_select_models_for_wand", "spawn_process")
+        if denied:
+            return denied
+    exclude_args = _json_arg(exclude_args_json, [])
+    if not isinstance(exclude_args, list):
+        exclude_args = []
+    try:
+        payload = ministry_core.select_models_for_wand(
+            _ministry_wands_path(),
+            wand_id=wand_id,
+            count=max(1, min(int(count), 12)),
+            require_provider_diversity=bool(require_provider_diversity),
+            exclude_args=[str(item) for item in exclude_args],
+            prove_headless=prove_headless,
+            max_probes=max(1, min(int(max_probes), 12)),
+            probe_ttl=max(0, int(probe_ttl)),
+        )
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "MINISTRY_SELECT_MANY_FAILED", "reason": str(exc)}
+    return ministry_core.json_dumps(payload)
+
+
+@mcp.tool()
+def ministry_build_droid_command(
+    task_prompt: str,
+    wand_id: str | None = None,
+    model_arg: str | None = None,
+    cwd: str | None = None,
+    prompt_path: str | None = None,
+    result_path: str | None = None,
+    done_path: str | None = None,
+    autonomy: str | None = None,
+    reasoning_effort: str | None = None,
+    prove_headless: bool = False,
+) -> str:
+    """
+    Build a droid exec shell command with namespaced disabled tools and a done marker.
+
+    The command expects the caller/orchestrator to write the returned prompt content
+    to promptPath before launching.
+    """
+    if prove_headless:
+        denied = _capability_denial("ministry_build_droid_command", "spawn_process")
+        if denied:
+            return denied
+    try:
+        payload = ministry_core.build_droid_command(
+            _ministry_wands_path(),
+            task_prompt=task_prompt,
+            wand_id=wand_id,
+            model_arg=model_arg,
+            cwd=cwd,
+            prompt_path=prompt_path,
+            result_path=result_path,
+            done_path=done_path,
+            autonomy=autonomy,
+            reasoning_effort=reasoning_effort,
+            prove_headless=prove_headless,
+        )
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "MINISTRY_COMMAND_FAILED", "reason": str(exc)}
+    return ministry_core.json_dumps(payload)
+
+
+@mcp.tool()
+def ministry_collect_result(worktree_path: str, base_sha: str, result_path: str, done_path: str) -> str:
+    """Classify a worker result using the done marker, JSON result, and HEAD-vs-base commit gate."""
+    try:
+        payload = ministry_core.collect_result(worktree_path, base_sha, result_path, done_path)
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "MINISTRY_COLLECT_FAILED", "reason": str(exc)}
+    return ministry_core.json_dumps(payload)
+
+
+@mcp.tool()
+def ministry_cleanup_plan(
+    worktree_path: str | None = None,
+    branch: str | None = None,
+    prompt_path: str | None = None,
+    result_path: str | None = None,
+    done_path: str | None = None,
+    session_id: str | None = None,
+) -> str:
+    """Return the cleanup commands for a Ministry worker after its diff/result is captured."""
+    return ministry_core.json_dumps(
+        ministry_core.cleanup_plan(
+            worktree_path=worktree_path,
+            branch=branch,
+            prompt_path=prompt_path,
+            result_path=result_path,
+            done_path=done_path,
+            session_id=session_id,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Castle tools
+# ---------------------------------------------------------------------------
+# Castle generalizes Ministry worker launch from droid-only to runtime-stamped
+# Houses. It preserves the same landed-commit gate for truth.
+
+
+@mcp.tool()
+def castle_list_runtimes() -> str:
+    """List Castle runtime Houses and non-sensitive install/auth preconditions."""
+    return castle_core.json_dumps(castle_core.list_runtimes())
+
+
+@mcp.tool()
+def castle_list_launchable(runtime: str | None = None, include_quota: bool = True) -> str:
+    """List Castle launch candidates across runtime-stamped Houses."""
+    try:
+        payload = castle_core.list_launchable(runtime=runtime, include_quota=include_quota)
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "CASTLE_LAUNCHABLE_FAILED", "reason": str(exc)}
+    return castle_core.json_dumps(payload)
+
+
+@mcp.tool()
+def castle_select_models_for_wand(
+    wand_id: str | None = None,
+    count: int = 3,
+    require_provider_diversity: bool = True,
+    require_runtime_diversity: bool = True,
+    allow_runtimes_json: str | None = None,
+    exclude_keys_json: str | None = None,
+    prove_headless: bool = False,
+    max_probes: int = 6,
+    probe_ttl: int = 3600,
+) -> str:
+    """Select Castle `(runtime, model)` workers for a wand, optionally proving commits."""
+    if prove_headless:
+        denied = _capability_denial("castle_select_models_for_wand", "spawn_process")
+        if denied:
+            return denied
+    allow_runtimes = _json_arg(allow_runtimes_json, None)
+    if allow_runtimes is not None and not isinstance(allow_runtimes, list):
+        allow_runtimes = None
+    exclude_keys = _json_arg(exclude_keys_json, [])
+    if not isinstance(exclude_keys, list):
+        exclude_keys = []
+    try:
+        payload = castle_core.select_models_for_wand(
+            _ministry_wands_path(),
+            wand_id=wand_id,
+            count=max(1, min(int(count), 12)),
+            require_provider_diversity=bool(require_provider_diversity),
+            require_runtime_diversity=bool(require_runtime_diversity),
+            allow_runtimes=[str(item) for item in allow_runtimes] if allow_runtimes is not None else None,
+            exclude_keys=[str(item) for item in exclude_keys],
+            prove_headless=prove_headless,
+            max_probes=max(1, min(int(max_probes), 12)),
+            probe_ttl=max(0, int(probe_ttl)),
+        )
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "CASTLE_SELECT_FAILED", "reason": str(exc)}
+    return castle_core.json_dumps(payload)
+
+
+@mcp.tool()
+def castle_smoke_probe(runtime: str, arg: str, autonomy: str = "medium", ttl: int = 3600) -> str:
+    """Run a disposable Castle runtime probe and prove whether it lands a commit."""
+    denied = _capability_denial("castle_smoke_probe", "spawn_process")
+    if denied:
+        return denied
+    try:
+        payload = castle_core.smoke_probe(runtime, arg, autonomy=autonomy, ttl=max(0, int(ttl)))
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "CASTLE_PROBE_FAILED", "reason": str(exc)}
+    return castle_core.json_dumps(payload)
+
+
+@mcp.tool()
+def castle_build_command(
+    runtime: str,
+    task_prompt: str,
+    model_arg: str,
+    cwd: str | None = None,
+    prompt_path: str | None = None,
+    result_path: str | None = None,
+    done_path: str | None = None,
+    status_path: str | None = None,
+    autonomy: str = "medium",
+    reasoning_effort: str | None = None,
+) -> str:
+    """Build a Castle worker command with result, stderr, done, and status sentinels."""
+    try:
+        payload = castle_core.build_command(
+            runtime=runtime,
+            task_prompt=task_prompt,
+            model_arg=model_arg,
+            cwd=cwd,
+            prompt_path=prompt_path,
+            result_path=result_path,
+            done_path=done_path,
+            status_path=status_path,
+            autonomy=autonomy,
+            reasoning_effort=reasoning_effort,
+        )
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "CASTLE_COMMAND_FAILED", "reason": str(exc)}
+    return castle_core.json_dumps(payload)
+
+
+@mcp.tool()
+def castle_collect_result(
+    runtime: str,
+    worktree_path: str,
+    base_sha: str,
+    result_path: str,
+    done_path: str,
+    status_path: str | None = None,
+) -> str:
+    """Classify a Castle worker result and optionally write a Swift-readable status record."""
+    try:
+        payload = castle_core.collect_result(
+            runtime=runtime,
+            worktree_path=worktree_path,
+            base_sha=base_sha,
+            result_path=result_path,
+            done_path=done_path,
+            status_path=status_path,
+        )
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "CASTLE_COLLECT_FAILED", "reason": str(exc)}
+    return castle_core.json_dumps(payload)
+
+
+@mcp.tool()
+def castle_status_snapshot(status_paths_json: str) -> str:
+    """Read Castle status records from JSON paths for dashboard/debug surfaces."""
+    paths = _json_arg(status_paths_json, [])
+    if not isinstance(paths, list):
+        paths = []
+    return castle_core.json_dumps(castle_core.status_snapshot([str(item) for item in paths]))
+
+
+@mcp.tool()
+def castle_seed_worktree_isolation(worktree_path: str) -> str:
+    """Seed .git/info/exclude with known agent scratch paths before launching a worker."""
+    try:
+        payload = castle_core.seed_worktree_isolation(worktree_path)
+    except Exception as exc:
+        payload = {"status": "unavailable", "code": "CASTLE_ISOLATION_FAILED", "reason": str(exc)}
+    return castle_core.json_dumps(payload)
 
 
 # ---------------------------------------------------------------------------

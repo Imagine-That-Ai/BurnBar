@@ -6,7 +6,7 @@ import { installer } from "./installers.js";
 import { decryptSearchResultJson } from "./decrypt.js";
 
 test("installers cover every required client", () => {
-  for (const kind of ["codex", "claude", "droid", "kimi", "forge", "generic"] as const) {
+  for (const kind of ["codex", "claude", "cursor", "droid", "kimi", "forge", "generic"] as const) {
     assert.match(installer(kind), /openburnbar/);
   }
   assert.match(installer("generic"), /mcpServers/);
@@ -49,7 +49,7 @@ test("codex installer balances [section] count with body lines", () => {
 
 test("non-codex installers stay byte-identical", () => {
   assert.equal(installer("claude"), "claude mcp add openburnbar -- openburnbar-mcp-remote mcp serve");
-  for (const kind of ["droid", "kimi", "forge", "generic"] as const) {
+  for (const kind of ["cursor", "droid", "kimi", "forge", "generic"] as const) {
     const parsed = JSON.parse(installer(kind)) as { mcpServers: { openburnbar: { command: string; args: string[]; env: Record<string, string> } } };
     assert.equal(parsed.mcpServers.openburnbar.command, "openburnbar-mcp-remote");
     assert.deepEqual(parsed.mcpServers.openburnbar.args, ["mcp", "serve"]);

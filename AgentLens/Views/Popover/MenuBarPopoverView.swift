@@ -184,6 +184,10 @@ struct MenuBarPopoverView: View {
                 VStack(spacing: 0) {
                     headerView
                     freshnessBar
+                    #if !DISTRIBUTION_MAS
+                    UpdateBannerCard(compact: true, horizontalInset: DesignSystem.Spacing.sm, topInset: DesignSystem.Spacing.xs)
+                        .frame(width: popoverWidth)
+                    #endif
                     Divider().background(DesignSystem.Colors.border)
 
                     QuotaPopoverBar(

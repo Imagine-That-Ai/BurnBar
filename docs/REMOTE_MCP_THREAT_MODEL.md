@@ -9,6 +9,9 @@
 - Opaque token and semantic hashes.
 - Cloud vault key wrappers.
 - Audit and rate-limit metadata.
+- Project source-code indexes are a separate asset class. They are local-only
+  by default and are not accepted by hosted Remote MCP until a code-specific
+  threat-model review ships.
 
 ## Trust Boundaries
 
@@ -42,6 +45,7 @@
 | Token replay against another service | audience validation |
 | Cross-tenant resource URI | resource path comes from token `sub` |
 | Prompt injection in transcript text | transcript text remains encrypted server-side |
+| Hosted code-memory sync leaks source structure | code-memory sync is disabled by default; local MCP indexes code only on device |
 | DNS rebinding against local/remote server | `Origin` validation |
 | Log exfiltration | structured redaction and audit allowlist |
 | Cost spike | rate limits, result caps, zero Storage reads during search |

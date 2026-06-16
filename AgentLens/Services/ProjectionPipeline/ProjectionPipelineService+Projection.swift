@@ -37,6 +37,11 @@ extension ProjectionPipelineService {
                 return
             }
             try await projectArtifact(artifact, sourceVersionID: currentSourceVersionID)
+        case .code:
+            // Code indexes are daemon-owned and local-only in Project Code Memory v1.
+            // The app projection worker must not reinterpret code jobs as artifact
+            // projection jobs or it can lose the daemon's project/blob scoping.
+            return
         }
     }
 

@@ -231,6 +231,11 @@ extension DatabaseWorkspaceView {
                                     inspectorTextBlock("Full Body", artifact.body)
                                 }
                             }
+                        case .code:
+                            Divider().foregroundStyle(DesignSystem.Colors.borderSubtle)
+                            inspectorSectionTitle("Code")
+                            inspectorRow("Source ID", document.sourceID)
+                            inspectorRow("Version", document.sourceVersionID.isEmpty ? "-" : document.sourceVersionID)
                         }
 
                         if chunks.isEmpty == false {

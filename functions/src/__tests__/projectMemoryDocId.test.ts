@@ -39,6 +39,7 @@ type FakeRef = {
   __path: string;
   get: () => Promise<unknown>;
   set: (data: Record<string, unknown>, opts?: unknown) => Promise<void>;
+  delete: () => Promise<void>;
 };
 
 function makeDb() {
@@ -51,6 +52,7 @@ function makeDb() {
       get: (field: string) => stored.get(path)?.[field],
     }),
     set: async (data: Record<string, unknown>) => void stored.set(path, { ...stored.get(path), ...data }),
+    delete: async () => void stored.delete(path),
   });
   return {
     doc: (path: string) => docRef(path),
@@ -204,5 +206,37 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
     expect(entry.docID).toBe(DOC_ID);
     expect(entry).not.toHaveProperty("projectSlug");
     expect(entry).not.toHaveProperty("projectDisplayName");
+  });
+
+  it("delete removes the opaque snapshot and writes a content-free tombstone receipt", async () => {
+    const mod = await import("../callables/encryptedSearch.js");
+    await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
+
+    const res = await invokeCallable<{
+      ok: boolean;
+      docID: string;
+      existed: boolean;
+      receiptHash: string;
+    }>(mod.deleteEncryptedProjectMemorySnapshot, {
+      auth: { uid: "userA", token: {} },
+      app: { appId: "test-app" },
+      rawRequest: { headers: {} },
+      data: { docID: DOC_ID },
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.docID).toBe(DOC_ID);
+    expect(res.existed).toBe(true);
+    expect(res.receiptHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(stored.has(`users/userA/project_memory_snapshots/${DOC_ID}`)).toBe(false);
+
+    const tombstone = stored.get(`users/userA/project_memory_tombstones/${DOC_ID}`);
+    expect(tombstone).toBeDefined();
+    expect(tombstone?.docID).toBe(DOC_ID);
+    expect(tombstone?.receiptHash).toBe(res.receiptHash);
+    expect(tombstone).not.toHaveProperty("projectSlug");
+    expect(tombstone).not.toHaveProperty("projectDisplayName");
+    expect(JSON.stringify(tombstone)).not.toContain(PLAINTEXT_SLUG);
+    expect(JSON.stringify(tombstone)).not.toContain(PLAINTEXT_NAME);
   });
 });

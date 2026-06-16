@@ -22,6 +22,10 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .runCreate), .run)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .health), .lifecycle)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .searchQuery), .search)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRecall), .memoryRead)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRemember), .memoryWrite)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeSearch), .codeRead)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeIndexProject), .codeWrite)
     }
 
     func test_fullProfilePermitsEveryMethod() {
@@ -37,6 +41,9 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.health))
         XCTAssertTrue(profile.permits(.usageRecent))
         XCTAssertTrue(profile.permits(.searchQuery))
+        XCTAssertTrue(profile.permits(.memoryRecall))
+        XCTAssertTrue(profile.permits(.codeSearch))
+        XCTAssertTrue(profile.permits(.codeIndexStatus))
         // Refused: every agency-bearing surface.
         XCTAssertFalse(profile.permits(.configUpdate))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
@@ -44,6 +51,9 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.browserAction))
+        XCTAssertFalse(profile.permits(.memoryRemember))
+        XCTAssertFalse(profile.permits(.memoryForget))
+        XCTAssertFalse(profile.permits(.codeIndexProject))
     }
 
     func test_runClientProfileIsDeniedComputerUseAndConfig() {
@@ -51,11 +61,15 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.runCreate))
         XCTAssertTrue(profile.permits(.clientAttach))
         XCTAssertTrue(profile.permits(.browserAction))
+        XCTAssertTrue(profile.permits(.memoryRecall))
+        XCTAssertTrue(profile.permits(.codeSearch))
         // A compromised run client must NOT reach the HID-adjacent computer-use
         // surface or rewrite stored provider credentials.
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.configUpdate))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
+        XCTAssertFalse(profile.permits(.memoryRemember))
+        XCTAssertFalse(profile.permits(.codeIndexProject))
     }
 
     func test_attenuationOnlyNarrows() {

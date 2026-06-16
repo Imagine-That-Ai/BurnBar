@@ -25,6 +25,7 @@ import {
   requireCloudVaultBlobEnvelope,
   cloudVaultAADContext,
   assertActiveBurnBarProEntitlement,
+  sha256Hex,
 } from "./shared.js";
 import type { ProjectMemorySnapshotDoc } from "../types.js";
 import { stripUndefinedObject } from "../guards.js";
@@ -235,6 +236,67 @@ export const listEncryptedProjectMemorySnapshots = onCall(
       });
 
       return { snapshots };
+    },
+  ),
+);
+
+export const deleteEncryptedProjectMemorySnapshot = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler(
+    "deleteEncryptedProjectMemorySnapshot",
+    async (
+      request: CallableRequest<{
+        docID?: unknown;
+      }>,
+    ) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before deleting Project Memory.");
+      enforceAuthAndAppCheck(request, uid);
+      await assertActiveBurnBarProEntitlement(uid);
+
+      const docID = requiredIdentifier(request.data.docID, "docID");
+      const deletedAt = nowISO();
+      const ref = db.doc(`users/${uid}/project_memory_snapshots/${docID}`);
+      const snap = await ref.get();
+      const data = snap.data() ?? {};
+      const existed = snap.exists;
+      const priorContentHash = typeof data.contentHash === "string" ? data.contentHash : undefined;
+      const receiptHash = sha256Hex(
+        JSON.stringify({
+          uid,
+          docID,
+          existed,
+          priorContentHash: priorContentHash ?? null,
+          deletedAt,
+          collection: "project_memory_snapshots",
+        }),
+      );
+
+      await ref.delete();
+      await db.doc(`users/${uid}/project_memory_tombstones/${docID}`).set(
+        stripUndefinedObject({
+          docID,
+          collection: "project_memory_snapshots",
+          existed,
+          priorContentHash,
+          deletedAt,
+          receiptHash,
+          schemaVersion: 1,
+        }),
+        { merge: false },
+      );
+
+      return {
+        ok: true,
+        docID,
+        existed,
+        deletedAt,
+        receiptHash,
+      };
     },
   ),
 );

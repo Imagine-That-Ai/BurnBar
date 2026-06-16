@@ -87,6 +87,21 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .clientClaimControl: "client.claimControl",
         .clientDetach: "client.detach",
         .searchQuery: "daemon.search.query",
+        .memoryRemember: "daemon.memory.remember",
+        .memoryRecall: "daemon.memory.recall",
+        .memoryForget: "daemon.memory.forget",
+        .memoryAuditTrail: "daemon.memory.audit_trail",
+        .memoryAnalytics: "daemon.memory.analytics",
+        .codeIndexProject: "daemon.code.index_project",
+        .codeWatchProject: "daemon.code.watch_project",
+        .codeSearch: "daemon.code.search",
+        .codeContextPack: "daemon.code.context_pack",
+        .codeGetSymbol: "daemon.code.get_symbol",
+        .codeFindReferences: "daemon.code.find_references",
+        .codeCallGraph: "daemon.code.call_graph",
+        .codeDiagnostics: "daemon.code.diagnostics",
+        .codeIndexStatus: "daemon.code.index_status",
+        .codeExplore: "daemon.code.explore",
         .runResume: "run.resume"
     ]
 

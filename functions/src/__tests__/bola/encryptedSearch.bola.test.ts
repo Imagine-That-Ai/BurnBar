@@ -3,8 +3,18 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 
-import { describe, it, vi } from "vitest";
-import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  ALICE_UID,
+  BOB_UID,
+  callableRequest,
+  callableRunner,
+  expectTenantPathsUnchanged,
+  pathKeyedFirestore,
+  snapshotTenantPaths,
+  tier2CallableProof,
+} from "./callableBolaHarness.js";
+import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -37,6 +47,7 @@ export const BOLA_MANIFEST = {
   getEncryptedSessionBlobDownloadUrl: ["getEncryptedSessionBlobDownloadUrl rejects cross-user object access"],
   commitEncryptedSearchIndexBatch: ["commitEncryptedSearchIndexBatch rejects cross-user object access"],
   commitEncryptedProjectMemorySnapshot: ["commitEncryptedProjectMemorySnapshot rejects cross-user object access"],
+  deleteEncryptedProjectMemorySnapshot: ["deleteEncryptedProjectMemorySnapshot leaves cross-user project memory untouched"],
   getEncryptedProjectMemorySnapshot: ["getEncryptedProjectMemorySnapshot rejects cross-user object access"],
   searchEncryptedConversationIndex: ["searchEncryptedConversationIndex rejects cross-user object access"],
   queryConversations: ["queryConversations rejects cross-user object access"],
@@ -111,6 +122,28 @@ describe("BOLA — encryptedSearch", () => {
       expectedCode: "not-found",
       expectedOutcome: "throws",
     });
+  });
+
+  it("deleteEncryptedProjectMemorySnapshot leaves cross-user project memory untouched", async () => {
+    const mod = await import("../../callables/encryptedSearch.js");
+    const exported = mod.deleteEncryptedProjectMemorySnapshot;
+    if (!exported) throw new Error("missing export deleteEncryptedProjectMemorySnapshot");
+    const run = callableRunner(exported);
+
+    bolaStore.clear();
+    seedBolaVictimTenant(bolaStore, "deleteEncryptedProjectMemorySnapshot");
+    bolaStore.set(`users/${ALICE_UID}/entitlements/burnbar_pro`, {
+      active: true,
+      productID: "com.openburnbar.pro.monthly",
+      expiresAt: "2999-01-01T00:00:00.000Z",
+    });
+
+    const victimBefore = snapshotTenantPaths(bolaStore, BOB_UID);
+    await run(callableRequest(ALICE_UID, { docID: "bob-doc" }));
+
+    expectTenantPathsUnchanged(bolaStore, victimBefore);
+    expect(bolaStore.has(`users/${BOB_UID}/project_memory_snapshots/bob-doc`)).toBe(true);
+    expect(bolaStore.has(`users/${ALICE_UID}/project_memory_tombstones/bob-doc`)).toBe(true);
   });
 
   it("searchEncryptedConversationIndex rejects cross-user object access", async () => {

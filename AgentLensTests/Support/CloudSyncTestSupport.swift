@@ -71,6 +71,7 @@ final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
     /// requested `docID` first, then falls back to the legacy `projectSlug` so the
     /// reader's migration fallback path is exercisable.
     var projectMemorySnapshotsByKey: [String: [String: Any]] = [:]
+    private(set) var projectMemoryDeletes: [[String: Any]] = []
 
     func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws {
         projectMemoryCommits.append(payload)
@@ -93,6 +94,19 @@ final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
             return ["snapshot": NSNull()]
         }
         return ["snapshot": snapshot]
+    }
+
+    func deleteEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
+        projectMemoryDeletes.append(payload)
+        let key = (payload["docID"] as? String) ?? (payload["projectSlug"] as? String)
+        let existed = key.flatMap { projectMemorySnapshotsByKey.removeValue(forKey: $0) } != nil
+        return [
+            "ok": true,
+            "docID": key ?? "",
+            "existed": existed,
+            "deletedAt": ISO8601DateFormatter().string(from: Date()),
+            "receiptHash": String(repeating: "a", count: 64)
+        ]
     }
 
     func downloadEncryptedBody(storagePath: String) async throws -> Data {

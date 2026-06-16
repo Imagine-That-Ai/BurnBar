@@ -864,6 +864,54 @@ const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  deleteEncryptedProjectMemorySnapshot: [
+    {
+      path: "users/__BOB_UID__/cloud_search_documents/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/project_memory_snapshots/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/session_logs/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/cloud_search_chunks/bob-chunk-1",
+      data: {
+        documentID: "bob-doc",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/cloud_search_postings/bob-post-1",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/docID/bob-doc",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   deleteHostedQuotaCredentials: [
     {
       path: "users/__BOB_UID__/provider_accounts/bob-account",

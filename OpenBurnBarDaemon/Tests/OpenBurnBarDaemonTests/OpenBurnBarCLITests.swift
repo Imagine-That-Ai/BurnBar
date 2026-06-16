@@ -117,6 +117,18 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertTrue(output.contains("1 event"))
     }
 
+    func testProjectCodeMemoryIndexWatchAndHealthcheckFormatBudgetState() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+
+        let watch = try runner.run(arguments: ["index", "--watch", "--storage-budget-bytes", "4096", "--poll-seconds", "0.5"])
+        XCTAssertTrue(watch.contains("Watching project proj_fixture"))
+        XCTAssertTrue(watch.contains("poll_seconds=0.5"))
+
+        let health = try runner.run(arguments: ["healthcheck"])
+        XCTAssertTrue(health.contains("storage=1024/4096 within_budget=true"))
+        XCTAssertTrue(health.contains("last_vacuumed_at=2026-06-16T00:00:01Z"))
+    }
+
     func testResumeCommandParsingAndNativeOutput() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let output = try runner.run(arguments: ["resume", "codex-session", "--as", "Codex", "--model", "gpt-5.1"])
@@ -289,6 +301,95 @@ struct FakeCLIClient: BurnBarCLIClient {
                 )
             ],
             summary: "Replay complete."
+        )
+    }
+
+    func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse {
+        BurnBarProjectMemoryRecallResponse(
+            traceID: "trace-test",
+            projectID: "proj_fixture",
+            hits: [
+                BurnBarProjectMemoryHit(
+                    memoryID: "mem_fixture",
+                    projectID: "proj_fixture",
+                    kind: "note",
+                    scope: "personal",
+                    confidence: 1.0,
+                    bodyRedacted: "Use the fixture pipeline.",
+                    tags: ["fixture"],
+                    sourcePath: nil,
+                    snippet: "Use the fixture pipeline.",
+                    rank: nil
+                )
+            ]
+        )
+    }
+
+    func codeIndex(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?) throws -> BurnBarProjectCodeIndexProjectResponse {
+        BurnBarProjectCodeIndexProjectResponse(
+            traceID: "trace-test",
+            projectID: "proj_fixture",
+            projectRoot: projectPath ?? "/tmp/fixture",
+            indexedFiles: 1,
+            chunkCount: 1,
+            symbolCount: 1,
+            rejectedFiles: [],
+            commitSHA: nil,
+            auditHash: "audit"
+        )
+    }
+
+    func codeWatch(
+        projectPath: String?,
+        maxFiles: Int,
+        maxFileBytes: Int,
+        storageBudgetBytes: Int?,
+        pollIntervalSeconds: Double
+    ) throws -> BurnBarProjectCodeWatchProjectResponse {
+        BurnBarProjectCodeWatchProjectResponse(
+            traceID: "trace-test",
+            projectID: "proj_fixture",
+            projectRoot: projectPath ?? "/tmp/fixture",
+            watching: true,
+            pollIntervalSeconds: pollIntervalSeconds,
+            signature: "sig_fixture",
+            indexedFiles: 1
+        )
+    }
+
+    func codeSearch(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectCodeSearchResponse {
+        BurnBarProjectCodeSearchResponse(
+            traceID: "trace-test",
+            projectID: "proj_fixture",
+            hits: [
+                BurnBarProjectCodeSearchHit(
+                    chunkID: "chunk_fixture",
+                    filePath: "Sources/App.swift",
+                    snippet: "func fixture() {}",
+                    rank: nil
+                )
+            ]
+        )
+    }
+
+    func codeIndexStatus(projectPath: String?) throws -> BurnBarProjectCodeIndexStatusResponse {
+        BurnBarProjectCodeIndexStatusResponse(
+            traceID: "trace-test",
+            projectID: "proj_fixture",
+            projectRoot: projectPath ?? "/tmp/fixture",
+            indexedAt: "2026-06-16T00:00:00Z",
+            artifactCount: 1,
+            chunkCount: 1,
+            symbolCount: 1,
+            referenceCount: 0,
+            callEdgeCount: 0,
+            rejectedCount: 0,
+            lastCommitSHA: nil,
+            pendingForgetCount: 0,
+            storageByteCount: 1024,
+            storageBudgetBytes: 4096,
+            storageWithinBudget: true,
+            lastVacuumedAt: "2026-06-16T00:00:01Z"
         )
     }
 

@@ -156,6 +156,34 @@ targets:
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+      - name: Stamp Build Provenance
+        # Stamps git commit/branch/remote + the build channel into the bundle so
+        # the in-app updater (UpdateChannelResolver / SourceUpdateChannel) can
+        # distinguish a source/git build from a notarized release and report how
+        # far behind it is. CI release builds export OPENBURNBAR_BUILD_CHANNEL=release;
+        # local `make build` / Xcode default to "source".
+        script: |
+          set -euo pipefail
+          INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          CHANNEL="${OPENBURNBAR_BUILD_CHANNEL:-source}"
+          cd "${PROJECT_DIR}"
+          GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+          if [[ -n "$(git status --porcelain 2>/dev/null || true)" ]]; then
+            GIT_COMMIT="${GIT_COMMIT}+dirty"
+          fi
+          GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+          GIT_REMOTE="$(git config --get remote.origin.url 2>/dev/null || echo '')"
+          set_key() {
+            /usr/libexec/PlistBuddy -c "Delete :$1" "${INFO_PLIST}" >/dev/null 2>&1 || true
+            /usr/libexec/PlistBuddy -c "Add :$1 string $2" "${INFO_PLIST}"
+          }
+          set_key OpenBurnBarBuildChannel "${CHANNEL}"
+          set_key OpenBurnBarGitCommit "${GIT_COMMIT}"
+          set_key OpenBurnBarGitBranch "${GIT_BRANCH}"
+          set_key OpenBurnBarGitRemote "${GIT_REMOTE}"
+          set_key OpenBurnBarSourceRoot "${PROJECT_DIR}"
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
       - name: Bundle Remote Unlock Input Helpers
         script: |
           set -euo pipefail

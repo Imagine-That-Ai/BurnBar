@@ -38,6 +38,14 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case run
     /// Indexed search queries.
     case search
+    /// Project-scoped durable memory reads.
+    case memoryRead = "memory_read"
+    /// Project-scoped durable memory writes.
+    case memoryWrite = "memory_write"
+    /// Project code search/symbol graph reads.
+    case codeRead = "code_read"
+    /// Project code indexing writes.
+    case codeWrite = "code_write"
 
     /// The single capability group that gates `method`. Every method maps to
     /// exactly one group so the attenuation set is total and unambiguous — a new
@@ -80,6 +88,15 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .run
         case .searchQuery:
             return .search
+        case .memoryRemember, .memoryForget:
+            return .memoryWrite
+        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics:
+            return .memoryRead
+        case .codeIndexProject, .codeWatchProject:
+            return .codeWrite
+        case .codeSearch, .codeContextPack, .codeGetSymbol, .codeFindReferences,
+             .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore:
+            return .codeRead
         }
     }
 }
@@ -111,13 +128,13 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     /// Read-only posture: lifecycle + read observability + search. No config
     /// writes, no run dispatch, no computer-use/HID agency.
     public static let readOnly = BurnBarPeerCapabilityProfile(
-        capabilities: [.lifecycle, .observability, .search]
+        capabilities: [.lifecycle, .observability, .search, .memoryRead, .codeRead]
     )
 
     /// A controller that drives runs but is denied the computer-use/HID surface
     /// and config-credential writes — the minimum a chat/run client needs.
     public static let runClient = BurnBarPeerCapabilityProfile(
-        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .search, .missionControl]
+        capabilities: [.lifecycle, .client, .run, .tooling, .observability, .search, .missionControl, .memoryRead, .codeRead]
     )
 
     /// Intersect with `other` so a peer can only ever be FURTHER attenuated,

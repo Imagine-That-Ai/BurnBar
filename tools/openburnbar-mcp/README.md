@@ -134,9 +134,26 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_semantic_search_conversations` | Local deterministic semantic search over indexed conversation chunks; returns structured `unavailable` when semantic tables or compatible embeddings are absent |
 | `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search over the user's cloud session-log index; derives opaque query hashes locally and decrypts snippets locally |
 | `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
+| `burnbar_remember` | **Write** a durable project-scoped local agent memory after secret/PII scanning |
+| `burnbar_recall` | Recall project-scoped local agent memories; cross-project recall is explicit opt-in |
+| `burnbar_forget` | **Write** a hard delete for one local memory and append a label-only audit event |
+| `burnbar_audit_trail` | Read the local label-only memory/code audit hash chain |
+| `burnbar_memory_analytics` | Aggregate local memory counts by kind and scope |
+| `burnbar_index_project` | **Write** a local-only, project-partitioned code index into the existing search substrate; accepts `storage_budget_bytes` |
+| `burnbar_watch_project` | **Write** start daemon-owned automatic reindexing for source/git-ref changes |
+| `burnbar_search_code` | Hybrid lexical/vector search over local-only indexed project code |
+| `burnbar_context_pack` / `burnbar_code_context_pack` | Build token-budgeted code context packs |
+| `burnbar_get_symbol` | Lexical-tier symbol lookup with blob-staleness evidence |
+| `burnbar_find_references` | Lexical-tier reference lookup for a project symbol |
+| `burnbar_call_graph` | Lexical-tier call graph edges |
+| `burnbar_diagnostics` | Read cached diagnostics for a project |
+| `burnbar_index_status` | Read project-scoped code-memory index status |
+| `burnbar_explore` | **Write** auto-index if needed, then search and return a context pack |
+| `burnbar_memory_doctor` | Check local memory/code schema, write mode, and index health |
 | `burnbar_list_project_memory` | List project memory snapshots with source counts and freshness |
 | `burnbar_get_project_memory` | Read one project memory snapshot by slug |
 | `burnbar_cloud_sync_project_memory` | Sync a local project memory snapshot through the encrypted cloud path |
+| `burnbar_cloud_delete_project_memory` | Delete one encrypted cloud Project Memory snapshot by vault-derived opaque docID |
 | `burnbar_get_conversation` | Full row + `fullText` for one id |
 | `burnbar_recent_usage` | Recent `token_usage` rows |
 | `burnbar_project_summary` | Per-project cost + session aggregation over a rolling window |
@@ -154,11 +171,24 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_list_resumable_conversations` | Return recent conversations eligible for native or ported resume |
 | `burnbar_resume_conversation` | Compose a native command hint or deterministic cross-harness briefing |
 | `burnbar_spawn_resume` | Spawn the selected native or ported resume command after an explicit tool call |
+| `ministry_list_wands` | List Council/Pareto wands or a sanitized local wand store |
+| `ministry_validate_wands` | Validate the local Ministry wand store without writing |
+| `ministry_save_wands` | **Write** an operator-gated sanitized Ministry wand store |
+| `ministry_list_launchable` | List droid launch candidates from Factory `customModels[]` plus the built-in allowlist |
+| `ministry_provider_quota` | Read authenticated local-gateway model quota state |
+| `ministry_select_model_for_wand` | Select a model by wand policy, optionally proving headless commit ability |
+| `ministry_select_models_for_wand` | Select N models by wand policy with optional provider diversity and proof |
+| `ministry_smoke_probe` | Spawn a disposable droid probe and verify it lands a commit |
+| `ministry_build_droid_command` | Build a droid worker command with namespaced disabled tools and a done marker |
+| `ministry_collect_result` | Classify worker completion from `result.done`, JSON output, and HEAD-vs-base |
+| `ministry_cleanup_plan` | Emit post-capture cleanup commands for worktree, branch, files, and exact transcript candidates |
 
 Write-capable tools are explicit, daemon-scoped, and disabled until
 `OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE=true` or
-`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. `burnbar_record_hermes_usage`
-never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
+`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. Memory/code writes are
+fail-closed: `burnbar_remember`, `burnbar_forget`, `burnbar_index_project`,
+`burnbar_watch_project`, and `burnbar_explore` require the daemon socket and do
+not fall back to direct SQLite writes. `burnbar_record_hermes_usage` never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
 reachable on its UNIX socket
 (`~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock`) it sends
 the row through the `daemon.usage.record` RPC so the daemon's in-memory
@@ -180,6 +210,10 @@ export OPENBURNBAR_CLOUD_VAULT_KEY_BASE64="<32-byte vault key, base64>"
 The MCP process keeps the plaintext query and vault key local. Firebase
 receives only keyed token/semantic hashes, returns encrypted result envelopes,
 and this MCP process decrypts titles, snippets, and requested bodies on-device.
+Project Memory cloud sync uploads only sealed snapshot payloads under
+vault-derived opaque document IDs. `burnbar_cloud_delete_project_memory`
+removes the hosted sealed snapshot and returns the backend's content-free
+tombstone receipt; local Project Memory stays authoritative and unchanged.
 
 `burnbar_resume_conversation` is print-only by default and returns either a
 native command hint, a rendered cross-harness briefing, or a structured error.

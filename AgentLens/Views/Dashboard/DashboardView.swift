@@ -501,6 +501,9 @@ struct DashboardView: View {
                     .ignoresSafeArea()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                        #if !DISTRIBUTION_MAS
+                        UpdateBannerCard()
+                        #endif
                         LazyVGrid(
                             columns: [
                                 GridItem(

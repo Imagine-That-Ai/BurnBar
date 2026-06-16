@@ -537,6 +537,7 @@ struct CitationQuoteCard: View {
         case .skillDoc:        return "SKILL DOC"
         case .agentDoc:        return "AGENT DOC"
         case .sharedArtifact:  return "SHARED ARTIFACT"
+        case .code:            return "CODE"
         }
     }
 }

@@ -51,11 +51,13 @@ struct SignInScene: View {
                         Spacer(minLength: MobileTheme.Spacing.lg)
 
                         VStack(spacing: 0) {
-                            EmberLogo(reduceMotion: reduceMotion,
-                                      reduceTransparency: reduceTransparency)
-                                .frame(maxWidth: 184)
-                                .frame(height: 132)
-                                .padding(.bottom, MobileTheme.Spacing.lg)
+                            GemLogoView(size: 132) {
+                                Image("AppLogo")
+                                    .resizable()
+                                    .renderingMode(.original)
+                                    .scaledToFit()
+                            }
+                            .padding(.bottom, MobileTheme.Spacing.lg)
 
                             wordmark
                                 .padding(.bottom, MobileTheme.Spacing.sm)
@@ -397,215 +399,6 @@ struct SignInScene: View {
     }
 }
 
-// MARK: - EmberLogo
-
-/// Renders the brand SVG as a *lit* flame — the tongues lick upward, the
-/// body sways side-to-side as if in a draft, the halo flickers with a
-/// multi-frequency rhythm (real fire isn't a sine wave), and faint embers
-/// rise through the silhouette.
-///
-/// The animation is driven by `TimelineView(.animation)` so motion is
-/// time-derived rather than spring-driven — gives a continuous, organic
-/// flicker instead of a metronomic pulse. The bars at the bottom of the
-/// SVG stay anchored while the upper flame stretches and leans, so the
-/// "fuel" reads as solid and the "fire" reads as alive.
-///
-/// Accessibility:
-/// - `reduceMotion`: collapses to a still logo + still halo. No flicker,
-///   no lean, no embers.
-/// - `reduceTransparency`: drops the halo, embers, blur, and plusLighter
-///   blends. Just the static SVG.
-private struct EmberLogo: View {
-    let reduceMotion: Bool
-    let reduceTransparency: Bool
-
-    @State private var start = Date()
-
-    var body: some View {
-        Group {
-            if reduceMotion {
-                staticLogo
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { context in
-                    let t = context.date.timeIntervalSince(start)
-                    animatedLogo(t: t)
-                }
-            }
-        }
-        .accessibilityHidden(true) // wordmark provides the label
-    }
-
-    // MARK: Static fallback
-
-    private var staticLogo: some View {
-        ZStack {
-            if !reduceTransparency {
-                staticHalo
-            }
-            logoImage
-        }
-    }
-
-    private var staticHalo: some View {
-        RadialGradient(
-            colors: [
-                MobileTheme.ember.opacity(0.45),
-                MobileTheme.amber.opacity(0.25),
-                Color.clear
-            ],
-            center: .center,
-            startRadius: 0,
-            endRadius: 140
-        )
-        .blur(radius: 18)
-        .blendMode(.plusLighter)
-        .allowsHitTesting(false)
-    }
-
-    // MARK: Animated flame
-
-    private func animatedLogo(t: TimeInterval) -> some View {
-        // Multi-frequency flicker (sum of three sines) — fire isn't periodic,
-        // and stacking incommensurate frequencies gives the eye that "alive"
-        // feel without ever quite repeating.
-        let f1 = sin(t * 2 * .pi * 0.9)
-        let f2 = sin(t * 2 * .pi * 2.1 + 1.7)
-        let f3 = sin(t * 2 * .pi * 3.7 + 0.4)
-        let flicker  = f1 * 0.5 + f2 * 0.3 + f3 * 0.2          // [-1, 1]
-        let intensity = 0.5 + 0.5 * flicker                    // [ 0, 1]
-
-        // Slow lateral lean — like a flame catching a draft. Two slow,
-        // incommensurate components so it never lands on the same arc.
-        let leanRaw = sin(t * 2 * .pi * 0.45 + 0.9) * 0.6 +
-                      sin(t * 2 * .pi * 0.27)        * 0.4
-        let leanDegrees = leanRaw * 1.4                        // ±1.4°
-
-        // Vertical lick — anchored at the bottom so the bars stay rooted
-        // while the tongues reach up.
-        let stretchY: CGFloat = 1.0 + CGFloat(intensity) * 0.07   // up to +7%
-        let squeezeX: CGFloat = 1.0 - CGFloat(intensity) * 0.025  // ~conserve
-
-        return ZStack {
-            if !reduceTransparency {
-                halo(intensity: intensity)
-            }
-
-            ZStack {
-                logoImage
-
-                if !reduceTransparency {
-                    tipGlow(intensity: intensity)
-                        .mask(logoImage)
-
-                    embers(t: t)
-                        .mask(logoImage)
-                }
-            }
-            .scaleEffect(x: squeezeX, y: stretchY, anchor: .bottom)
-            .rotationEffect(.degrees(leanDegrees), anchor: .bottom)
-        }
-    }
-
-    // MARK: Layers
-
-    private var logoImage: some View {
-        Image("AppLogo")
-            .resizable()
-            .renderingMode(.original)
-            .scaledToFit()
-    }
-
-    /// Warm radial glow behind the flame. Scale + opacity track the flicker
-    /// so the room "lights up" with the fire instead of pulsing on its own
-    /// rhythm.
-    private func halo(intensity: Double) -> some View {
-        let scale = 0.95 + intensity * 0.18
-        let opacity = 0.55 + intensity * 0.40
-        return RadialGradient(
-            colors: [
-                MobileTheme.ember.opacity(0.55),
-                MobileTheme.amber.opacity(0.32),
-                Color.clear
-            ],
-            center: .center,
-            startRadius: 0,
-            endRadius: 150
-        )
-        .scaleEffect(scale)
-        .opacity(opacity)
-        .blur(radius: 20)
-        .blendMode(.plusLighter)
-        .allowsHitTesting(false)
-    }
-
-    /// Brightens the upper portion of the silhouette — flame tips burn
-    /// hotter (whiter) than the base. Strength tracks the flicker.
-    private func tipGlow(intensity: Double) -> some View {
-        LinearGradient(
-            stops: [
-                .init(color: Color.white.opacity(0.10 + 0.45 * intensity), location: 0.05),
-                .init(color: Color.white.opacity(0.20 * intensity), location: 0.30),
-                .init(color: Color.clear, location: 0.65)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .blendMode(.plusLighter)
-        .allowsHitTesting(false)
-    }
-
-    /// Three rising ember sparks confined to the flame body (the upper
-    /// 70% of the silhouette — we don't want sparks crawling up through
-    /// the bars). Each loops on its own period with a phase offset, so the
-    /// sky over the fire never goes still.
-    private func embers(t: TimeInterval) -> some View {
-        GeometryReader { geo in
-            ZStack {
-                ember(t: t, period: 1.7, phase: 0.0, xFrac: 0.50, geo: geo,
-                      color: MobileTheme.amber)
-                ember(t: t, period: 2.1, phase: 0.6, xFrac: 0.42, geo: geo,
-                      color: MobileTheme.ember)
-                ember(t: t, period: 1.4, phase: 1.2, xFrac: 0.58, geo: geo,
-                      color: Color(hex: "FED430"))
-            }
-        }
-        .blendMode(.plusLighter)
-        .allowsHitTesting(false)
-    }
-
-    private func ember(t: TimeInterval,
-                       period: Double,
-                       phase: Double,
-                       xFrac: CGFloat,
-                       geo: GeometryProxy,
-                       color: Color) -> some View {
-        // Local progress 0 → 1 over `period` seconds.
-        let raw = (t + phase).truncatingRemainder(dividingBy: period)
-        let progress = CGFloat(raw / period)
-
-        // Travel within the flame body only (top 70% of the SVG bounds —
-        // the bottom 30% is the descending bar ladder, where flames don't
-        // belong).
-        let yStart: CGFloat = 0.65
-        let yEnd: CGFloat = 0.05
-        let y = yStart + (yEnd - yStart) * progress
-
-        // Subtle horizontal wobble so the spark drifts as it rises.
-        let wobble = CGFloat(sin(Double(progress) * .pi * 2 + phase)) * 0.04
-        let x = xFrac + wobble
-
-        // 0 → peak → 0 over the cycle. `sin(progress·π)` gives a clean arc.
-        let alpha = max(0, sin(Double(progress) * .pi))
-
-        return Circle()
-            .fill(color)
-            .frame(width: 14, height: 14)
-            .blur(radius: 6)
-            .opacity(alpha * 0.9)
-            .position(x: geo.size.width * x, y: geo.size.height * y)
-    }
-}
-
 // MARK: - EmberBackdrop
 
 /// Warm ambient gradient backdrop with two slowly drifting ember orbs.
@@ -891,10 +684,12 @@ struct FirebaseUnavailableScene: View {
                 .ignoresSafeArea()
 
             VStack(spacing: MobileTheme.Spacing.xl) {
-                EmberLogo(reduceMotion: reduceMotion,
-                          reduceTransparency: reduceTransparency)
-                    .frame(maxWidth: 180)
-                    .frame(height: 132)
+                GemLogoView(size: 132) {
+                    Image("AppLogo")
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                }
 
                 Text("Cloud sync isn't configured")
                     .font(.system(.title2, design: .rounded).weight(.bold))

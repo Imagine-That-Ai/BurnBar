@@ -1,3 +1,4 @@
+import OpenBurnBarCore
 import SwiftUI
 
 /// Minimal splash shown in the popover on first launch.
@@ -17,7 +18,12 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.lg) {
-            AppLogoView(size: 48)
+            GemLogoView(size: 88) {
+                Image("AppLogo")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+            }
 
             VStack(spacing: DesignSystem.Spacing.sm) {
                 Text("Welcome to OpenBurnBar")

@@ -198,3 +198,48 @@ The Xcode target **`OpenBurnBarTests`** (declared in `project.yml`) compiles **o
 - `AgentLensTests/Support/**`
 
 Files under `AgentLensTests/Quarantine/**` remain in the tree as migration reference and do not affect the active test bundle until they are fixed against current APIs, moved back into `Active/`, and regenerated through `xcodegen generate`. See `AgentLensTests/README.md` and `CONTRIBUTING.md` for the active vs quarantine policy.
+
+## In-App Update Mechanism
+
+The macOS app surfaces a channel-aware "update available" banner in the menu-bar
+popover, the dashboard, and Settings → Updates, plus an ember badge dot on the
+menu-bar icon. It is compiled out of the sandboxed Mac App Store build
+(`#if !DISTRIBUTION_MAS`), which updates through the App Store.
+
+**Single source of truth.** `DirectDownloadUpdateChecker` (`@Observable @MainActor`
+singleton) owns a `UpdatePhase` state machine
+(`idle → checking → available → downloading → verifying → installing → relaunching → failed`).
+`UpdateBannerCard` renders from `checker.phase`, so every surface stays in
+lock-step. The checker resolves the install channel once at launch
+(`UpdateChannelResolver`):
+
+| Channel | Detection | "Update" action |
+|---|---|---|
+| `dmg` | `/Applications/OpenBurnBar.app`, notarized, no Caskroom receipt | One-click download → verify → install → relaunch |
+| `homebrew` | Caskroom receipt present (`/opt/homebrew` or `/usr/local`) | "Update via Homebrew" (`brew upgrade --cask`) — never replaces the bundle |
+| `source` | `OpenBurnBarBuildChannel == source` stamp + a `.git` at the stamped source root | "N commits behind" + `git pull && ./scripts/build.sh` (read-only default; one-click rebuild is opt-in) |
+| `unknown` | anything else | silent |
+
+**DMG install (the only auto-replace path).** After the existing SHA-256 + Ed25519
+verification over the DMG bytes (against the pinned `SUPublicEDKey`),
+`DirectDownloadUpdateInstaller` mounts the DMG, best-effort-validates the bundle's
+code signature, then spawns a detached relaunch trampoline via
+`posix_spawn` + `POSIX_SPAWN_SETSID` (session leader, survives app exit). The
+trampoline waits for the app PID, kills the bundled daemon by path (to free the
+gateway port), swaps `/Applications/OpenBurnBar.app` with an atomic
+ditto → rename and `.bak` rollback, strips quarantine, and relaunches. If
+`/Applications` isn't writable it falls back to opening the DMG.
+
+**Pre-release channel.** When enabled (Settings toggle), the checker queries the
+GitHub Releases API for the newest release including prereleases and uses that
+release's `latest-macos.json` asset through the same verify/install pipeline.
+
+**Build provenance stamp.** The `Stamp Build Provenance` post-build phase in
+`project.yml` writes `OpenBurnBarBuildChannel`, `OpenBurnBarGitCommit/Branch/Remote`,
+and `OpenBurnBarSourceRoot` into the bundle Info.plist. CI release builds export
+`OPENBURNBAR_BUILD_CHANNEL=release`; local builds default to `source`.
+
+Preferences live in `UserDefaults` (`updates.automaticChecks`,
+`updates.prereleaseChannel`, `updates.oneClickSourceUpdate`) so the Settings
+toggles bind via `@AppStorage` without coupling to the checker. Pure-logic
+coverage is in `AgentLensTests/Active/UpdaterLogicTests.swift`.
