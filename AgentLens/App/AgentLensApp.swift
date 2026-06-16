@@ -1688,6 +1688,8 @@ struct OpenBurnBarApp: App {
                     }
                     .keyboardShortcut("i", modifiers: [.command, .option, .control])
                 }
+                #else
+                CommandGroup(after: .appInfo) {}
                 #endif
             }
 

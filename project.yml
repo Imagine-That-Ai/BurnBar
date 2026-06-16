@@ -29,10 +29,13 @@ packages:
   OpenBurnBarCore:
     path: OpenBurnBarCore
   # SQLCipher-enabled GRDB (SPM). Must stay aligned with OpenBurnBarDaemon/Package.swift.
-  # Upstream: https://github.com/SahebRoy92/GRDB-SQLCipher (GRDB 6.29.3 + SQLCipher.swift)
+  # Vendored from https://github.com/SahebRoy92/GRDB-SQLCipher at 2cf6c756 and
+  # patched so SwiftPM GRDB imports the pinned SQLCipher XCFramework instead of system sqlite3.
   GRDB:
-    url: https://github.com/SahebRoy92/GRDB-SQLCipher
-    exactVersion: 6.29.3
+    path: Vendor/GRDB-SQLCipher
+  SQLCipher:
+    url: https://github.com/sqlcipher/SQLCipher.swift.git
+    exactVersion: 4.16.0
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
     from: "11.0.0"
@@ -114,6 +117,8 @@ targets:
         INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
         INFOPLIST_KEY_NSSupportsSuddenTermination: NO
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
+        GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
+        OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
@@ -231,6 +236,8 @@ targets:
         product: OpenBurnBarSignalCore
       - package: GRDB
         product: GRDB
+      - package: SQLCipher
+        product: SQLCipher
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -259,6 +266,8 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarDaemon
         SKIP_INSTALL: true
+        GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
+        OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
     preBuildScripts:
       - name: Dedupe GRDB Link File Entries (Xcode 16)
         script: |
@@ -293,6 +302,8 @@ targets:
         link: false
       - package: GRDB
         product: GRDB
+      - package: SQLCipher
+        product: SQLCipher
       - sdk: UserNotifications.framework
 
   OpenBurnBarDaemonExecutable:

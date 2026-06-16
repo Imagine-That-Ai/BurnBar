@@ -193,10 +193,11 @@ final class DataStoreCoordinator {
     /// stored value.
     ///
     /// **Fail-closed invariant.** When encryption is enabled, this method never
-    /// opens the store plaintext. If the build is missing SQLCipher or the current
-    /// database is a legacy plaintext SQLite file, startup fails with a typed error
-    /// so the app can surface migration/reinstall guidance instead of silently
-    /// violating the data-at-rest contract.
+    /// opens the store plaintext. If the build is missing SQLCipher or Keychain
+    /// persistence fails, startup fails with a typed error. If the current
+    /// database is a legacy plaintext SQLite file, the verified SQLCipher export
+    /// migration runs before the encrypted pool opens; migration failure aborts
+    /// startup instead of silently violating the data-at-rest contract.
     private static func makeDatabasePool(path: String) throws -> DatabasePool {
         let defaults = UserDefaults.standard
         // Default-on for new installs: only treat as disabled when explicitly stored false.
@@ -205,65 +206,98 @@ final class DataStoreCoordinator {
         guard encryptionEnabled else {
             var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
             installDebugQueryTracer(on: &config)
-            return try DatabasePool(path: path, configuration: config)
+            return try openDatabasePool(path: path, configuration: config)
         }
 
-        // Codec-absence is a BUILD condition (the SPM `GRDB`/`CSQLite` systemLibrary links stock
-        // SQLite with no SQLCipher codec), identical for every install — not a per-user data issue.
-        // Refusing here would brick 100% of installs while delivering zero encryption, so when the
-        // codec is provably unavailable we run plaintext but DISCLOSE it (persistent acknowledged
-        // flag + error log) — never the silent plaintext of the original bug, never a startup brick.
         guard DatabaseEncryptionService.isCipherAvailable() else {
             AppLogger.dataStore.error(
                 "encryption_unavailable_codec_absent",
                 metadata: [
-                    "reason": "SQLCipher codec not linked (PRAGMA cipher_version empty); running disclosed plaintext",
+                    "reason": "SQLCipher codec not linked (PRAGMA cipher_version empty); refusing plaintext fallback",
                     "path": path
                 ]
             )
-            return try openDisclosedPlaintext(path: path, defaults: defaults)
+            throw DatabaseEncryptionError.cipherUnavailable
         }
 
-        // Codec IS available. A legacy plaintext DB is a per-user migration decision: refuse to
-        // open it encrypted-but-unmigrated (the startup-recovery UI handles it) rather than
-        // silently continue plaintext.
+        let encryptionKey = try DatabaseEncryptionService.getOrCreatePersistedKey()
         let fileExists = FileManager.default.fileExists(atPath: path)
         if fileExists, DatabaseEncryptionService.isEncryptedDatabaseFile(at: path) == false {
-            AppLogger.dataStore.error(
-                "encryption_refused_existing_plaintext_db",
-                metadata: [
-                    "reason": "Existing plaintext database; refusing plaintext fallback while encryption is enabled",
-                    "path": path
-                ]
+            let migrated: Bool
+            do {
+                migrated = try DatabaseEncryptionService.migratePlaintextDatabaseIfNeeded(
+                    at: path,
+                    encryptionKey: encryptionKey
+                )
+            } catch {
+                guard DatabaseEncryptionService.isMissingSQLiteSidecarRemoval(error),
+                      DatabaseEncryptionService.isEncryptedDatabaseFile(at: path)
+                else {
+                    throw error
+                }
+                DatabaseEncryptionService.removeSQLiteSidecarsIfPresent(at: path)
+                migrated = true
+            }
+            AppLogger.dataStore.notice(
+                "encryption_migrated_existing_plaintext_db",
+                metadata: ["path": path, "migrated": "\(migrated)"]
             )
-            throw DatabaseEncryptionError.plaintextDatabaseRequiresMigration(path: path)
-        }
-
-        guard let encryptionKey = DatabaseEncryptionService.getOrCreateKey() else {
-            // Keychain persistence failed. Fail closed rather than creating a
-            // database with an unpersisted key that cannot be recovered.
-            AppLogger.dataStore.error("Failed to create or persist database encryption key in Keychain — cannot open encrypted database")
-            throw DatabaseEncryptionError.encryptionKeyUnavailable
         }
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
         installDebugQueryTracer(on: &config)
-        return try DatabasePool(path: path, configuration: config)
+        return try openDatabasePool(path: path, configuration: config)
     }
 
-    /// UserDefaults key set when the app is running plaintext because the SQLCipher codec is not
-    /// linked. Read by the security/settings surface to render a persistent "database is not
-    /// encrypted" banner — this is what makes the plaintext fallback LOUD rather than silent.
+    private static func openDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
+        var lastSidecarError: Error?
+        for attempt in 1...3 {
+            do {
+                return try openAndValidateDatabasePool(path: path, configuration: configuration)
+            } catch {
+                guard DatabaseEncryptionService.isMissingSQLiteSidecarRemoval(error) else { throw error }
+                lastSidecarError = error
+                AppLogger.dataStore.notice(
+                    "database_pool_open_retry_after_missing_sidecar",
+                    metadata: ["path": path, "attempt": "\(attempt)", "error": "\(error)"]
+                )
+                DatabaseEncryptionService.removeSQLiteSidecarsIfPresent(at: path)
+            }
+        }
+
+        if let lastSidecarError {
+            AppLogger.dataStore.notice(
+                "database_pool_open_failed_after_sidecar_retries",
+                metadata: ["path": path, "error": "\(lastSidecarError)"]
+            )
+            throw lastSidecarError
+        }
+        return try openAndValidateDatabasePool(path: path, configuration: configuration)
+    }
+
+    private static func openAndValidateDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
+        let pool = try DatabasePool(path: path, configuration: configuration)
+        do {
+            _ = try pool.read { db in
+                try Int.fetchOne(db, sql: "PRAGMA user_version")
+            }
+            return pool
+        } catch {
+            do {
+                try pool.close()
+            } catch {
+                AppLogger.dataStore.debug(
+                    "database_pool_validation_close_failed",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+            }
+            throw error
+        }
+    }
+
+    /// Legacy UserDefaults key retained so older settings/recovery UI can clear
+    /// stale disclosed-plaintext state. New encryption-enabled startup rejects
+    /// plaintext fallback when SQLCipher is unavailable.
     static let plaintextFallbackAcknowledgedDefaultsKey = "databaseEncryptionPlaintextFallbackAcknowledged"
-
-    /// Opens the database in plaintext and persists the disclosure flag so the UI can surface a
-    /// standing "not encrypted" banner. Used only when encryption is requested but the build cannot
-    /// provide the codec (see `makeDatabasePool`).
-    private static func openDisclosedPlaintext(path: String, defaults: UserDefaults) throws -> DatabasePool {
-        defaults.set(true, forKey: plaintextFallbackAcknowledgedDefaultsKey)
-        var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
-        installDebugQueryTracer(on: &config)
-        return try DatabasePool(path: path, configuration: config)
-    }
 
     #if DEBUG
     static func makeDatabasePoolForTesting(path: String) throws -> DatabasePool {
@@ -285,7 +319,7 @@ final class DataStoreCoordinator {
 
     /// DEBUG-only N+1 detection (`OpenBurnBarQueryTracer`). Must run AFTER
     /// `makeConfiguration`: GRDB chains `prepareDatabase` closures in install
-    /// order, so the SQLCipher `PRAGMA key` executes before the trace hook
+    /// order, so the SQLCipher passphrase setup executes before the trace hook
     /// registers and the cipher key never reaches the trace log.
     private static func installDebugQueryTracer(on config: inout Configuration) {
         #if DEBUG

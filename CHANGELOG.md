@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced Sentry DSN configuration: added fallback lookup from `GoogleService-Info.plist` inside `AgentLensApp` and `AppDelegate` if the main Info.plist DSN is unpopulated.
 - Refactored subject fragment sanitization in `ComputerUseSecurityCallableClient` to utilize Unicode scalar parsing instead of Regex matching, ensuring broad Swift version compatibility.
 - Fixed Firebase config injection script to apply PlistBuddy updates across all build targets in the loop.
+- Closed the Handoff 2 local-data gaps: macOS database encryption setup now throws a typed Keychain persistence error, refuses unpersisted SQLCipher keys, links SQLCipher 4.16.0 in app/daemon release builds, gates `PRAGMA cipher_version`, and migrates legacy plaintext stores on first encrypted launch while rejecting plaintext fallback.
+- Removed long-lived credential fallback paths from production deploy workflows: Firebase, hosting, and Firestore production deploys now require OIDC/WIF credentials and CI blocks `GCP_SA_KEY`, `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `FIREBASE_TOKEN`, and `credentials_json` regressions.
+- Added explicit CODEOWNERS coverage for security-sensitive trees and a static CI guard covering security callables, Stripe callables, CI scripts, vendored Signal code, Firestore rules, and project generation metadata.
 
 ### Changed
 

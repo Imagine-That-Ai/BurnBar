@@ -42,8 +42,9 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../OpenBurnBarCore"),
-        // Pinned to same revision as `project.yml` (OpenBurnBar app target).
-        .package(url: "https://github.com/SahebRoy92/GRDB-SQLCipher.git", exact: "6.29.3"),
+        // Vendored to match the app target: GRDB must import SQLCipher, not system sqlite3.
+        .package(path: "../Vendor/GRDB-SQLCipher"),
+        .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
         .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.0.0")
     ],
     targets: [
@@ -52,7 +53,11 @@ let package = Package(
             dependencies: [
                 .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
                 .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
-                .product(name: "GRDB", package: "GRDB-SQLCipher")
+                .product(name: "GRDB", package: "GRDB-SQLCipher"),
+                .product(name: "SQLCipher", package: "SQLCipher.swift")
+            ],
+            cSettings: [
+                .define("SQLITE_HAS_CODEC")
             ],
             linkerSettings: [.unsafeFlags(["-framework", "Network"])]
         ),
