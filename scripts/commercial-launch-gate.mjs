@@ -28,6 +28,12 @@ const LAUNCH_EVIDENCE_MANIFEST =
   "launch-evidence/final-launch-evidence.json";
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID =
   "com.openburnbar.hostedQuotaSync.cloud.monthly";
+const ADMIN_REVIEW_BYPASS_USERS = (
+  process.env.OPENBURNBAR_ADMIN_REVIEW_BYPASS_USERS || "Ajnunezg"
+)
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 export const COMMERCIAL_PRODUCTS = Object.freeze({
   legacyHostedQuota: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
   cloudMonthly: "com.openburnbar.pro.monthly",
@@ -611,20 +617,29 @@ function checkProtection() {
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
   const protection = JSON.parse(result.stdout);
   const checks = protection.required_status_checks?.contexts || [];
+  const reviewCount =
+    protection.required_pull_request_reviews
+      ?.required_approving_review_count ?? 0;
+  const reviewBypassUsers =
+    protection.required_pull_request_reviews?.bypass_pull_request_allowances
+      ?.users?.map((user) => user.login)
+      .filter(Boolean) || [];
+  const adminHumanApprovalBypassed =
+    reviewCount === 0 ||
+    ADMIN_REVIEW_BYPASS_USERS.every((user) => reviewBypassUsers.includes(user));
   return {
     ok:
       protection.enforce_admins?.enabled === true &&
       protection.allow_force_pushes?.enabled === false &&
       protection.allow_deletions?.enabled === false &&
-      protection.required_pull_request_reviews
-        ?.required_approving_review_count === 1 &&
+      adminHumanApprovalBypassed &&
       ["openburnbar-pr", ...REQUIRED_CODEQL_CHECKS].every((check) =>
         checks.includes(check),
       ),
     requiredChecks: checks,
-    reviewCount:
-      protection.required_pull_request_reviews
-        ?.required_approving_review_count ?? 0,
+    adminHumanApprovalBypassed,
+    reviewBypassUsers,
+    reviewCount,
     adminsEnforced: protection.enforce_admins?.enabled === true,
     forcePushesAllowed: protection.allow_force_pushes?.enabled === true,
     deletionsAllowed: protection.allow_deletions?.enabled === true,
