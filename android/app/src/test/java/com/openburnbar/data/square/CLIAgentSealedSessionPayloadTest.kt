@@ -1,6 +1,7 @@
 
 package com.openburnbar.data.square
 
+import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import io.mockk.every
 import io.mockk.mockkStatic
@@ -163,6 +164,56 @@ class CLIAgentSealedSessionPayloadTest {
 
             assertEquals(original, reopened)
             assertEquals("My refactor", reopened?.customTitle)
+        } finally {
+            unmockkStatic(android.util.Base64::class)
+        }
+    }
+
+    @Test
+    fun sealedPayloadRoundTripsWithCliSessionPathBoundAadAndRejectsRelocation() {
+        mockkStatic(android.util.Base64::class)
+        every { android.util.Base64.encodeToString(any(), any()) } answers {
+            Base64.getEncoder().encodeToString(firstArg<ByteArray>())
+        }
+        every { android.util.Base64.decode(any<String>(), any()) } answers {
+            Base64.getDecoder().decode(firstArg<String>())
+        }
+        try {
+            val uid = "user-1"
+            val documentID = "session-1"
+            val key = ByteArray(32) { 0x44.toByte() }
+            val keyID = CloudVaultCrypto.vaultKeyID(key)
+            val aadContext =
+                CloudVaultAADContext(uid = uid, collection = "cli_sessions", docID = documentID, field = "sealedPayload")
+            val wrongDocumentContext =
+                CloudVaultAADContext(uid = uid, collection = "cli_sessions", docID = "session-other", field = "sealedPayload")
+            val original =
+                cliAgentSealedSessionJson.decodeFromString(
+                    CLIAgentSealedSessionPayload.serializer(),
+                    swiftCanonicalJson,
+                )
+
+            val sealed =
+                CloudVaultCrypto.sealPayload(
+                    cliAgentSealedSessionJson.encodeToString(
+                        CLIAgentSealedSessionPayload.serializer(),
+                        original,
+                    ).toByteArray(Charsets.UTF_8),
+                    key,
+                    keyID,
+                    aadContext,
+                )
+
+            assertEquals(aadContext.stringValue, sealed.aad)
+            val opened =
+                cliAgentSealedSessionJson.decodeFromString(
+                    CLIAgentSealedSessionPayload.serializer(),
+                    CloudVaultCrypto.openPayload(sealed, key, aadContext).toString(Charsets.UTF_8),
+                )
+
+            assertEquals(original, opened)
+            assertTrue(runCatching { CloudVaultCrypto.openPayload(sealed, key, wrongDocumentContext) }.isFailure)
+            assertTrue(runCatching { CloudVaultCrypto.openPayload(sealed, key) }.isFailure)
         } finally {
             unmockkStatic(android.util.Base64::class)
         }

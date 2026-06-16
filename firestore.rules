@@ -939,7 +939,7 @@ service cloud.firestore {
     }
 
     // M-007: use this only on writers that already emit path-bound AAD. Today
-    // that is `conversations` and `mobile_assistant_chats`; other sealed
+    // that is `conversations`, `mobile_assistant_chats`, and `cli_sessions`; other sealed
     // surfaces stay on `validSealedPayloadForUser` until their clients migrate.
     function validPathBoundSealedPayloadForUser(userId, vaultKeyID, payload, collection, docId) {
       return matchesCurrentVaultKey(userId, vaultKeyID)
@@ -1655,7 +1655,7 @@ service cloud.firestore {
         && request.resource.data.schemaVersion is int
         && request.resource.data.contentSealed == true
         && request.resource.data.sealedSchemaVersion == 2
-        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && validPathBoundSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload, "cli_sessions", sessionId)
         && (!("messageCount" in request.resource.data) || (request.resource.data.messageCount is int && request.resource.data.messageCount >= 0 && request.resource.data.messageCount <= 5000))
         && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
         && (!("lastAssistantMessageID" in request.resource.data) || (request.resource.data.lastAssistantMessageID is string && request.resource.data.lastAssistantMessageID.size() <= 512))
