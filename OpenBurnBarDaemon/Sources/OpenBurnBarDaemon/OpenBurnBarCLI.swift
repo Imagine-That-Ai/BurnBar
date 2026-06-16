@@ -12,6 +12,11 @@ public protocol BurnBarCLIClient: Sendable {
     func approveMission(id: BurnBarMissionID, note: String?) throws -> BurnBarMissionSnapshot
     func simulatorRuns(projectSlug: String?) throws -> [BurnBarSimulatorRunSnapshot]
     func simulatorReplay(runID: BurnBarSimulatorRunID) throws -> BurnBarSimulatorRunSnapshot
+    func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse
+    func codeIndex(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?) throws -> BurnBarProjectCodeIndexProjectResponse
+    func codeWatch(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?, pollIntervalSeconds: Double) throws -> BurnBarProjectCodeWatchProjectResponse
+    func codeSearch(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectCodeSearchResponse
+    func codeIndexStatus(projectPath: String?) throws -> BurnBarProjectCodeIndexStatusResponse
     func runResume(
         sessionID: String,
         targetHarness: String?,
@@ -130,6 +135,73 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
             )
         )
         return response.run
+    }
+
+    public func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryRecall,
+                authToken: authToken,
+                params: BurnBarProjectMemoryRecallRequest(query: query, projectPath: projectPath, limit: limit)
+            )
+        )
+    }
+
+    public func codeIndex(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?) throws -> BurnBarProjectCodeIndexProjectResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .codeIndexProject,
+                authToken: authToken,
+                params: BurnBarProjectCodeIndexProjectRequest(
+                    projectPath: projectPath,
+                    maxFiles: maxFiles,
+                    maxFileBytes: maxFileBytes,
+                    storageBudgetBytes: storageBudgetBytes
+                )
+            )
+        )
+    }
+
+    public func codeWatch(
+        projectPath: String?,
+        maxFiles: Int,
+        maxFileBytes: Int,
+        storageBudgetBytes: Int?,
+        pollIntervalSeconds: Double
+    ) throws -> BurnBarProjectCodeWatchProjectResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .codeWatchProject,
+                authToken: authToken,
+                params: BurnBarProjectCodeWatchProjectRequest(
+                    projectPath: projectPath,
+                    maxFiles: maxFiles,
+                    maxFileBytes: maxFileBytes,
+                    storageBudgetBytes: storageBudgetBytes,
+                    pollIntervalSeconds: pollIntervalSeconds
+                )
+            )
+        )
+    }
+
+    public func codeSearch(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectCodeSearchResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .codeSearch,
+                authToken: authToken,
+                params: BurnBarProjectCodeSearchRequest(query: query, projectPath: projectPath, limit: limit)
+            )
+        )
+    }
+
+    public func codeIndexStatus(projectPath: String?) throws -> BurnBarProjectCodeIndexStatusResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .codeIndexStatus,
+                authToken: authToken,
+                params: BurnBarProjectCodeIndexStatusRequest(projectPath: projectPath)
+            )
+        )
     }
 
     public func runResume(
@@ -372,6 +444,65 @@ public struct BurnBarCLIRunner {
             }
             let run = try client.simulatorReplay(runID: BurnBarSimulatorRunID(rawValue: effectiveArguments[1]))
             return "Replayed \(run.scenarioName) (\(run.id.rawValue)) with \(run.emittedEvents.count) event(s)."
+        case "search":
+            let args = Array(effectiveArguments.dropFirst())
+            let query = positionalArguments(args, optionNames: ["--cwd", "--limit"]).joined(separator: " ")
+            guard query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli search <query> [--cwd path] [--limit N]")
+            }
+            return formatCodeSearch(
+                try client.codeSearch(
+                    query: query,
+                    projectPath: optionValue("--cwd", in: args),
+                    limit: Int(optionValue("--limit", in: args) ?? "") ?? 20
+                )
+            )
+        case "recall":
+            let args = Array(effectiveArguments.dropFirst())
+            let query = positionalArguments(args, optionNames: ["--cwd", "--limit"]).joined(separator: " ")
+            guard query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli recall <query> [--cwd path] [--limit N]")
+            }
+            return formatMemoryRecall(
+                try client.memoryRecall(
+                    query: query,
+                    projectPath: optionValue("--cwd", in: args),
+                    limit: Int(optionValue("--limit", in: args) ?? "") ?? 20
+                )
+            )
+        case "index":
+            let args = Array(effectiveArguments.dropFirst())
+            let projectPath = optionValue("--cwd", in: args) ?? positionalArguments(args, optionNames: ["--cwd", "--max-files", "--max-file-bytes", "--storage-budget-bytes", "--poll-seconds"]).first
+            let maxFiles = Int(optionValue("--max-files", in: args) ?? "") ?? 2_500
+            let maxFileBytes = Int(optionValue("--max-file-bytes", in: args) ?? "") ?? 512_000
+            let storageBudgetBytes = Int(optionValue("--storage-budget-bytes", in: args) ?? "")
+            if args.contains("--watch") {
+                return formatCodeWatch(
+                    try client.codeWatch(
+                        projectPath: projectPath,
+                        maxFiles: maxFiles,
+                        maxFileBytes: maxFileBytes,
+                        storageBudgetBytes: storageBudgetBytes,
+                        pollIntervalSeconds: Double(optionValue("--poll-seconds", in: args) ?? "") ?? 2.0
+                    )
+                )
+            }
+            return formatCodeIndex(
+                try client.codeIndex(
+                    projectPath: projectPath,
+                    maxFiles: maxFiles,
+                    maxFileBytes: maxFileBytes,
+                    storageBudgetBytes: storageBudgetBytes
+                )
+            )
+        case "config":
+            let args = Array(effectiveArguments.dropFirst())
+            return formatProjectMemoryConfig(try client.codeIndexStatus(projectPath: optionValue("--cwd", in: args)))
+        case "healthcheck":
+            let args = Array(effectiveArguments.dropFirst())
+            let health = try client.health()
+            let status = try client.codeIndexStatus(projectPath: optionValue("--cwd", in: args))
+            return formatProjectMemoryHealthcheck(health: health, status: status)
         case "resume":
             let (response, mode) = try runResumeCommand(effectiveArguments)
             return Self.formatRunResumeResponse(response, mode: mode)
@@ -578,6 +709,11 @@ public struct BurnBarCLIRunner {
       mission-approve <missionID> [note]
       simulator-runs [projectSlug]
       simulator-replay <runID>
+      search <query> [--cwd path] [--limit N]
+      recall <query> [--cwd path] [--limit N]
+      index [path] [--max-files N] [--max-file-bytes N] [--storage-budget-bytes N] [--watch] [--poll-seconds N]
+      config [--cwd path]
+      healthcheck [--cwd path]
       resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
       remote-unlock-certification <status|record-hardware-proof|reset>
       audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
@@ -599,6 +735,11 @@ public struct BurnBarCLIRunner {
         "mission-approve",
         "simulator-runs",
         "simulator-replay",
+        "search",
+        "recall",
+        "index",
+        "config",
+        "healthcheck",
         "resume",
         "remote-unlock-certification",
         "audit-verify",
@@ -704,6 +845,83 @@ public struct BurnBarCLIRunner {
         }.joined(separator: "\n")
     }
 
+    private func formatCodeSearch(_ response: BurnBarProjectCodeSearchResponse) -> String {
+        guard response.hits.isEmpty == false else {
+            return "No code hits for project \(response.projectID)."
+        }
+        return response.hits.map { hit in
+            "\(hit.filePath) \(hit.chunkID)\n\(hit.snippet)"
+        }.joined(separator: "\n\n")
+    }
+
+    private func formatMemoryRecall(_ response: BurnBarProjectMemoryRecallResponse) -> String {
+        guard response.hits.isEmpty == false else {
+            return "No memories for project \(response.projectID)."
+        }
+        return response.hits.map { hit in
+            let tags = hit.tags.isEmpty ? "" : " #\(hit.tags.joined(separator: " #"))"
+            return "\(hit.memoryID) [\(hit.scope)/\(hit.kind)]\(tags)\n\(hit.snippet)"
+        }.joined(separator: "\n\n")
+    }
+
+    private func formatCodeIndex(_ response: BurnBarProjectCodeIndexProjectResponse) -> String {
+        var lines = [
+            "Indexed project \(response.projectID)",
+            "root=\(response.projectRoot)",
+            "files=\(response.indexedFiles) chunks=\(response.chunkCount) symbols=\(response.symbolCount) rejected=\(response.rejectedFiles.count)",
+            "audit_hash=\(response.auditHash)"
+        ]
+        if let commitSHA = response.commitSHA {
+            lines.append("commit=\(commitSHA)")
+        }
+        if response.rejectedFiles.isEmpty == false {
+            lines.append("Rejected files:")
+            lines.append(contentsOf: response.rejectedFiles.map { "\($0.filePath): \($0.labels.joined(separator: ", "))" })
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func formatCodeWatch(_ response: BurnBarProjectCodeWatchProjectResponse) -> String {
+        [
+            "Watching project \(response.projectID)",
+            "root=\(response.projectRoot)",
+            "poll_seconds=\(response.pollIntervalSeconds)",
+            "initial_files=\(response.indexedFiles)",
+            "signature=\(response.signature)"
+        ].joined(separator: "\n")
+    }
+
+    private func formatProjectMemoryConfig(_ status: BurnBarProjectCodeIndexStatusResponse) -> String {
+        [
+            "project_id=\(status.projectID)",
+            "project_root=\(status.projectRoot ?? "unindexed")",
+            "indexed_at=\(status.indexedAt ?? "never")",
+            "artifacts=\(status.artifactCount)",
+            "symbols=\(status.symbolCount)",
+            "references=\(status.referenceCount)",
+            "call_edges=\(status.callEdgeCount)",
+            "storage_bytes=\(status.storageByteCount)",
+            "storage_budget_bytes=\(status.storageBudgetBytes)",
+            "storage_within_budget=\(status.storageWithinBudget)",
+            "last_vacuumed_at=\(status.lastVacuumedAt ?? "never")"
+        ].joined(separator: "\n")
+    }
+
+    private func formatProjectMemoryHealthcheck(
+        health: BurnBarHealthResponse,
+        status: BurnBarProjectCodeIndexStatusResponse
+    ) -> String {
+        [
+            "liveness=ok daemon=\(health.daemonVersion) protocol=\(health.protocolVersion)",
+            "project_id=\(status.projectID)",
+            "readiness=\(status.indexedAt == nil ? "unindexed" : "ready")",
+            "artifacts=\(status.artifactCount) chunks=\(status.chunkCount) symbols=\(status.symbolCount)",
+            "pending_forgets=\(status.pendingForgetCount)",
+            "storage=\(status.storageByteCount)/\(status.storageBudgetBytes) within_budget=\(status.storageWithinBudget)",
+            "last_vacuumed_at=\(status.lastVacuumedAt ?? "never")"
+        ].joined(separator: "\n")
+    }
+
     public static func formatRunResumeResponse(_ response: BurnBarRunResumeResponse, mode: BurnBarResumeMode) -> String {
         switch response.kind {
         case "native":
@@ -734,6 +952,25 @@ public struct BurnBarCLIRunner {
         default:
             return "error: unknown response kind '\(response.kind)'"
         }
+    }
+
+    private func positionalArguments(_ arguments: [String], optionNames: Set<String>) -> [String] {
+        var output: [String] = []
+        var index = 0
+        while index < arguments.count {
+            let value = arguments[index]
+            if optionNames.contains(value) {
+                index += 2
+                continue
+            }
+            if value.hasPrefix("--") {
+                index += 1
+                continue
+            }
+            output.append(value)
+            index += 1
+        }
+        return output
     }
 
     private static func resumeOptionValue(_ name: String, in arguments: [String]) throws -> String? {

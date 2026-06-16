@@ -6,6 +6,7 @@ import OpenBurnBarCore
 /// Defines the available settings tabs in the settings navigation.
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general
+    case updates
     case daemon
     case account
     case cloud
@@ -23,6 +24,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: return "General"
+        case .updates: return "Updates"
         case .daemon: return "Daemon"
         case .account: return "Account"
         case .cloud: return "Cloud"
@@ -43,6 +45,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general:
             return "Appearance, refresh, default view, indexing, summaries"
+        case .updates:
+            return "App version, automatic updates, release channel"
         case .daemon:
             return "Lifecycle, HTTP gateway, controller runtime"
         case .account:
@@ -71,6 +75,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .general: return "gearshape.fill"
+        case .updates: return "arrow.down.circle.fill"
         case .daemon: return "cpu.fill"
         case .account: return "person.crop.circle.fill"
         case .cloud: return "sparkles"
@@ -88,6 +93,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var accentColor: Color {
         switch self {
         case .general: return DesignSystem.Colors.amber
+        case .updates: return DesignSystem.Colors.frost
         case .daemon: return DesignSystem.Colors.teal
         case .account: return DesignSystem.Colors.whimsy
         case .cloud: return DesignSystem.Colors.hermesAureate
@@ -115,7 +121,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 extension SettingsTab {
     static var visibleTabs: [SettingsTab] {
         #if DISTRIBUTION_MAS
-        return allCases.filter { $0 != .computerUse }
+        return allCases.filter { $0 != .computerUse && $0 != .updates }
         #else
         return allCases
         #endif

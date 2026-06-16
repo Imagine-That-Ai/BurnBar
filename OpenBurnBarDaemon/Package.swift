@@ -52,14 +52,16 @@ let package = Package(
             dependencies: [
                 .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
                 .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
-                .product(name: "GRDB", package: "GRDB-SQLCipher"),
-                .product(name: "Sentry", package: "sentry-cocoa")
+                .product(name: "GRDB", package: "GRDB-SQLCipher")
             ],
             linkerSettings: [.unsafeFlags(["-framework", "Network"])]
         ),
         .executableTarget(
             name: "OpenBurnBarDaemonExecutable",
-            dependencies: ["OpenBurnBarDaemon"]
+            dependencies: [
+                "OpenBurnBarDaemon",
+                .product(name: "Sentry", package: "sentry-cocoa")
+            ]
         ),
         .executableTarget(
             name: "OpenBurnBarCLI",

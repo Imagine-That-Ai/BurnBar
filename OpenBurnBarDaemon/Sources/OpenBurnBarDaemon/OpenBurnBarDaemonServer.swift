@@ -39,6 +39,7 @@ public actor BurnBarDaemonServer {
     let computerUseService: ComputerUseService
     let missionControlService: any BurnBarMissionControlServing
     let indexedSearch: BurnBarIndexedSearchService?
+    let projectCodeMemory: BurnBarProjectCodeMemoryStore?
     let resumeService: BurnBarResumeService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
@@ -208,8 +209,21 @@ public actor BurnBarDaemonServer {
                 )
                 self.resumeService = nil
             }
+            do {
+                self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
+                    databasePath: path,
+                    logger: BurnBarDaemonLogger(category: "project-code-memory")
+                )
+            } catch {
+                logger.warning(
+                    "project_code_memory_init_failed",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+                self.projectCodeMemory = nil
+            }
         } else {
             self.indexedSearch = nil
+            self.projectCodeMemory = nil
             self.resumeService = nil
         }
 
@@ -552,6 +566,19 @@ public actor BurnBarDaemonServer {
                 )
             case .searchQuery:
                 return try await handleSearchRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .memoryRemember, .memoryRecall, .memoryForget, .memoryAuditTrail, .memoryAnalytics:
+                return try await handleMemoryRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .codeIndexProject, .codeWatchProject, .codeSearch, .codeContextPack, .codeGetSymbol, .codeFindReferences,
+                 .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore:
+                return try await handleCodeRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

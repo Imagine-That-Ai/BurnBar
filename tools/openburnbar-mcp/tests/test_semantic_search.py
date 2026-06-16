@@ -463,3 +463,43 @@ def test_project_memory_cloud_sync_encrypts_and_commits(tmp_path, monkeypatch):
     assert payload["sealedSnapshot"]["aad"] == (
         f"OpenBurnBar-CloudVault-aad-v2|userA|project_memory_snapshots|{payload['docID']}|sealedSnapshot|2|sealedSnapshot"
     )
+
+
+def test_project_memory_cloud_delete_uses_opaque_doc_id(monkeypatch):
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_SYNC", "true")
+    monkeypatch.setattr(
+        server,
+        "_cloud_config",
+        lambda: {
+            "status": "ok",
+            "projectID": "burnbar",
+            "region": "us-central1",
+            "idToken": "token",
+            "uid": "userA",
+            "vaultKey": b"\x00" * 32,
+        },
+    )
+
+    captured: dict[str, object] = {}
+
+    def _fake_callable(name, payload, _config):
+        captured["name"] = name
+        captured["payload"] = payload
+        return {
+            "ok": True,
+            "docID": payload.get("docID"),
+            "existed": True,
+            "receiptHash": "e" * 64,
+        }
+
+    monkeypatch.setattr(server, "_call_firebase_callable", _fake_callable)
+    response = json.loads(server.burnbar_cloud_delete_project_memory("BurnBar"))
+
+    assert response["status"] == "ok"
+    assert response["source"] == "cloud-delete"
+    assert captured["name"] == "deleteEncryptedProjectMemorySnapshot"
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload == {"docID": server._cloud_vault_project_memory_doc_id("burnbar", b"\x00" * 32)}
+    assert "BurnBar" not in json.dumps(payload)
+    assert response["result"]["receiptHash"] == "e" * 64

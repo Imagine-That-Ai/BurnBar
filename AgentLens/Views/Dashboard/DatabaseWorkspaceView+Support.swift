@@ -75,6 +75,8 @@ extension SearchSourceKind {
             return "Agent Doc"
         case .sharedArtifact:
             return "Shared"
+        case .code:
+            return "Code"
         }
     }
 }

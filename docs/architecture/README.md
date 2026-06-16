@@ -13,6 +13,7 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [005-sync-ownership.md](005-sync-ownership.md) | Local SQLite vs Firestore vs iCloud planes |
 | [007-ops-notification-plane.md](007-ops-notification-plane.md) | GCP Monitoring + Sentry + deploy gates |
 | [008-remote-control-engine.md](008-remote-control-engine.md) | Iroh-first remote desktop, media, and remote-control engine |
+| [010-project-code-static-parser.md](010-project-code-static-parser.md) | Stateless local Tree-sitter helper for Project Code Memory |
 
 Related operational docs:
 

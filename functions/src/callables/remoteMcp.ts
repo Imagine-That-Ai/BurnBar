@@ -17,9 +17,22 @@ import {
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
-import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "../remoteMcpGrant.js";
+import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc, type RemoteMcpScope } from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
+
+const remoteMcpScopeValues = new Set<string>([
+  "search:read",
+  "conversation:read",
+  "usage:read",
+  "index:status",
+  "knowledge:read",
+  "code:read",
+]);
+
+function isRemoteMcpScope(value: unknown): value is RemoteMcpScope {
+  return typeof value === "string" && remoteMcpScopeValues.has(value);
+}
 
 export const issueRemoteMcpGrant = onCall(
   {
@@ -51,14 +64,7 @@ export const issueRemoteMcpGrant = onCall(
       if (!tokenSecret && !tokenEd25519PrivateKeyBase64PEM) {
         throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
       }
-      const scopes = Array.isArray(request.data.scopes)
-        ? request.data.scopes.filter(
-            (scope): scope is "search:read" | "conversation:read" | "usage:read" | "index:status" | "knowledge:read" =>
-              ["search:read", "conversation:read", "usage:read", "index:status", "knowledge:read"].includes(
-                String(scope),
-              ),
-          )
-        : undefined;
+      const scopes = Array.isArray(request.data.scopes) ? request.data.scopes.filter(isRemoteMcpScope) : undefined;
       const grantModeRaw = typeof request.data.grantMode === "string" ? request.data.grantMode : "local_decrypt_shim";
       const grantMode =
         grantModeRaw === "sealed_only" || grantModeRaw === "remote_readable_explicit_opt_in"

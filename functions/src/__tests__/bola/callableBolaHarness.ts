@@ -29,6 +29,7 @@ function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<stri
     connectionId: "bob-conn",
     eventId: "bob-event",
     code: "ABCDEFGHJKMN",
+    docID: "bob-doc",
     documentID: "bob-doc",
     repoId: "bob-repo",
     sourceManifestId: "bob-src",

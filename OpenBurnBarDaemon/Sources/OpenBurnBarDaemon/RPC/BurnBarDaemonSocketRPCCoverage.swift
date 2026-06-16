@@ -109,6 +109,27 @@ enum BurnBarDaemonSocketRPCCoverage {
         .searchQuery
     ]
 
+    static let memory: Set<BurnBarRPCMethod> = [
+        .memoryRemember,
+        .memoryRecall,
+        .memoryForget,
+        .memoryAuditTrail,
+        .memoryAnalytics
+    ]
+
+    static let code: Set<BurnBarRPCMethod> = [
+        .codeIndexProject,
+        .codeWatchProject,
+        .codeSearch,
+        .codeContextPack,
+        .codeGetSymbol,
+        .codeFindReferences,
+        .codeCallGraph,
+        .codeDiagnostics,
+        .codeIndexStatus,
+        .codeExplore
+    ]
+
     static var allHandled: Set<BurnBarRPCMethod> {
         lifecycle
             .union(config)
@@ -120,6 +141,8 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(client)
             .union(runWorkspaceApproval)
             .union(search)
+            .union(memory)
+            .union(code)
     }
 
     static func domain(for method: BurnBarRPCMethod) -> String? {
@@ -133,6 +156,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         if client.contains(method) { return "client" }
         if runWorkspaceApproval.contains(method) { return "run_workspace_approval" }
         if search.contains(method) { return "search" }
+        if memory.contains(method) { return "memory" }
+        if code.contains(method) { return "code" }
         return nil
     }
 }

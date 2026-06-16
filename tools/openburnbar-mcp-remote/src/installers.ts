@@ -4,7 +4,7 @@ const tokenEnvVar = "OPENBURNBAR_MCP_ACCESS_TOKEN";
 const localPythonPath = "/absolute/path/to/OpenBurnBar/tools/openburnbar-mcp/.venv/bin/python";
 const localServerPath = "/absolute/path/to/OpenBurnBar/tools/openburnbar-mcp/server.py";
 
-export type ClientKind = "codex" | "claude" | "droid" | "kimi" | "forge" | "generic";
+export type ClientKind = "codex" | "claude" | "cursor" | "droid" | "kimi" | "forge" | "generic";
 
 function codexConfig(): string {
   return [
@@ -64,6 +64,8 @@ export function installer(kind: ClientKind): string {
       return codexConfig();
     case "claude":
       return `claude mcp add openburnbar -- ${command} mcp serve`;
+    case "cursor":
+      return json;
     case "droid":
       return json;
     case "kimi":

@@ -88,6 +88,7 @@ export {
   getEncryptedSessionBlobDownloadUrl,
   commitEncryptedSearchIndexBatch,
   commitEncryptedProjectMemorySnapshot,
+  deleteEncryptedProjectMemorySnapshot,
   getEncryptedProjectMemorySnapshot,
   listEncryptedProjectMemorySnapshots,
   searchEncryptedConversationIndex,

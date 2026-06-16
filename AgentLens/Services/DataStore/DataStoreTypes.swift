@@ -25,6 +25,16 @@ enum SearchSourceKind: String, Codable, CaseIterable, Sendable {
     case skillDoc = "skill_doc"
     case agentDoc = "agent_doc"
     case sharedArtifact = "shared_artifact"
+    case code
+
+    static let sourceArtifactKinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+
+    static let authoringContextKinds: Set<SearchSourceKind> = [
+        .conversation,
+        .skillDoc,
+        .agentDoc,
+        .sharedArtifact
+    ]
 }
 
 enum ProjectionJobType: String, Codable, CaseIterable, Sendable {

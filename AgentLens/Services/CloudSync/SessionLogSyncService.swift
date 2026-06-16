@@ -1465,6 +1465,7 @@ protocol SessionLogEncryptedCloudClient: Sendable {
     ) async throws
     func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any]
+    func deleteEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any]
     func downloadEncryptedBody(storagePath: String) async throws -> Data
     /// Deletes the encrypted session body blob from Cloud Storage for a single
     /// session-log document. Used by tombstone GC after the retention window so
@@ -1541,6 +1542,11 @@ final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClie
 
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
         let result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
+        return result.data as? [String: Any] ?? [:]
+    }
+
+    func deleteEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
+        let result = try await functions.httpsCallable("deleteEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
         return result.data as? [String: Any] ?? [:]
     }
 

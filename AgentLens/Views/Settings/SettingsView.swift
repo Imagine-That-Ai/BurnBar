@@ -333,6 +333,15 @@ struct SettingsView: View {
                 iCloudSessionMirrorService: iCloudSessionMirrorService
             )
                 .navigationTitle("General")
+        case .updates:
+            #if DISTRIBUTION_MAS
+            Text("Updates are delivered through the Mac App Store.")
+                .foregroundStyle(.secondary)
+                .navigationTitle("Updates")
+            #else
+            UpdatesSettingsView()
+                .navigationTitle("Updates")
+            #endif
         case .daemon:
             DaemonSettingsView(settingsManager: settingsManager, dataStore: dataStore)
                 .navigationTitle("Daemon")

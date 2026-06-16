@@ -384,7 +384,7 @@ final class ArtifactAuthoringService {
         let filters = RetrievalFilters(
             provider: nil,
             projectName: trimmedProject?.isEmpty == true ? nil : trimmedProject,
-            artifactTypes: Set(SearchSourceKind.allCases),
+            artifactTypes: SearchSourceKind.authoringContextKinds,
             dateRange: nil,
             ownership: .any,
             sourceIDs: nil,

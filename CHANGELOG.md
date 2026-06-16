@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added local MCP Project Code Memory and durable agent-memory tools: project-scoped remember/recall/forget/audit/analytics, local-only code indexing/search/context packs, lexical symbol/reference/call-graph lookups, cached diagnostics, index status, and a memory doctor. Code indexing rejects secret-bearing files before persistence, stamps blob/commit identity, records label-only audit events, and stays local-only by default.
+- Added Project Code Memory storage budgets and daemon-owned watch mode: index status now reports storage bytes, budget, and vacuum metadata, `index --watch` / `burnbar_watch_project` reindex on source or git-ref changes through the daemon write path, and direct local MCP indexing honors the same budget fields.
+- Added the Project Code Memory Phase 4 static parser tier: a stateless Rust Tree-sitter helper for Swift, TypeScript/TSX, and Python emits SHA-gated `static_tree_sitter` symbols with structured tier evidence, while daemon/local MCP fall back to `lexical_fallback` when the helper is unavailable or stale.
+- Added a Project Code Memory 100k-symbol load gate (`scripts/ci/project-code-memory-load-test.py`) that verifies storage-budget accounting, exact symbol lookup latency, and no writes to non-code search rows.
+- Tightened local MCP memory/code writes to fail closed at the daemon boundary; legacy direct-write override env vars no longer bypass the daemon for `burnbar_remember`, `burnbar_forget`, `burnbar_index_project`, `burnbar_watch_project`, or `burnbar_explore`.
+- Added Cursor to the hosted MCP installer target list and registered explicit hosted memory/code rate-limit buckets so future tools do not fall through to the generic metadata bucket.
+- Added encrypted Project Memory cloud deletion with opaque doc IDs, content-free tombstone receipts, Functions BOLA coverage, and a local MCP `burnbar_cloud_delete_project_memory` tool.
+
 ### Security & Launch Readiness Hardening
 
 - Hardened Firestore `escrow_grants` validation rules: enforced `status == "granted"` on creation and restricted status updates to transition only from `"granted"` to `"revoked"`, completely blocking client-side reactivation of revoked credentials.

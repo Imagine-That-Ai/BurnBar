@@ -695,6 +695,7 @@ struct ProjectMemoryPageDetailSheet: View {
             case .skillDoc:        detail = "skill doc"
             case .agentDoc:        detail = "agent doc"
             case .sharedArtifact:  detail = "shared artifact"
+            case .code:            detail = "code"
             }
             items.append(
                 WikiSeeAlsoItem(
@@ -1312,6 +1313,7 @@ struct CitationInsightSheet: View {
             case .skillDoc:        return "skill docs"
             case .agentDoc:        return "agent docs"
             case .sharedArtifact:  return "shared artifacts"
+            case .code:            return "code"
             }
         }
         return "Across " + kinds.joined(separator: ", ") + " · synthesized by Hermes"

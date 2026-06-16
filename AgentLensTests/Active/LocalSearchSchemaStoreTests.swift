@@ -231,6 +231,92 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertEqual(healthRows.first?.errorCode, "PROJECTOR_TIMEOUT")
     }
 
+    func test_replacingDiffingAndDeletingSearchChunksKeepsFTSInSync() throws {
+        let store = try makeInMemoryStore()
+        let now = Date(timeIntervalSince1970: 1_742_009_600)
+        let document = SearchDocumentRecord(
+            id: "doc-reindex",
+            sourceKind: .conversation,
+            sourceID: "conv-reindex",
+            sourceVersionID: "v1",
+            provider: AgentProvider.codex.rawValue,
+            projectName: "OpenBurnBar",
+            title: "Reindex lifecycle",
+            subtitle: "Regression",
+            bodyPreview: "FTS rows must not outlive chunks",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "doc-hash-reindex",
+            createdAt: now,
+            updatedAt: now
+        )
+        try store.upsertSearchDocument(document)
+
+        try store.replaceSearchChunks(
+            documentID: document.id,
+            title: document.title,
+            chunks: [
+                makeSearchChunk(
+                    id: "chunk-reindex-1",
+                    document: document,
+                    ordinal: 0,
+                    text: "alpha beta",
+                    now: now
+                ),
+                makeSearchChunk(
+                    id: "chunk-reindex-2",
+                    document: document,
+                    ordinal: 1,
+                    text: "gamma delta",
+                    now: now
+                )
+            ]
+        )
+        try assertChunkAndFTSCounts(documentID: document.id, expected: 2, store: store)
+
+        try store.replaceSearchChunks(
+            documentID: document.id,
+            title: document.title,
+            chunks: [
+                makeSearchChunk(
+                    id: "chunk-reindex-3",
+                    document: document,
+                    ordinal: 0,
+                    text: "epsilon zeta",
+                    now: now.addingTimeInterval(1)
+                )
+            ]
+        )
+        try assertChunkAndFTSCounts(documentID: document.id, expected: 1, store: store)
+
+        let diff = try store.applySearchChunkDiff(
+            documentID: document.id,
+            title: document.title,
+            chunks: [
+                makeSearchChunk(
+                    id: "chunk-reindex-4",
+                    document: document,
+                    ordinal: 0,
+                    text: "eta theta",
+                    now: now.addingTimeInterval(2)
+                ),
+                makeSearchChunk(
+                    id: "chunk-reindex-5",
+                    document: document,
+                    ordinal: 1,
+                    text: "iota kappa",
+                    now: now.addingTimeInterval(2)
+                )
+            ]
+        )
+        XCTAssertEqual(diff.added, 2)
+        XCTAssertEqual(diff.deleted, 1)
+        try assertChunkAndFTSCounts(documentID: document.id, expected: 2, store: store)
+
+        try store.deleteSearchDocuments(sourceKind: document.sourceKind, sourceID: document.sourceID)
+        try assertChunkAndFTSCounts(documentID: document.id, expected: 0, store: store)
+    }
+
     func test_projectionJobs_queueOrdering_and_failureRetryState() throws {
         let store = try makeInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_100_000)
@@ -800,5 +886,46 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
     private func makeInMemoryStore() throws -> DataStore {
         let queue = try DatabaseQueue(path: ":memory:")
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+    }
+
+    private func makeSearchChunk(
+        id: String,
+        document: SearchDocumentRecord,
+        ordinal: Int,
+        text: String,
+        now: Date
+    ) -> SearchChunkRecord {
+        SearchChunkRecord(
+            id: id,
+            documentID: document.id,
+            sourceKind: document.sourceKind,
+            sourceID: document.sourceID,
+            sourceVersionID: document.sourceVersionID,
+            ordinal: ordinal,
+            startOffset: ordinal * 100,
+            endOffset: ordinal * 100 + text.count,
+            text: text,
+            contentHash: "hash-\(id)",
+            createdAt: now,
+            updatedAt: now
+        )
+    }
+
+    private func assertChunkAndFTSCounts(
+        documentID: String,
+        expected: Int,
+        store: DataStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertEqual(try store.countSearchChunks(documentID: documentID), expected, file: file, line: line)
+        let ftsCount = try store.dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM search_chunks_fts WHERE documentID = ?",
+                arguments: [documentID]
+            ) ?? 0
+        }
+        XCTAssertEqual(ftsCount, expected, file: file, line: line)
     }
 }

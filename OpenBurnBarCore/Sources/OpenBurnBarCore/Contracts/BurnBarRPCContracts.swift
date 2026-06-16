@@ -89,6 +89,21 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case clientDetach = "client.detach"
     /// Planner-backed lexical + aggregate search over the local OpenBurnBar SQLite index (daemon must have DB path).
     case searchQuery = "daemon.search.query"
+    case memoryRemember = "daemon.memory.remember"
+    case memoryRecall = "daemon.memory.recall"
+    case memoryForget = "daemon.memory.forget"
+    case memoryAuditTrail = "daemon.memory.audit_trail"
+    case memoryAnalytics = "daemon.memory.analytics"
+    case codeIndexProject = "daemon.code.index_project"
+    case codeSearch = "daemon.code.search"
+    case codeContextPack = "daemon.code.context_pack"
+    case codeGetSymbol = "daemon.code.get_symbol"
+    case codeFindReferences = "daemon.code.find_references"
+    case codeCallGraph = "daemon.code.call_graph"
+    case codeDiagnostics = "daemon.code.diagnostics"
+    case codeIndexStatus = "daemon.code.index_status"
+    case codeExplore = "daemon.code.explore"
+    case codeWatchProject = "daemon.code.watch_project"
     case runResume = "run.resume"
 }
 

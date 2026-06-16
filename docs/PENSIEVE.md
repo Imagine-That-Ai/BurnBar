@@ -121,6 +121,14 @@ mirrored in
 `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveVectorCloak.swift`.
 Proven by `tools/openburnbar-mcp-remote/src/cloakLeakage.test.ts`.
 
+**Code-memory asset-class gate:** the accepted geometry leakage above covers
+prose memory and transcripts, not project source code. Source-code chunks can
+carry live secrets, proprietary structure, and branch-specific identifiers, so
+Project Code Memory indexes are local-only by default. Hosted code sync requires
+a separate opt-in design that re-evaluates the cloak leakage for code, applies
+the pre-persistence secret scanner to every chunk, and proves hosted responses
+remain sealed-only.
+
 ---
 
 ## Security & threat model

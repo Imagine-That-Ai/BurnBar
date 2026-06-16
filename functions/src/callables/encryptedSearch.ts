@@ -46,6 +46,7 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 export { searchEncryptedConversationIndex } from "./encryptedSearchQuery.js";
 export {
   commitEncryptedProjectMemorySnapshot,
+  deleteEncryptedProjectMemorySnapshot,
   getEncryptedProjectMemorySnapshot,
   listEncryptedProjectMemorySnapshots,
 } from "./encryptedProjectMemory.js";

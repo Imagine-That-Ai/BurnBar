@@ -128,6 +128,21 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  deleteEncryptedProjectMemorySnapshot: {
+    objectIdsFromClient: ["docID"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and deletes only users/{uid}/project_memory_snapshots/{docID}; tombstone is content-free",
+    handlerModule: "callables/encryptedProjectMemory.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/encryptedSearch.bola.test.ts",
+        test: "deleteEncryptedProjectMemorySnapshot leaves cross-user project memory untouched",
+        kind: "runtime-cross-user",
+        covers: ["deleteEncryptedProjectMemorySnapshot"],
+        expectedOutcome: "no-side-effect",
+      },
+    ],
+  },
   revokeRemoteMcpClient: {
     bolaCoverage: [
       {
