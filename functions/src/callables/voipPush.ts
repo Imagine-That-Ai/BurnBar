@@ -80,12 +80,18 @@ export const triggerVoIPCall = onCall(
     }
 
     if (fanOut.fcmToken) {
+      // T-PRV-07: the persisted `fcm_outbound` doc deliberately omits
+      // `androidDeviceId`. Delivery routing is keyed solely on `fcmToken`
+      // (the only field read back by `sendFcmOutbound` and the stuck-push
+      // sweeper in `fcmAndroidSender.ts`); the stable per-device id is never
+      // consumed from the persisted doc, so persisting it would only leave a
+      // stable cross-session correlator at rest inside this short-lived
+      // (15-min TTL) queue document. `uid` remains for account-erase fan-out.
       writes.push(
         firestore.collection("fcm_outbound").add({
           uid: request.auth.uid,
           payload: buildFcmCallPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
           fcmToken: fanOut.fcmToken,
-          androidDeviceId: fanOut.androidDeviceId ?? null,
           createdAt: queueTimestamps.createdAt,
           expireAt: queueTimestamps.expireAt,
           status: "pending",
