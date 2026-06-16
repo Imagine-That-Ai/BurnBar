@@ -244,7 +244,12 @@ enum ContextBuilder {
         lines.append("## Where you left off")
 
         if let latest = latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
-            lines.append(latest.lastAssistantMessage)
+            // Indexed assistant output is untrusted (it may carry prior prompt-injection
+            // payloads from agent logs). Wrap it so it can never act as instructions.
+            lines.append(LLMSafeContent.wrapUntrusted(
+                latest.lastAssistantMessage,
+                provenance: "indexed_assistant_message:\(latest.id)"
+            ))
         } else {
             lines.append("(No recent assistant message indexed yet.)")
         }
@@ -377,7 +382,12 @@ enum ContextBuilder {
         lines.append("")
         lines.append("### Latest indexed assistant line (may be unrelated to the user question)")
         if let latest = latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
-            lines.append(latest.lastAssistantMessage)
+            // Untrusted: the latest indexed assistant line can contain attacker-planted
+            // text from agent logs. Wrap it so the DB-analyst model treats it as data only.
+            lines.append(LLMSafeContent.wrapUntrusted(
+                latest.lastAssistantMessage,
+                provenance: "indexed_assistant_message:\(latest.id)"
+            ))
         } else {
             lines.append("(None yet.)")
         }
