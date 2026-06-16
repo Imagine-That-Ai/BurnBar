@@ -13,7 +13,8 @@ require_pattern() {
   local label="$1"
   local pattern="$2"
   local file="$3"
-  if ! rg -q "$pattern" "$file"; then
+  # ubuntu-latest does not guarantee ripgrep; this gate must run without apt.
+  if ! grep -Eq "$pattern" "$file"; then
     fail "${label}: expected pattern '${pattern}' in ${file}"
   fi
   echo "OK ${label}"
