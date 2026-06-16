@@ -27,7 +27,9 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testMacCloudStoreHasNativeStoreKitPurchaseAndLegalLinks() throws {
-        let source = try bundledTextResource(named: "CloudStoreSettingsView")
+        let viewSource = try bundledTextResource(named: "CloudStoreSettingsView")
+        let supportSource = try bundledTextResource(named: "CloudStoreSettingsViewSupport")
+        let source = [viewSource, supportSource].joined(separator: "\n")
         let linksSource = try bundledTextResource(named: "MacCloudStoreLegalLinks")
 
         XCTAssertTrue(source.contains("import StoreKit"))

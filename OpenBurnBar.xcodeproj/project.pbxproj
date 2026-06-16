@@ -7970,6 +7970,7 @@
 				"$(PROJECT_DIR)/AgentLens/Views/Popover/MenuBarPopoverView.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/AccountSettingsView.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView.swift",
+				"$(PROJECT_DIR)/AgentLens/Views/Settings/CloudStoreSettingsView+Support.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift",
 				"$(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift",
 				"$(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
@@ -7981,13 +7982,14 @@
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MenuBarPopoverView.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AccountSettingsView.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsView.txt",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreSettingsViewSupport.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift\" \"MacCloudStoreLegalLinks.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\n";
+			shellScript = "set -euo pipefail\n\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nmkdir -p \"${RESOURCES_DIR}\"\n\ncopy_fixture() {\n  local source_path=\"$1\"\n  local output_name=\"$2\"\n  if [[ ! -f \"${source_path}\" ]]; then\n    echo \"error: missing compliance fixture source ${source_path}\"\n    exit 1\n  fi\n  cp \"${source_path}\" \"${RESOURCES_DIR}/${output_name}\"\n}\n\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Popover/MenuBarPopoverView.swift\" \"MenuBarPopoverView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/AccountSettingsView.swift\" \"AccountSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView.swift\" \"CloudStoreSettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/CloudStoreSettingsView+Support.swift\" \"CloudStoreSettingsViewSupport.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift\" \"MacCloudStoreLegalLinks.txt\"\ncopy_fixture \"${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift\" \"SettingsView.txt\"\ncopy_fixture \"${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift\" \"CloudStoreView.txt\"\n";
 		};
 		28EBBA77E00C3687E1B9DAD1 /* Copy Firebase Config If Present */ = {
 			isa = PBXShellScriptBuildPhase;

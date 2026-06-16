@@ -225,6 +225,18 @@ enum SettingsManifest {
             keywords: ["recap", "summary", "session", "auto"]
         ),
 
+        // MARK: Updates
+
+        SettingsItem(
+            id: "updates.overview",
+            tab: .updates,
+            pageRoute: .updatesRoot,
+            anchorID: SettingsAnchor.updatesOverview,
+            title: "Updates",
+            subtitle: "Version, automatic checks, release notes, and release channel",
+            keywords: ["update", "updates", "version", "release", "release notes", "automatic", "prerelease", "pre-release", "homebrew", "source build"]
+        ),
+
         // MARK: Daemon → Lifecycle
 
         SettingsItem(
@@ -763,6 +775,7 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.summariesAuto,
+        SettingsAnchor.updatesOverview,
         SettingsAnchor.daemonStatus,
         SettingsAnchor.gatewayEnabled,
         SettingsAnchor.gatewayHost,

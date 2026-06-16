@@ -91,6 +91,9 @@ enum SettingsPageRoute: Hashable, Codable {
     case indexing
     case sessionSummaries
 
+    // Updates
+    case updatesRoot
+
     // Daemon
     case daemonRoot
     case daemonLifecycle
@@ -188,6 +191,9 @@ enum SettingsAnchor {
 
     // General → Operator
     static let operatorWizard = "general.operator.wizard"
+
+    // Updates
+    static let updatesOverview = "updates.overview"
 
     // Daemon → Lifecycle
     static let daemonStatus = "daemon.lifecycle.status"
