@@ -736,7 +736,10 @@ jobs:
           else
             echo "computer_use=false" >> "$GITHUB_OUTPUT"
           fi
-          if match '^OpenBurnBarMobile/.*[Mm]edia|^OpenBurnBarMobile/.*[Mm]ercury|^android/.*/media/|^AgentLens/Services/Media/|^functions/src/media'; then
+          # Keep the Mercury proof fail-closed when its product surface, tests,
+          # or runner wiring changes. The workflow and script paths matter
+          # because this job is the proof for those harness edits.
+          if match '^\.github/workflows/openburnbar-pr-harness\.yml$|^scripts/test-openburnbar-mobile\.sh$|^scripts/lib/prepare-signal-ffi-xcframework\.sh$|^scripts/ci/inject-firebase-config(-android)?\.sh$|^OpenBurnBarMobile/.*[Mm]edia|^OpenBurnBarMobile/.*[Mm]ercury|^OpenBurnBarMobileTests/.*[Mm]edia|^OpenBurnBarMobileTests/.*[Mm]ercury|^android/.*/media/|^AgentLens/Services/Media/|^functions/src/media'; then
             echo "mercury_media=true" >> "$GITHUB_OUTPUT"
           else
             echo "mercury_media=false" >> "$GITHUB_OUTPUT"
