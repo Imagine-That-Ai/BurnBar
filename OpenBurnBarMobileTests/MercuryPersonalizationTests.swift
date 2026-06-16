@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import CoreImage
 @testable import OpenBurnBarMobile
 
 @MainActor
@@ -184,6 +185,28 @@ final class MercuryPersonalizationTests: XCTestCase {
         store.append(makeEntry(id: "dupe", connectionID: "mac-q"))
 
         XCTAssertEqual(store.entries.count, 1)
+        XCTAssertEqual(store.entries.first?.id, "dupe")
+        XCTAssertEqual(Set(store.entries.map(\.id)).count, 1)
+    }
+
+    func testTransferHistoryDedupesAllExistingRowsOnAppendOfSameID() throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mercury-history-dedupe-existing-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let staleDuplicates = [
+            makeEntry(id: "dupe", connectionID: "mac-old-a"),
+            makeEntry(id: "dupe", connectionID: "mac-old-b")
+        ]
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(staleDuplicates).write(to: tempURL)
+
+        let store = MercuryTransferHistoryStore(fileURL: tempURL)
+        store.append(makeEntry(id: "dupe", connectionID: "mac-latest"))
+
+        XCTAssertEqual(store.entries.map(\.id), ["dupe"])
+        XCTAssertEqual(store.entries.first?.connectionID, "mac-latest")
     }
 
     func testWallpaperAccentSamplerReturnsNilForEmptyOrInvalidPayloads() {
@@ -195,6 +218,10 @@ final class MercuryPersonalizationTests: XCTestCase {
     func testWallpaperAccentSamplerReturnsAccentForRedSquare() throws {
         let accent = WallpaperAccentSampler.dominantAccent(fromBase64: Self.redPixelPNGBase64)
         XCTAssertNotNil(accent, "Should sample a color from a valid PNG payload")
+
+        let ciImage = CIImage(color: CIColor(red: 250.0 / 255.0, green: 40.0 / 255.0, blue: 40.0 / 255.0))
+            .cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+        XCTAssertNotNil(WallpaperAccentSampler.dominantAccent(from: ciImage))
     }
 
     // MARK: - Helpers

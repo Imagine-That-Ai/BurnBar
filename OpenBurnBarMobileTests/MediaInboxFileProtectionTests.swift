@@ -4,9 +4,9 @@ import XCTest
 
 final class MediaInboxFileProtectionTests: XCTestCase {
     func testApplyMarksInboxFileCompleteAndBackupExcluded() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("media-inbox-protection-\(UUID().uuidString)", isDirectory: true)
+        let directory = try Self.makeDataProtectionCapableTestDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let fileURL = directory.appendingPathComponent("blake3-feedface.heic")
         try Data([0x01, 0x02, 0x03]).write(to: fileURL)
 
@@ -25,5 +25,15 @@ final class MediaInboxFileProtectionTests: XCTestCase {
         #endif
         let resourceValues = try fileURL.resourceValues(forKeys: [.isExcludedFromBackupKey])
         XCTAssertEqual(resourceValues.isExcludedFromBackup, .some(true))
+    }
+
+    private static func makeDataProtectionCapableTestDirectory() throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return base.appendingPathComponent("media-inbox-protection-tests-\(UUID().uuidString)", isDirectory: true)
     }
 }

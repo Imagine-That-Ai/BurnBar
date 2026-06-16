@@ -33,9 +33,7 @@ final class MercuryTransferHistoryStore: ObservableObject {
     func append(_ entry: MercuryTransferHistoryEntry) {
         // De-dupe by id — `sendFile` and `handleAdvertise` paths shouldn't
         // emit twice, but defend against a future retry path that does.
-        if let existingIndex = entries.firstIndex(where: { $0.id == entry.id }) {
-            entries.remove(at: existingIndex)
-        }
+        entries.removeAll { $0.id == entry.id }
         entries.insert(entry, at: 0)
         if entries.count > Self.globalCap {
             entries.removeLast(entries.count - Self.globalCap)
