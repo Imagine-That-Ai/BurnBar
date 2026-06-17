@@ -4,10 +4,10 @@ import OpenBurnBarCore
 // MARK: - Health persistence
 
 extension ProjectionPipelineService {
-    internal func updateSubsystemHealthAfterCompletion(for job: ProjectionJobRecord) throws {
+    internal func updateSubsystemHealthAfterCompletion(for job: ProjectionJobRecord) async throws {
         switch job.jobType {
         case .rebuild:
-            try upsertRebuildHealth(
+            try await upsertRebuildHealth(
                 status: .healthy,
                 errorCode: nil,
                 errorMessage: nil,
@@ -16,7 +16,7 @@ extension ProjectionPipelineService {
                 enqueuedReembedJobs: 0
             )
         case .reembed:
-            try upsertSemanticProjectionHealth(
+            try await upsertSemanticProjectionHealth(
                 status: .healthy,
                 errorCode: nil,
                 errorMessage: nil,
@@ -30,10 +30,10 @@ extension ProjectionPipelineService {
         }
     }
 
-    internal func upsertSubsystemFailureHealth(for job: ProjectionJobRecord, errorCode: String, errorMessage: String) throws {
+    internal func upsertSubsystemFailureHealth(for job: ProjectionJobRecord, errorCode: String, errorMessage: String) async throws {
         switch job.jobType {
         case .rebuild:
-            try upsertRebuildHealth(
+            try await upsertRebuildHealth(
                 status: .failed,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
@@ -42,7 +42,7 @@ extension ProjectionPipelineService {
                 enqueuedReembedJobs: 0
             )
         case .reembed:
-            try upsertSemanticProjectionHealth(
+            try await upsertSemanticProjectionHealth(
                 status: .failed,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
@@ -64,7 +64,7 @@ extension ProjectionPipelineService {
         sourceKind: SearchSourceKind?,
         sourceID: String?,
         strict: Bool
-    ) throws {
+    ) async throws {
         let now = nowProvider()
         let details = SemanticProjectionHealthDetails(
             embeddingModelID: embeddingModelID,
@@ -81,7 +81,7 @@ extension ProjectionPipelineService {
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
 
-        try dataStore.upsertRetrievalHealth(
+        try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .semantic,
                 status: status,
@@ -101,7 +101,7 @@ extension ProjectionPipelineService {
         enqueuedReprojects: Int,
         enqueuedPurges: Int,
         enqueuedReembedJobs: Int
-    ) throws {
+    ) async throws {
         let now = nowProvider()
         let details = RebuildHealthDetails(
             projectorVersion: ProjectionIdentity.projectorVersion,
@@ -113,7 +113,7 @@ extension ProjectionPipelineService {
         )
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
-        try dataStore.upsertRetrievalHealth(
+        try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .rebuild,
                 status: status,
@@ -136,11 +136,11 @@ extension ProjectionPipelineService {
         sweepDurationMs: Double,
         lastErrorCode: String?,
         lastErrorMessage: String?
-    ) throws {
+    ) async throws {
         let now = nowProvider()
-        let failedJobs = try dataStore.fetchProjectionJobs(statuses: [.failed], limit: 500).count
-        let queuedJobs = try dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000).count
-        let latencySummary = try ProjectionJobLatencyAnalytics.projectionJobLatencySummary(
+        let failedJobs = try await dataStore.fetchProjectionJobs(statuses: [.failed], limit: 500).count
+        let queuedJobs = try await dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000).count
+        let latencySummary = try await ProjectionJobLatencyAnalytics.projectionJobLatencySummary(
             dataStore: dataStore,
             sampleLimit: 1_000
         )
@@ -165,7 +165,7 @@ extension ProjectionPipelineService {
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
 
-        try dataStore.upsertRetrievalHealth(
+        try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
                 status: status,

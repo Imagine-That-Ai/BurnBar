@@ -33,6 +33,64 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "usage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "usage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "usage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "model",
           "order": "ASCENDING"
         },

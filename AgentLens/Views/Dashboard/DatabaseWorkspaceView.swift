@@ -34,6 +34,10 @@ struct DatabaseWorkspaceView: View {
     /// When the query planner detects aggregate intent, show full substring counts over stored transcripts (not top‑K retrieval).
     @State var atlasAggregateSummary: String?
 
+    @State var indexedDocumentDetailCache: [String: SearchDocumentRecord] = [:]
+    @State var indexedChunksCache: [String: [SearchChunkRecord]] = [:]
+    @State var indexedDetailError: String?
+
     var showInspector: Bool {
         selection != nil && (mode == .atlas || mode == .system)
     }
@@ -311,31 +315,31 @@ struct DatabaseWorkspaceView: View {
     }
 
     func sourceArtifactDetail(id: String) -> SourceArtifactRecord? {
-        do {
-            return try dataStore.fetchSourceArtifact(id: id)
-        } catch {
-            return nil
-        }
+        snapshot.sourceArtifactRecords.first(where: { $0.id == id })
     }
 
-    func indexedDocumentDetail(id: String) -> SearchDocumentRecord? {
-        do {
-            return try dataStore.fetchSearchDocument(id: id)
-        } catch {
-            return nil
+    @MainActor
+    func loadIndexedDocumentDetail(id: String) async {
+        if indexedDocumentDetailCache[id] != nil {
+            return
         }
-    }
 
-    func indexedChunks(documentID: String) -> [SearchChunkRecord] {
-        (try? dataStore.fetchSearchChunks(documentID: documentID)) ?? []
+        indexedDetailError = nil
+        do {
+            guard let document = try await dataStore.fetchSearchDocument(id: id) else {
+                indexedDetailError = "Indexed document not found."
+                return
+            }
+            let chunks = try await dataStore.fetchSearchChunks(documentID: document.id)
+            indexedDocumentDetailCache[id] = document
+            indexedChunksCache[document.id] = chunks
+        } catch {
+            indexedDetailError = error.localizedDescription
+        }
     }
 
     func sharedArtifactSyncState(sourceArtifactID: String) -> SharedArtifactSyncStateRecord? {
-        do {
-            return try dataStore.fetchSharedArtifactSyncState(sourceArtifactID: sourceArtifactID)
-        } catch {
-            return nil
-        }
+        snapshot.syncStates.first(where: { $0.sourceArtifactID == sourceArtifactID })
     }
 
     func embeddingModel(for version: EmbeddingVersionRecord) -> EmbeddingModelRecord? {
@@ -455,9 +459,7 @@ struct DatabaseWorkspaceView: View {
     }
 
     func inspectorChunkRow(_ chunk: SearchChunkRecord, embeddingVersionID: String?) -> some View {
-        let isEmbedded = embeddingVersionID.flatMap {
-            try? dataStore.countChunkEmbeddings(chunkID: chunk.id, embeddingVersionID: $0)
-        }.map { $0 > 0 } ?? false
+        let isEmbedded = false
 
         return VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
@@ -702,7 +704,7 @@ struct DatabaseWorkspaceView: View {
 
         if trimmedQuery.isEmpty {
             do {
-                let documents = try dataStore.fetchSearchDocuments(
+                let documents = try await dataStore.fetchSearchDocuments(
                     limit: 120,
                     provider: filter.providerFilter,
                     projectName: filter.projectFilter,
@@ -718,7 +720,7 @@ struct DatabaseWorkspaceView: View {
             return
         }
 
-        let searchService = SearchService.makeConversationSearchService(
+        let searchService = await SearchService.makeConversationSearchServiceUsingStoredEmbeddings(
             dataStore: dataStore,
             settingsManager: settingsManager
         )

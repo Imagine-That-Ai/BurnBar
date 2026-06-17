@@ -19,15 +19,11 @@ final class SwitcherSettingsUITests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            try Self.addMigrationv32(to: dbQueue)
-            store = SwitcherProfileStore(dbQueue: dbQueue)
-        } catch {
-            XCTFail("Failed to set up test store: \(error)")
-        }
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        try await Self.addMigrationv32(to: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue)
     }
 
     override func tearDown() {
@@ -38,8 +34,8 @@ final class SwitcherSettingsUITests: XCTestCase {
 
     // MARK: - Migration Helper
 
-    private static func addMigrationv32(to dbQueue: DatabaseQueue) throws {
-        try dbQueue.write { db in
+    private static func addMigrationv32(to dbQueue: DatabaseQueue) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -122,7 +118,7 @@ final class SwitcherSettingsUITests: XCTestCase {
     // MARK: - VAL-SETTINGS-004: Duplicate Name Rejection
 
     /// Duplicate normalized names are rejected deterministically.
-    func test_duplicateProfileNames_rejected() throws {
+    func test_duplicateProfileNames_rejected() async throws {
         // Create first profile
         let metadata1 = SwitcherBrowserProfileMetadata(
             profileIdentifier: "Profile1",
@@ -141,19 +137,19 @@ final class SwitcherSettingsUITests: XCTestCase {
         XCTAssertEqual(normalizedName, "work chrome")
 
         // Verify duplicate detection works
-        let exists = try store.existsProfileWithNormalizedName("Work Chrome")
+        let exists = try await store.existsProfileWithNormalizedName("Work Chrome")
         XCTAssertTrue(exists)
 
         // Verify case-insensitive detection
-        let existsCaseInsensitive = try store.existsProfileWithNormalizedName("WORK CHROME")
+        let existsCaseInsensitive = try await store.existsProfileWithNormalizedName("WORK CHROME")
         XCTAssertTrue(existsCaseInsensitive)
 
         // Verify different name doesn't match
-        let notExists = try store.existsProfileWithNormalizedName("Personal Chrome")
+        let notExists = try await store.existsProfileWithNormalizedName("Personal Chrome")
         XCTAssertFalse(notExists)
     }
 
-    func test_duplicateNameExcludesSelf_whenEditing() throws {
+    func test_duplicateNameExcludesSelf_whenEditing() async throws {
         // Create profile
         let metadata = SwitcherBrowserProfileMetadata(
             profileIdentifier: "Profile1",
@@ -167,11 +163,11 @@ final class SwitcherSettingsUITests: XCTestCase {
         ))
 
         // When excluding self, should return false
-        let existsExcludingSelf = try store.existsProfileWithNormalizedName("Work Chrome", excludingID: record.id)
+        let existsExcludingSelf = try await store.existsProfileWithNormalizedName("Work Chrome", excludingID: record.id)
         XCTAssertFalse(existsExcludingSelf)
 
         // When not excluding self, should return true
-        let existsNotExcluding = try store.existsProfileWithNormalizedName("Work Chrome")
+        let existsNotExcluding = try await store.existsProfileWithNormalizedName("Work Chrome")
         XCTAssertTrue(existsNotExcluding)
     }
 
@@ -574,7 +570,7 @@ final class SwitcherSettingsUITests: XCTestCase {
         XCTAssertEqual(profiles[2].id, p2.id) // Created third
     }
 
-    func test_reorderProfiles_updatesDeterministicOrdering() throws {
+    func test_reorderProfiles_updatesDeterministicOrdering() async throws {
         let p1 = try store.create(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .codex,
@@ -594,13 +590,13 @@ final class SwitcherSettingsUITests: XCTestCase {
             sortKey: 3
         ))
 
-        try store.reorderProfiles(idsInOrder: [p3.id, p2.id, p1.id])
+        try await store.reorderProfiles(idsInOrder: [p3.id, p2.id, p1.id])
 
         let reordered = try store.fetchAllProfiles()
         XCTAssertEqual(reordered.map(\.id), [p3.id, p2.id, p1.id])
     }
 
-    func test_reorderProfiles_promotesReserveAccountToPrimaryWithinProvider() throws {
+    func test_reorderProfiles_promotesReserveAccountToPrimaryWithinProvider() async throws {
         let chromePrimary = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -626,13 +622,13 @@ final class SwitcherSettingsUITests: XCTestCase {
             sortKey: 3
         ))
 
-        try store.reorderProfiles(idsInOrder: [chromeReserve.id, codex.id, chromePrimary.id])
+        try await store.reorderProfiles(idsInOrder: [chromeReserve.id, codex.id, chromePrimary.id])
 
         let reordered = try store.fetchAllProfiles()
         XCTAssertEqual(reordered.map(\.id), [chromeReserve.id, codex.id, chromePrimary.id])
     }
 
-    func test_reorderProfiles_supportsSettingsSwapForSameProviderAccounts() throws {
+    func test_reorderProfiles_supportsSettingsSwapForSameProviderAccounts() async throws {
         let chromeA = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -652,7 +648,7 @@ final class SwitcherSettingsUITests: XCTestCase {
             sortKey: 2
         ))
 
-        try store.reorderProfiles(idsInOrder: [chromeB.id, chromeA.id])
+        try await store.reorderProfiles(idsInOrder: [chromeB.id, chromeA.id])
 
         let reordered = try store.fetchAllProfiles()
         XCTAssertEqual(reordered.map(\.id), [chromeB.id, chromeA.id])

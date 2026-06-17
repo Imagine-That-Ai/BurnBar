@@ -8,11 +8,16 @@ struct PrivacyIndexingSettingsView: View {
     var dataStore: DataStore
     var sharedFeaturesAvailable: Bool
     @State private var storageBytes: Int64 = 0
+    @State private var conversationCount: Int = 0
+    @State private var sourceArtifactCount: Int = 0
     @State private var deleteConfirm = false
     @State private var deleteErrorMessage: String?
     @State private var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
     @State private var embeddingModels: [EmbeddingModelRecord] = []
     @State private var embeddingVersions: [EmbeddingVersionRecord] = []
+    @State private var projectedDocumentCountValue: Int = 0
+    @State private var indexedChunkCountValue: Int = 0
+    @State private var embeddedChunkCountValue: Int = 0
     @State private var openAIKey: String = ""
     @State private var openAIKeySaved = false
     @State private var reembedStatusMessage: String?
@@ -308,6 +313,8 @@ struct PrivacyIndexingSettingsView: View {
         }
         .onAppear {
             refreshStorage()
+            refreshSourceArtifactCount()
+            refreshSearchCounts()
             refreshHealth()
             refreshEmbeddingLineage()
             refreshOpenAIKey()
@@ -315,6 +322,8 @@ struct PrivacyIndexingSettingsView: View {
         }
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
             refreshStorage()
+            refreshSourceArtifactCount()
+            refreshSearchCounts()
             refreshHealth()
             refreshEmbeddingLineage()
         }
@@ -343,14 +352,18 @@ struct PrivacyIndexingSettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                do {
-                    try dataStore.deleteAllIndexedConversations()
-                    deleteErrorMessage = nil
-                    refreshStorage()
-                    refreshHealth()
-                    refreshEmbeddingLineage()
-                } catch {
-                    deleteErrorMessage = "Failed to delete indexed conversations: \(error.localizedDescription)"
+                Task { @MainActor in
+                    do {
+                        try await dataStore.deleteAllIndexedConversations()
+                        deleteErrorMessage = nil
+                        refreshStorage()
+                        refreshSourceArtifactCount()
+                        refreshSearchCounts()
+                        refreshHealth()
+                        refreshEmbeddingLineage()
+                    } catch {
+                        deleteErrorMessage = "Failed to delete indexed conversations: \(error.localizedDescription)"
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -362,24 +375,48 @@ struct PrivacyIndexingSettingsView: View {
     // MARK: - Private Methods
 
     private func refreshStorage() {
-        do {
-            storageBytes = try dataStore.approximateConversationStorageBytes()
-        } catch {
-            storageBytes = 0
+        Task {
+            let bytes = (try? await dataStore.approximateConversationStorageBytes()) ?? 0
+            await MainActor.run {
+                storageBytes = bytes
+            }
+        }
+    }
+
+    private func refreshSourceArtifactCount() {
+        Task {
+            let sourceCount = (try? await dataStore.countSourceArtifacts()) ?? 0
+            let conversations = (try? await dataStore.countConversations()) ?? 0
+            await MainActor.run {
+                sourceArtifactCount = sourceCount
+                conversationCount = conversations
+            }
+        }
+    }
+
+    private func refreshSearchCounts() {
+        Task { @MainActor in
+            projectedDocumentCountValue = (try? await dataStore.countSearchDocuments()) ?? 0
+            indexedChunkCountValue = (try? await dataStore.countSearchChunks()) ?? 0
         }
     }
 
     private func refreshHealth() {
         let service = RetrievalHealthService(dataStore: dataStore)
-        retrievalHealthSnapshot = service.snapshot(
-            indexingEnabled: settingsManager.conversationIndexingEnabled,
-            sharedFeaturesAvailable: sharedFeaturesAvailable
-        )
+        Task { @MainActor in
+            retrievalHealthSnapshot = await service.snapshot(
+                indexingEnabled: settingsManager.conversationIndexingEnabled,
+                sharedFeaturesAvailable: sharedFeaturesAvailable
+            )
+        }
     }
 
     private func refreshEmbeddingLineage() {
-        embeddingModels = (try? dataStore.fetchEmbeddingModels()) ?? []
-        embeddingVersions = (try? dataStore.fetchEmbeddingVersions()) ?? []
+        Task { @MainActor in
+            embeddingModels = (try? await dataStore.fetchEmbeddingModels()) ?? []
+            embeddingVersions = (try? await dataStore.fetchEmbeddingVersions()) ?? []
+            embeddedChunkCountValue = (try? await dataStore.countChunkEmbeddings()) ?? 0
+        }
     }
 
     private func refreshOpenAIKey() {
@@ -404,18 +441,20 @@ struct PrivacyIndexingSettingsView: View {
     }
 
     private func queueReembed() {
-        do {
-            try ProjectionPipelineService.makeConfigured(
-                dataStore: dataStore,
-                settingsManager: settingsManager,
-                providerAPIKeyStore: .shared
-            ).enqueueReembedJob(reason: "manual_index_provider_refresh", priority: 5)
-            reembedStatusMessage = "Re-embed queued. Progress will show above as the queue runs."
-            reembedErrorMessage = nil
-            refreshHealth()
-        } catch {
-            reembedErrorMessage = "Failed to queue re-embed: \(error.localizedDescription)"
-            reembedStatusMessage = nil
+        Task { @MainActor in
+            do {
+                try await ProjectionPipelineService.makeConfigured(
+                    dataStore: dataStore,
+                    settingsManager: settingsManager,
+                    providerAPIKeyStore: .shared
+                ).enqueueReembedJob(reason: "manual_index_provider_refresh", priority: 5)
+                reembedStatusMessage = "Re-embed queued. Progress will show above as the queue runs."
+                reembedErrorMessage = nil
+                refreshHealth()
+            } catch {
+                reembedErrorMessage = "Failed to queue re-embed: \(error.localizedDescription)"
+                reembedStatusMessage = nil
+            }
         }
     }
 
@@ -432,19 +471,19 @@ struct PrivacyIndexingSettingsView: View {
     // MARK: - Computed Properties
 
     private var projectedDocumentCount: Int {
-        (try? dataStore.countSearchDocuments()) ?? 0
+        projectedDocumentCountValue
     }
 
     private var indexedChunkCount: Int {
-        (try? dataStore.countSearchChunks()) ?? 0
+        indexedChunkCountValue
     }
 
     private var embeddedChunkCount: Int {
-        (try? dataStore.countChunkEmbeddings()) ?? 0
+        embeddedChunkCountValue
     }
 
     private var indexableSourceCount: Int {
-        ((try? dataStore.countConversations()) ?? 0) + ((try? dataStore.countSourceArtifacts()) ?? 0)
+        conversationCount + sourceArtifactCount
     }
 
     private var sourceCoverageFraction: Double {

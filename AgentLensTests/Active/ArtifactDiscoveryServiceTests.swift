@@ -32,7 +32,7 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
         XCTAssertEqual(report.insertedArtifacts, 2)
         XCTAssertTrue(report.issues.isEmpty)
 
-        let artifacts = try store.fetchSourceArtifacts(
+        let artifacts = try await store.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]
@@ -41,11 +41,11 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
         XCTAssertFalse(artifacts.contains { $0.canonicalPath.hasPrefix(outsideRoot.path) })
         XCTAssertFalse(artifacts.contains { $0.relativePath == "README.md" })
 
-        let queuedJobs = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
         XCTAssertEqual(queuedJobs.count, 2)
         XCTAssertEqual(Set(queuedJobs.map(\.jobType)), Set([.project]))
 
-        let health = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .discovery })
+        let health = try await store.fetchRetrievalHealth().first(where: { $0.subsystem == .discovery })
         XCTAssertEqual(health?.status, .healthy)
     }
 
@@ -73,7 +73,7 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
 
         XCTAssertEqual(secondRun.deletedArtifacts, 1)
 
-        let allArtifacts = try store.fetchSourceArtifacts(
+        let allArtifacts = try await store.fetchSourceArtifacts(
             includeDeleted: true,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]
@@ -81,7 +81,7 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
         XCTAssertEqual(allArtifacts.count, 1)
         XCTAssertEqual(allArtifacts.first?.status, .deleted)
 
-        let queuedJobs = try store.fetchProjectionJobs(statuses: [.queued], limit: 20)
+        let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 20)
         XCTAssertTrue(queuedJobs.contains { $0.jobType == .purge })
     }
 }

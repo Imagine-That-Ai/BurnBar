@@ -44,13 +44,17 @@ function accessToken() {
 
 /** GET a single Firestore field's metadata (includes ttlConfig.state). */
 async function getField(collectionGroup, fieldPath, token) {
+  const safeCollectionGroup = safeFirestoreSegment(collectionGroup, "collection group");
+  const safeFieldPath = safeFirestoreFieldPath(fieldPath);
+  const safeProject = safeFirestoreSegment(project, "project");
+  const safeDatabase = safeFirestoreDatabase(database);
   // `database` is the literal `(default)` path segment (the Firestore Admin API
   // rejects a percent-encoded `%28default%29`), so it is interpolated as-is;
   // the collection group and field are encoded defensively.
   const url =
-    `https://firestore.googleapis.com/v1/projects/${project}` +
-    `/databases/${database}/collectionGroups/${encodeURIComponent(collectionGroup)}` +
-    `/fields/${encodeURIComponent(fieldPath)}`;
+    `https://firestore.googleapis.com/v1/projects/${safeProject}` +
+    `/databases/${safeDatabase}/collectionGroups/${encodeURIComponent(safeCollectionGroup)}` +
+    `/fields/${encodeURIComponent(safeFieldPath)}`;
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -64,6 +68,28 @@ async function getField(collectionGroup, fieldPath, token) {
     );
   }
   return response.json();
+}
+
+function safeFirestoreSegment(value, label) {
+  const text = String(value ?? "");
+  if (!/^[A-Za-z0-9_-]+$/.test(text)) {
+    throw new Error(`Unsafe Firestore ${label}: ${text}`);
+  }
+  return text;
+}
+
+function safeFirestoreDatabase(value) {
+  const text = String(value ?? "");
+  if (text === "(default)") return text;
+  return safeFirestoreSegment(text, "database");
+}
+
+function safeFirestoreFieldPath(value) {
+  const text = String(value ?? "");
+  if (!/^[A-Za-z0-9_.`]+$/.test(text) || text.includes("..")) {
+    throw new Error(`Unsafe Firestore field path: ${text}`);
+  }
+  return text;
 }
 
 async function main() {

@@ -405,6 +405,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
     public let canonicalModelID: String?
     public var quotaState: ProviderRoutingQuotaState
     public var quotaResetsAt: Date?
+    public var remainingPercent: Double?
     public var cooldownUntil: Date?
     public let priority: Int
     public var routingEnabled: Bool
@@ -424,6 +425,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
         canonicalModelID: String? = nil,
         quotaState: ProviderRoutingQuotaState = .unknown,
         quotaResetsAt: Date? = nil,
+        remainingPercent: Double? = nil,
         cooldownUntil: Date? = nil,
         priority: Int = 0,
         routingEnabled: Bool = true,
@@ -442,6 +444,7 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
             .flatMap { $0.isEmpty ? nil : $0 }
         self.quotaState = quotaState
         self.quotaResetsAt = quotaResetsAt
+        self.remainingPercent = Self.normalizedRemainingPercent(remainingPercent)
         self.cooldownUntil = cooldownUntil
         self.priority = priority
         self.routingEnabled = routingEnabled
@@ -468,6 +471,11 @@ public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendabl
             routingEnabled: true,
             localCredentialAvailable: localCredentialAvailable
         )
+    }
+
+    private static func normalizedRemainingPercent(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return min(max(value, 0), 100)
     }
 
     public func applying(
@@ -858,6 +866,73 @@ public struct ProviderRoutingStateSnapshot: Codable, Hashable, Sendable {
     }
 }
 
+public enum ProviderQuotaUtilizationFactor: Hashable, Sendable {
+    case quotaReset
+    case remainingPercent
+}
+
+public struct ProviderQuotaUtilizationComparison: Hashable, Sendable {
+    public let ordered: Bool
+    public let factor: ProviderQuotaUtilizationFactor
+}
+
+public enum ProviderQuotaUtilizationOrdering {
+    /// Strict drain priority for subscription utilization:
+    /// 1. Drain the active quota window that resets soonest.
+    /// 2. If reset ordering ties or is unavailable, drain the account with the
+    ///    highest remaining percentage so the largest headroom does not lapse.
+    /// 3. Return `nil` when utilization cannot decide and existing health/LRU
+    ///    or deterministic tiebreakers should run.
+    public static func compare(
+        lhsReset: Date?,
+        lhsRemainingPercent: Double?,
+        rhsReset: Date?,
+        rhsRemainingPercent: Double?,
+        now: Date
+    ) -> ProviderQuotaUtilizationComparison? {
+        if let resetOrder = compareQuotaReset(lhsReset, rhsReset, now: now) {
+            return ProviderQuotaUtilizationComparison(ordered: resetOrder, factor: .quotaReset)
+        }
+        if let remainingOrder = compareRemainingPercent(lhsRemainingPercent, rhsRemainingPercent) {
+            return ProviderQuotaUtilizationComparison(ordered: remainingOrder, factor: .remainingPercent)
+        }
+        return nil
+    }
+
+    public static func compareQuotaReset(_ lhs: Date?, _ rhs: Date?, now: Date) -> Bool? {
+        switch (activeQuotaReset(lhs, now: now), activeQuotaReset(rhs, now: now)) {
+        case let (.some(lhsReset), .some(rhsReset)):
+            guard lhsReset != rhsReset else { return nil }
+            return lhsReset < rhsReset
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        case (.none, .none):
+            return nil
+        }
+    }
+
+    public static func compareRemainingPercent(_ lhs: Double?, _ rhs: Double?) -> Bool? {
+        guard let lhs = normalizedRemainingPercent(lhs),
+              let rhs = normalizedRemainingPercent(rhs),
+              lhs != rhs else {
+            return nil
+        }
+        return lhs > rhs
+    }
+
+    public static func normalizedRemainingPercent(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return min(max(value, 0), 100)
+    }
+
+    private static func activeQuotaReset(_ value: Date?, now: Date) -> Date? {
+        guard let value, value > now else { return nil }
+        return value
+    }
+}
+
 public enum ProviderRoutingPolicy {
     public static func decide(
         request: ProviderRoutingRequest,
@@ -925,7 +1000,8 @@ public enum ProviderRoutingPolicy {
             request: request,
             selected: selected,
             nextFallback: nextFallback,
-            skipped: skipped
+            skipped: skipped,
+            now: now
         )
         let event = ProviderRoutingDecisionEvent(
             occurredAt: now,
@@ -1096,8 +1172,8 @@ public enum ProviderRoutingPolicy {
         let rhsProvider = providerRank(rhs.providerID, preferences: request.preferredProviderIDs)
         if lhsProvider != rhsProvider { return lhsProvider < rhsProvider }
         if lhs.providerID == rhs.providerID,
-           let quotaOrder = compareQuotaReset(lhs.quotaResetsAt, rhs.quotaResetsAt, now: now) {
-            return quotaOrder
+           let utilizationOrder = compareUtilization(lhs, rhs, now: now) {
+            return utilizationOrder.ordered
         }
         let lhsSelected = selectedAccountRank(lhs, request: request)
         let rhsSelected = selectedAccountRank(rhs, request: request)
@@ -1116,23 +1192,27 @@ public enum ProviderRoutingPolicy {
         return lhs.accountID < rhs.accountID
     }
 
-    private static func compareQuotaReset(_ lhs: Date?, _ rhs: Date?, now: Date) -> Bool? {
-        switch (activeQuotaReset(lhs, now: now), activeQuotaReset(rhs, now: now)) {
-        case let (.some(lhsReset), .some(rhsReset)):
-            guard lhsReset != rhsReset else { return nil }
-            return lhsReset < rhsReset
-        case (.some, .none):
-            return true
-        case (.none, .some):
-            return false
-        case (.none, .none):
+    private static func compareUtilization(
+        _ lhs: ProviderRoutingCandidate,
+        _ rhs: ProviderRoutingCandidate,
+        now: Date
+    ) -> ProviderQuotaUtilizationComparison? {
+        guard isUtilizationEligible(effectiveQuotaState(for: lhs, now: now)),
+              isUtilizationEligible(effectiveQuotaState(for: rhs, now: now)) else {
             return nil
         }
+
+        return ProviderQuotaUtilizationOrdering.compare(
+            lhsReset: lhs.quotaResetsAt,
+            lhsRemainingPercent: lhs.remainingPercent,
+            rhsReset: rhs.quotaResetsAt,
+            rhsRemainingPercent: rhs.remainingPercent,
+            now: now
+        )
     }
 
-    private static func activeQuotaReset(_ value: Date?, now: Date) -> Date? {
-        guard let value, value > now else { return nil }
-        return value
+    private static func isUtilizationEligible(_ state: ProviderRoutingQuotaState) -> Bool {
+        state == .healthy || state == .pressure
     }
 
     private static func providerFamilyConstraint(for request: ProviderRoutingRequest) -> ProviderID? {
@@ -1186,7 +1266,8 @@ public enum ProviderRoutingPolicy {
         request: ProviderRoutingRequest,
         selected: ProviderRoutingCandidate?,
         nextFallback: ProviderRoutingCandidate?,
-        skipped: [ProviderRoutingSkip]
+        skipped: [ProviderRoutingSkip],
+        now: Date
     ) -> String {
         let modeLabel: String = {
             switch request.routerMode {
@@ -1217,6 +1298,9 @@ public enum ProviderRoutingPolicy {
         if let nextFallback {
             parts.append("\(nextFallback.accountLabel) is next fallback")
         }
+        if let utilization = utilizationExplanation(selected: selected, nextFallback: nextFallback, now: now) {
+            parts.append(utilization)
+        }
         if let firstSkipped = skipped.first {
             parts.append("\(firstSkipped.accountLabel) was rejected: \(plainReason(firstSkipped.reason))")
         }
@@ -1225,6 +1309,57 @@ public enum ProviderRoutingPolicy {
             parts.append("benchmark status: \(benchmarkStatus.freshness.rawValue)")
         }
         return parts.joined(separator: "; ") + "."
+    }
+
+    private static func utilizationExplanation(
+        selected: ProviderRoutingCandidate,
+        nextFallback: ProviderRoutingCandidate?,
+        now: Date
+    ) -> String? {
+        guard let nextFallback,
+              selected.providerID == nextFallback.providerID,
+              let comparison = compareUtilization(selected, nextFallback, now: now),
+              comparison.ordered else {
+            return nil
+        }
+
+        switch comparison.factor {
+        case .quotaReset:
+            let selectedWindow = resetWindowLabel(selected.quotaResetsAt, now: now)
+            let fallbackWindow = resetWindowLabel(nextFallback.quotaResetsAt, now: now)
+            return "utilization: \(selected.accountLabel)'s quota window resets in \(selectedWindow) vs \(fallbackWindow) for \(nextFallback.accountLabel); draining before \(nextFallback.accountLabel)"
+        case .remainingPercent:
+            guard let selectedRemaining = ProviderQuotaUtilizationOrdering.normalizedRemainingPercent(selected.remainingPercent),
+                  let fallbackRemaining = ProviderQuotaUtilizationOrdering.normalizedRemainingPercent(nextFallback.remainingPercent) else {
+                return nil
+            }
+            return "utilization: \(selected.accountLabel) has \(percentLabel(selectedRemaining)) remaining vs \(percentLabel(fallbackRemaining)) for \(nextFallback.accountLabel); consuming higher headroom before it lapses"
+        }
+    }
+
+    private static func resetWindowLabel(_ value: Date?, now: Date) -> String {
+        guard let reset = value, reset > now else {
+            return "unknown"
+        }
+        return durationLabel(reset.timeIntervalSince(now))
+    }
+
+    private static func durationLabel(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded()))
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = max(1, Int((Double(seconds) / 60.0).rounded()))
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = max(1, Int((Double(minutes) / 60.0).rounded()))
+        if hours < 48 { return "\(hours)h" }
+        let days = max(1, Int((Double(hours) / 24.0).rounded()))
+        return "\(days)d"
+    }
+
+    private static func percentLabel(_ value: Double) -> String {
+        if value.rounded() == value {
+            return "\(Int(value))%"
+        }
+        return String(format: "%.1f%%", value)
     }
 
     private static func plainReason(_ reason: ProviderRoutingSkipReason) -> String {

@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode';
+import { buildHostMessageNonceScript } from './hostMessageNonce';
 
 export function buildWorkspaceHtml(
   webview: vscode.Webview,
@@ -125,6 +126,7 @@ export function buildWorkspaceHtml(
 
     </div>
 
+    <script nonce="${nonce}">${buildHostMessageNonceScript(nonce)}</script>
     <script nonce="${nonce}" src="${jsUri}"></script>
   </body>
 </html>`;

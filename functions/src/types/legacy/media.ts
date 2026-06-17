@@ -147,24 +147,9 @@ export interface MediaSessionDailyRollupDoc {
       fallbackRate: number;
       totalSeconds: number;
       totalBytes: number;
-      rttMillis: {
-        count: number;
-        p50?: number;
-        p95?: number;
-        p99?: number;
-      };
-      bitsPerSecond: {
-        count: number;
-        p50?: number;
-        p95?: number;
-        p99?: number;
-      };
-      freezeCount: {
-        count: number;
-        p50?: number;
-        p95?: number;
-        p99?: number;
-      };
+      rttMillis: { count: number; p50?: number; p95?: number; p99?: number; sketchBase64?: string };
+      bitsPerSecond: { count: number; p50?: number; p95?: number; p99?: number; sketchBase64?: string };
+      freezeCount: { count: number; p50?: number; p95?: number; p99?: number; sketchBase64?: string };
     }
   >;
   schemaVersion: number;

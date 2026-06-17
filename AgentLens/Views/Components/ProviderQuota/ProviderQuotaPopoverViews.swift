@@ -31,6 +31,8 @@ struct QuotaPopoverBar: View {
     @State private var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
     @State private var customizeHover = false
     @State private var customizePressed = false
+    @State private var availableProviders: [AgentProvider] = []
+    @State private var connectedProviderIDs: Set<ProviderID> = []
 
     private let maximumCollapsedProviderRows = 4
 
@@ -125,8 +127,6 @@ struct QuotaPopoverBar: View {
     }
 
     var body: some View {
-        let connectedProviderIDs = connectedQuotaProviderIDs
-        let availableProviders = quotaService.visiblePopoverProviders(dataStore: dataStore)
         let selectedProviders = settingsManager.quotas.visibleProviders
         let providers = availableProviders.filter { selectedProviders.contains($0) }
         let displayedProviders = visibleRows(from: providers)
@@ -176,7 +176,10 @@ struct QuotaPopoverBar: View {
                 .popoverTooltip("Choose which quotas appear in the menu bar popover")
 
                 Button {
-                    Task { await quotaService.refreshAll(dataStore: dataStore) }
+                    Task {
+                        await quotaService.refreshAll(dataStore: dataStore)
+                        await refreshProviderState()
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 10, weight: .semibold))
@@ -240,9 +243,28 @@ struct QuotaPopoverBar: View {
             .background(DesignSystem.Colors.surface.opacity(0.45))
         )
         .task {
+            await refreshProviderState()
             guard autoRefreshOnAppear else { return }
             await quotaService.refreshIfNeeded(dataStore: dataStore)
+            await refreshProviderState()
         }
+        .onChange(of: quotaService.isFetching) { _, isFetching in
+            guard !isFetching else { return }
+            Task { await refreshProviderState() }
+        }
+    }
+
+    private func refreshProviderState() async {
+        availableProviders = await quotaService.visiblePopoverProviders(dataStore: dataStore)
+        let accounts = (try? await dataStore.fetchProviderAccounts()) ?? []
+        connectedProviderIDs = Set(accounts.compactMap { account in
+            switch account.status {
+            case .connected, .stale, .error:
+                return account.providerID
+            case .disconnected, .disabled, .deleted:
+                return nil
+            }
+        })
     }
 
     @ViewBuilder
@@ -371,19 +393,6 @@ struct QuotaPopoverBar: View {
             }
         }
         .animation(DesignSystem.Animation.gentle, value: expandedProvider)
-    }
-
-    private var connectedQuotaProviderIDs: Set<ProviderID> {
-        Set(
-            ((try? dataStore.providerAccountStore.fetchAll()) ?? []).compactMap { account in
-                switch account.status {
-                case .connected, .stale, .error:
-                    return account.providerID
-                case .disconnected, .disabled, .deleted:
-                    return nil
-                }
-            }
-        )
     }
 
     @ViewBuilder

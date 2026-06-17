@@ -216,8 +216,8 @@ final class ArtifactAuthoringService {
         )
     }
 
-    func saveDraft(_ draft: ArtifactAuthoringDraft, to destinationPath: String) throws -> ArtifactAuthoringSaveResult {
-        try saveAuthoredArtifact(
+    func saveDraft(_ draft: ArtifactAuthoringDraft, to destinationPath: String) async throws -> ArtifactAuthoringSaveResult {
+        try await saveAuthoredArtifact(
             sourceKind: draft.sourceKind,
             markdown: draft.content,
             destinationPath: destinationPath,
@@ -232,7 +232,7 @@ final class ArtifactAuthoringService {
         destinationPath: String,
         operation: ArtifactAuthoringOperation,
         references: [ArtifactAuthoringReference] = []
-    ) throws -> ArtifactAuthoringSaveResult {
+    ) async throws -> ArtifactAuthoringSaveResult {
         guard sourceKind == .skillDoc || sourceKind == .agentDoc else {
             throw ArtifactAuthoringError.unsupportedSourceKind(sourceKind)
         }
@@ -269,7 +269,7 @@ final class ArtifactAuthoringService {
 
         let now = nowProvider()
         let sourceID = stableSourceID(for: canonicalPath)
-        let existing = try dataStore.fetchSourceArtifact(id: sourceID, includeDeleted: true)
+        let existing = try await dataStore.fetchSourceArtifact(id: sourceID, includeDeleted: true)
         let attributes = try? fileManager.attributesOfItem(atPath: canonicalPath) // try?-ok(metadata fallback handled)
         let modifiedAt = attributes?[.modificationDate] as? Date
         let sizeBytes = (attributes?[.size] as? NSNumber)?.intValue ?? encoded.count
@@ -296,15 +296,15 @@ final class ArtifactAuthoringService {
             updatedAt: now
         )
 
-        let disposition = try dataStore.upsertSourceArtifact(artifact)
+        let disposition = try await dataStore.upsertSourceArtifact(artifact)
         var queuedJobID: String?
         var projectionEnqueued = false
         switch disposition {
         case .inserted:
-            queuedJobID = try enqueueProjectionJob(for: artifact, jobType: .project)
+            queuedJobID = try await enqueueProjectionJob(for: artifact, jobType: .project)
             projectionEnqueued = true
         case .updated, .restored:
-            queuedJobID = try enqueueProjectionJob(for: artifact, jobType: .reproject)
+            queuedJobID = try await enqueueProjectionJob(for: artifact, jobType: .reproject)
             projectionEnqueued = true
         case .unchanged:
             break
@@ -519,7 +519,7 @@ final class ArtifactAuthoringService {
         return lines.joined(separator: "\n")
     }
 
-    private func enqueueProjectionJob(for artifact: SourceArtifactRecord, jobType: ProjectionJobType) throws -> String {
+    private func enqueueProjectionJob(for artifact: SourceArtifactRecord, jobType: ProjectionJobType) async throws -> String {
         let now = nowProvider()
         let sourceVersionID = ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash)
         let jobID = ProjectionIdentity.jobID(
@@ -529,7 +529,7 @@ final class ArtifactAuthoringService {
             sourceVersionID: sourceVersionID
         )
         let priority = jobType == .project ? 8 : 10
-        try dataStore.enqueueProjectionJob(
+        try await dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: jobType,

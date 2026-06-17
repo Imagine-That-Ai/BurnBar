@@ -49,7 +49,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
 
             while true {
-                let unsynced = try context.dataStore.fetchUnsynced()
+                let unsynced = try await context.dataStore.fetchUnsynced()
                 guard !unsynced.isEmpty else { break }
 
                 let batch = context.firestoreGateway.batch()
@@ -70,7 +70,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 }
 
                 let syncedIds = unsynced.map { $0.id }
-                try context.dataStore.markSynced(ids: syncedIds)
+                try await context.dataStore.markSynced(ids: syncedIds)
             }
 
             state.withLock {

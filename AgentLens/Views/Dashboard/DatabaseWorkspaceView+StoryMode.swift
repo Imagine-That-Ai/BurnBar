@@ -218,7 +218,7 @@ extension DatabaseWorkspaceView {
                 }
             }
         }
-        .onAppear { deviceSummaries = (try? dataStore.deviceUsageSummaries()) ?? [] }
+        .task { deviceSummaries = (try? await dataStore.deviceUsageSummaries()) ?? [] }
     }
 
     var storySharedBand: some View {

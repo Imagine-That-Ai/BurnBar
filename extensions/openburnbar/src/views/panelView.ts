@@ -14,6 +14,7 @@ export class OpenBurnBarPanelView implements vscode.WebviewViewProvider {
 
   private view?: vscode.WebviewView;
   private stateSubscription?: { dispose(): void };
+  private hostMessageNonce = '';
 
   constructor(
     private readonly controller: OpenBurnBarExtensionController,
@@ -43,6 +44,7 @@ export class OpenBurnBarPanelView implements vscode.WebviewViewProvider {
       vscode.Uri.joinPath(this.extensionUri, 'media', 'app-icon-128.png')
     );
     const nonce = generateNonce();
+    this.hostMessageNonce = nonce;
 
     webviewView.webview.html = buildPanelHtml(webviewView.webview, cssUri, jsUri, logoUri, nonce);
 
@@ -59,6 +61,7 @@ export class OpenBurnBarPanelView implements vscode.WebviewViewProvider {
       this.stateSubscription?.dispose();
       this.stateSubscription = undefined;
       this.view = undefined;
+      this.hostMessageNonce = '';
     });
 
     // Handle incoming messages from webview
@@ -80,7 +83,7 @@ export class OpenBurnBarPanelView implements vscode.WebviewViewProvider {
       showOpenBurnBarApp: process.platform === 'darwin',
       sidebarStatusLineMode: readSidebarStatusLineMode()
     });
-    void this.view.webview.postMessage({ type: 'snapshot', viewModel });
+    void this.view.webview.postMessage({ type: 'snapshot', viewModel, hostNonce: this.hostMessageNonce });
   }
 
   private async handleWebviewMessage(message: OpenBurnBarPanelWebviewMessage): Promise<void> {
@@ -146,6 +149,7 @@ export class OpenBurnBarPanelView implements vscode.WebviewViewProvider {
       if (this.view) {
         void this.view.webview.postMessage({
           type: 'error',
+          hostNonce: this.hostMessageNonce,
           message: error instanceof Error ? error.message : 'OpenBurnBar encountered an unexpected error.'
         });
       }

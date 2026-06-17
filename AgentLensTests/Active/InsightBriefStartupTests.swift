@@ -5,7 +5,7 @@ import OpenBurnBarCore
 @MainActor
 final class InsightBriefStartupTests: XCTestCase {
 
-    func test_fetchSessionLogSummaries_omitsTranscriptBodies() throws {
+    func test_fetchSessionLogSummaries_omitsTranscriptBodies() async throws {
         let store = try makeInMemoryStore()
         try store.upsertConversation(
             makeConversation(
@@ -16,7 +16,7 @@ final class InsightBriefStartupTests: XCTestCase {
             )
         )
 
-        let summaries = try store.fetchSessionLogSummaries(limit: 10)
+        let summaries = try await store.fetchSessionLogSummaries(limit: 10)
 
         XCTAssertEqual(summaries.count, 1)
         XCTAssertEqual(summaries[0].inferredTaskTitle, "Auth refactor")

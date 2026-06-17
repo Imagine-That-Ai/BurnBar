@@ -69,6 +69,7 @@
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.0.0",
+    "@google-cloud/tasks": "6.2.3",
     "@openburnbar/entitlements": "file:vendor/openburnbar/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:vendor/openburnbar/signal-envelope-contracts",
     "@sentry/core": "10.58.0",

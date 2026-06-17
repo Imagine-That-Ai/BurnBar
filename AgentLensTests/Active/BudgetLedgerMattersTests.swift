@@ -41,7 +41,7 @@ final class BudgetLedgerMattersTests: XCTestCase {
         )
     }
 
-    private func insertGlobalUsage(into queue: DatabaseQueue, cost: Double, at startTime: Date) throws {
+    private func insertGlobalUsage(into queue: DatabaseQueue, cost: Double, at startTime: Date) async throws {
         let store = UsageStore(dbQueue: queue)
         let usage = TokenUsage(
             provider: .claudeCode,
@@ -54,7 +54,7 @@ final class BudgetLedgerMattersTests: XCTestCase {
             startTime: startTime,
             endTime: startTime
         )
-        try store.insert(usage)
+        try await store.insert(usage)
     }
 
     // MARK: - Legit zero (read succeeds, no rows)
@@ -76,8 +76,8 @@ final class BudgetLedgerMattersTests: XCTestCase {
     func test_snapshot_withSpend_reportsRealTotal() async throws {
         let queue = try makeMigratedQueue()
         let now = Date()
-        try insertGlobalUsage(into: queue, cost: 12.50, at: now)
-        try insertGlobalUsage(into: queue, cost: 7.25, at: now)
+        try await insertGlobalUsage(into: queue, cost: 12.50, at: now)
+        try await insertGlobalUsage(into: queue, cost: 7.25, at: now)
 
         let ledger = BudgetLedger(dbQueue: queue)
         let rule = globalRule(id: "rule-spend")

@@ -14,11 +14,10 @@ if [[ -z "$REPO" ]]; then
 fi
 
 BRANCH="${OPENBURNBAR_GOVERNANCE_BRANCH:-main}"
-DEFAULT_REQUIRED_CHECKS=$'Fast Feedback Gate\nguard\nBurnBar AGPL product posture\nSecret Detection (gitleaks)\nDependency Review (CVE check)\nnpm Audit (Node package locks)\nRemote Installer Policy\nVendored Agent Provenance\nSignal Activation Parity (fail-closed default)\nBrowser Target Policy (SSRF / DNS-rebinding)\nOSV Scanner (open source vulnerabilities)\nHosted MCP Security Smoke\nHosted MCP Isolation Proofs (local, deterministic)\nFirestore Security Rules Tests'
+DEFAULT_REQUIRED_CHECKS=$'Fast Feedback Gate\nguard\nBurnBar AGPL product posture\nSecret Detection (gitleaks)\nDependency Review (CVE check)\nnpm Audit (Node package locks)\nRemote Installer Policy\nVendored Agent Provenance\nSignal Activation Parity (fail-closed default)\nBrowser Target Policy (SSRF / DNS-rebinding)\nOSV Scanner (open source vulnerabilities)\nHosted MCP Security Smoke\nHosted MCP Isolation Proofs (local, deterministic)\nFirestore Security Rules Tests\nAndroid ktlint\nAnalyze (javascript-typescript)\nAnalyze (python)'
 REQUIRED_CHECKS="${OPENBURNBAR_REQUIRED_BRANCH_CHECKS:-$DEFAULT_REQUIRED_CHECKS}"
 REQUIRED_ENVIRONMENTS="${OPENBURNBAR_REQUIRED_ENVIRONMENTS:-release,production}"
-ADMIN_REVIEW_BYPASS_USERS="${OPENBURNBAR_ADMIN_REVIEW_BYPASS_USERS:-Ajnunezg}"
-export BRANCH REQUIRED_CHECKS REQUIRED_ENVIRONMENTS ADMIN_REVIEW_BYPASS_USERS
+export BRANCH REQUIRED_CHECKS REQUIRED_ENVIRONMENTS
 
 PROTECTION_JSON="$(mktemp)"
 ENVIRONMENTS_JSON="$(mktemp)"
@@ -45,11 +44,6 @@ const requiredEnvironments = (process.env.REQUIRED_ENVIRONMENTS || "")
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
-const adminReviewBypassUsers = (process.env.ADMIN_REVIEW_BYPASS_USERS || "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
-
 const failures = [];
 
 function fail(message) {
@@ -71,24 +65,29 @@ if (protection.allow_deletions?.enabled === true) {
   fail("main branch protection must disable deletions.");
 }
 const reviewCount = protection.required_pull_request_reviews?.required_approving_review_count || 0;
+if (reviewCount !== 1) {
+  fail("main branch protection must require exactly one approving review.");
+}
+if (protection.required_pull_request_reviews?.require_code_owner_reviews !== true) {
+  fail("main branch protection must require code owner reviews.");
+}
+if (protection.required_pull_request_reviews?.dismiss_stale_reviews !== true) {
+  fail("main branch protection must dismiss stale pull request reviews.");
+}
+if (protection.required_pull_request_reviews?.require_last_push_approval !== true) {
+  fail("main branch protection must require approval of the latest push.");
+}
 if (protection.required_conversation_resolution?.enabled !== true) {
   fail("main branch protection must require conversation resolution.");
 }
 
 const bypass = protection.required_pull_request_reviews?.bypass_pull_request_allowances || {};
 const bypassUsers = (bypass.users || []).map((user) => user.login).filter(Boolean);
-const bypassUserSet = new Set(bypassUsers);
-const missingAdminBypassUsers = adminReviewBypassUsers.filter((user) => !bypassUserSet.has(user));
-const unexpectedBypassUsers = bypassUsers.filter((user) => !adminReviewBypassUsers.includes(user));
 const bypassTeams = bypass.teams || [];
 const bypassApps = bypass.apps || [];
-if (reviewCount > 0 && missingAdminBypassUsers.length > 0) {
-  fail(
-    `main branch protection must bypass admin human PR approval for: ${missingAdminBypassUsers.join(", ")}`,
-  );
-}
-if (unexpectedBypassUsers.length > 0 || bypassTeams.length > 0 || bypassApps.length > 0) {
-  fail("main branch protection must not configure non-admin PR bypass users, teams, or apps.");
+const bypassCount = bypassUsers.length + bypassTeams.length + bypassApps.length;
+if (bypassCount > 0) {
+  fail("main branch protection must not configure PR review bypass users, teams, or apps.");
 }
 
 for (const check of requiredChecks) {
@@ -117,9 +116,14 @@ for (const name of requiredEnvironments) {
 const summary = {
   branch: process.env.BRANCH || "main",
   adminsEnforced: protection.enforce_admins?.enabled === true,
-  adminHumanApprovalBypassed: reviewCount === 0 || missingAdminBypassUsers.length === 0,
   reviewCount,
+  codeOwnerReviewsRequired: protection.required_pull_request_reviews?.require_code_owner_reviews === true,
+  staleReviewsDismissed: protection.required_pull_request_reviews?.dismiss_stale_reviews === true,
+  latestPushApprovalRequired: protection.required_pull_request_reviews?.require_last_push_approval === true,
+  bypassAllowanceCount: bypassCount,
   reviewBypassUsers: bypassUsers,
+  reviewBypassTeams: bypassTeams.map((team) => team.slug || team.name).filter(Boolean),
+  reviewBypassApps: bypassApps.map((app) => app.slug || app.name).filter(Boolean),
   requiredChecksPresent: requiredChecks.filter((check) => contexts.has(check)),
   requiredChecksMissing: requiredChecks.filter((check) => !contexts.has(check)),
   environments: requiredEnvironments.map((name) => {

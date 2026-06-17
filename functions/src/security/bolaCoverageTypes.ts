@@ -1,4 +1,10 @@
-export type EndpointTrigger = "callable" | "http" | "scheduled" | "firestore-trigger" | "provider-webhook";
+export type EndpointTrigger =
+  | "callable"
+  | "http"
+  | "scheduled"
+  | "firestore-trigger"
+  | "task-queue"
+  | "provider-webhook";
 
 export type BolaCoverageKind =
   | "runtime-cross-user"

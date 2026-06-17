@@ -71,7 +71,7 @@ actor RefreshOrchestrator {
         // history here and let the window override `terminalJobRetention`.
         let cutoff = Date().addingTimeInterval(-ProjectionWorkerPolicy.terminalJobRetention)
         do {
-            let reaped = try dataStore.reapTerminalProjectionJobs(olderThan: cutoff)
+            let reaped = try await dataStore.reapTerminalProjectionJobs(olderThan: cutoff)
             if reaped > 0 {
                 AppLogger.dataStore.info("Retention purge reaped \(reaped) terminal projection job(s).")
             }
@@ -85,14 +85,14 @@ actor RefreshOrchestrator {
 
         for provider in parsers.keys {
             do {
-                guard let window = try dataStore.actor.backfillCursorStore.nextBackfillWindow(
+                guard let window = try await dataStore.nextBackfillWindow(
                     for: provider,
                     currentDate: now
                 ) else {
                     continue
                 }
 
-                try dataStore.actor.backfillCursorStore.advanceCursor(
+                try await dataStore.advanceBackfillCursor(
                     for: provider,
                     newUpperBound: window.upperBound,
                     earliestSourceDate: window.lowerBound
@@ -125,14 +125,10 @@ actor RefreshOrchestrator {
             // cooperative pool — off this actor and off the main actor (SE-0338)
             // — without an unstructured detached task.
             persistAndReload: { @Sendable [dataStore] newRecords in
-                let innerStore = dataStore.actor.usageStore
-                try innerStore.insert(newRecords)
-                return try innerStore.fetchAllUsage()
+                try await dataStore.actor.insertUsageAndFetchAll(newRecords)
             },
             deleteAndReload: { @Sendable [dataStore] sessionIDPrefix in
-                let innerStore = dataStore.actor.usageStore
-                try innerStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
-                return try innerStore.fetchAllUsage()
+                try await dataStore.actor.deleteUsageAndFetchAll(sessionIDPrefix: sessionIDPrefix)
             }
         )
 
@@ -177,19 +173,21 @@ actor RefreshOrchestrator {
         await sessionMirror?.syncIfNeeded()
 
         // 5. Projection compaction
-        var pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
+        var pendingProjectionJobs = (try? await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
         if pendingProjectionJobs >= ProjectionWorkerPolicy.backlogCompactionThreshold {
             // Best-effort GC, but a *persistent* failure to drain a runaway backlog is a
             // correctness signal (the work queue starves and the table grows unbounded),
             // so surface the throw via telemetry instead of swallowing it. Preserve the
             // graceful `0`-removed fallback so a transient DB hiccup never breaks refresh.
-            let removed = AppLogger.dataStore.silently(
-                "projection_backlog_compaction_failed",
-                try dataStore.compactConversationProjectionBacklog(),
-                fallback: 0
-            )
+            let removed: Int
+            do {
+                removed = try await dataStore.compactConversationProjectionBacklog()
+            } catch {
+                AppLogger.dataStore.silentFailure("projection_backlog_compaction_failed", error: error)
+                removed = 0
+            }
             if removed > 0 {
-                pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs // try?-ok(opportunistic sweep gate)
+                pendingProjectionJobs = (try? await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs // try?-ok(opportunistic sweep gate)
             }
         }
         result.pendingProjectionJobs = pendingProjectionJobs

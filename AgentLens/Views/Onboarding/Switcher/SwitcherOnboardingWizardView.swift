@@ -81,6 +81,7 @@ enum SwitcherOnboardingStep: Int, CaseIterable {
 struct SwitcherOnboardingWizardView: View {
     let dataStore: DataStore
     let settingsManager: SettingsManager
+    let accountManager: AccountManager
     let onDismiss: () -> Void
     let onOpenSettings: () -> Void
 
@@ -88,8 +89,25 @@ struct SwitcherOnboardingWizardView: View {
 
     @State private var currentStep: SwitcherOnboardingStep = .welcome
     @State private var navigationDirection: Edge = .trailing
-    @StateObject private var discoveryService = SwitcherDiscoveryService()
+    @StateObject private var discoveryService: SwitcherDiscoveryService
     @State private var providerOrder: [OnboardingProvider] = OnboardingProvider.defaultOrder
+
+    init(
+        dataStore: DataStore,
+        settingsManager: SettingsManager,
+        accountManager: AccountManager,
+        onDismiss: @escaping () -> Void,
+        onOpenSettings: @escaping () -> Void
+    ) {
+        self.dataStore = dataStore
+        self.settingsManager = settingsManager
+        self.accountManager = accountManager
+        self.onDismiss = onDismiss
+        self.onOpenSettings = onOpenSettings
+        _discoveryService = StateObject(
+            wrappedValue: SwitcherDiscoveryService(accountManagerProvider: { accountManager })
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {

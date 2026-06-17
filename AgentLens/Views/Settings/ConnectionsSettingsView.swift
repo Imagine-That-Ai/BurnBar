@@ -127,7 +127,7 @@ struct ConnectionsSettingsView: View {
         .task {
             viewModel.refreshWiringState()
             await daemonManager.refreshHealth()
-            loadAccountData()
+            await loadAccountDataAsync()
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await viewModel.refreshWiringState(settings: settingsManager)
             await quotaService.refreshIfNeeded(dataStore: dataStore)
@@ -822,7 +822,13 @@ struct ConnectionsSettingsView: View {
     /// Bridge for the existing wizard sheet completion handler. Reloads the
     /// flat account list so the new account appears immediately.
     private func loadAccountData() {
-        loadAccounts()
+        Task { @MainActor in
+            await loadAccountDataAsync()
+        }
+    }
+
+    private func loadAccountDataAsync() async {
+        await loadAccounts()
         loadSwitcherProfiles()
         refreshExternalAuthStates()
         viewModel.refreshWiringState()
@@ -983,9 +989,9 @@ struct ConnectionsSettingsView: View {
             }
     }
 
-    private func loadAccounts() {
+    private func loadAccounts() async {
         do {
-            providerAccounts = try dataStore.providerAccountStore.fetchAll()
+            providerAccounts = try await dataStore.fetchProviderAccounts()
             providerAccountLoadError = nil
         } catch {
             providerAccounts = []

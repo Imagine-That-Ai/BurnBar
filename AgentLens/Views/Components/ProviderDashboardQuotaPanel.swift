@@ -9,6 +9,7 @@ struct ProviderDashboardQuotaPanel: View {
     let provider: AgentProvider
     @Bindable var quotaService: ProviderQuotaService
     let dataStore: DataStore
+    @Environment(SettingsManager.self) private var settingsManager
 
     @State private var selectedAccountID: String?
 
@@ -62,8 +63,8 @@ struct ProviderDashboardQuotaPanel: View {
                     if let active = activeSnapshot, active.hasDisplayableQuotaSignal {
                         VStack(spacing: DesignSystem.Spacing.md) {
                             ForEach(active.customizedBuckets(
-                                hiddenBuckets: SettingsManager.shared.quotas.hiddenBuckets,
-                                bucketOrders: SettingsManager.shared.quotas.bucketOrders
+                                hiddenBuckets: settingsManager.quotas.hiddenBuckets,
+                                bucketOrders: settingsManager.quotas.bucketOrders
                             )) { bucket in
                                 ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                             }
@@ -105,7 +106,7 @@ struct ProviderDashboardQuotaPanel: View {
                 .padding(DesignSystem.Spacing.lg)
             }
             .task {
-                quotaService.refreshRoutingState(
+                await quotaService.refreshRoutingState(
                     dataStore: dataStore,
                     request: ProviderRoutingRequest(
                         preferredProviderIDs: [provider.providerID],

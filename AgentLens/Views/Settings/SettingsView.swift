@@ -145,9 +145,16 @@ struct SettingsView: View {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(tab.accentColor)
                         .frame(width: 28, height: 28)
-                    Image(systemName: tab.icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
+                    if let customIcon = tab.customIcon {
+                        Image(customIcon)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 18, height: 18)
+                    } else {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
                 }
             } else {
                 SettingsProviderLogoStack(providers: tab.logoProviders, size: 26, maxVisible: 5)

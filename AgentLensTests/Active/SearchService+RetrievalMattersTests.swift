@@ -66,8 +66,8 @@ final class SearchServiceRetrievalMattersTests: XCTestCase {
             body: "Shared artifact body about permissions and access control.",
             contentHash: "hash-matters-shared"
         )
-        _ = try store.upsertSourceArtifact(artifact)
-        try projector.enqueueSelectiveReproject(
+        _ = try await store.upsertSourceArtifact(artifact)
+        try await projector.enqueueSelectiveReproject(
             sourceKind: .sharedArtifact,
             sourceID: artifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
@@ -76,7 +76,7 @@ final class SearchServiceRetrievalMattersTests: XCTestCase {
         )
         _ = try await projector.runSweep(maxJobs: 40)
 
-        _ = try store.upsertSharedArtifactPermission(
+        _ = try await store.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: artifact.id,
                 workspaceID: accessContext.workspaceID,
@@ -132,7 +132,7 @@ final class SearchServiceRetrievalMattersTests: XCTestCase {
         XCTAssertEqual(results.count, 1, "Readable shared artifact should be surfaced when access lookup succeeds")
         XCTAssertEqual(results.first?.sourceID, artifactID)
 
-        let lexicalHealth = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .lexical })
+        let lexicalHealth = try await store.fetchRetrievalHealth().first(where: { $0.subsystem == .lexical })
         XCTAssertEqual(lexicalHealth?.status, .healthy)
         XCTAssertNil(lexicalHealth?.errorCode)
     }
@@ -160,7 +160,7 @@ final class SearchServiceRetrievalMattersTests: XCTestCase {
         // reads `source_artifacts`, while the lexical FTS query and chunk/document
         // hydration do not. Dropping it makes the authoritative re-check throw while the
         // shared artifact still reaches the candidate set via the FTS index.
-        try await store.dbQueue.write { db in
+        try await store.actor.dbQueue.write { db in
             try db.execute(sql: "DROP TABLE source_artifacts")
         }
 
@@ -176,7 +176,11 @@ final class SearchServiceRetrievalMattersTests: XCTestCase {
         )
         // The failure must not surface as a thrown error or crash to the caller —
         // retrieval degrades to the still-safe non-shared results.
-        XCTAssertNoThrow(try store.fetchRetrievalHealth())
+        do {
+            _ = try await store.fetchRetrievalHealth()
+        } catch {
+            XCTFail("Unexpected throw: \(error)")
+        }
 
         // NOTE: the *degraded lexical-health observability* on this exact
         // table-drop path is asserted by the dedicated retrieval-health tests
@@ -218,7 +222,7 @@ final class SearchServiceRetrievalMattersTests: XCTestCase {
 
         // The no-context path does not consult the data store, so it must not be reported
         // as a degraded/stale index. (Lexical health here reflects the empty result set.)
-        let lexicalHealth = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .lexical })
+        let lexicalHealth = try await store.fetchRetrievalHealth().first(where: { $0.subsystem == .lexical })
         XCTAssertNotEqual(
             lexicalHealth?.errorCode,
             "INDEX_STALE_PARTIAL_RESULTS",

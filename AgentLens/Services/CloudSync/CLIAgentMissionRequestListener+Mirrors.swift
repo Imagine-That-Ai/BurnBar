@@ -481,7 +481,7 @@ final class AgentHarnessImportJobListener {
 
         do {
             if !allUsages.isEmpty {
-                try dataStore.insertChunked(allUsages)
+                try await dataStore.insertChunked(allUsages)
             }
             let report = try await ConversationIndexer.shared.index(allConversations, in: dataStore)
             var mirrored = 0

@@ -9,6 +9,7 @@ This is intentionally outside the default fast unit suite.
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import sqlite3
 import sys
@@ -91,7 +92,7 @@ def main() -> int:
             index_seconds = time.perf_counter() - started
 
             symbol_count = conn.execute("SELECT COUNT(*) FROM code_symbols").fetchone()[0]
-            status = pcm.index_status(conn, str(repo))
+            storage_status = pcm.index_status(conn, str(repo))
             after_non_code = conn.execute(
                 "SELECT COUNT(*) FROM search_documents WHERE sourceKind != 'code'"
             ).fetchone()[0]
@@ -106,7 +107,7 @@ def main() -> int:
             failures.append(f"indexedFiles={result['indexedFiles']} expected {FILE_COUNT}")
         if symbol_count < MIN_SYMBOLS:
             failures.append(f"symbolCount={symbol_count} expected >= {MIN_SYMBOLS}")
-        if not status["storageWithinBudget"]:
+        if not storage_status["storageWithinBudget"]:
             failures.append("storageWithinBudget=false")
         if not query["symbols"]:
             failures.append(f"query returned no symbols for {query_name}")
@@ -115,20 +116,21 @@ def main() -> int:
         if before_non_code != after_non_code:
             failures.append(f"nonCodeRows changed from {before_non_code} to {after_non_code}")
 
-        print(
-            {
-                "status": "failed" if failures else "passed",
-                "indexedFiles": result["indexedFiles"],
-                "symbolCount": symbol_count,
-                "storageByteCount": status["storageByteCount"],
-                "storageBudgetBytes": status["storageBudgetBytes"],
-                "indexSeconds": round(index_seconds, 3),
-                "querySeconds": round(query_seconds, 6),
-                "nonCodeRowsBefore": before_non_code,
-                "nonCodeRowsAfter": after_non_code,
-                "failures": failures,
-            }
-        )
+        summary = {
+            "result": "failed" if failures else "passed",
+            "indexedFiles": result["indexedFiles"],
+            "symbolCount": symbol_count,
+            "storageByteCount": storage_status["storageByteCount"],
+            "storageBudgetBytes": storage_status["storageBudgetBytes"],
+            "indexSeconds": round(index_seconds, 3),
+            "querySeconds": round(query_seconds, 6),
+            "nonCodeRowsBefore": before_non_code,
+            "nonCodeRowsAfter": after_non_code,
+            "failureCount": len(failures),
+        }
+        if failures:
+            summary["failures"] = failures
+        print(json.dumps(summary, sort_keys=True))
         return 1 if failures else 0
     finally:
         shutil.rmtree(temp, ignore_errors=True)

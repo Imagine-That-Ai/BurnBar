@@ -70,10 +70,7 @@ final class ClaudeStatuslineWatcher {
     init(
         url: URL,
         configuration: Configuration = Configuration(),
-        queue: DispatchQueue = DispatchQueue(
-            label: "com.openburnbar.claudeStatuslineWatcher",
-            qos: .utility
-        ),
+        queue: DispatchQueue = .main,
         onChange: @escaping @MainActor () -> Void
     ) {
         self.url = url

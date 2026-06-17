@@ -24,6 +24,7 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private stateSubscription: { dispose(): void } | undefined;
   private lastSection: 'command' | 'runs' | 'system' = 'command';
+  private hostMessageNonce = '';
   private disposed = false;
 
   private constructor(
@@ -87,6 +88,7 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
     const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'workspace.js'));
     const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'app-icon-128.png'));
     const nonce = randomBytes(16).toString('hex');
+    this.hostMessageNonce = nonce;
 
     webview.html = buildWorkspaceHtml(webview, cssUri, jsUri, logoUri, nonce);
 
@@ -108,6 +110,7 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
       this.stateSubscription?.dispose();
       this.stateSubscription = undefined;
       this.panel = undefined;
+      this.hostMessageNonce = '';
 
       if (OpenBurnBarWorkspacePanel.instance === this) {
         OpenBurnBarWorkspacePanel.instance = undefined;
@@ -124,8 +127,8 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
       showOpenBurnBarApp: process.platform === 'darwin'
     });
 
-    void this.panel.webview.postMessage({ type: 'snapshot', viewModel });
-    void this.panel.webview.postMessage({ type: 'restoreSection', section: this.lastSection });
+    void this.panel.webview.postMessage({ type: 'snapshot', viewModel, hostNonce: this.hostMessageNonce });
+    void this.panel.webview.postMessage({ type: 'restoreSection', section: this.lastSection, hostNonce: this.hostMessageNonce });
   }
 
   private async handleWebviewMessage(message: OpenBurnBarWorkspaceWebviewMessage): Promise<void> {
@@ -199,6 +202,7 @@ export class OpenBurnBarWorkspacePanel implements vscode.Disposable {
       if (this.panel) {
         void this.panel.webview.postMessage({
           type: 'error',
+          hostNonce: this.hostMessageNonce,
           message: error instanceof Error ? error.message : 'OpenBurnBar encountered an unexpected error.'
         });
       }

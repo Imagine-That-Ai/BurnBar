@@ -46,7 +46,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         await downloadRemoteProviderAccounts(uid: resolvedUid, localDeviceId: localDeviceId)
         await downloadRemoteUsage(uid: resolvedUid, localDeviceId: localDeviceId)
         let newConversationIds = await downloadRemoteConversations(uid: resolvedUid, localDeviceId: localDeviceId)
-        enqueueProjectionForRemoteConversations(newConversationIds)
+        await enqueueProjectionForRemoteConversations(newConversationIds)
 
         state.withLock { $0.lastSyncDate = Date() }
         await fetchCloudTotal()
@@ -150,7 +150,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     hardwareModel: data["hardwareModel"] as? String,
                     customIcon: nil
                 )
-                try context.dataStore.upsertDevice(device)
+                try await context.dataStore.upsertDevice(device)
             }
         } catch {
             AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
@@ -182,8 +182,8 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     continue
                 }
 
-                let accountForLocalStore = try appendSafeRemoteAccount(account, localDeviceId: localDeviceId)
-                try context.dataStore.providerAccountStore.upsert(accountForLocalStore)
+                let accountForLocalStore = try await appendSafeRemoteAccount(account, localDeviceId: localDeviceId)
+                try await context.dataStore.upsertProviderAccount(accountForLocalStore)
             }
         } catch {
             AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
@@ -193,8 +193,8 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
     private func appendSafeRemoteAccount(
         _ account: ProviderAccountDoc,
         localDeviceId: String
-    ) throws -> ProviderAccountDoc {
-        guard let existing = try context.dataStore.providerAccountStore.fetch(id: account.id),
+    ) async throws -> ProviderAccountDoc {
+        guard let existing = try await context.dataStore.fetchProviderAccount(id: account.id),
               shouldNamespaceRemoteAccount(account, existing: existing, localDeviceId: localDeviceId) else {
             return account
         }
@@ -296,7 +296,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         // VAL-PERSIST-010: Use durable, per-account watermark from database
         let watermark: Date
         do {
-            watermark = try context.dataStore.remoteSyncWatermarkStore.fetchWatermarkOrDefault(
+            watermark = try await context.dataStore.fetchRemoteSyncWatermarkOrDefault(
                 accountUid: uid,
                 collectionKind: .usage
             )
@@ -308,23 +308,10 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
 
         // Create atomic transaction for durable watermark advancement
-        let syncTx = AtomicRemoteSyncTransaction(
-            dbQueue: context.dataStore.dbQueue,
-            watermarkStore: context.dataStore.remoteSyncWatermarkStore,
+        let syncTx = context.dataStore.makeRemoteSyncTransaction(
             accountUid: uid,
             collectionKind: .usage
         )
-        var completedDownload = false
-
-        defer {
-            if completedDownload, syncTx.processedCount > 0 {
-                do {
-                    try syncTx.commit()
-                } catch {
-                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "usage", "error": String(describing: error)])
-                }
-            }
-        }
 
         do {
             var query = context.firestoreGateway.collection("users").document(uid).collection("usage")
@@ -339,7 +326,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
             ) {
                 try await query.getDocuments()
             }
-            let devices = try context.dataStore.fetchDevices()
+            let devices = try await context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
             // Peer usage rows seal the project name (`sealedProjectName`); resolve the
             // read vault key once so we can open it. Legacy plaintext rows fall back
@@ -401,13 +388,19 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     provenanceMethod: .cloudSync,
                     provenanceConfidence: .exact
                 )
-                try context.dataStore.insertRemoteUsage(usage)
+                try await context.dataStore.insertRemoteUsage(usage)
 
                 if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }
-            completedDownload = true
+            if syncTx.processedCount > 0 {
+                do {
+                    try await syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "usage", "error": String(describing: error)])
+                }
+            }
         } catch {
             AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
         }
@@ -422,7 +415,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
 
         let watermark: Date
         do {
-            watermark = try context.dataStore.remoteSyncWatermarkStore.fetchWatermarkOrDefault(
+            watermark = try await context.dataStore.fetchRemoteSyncWatermarkOrDefault(
                 accountUid: uid,
                 collectionKind: .conversations
             )
@@ -431,23 +424,10 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
             watermark = Date.distantPast
         }
 
-        let syncTx = AtomicRemoteSyncTransaction(
-            dbQueue: context.dataStore.dbQueue,
-            watermarkStore: context.dataStore.remoteSyncWatermarkStore,
+        let syncTx = context.dataStore.makeRemoteSyncTransaction(
             accountUid: uid,
             collectionKind: .conversations
         )
-        var completedDownload = false
-
-        defer {
-            if completedDownload, syncTx.processedCount > 0 {
-                do {
-                    try syncTx.commit()
-                } catch {
-                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "conversations", "error": String(describing: error)])
-                }
-            }
-        }
 
         do {
             var query: any CloudSyncQueryGateway
@@ -465,7 +445,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
             ) {
                 try await query.getDocuments()
             }
-            let devices = try context.dataStore.fetchDevices()
+            let devices = try await context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
             var vaultKey: CloudVaultResolvedKey?
             // Resolved at most once per cycle (even on failure) so a persistent provider
@@ -551,14 +531,20 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     deletedAt: (data["deletedAt"] as? Timestamp)?.dateValue(),
                     version: data["version"] as? Int ?? 1
                 )
-                try context.dataStore.insertRemoteConversation(record)
+                try await context.dataStore.insertRemoteConversation(record)
                 insertedIds.append(stableId)
 
                 if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }
-            completedDownload = true
+            if syncTx.processedCount > 0 {
+                do {
+                    try await syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "conversations", "error": String(describing: error)])
+                }
+            }
         } catch {
             AppLogger.sync.error("download_sync_nonfatal_failure", metadata: ["error": error.localizedDescription])
         }
@@ -569,7 +555,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
 
     /// Enqueues projection jobs for newly downloaded remote conversations
     /// so they flow through the semantic search pipeline.
-    func enqueueProjectionForRemoteConversations(_ conversationIds: [String]) {
+    func enqueueProjectionForRemoteConversations(_ conversationIds: [String]) async {
         for id in conversationIds {
             let jobId = ProjectionIdentity.jobID(
                 jobType: .reproject,
@@ -578,7 +564,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 sourceVersionID: ""
             )
             do {
-                try context.dataStore.enqueueProjectionJob(
+                try await context.dataStore.enqueueProjectionJob(
                     ProjectionJobRecord(
                         id: jobId,
                         jobType: .reproject,

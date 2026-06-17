@@ -11,6 +11,8 @@ import org.json.JSONObject
 private const val BURNBAR_GATEWAY_PORT = 8317
 private const val TOOL_ARGUMENT_PREVIEW_CHARS = 200
 
+// reason: dynamic localhost/private Hermes endpoints cannot use stable public certificate pins.
+@SuppressWarnings("java/android/missing-certificate-pinning")
 internal class PiServiceRuntimeSupport(
     private val client: OkHttpClient,
     private val selectedConnection: () -> PiConnectionRecord,
@@ -120,7 +122,7 @@ internal class PiServiceRuntimeSupport(
     fun resolvedBaseURL(): String? {
         val configured = selectedConnection().endpointURL?.trim().orEmpty()
         if (configured.isEmpty()) return "http://127.0.0.1:8765"
-        return configured.removeSuffix("/")
+        return HermesProtocol.validatedLocalOrPrivateBaseURL(configured)
     }
 
     private fun mergeModelOptions(primary: List<HermesRuntimeModelOption>, secondary: List<HermesRuntimeModelOption>): List<HermesRuntimeModelOption> {

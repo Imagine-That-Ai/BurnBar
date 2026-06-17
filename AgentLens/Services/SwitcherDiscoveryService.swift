@@ -80,11 +80,16 @@ final class SwitcherDiscoveryService: ObservableObject {
     /// path (a profile must never be left advertising authentication it cannot
     /// back with a stored token). Defaults to the live Keychain-backed store.
     private let makeAuthStore: @Sendable () -> SwitcherAuthStore
+    private let accountManagerProvider: @MainActor () -> AccountManager
 
     /// `nonisolated` so the service can be constructed from non-MainActor
     /// contexts (and from tests) without an actor-isolation hop. Stored
     /// properties carry their own defaults, so the seam is purely additive.
-    nonisolated init(makeAuthStore: @escaping @Sendable () -> SwitcherAuthStore = { SwitcherAuthStore() }) {
+    nonisolated init(
+        accountManagerProvider: @escaping @MainActor () -> AccountManager = { .shared },
+        makeAuthStore: @escaping @Sendable () -> SwitcherAuthStore = { SwitcherAuthStore() }
+    ) {
+        self.accountManagerProvider = accountManagerProvider
         self.makeAuthStore = makeAuthStore
     }
 
@@ -445,21 +450,22 @@ final class SwitcherDiscoveryService: ObservableObject {
     @discardableResult
     func addDifferentGoogleAccount(dataStore: DataStore) async -> SwitcherProfileRecord? {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return nil }
+        let accountManager = accountManagerProvider()
 
         do {
-            try await AccountManager.shared.signInWithGoogle(presentingWindow: window)
+            try await accountManager.signInWithGoogle(presentingWindow: window)
         } catch {
             scanErrors.append("Google Sign-In failed: \(error.localizedDescription)")
             return nil
         }
 
         // Capture the signed-in account info
-        let email = AccountManager.shared.userEmail
-            ?? AccountManager.shared.currentUser?.email
-            ?? AccountManager.shared.lastOAuthEmail
-        let displayName = AccountManager.shared.userDisplayName
-            ?? AccountManager.shared.currentUser?.displayName
-            ?? AccountManager.shared.lastOAuthDisplayName
+        let email = accountManager.userEmail
+            ?? accountManager.currentUser?.email
+            ?? accountManager.lastOAuthEmail
+        let displayName = accountManager.userDisplayName
+            ?? accountManager.currentUser?.displayName
+            ?? accountManager.lastOAuthDisplayName
 
         guard let email else {
             scanErrors.append("Could not retrieve email from Google Sign-In")
@@ -538,20 +544,21 @@ final class SwitcherDiscoveryService: ObservableObject {
     @discardableResult
     func addDifferentAppleAccount(dataStore: DataStore) async -> SwitcherProfileRecord? {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return nil }
+        let accountManager = accountManagerProvider()
 
         do {
-            try await AccountManager.shared.signInWithApple(presentingWindow: window)
+            try await accountManager.signInWithApple(presentingWindow: window)
         } catch {
             scanErrors.append("Apple Sign-In failed: \(error.localizedDescription)")
             return nil
         }
 
-        let email = AccountManager.shared.userEmail
-            ?? AccountManager.shared.currentUser?.email
-            ?? AccountManager.shared.lastOAuthEmail
-        let displayName = AccountManager.shared.userDisplayName
-            ?? AccountManager.shared.currentUser?.displayName
-            ?? AccountManager.shared.lastOAuthDisplayName
+        let email = accountManager.userEmail
+            ?? accountManager.currentUser?.email
+            ?? accountManager.lastOAuthEmail
+        let displayName = accountManager.userDisplayName
+            ?? accountManager.currentUser?.displayName
+            ?? accountManager.lastOAuthDisplayName
 
         let record = SwitcherProfileRecord(
             targetKind: .browser,
@@ -611,9 +618,10 @@ final class SwitcherDiscoveryService: ObservableObject {
     func refreshBrowserProfileAuthentication(
         _ profile: SwitcherProfileRecord,
         dataStore: DataStore
-    ) async -> SwitcherProfileRecord? {
+        ) async -> SwitcherProfileRecord? {
         guard profile.targetKind == .browser, let browserType = profile.browserType else { return nil }
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return nil }
+        let accountManager = accountManagerProvider()
 
         let providerIdentifier = resolvedBrowserProviderIdentifier(
             profile.browserMetadata?.providerIdentifier,
@@ -623,21 +631,21 @@ final class SwitcherDiscoveryService: ObservableObject {
         do {
             switch providerIdentifier {
             case "apple":
-                try await AccountManager.shared.signInWithApple(presentingWindow: window)
+                try await accountManager.signInWithApple(presentingWindow: window)
             default:
-                try await AccountManager.shared.signInWithGoogle(presentingWindow: window)
+                try await accountManager.signInWithGoogle(presentingWindow: window)
             }
         } catch {
             scanErrors.append("\(providerIdentifier.capitalized) Sign-In failed: \(error.localizedDescription)")
             return nil
         }
 
-        let email = AccountManager.shared.userEmail
-            ?? AccountManager.shared.currentUser?.email
-            ?? AccountManager.shared.lastOAuthEmail
-        let displayName = AccountManager.shared.userDisplayName
-            ?? AccountManager.shared.currentUser?.displayName
-            ?? AccountManager.shared.lastOAuthDisplayName
+        let email = accountManager.userEmail
+            ?? accountManager.currentUser?.email
+            ?? accountManager.lastOAuthEmail
+        let displayName = accountManager.userDisplayName
+            ?? accountManager.currentUser?.displayName
+            ?? accountManager.lastOAuthDisplayName
 
         let updated = SwitcherProfileRecord(
             id: profile.id,
@@ -1140,7 +1148,7 @@ final class SwitcherDiscoveryService: ObservableObject {
     /// run this inside their create/update `do` block so the failure unwinds to
     /// the same fail-closed path that surfaces an error and returns `nil`.
     private func persistOAuthTokenIfPresent(forProfileID profileID: String, provider: String) throws {
-        guard let token = AccountManager.shared.lastOAuthToken, !token.isEmpty else { return }
+        guard let token = accountManagerProvider().lastOAuthToken, !token.isEmpty else { return }
         try makeAuthStore().storeOAuthToken(token, forProfileID: profileID, provider: provider)
     }
 

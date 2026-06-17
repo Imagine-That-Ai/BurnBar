@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 /// SQLite CRUD against `budget_rules` and `budget_events`. The `BudgetSettings` observable
@@ -17,20 +17,20 @@ final class BudgetRulesStore: Sendable {
 
     // MARK: - Rules
 
-    func upsertRule(_ rule: BudgetRule) throws {
-        try dbQueue.write { db in
+    func upsertRule(_ rule: BudgetRule) async throws {
+        try await dbQueue.write { db in
             try Self.upsert(rule: rule, in: db)
         }
     }
 
-    func deleteRule(id: String) throws {
-        _ = try dbQueue.write { db in
+    func deleteRule(id: String) async throws {
+        _ = try await dbQueue.write { db in
             try BudgetRulesStore.deleteRule(id: id, in: db)
         }
     }
 
-    func fetchAllRules(includeDisabled: Bool = false) throws -> [BudgetRule] {
-        try dbQueue.read { db in
+    func fetchAllRules(includeDisabled: Bool = false) async throws -> [BudgetRule] {
+        try await dbQueue.read { db in
             let predicate = includeDisabled ? "" : "WHERE isEnabled = 1"
             let rows = try Row.fetchAll(
                 db,
@@ -40,8 +40,8 @@ final class BudgetRulesStore: Sendable {
         }
     }
 
-    func fetchRule(id: String) throws -> BudgetRule? {
-        try dbQueue.read { db in
+    func fetchRule(id: String) async throws -> BudgetRule? {
+        try await dbQueue.read { db in
             let row = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM budget_rules WHERE id = ? LIMIT 1",
@@ -51,8 +51,8 @@ final class BudgetRulesStore: Sendable {
         }
     }
 
-    func fetchRules(forCredential providerID: String, accountID: String?) throws -> [BudgetRule] {
-        try dbQueue.read { db in
+    func fetchRules(forCredential providerID: String, accountID: String?) async throws -> [BudgetRule] {
+        try await dbQueue.read { db in
             let sql: String
             let args: StatementArguments
             if let accountID {
@@ -78,8 +78,8 @@ final class BudgetRulesStore: Sendable {
         }
     }
 
-    func fetchRules(forProject projectName: String) throws -> [BudgetRule] {
-        try dbQueue.read { db in
+    func fetchRules(forProject projectName: String) async throws -> [BudgetRule] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -94,8 +94,8 @@ final class BudgetRulesStore: Sendable {
         }
     }
 
-    func fetchGlobalRules() throws -> [BudgetRule] {
-        try dbQueue.read { db in
+    func fetchGlobalRules() async throws -> [BudgetRule] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: "SELECT * FROM budget_rules WHERE scope = 'global' AND isEnabled = 1"
@@ -106,14 +106,14 @@ final class BudgetRulesStore: Sendable {
 
     // MARK: - Events
 
-    func recordEvent(_ event: BudgetEvent) throws {
-        try dbQueue.write { db in
+    func recordEvent(_ event: BudgetEvent) async throws {
+        try await dbQueue.write { db in
             try Self.insert(event: event, in: db)
         }
     }
 
-    func recentEvents(forRule ruleID: String? = nil, limit: Int = 100) throws -> [BudgetEvent] {
-        try dbQueue.read { db in
+    func recentEvents(forRule ruleID: String? = nil, limit: Int = 100) async throws -> [BudgetEvent] {
+        try await dbQueue.read { db in
             let sql: String
             let args: StatementArguments
             if let ruleID {
@@ -283,8 +283,8 @@ final class BudgetRulesStore: Sendable {
 
     /// Marks a budget event as synced by setting `syncedAt` to now. Used by
     /// `CloudBudgetService` after a successful Firestore write.
-    func markEventSynced(_ eventID: String) throws {
-        try dbQueue.write { db in
+    func markEventSynced(_ eventID: String) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "UPDATE budget_events SET syncedAt = ? WHERE id = ?",
                 arguments: [Date(), eventID]

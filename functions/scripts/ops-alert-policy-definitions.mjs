@@ -154,6 +154,36 @@ export const OPS_SLO_ALERT_POLICIES = [
     ],
   },
   {
+    displayName: "OpenBurnBar alert-delivery drill canary",
+    documentation: {
+      content:
+        "Quarterly/operator-triggered canary used only to prove that configured notification channels actually reach the human endpoint. Trigger with scripts/ops/run-alert-delivery-drill.mjs, then record launch-evidence/alert-channel-verified.json.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["logging.googleapis.com/user/openburnbar_alert_delivery_drill"],
+    conditions: [
+      {
+        displayName: "Alert delivery drill event observed",
+        conditionThreshold: {
+          filter:
+            'resource.type="global" AND metric.type="logging.googleapis.com/user/openburnbar_alert_delivery_drill"',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_DELTA",
+              crossSeriesReducer: "REDUCE_SUM",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 0,
+          duration: "60s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
     displayName: "OpenBurnBar healthReady degraded",
     documentation: {
       content:

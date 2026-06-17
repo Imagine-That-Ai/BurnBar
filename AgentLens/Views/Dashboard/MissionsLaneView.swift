@@ -358,7 +358,7 @@ struct MissionsLaneView: View {
                     },
                     onApprove: {
                         Task {
-                            operatingLayer.approveMission(
+                            await operatingLayer.approveMission(
                                 id: mission.id,
                                 projectName: mission.projectName
                             )

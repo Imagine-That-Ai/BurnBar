@@ -2,9 +2,9 @@
 
 package com.openburnbar.ui.square
 
-import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +16,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 
+// reason: required JavaScript bridge is confined by CSP, iframe sandboxing, and custom URL dispatch.
+@SuppressWarnings(
+    "java/android/websettings-javascript-enabled",
+    "java/android/websettings-allow-content-access",
+    "java/android/webview-addjavascriptinterface",
+)
 @Composable
 internal fun MiniProgramWebView(
     sandboxURL: String,
@@ -34,12 +40,31 @@ internal fun MiniProgramWebView(
                 settings.domStorageEnabled = true
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
+                settings.allowFileAccessFromFileURLs = false
+                settings.allowUniversalAccessFromFileURLs = false
+                settings.javaScriptCanOpenWindowsAutomatically = false
                 settings.mediaPlaybackRequiresUserGesture = true
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                settings.safeBrowsingEnabled = true
+                settings.setSupportMultipleWindows(false)
                 webChromeClient = WebChromeClient()
                 webViewClient =
                     object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                            val target = request?.url?.toString() ?: return true
+                            val uri = request?.url ?: return true
+                            if (uri.scheme == BRIDGE_SCHEME && uri.host == BRIDGE_HOST) {
+                                val payload = uri.getQueryParameter(BRIDGE_PAYLOAD) ?: return true
+                                handleMiniProgramBridgeCall(
+                                    payload = payload,
+                                    hostAgentURI = agentURI,
+                                    installedAgentURIs = installedAgentURIs,
+                                    webView = view,
+                                    scope = scope,
+                                    onPrimitive = onPrimitive,
+                                )
+                                return true
+                            }
+                            val target = uri.toString()
                             return !target.startsWith(originPrefix(sandboxURL))
                         }
 
@@ -56,31 +81,6 @@ internal fun MiniProgramWebView(
                             )
                         }
                     }
-                addJavascriptInterface(
-                    MiniProgramJSBridge(
-                        hostAgentURI = agentURI,
-                        installedAgentURIs = installedAgentURIs,
-                        postBack = { json ->
-                            evaluateJavascript(
-                                "window.burnbarHostReceive && window.burnbarHostReceive($json);",
-                                null,
-                            )
-                        },
-                        onCall = { call ->
-                            scope.launch {
-                                val response = onPrimitive(call)
-                                val json = response.toJsonString()
-                                post {
-                                    evaluateJavascript(
-                                        "window.burnbarHostReceive && window.burnbarHostReceive($json);",
-                                        null,
-                                    )
-                                }
-                            }
-                        },
-                    ),
-                    "burnbarHostBridge",
-                )
                 loadDataWithBaseURL(
                     originPrefix(sandboxURL),
                     miniProgramHostHtml(sandboxURL, csp),
@@ -101,7 +101,8 @@ private fun miniProgramHostHtml(sandboxURL: String, csp: String): String = """
       <script>
         window.burnbarHostInvoke = function(call) {
           try {
-            window.burnbarHostBridge.invoke(JSON.stringify(call));
+            window.location.href = '$BRIDGE_SCHEME://$BRIDGE_HOST?$BRIDGE_PAYLOAD=' +
+              encodeURIComponent(JSON.stringify(call));
           } catch (e) {
             window.burnbarHostReceive && window.burnbarHostReceive(
               { correlationID: (call && call.correlationID) || 'unknown',
@@ -118,20 +119,31 @@ private fun miniProgramHostHtml(sandboxURL: String, csp: String): String = """
 """.trimIndent()
 
 private const val MAX_CALL_PAYLOAD_BYTES = 16_384
+private const val BRIDGE_SCHEME = "burnbar-host"
+private const val BRIDGE_HOST = "invoke"
+private const val BRIDGE_PAYLOAD = "payload"
 
-private class MiniProgramJSBridge(
-    private val hostAgentURI: String,
-    private val installedAgentURIs: Set<String>,
-    private val postBack: WebView.(String) -> Unit,
-    private val onCall: (AndroidMiniProgramCall) -> Unit,
+private fun handleMiniProgramBridgeCall(
+    payload: String,
+    hostAgentURI: String,
+    installedAgentURIs: Set<String>,
+    webView: WebView?,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onPrimitive: suspend (AndroidMiniProgramCall) -> AndroidMiniProgramResponse,
 ) {
-    @JavascriptInterface
-    fun invoke(json: String) {
-        if (json.toByteArray(Charsets.UTF_8).size > MAX_CALL_PAYLOAD_BYTES) return
-        val call = AndroidMiniProgramCall.fromJsonString(json) ?: return
-        val claimedAgentURI = call.agentURI.ifBlank { hostAgentURI }
-        if (claimedAgentURI != hostAgentURI || claimedAgentURI !in installedAgentURIs) return
-        onCall(call.copy(agentURI = claimedAgentURI))
+    if (payload.toByteArray(Charsets.UTF_8).size > MAX_CALL_PAYLOAD_BYTES) return
+    val call = AndroidMiniProgramCall.fromJsonString(payload) ?: return
+    val claimedAgentURI = call.agentURI.ifBlank { hostAgentURI }
+    if (claimedAgentURI != hostAgentURI || claimedAgentURI !in installedAgentURIs) return
+    scope.launch {
+        val response = onPrimitive(call.copy(agentURI = claimedAgentURI))
+        val json = response.toJsonString()
+        webView?.post {
+            webView.evaluateJavascript(
+                "window.burnbarHostReceive && window.burnbarHostReceive($json);",
+                null,
+            )
+        }
     }
 }
 

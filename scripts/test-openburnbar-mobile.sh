@@ -19,6 +19,8 @@
 #                                           with commas or whitespace.
 #   OPENBURNBAR_MOBILE_TEST_SCHEME=...   Override scheme (default: OpenBurnBarMobileUnitTests).
 #   OPENBURNBAR_MOBILE_SIMULATOR=...     Simulator name for CI fallback (default: iPhone 17 Pro Max).
+#   OPENBURNBAR_MOBILE_DISABLE_SIMULATOR_SIGNING=1
+#                                           Force the CI-style unsigned simulator host locally.
 #   OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1
 #                                           Skip Signal FFI prep when the caller
 #                                           already prepared Vendor/OpenBurnBarSignalFfi.xcframework.
@@ -426,7 +428,8 @@ populate_xcodebuild_args() {
     if [[ "$test_scheme" == "OpenBurnBarMobile" ]]; then
         xcodebuild_args+=(-skip-testing:OpenBurnBarMobileUITests)
     fi
-    if [[ "$uses_ios_simulator" -eq 1 ]]; then
+    if [[ "$uses_ios_simulator" -eq 1 ]] \
+        && [[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" || "${OPENBURNBAR_MOBILE_DISABLE_SIMULATOR_SIGNING:-}" == "1" ]]; then
         xcodebuild_args+=(
             CODE_SIGNING_ALLOWED=NO
             CODE_SIGNING_REQUIRED=NO

@@ -45,6 +45,20 @@ public enum SwarmGlyphSampler {
         return sampled
     }
 
+    /// Solid (filled) version of `glyphPoints(for:)`. Returns the full sampled
+    /// brand mark rather than just its outline, so surfaces that render the
+    /// glyph large (the launch hero) read it as the actual logo instead of a
+    /// hollow ring. Same normalized space and brand colors as the outline
+    /// variant; use a higher `maxPoints` so the fill looks solid.
+    @MainActor
+    public static func filledGlyphPoints(for provider: AgentProvider, maxPoints: Int = 220) -> [SwarmGlyphPoint] {
+        let key = "fill:\(provider.rawValue)#\(maxPoints)"
+        if let cached = cache[key] { return cached }
+        let sampled = SwarmSimulation.normalizedGlyphFillPoints(for: provider, maxPoints: maxPoints)
+        cache[key] = sampled
+        return sampled
+    }
+
     /// The BurnBar mark (flame + rising bars) from the backdrop's vector
     /// shape, ember-brand-tinted per stroke role. Same normalized space as
     /// `glyphPoints(for:)`.

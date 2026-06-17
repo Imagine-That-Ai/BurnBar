@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -171,7 +171,8 @@ test("MIN_CONFIDENCE gate value", () => {
 });
 
 test("installMemoryHook merges a SessionEnd hook idempotently", () => {
-  const path = join(tmpdir(), `obb-hook-test-${KEY.toString("hex").slice(0, 8)}.json`);
+  const dir = mkdtempSync(join(tmpdir(), `obb-hook-test-${KEY.toString("hex").slice(0, 8)}-`));
+  const path = join(dir, "settings.json");
   try {
     installMemoryHook({ settingsPath: path });
     installMemoryHook({ settingsPath: path }); // second call must not duplicate
@@ -180,13 +181,18 @@ test("installMemoryHook merges a SessionEnd hook idempotently", () => {
     assert.equal(sessionEnd.length, 1, "hook installed exactly once");
     assert.equal(sessionEnd[0].hooks[0].command, "openburnbar memory run");
   } finally {
-    rmSync(path, { force: true });
+    rmSync(dir, { force: true, recursive: true });
   }
 });
 
 test("deleteQueuedMemoryBatch removes a queued local quarantine file", () => {
-  const path = join(tmpdir(), `obb-memory-delete-${KEY.toString("hex").slice(0, 8)}.json`);
+  const dir = mkdtempSync(join(tmpdir(), `obb-memory-delete-${KEY.toString("hex").slice(0, 8)}-`));
+  const path = join(dir, "queued.json");
   writeFileSync(path, JSON.stringify({ ok: true }));
-  assert.equal(deleteQueuedMemoryBatch(path), true);
-  assert.equal(deleteQueuedMemoryBatch(path), false);
+  try {
+    assert.equal(deleteQueuedMemoryBatch(path), true);
+    assert.equal(deleteQueuedMemoryBatch(path), false);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
 });

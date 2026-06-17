@@ -334,24 +334,29 @@ struct ModelDashboardView: View {
                 usages: usages,
                 theme: theme,
                 selectedSession: $selectedSession,
-                onOpenUsage: openUsage,
+                onOpenUsage: { usage in
+                    Task { @MainActor in
+                        await openUsage(usage)
+                    }
+                },
                 displayMode: settingsManager.usageDisplayMode,
                 showsAgentBadge: true,
-                footerCaption: "Search paths, models, and session ids for \(displayName). Groups use session start time within the range above."
-            ) {
-                VStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 32))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                footerCaption: "Search paths, models, and session ids for \(displayName). Groups use session start time within the range above.",
+                emptyLedger: {
+                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 32))
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
-                    Text("No sessions found for this model in the selected time range.")
-                        .font(UnifiedDesignSystem.Typography.body)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                        .multilineTextAlignment(.center)
+                        Text("No sessions found for this model in the selected time range.")
+                            .font(UnifiedDesignSystem.Typography.body)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, UnifiedDesignSystem.Spacing.xxl)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, UnifiedDesignSystem.Spacing.xxl)
-            }
+            )
             .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
@@ -371,8 +376,8 @@ struct ModelDashboardView: View {
         return settingsManager.formatUsageMetric(cost: cost, tokens: tokens)
     }
 
-    private func openUsage(_ usage: TokenUsage) {
-        guard let target = jumpTarget(for: usage) else {
+    private func openUsage(_ usage: TokenUsage) async {
+        guard let target = await jumpTarget(for: usage) else {
             selectedSession = usage
             return
         }
@@ -383,8 +388,8 @@ struct ModelDashboardView: View {
         }
     }
 
-    private func jumpTarget(for usage: TokenUsage) -> ConversationJumpTarget? {
-        guard let conversation = conversationForUsage(usage) else {
+    private func jumpTarget(for usage: TokenUsage) async -> ConversationJumpTarget? {
+        guard let conversation = await conversationForUsage(usage) else {
             return nil
         }
         let snippet = conversation.summary?.nonEmpty
@@ -399,14 +404,13 @@ struct ModelDashboardView: View {
         )
     }
 
-    private func conversationForUsage(_ usage: TokenUsage) -> ConversationRecord? {
+    private func conversationForUsage(_ usage: TokenUsage) async -> ConversationRecord? {
         let conversationID = ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
         if let conversation = try? dataStore.fetchConversation(id: conversationID) {
             return conversation
         }
 
-        return try? dataStore
-            .fetchSessionLogSummaries(limit: 1000)
+        return (try? await dataStore.fetchSessionLogSummaries(limit: 1000))?
             .first(where: { $0.sessionId == usage.sessionId && $0.provider == usage.provider })
     }
 

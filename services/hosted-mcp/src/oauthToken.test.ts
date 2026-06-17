@@ -125,7 +125,9 @@ test("discovery advertises only routes that exist and points at the served issue
   // RFC 9728: protected resource points clients at the served authorization server.
   assert.deepEqual(resource.authorization_servers, [MCP_AUTH_ISSUER]);
   assert.equal(server.issuer, MCP_AUTH_ISSUER);
-  assert.ok(MCP_AUTH_ISSUER.startsWith("https://mcp.burnbar.ai"), "issuer must be the served domain, not openburnbar.com");
+  const issuerURL = new URL(MCP_AUTH_ISSUER);
+  assert.equal(issuerURL.protocol, "https:");
+  assert.equal(issuerURL.hostname, "mcp.burnbar.ai", "issuer must be the served domain, not openburnbar.com");
 
   // The token endpoint is the only OAuth route, and it lives on the served domain.
   assert.equal(server.token_endpoint, `${MCP_AUTH_ISSUER}/oauth/token`);

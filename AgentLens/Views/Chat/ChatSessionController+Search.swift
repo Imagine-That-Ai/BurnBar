@@ -78,10 +78,23 @@ extension ChatSessionController {
 
     func refreshRetrievalHealth(sharedFeaturesAvailable: Bool) {
         self.sharedFeaturesAvailable = sharedFeaturesAvailable
-        retrievalHealthSnapshot = retrievalHealthService.snapshot(
-            indexingEnabled: settingsManager.conversationIndexingEnabled,
-            sharedFeaturesAvailable: sharedFeaturesAvailable
-        )
+        retrievalHealthTask?.cancel()
+        retrievalHealthRequestID += 1
+        let requestID = retrievalHealthRequestID
+        let retrievalHealthService = retrievalHealthService
+        let indexingEnabled = settingsManager.conversationIndexingEnabled
+        retrievalHealthTask = Task { [weak self, retrievalHealthService] in
+            let snapshot = await retrievalHealthService.snapshot(
+                indexingEnabled: indexingEnabled,
+                sharedFeaturesAvailable: sharedFeaturesAvailable
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                guard let self, self.retrievalHealthRequestID == requestID else { return }
+                self.retrievalHealthSnapshot = snapshot
+                self.retrievalHealthTask = nil
+            }
+        }
     }
 
     func selectSearchResult(_ result: SearchResult) {
@@ -170,7 +183,7 @@ extension ChatSessionController {
         )
         messages.append(userMsg)
         do {
-            try dataStore.saveChatMessage(userMsg, threadID: activeThreadID)
+            try await dataStore.saveChatMessage(userMsg, threadID: activeThreadID)
         } catch {
             AppLogger.chat.silentFailure("saveChatMessage (user)", error: error)
         }
@@ -192,7 +205,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Hermes unavailable)", error: error)
                 }
@@ -211,7 +224,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (OpenClaw unavailable)", error: error)
                 }
@@ -230,7 +243,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Pi unavailable)", error: error)
                 }
@@ -246,7 +259,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (CLI disabled)", error: error)
                 }
@@ -261,7 +274,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Droid not found)", error: error)
                 }
@@ -276,7 +289,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Forge not found)", error: error)
                 }
@@ -291,7 +304,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Antigravity not found)", error: error)
                 }
@@ -306,7 +319,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Cursor Agent not found)", error: error)
                 }
@@ -321,7 +334,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Codex not found)", error: error)
                 }
@@ -336,7 +349,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (Claude not found)", error: error)
                 }
@@ -369,7 +382,7 @@ extension ChatSessionController {
                 )
                 messages.append(err)
                 do {
-                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                    try await dataStore.saveChatMessage(err, threadID: activeThreadID)
                 } catch {
                     AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
                 }
@@ -392,7 +405,7 @@ extension ChatSessionController {
             )
         )
         let retrievalResults = queryRun.retrievalResults
-        conversationJumpTargets = buildConversationJumpTargets(
+        conversationJumpTargets = await buildConversationJumpTargets(
             queryText: retrievalText,
             queryRun: queryRun,
             retrievalResults: retrievalResults,
@@ -406,7 +419,7 @@ extension ChatSessionController {
             hasJumpTargets: conversationJumpTargets.isEmpty == false,
             retrievalResultCount: retrievalResults.count
         )
-        let oracleResult = indexedResponseStrategy == .llmOnly ? nil : buildLocalIndexOracleResponse(
+        let oracleResult = indexedResponseStrategy == .llmOnly ? nil : await buildLocalIndexOracleResponse(
             queryText: retrievalText,
             queryRun: queryRun,
             retrievalResults: retrievalResults,
@@ -425,7 +438,7 @@ extension ChatSessionController {
             let assistant = ChatMessageRecord(role: .assistant, content: finalResponse)
             messages.append(assistant)
             do {
-                try dataStore.saveChatMessage(assistant, threadID: activeThreadID)
+                try await dataStore.saveChatMessage(assistant, threadID: activeThreadID)
             } catch {
                 AppLogger.chat.silentFailure("saveChatMessage (oracle response)", error: error)
             }
@@ -442,7 +455,7 @@ extension ChatSessionController {
             )
             messages.append(err)
             do {
-                try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                try await dataStore.saveChatMessage(err, threadID: activeThreadID)
             } catch {
                 AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
             }
@@ -715,7 +728,7 @@ extension ChatSessionController {
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
                         let final = self.messages[idx]
                         do {
-                            try self.dataStore.saveChatMessage(final, threadID: self.activeThreadID)
+                            try await self.dataStore.saveChatMessage(final, threadID: self.activeThreadID)
                             await self.saveUsageIfNeeded(
                                 usageSnapshot,
                                 backend: self.chatBackend,

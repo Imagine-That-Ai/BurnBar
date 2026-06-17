@@ -232,7 +232,7 @@ final class AppCommandRouter {
     // unavailable/denied device-owner auth, export outcomes) is executable
     // headless in CI. Same pattern as the ComputerUseSessionCoordinator
     // `controlSeal*Provider` seams.
-    var linkCliUserIDProvider: () -> String? = { AccountManager.shared.userID }
+    var linkCliUserIDProvider: () -> String? = { nil }
     var linkCliConfirmationPresenter: (() -> Bool)?
     var linkCliDeviceOwnerAuthenticator: ((@escaping @MainActor (LinkCliAuthOutcome) -> Void) -> Void)?
     var linkCliAlertPresenter: ((NSAlert.Style, String, String) -> Void)?
@@ -462,6 +462,7 @@ final class WindowManager: ObservableObject {
             minHeight: DashboardWindowMetrics.minimumContentHeight
         )
         .environment(settingsManager)
+        .environment(accountManager)
         .environment(navigationCoordinator)
 
         let visibleFrame = NSScreen.main?.visibleFrame
@@ -653,6 +654,7 @@ final class WindowManager: ObservableObject {
     func openSwitcherOnboardingWizard(
         dataStore: DataStore,
         settingsManager: SettingsManager,
+        accountManager: AccountManager,
         onOpenSettings: @escaping () -> Void
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -665,6 +667,7 @@ final class WindowManager: ObservableObject {
         let contentView = SwitcherOnboardingWizardView(
             dataStore: dataStore,
             settingsManager: settingsManager,
+            accountManager: accountManager,
             onDismiss: { [weak self] in
                 self?.switcherOnboardingWindow?.close()
                 self?.switcherOnboardingWindow = nil
@@ -841,6 +844,7 @@ final class WindowManager: ObservableObject {
                 onClose: onClose
             )
             .environment(settingsManager)
+            .environment(accountManager)
         )
     }
 
@@ -956,7 +960,7 @@ struct OpenBurnBarApp: App {
         }
 
         StartupProfiler.interval("configure_firebase") {
-            Self.configureFirebaseIfAvailable()
+            Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
         StartupProfiler.interval("configure_sentry") {
             Self.configureSentryIfAvailable()
@@ -990,7 +994,7 @@ struct OpenBurnBarApp: App {
             try DataStoreCoordinator()
         }
         let settings = StartupProfiler.interval("settings_init") {
-            SettingsManager()
+            SettingsManager.shared
         }
         let accountManager = AccountManager.shared
         let quotaService = StartupProfiler.interval("quota_service_init") {
@@ -1006,16 +1010,16 @@ struct OpenBurnBarApp: App {
         // Phase 4 — wire BudgetSettings + BudgetGate so `BudgetEnforcement.shared.evaluate`
         // returns real decisions for AgentLens-plane requests. The daemon plane reads the
         // same `budget_rules` table directly (Phase 4 Part B).
-        let budgetRulesStore = BudgetRulesStore(dbQueue: initializedStore.dbQueue)
+        let budgetRulesStore = BudgetRulesStore(dbQueue: initializedStore.actor.dbQueue)
         let budgetSettings = BudgetSettings(
             store: budgetRulesStore,
             alertSettings: settings.alerts,
             deviceID: ProcessInfo.processInfo.globallyUniqueString
         )
-        let budgetLedger = BudgetLedger(dbQueue: initializedStore.dbQueue)
+        let budgetLedger = BudgetLedger(dbQueue: initializedStore.actor.dbQueue)
         let budgetGate = BudgetGate(settings: budgetSettings, ledger: budgetLedger)
         let budgetNotifications = BudgetNotificationCenter()
-        let budgetForecast = BudgetForecast(dbQueue: initializedStore.dbQueue)
+        let budgetForecast = BudgetForecast(dbQueue: initializedStore.actor.dbQueue)
         StartupProfiler.interval("budget_enforcement_configure") {
             BudgetEnforcement.shared.configure(
                 gate: budgetGate,
@@ -1059,9 +1063,9 @@ struct OpenBurnBarApp: App {
     }
 
     @MainActor
-    private static func configureFirebaseIfAvailable() {
+    private static func configureFirebaseIfAvailable(accountManager: AccountManager) {
         guard !didConfigureFirebase else {
-            AccountManager.shared.onFirebaseConfigured()
+            accountManager.onFirebaseConfigured()
             return
         }
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
@@ -1084,20 +1088,21 @@ struct OpenBurnBarApp: App {
         if let clientID = FirebaseApp.app()?.options.clientID {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         }
-        AccountManager.shared.onFirebaseConfigured()
+        accountManager.onFirebaseConfigured()
         #if DEBUG
-        signInWithE2ECustomTokenIfNeeded()
+        signInWithE2ECustomTokenIfNeeded(accountManager: accountManager)
         #endif
 
         // Validate App Check token when cloud sync is enabled.
         // This is a fail-open warning: the app continues to work but logs a warning.
         Task {
-            await validateAppCheckIfNeeded()
+            await validateAppCheckIfNeeded(accountManager: accountManager)
         }
     }
 
     #if DEBUG
     private static func signInWithE2ECustomTokenIfNeeded(
+        accountManager: AccountManager,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         let token = environment["OPENBURNBAR_E2E_FIREBASE_CUSTOM_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1122,7 +1127,7 @@ struct OpenBurnBarApp: App {
                 } else {
                     return
                 }
-                AccountManager.shared.onFirebaseConfigured()
+                accountManager.onFirebaseConfigured()
                 print("OpenBurnBar E2E Firebase sign-in active for uid \(result.user.uid).")
             } catch {
                 print("warning: OpenBurnBar E2E Firebase sign-in failed: \(error.localizedDescription)")
@@ -1134,8 +1139,8 @@ struct OpenBurnBarApp: App {
     /// Validates that App Check is functional when cloud sync is enabled.
     /// Posts a notification if App Check cannot obtain a token so the UI can warn the user.
     @MainActor
-    private static func validateAppCheckIfNeeded() async {
-        guard AccountManager.shared.isCloudSyncEnabled else { return }
+    private static func validateAppCheckIfNeeded(accountManager: AccountManager) async {
+        guard accountManager.isCloudSyncEnabled else { return }
         guard Auth.auth().currentUser?.isAnonymous == false else { return }
         do {
             let token = try await AppCheck.appCheck().token(forcingRefresh: false)
@@ -1301,6 +1306,7 @@ struct OpenBurnBarApp: App {
                     runtimeContext: context
                 )
                 .environment(context.settingsManager)
+                .environment(context.accountManager)
             )
         }
 
@@ -1383,12 +1389,19 @@ struct OpenBurnBarApp: App {
                 context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
             }
             StartupProfiler.interval("agent_reply_listener_start") {
-                MacAgentReplyNotificationListener.shared.start(chatController: context.chatController)
+                MacAgentReplyNotificationListener.shared.start(
+                    chatController: context.chatController,
+                    accountManager: context.accountManager
+                )
             }
 
             // Inject wallpaper dependencies
+            appDelegate.settingsManager = context.settingsManager
             appDelegate.dataStore = context.dataStore
             appDelegate.daemonManager = context.daemonManager
+            AppCommandRouter.shared.linkCliUserIDProvider = { [weak accountManager = context.accountManager] in
+                accountManager?.userID
+            }
 
             if !hasShownInitialDashboard {
                 hasShownInitialDashboard = true
@@ -1708,6 +1721,7 @@ struct OpenBurnBarApp: App {
                     peerSource: peerSource,
                     hudState: hud
                 )
+                .environment(context.accountManager)
             } else {
                 EmptyView()
             }

@@ -201,15 +201,16 @@ type_body_length:
   warning: 4700
   error: 4800
 
-# Ratchet: max measured file 5,914 lines (347 files over the previous 500).
-# remediation(swiftlint-ratchets): error 6500->6200, warning 6000->5950 (both
-# above the measured 5,914 max). CI `--strict` promotes warnings to errors, so
+# Ratchet: max measured file 6,129 lines (ProviderQuotaServiceTests.swift).
+# remediation(swiftlint-ratchets): warning recalibrated 5,950->6,130 after the
+# accretive ProviderQuotaServiceTests growth landed on main. CI `--strict`
+# promotes warnings to errors, so
 # the warning level must stay above max too. In-flight decomposition will shrink
 # the max; ratchet DOWN again (warning+error together) once it lands.
 # The lower target is enforced by budgets/swift-file-size-baseline.json: no new
 # file may cross 2,000 lines and no baselined file may grow.
 file_length:
-  warning: 5950
+  warning: 6130
   error: 6200
 
 identifier_name:

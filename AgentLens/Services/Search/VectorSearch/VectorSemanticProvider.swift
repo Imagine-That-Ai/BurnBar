@@ -214,7 +214,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         }
 
         do {
-            let (candidates, fallbackUsed, metrics) = try gatherCandidates(queryVector: queryVector, limit: limit)
+            let (candidates, fallbackUsed, metrics) = try await gatherCandidates(queryVector: queryVector, limit: limit)
             gatherMetrics = metrics
             let semanticCandidates = candidates.map { SemanticCandidate(chunkID: $0.chunkID, score: $0.score) }
             await persistSemanticHealth(
@@ -294,7 +294,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         }
     }
 
-    private func gatherCandidates(queryVector: [Float], limit: Int) throws -> ([VectorIndexCandidate], Bool, CandidateGatherMetrics) {
+    private func gatherCandidates(queryVector: [Float], limit: Int) async throws -> ([VectorIndexCandidate], Bool, CandidateGatherMetrics) {
         let boundedLimit = min(limit, indexedVectorCount)
         guard boundedLimit > 0 else { return ([], false, CandidateGatherMetrics()) }
 
@@ -302,7 +302,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         switch backend {
         case .exact:
             let startedAt = OpenBurnBarPerformanceTimer.now()
-            let candidates = try streamingExactCandidates(queryVector: queryVector, limit: boundedLimit)
+            let candidates = try await streamingExactCandidates(queryVector: queryVector, limit: boundedLimit)
             let elapsed = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: startedAt)
             metrics.fallbackExactLatencyMs = elapsed
             metrics.candidateGenerationLatencyMs = elapsed
@@ -321,7 +321,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
 
                 if exactRerankEnabled {
                     let rerankStartedAt = OpenBurnBarPerformanceTimer.now()
-                    let reranked = try exactRerank(
+                    let reranked = try await exactRerank(
                         candidates: annCandidates,
                         queryVector: queryVector,
                         limit: boundedLimit
@@ -335,7 +335,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             }
 
             let fallbackStartedAt = OpenBurnBarPerformanceTimer.now()
-            let fallback = try streamingExactCandidates(queryVector: queryVector, limit: boundedLimit)
+            let fallback = try await streamingExactCandidates(queryVector: queryVector, limit: boundedLimit)
             let fallbackLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: fallbackStartedAt)
             metrics.fallbackExactLatencyMs = fallbackLatencyMs
             metrics.candidateGenerationLatencyMs = fallbackLatencyMs
@@ -347,10 +347,10 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         candidates: [VectorIndexCandidate],
         queryVector: [Float],
         limit: Int
-    ) throws -> [VectorIndexCandidate] {
+    ) async throws -> [VectorIndexCandidate] {
         guard let embeddingVersionID = indexedEmbeddingVersionID, candidates.isEmpty == false else { return [] }
         let chunkIDs = candidates.map(\.chunkID)
-        let embeddings = try dataStore.fetchChunkEmbeddings(chunkIDs: chunkIDs, embeddingVersionID: embeddingVersionID)
+        let embeddings = try await dataStore.fetchChunkEmbeddings(chunkIDs: chunkIDs, embeddingVersionID: embeddingVersionID)
         let vectorByChunkID = Dictionary(uniqueKeysWithValues: embeddings.compactMap { embedding in
             VectorBlobCodec.decode(embedding.vectorBlob).map { (embedding.chunkID, $0) }
         })
@@ -374,7 +374,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         return Array(reranked.prefix(limit))
     }
 
-    private func streamingExactCandidates(queryVector: [Float], limit: Int) throws -> [VectorIndexCandidate] {
+    private func streamingExactCandidates(queryVector: [Float], limit: Int) async throws -> [VectorIndexCandidate] {
         guard let embeddingVersionID = indexedEmbeddingVersionID else { return [] }
 
         var best: [VectorIndexCandidate] = []
@@ -382,7 +382,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         var offset = 0
 
         while true {
-            let page = try dataStore.fetchChunkEmbeddings(
+            let page = try await dataStore.fetchChunkEmbeddings(
                 embeddingVersionID: embeddingVersionID,
                 limit: snapshotPageSize,
                 offset: offset
@@ -417,7 +417,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             return
         }
 
-        let stats = try dataStore.chunkEmbeddingVersionStats(embeddingVersionID: selection.version.id)
+        let stats = try await dataStore.chunkEmbeddingVersionStats(embeddingVersionID: selection.version.id)
         let newestEmbeddingEpoch = Int(stats.newestUpdatedAt?.timeIntervalSince1970 ?? 0)
         let fingerprint = [
             selection.version.id,
@@ -457,7 +457,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             return
         }
 
-        let record = try dataStore.fetchVectorIndexSnapshot(
+        let record = try await dataStore.fetchVectorIndexSnapshot(
             embeddingVersionID: selection.version.id,
             backendID: snapshotBackend.backendID
         )
@@ -476,7 +476,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             return
         }
 
-        let builtRecord = try rebuildSnapshot(selection: selection, fingerprint: fingerprint, existingRecord: record)
+        let builtRecord = try await rebuildSnapshot(selection: selection, fingerprint: fingerprint, existingRecord: record)
         let builtSnapshot = try loadSnapshotIfPresent(from: builtRecord)
         snapshotContext = SnapshotContext(
             embeddingVersionID: selection.version.id,
@@ -491,7 +491,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         selection: ActiveEmbeddingSelection,
         fingerprint: String,
         existingRecord: VectorIndexSnapshotRecord?
-    ) throws -> VectorIndexSnapshotRecord {
+    ) async throws -> VectorIndexSnapshotRecord {
         let builtAt = nowProvider()
         let generation = UUID().uuidString
         let databasePrefix = storageNamespace.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "app" : storageNamespace
@@ -522,14 +522,14 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
             updatedAt: builtAt,
             lastBuiltAt: existingRecord?.lastBuiltAt
         )
-        try dataStore.upsertVectorIndexSnapshot(buildingRecord)
+        try await dataStore.upsertVectorIndexSnapshot(buildingRecord)
 
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: tempFiles.directoryURL) // try?-ok(clear stale temp dir)
         try fileManager.createDirectory(at: tempFiles.directoryURL, withIntermediateDirectories: true, attributes: nil)
 
         do {
-            let chunkIDs = try allChunkIDs(for: selection.version.id)
+            let chunkIDs = try await allChunkIDs(for: selection.version.id)
             let keyByChunkID = try BurnBarPersistentVectorIndexKeyCodec.makeMapping(chunkIDs: chunkIDs)
             let writer = try snapshotBackend.makeWritable(
                 dimensions: selection.model.dimensions,
@@ -539,7 +539,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
 
             var offset = 0
             while true {
-                let page = try dataStore.fetchChunkEmbeddings(
+                let page = try await dataStore.fetchChunkEmbeddings(
                     embeddingVersionID: selection.version.id,
                     limit: snapshotPageSize,
                     offset: offset
@@ -598,7 +598,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 updatedAt: builtAt,
                 lastBuiltAt: builtAt
             )
-            try dataStore.upsertVectorIndexSnapshot(readyRecord)
+            try await dataStore.upsertVectorIndexSnapshot(readyRecord)
 
             if let previousPath = existingRecord?.storageRelativePath, previousPath != finalRelativePath {
                 try? fileManager.removeItem(at: storageRootURL.appendingPathComponent(previousPath, isDirectory: true)) // try?-ok(reclaim old snapshot dir)
@@ -624,16 +624,16 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 updatedAt: builtAt,
                 lastBuiltAt: existingRecord?.lastBuiltAt
             )
-            try dataStore.upsertVectorIndexSnapshot(failedRecord)
+            try await dataStore.upsertVectorIndexSnapshot(failedRecord)
             throw error
         }
     }
 
-    private func allChunkIDs(for embeddingVersionID: String) throws -> [String] {
+    private func allChunkIDs(for embeddingVersionID: String) async throws -> [String] {
         var result: [String] = []
         var offset = 0
         while true {
-            let page = try dataStore.fetchChunkEmbeddings(
+            let page = try await dataStore.fetchChunkEmbeddings(
                 embeddingVersionID: embeddingVersionID,
                 limit: snapshotPageSize,
                 offset: offset
@@ -656,10 +656,10 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
     }
 
     private func resolveEmbeddingSelection() async throws -> ActiveEmbeddingSelection? {
-        let models = try dataStore.fetchEmbeddingModels()
+        let models = try await dataStore.fetchEmbeddingModels()
         guard models.isEmpty == false else { return nil }
         let modelByID = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0) })
-        let versions = try dataStore.fetchEmbeddingVersions()
+        let versions = try await dataStore.fetchEmbeddingVersions()
         guard versions.isEmpty == false else { return nil }
 
         let selectedVersion: EmbeddingVersionRecord?
@@ -731,7 +731,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         )
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
-        try dataStore.upsertRetrievalHealth(
+        try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .semantic,
                 status: status,
