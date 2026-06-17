@@ -9,8 +9,12 @@ import Network
 
 extension BurnBarHTTPGatewayServer {
 
-    func handleModels(includeUnadvertised: Bool = false) async -> GatewayHTTPResponse {
+    func handleModels(
+        includeUnadvertised: Bool = false,
+        headers: [String: String] = [:]
+    ) async -> GatewayHTTPResponse {
         do {
+            let client = modelCatalogClient(from: headers)
             let catalog = configStore.catalogSupport.catalog
             let configSnapshot = try await configStore.snapshot()
             let suppressedBaseIDs = includeUnadvertised
@@ -32,9 +36,15 @@ extension BurnBarHTTPGatewayServer {
             let groups = groupedModelCatalogEntries(entries)
             let duplicateModelIDs = duplicateAdvertisedModelIDs(in: groups)
             let models = groups.map { group in
-                ModelDescriptor(
+                let routeID = gatewayRouteModelID(for: group, duplicateModelIDs: duplicateModelIDs)
+                return ModelDescriptor(
                     group: group,
-                    advertisedID: gatewayRouteModelID(for: group, duplicateModelIDs: duplicateModelIDs)
+                    advertisedID: advertisedModelID(
+                        routeID,
+                        group: group,
+                        for: client,
+                        includeUnadvertised: includeUnadvertised
+                    )
                 )
             }
             return jsonResponse(status: 200, body: encodeBody(ModelsResponse(data: models)))
@@ -98,6 +108,41 @@ extension BurnBarHTTPGatewayServer {
             }
         }
         return nil
+    }
+
+    enum GatewayModelCatalogClient {
+        case generic
+        case claudeCode
+    }
+
+    func modelCatalogClient(from headers: [String: String]) -> GatewayModelCatalogClient {
+        let value = headers["x-openburnbar-client"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return value == "claude-code" ? .claudeCode : .generic
+    }
+
+    func advertisedModelID(
+        _ routeID: String,
+        group: GatewayModelCatalogGroup,
+        for client: GatewayModelCatalogClient,
+        includeUnadvertised: Bool
+    ) -> String {
+        guard !includeUnadvertised else { return routeID }
+        switch client {
+        case .generic:
+            return routeID
+        case .claudeCode:
+            return claudeCodeModelAlias(
+                providerID: group.providerID,
+                rawModelID: group.representative.id
+            )
+        }
+    }
+
+    func claudeCodeModelAlias(providerID: String, rawModelID: String) -> String {
+        let providerScopedRouteID = "\(providerID)/\(rawModelID)"
+        return "anthropic.openburnbar.\(Self.base64URLEncode(providerScopedRouteID))"
     }
 
     func suppressedBaseModelIDs(from snapshot: BurnBarProviderConfigurationSnapshot) -> Set<String> {
@@ -165,6 +210,48 @@ extension BurnBarHTTPGatewayServer {
         return routeKeysByFamily
     }
 
+    func dynamicOllamaCloudRouteKeysByFamily(for requestedModel: GatewayRequestedModel) async throws -> [BurnBarProviderFormatFamily: Set<String>] {
+        if let providerID = requestedModel.providerID,
+           providerID.caseInsensitiveCompare("ollama") != .orderedSame {
+            return [:]
+        }
+        guard canonicalOllamaCloudModelID(requestedModel.modelID) != nil else {
+            return [:]
+        }
+
+        var routeKeys = Set<String>()
+        for configuration in try await configStore.resolvedConfigurations()
+            where configuration.provider.id.caseInsensitiveCompare("ollama") == .orderedSame
+                && configuration.settings.isEnabled {
+            if configuration.credentialSlots.isEmpty {
+                if requestedModel.accountID == nil || requestedModel.accountID?.caseInsensitiveCompare("legacy") == .orderedSame,
+                   OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                    providerID: configuration.provider.id,
+                    rawSecret: configuration.apiKey
+                   ) != nil {
+                    routeKeys.insert(routeKey(providerID: configuration.provider.id, slotID: nil))
+                }
+                continue
+            }
+
+            for resolvedSlot in configuration.credentialSlots where resolvedSlot.slot.isEnabled {
+                if let accountID = requestedModel.accountID,
+                   accountID.caseInsensitiveCompare(resolvedSlot.slot.slotID) != .orderedSame {
+                    continue
+                }
+                guard OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                    providerID: configuration.provider.id,
+                    rawSecret: resolvedSlot.apiKey
+                ) != nil else {
+                    continue
+                }
+                routeKeys.insert(routeKey(providerID: configuration.provider.id, slotID: resolvedSlot.slot.slotID))
+            }
+        }
+
+        return routeKeys.isEmpty ? [:] : [.openaiCompat: routeKeys]
+    }
+
     func resolveAdvertisedRouteKeys(
         requestedModel: GatewayRequestedModel,
         advertisedRequestedModel: GatewayRequestedModel
@@ -178,6 +265,15 @@ extension BurnBarHTTPGatewayServer {
             )
         }
 
+        let dynamicCloudKeys = try await dynamicOllamaCloudRouteKeysByFamily(for: advertisedRequestedModel)
+        if dynamicCloudKeys.values.contains(where: { !$0.isEmpty }) {
+            return GatewayAdvertisedRouteResolution(
+                requestedModel: requestedModel,
+                advertisedRequestedModel: advertisedRequestedModel,
+                routeKeysByFamily: dynamicCloudKeys
+            )
+        }
+
         guard let cloudCandidate = legacyOllamaCloudCandidate(for: requestedModel) else {
             return GatewayAdvertisedRouteResolution(
                 requestedModel: requestedModel,
@@ -187,7 +283,16 @@ extension BurnBarHTTPGatewayServer {
         }
 
         let cloudKeys = try await advertisedRouteKeysByFamily(for: cloudCandidate)
-        guard cloudKeys.values.contains(where: { !$0.isEmpty }) else {
+        if cloudKeys.values.contains(where: { !$0.isEmpty }) {
+            return GatewayAdvertisedRouteResolution(
+                requestedModel: cloudCandidate,
+                advertisedRequestedModel: cloudCandidate,
+                routeKeysByFamily: cloudKeys
+            )
+        }
+
+        let dynamicLegacyCloudKeys = try await dynamicOllamaCloudRouteKeysByFamily(for: cloudCandidate)
+        guard dynamicLegacyCloudKeys.values.contains(where: { !$0.isEmpty }) else {
             return GatewayAdvertisedRouteResolution(
                 requestedModel: requestedModel,
                 advertisedRequestedModel: advertisedRequestedModel,
@@ -197,7 +302,7 @@ extension BurnBarHTTPGatewayServer {
         return GatewayAdvertisedRouteResolution(
             requestedModel: cloudCandidate,
             advertisedRequestedModel: cloudCandidate,
-            routeKeysByFamily: cloudKeys
+            routeKeysByFamily: dynamicLegacyCloudKeys
         )
     }
 
@@ -278,6 +383,9 @@ extension BurnBarHTTPGatewayServer {
 
     func gatewayRequestedModel(from rawID: String) -> GatewayRequestedModel {
         let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let decoded = decodedOpenBurnBarClientAlias(trimmed), decoded != trimmed {
+            return gatewayRequestedModel(from: decoded)
+        }
         let parts = trimmed.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard parts.count >= 2,
               configStore.catalogSupport.provider(id: parts[0]) != nil else {
@@ -301,6 +409,45 @@ extension BurnBarHTTPGatewayServer {
             return GatewayRequestedModel(originalID: trimmed, modelID: trimmed, providerID: nil, accountID: nil)
         }
         return GatewayRequestedModel(originalID: trimmed, modelID: modelID, providerID: parts[0], accountID: nil)
+    }
+
+    func decodedOpenBurnBarClientAlias(_ rawID: String) -> String? {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("openburnbar/") {
+            let routeID = String(trimmed.dropFirst("openburnbar/".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return routeID.isEmpty ? nil : routeID
+        }
+
+        let prefix = "anthropic.openburnbar."
+        guard trimmed.lowercased().hasPrefix(prefix) else { return nil }
+        let encoded = String(trimmed.dropFirst(prefix.count))
+        guard let decoded = Self.base64URLDecode(encoded)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !decoded.isEmpty else {
+            return nil
+        }
+        return decoded
+    }
+
+    static func base64URLEncode(_ value: String) -> String {
+        Data(value.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    static func base64URLDecode(_ value: String) -> String? {
+        var base64 = value
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = base64.count % 4
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+        guard let data = Data(base64Encoded: base64) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     func preferredGatewayFormatFamilies(
@@ -364,21 +511,59 @@ extension BurnBarHTTPGatewayServer {
         catalog: BurnBarCatalog
     ) -> Bool {
         let normalizedAdvertisedModelID = advertisedModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !normalizedAdvertisedModelID.isEmpty else { return false }
+        let normalizedRequestedModelID = normalizedRequestedModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedAdvertisedModelID.isEmpty, !normalizedRequestedModelID.isEmpty else { return false }
         if normalizedAdvertisedModelID == normalizedRequestedModelID {
             return true
         }
 
-        if normalizedAdvertisedModelID.hasSuffix(":cloud") != normalizedRequestedModelID.hasSuffix(":cloud") {
+        let supportsOllamaCloudAliases = providerID.caseInsensitiveCompare("ollama") == .orderedSame
+        let advertisedCloudID = supportsOllamaCloudAliases
+            ? canonicalOllamaCloudModelID(normalizedAdvertisedModelID)
+            : nil
+        let requestedCloudID = supportsOllamaCloudAliases
+            ? canonicalOllamaCloudModelID(normalizedRequestedModelID)
+            : nil
+        if let advertisedCloudID, let requestedCloudID, advertisedCloudID == requestedCloudID {
+            return true
+        }
+        if supportsOllamaCloudAliases, (advertisedCloudID != nil) != (requestedCloudID != nil) {
+            return false
+        }
+        if !supportsOllamaCloudAliases,
+           normalizedAdvertisedModelID.hasSuffix(":cloud") != normalizedRequestedModelID.hasSuffix(":cloud") {
             return false
         }
 
         return catalog.models(forProviderID: providerID).contains { model in
-            let explicitModelIDs = Set(([model.id] + model.aliases).map {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let explicitModelIDs = Set(([model.id] + model.aliases).flatMap { rawID -> [String] in
+                let normalized = rawID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !normalized.isEmpty else { return [] }
+                if supportsOllamaCloudAliases,
+                   let cloudID = canonicalOllamaCloudModelID(normalized) {
+                    return [normalized, cloudID]
+                }
+                return [normalized]
             })
-            return explicitModelIDs.contains(normalizedRequestedModelID)
-                && explicitModelIDs.contains(normalizedAdvertisedModelID)
+            let requestedID = requestedCloudID ?? normalizedRequestedModelID
+            let advertisedID = advertisedCloudID ?? normalizedAdvertisedModelID
+            return explicitModelIDs.contains(requestedID)
+                && explicitModelIDs.contains(advertisedID)
         }
+    }
+
+    func canonicalOllamaCloudModelID(_ rawID: String) -> String? {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.hasSuffix(":cloud") {
+            let base = String(trimmed.dropLast(":cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return base.isEmpty ? nil : "\(base):cloud"
+        }
+        if trimmed.hasSuffix("-cloud") {
+            let base = String(trimmed.dropLast("-cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return base.isEmpty ? nil : "\(base):cloud"
+        }
+        return nil
     }
 }

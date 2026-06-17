@@ -228,7 +228,7 @@ cleanup_derived_data() {
             return 0
         fi
         if [ $attempt -lt $max_attempts ]; then
-            sleep "$(awk "BEGIN{printf \"%.1f\", $delay_tenths/10}")"
+            sleep "$((delay_tenths / 10)).$((delay_tenths % 10))"
             delay_tenths=$((delay_tenths * 2))
         fi
         attempt=$((attempt + 1))

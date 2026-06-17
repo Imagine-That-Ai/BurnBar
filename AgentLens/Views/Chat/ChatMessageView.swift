@@ -324,8 +324,6 @@ struct ChatMessageView: View {
                 .background {
                     ZStack {
                         shape
-                            .fill(.ultraThinMaterial)
-                        shape
                             .fill(DesignSystem.Colors.surface.opacity(0.35))
                         shape
                             .fill(
@@ -341,6 +339,7 @@ struct ChatMessageView: View {
                             )
                     }
                 }
+                .liquidGlassSurface(in: shape, fallback: .ultraThinMaterial)
                 .overlay(
                     shape
                         .strokeBorder(

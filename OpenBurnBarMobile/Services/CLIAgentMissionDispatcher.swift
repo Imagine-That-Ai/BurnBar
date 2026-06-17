@@ -437,17 +437,22 @@ final class CLIAgentMissionDispatcher {
         sourceSurface: String? = nil,
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
         parentHermesThreadID: String? = nil,
-        presentationMode: CLIAgentChatPresentationMode = .nativeChat
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat,
+        wandPolicy: WandPolicy? = nil
     ) async throws -> FanOutDispatchResult {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
-        guard runtimeTokens.count >= 2 else { throw DispatchError.tooFewRuntimes }
+        guard runtimeTokens.count >= 1 else { throw DispatchError.tooFewRuntimes }
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { throw DispatchError.emptyPrompt }
 
         let groupID = "grp-\(UUID().uuidString)"
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            ?? "Fan-out mission"
+            ?? "Wand cast"
+        let resolvedWandPolicy = try await Self.resolvedWandPolicy(
+            wandPolicy,
+            runtimeTokens: runtimeTokens
+        )
 
         // Build child mission IDs up front so the group doc can list them.
         let childMissionIDs: [String] = runtimeTokens.map { _ in UUID().uuidString }
@@ -534,7 +539,10 @@ final class CLIAgentMissionDispatcher {
                 approvalMode: approvalMode,
                 commandsAllowed: commandsAllowed,
                 fileEditsAllowed: fileEditsAllowed,
-                requestedModelID: try Self.selectedModelID(forRequestedRuntime: runtimeToken),
+                requestedModelID: try Self.selectedModelID(
+                    forRequestedRuntime: runtimeToken,
+                    wandPolicy: resolvedWandPolicy
+                ),
                 sourceSkillID: sourceSkillID,
                 sourceSurface: sourceSurface,
                 deliveryMode: deliveryMode,
@@ -594,34 +602,20 @@ final class CLIAgentMissionDispatcher {
         return FanOutDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)
     }
 
-    private static func selectedModelID(forRequestedRuntime runtimeToken: String) throws -> String? {
-        let normalized = runtimeToken.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let runtime: AssistantRuntimeID?
-        switch normalized {
-        case "hermes":
-            runtime = .hermes
-        case "pi", "piagent":
-            runtime = .pi
-        case "codex":
-            runtime = .codex
-        case "claude":
-            runtime = .claude
-        case "openclaw":
-            runtime = .openClaw
-        case "droid":
-            runtime = .droid
-        case "forge":
-            runtime = .forge
-        case "antigravity", "agy", "google-antigravity":
-            runtime = .antigravity
-        case "grok", "grok-build", "xai", "grok-agent":
-            runtime = .grok
-        case "cursor", "cursor-agent", "cursoragent":
-            runtime = .cursorAgent
-        default:
-            runtime = nil
-        }
+    private static func selectedModelID(
+        forRequestedRuntime runtimeToken: String,
+        wandPolicy: WandPolicy? = nil
+    ) throws -> String? {
+        let runtime = runtimeID(forRequestedRuntime: runtimeToken)
         guard let runtime else { return nil }
+
+        // Phase 2: when a Wand policy is active, this must be a concrete
+        // catalog-backed routing table. `resolvedWandPolicy` fails before
+        // Firestore writes if no selected runtime can be routed, so the UI
+        // never looks like a Wand cast happened while silently using defaults.
+        if let policy = wandPolicy, let routed = policy.routedModelID(for: runtime) {
+            return routed
+        }
 
         switch runtime {
         case .hermes:
@@ -633,6 +627,68 @@ final class CLIAgentMissionDispatcher {
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
         case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
+        }
+    }
+
+    private static func resolvedWandPolicy(
+        _ policy: WandPolicy?,
+        runtimeTokens: [String]
+    ) async throws -> WandPolicy? {
+        guard let policy else { return nil }
+        let runtimes = runtimeTokens.compactMap(runtimeID(forRequestedRuntime:))
+        guard !runtimes.isEmpty else {
+            throw DispatchError.wandRoutingUnavailable("No selected runtime can be routed by The Wand.")
+        }
+
+        var catalogs: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
+        for runtime in runtimes {
+            guard catalogs[runtime] == nil else { continue }
+            do {
+                let response = try await HermesService.shared.fetchCLIRuntimeModelCatalog(runtime: runtime)
+                catalogs[runtime] = response.options
+            } catch {
+                cliMissionSignalLogger.warning("wand catalog fetch failed runtime=\(runtime.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        let routed = WandModelRouter.policy(
+            selector: policy.selector,
+            runtimes: runtimes,
+            catalogs: catalogs
+        )
+        guard !routed.routedModels.isEmpty else {
+            throw DispatchError.wandRoutingUnavailable(
+                "The Wand could not route any selected agent. Refresh the Mac model catalog, choose agents with available catalogs, or switch to Manual."
+            )
+        }
+        return routed
+    }
+
+    private static func runtimeID(forRequestedRuntime runtimeToken: String) -> AssistantRuntimeID? {
+        let normalized = runtimeToken.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "hermes":
+            return .hermes
+        case "pi", "piagent":
+            return .pi
+        case "codex":
+            return .codex
+        case "claude":
+            return .claude
+        case "openclaw":
+            return .openClaw
+        case "droid":
+            return .droid
+        case "forge":
+            return .forge
+        case "antigravity", "agy", "google-antigravity":
+            return .antigravity
+        case "grok", "grok-build", "xai", "grok-agent":
+            return .grok
+        case "cursor", "cursor-agent", "cursoragent":
+            return .cursorAgent
+        default:
+            return nil
         }
     }
 
@@ -839,6 +895,7 @@ final class CLIAgentMissionDispatcher {
         case notSignedIn
         case emptyPrompt
         case tooFewRuntimes
+        case wandRoutingUnavailable(String)
 
         var errorDescription: String? {
             switch self {
@@ -849,7 +906,9 @@ final class CLIAgentMissionDispatcher {
             case .emptyPrompt:
                 return "Mission prompt was empty."
             case .tooFewRuntimes:
-                return "Fan-out dispatch needs at least 2 runtimes."
+                return "The Wand needs at least 1 agent."
+            case let .wandRoutingUnavailable(message):
+                return message
             }
         }
     }

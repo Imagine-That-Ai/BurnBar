@@ -349,6 +349,82 @@ def test_multi_selector_preserves_provider_diversity_with_proof(monkeypatch, tmp
     assert probed == ["openai-a", "zai-a"]
 
 
+def test_env_cap_clamps_select_models_for_wand_end_to_end(monkeypatch, tmp_path: Path) -> None:
+    """OPENBURNBAR_WAND_PARALLEL_MAX (the tier cap the app passes) clamps fan-out
+    width through the real selector, not just the helper in isolation."""
+    store = tmp_path / "wands.v1.json"
+    store.write_text(
+        json.dumps(
+            {
+                "wands": [
+                    {
+                        "id": "headmaster",
+                        "name": "Headmaster's Wand",
+                        "selector": "best",
+                        "constraints": {"minCapabilityRank": 10},
+                        "autonomy": "medium",
+                        "allowBackends": ["direct"],
+                        "isDefault": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ministry,
+        "list_launchable",
+        lambda include_quota=True: {
+            "candidates": [
+                {
+                    "arg": "a",
+                    "provider": "openai",
+                    "backend": "direct",
+                    "capabilityClassRank": 100,
+                    "price": 1.0,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "b",
+                    "provider": "openai",
+                    "backend": "direct",
+                    "capabilityClassRank": 90,
+                    "price": 1.0,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "c",
+                    "provider": "openai",
+                    "backend": "direct",
+                    "capabilityClassRank": 80,
+                    "price": 1.0,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+            ]
+        },
+    )
+
+    def probe(arg: str, autonomy: str, ttl: int) -> dict:
+        return {"landsCommit": True, "arg": arg, "autonomy": autonomy, "ttl": ttl}
+
+    # Cap = 2: a request for 10 workers is clamped to 2 even though 3 are available.
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "2")
+    capped = ministry.select_models_for_wand(
+        store, count=10, require_provider_diversity=False, prove_headless=True, max_probes=10, probe_runner=probe
+    )
+    assert capped["selectedCount"] == 2
+
+    # No cap (defaults to the 16 ceiling): the same request yields all 3 available.
+    monkeypatch.delenv("OPENBURNBAR_WAND_PARALLEL_MAX", raising=False)
+    full = ministry.select_models_for_wand(
+        store, count=10, require_provider_diversity=False, prove_headless=True, max_probes=10, probe_runner=probe
+    )
+    assert full["selectedCount"] == 3
+
+
 def test_cleanup_uses_exact_transcript_candidates_without_find_delete(tmp_path: Path) -> None:
     session_id = "session-abc12345"
     sessions_dir = tmp_path / "sessions"

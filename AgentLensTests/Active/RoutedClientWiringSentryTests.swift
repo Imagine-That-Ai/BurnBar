@@ -78,6 +78,7 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         let env = try XCTUnwrap(root["env"] as? [String: Any])
         XCTAssertEqual(env["ANTHROPIC_BASE_URL"] as? String, "http://127.0.0.1:8317")
         XCTAssertEqual(env["OPENBURNBAR_WIRED"] as? String, "1")
+        XCTAssertEqual(env["OPENBURNBAR_MODEL_CATALOG_IDS"] as? String, "claude-opus-4-8")
         XCTAssertEqual(root["theme"] as? String, "dark", "non-BurnBar keys must survive repair")
         XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
     }
@@ -142,7 +143,8 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         let wiring = makeWiring()
         _ = try wiring.wire(
             target: .claudeCode,
-            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: ""),
+            advertisedModels: Self.defaultAdvertisedModels
         )
         let url = tempHome.appendingPathComponent(".claude/settings.json")
         let preRepairData = try Data(contentsOf: url)
@@ -164,7 +166,8 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         let wiring = makeWiring()
         _ = try wiring.wire(
             target: .claudeCode,
-            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: ""),
+            advertisedModels: Self.defaultAdvertisedModels
         )
         settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.claudeCode.rawValue)
         sentry = makeSentry()
@@ -302,6 +305,45 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         XCTAssertNotNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "droid"))
     }
 
+    @MainActor
+    func test_sweepDoesNotRewriteCatalogAwareTargetWhenLiveCatalogUnavailable() async throws {
+        let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        let staleModels = [
+            RoutingClientAdvertisedModel(
+                id: "glm-5.1",
+                displayName: "GLM 5.1",
+                providerID: "zai",
+                providerName: "Z.ai",
+                servedEndpoints: ["/v1/responses"],
+                routeEligible: true
+            )
+        ]
+        _ = try makeWiring().wire(
+            target: .codex,
+            gateway: gateway,
+            advertisedModels: staleModels
+        )
+        let catalogURL = tempHome
+            .appendingPathComponent(".codex")
+            .appendingPathComponent("openburnbar-model-catalog.json")
+        let beforeData = try Data(contentsOf: catalogURL)
+
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
+        sentry = makeSentry(advertisedModels: [])
+        sentry.start(settingsManager: settings)
+        await sentry.sweepNow().value
+
+        let afterData = try Data(contentsOf: catalogURL)
+        XCTAssertEqual(afterData, beforeData)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: afterData) as? [String: Any])
+        let models = try XCTUnwrap(root["models"] as? [[String: Any]])
+        XCTAssertTrue(
+            models.contains { $0["slug"] as? String == "openburnbar/glm-5.1" },
+            "Sentry must not wipe OpenBurnBar-owned model sidecars when the live catalog fetch fails."
+        )
+        XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "codex"))
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -314,7 +356,9 @@ final class RoutedClientWiringSentryTests: XCTestCase {
                 debounceNanoseconds: 1_000_000,
                 periodicSweepSeconds: 0,
                 reopenBackoffNanoseconds: 1_000_000,
-                monitoredEvents: [.write, .extend, .rename, .delete, .attrib, .link]
+                monitoredEvents: [.write, .extend, .rename, .delete, .attrib, .link],
+                fileSystemWatchersEnabled: false,
+                lifecycleSweepsEnabled: false
             ),
             wiringFactory: {
                 RoutingClientWiring(
@@ -323,14 +367,26 @@ final class RoutedClientWiringSentryTests: XCTestCase {
                     now: { Date(timeIntervalSince1970: 1_700_000_000) }
                 )
             },
-            advertisedModelsProvider: { wiring, gateway, _ in
+            advertisedModelsProvider: { gateway, _ in
                 if let advertisedModels {
                     return advertisedModels
                 }
-                return await wiring.advertisedModels(gateway: gateway)
+                return Self.defaultAdvertisedModels
             }
         )
     }
+
+    private static let defaultAdvertisedModels: [RoutingClientAdvertisedModel] = [
+        RoutingClientAdvertisedModel(
+            id: "claude-opus-4-8",
+            displayName: "Claude Opus 4.8",
+            providerID: "anthropic",
+            providerName: "Anthropic",
+            formatFamily: "anthropic",
+            servedEndpoints: ["/v1/messages", "/v1/responses", "/v1/chat/completions"],
+            routeEligible: true
+        )
+    ]
 
     private func makeWiring() -> RoutingClientWiring {
         RoutingClientWiring(

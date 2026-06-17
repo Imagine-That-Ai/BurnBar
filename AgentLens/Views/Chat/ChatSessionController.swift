@@ -890,7 +890,8 @@ final class ChatSessionController {
         }
         OpenBurnBarChatWorkspaceConfigurator.ensureMCPHints(
             in: chatWorkspaceURL,
-            databaseURL: OpenBurnBarAppPaths.live().databaseURL
+            databaseURL: OpenBurnBarAppPaths.live().databaseURL,
+            wandParallelMax: WandFanOut.maxParallel(for: MacCloudEntitlementStore.shared.cloudTier)
         )
     }
 

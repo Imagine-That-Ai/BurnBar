@@ -14,27 +14,10 @@ struct SettingsGlassCard<Content: View>: View {
     var body: some View {
         content()
             .padding(18)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(colorScheme == .dark ? 0.35 : 0.65))
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(colorScheme == .dark ? 0.03 : 0.10),
-                                    Color.clear,
-                                    DesignSystem.Colors.ember.opacity(colorScheme == .dark ? 0.01 : 0.02)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            }
-            .clipShape(.rect(cornerRadius: 12, style: .continuous))
+            .liquidGlassSurface(
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                fallback: .ultraThinMaterial
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(
@@ -373,14 +356,11 @@ struct ComputerUseSettingsView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .frame(width: 30, height: 30)
-                .background {
+                .liquidGlassInteractive(in: .circle, fallback: .ultraThinMaterial)
+                .overlay(
                     Circle()
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.75)
-                        )
-                }
+                        .strokeBorder(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.75)
+                )
         }
         .buttonStyle(.plain)
         .help("Refresh readiness")

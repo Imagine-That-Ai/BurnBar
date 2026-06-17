@@ -35,6 +35,22 @@ public enum CastleWorkerPhase: String, Codable, CaseIterable, Sendable {
         case .demoted: return "Demoted"
         }
     }
+
+    /// User-facing label for The Wand UI. Uses plain developer language instead
+    /// of Castle metaphor, so a user understands the state without docs.
+    public var wandLabel: String {
+        switch self {
+        case .fanoutWakes: return "Waking"
+        case .houseLit: return "Starting"
+        case .running: return "Running"
+        case .completing: return "Completing"
+        case .completed: return "Collecting verdict"
+        case .landed: return "Work landed"
+        case .noOp: return "No work landed"
+        case .failed: return "Failed"
+        case .demoted: return "Demoted"
+        }
+    }
 }
 
 public enum CastleHonestyFlag: String, Codable, CaseIterable, Sendable {
@@ -248,6 +264,22 @@ public struct CastleRunSnapshot: Equatable, Sendable {
     public var failedCount: Int { workers.filter { $0.phase == .failed }.count }
     public var noOpCount: Int { workers.filter { $0.phase == .noOp }.count }
     public var isEmpty: Bool { workers.isEmpty }
+
+    /// True when some workers landed and at least one failed or produced no work.
+    public var isPartialSuccess: Bool { landedCount > 0 && (failedCount > 0 || noOpCount > 0) }
+
+    /// True when every worker failed and none landed.
+    public var isAllFailed: Bool { !isEmpty && failedCount == totalCount && landedCount == 0 }
+
+    /// True when any worker has a quota-related honesty flag.
+    public var hasQuotaUncertainty: Bool {
+        workers.contains { $0.honesty.contains(.quotaUnknown) || $0.honesty.contains(.quotaPressure) }
+    }
+
+    /// True when any worker has a provider-unavailable honesty flag.
+    public var hasProviderUnavailable: Bool {
+        workers.contains { $0.honesty.contains(.routeDemoted) }
+    }
 
     public var headline: String {
         guard totalCount > 0 else { return "No Castle run selected" }

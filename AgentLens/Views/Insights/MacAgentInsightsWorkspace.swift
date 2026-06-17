@@ -62,7 +62,7 @@ struct MacAgentInsightsWorkspace: View {
                 .frame(width: 320)
                 .background {
                     if settingsManager.useWebsiteBackground {
-                        Color.clear.background(.ultraThinMaterial)
+                        Color.clear.liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md), fallback: .ultraThinMaterial)
                     } else {
                         UnifiedDesignSystem.Colors.surface
                     }

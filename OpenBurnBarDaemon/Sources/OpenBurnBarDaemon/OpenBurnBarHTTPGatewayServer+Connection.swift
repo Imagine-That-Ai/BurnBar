@@ -235,10 +235,10 @@ extension BurnBarHTTPGatewayServer {
             return .buffered(handleMetrics())
 
         case ("GET", "/v1/models"):
-            return .buffered(await handleModels())
+            return .buffered(await handleModels(headers: request.headers))
 
         case ("GET", "/v1/models/catalog"):
-            return .buffered(await handleModels(includeUnadvertised: true))
+            return .buffered(await handleModels(includeUnadvertised: true, headers: request.headers))
 
         case ("POST", "/v1/chat/completions"):
             return await handleChatCompletions(

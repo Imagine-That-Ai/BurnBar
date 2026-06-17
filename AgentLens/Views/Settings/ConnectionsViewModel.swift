@@ -42,6 +42,8 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
     let accountLabel: String
     let sourceID: String
     let sourceKind: String
+    let formatFamily: String
+    let servedEndpoints: [String]
     let quotaState: String
     let advertisementEnabled: Bool
     let advertised: Bool
@@ -70,6 +72,8 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         accountLabel: String,
         sourceID: String,
         sourceKind: String,
+        formatFamily: String = "openai_compat",
+        servedEndpoints: [String] = [],
         quotaState: String,
         advertisementEnabled: Bool = true,
         advertised: Bool = true,
@@ -89,6 +93,8 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         self.accountLabel = accountLabel
         self.sourceID = sourceID
         self.sourceKind = sourceKind
+        self.formatFamily = formatFamily
+        self.servedEndpoints = servedEndpoints
         self.quotaState = quotaState
         self.advertisementEnabled = advertisementEnabled
         self.advertised = advertised
@@ -138,6 +144,46 @@ enum ProxyRouteLogState: Equatable {
         case .loading, .clearing: return true
         default: return false
         }
+    }
+}
+
+/// Compact summary of model availability for a routed client row. Split
+/// counts so the UI can show "Native + OpenBurnBar" badges and surface the
+/// catalog count without explanatory clutter.
+struct RoutedClientModelSummary: Equatable, Sendable {
+    /// Route-eligible gateway-served models for this target's wire format.
+    let openburnbarModelCount: Int
+    /// Whether the client ships its own native model catalog (Codex GPT rows,
+    /// Claude Code native Claude rows) that BurnBar does not overwrite.
+    let hasNativeModels: Bool
+
+    /// Human-readable model-count label for the row's secondary copy.
+    /// Returns nil when there is nothing meaningful to show.
+    var countLabel: String? {
+        if openburnbarModelCount == 0 { return nil }
+        if hasNativeModels {
+            return "\(openburnbarModelCount) OpenBurnBar + native models"
+        }
+        return "\(openburnbarModelCount) OpenBurnBar model\(openburnbarModelCount == 1 ? "" : "s")"
+    }
+
+    /// Short badge text for the "Native + OpenBurnBar" chip. Returns nil
+    /// when the client has no native catalog.
+    var nativeBadgeText: String? {
+        hasNativeModels ? "Native + OpenBurnBar" : nil
+    }
+
+    /// Compact monospace label for the metadata strip showing the
+    /// OpenBurnBar proxy model count. Returns nil when there are zero
+    /// models so the strip stays clean.
+    var openburnbarCountLabel: String? {
+        openburnbarModelCount > 0 ? "\(openburnbarModelCount) via OpenBurnBar" : nil
+    }
+
+    /// Compact monospace label for the metadata strip showing the native
+    /// model presence. Returns nil when the client has no native catalog.
+    var nativeCountLabel: String? {
+        hasNativeModels ? "native catalog" : nil
     }
 }
 
@@ -216,16 +262,40 @@ final class ConnectionsViewModel {
         }
     }
 
-    /// Read disk truth plus live model-catalog drift. This keeps Droid honest:
-    /// a stale Factory custom-model row is not "synced" just because an older
-    /// OpenBurnBar entry still exists on disk.
+    /// Read disk truth plus live model-catalog drift. This keeps routed clients
+    /// honest: a stale generated model row is not "synced" just because an
+    /// older OpenBurnBar entry still exists on disk.
     func refreshWiringState(settings: SettingsManager) async {
         refreshWiringState()
-        await refreshDroidModelSyncState(settings: settings)
+        for target in [RoutingClientWiringTarget.droid, .codex, .claudeCode] {
+            await refreshRoutedModelSyncState(target: target, settings: settings)
+        }
     }
 
     func state(for target: RoutingClientWiringTarget) -> AppConnectState {
         appStates[target] ?? .unknown
+    }
+
+    /// Compact model-count summary for a routed-client row. Derives the
+    /// OpenBurnBar count from the live proxy catalog (already fetched) and
+    /// the native flag from the target's known catalog. Returns nil for
+    /// targets that don't support model sync.
+    func modelSummary(for target: RoutingClientWiringTarget) -> RoutedClientModelSummary? {
+        guard target.supportsModelSync else { return nil }
+        let openburnbarCount = proxyModels.filter { model in
+            model.advertised && model.routeEligible && target.gatewayServes(model: model)
+        }.count
+        let hasNative: Bool
+        switch target {
+        case .codex: hasNative = true
+        case .claudeCode: hasNative = true
+        case .droid: hasNative = false
+        default: hasNative = false
+        }
+        return RoutedClientModelSummary(
+            openburnbarModelCount: openburnbarCount,
+            hasNativeModels: hasNative
+        )
     }
 
     // MARK: - Smart Connect
@@ -557,11 +627,14 @@ final class ConnectionsViewModel {
         )
     }
 
-    private func refreshDroidModelSyncState(settings: SettingsManager) async {
-        guard appStates[.droid]?.isBusy != true else { return }
+    private func refreshRoutedModelSyncState(
+        target: RoutingClientWiringTarget,
+        settings: SettingsManager
+    ) async {
+        guard appStates[target]?.isBusy != true else { return }
         let gateway = makeGateway(from: settings)
         let wiring = wiringFactory()
-        guard wiring.isWired(target: .droid) else { return }
+        guard wiring.isWired(target: target) else { return }
         let advertisedModels = proxyModels.isEmpty
             ? await wiring.advertisedModels(gateway: gateway)
             : proxyModels
@@ -570,20 +643,40 @@ final class ConnectionsViewModel {
         guard !advertisedModels.isEmpty else { return }
 
         switch wiring.modelSyncStatus(
-            target: .droid,
+            target: target,
             gateway: gateway,
             advertisedModels: advertisedModels
         ) {
         case .current:
-            if case .degraded(let message) = appStates[.droid],
-               message.contains("Droid's BurnBar model list is stale") {
-                appStates[.droid] = .connected
+            if case .degraded(let message) = appStates[target],
+               Self.isCatalogStaleMessage(message) {
+                appStates[target] = .connected
             }
         case .stale:
-            appStates[.droid] = .degraded(message: "Droid's BurnBar model list is stale. Press Sync models to rewrite Droid from BurnBar's live /v1/models catalog.")
+            appStates[target] = .degraded(message: Self.catalogStaleMessage(for: target))
         case .notWired:
-            appStates[.droid] = .notConnected
+            appStates[target] = .notConnected
         }
+    }
+
+    private static func catalogStaleMessage(for target: RoutingClientWiringTarget) -> String {
+        switch target {
+        case .droid:
+            return "Droid's BurnBar model list is stale. Press Sync models to rewrite Droid from BurnBar's live /v1/models catalog."
+        case .codex:
+            return "Codex's BurnBar model catalog is stale. Press Sync models to refresh the OpenBurnBar profile and merged Codex catalog."
+        case .claudeCode:
+            return "Claude Code's BurnBar discovery catalog is stale. Press Sync models to refresh OpenBurnBar discovery, then restart Claude Code to reload /model."
+        case .opencode, .forge, .grok, .antigravity, .cursorAgent:
+            return "\(target.displayName)'s BurnBar model catalog is stale. Press Sync models to refresh it from BurnBar's live /v1/models catalog."
+        }
+    }
+
+    private static func isCatalogStaleMessage(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("model list is stale")
+            || normalized.contains("model catalog is stale")
+            || normalized.contains("discovery catalog is stale")
     }
 
     private static func fetchProxyModels(gateway: RoutingClientGateway) async throws -> [ProxyAdvertisedModel] {
@@ -728,6 +821,8 @@ final class ConnectionsViewModel {
         let accountLabels = uniqueNonEmpty(rows.map(\.accountLabel))
         let accountIDs = uniqueNonEmpty(rows.map(\.accountID))
         let sourceKinds = uniqueNonEmpty(rows.map(\.sourceKind))
+        let formatFamilies = uniqueNonEmpty(rows.map(\.formatFamily))
+        let servedEndpoints = uniqueNonEmpty(rows.flatMap(\.servedEndpoints))
         let capabilities = uniqueNonEmpty(rows.flatMap(\.capabilities))
         let accountCount = max(1, accountIDs.count)
         return ProxyAdvertisedModel(
@@ -747,6 +842,8 @@ final class ConnectionsViewModel {
                 ? "\(representative.providerID)#auto"
                 : representative.sourceID,
             sourceKind: sourceKinds.count == 1 ? sourceKinds[0] : "gateway_failover_pool",
+            formatFamily: formatFamilies.count == 1 ? formatFamilies[0] : representative.formatFamily,
+            servedEndpoints: servedEndpoints.isEmpty ? representative.servedEndpoints : servedEndpoints,
             quotaState: logicalQuotaState(from: rows),
             advertisementEnabled: rows.contains { $0.advertisementEnabled },
             advertised: rows.contains { $0.advertised },
@@ -838,6 +935,8 @@ private struct ProxyModelRow: Decodable {
     let accountLabel: String?
     let sourceID: String?
     let sourceKind: String?
+    let formatFamily: String?
+    let servedEndpoints: [String]?
     let displayName: String?
     let capabilities: [String]?
     let quotaState: String?
@@ -860,6 +959,8 @@ private struct ProxyModelRow: Decodable {
         case accountLabel = "account_label"
         case sourceID = "source_id"
         case sourceKind = "source_kind"
+        case formatFamily = "format_family"
+        case servedEndpoints = "served_endpoints"
         case displayName = "display_name"
         case capabilities
         case quotaState = "quota_state"
@@ -889,6 +990,10 @@ private extension ProxyAdvertisedModel {
         self.accountLabel = (row.accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? self.accountID
         self.sourceID = (row.sourceID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "\(self.providerID)#\(self.accountID)"
         self.sourceKind = (row.sourceKind?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "gateway"
+        let formatFamily = (row.formatFamily?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "openai_compat"
+        self.formatFamily = formatFamily
+        self.servedEndpoints = row.servedEndpoints?.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            ?? Self.defaultServedEndpoints(formatFamily: formatFamily)
         self.quotaState = (row.quotaState?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "unknown"
         self.advertisementEnabled = row.advertisementEnabled ?? true
         self.advertised = row.advertised ?? (self.advertisementEnabled && (row.routeEligible ?? (row.enabled == true)))
@@ -900,6 +1005,15 @@ private extension ProxyAdvertisedModel {
         self.hidesBaseModel = row.hidesBaseModel ?? false
         self.displayNameIsCustom = row.displayNameIsCustom ?? false
     }
+
+    private static func defaultServedEndpoints(formatFamily: String) -> [String] {
+        switch formatFamily.lowercased() {
+        case "anthropic":
+            return ["/v1/messages", "/v1/messages/count_tokens"]
+        default:
+            return ["/v1/chat/completions", "/v1/responses"]
+        }
+    }
 }
 
 private extension RoutingClientAdvertisedModel {
@@ -909,6 +1023,9 @@ private extension RoutingClientAdvertisedModel {
             displayName: proxyModel.displayName,
             providerID: proxyModel.providerID,
             providerName: proxyModel.providerName,
+            formatFamily: proxyModel.formatFamily,
+            servedEndpoints: proxyModel.servedEndpoints,
+            capabilities: proxyModel.capabilities,
             routeEligible: proxyModel.routeEligible
         )
     }

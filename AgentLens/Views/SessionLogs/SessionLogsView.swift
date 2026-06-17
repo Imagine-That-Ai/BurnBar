@@ -418,7 +418,7 @@ struct SessionLogsView: View {
         }
         .background {
             if settingsManager.useWebsiteBackground {
-                Color.clear.background(.ultraThinMaterial)
+                Color.clear.liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md), fallback: .ultraThinMaterial)
             } else {
                 ZStack {
                     DesignSystem.Colors.surface.opacity(0.92)
@@ -505,13 +505,13 @@ struct SessionLogsView: View {
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
+        .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
-                        .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
-                )
+                .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
         )
     }
 
@@ -1889,10 +1889,12 @@ struct SessionLogCloudConsentSheet: View {
         }
         .padding(DesignSystem.Spacing.xl)
         .frame(minWidth: 440, maxWidth: 520)
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
         .background {
             ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .fill(.ultraThinMaterial)
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(DesignSystem.Colors.surfaceElevated.opacity(0.55))
 

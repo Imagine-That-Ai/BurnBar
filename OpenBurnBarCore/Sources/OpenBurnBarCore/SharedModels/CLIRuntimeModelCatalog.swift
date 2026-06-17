@@ -72,7 +72,9 @@ public enum OpenBurnBarModelDisplayName {
         case "openrouter":
             return "OpenRouter"
         case "ollama":
-            return "Ollama"
+            return "Ollama Cloud"
+        case "ollama-local":
+            return "Ollama (Local)"
         case "forge-dev":
             return "Forge"
         case "openburnbar":
@@ -230,9 +232,13 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
 }
 
 public struct CLIRuntimeModelOption: Codable, Hashable, Identifiable, Sendable {
-    public var id: String { modelID }
+    public var id: String {
+        rowID ?? "\(source.rawValue)|\(providerID)|\(modelID)"
+    }
 
     public let modelID: String
+    public let routeModelID: String?
+    public let rowID: String?
     public let displayName: String
     public let providerID: String
     public let providerName: String
@@ -241,6 +247,8 @@ public struct CLIRuntimeModelOption: Codable, Hashable, Identifiable, Sendable {
 
     public init(
         modelID: String,
+        routeModelID: String? = nil,
+        rowID: String? = nil,
         displayName: String,
         providerID: String,
         providerName: String,
@@ -248,6 +256,8 @@ public struct CLIRuntimeModelOption: Codable, Hashable, Identifiable, Sendable {
         source: CLIRuntimeModelSource = .cliProfile
     ) {
         self.modelID = modelID
+        self.routeModelID = routeModelID
+        self.rowID = rowID
         self.displayName = displayName
         self.providerID = providerID
         self.providerName = providerName
@@ -572,20 +582,22 @@ public enum CLIRuntimeModelCatalog {
                 ?? (model["model"] as? String)
                 ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !rawName.isEmpty, seen.insert(rawName.lowercased()).inserted else { continue }
+            guard !rawName.isEmpty else { continue }
 
-            let lowered = rawName.lowercased()
-            let isCloud = lowered.hasSuffix(":cloud") || lowered.hasSuffix("-cloud")
+            let cloudModelID = canonicalOllamaCloudModelID(rawName)
+            let isCloud = cloudModelID != nil
+            let modelID = cloudModelID ?? rawName
+            guard seen.insert(modelID.lowercased()).inserted else { continue }
             let parameterSize = ((model["details"] as? [String: Any])?["parameter_size"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .nonEmpty
-            let displayBase = parameterSize.map { "\(rawName) (\($0))" } ?? rawName
+            let displayBase = parameterSize.map { "\(modelID) (\($0))" } ?? modelID
 
             let providerID = isCloud ? "ollama" : "ollama-local"
             let providerLabel = isCloud ? "Ollama Cloud" : "Ollama (Local)"
             let runtimeProviderName = isCloud ? "Ollama Cloud" : "Ollama (Local) via localhost"
             rows.append(option(
-                rawName,
+                modelID,
                 OpenBurnBarModelDisplayName.compose(
                     modelName: displayBase,
                     providerName: providerLabel,
@@ -594,11 +606,27 @@ public enum CLIRuntimeModelCatalog {
                 ),
                 providerID,
                 runtimeProviderName,
-                tier: inferredTier(modelID: rawName, displayName: rawName),
+                tier: inferredTier(modelID: modelID, displayName: modelID),
                 source: isCloud ? .ollamaCloudCatalog : .ollamaLocalCatalog
             ))
         }
         return rows
+    }
+
+    private static func canonicalOllamaCloudModelID(_ rawName: String) -> String? {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = trimmed.lowercased()
+        if lowered.hasSuffix(":cloud") {
+            let base = String(trimmed.dropLast(":cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return base.isEmpty ? nil : "\(base):cloud"
+        }
+        if lowered.hasSuffix("-cloud") {
+            let base = String(trimmed.dropLast("-cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return base.isEmpty ? nil : "\(base):cloud"
+        }
+        return nil
     }
 
     public static func claudeCodeModelCatalogOptions(
@@ -778,8 +806,10 @@ public enum CLIRuntimeModelCatalog {
         let isOpenBurnBar = modelID.localizedCaseInsensitiveContains("OpenBurnBar")
             || modelID.localizedCaseInsensitiveContains("Open-Code-Go")
             || displayName.localizedCaseInsensitiveContains("OpenBurnBar")
+            || displayName.localizedCaseInsensitiveContains("OBB")
         let cleanedDisplay = displayName
             .replacingOccurrences(of: #"^OpenBurnBar\s+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^OBB\s+"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let providerID = inferredProviderID(modelID: modelID, displayName: displayName)
         if isOpenBurnBar {
@@ -807,6 +837,9 @@ public enum CLIRuntimeModelCatalog {
 
     private static func inferredProviderID(modelID: String, displayName: String) -> String {
         let haystack = "\(modelID) \(displayName)".lowercased()
+        if haystack.contains("ollama") || haystack.contains(":cloud") || haystack.contains("-cloud") {
+            return "ollama"
+        }
         if haystack.contains("claude") || haystack.contains("anthropic") { return "anthropic" }
         if haystack.contains("gpt") || haystack.contains("openai") || haystack.contains("codex") { return "openai" }
         if haystack.contains("gemini") || haystack.contains("gemma") || haystack.contains("google") { return "google" }

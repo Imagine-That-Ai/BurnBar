@@ -57,6 +57,10 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                LiquidGlassContentSurfacesToggleRow()
+
+                Divider().background(DesignSystem.Colors.border)
+
                 SettingsToggle(
                     title: "Show in Menu Bar",
                     subtitle: "Keep OpenBurnBar available as a menu-bar utility.",
@@ -693,5 +697,49 @@ private struct LiquidGlassTransparencyRow: View {
         if t == 0 { return "System default" }
         let percent = Int((abs(t) * 100).rounded())
         return t > 0 ? "\(percent) percent clearer" : "\(percent) percent frostier"
+    }
+}
+
+// MARK: - Liquid Glass content-surfaces toggle
+
+/// Master on/off toggle for Liquid Glass on content surfaces (cards, panels,
+/// toolbars). When off, glass adapters render their fallback material
+/// exclusively. System chrome (sheet material, window backdrop) always uses
+/// glass when available. Gated to macOS 26+; hidden on earlier systems.
+private struct LiquidGlassContentSurfacesToggleRow: View {
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
+
+    var body: some View {
+        if #available(macOS 26, *) {
+            SettingsToggle(
+                title: "Liquid Glass on content surfaces",
+                subtitle: subtitleText,
+                icon: "circle.bottomrighthalf.pattern.checkered",
+                isOn: $contentSurfacesEnabled
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    Image(systemName: "circle.bottomrighthalf.pattern.checkered")
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .frame(width: 20)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Liquid Glass on content surfaces")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text("Requires macOS 26 or later.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var subtitleText: String {
+        contentSurfacesEnabled
+            ? "Glass surfaces are active. Use the transparency slider to tune clarity."
+            : "Turn on to render cards, panels, and toolbars with Liquid Glass instead of flat material."
     }
 }

@@ -1270,8 +1270,6 @@ struct GlassIconButton<Label: View>: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(.ultraThinMaterial)
-                Circle()
                     .fill(DesignSystem.Colors.surface.opacity(0.45))
                 Circle()
                     .fill(
@@ -1291,6 +1289,7 @@ struct GlassIconButton<Label: View>: View {
                 }
             }
             .frame(width: 28, height: 28)
+            .liquidGlassInteractive(in: .circle, fallback: .ultraThinMaterial)
             .clipShape(.circle)
             .overlay(
                 Circle()

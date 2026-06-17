@@ -293,15 +293,15 @@ public extension GatedFeature {
             crestAssetName: CloudTier.pro.crestAssetName
         ),
 
-        // MARK: theWand — The Wand (quota-aware parallel routing) — cloud
+        // MARK: theWand — The Wand (parallel model routing) — cloud
         GatedFeature(
             id: .theWand,
             publicName: "The Wand",
             requiredTier: .cloud,
-            oneLineBenefit: "Cast a Wand and send one job to a whole team of agents at once — BurnBar routes each worker to the right model by live quota across your connected providers, then brings back the work.",
+            oneLineBenefit: "Cast a Wand and send one job to a whole team of agents at once — BurnBar routes each worker to a fitting model across your connected providers, then brings back the work.",
             benefitBullets: [
                 "Start with one local worker for free; Cloud opens 3 in parallel, Cloud Pro opens 8, and Ultra opens 16",
-                "Cast the Headmaster's Wand to reach for the highest-capability models, or the Pareto Wand for the best quality per quota — the routing chooses each agent's model for you",
+                "Cast the Headmaster's Wand to reach for the highest-capability models, or the Pareto Wand for the best quality per quota signal — the routing chooses each agent's model for you",
                 "It runs on the provider subscriptions and keys you already have; BurnBar orchestrates and shows the work while you keep control",
                 "Each worker runs in its own branch, so parallel work stays reviewable and recoverable"
             ],

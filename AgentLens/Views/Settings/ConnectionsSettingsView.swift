@@ -371,16 +371,41 @@ struct ConnectionsSettingsView: View {
             )
 
             if !hasAnyAccount {
-                Text("Add an account first, then connect Claude Code, Codex, OpenCode, Forge, or Droid to use it.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(DesignSystem.Spacing.md)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.25))
-                    )
-                    .opacity(0.7)
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: [DesignSystem.Colors.blaze.opacity(0.12), DesignSystem.Colors.amber.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.blaze)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Connect your CLIs")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Add a provider account first, then connect Claude Code, Codex CLI, Droid CLI, and other agents to route through BurnBar's local gateway with automatic failover.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(DesignSystem.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.3))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .stroke(DesignSystem.Colors.border.opacity(0.35), lineWidth: 0.5)
+                )
             } else {
                 VStack(spacing: DesignSystem.Spacing.xs) {
                     ForEach(RoutingClientWiringTarget.allCases) { target in
@@ -388,6 +413,7 @@ struct ConnectionsSettingsView: View {
                             target: target,
                             state: viewModel.state(for: target),
                             isDisabled: !hasAccountFor(target: target),
+                            modelSummary: viewModel.modelSummary(for: target),
                             onConnect: {
                                 Task {
                                     await viewModel.connect(
@@ -399,17 +425,7 @@ struct ConnectionsSettingsView: View {
                             },
                             onTest: { Task { await viewModel.test(target: target, settings: settingsManager) } },
                             onSyncModels: {
-                                if target == .droid {
-                                    syncDroidProxyModels()
-                                } else {
-                                    Task {
-                                        await viewModel.syncModels(
-                                            target: target,
-                                            settings: settingsManager,
-                                            restartGateway: restartLocalGateway
-                                        )
-                                    }
-                                }
+                                syncRoutedProxyModels(target)
                             },
                             onRepair: {
                                 Task {
@@ -817,16 +833,20 @@ struct ConnectionsSettingsView: View {
         await daemonManager.refreshHealth()
     }
 
-    private func syncDroidProxyModels() {
+    private func syncRoutedProxyModels(_ target: RoutingClientWiringTarget = .droid) {
         Task {
             await viewModel.syncModels(
-                target: .droid,
+                target: target,
                 settings: settingsManager,
                 restartGateway: restartLocalGateway
             )
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await viewModel.refreshWiringState(settings: settingsManager)
         }
+    }
+
+    private func syncDroidProxyModels() {
+        syncRoutedProxyModels(.droid)
     }
 
     private func setModelAdvertisement(_ model: ProxyAdvertisedModel, isEnabled: Bool) {

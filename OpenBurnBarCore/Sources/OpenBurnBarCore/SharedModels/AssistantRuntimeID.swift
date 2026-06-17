@@ -84,3 +84,38 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     /// visible so local Mac CLIs are first-class alongside Hermes and Pi.
     public static let defaultEnabledTiles: Set<AssistantRuntimeID> = Set(AssistantRuntimeID.allCases)
 }
+
+// MARK: - WandPolicy
+
+/// A routing policy the fan-out dispatcher consults to choose a model per
+/// runtime. Maps directly to the Ministry's `selector` field (`headmaster` =
+/// highest capability, `pareto` = best quality per quota signal).
+///
+/// When a `WandPolicy` is passed to `dispatchFanOut`, each child mission's
+/// `requestedModelID` is resolved via `routedModelID(for:)` instead of the
+/// user's static `CLIAgentModelPreferences`. The routing table can be
+/// populated by the app-side `WandModelRouter` from live model catalogs, or by
+/// the Ministry's `ministry_select_models_for_wand` MCP tool when richer
+/// provider quota telemetry is available. This type is the in-memory carrier
+/// for those per-runtime results.
+public struct WandPolicy: Codable, Hashable, Sendable {
+    public let selector: Selector
+    public let routedModels: [AssistantRuntimeID: String]
+
+    public enum Selector: String, Codable, Hashable, Sendable, CaseIterable {
+        case headmaster
+        case pareto
+    }
+
+    public init(selector: Selector, routedModels: [AssistantRuntimeID: String]) {
+        self.selector = selector
+        self.routedModels = routedModels
+    }
+
+    /// Returns the wand-routed model id for a runtime, or `nil` to fall
+    /// through to the user's preferred model (the safe default when no router
+    /// produced a proven model for this runtime).
+    public func routedModelID(for runtime: AssistantRuntimeID) -> String? {
+        routedModels[runtime]
+    }
+}

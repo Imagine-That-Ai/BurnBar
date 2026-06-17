@@ -82,6 +82,7 @@
 		07DAE29797FE272FF6296B61 /* PhoneControlAuthorityValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8743B3355926BA104F25310 /* PhoneControlAuthorityValidator.swift */; };
 		07E94113995028745BD31F1A /* ProjectsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5DC7024B1BE5DE80BE3026 /* ProjectsModels.swift */; };
 		07ECFD238A168FF132D1441E /* SmartHubCastButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D69535FF1B751D91047638 /* SmartHubCastButton.swift */; };
+		0804BC8092E8EF9D18CC5D30 /* OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6219DEE3B29C2E79DDABF8B /* OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift */; };
 		082526A38D02C2DFFF8BCB33 /* KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD6FF38854FDE960210F394 /* KeyboardView.swift */; };
 		0830A1331D1BFCA7EE0D03D7 /* ElderWandJudgeSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41755F2AC03C8EBB4FD24EF /* ElderWandJudgeSection.swift */; };
 		083FBB35AC36B3ED80BCEFBB /* ParserCheckpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD102A0B0BA6134E8FCEDE4F /* ParserCheckpointStore.swift */; };
@@ -3648,6 +3649,7 @@
 		D5F4646CB1446CA3455C9997 /* OpenBurnBarOperatingLayer+MissionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenBurnBarOperatingLayer+MissionActions.swift"; sourceTree = "<group>"; };
 		D60BE0DD8D8FB39DEA004AA0 /* MissionsLaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionsLaneView.swift; sourceTree = "<group>"; };
 		D60E6763DE5AFEFDA7BF4A18 /* DirectDownloadArtifactVerifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectDownloadArtifactVerifierTests.swift; sourceTree = "<group>"; };
+		D6219DEE3B29C2E79DDABF8B /* OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift"; sourceTree = "<group>"; };
 		D62E8F68072B89ACEEA82D8F /* CursorConnectorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorConnectorModels.swift; sourceTree = "<group>"; };
 		D6328F60EB8CDA0F76920CD1 /* PixelClockSettingsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelClockSettingsCard.swift; sourceTree = "<group>"; };
 		D65A7E0EC246923495B11D9D /* BurnBarDaemonHeartbeatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarDaemonHeartbeatTests.swift; sourceTree = "<group>"; };
@@ -5426,6 +5428,7 @@
 				6F8D650218AA61CD75C4E456 /* OpenBurnBarProviderCatalogSupport.swift */,
 				EA5A9B6EF026F88B40744569 /* OpenBurnBarProviderCredentialNormalizer.swift */,
 				53295D45BA1AAB3F00108760 /* OpenBurnBarProviderExecutor.swift */,
+				D6219DEE3B29C2E79DDABF8B /* OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift */,
 				64D2BADD7F2A08606196F07A /* OpenBurnBarProviderExecutor+OllamaNative.swift */,
 				E6487C8CF16BCF3B2E7C0866 /* OpenBurnBarProviderExecutor+ResponsesConversion.swift */,
 				95E07CECD3131B8FBF94BC42 /* OpenBurnBarProviderRouter.swift */,
@@ -8313,6 +8316,7 @@
 				37C8EFADA507646EC2376B1A /* OpenBurnBarPolicyEngine.swift in Sources */,
 				9C2A8BB528323A26961A063B /* OpenBurnBarProviderCatalogSupport.swift in Sources */,
 				5327AB07B47BC7986E16A0AA /* OpenBurnBarProviderCredentialNormalizer.swift in Sources */,
+				0804BC8092E8EF9D18CC5D30 /* OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift in Sources */,
 				D47010F0625D7B6915EF04E2 /* OpenBurnBarProviderExecutor+OllamaNative.swift in Sources */,
 				CD09A9895F59E685873D958A /* OpenBurnBarProviderExecutor+ResponsesConversion.swift in Sources */,
 				9CDBF5B51383299D35621DD8 /* OpenBurnBarProviderExecutor.swift in Sources */,

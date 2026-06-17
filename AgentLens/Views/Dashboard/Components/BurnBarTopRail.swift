@@ -156,7 +156,6 @@ struct BurnBarTopRail: View {
 
     private var railBackground: some View {
         ZStack {
-            Rectangle().fill(.ultraThinMaterial)
             LinearGradient(
                 colors: [
                     .clear,
@@ -170,6 +169,7 @@ struct BurnBarTopRail: View {
                 .fill(Color.white.opacity(0.0125))
                 .blendMode(.overlay)
         }
+        .liquidGlassSurface(in: Rectangle(), fallback: .ultraThinMaterial)
     }
 }
 
@@ -457,7 +457,7 @@ struct BurnRailSearchOmnibar: View {
     private var omnibarSurface: some View {
         if #available(macOS 26.0, *) {
             Capsule(style: .continuous)
-                .fill(.regularMaterial)
+                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
                 .opacity(focused ? 1.0 : (hover ? 0.85 : 0.7))
         } else {
             Capsule(style: .continuous)
@@ -728,7 +728,7 @@ struct BurnRailWorkspaceContextPill: View {
     private var pillBackground: some View {
         if #available(macOS 26.0, *) {
             Capsule(style: .continuous)
-                .fill(.regularMaterial)
+                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
                 .opacity(hover ? 0.95 : 0.78)
         } else {
             Capsule(style: .continuous)
@@ -1000,7 +1000,7 @@ struct BurnRailTelemetryHero: View {
     private var heroSurface: some View {
         if #available(macOS 26.0, *) {
             Capsule(style: .continuous)
-                .fill(.regularMaterial)
+                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
                 .opacity(0.7)
         } else {
             Capsule(style: .continuous)
@@ -1052,7 +1052,7 @@ struct BurnRailActionsSection: View {
     private var actionsSurface: some View {
         if #available(macOS 26.0, *) {
             Capsule(style: .continuous)
-                .fill(.regularMaterial)
+                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
                 .opacity(0.65)
         } else {
             Capsule(style: .continuous)

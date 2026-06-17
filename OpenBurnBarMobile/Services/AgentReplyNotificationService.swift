@@ -29,6 +29,26 @@ private struct AgentReplyNotificationPayload: Sendable {
     let provider: AgentProvider?
     let deepLink: String?
 
+    init(
+        type: String,
+        eventID: String,
+        runtime: String,
+        threadID: String,
+        title: String,
+        preview: String,
+        provider: AgentProvider?,
+        deepLink: String?
+    ) {
+        self.type = type
+        self.eventID = eventID
+        self.runtime = runtime
+        self.threadID = threadID
+        self.title = title
+        self.preview = preview
+        self.provider = provider
+        self.deepLink = deepLink
+    }
+
     init?(userInfo: [AnyHashable: Any]) {
         guard let type = Self.string(userInfo["type"]), type == "agent_reply" else { return nil }
         self.type = type
@@ -59,17 +79,6 @@ private struct AgentReplyNotificationPayload: Sendable {
             provider: provider,
             deepLink: nil
         )
-    }
-
-    private init(type: String, eventID: String, runtime: String, threadID: String, title: String, preview: String, provider: AgentProvider?, deepLink: String?) {
-        self.type = type
-        self.eventID = eventID
-        self.runtime = runtime
-        self.threadID = threadID
-        self.title = title
-        self.preview = preview
-        self.provider = provider
-        self.deepLink = deepLink
     }
 
     private static func string(_ value: Any?) -> String? {

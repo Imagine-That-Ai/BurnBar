@@ -77,9 +77,9 @@ struct MercuryChromeRoot: View {
                 ProgressView("Starting mirror…")
                     .progressViewStyle(.circular)
                     .padding(48)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(.thickMaterial)
+                    .liquidGlassSurface(
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                        fallback: .thickMaterial
                     )
             case .streaming:
                 CallHUD(
@@ -95,8 +95,10 @@ struct MercuryChromeRoot: View {
                 )
                 .background {
                     if !hudState.isCollapsed {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(.thickMaterial)
+                        Color.clear.liquidGlassSurface(
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                            fallback: .thickMaterial
+                        )
                     }
                 }
             }

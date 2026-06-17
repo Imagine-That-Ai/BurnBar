@@ -60,7 +60,6 @@ struct HermesToolCard: View {
         .padding(.vertical, 8)
         .background {
             ZStack {
-                shape.fill(.ultraThinMaterial)
                 shape.fill(
                     LinearGradient(
                         colors: [
@@ -74,6 +73,7 @@ struct HermesToolCard: View {
                 )
             }
         }
+        .liquidGlassSurface(in: shape, fallback: .ultraThinMaterial)
         .clipShape(shape)
         .overlay(
             shape

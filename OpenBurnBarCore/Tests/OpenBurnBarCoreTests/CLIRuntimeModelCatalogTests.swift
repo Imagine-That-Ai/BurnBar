@@ -55,6 +55,21 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(CLIRuntimeModelCatalog.parseDroidExecHelp(help).map(\.modelID), ["glm-5.1"])
     }
 
+    func test_droidParserRecognizesOpenBurnBarGLMCloudCustomModelAsOllamaCloud() {
+        let help = """
+        Custom Models:
+          custom:OpenBurnBar-glm-5.2-cloud-7                         OBB GLM 5.2 Ollama Cloud
+        """
+
+        let rows = CLIRuntimeModelCatalog.parseDroidExecHelp(help)
+
+        XCTAssertEqual(rows.map(\.modelID), ["custom:OpenBurnBar-glm-5.2-cloud-7"])
+        XCTAssertEqual(rows.first?.source, .openBurnBarProxy)
+        XCTAssertEqual(rows.first?.providerID, "ollama")
+        XCTAssertEqual(rows.first?.providerName, "Ollama Cloud via OpenBurnBar API/OAuth")
+        XCTAssertEqual(rows.first?.displayName, "GLM 5.2 Ollama Cloud · via OpenBurnBar · Reasoning: default")
+    }
+
     func test_forgeParserUsesInstalledAgentListOutput() {
         let output = """
         FORGE
@@ -94,6 +109,98 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(rows.map(\.source), [.codexModelCatalog, .codexModelCatalog])
         XCTAssertEqual(rows[0].displayName, "GPT-5.5 · OpenAI · via OpenBurnBar · Reasoning: medium")
         XCTAssertEqual(rows[1].displayName, "GPT-5.3-Codex-Spark · OpenAI · via OpenBurnBar · Reasoning: high")
+    }
+
+    func test_codexNativeRowsCanSitBesideOpenBurnBarProxyRows() {
+        let native = CLIRuntimeModelCatalog.parseCodexDebugModels(
+            Data("""
+            {
+              "models": [
+                {"slug": "gpt-5-5", "display_name": "GPT-5.5", "visibility": "list"}
+              ]
+            }
+            """.utf8)
+        )
+        let proxy = CLIRuntimeModelOption(
+            modelID: "openburnbar/glm-5.2",
+            routeModelID: "glm-5.2",
+            rowID: "openburnbar|zai|glm-5.2|codex",
+            displayName: "GLM-5.2 · Z.AI · via OpenBurnBar · Reasoning: default",
+            providerID: "zai",
+            providerName: "Z.AI",
+            source: .openBurnBarProxy
+        )
+
+        let merged = native + [proxy]
+
+        XCTAssertTrue(merged.contains { $0.modelID == "gpt-5.5" && $0.source == .codexModelCatalog })
+        XCTAssertTrue(merged.contains { $0.modelID == "openburnbar/glm-5.2" && $0.routeModelID == "glm-5.2" })
+        XCTAssertEqual(Set(merged.map(\.id)).count, 2)
+    }
+
+    func test_claudeNativeRowsCanSitBesideOpenBurnBarProxyRows() {
+        let native = CLIRuntimeModelCatalog.claudeCodeModelCatalogOptions()
+        let proxy = CLIRuntimeModelOption(
+            modelID: "glm-5.2",
+            routeModelID: "glm-5.2",
+            rowID: "openburnbar|zai|glm-5.2|claude",
+            displayName: "GLM-5.2 · Z.AI · via OpenBurnBar · Reasoning: default",
+            providerID: "zai",
+            providerName: "Z.AI",
+            source: .openBurnBarProxy
+        )
+
+        let merged = native + [proxy]
+
+        XCTAssertTrue(merged.contains { $0.modelID == "claude-opus-4-8" && $0.source == .claudeModelCatalog })
+        XCTAssertTrue(merged.contains { $0.modelID == "glm-5.2" && $0.source == .openBurnBarProxy })
+        XCTAssertEqual(Set(merged.map(\.id)).count, merged.count)
+    }
+
+    func test_modelOptionIdentityKeepsSameVisibleModelDistinctAcrossSourcePaths() {
+        let native = CLIRuntimeModelOption(
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5 · OpenAI · via OpenBurnBar · Reasoning: default",
+            providerID: "openai",
+            providerName: "OpenAI",
+            source: .codexModelCatalog
+        )
+        let routed = CLIRuntimeModelOption(
+            modelID: "gpt-5.5",
+            routeModelID: "gpt-5.5",
+            rowID: "openburnbar|openai|gpt-5.5|codex",
+            displayName: "GPT-5.5 · OpenAI via OpenBurnBar · via OpenBurnBar · Reasoning: default",
+            providerID: "openai",
+            providerName: "OpenAI via OpenBurnBar",
+            source: .openBurnBarProxy
+        )
+
+        XCTAssertNotEqual(native.id, routed.id)
+        XCTAssertEqual(Set([native, routed]).count, 2)
+    }
+
+    func test_identicalProxyRowsCollapseByStableRowID() {
+        let first = CLIRuntimeModelOption(
+            modelID: "openburnbar/glm-5.2",
+            routeModelID: "glm-5.2",
+            rowID: "openburnbar|zai|glm-5.2|codex",
+            displayName: "GLM-5.2 · Z.AI · via OpenBurnBar · Reasoning: default",
+            providerID: "zai",
+            providerName: "Z.AI",
+            source: .openBurnBarProxy
+        )
+        let duplicate = CLIRuntimeModelOption(
+            modelID: "openburnbar/glm-5.2",
+            routeModelID: "glm-5.2",
+            rowID: "openburnbar|zai|glm-5.2|codex",
+            displayName: "GLM-5.2 · Z.AI · via OpenBurnBar · Reasoning: default",
+            providerID: "zai",
+            providerName: "Z.AI",
+            source: .openBurnBarProxy
+        )
+
+        XCTAssertEqual(first.id, duplicate.id)
+        XCTAssertEqual(Set([first, duplicate]).count, 1)
     }
 
     func test_grokModelsParserUsesAvailableModelsSection() {
@@ -152,6 +259,8 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
             {"name": "qwen2.5:3b", "model": "qwen2.5:3b", "details": {"parameter_size": "3.1B"}},
             {"name": "llama3.2:latest", "model": "llama3.2:latest", "details": {"parameter_size": "3.2B"}},
             {"name": "gpt-oss:120b-cloud", "model": "gpt-oss:120b-cloud", "details": {}},
+            {"name": "glm-5.2-cloud", "model": "glm-5.2-cloud", "details": {}},
+            {"name": "glm-5.2:cloud", "model": "glm-5.2:cloud", "details": {}},
             {"name": "qwen2.5:3b", "model": "qwen2.5:3b", "details": {"parameter_size": "3.1B"}}
           ]
         }
@@ -159,8 +268,8 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
 
         let rows = CLIRuntimeModelCatalog.parseOllamaTags(json)
 
-        // Duplicate qwen2.5:3b is collapsed; three distinct models remain.
-        XCTAssertEqual(rows.map(\.modelID), ["qwen2.5:3b", "llama3.2:latest", "gpt-oss:120b-cloud"])
+        // Duplicate qwen2.5:3b and equivalent GLM cloud suffixes are collapsed.
+        XCTAssertEqual(rows.map(\.modelID), ["qwen2.5:3b", "llama3.2:latest", "gpt-oss:120b:cloud", "glm-5.2:cloud"])
         XCTAssertEqual(rows[0].source, .ollamaLocalCatalog)
         XCTAssertEqual(rows[0].providerID, "ollama-local")
         XCTAssertEqual(rows[0].displayName, "qwen2.5:3b (3.1B) · Ollama (Local) · via OpenBurnBar · Reasoning: CLI default")
@@ -168,7 +277,9 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(rows[2].source, .ollamaCloudCatalog)
         XCTAssertEqual(rows[2].providerID, "ollama")
         XCTAssertEqual(rows[2].providerName, "Ollama Cloud")
-        XCTAssertEqual(rows[2].displayName, "gpt-oss:120b-cloud · Ollama Cloud · via OpenBurnBar · Reasoning: CLI default")
+        XCTAssertEqual(rows[2].displayName, "gpt-oss:120b:cloud · Ollama Cloud · via OpenBurnBar · Reasoning: CLI default")
+        XCTAssertEqual(rows[3].source, .ollamaCloudCatalog)
+        XCTAssertEqual(rows[3].displayName, "glm-5.2:cloud · Ollama Cloud · via OpenBurnBar · Reasoning: CLI default")
     }
 
     func test_ollamaTagsParserReturnsEmptyForInvalidPayload() {

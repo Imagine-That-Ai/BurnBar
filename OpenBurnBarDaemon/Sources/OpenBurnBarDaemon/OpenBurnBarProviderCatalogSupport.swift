@@ -66,7 +66,13 @@ public struct BurnBarProviderCatalogSupport: Sendable {
     }
 
     public func defaultModelIDs(forProviderID providerID: String) -> [String] {
-        catalog.suggestedModels(forProviderID: providerID).map(\.id)
+        var ids = catalog.suggestedModels(forProviderID: providerID).map(\.id)
+        if providerID.caseInsensitiveCompare("ollama") == .orderedSame,
+           provider(id: providerID)?.models.contains(where: { $0.id == "ollama-cloud-family" }) == true,
+           !ids.contains("ollama-cloud-family") {
+            ids.append("ollama-cloud-family")
+        }
+        return ids
     }
 
     public func supportsModelID(_ modelID: String, providerID: String) -> Bool {

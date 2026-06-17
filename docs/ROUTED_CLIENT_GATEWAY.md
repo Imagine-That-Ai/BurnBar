@@ -68,13 +68,24 @@ provider/model pair. Multiple credential slots for the same provider/model are
 collapsed into one advertised row; the router keeps the slot list internally
 and fails over automatically. A Claude model can appear in `/v1/models` for
 `/v1/chat/completions` or `/v1/responses` only because BurnBar has an explicit
-Anthropic bridge for those local endpoints.
+Anthropic bridge for those local endpoints. An OpenAI-compatible model can
+appear in Claude Code's `/v1/messages` discovery only because BurnBar has the
+inverse Anthropic Messages bridge for that local endpoint.
 
 | Pool | Endpoint | Format | Upstream providers that participate |
 |---|---|---|---|
 | **OpenAI-family** | `POST /v1/chat/completions` | OpenAI Chat Completions | OpenAI, Z.ai, MiniMax, Kimi, Ollama Cloud, Ollama Local |
+| **OpenAI bridge** | `POST /v1/messages` | Local Anthropic Messages request translated to upstream OpenAI Chat Completions | OpenAI, Z.ai, MiniMax, Kimi, Ollama Cloud, Ollama Local |
 | **Anthropic-family** | `POST /v1/messages` | Anthropic Messages | Anthropic Console (API key), Anthropic Pro/Team (OAuth bearer) |
 | **Anthropic bridge** | `POST /v1/chat/completions`, `POST /v1/responses` | Local OpenAI-style request/response translated to upstream Anthropic Messages | Anthropic Console (API key), Anthropic Pro/Team (OAuth bearer) |
+
+`served_endpoints` is a local gateway capability signal. Empty endpoint
+metadata means the row came from legacy or omitted catalog data, so the Mac app
+treats it as bridge-compatible for Codex, Claude Code, and other gateway-shaped
+clients instead of hiding potentially valid routed models. It is not a provider
+adapter selector: Factory/Droid custom model entries still choose `openai`,
+`anthropic`, or `generic-chat-completion-api` from the advertised provider and
+model family, not from the bridge endpoint that happens to serve the row.
 
 A request for a model not advertised for that local endpoint returns `503`
 with `No eligible route for <model>. Add or enable an account/provider that
@@ -122,18 +133,25 @@ healthy.
 ## What routes today
 
 - **OpenAI-style local endpoint targets:** Cursor (BYOK tunnel), Droid/Factory,
-  Forge, OpenCode, Codex CLI in `OPENAI_BASE_URL` mode, any
-  OpenAI-compatible IDE.
+  Forge, OpenCode, Codex CLI through `model_providers.openburnbar` with
+  `wire_api = "responses"`, any OpenAI-compatible IDE.
 - **OpenAI-family upstream providers:** OpenAI, Z.ai, MiniMax, Kimi,
   Ollama Cloud, Ollama Local.
 - **Anthropic-family client targets:** Claude Code via
-  `ANTHROPIC_BASE_URL=http://127.0.0.1:8317` + `ANTHROPIC_AUTH_TOKEN=<gateway-token-or-openburnbar-local>`.
+  `ANTHROPIC_BASE_URL=http://127.0.0.1:8317` +
+  `ANTHROPIC_AUTH_TOKEN=<gateway-token-or-openburnbar-local>` +
+  `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`.
 - **Anthropic-family upstream providers:** Anthropic Console (`sk-ant-…`
   routed via the `x-api-key` header), Anthropic Pro/Team (OAuth bearer via
   the `Authorization: Bearer` header).
 - **Anthropic bridge targets:** any OpenAI-style client that chooses an
   Anthropic model from `/v1/models`; BurnBar translates Chat Completions or
   Responses requests to Anthropic Messages, then translates the answer back.
+- **Claude Code bridge targets:** Claude Code can choose every route-ready
+  OpenBurnBar model advertised for `/v1/messages`, including OpenAI-compatible
+  upstream providers. For Claude's gateway discovery filter, BurnBar publishes
+  Claude-safe ids shaped as `anthropic.openburnbar.<base64url(provider/model)>`
+  and decodes them back to the real provider plus route id at request time.
 - **Endpoint shape:** OpenAI-compatible `/v1/models`, `/v1/chat/completions`,
   `/v1/responses`, plus Anthropic-compatible `/v1/messages`.
 - **Usage attribution:** proxied local-client calls record as `OpenBurnBar Gateway`.
@@ -233,8 +251,9 @@ provider entries from the clients it switches.
 | Droid/Factory | `~/.factory/settings.json` | Same `customModels` entries as `settings.local.json`, kept in sync because Factory/Droid has used both files across versions |
 | Droid/Factory | `~/.factory/config.json` | `custom_models` entries with the same provider adapter choice and display names prefixed `OpenBurnBar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
-| Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, plus a marker key `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring |
-| Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`, with `wire_api = "responses"`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
+| Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, `env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = "1"`, `env.ANTHROPIC_CUSTOM_HEADERS` merged with `X-OpenBurnBar-Client: claude-code`, `env.OPENBURNBAR_MODEL_CATALOG_FINGERPRINT`, `env.OPENBURNBAR_MODEL_CATALOG_IDS`, plus `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring. Unwire removes only OpenBurnBar keys and only the OpenBurnBar custom header. |
+| Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`, with `wire_api = "responses"` and no OpenBurnBar-owned profile override. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
+| Codex CLI | `~/.codex/openburnbar.config.toml`, `~/.codex/openburnbar-model-catalog.json` | OpenBurnBar-owned sidecars containing the generated provider profile and merged model catalog: native GPT/Codex rows plus `openburnbar/<route-id>` proxy rows from the live gateway. Disconnect deletes only these sidecars and the sentinel provider block. |
 | Forge CLI | `~/forge/.forge.toml` | Sentinel-fenced OpenBurnBar-owned `[[providers]]` block named `openburnbar` with `url = http://127.0.0.1:8317/v1/chat/completions`, `models = http://127.0.0.1:8317/v1/models`, `api_key_var = OPENBURNBAR_GATEWAY_TOKEN`, and `response_type = OpenAI` |
 
 The client config receives the local gateway URL and either the gateway auth
@@ -248,8 +267,14 @@ reversible by hand if the helper is ever uninstalled.
 ## Wiring routed CLI clients from the Mac app
 
 `Settings -> Agents -> CLIs` exposes OpenBurnBar-owned client rows for each
-supported CLI. For Droid, the button is intentionally direct: `Connect + Sync`
-on first setup, then `Sync models` after the row is connected.
+supported CLI. Droid/Factory, Codex CLI, and Claude Code use the same explicit
+catalog lifecycle: `Connect + Sync` on first setup, then `Sync models` after
+the row is connected. The row reports `current`, `stale catalog`,
+`sync available`, and `probe failed` states against the live local gateway.
+`stale catalog` means the live `/v1/models` fingerprint no longer matches the
+OpenBurnBar-owned client config and the next primary action is **Sync models**.
+`probe failed` means the config was written but the one-token endpoint check
+failed, so the next primary action is **Retry probe**.
 
 Two modes:
 
@@ -276,6 +301,27 @@ refreshed by the routed-client sentry whenever their cached model list no
 longer matches `/v1/models`, so new provider models and aliases normally land
 without a manual Sync press. Keep the manual Sync action as a visible recovery
 control after custom alias edits or local config conflicts.
+
+Codex CLI keeps its native model list and adds routed OpenBurnBar rows instead
+of replacing the catalog. The Mac-side runtime catalog first asks
+`codex debug models`; if that command is unavailable, it falls back to the
+bundled/default GPT and Codex rows already used by the picker. Sync then merges
+those native rows with live gateway rows that serve `/v1/responses`, preserving
+machine-stable ids as `openburnbar/<route-id>`. A native `gpt-*` row and an
+OpenBurnBar-routed `gpt-*` row remain distinct because they have different
+provider/source paths and billing credentials.
+
+Claude Code also keeps its native Anthropic catalog visible. The app catalog
+combines bundled Claude rows with route-ready gateway rows that serve
+`/v1/messages`. The actual Claude Code process receives gateway discovery via
+`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` and
+`X-OpenBurnBar-Client: claude-code`; the daemon responds with
+`anthropic.openburnbar.<base64url(provider/model)>` aliases because Claude Code
+only accepts gateway-discovered model ids that look Anthropic-owned. Including
+the provider in the encoded alias keeps two providers that advertise the same
+raw model id distinct. When Claude Code calls `/v1/messages` with that alias,
+BurnBar decodes it and routes the request to the underlying OpenBurnBar model,
+including OpenAI-compatible providers bridged into Anthropic Messages shape.
 
 ## Custom model aliases
 

@@ -88,8 +88,6 @@ struct CLIAssistantConsentSheet: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
             }
             .overlay(
@@ -104,5 +102,6 @@ struct CLIAssistantConsentSheet: View {
                     )
             )
         }
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous), fallback: .ultraThinMaterial)
     }
 }

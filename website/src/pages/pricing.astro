@@ -2,6 +2,7 @@
 import BaseLayout from "@layouts/BaseLayout.astro";
 import HermesGatewayPromo from "@components/HermesGatewayPromo.astro";
 import PricingPlans from "@components/PricingPlans.astro";
+import WandPricingModule from "@components/WandPricingModule.astro";
 import { SITE } from "@data/site";
 
 // The plan cards + billing toggle + top-ups live in <PricingPlans /> so the
@@ -37,11 +38,13 @@ const relayTopUp = SITE.pricing.topUps[1]!;
     </div>
   </section>
 
-  <section class="plans">
+  <section class="plans" id="plans">
     <div class="container container--wide">
       <PricingPlans showBillingToggle={true} showTopups={true} />
     </div>
   </section>
+
+  <WandPricingModule />
 
   <HermesGatewayPromo compact={true} anchor="pricing-hgw-h" />
 

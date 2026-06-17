@@ -82,10 +82,16 @@ guessing whether anything happened.
   Forge, Grok, or Antigravity options; if the paired Mac cannot enumerate or
   verify the catalog, the picker shows a refresh/error state instead of falling
   back to a bundled list. Codex rows come from `codex debug models` when that
-  command is available, then fall back to the paired Mac CLI default/profile.
+  command is available, then fall back to the paired Mac CLI default/profile;
+  the catalog also appends every live OpenBurnBar proxy row that the local
+  gateway advertises for `/v1/responses` as `openburnbar/<route-id>`.
   Grok rows come from `grok models` plus `~/.grok/models_cache.json` when
   available. Claude Code rows enumerate the bundled Anthropic catalog because
-  the CLI accepts `--model` but does not expose a reliable list command.
+  the CLI accepts `--model` but does not expose a reliable list command; the
+  catalog also appends every live OpenBurnBar proxy row advertised for
+  `/v1/messages`. Claude Code's real gateway discovery receives Claude-safe
+  `anthropic.openburnbar.<base64url(provider/model)>` aliases, while the app
+  keeps the underlying route id stable for display and launch intent storage.
   Antigravity rows enumerate the bundled Google/Gemini catalog because `agy`
   does not expose a reliable model-list command; the selected `agy` profile row
   is appended only when it names a custom non-catalog model. Forge rows come
@@ -99,6 +105,15 @@ guessing whether anything happened.
   Display names are intentionally verbose: `Model · Provider/source ·
   via OpenBurnBar · Reasoning: level`. Keep model IDs machine-stable and put
   this context in the user-facing name, provider fields, and source badges.
+  Dedupe by stable model id plus provider/source, so a native `gpt-*` or
+  `claude-*` row and an OpenBurnBar-routed row with the same visible name stay
+  selectable when they represent different auth and billing paths; identical
+  proxy rows collapse.
+  Routed Codex, Claude Code, and Droid catalogs share the same recovery model
+  on the Mac: connect first, then sync the live `/v1/models` catalog whenever
+  the stored fingerprint is stale; failed one-token probes stay distinct from
+  stale catalogs so users retry the endpoint check instead of rewriting config
+  unnecessarily.
   Hermes/Pi/OpenClaw remain live-relay scoped and only show models the paired
   Mac relay advertises for that runtime.
 - Import is explicit and observable: users choose harnesses, start a job, and

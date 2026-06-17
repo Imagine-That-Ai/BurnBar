@@ -20,13 +20,14 @@ const pricing = await read("src/pages/pricing.astro");
 // The plan cards now render via the shared <PricingPlans /> component, so the
 // public copy that used to live inline in pricing.astro lives there too.
 const plans = await read("src/components/PricingPlans.astro");
+const wandModule = await read("src/components/WandPricingModule.astro");
 const stripAstro = (src) =>
   src.replace(/---[\s\S]*?---/, "").replace(/<style>[\s\S]*?<\/style>/g, "");
-const pricingPublicText = stripAstro(pricing) + "\n" + stripAstro(plans);
+const pricingPublicText = stripAstro(pricing) + "\n" + stripAstro(plans) + "\n" + stripAstro(wandModule);
 const faq = await read("src/data/faq.ts");
 const claims = await read("CLAIMS.md");
 const supportMacros = await read("src/data/supportMacros.ts");
-const publicPricingCopy = [pricing, plans, faq, claims, supportMacros].join("\n");
+const publicPricingCopy = [pricing, plans, wandModule, faq, claims, supportMacros].join("\n");
 
 assert.match(site, /pricing:\s*{/, "site constants must expose a structured pricing catalog");
 assert.doesNotMatch(
@@ -90,9 +91,45 @@ for (const [tier, cap] of [
 ]) {
   assert.match(site, new RegExp(`wandParallelMax:\\s*${cap}`), `${tier} Wand cap must be in site data`);
 }
+assert.match(publicPricingCopy, /Free opens 1/i, "Free Wand cap must be public");
 assert.match(publicPricingCopy, /Cloud opens 3/i, "Cloud Wand cap must be public");
 assert.match(publicPricingCopy, /Cloud Pro opens 8/i, "Cloud Pro Wand cap must be public");
 assert.match(publicPricingCopy, /Ultra opens 16/i, "Ultra Wand cap must be public");
+assert.match(
+  publicPricingCopy,
+  /Headmaster/i,
+  "Headmaster's Wand must be named in public copy"
+);
+assert.match(
+  publicPricingCopy,
+  /Pareto/i,
+  "Pareto Wand must be named in public copy"
+);
+assert.match(
+  publicPricingCopy,
+  /Highest capability/i,
+  "Headmaster's tagline must be present"
+);
+assert.match(
+  publicPricingCopy,
+  /Best quality per quota/i,
+  "Pareto tagline must be present"
+);
+assert.match(
+  publicPricingCopy,
+  /Go wider/i,
+  "Upgrade persuasion copy must be present"
+);
+assert.match(
+  publicPricingCopy,
+  /model tokens still come from/i,
+  "Wand module must state provider-token honesty"
+);
+assert.match(
+  publicPricingCopy,
+  /Cast.*Work lands|Cast once/i,
+  "Wand module must use the Cast to Work lands metaphor"
+);
 assert.match(
   publicPricingCopy,
   /provider subscriptions or keys/i,

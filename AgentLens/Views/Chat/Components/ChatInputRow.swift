@@ -83,10 +83,10 @@ struct ChatInputRow: View {
                     .padding(DesignSystem.Spacing.sm)
                     .background {
                         ZStack {
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous).fill(.ultraThinMaterial)
                             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.3))
                         }
                     }
+                    .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous), fallback: .ultraThinMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous).strokeBorder(inputStrokeGradient, lineWidth: 0.75))
                     .animation(DesignSystem.Animation.snappy, value: chatBackend)
