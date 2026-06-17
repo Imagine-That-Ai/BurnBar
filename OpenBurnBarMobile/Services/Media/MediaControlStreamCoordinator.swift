@@ -119,6 +119,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private var streamReadyContinuations: [UUID: CheckedContinuation<any IrohRelayStream, Error>] = [:]
     private var activeUID: String?
     private var activeConnectionID: String?
+    private var supervisorGeneration: UInt64 = 0
     private let mediaPacketCodec = MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
     private let mediaFrameV2Codec = MediaFrameV2Codec()
     private var frameChunkAssembler = MediaFrameChunkAssembler()
@@ -216,15 +217,17 @@ final class MediaControlStreamCoordinator: ObservableObject {
     }
 
     private func beginStart(uid: String, connectionID: String) {
+        let generation = nextSupervisorGeneration()
         activeUID = uid
         activeConnectionID = connectionID
         phase = .dialing
         supervisorTask = Task { [weak self] in
-            await self?.runSupervisor(uid: uid, connectionID: connectionID)
+            await self?.runSupervisor(uid: uid, connectionID: connectionID, generation: generation)
         }
     }
 
     func stop() async {
+        _ = nextSupervisorGeneration()
         supervisorTask?.cancel()
         supervisorTask = nil
         heartbeatTask?.cancel()
@@ -247,6 +250,21 @@ final class MediaControlStreamCoordinator: ObservableObject {
         lastRoundTripMillis = nil
         pendingHeartbeatSentAt = nil
         backgroundTrafficSuppressedUntil = nil
+    }
+
+    private func nextSupervisorGeneration() -> UInt64 {
+        supervisorGeneration &+= 1
+        return supervisorGeneration
+    }
+
+    private func isCurrentSupervisor(
+        generation: UInt64,
+        uid: String,
+        connectionID: String
+    ) -> Bool {
+        supervisorGeneration == generation
+            && activeUID == uid
+            && activeConnectionID == connectionID
     }
 
     /// Outbound send entry point. Blocks until the stream is live (or
@@ -428,12 +446,18 @@ final class MediaControlStreamCoordinator: ObservableObject {
         }
     }
 
-    private func runSupervisor(uid: String, connectionID: String) async {
+    private func runSupervisor(uid: String, connectionID: String, generation: UInt64) async {
         var attempt = 0
-        while !Task.isCancelled {
+        while !Task.isCancelled,
+              isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) {
             do {
                 phase = .dialing
                 let stream = try await dialer(uid, connectionID)
+                guard !Task.isCancelled,
+                      isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
+                    await stream.close()
+                    break
+                }
                 let sendGate = IrohRelayStreamSendGate(stream: stream)
                 let classifyFrame = HermesRealtimeRelayFrame(
                     type: .mediaClassify,
@@ -444,6 +468,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     )
                 )
                 try await sendGate.send(classifyFrame)
+                guard !Task.isCancelled,
+                      isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
+                    await stream.close()
+                    break
+                }
                 currentStream = stream
                 currentSendGate = sendGate
                 consecutiveDialFailures = 0
@@ -466,6 +495,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 // error) we'll fall through to the reconnect arm.
                 await readLoop(stream: stream, uid: uid, connectionID: connectionID)
 
+                guard isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
+                    break
+                }
                 heartbeatTask?.cancel()
                 heartbeatTask = nil
                 currentStream = nil
@@ -481,6 +513,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
             } catch is CancellationError {
                 break
             } catch {
+                guard isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
+                    break
+                }
                 consecutiveDialFailures += 1
                 lastFailureReason = error.localizedDescription
                 Self.log.error("control_stream_dial_failed connectionID=\(connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
@@ -488,14 +523,19 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 phase = .failed(reason: error.localizedDescription)
             }
 
+            guard isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
+                break
+            }
             let backoff = nextBackoff(attempt: attempt)
             attempt += 1
             reconnectAttemptStartedAt = Date()
             phase = .reconnecting(nextAttemptIn: backoff)
             try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
         }
-        phase = .stopped
-        reconnectAttemptStartedAt = nil
+        if isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) {
+            phase = .stopped
+            reconnectAttemptStartedAt = nil
+        }
     }
 
     private func readLoop(

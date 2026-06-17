@@ -7,6 +7,17 @@ import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 @testable import OpenBurnBarMobile
 
+private enum MediaControlTestTimeout: Error, CustomStringConvertible {
+    case timedOut(String)
+
+    var description: String {
+        switch self {
+        case let .timedOut(message):
+            message
+        }
+    }
+}
+
 /// Mercury Phase 8 — locks in the `device://paired-mac/<id>` URI
 /// resolution path. The registry synthesizes a `AgentIdentity` for
 /// the Mercury Live tile only when `pairedMacPeer` is set, and the
@@ -805,8 +816,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while coordinator.phase != .live {
             if Date() > deadline {
-                XCTFail("media control stream did not become live")
-                return
+                let message = "media control stream did not become live"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -819,8 +831,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while coordinator.lastInboundAt == nil {
             if Date() > deadline {
-                XCTFail("media control stream did not receive inbound traffic")
-                return
+                let message = "media control stream did not receive inbound traffic"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -833,8 +846,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while !predicate() {
             if Date() > deadline {
-                XCTFail("condition was not met before timeout")
-                return
+                let message = "condition was not met before timeout"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -848,8 +862,9 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while await stream.sentFrames.filter({ $0.type == .mediaPresenceHeartbeat }).count < count {
             if Date() > deadline {
-                XCTFail("expected \(count) heartbeat frame(s)")
-                return
+                let message = "expected \(count) heartbeat frame(s)"
+                XCTFail(message)
+                throw MediaControlTestTimeout.timedOut(message)
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
