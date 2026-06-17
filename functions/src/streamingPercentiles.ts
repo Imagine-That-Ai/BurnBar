@@ -1,10 +1,10 @@
 /**
  * @fileoverview Bounded-memory streaming percentile sketches.
  *
- * The rollup jobs only need dashboard quantiles, not raw samples. This sketch
+ * Daily rollups only need dashboard quantiles, not raw samples. This sketch
  * keeps exact counts for known bucket-anchor values and logarithmic buckets for
- * everything else, then emits the same nearest-rank p50/p95/p99 fields plus an
- * opaque serialized sketch for future merges/backfills.
+ * everything else, then emits nearest-rank p50/p95/p99 plus an opaque serialized
+ * payload for future merge/backfill jobs.
  */
 
 type PercentileSummary = {
@@ -33,14 +33,13 @@ function encodeSketch(payload: unknown): string {
 
 export class StreamingPercentileSketch {
   private readonly exactAnchors: Set<number>;
+  private readonly bucketBase: number;
   private readonly buckets = new Map<string, SketchBucket>();
   private total = 0;
 
-  constructor(
-    anchors: number[] = [],
-    private readonly bucketBase = DEFAULT_BUCKET_BASE,
-  ) {
+  constructor(anchors: readonly number[] = [], bucketBase = DEFAULT_BUCKET_BASE) {
     this.exactAnchors = new Set(anchors.filter((value) => finiteNonNegative(value) !== undefined));
+    this.bucketBase = Number.isFinite(bucketBase) && bucketBase > 1 ? bucketBase : DEFAULT_BUCKET_BASE;
   }
 
   add(rawValue: number | undefined): void {
@@ -95,6 +94,7 @@ export class StreamingPercentileSketch {
   private serialize(): string {
     return encodeSketch({
       v: 1,
+      kind: "relative-error-log-histogram",
       bucketBase: this.bucketBase,
       count: this.total,
       buckets: this.sortedBuckets().map((bucket) => [bucket.value, bucket.count]),

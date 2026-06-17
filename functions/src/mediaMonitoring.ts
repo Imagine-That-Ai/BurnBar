@@ -5,12 +5,13 @@
  */
 
 import { getFirestore } from "firebase-admin/firestore";
+import type { SetOptions, WhereFilterOp } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { numberField, stringField } from "./guards.js";
 import { forEachInPages } from "./rollupPagination.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { StreamingPercentileSketch } from "./streamingPercentiles.js";
 import type { MediaFeature, MediaSessionDailyRollupDoc } from "./types.js";
-import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const ROLLUP_SCHEMA_VERSION = 2;
 const ROLLUP_COLLECTION = "ops/media_session_daily_rollups/days";
@@ -25,7 +26,7 @@ type MediaSessionRollupDoc = {
 };
 
 interface MediaSessionRollupQuery {
-  where(field: string, op: ">=" | "<", value: string): MediaSessionRollupQuery;
+  where(field: string, op: WhereFilterOp, value: string): MediaSessionRollupQuery;
   orderBy(field: string): MediaSessionRollupQuery;
   startAfter(cursor: MediaSessionRollupDoc): MediaSessionRollupQuery;
   limit(limit: number): MediaSessionRollupQuery;
@@ -39,8 +40,13 @@ interface MediaSessionRollupQuery {
 interface MediaSessionRollupFirestore {
   collectionGroup(name: string): MediaSessionRollupQuery;
   doc(path: string): {
-    set(data: MediaSessionDailyRollupDoc, options: { merge: true }): Promise<unknown>;
+    set(data: MediaSessionDailyRollupDoc, options: SetOptions): Promise<unknown>;
   };
+}
+
+interface RollupOptions {
+  dateUTC: Date;
+  firestore?: MediaSessionRollupFirestore;
 }
 
 function utcDayWindow(date: Date) {
@@ -116,27 +122,12 @@ function bucketBitsPerSecond(b: string | undefined): number | undefined {
   }
 }
 
-interface MediaRollupDoc {
-  ref: { path: string };
-  data(): Record<string, unknown>;
-}
-
-interface MediaRollupQuery {
-  where(field: string, op: string, value: string): MediaRollupQuery;
-  orderBy(field: string): MediaRollupQuery;
-  startAfter(cursor: MediaRollupDoc): MediaRollupQuery;
-  limit(limit: number): MediaRollupQuery;
-  get(): Promise<{ readonly empty: boolean; readonly size: number; readonly docs: readonly MediaRollupDoc[] }>;
-}
-
-interface MediaRollupFirestore {
-  collectionGroup(name: string): MediaRollupQuery;
-  doc(path: string): { set(data: unknown, options?: unknown): Promise<unknown> };
-}
-
-interface RollupOptions {
-  dateUTC: Date;
-  firestore?: MediaRollupFirestore;
+function buildSketches(anchors: readonly number[]): Record<MediaFeature, StreamingPercentileSketch> {
+  return {
+    fileTransfer: new StreamingPercentileSketch(anchors),
+    screenShare: new StreamingPercentileSketch(anchors),
+    videoCall: new StreamingPercentileSketch(anchors),
+  };
 }
 
 export async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
@@ -149,22 +140,9 @@ export async function rollupMediaSessionsForDay(options: RollupOptions): Promise
     .where("startedAt", "<", window.end.toISOString());
 
   const perFeature = buildEmptyPerFeature();
-
-  const rttSketches: Record<MediaFeature, StreamingPercentileSketch> = {
-    fileTransfer: new StreamingPercentileSketch(RTT_ANCHORS),
-    screenShare: new StreamingPercentileSketch(RTT_ANCHORS),
-    videoCall: new StreamingPercentileSketch(RTT_ANCHORS),
-  };
-  const bpsSketches: Record<MediaFeature, StreamingPercentileSketch> = {
-    fileTransfer: new StreamingPercentileSketch(BITS_PER_SECOND_ANCHORS),
-    screenShare: new StreamingPercentileSketch(BITS_PER_SECOND_ANCHORS),
-    videoCall: new StreamingPercentileSketch(BITS_PER_SECOND_ANCHORS),
-  };
-  const freezeSketches: Record<MediaFeature, StreamingPercentileSketch> = {
-    fileTransfer: new StreamingPercentileSketch(FREEZE_COUNT_ANCHORS),
-    screenShare: new StreamingPercentileSketch(FREEZE_COUNT_ANCHORS),
-    videoCall: new StreamingPercentileSketch(FREEZE_COUNT_ANCHORS),
-  };
+  const rttSketches = buildSketches(RTT_ANCHORS);
+  const bpsSketches = buildSketches(BITS_PER_SECOND_ANCHORS);
+  const freezeSketches = buildSketches(FREEZE_COUNT_ANCHORS);
   const successesByFeature: Record<MediaFeature, { ok: number; total: number }> = {
     fileTransfer: { ok: 0, total: 0 },
     screenShare: { ok: 0, total: 0 },

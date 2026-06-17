@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { StreamingPercentileSketch } from "../streamingPercentiles.js";
 
 function decodeSketch(summary: ReturnType<StreamingPercentileSketch["summary"]>): {
+  kind: string;
   count: number;
   buckets: Array<[number, number]>;
 } {
@@ -19,6 +20,7 @@ describe("StreamingPercentileSketch", () => {
     const summary = sketch.summary();
     expect(summary).toMatchObject({ count: 5, p50: 100, p95: 600, p99: 600 });
     expect(decodeSketch(summary)).toMatchObject({
+      kind: "relative-error-log-histogram",
       count: 5,
       buckets: [
         [25, 2],
