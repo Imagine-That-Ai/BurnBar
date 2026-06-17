@@ -1,6 +1,8 @@
 import type { Firestore } from "firebase-admin/firestore";
 import type { AccessTokenClaims } from "./auth.js";
 import { requireScope } from "./auth.js";
+import type { HostedMcpFirestore } from "./firestoreTypes.js";
+import { isFullFirestore } from "./firestoreTypes.js";
 import {
   requireActiveBurnBarPro,
   requireActiveRemoteMcpAccess,
@@ -16,8 +18,6 @@ import {
   searchHostedCode,
   readHostedCodeDocument,
 } from "./knowledge.js";
-import type { HostedMcpFirestore } from "./firestoreTypes.js";
-import { isFullFirestore } from "./firestoreTypes.js";
 
 export type CostClass = "metadata" | "standard" | "body";
 
@@ -26,7 +26,7 @@ export interface ToolContext {
   claims: AccessTokenClaims;
 }
 
-interface FullToolContext {
+interface ToolHandlerContext {
   db: Firestore;
   claims: AccessTokenClaims;
 }
@@ -40,7 +40,7 @@ export interface RegisteredTool {
   /** Optional richer bucket used when the caller is on the Ultra tier. */
   ultraRateLimitBucket?: string;
   inputSchema: Record<string, unknown>;
-  handler(ctx: FullToolContext, args: Record<string, unknown>): Promise<unknown>;
+  handler(ctx: ToolHandlerContext, args: Record<string, unknown>): Promise<unknown>;
 }
 
 function schema(properties: Record<string, unknown>, required: string[] = []) {
@@ -330,8 +330,7 @@ export async function callTool(
       content: [
         {
           type: "text",
-          text:
-            "Hosted code memory is disabled until the code asset threat model and sealed-only CI gates pass.",
+          text: "Hosted code memory is disabled until the code asset threat model and sealed-only CI gates pass.",
         },
       ],
       isError: true,
@@ -346,6 +345,10 @@ export async function callTool(
       isError: true,
     };
   }
+  if (!isFullFirestore(ctx.db)) {
+    throw new Error("Tool execution requires a full Firestore client.");
+  }
+  const handlerContext: ToolHandlerContext = { db: ctx.db, claims: ctx.claims };
   for (const scope of tool.requiredScopes) {
     requireScope(ctx.claims, scope);
   }
@@ -362,17 +365,6 @@ export async function callTool(
       ? tool.ultraRateLimitBucket
       : tool.rateLimitBucket;
   await enforceRateLimit(ctx.db, ctx.claims.sub, ctx.claims.client_id, bucket);
-  if (!isFullFirestore(ctx.db)) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: "Tool execution requires a full Firestore client.",
-        },
-      ],
-      isError: true,
-    };
-  }
-  const result = await tool.handler({ ...ctx, db: ctx.db }, args);
+  const result = await tool.handler(handlerContext, args);
   return { content: [{ type: "text", text: JSON.stringify(result) }] };
 }

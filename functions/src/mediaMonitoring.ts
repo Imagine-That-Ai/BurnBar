@@ -19,6 +19,30 @@ const RTT_ANCHORS = [25, 100, 275, 600];
 const BITS_PER_SECOND_ANCHORS = [200_000, 450_000, 800_000, 1_500_000, 3_000_000, 6_000_000, 12_000_000];
 const FREEZE_COUNT_ANCHORS = Array.from({ length: 51 }, (_value, index) => index);
 
+type MediaSessionRollupDoc = {
+  ref: { path: string };
+  data(): Record<string, unknown>;
+};
+
+interface MediaSessionRollupQuery {
+  where(field: string, op: ">=" | "<", value: string): MediaSessionRollupQuery;
+  orderBy(field: string): MediaSessionRollupQuery;
+  startAfter(cursor: MediaSessionRollupDoc): MediaSessionRollupQuery;
+  limit(limit: number): MediaSessionRollupQuery;
+  get(): Promise<{
+    readonly empty: boolean;
+    readonly size: number;
+    readonly docs: readonly MediaSessionRollupDoc[];
+  }>;
+}
+
+interface MediaSessionRollupFirestore {
+  collectionGroup(name: string): MediaSessionRollupQuery;
+  doc(path: string): {
+    set(data: MediaSessionDailyRollupDoc, options: { merge: true }): Promise<unknown>;
+  };
+}
+
 function utcDayWindow(date: Date) {
   const dateId = date.toISOString().slice(0, 10);
   const start = new Date(`${dateId}T00:00:00.000Z`);
@@ -116,7 +140,7 @@ interface RollupOptions {
 }
 
 export async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
-  const firestore = options.firestore ?? getFirestore();
+  const firestore: MediaSessionRollupFirestore = options.firestore ?? getFirestore();
   const window = utcDayWindow(options.dateUTC);
 
   const query = firestore

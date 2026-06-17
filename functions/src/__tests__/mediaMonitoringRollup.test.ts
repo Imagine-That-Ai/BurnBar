@@ -155,10 +155,8 @@ describe("rollupMediaSessionsForDay", () => {
     expect("sketchBase64" in rollup.perFeature.fileTransfer.rttMillis).toBe(true);
     expect(rollup.perFeature.screenShare.rttMillis).toMatchObject({ count: 1, p50: 100, p95: 100, p99: 100 });
     expect(rollup.perFeature.videoCall.rttMillis).toEqual({ count: 0 });
-    expect(firestore.set).toHaveBeenCalledWith(
-      "ops/media_session_daily_rollups/days/2026-06-17",
-      rollup,
-      { merge: true },
-    );
+    expect(firestore.set).toHaveBeenCalledWith("ops/media_session_daily_rollups/days/2026-06-17", rollup, {
+      merge: true,
+    });
   });
 });
