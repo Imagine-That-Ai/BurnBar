@@ -10,12 +10,13 @@
   "workspaces": [],
   "packageManager": "pnpm@9.15.4",
   "dependencies": {
-    "deepsec": "^2.0.8",
+    "deepsec": "^2.0.12",
     "zod": "^4.4.3"
   },
   "pnpm": {
     "overrides": {
-      "hono": "^4.12.25"
+      "hono": "^4.12.25",
+      "tar": "^7.5.16"
     }
   },
   "license": "AGPL-3.0-only"
