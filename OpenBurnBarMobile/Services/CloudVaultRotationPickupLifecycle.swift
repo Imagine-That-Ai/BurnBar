@@ -1,4 +1,3 @@
-import FirebaseAuth
 import Foundation
 import OSLog
 import UIKit
@@ -61,7 +60,7 @@ enum CloudVaultRotationPickupLifecycle {
             return
         }
 
-        guard Auth.auth().currentUser?.isAnonymous == false else { return }
+        guard AuthRepository.shared.currentUser?.isAnonymous == false else { return }
         lastPickupAt = now
 
         Task {

@@ -80,4 +80,9 @@ final class AuthRepository {
     ) -> AuthStateDidChangeListenerHandle? {
         addStateDidChangeListener(callback)
     }
+
+    func removeStateDidChangeListener(_ handle: AuthStateDidChangeListenerHandle) {
+        guard let auth else { return }
+        auth.removeStateDidChangeListener(handle)
+    }
 }

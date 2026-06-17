@@ -160,7 +160,10 @@ private func loadPixels(_ name: String) -> PixelImage? {
     var px = [UInt8](repeating: 0, count: w * h * 4)
     let ok: Bool = px.withUnsafeMutableBytes { ptr in
         guard let ctx = CGContext(data: ptr.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-        ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1) // top-left origin
+        // No y-flip: a CGBitmapContext's row 0 already maps to the image's top, so the
+        // sampled buffer is top-left origin (gy == 0 == top of the logo). The previous
+        // translate/scale flip inverted this and rendered every dot mark upside down
+        // (brand swarm + provider glyphs).
         ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
         return true
     }
@@ -174,6 +177,48 @@ private struct GDot { let p: CGPoint; let r: Double; let g: Double; let b: Doubl
 private struct Glyph { var pos: CGPoint; var vel: CGVector; var prov: Int; var flash: Double; var formT: Double; var seed: UInt64 }
 
 private let glyphStartT = 5.8
+
+/// Light tap feedback for the provider glyphs. iOS-only; a no-op elsewhere.
+@MainActor
+private func playGlyphTapHaptic() {
+    #if canImport(UIKit)
+    let generator = UIImpactFeedbackGenerator(style: .medium)
+    generator.prepare()
+    generator.impactOccurred()
+    #endif
+}
+
+enum BurnBarLogoFormationGeometry {
+    static func providerGlyphPoint(gx: Int, gy: Int, grid: Int) -> CGPoint {
+        let denominator = Double(max(grid - 1, 1))
+        return CGPoint(
+            x: Double(gx) / denominator - 0.5,
+            y: Double(gy) / denominator - 0.5
+        )
+    }
+}
+
+enum BurnBarLogoFormationColor {
+    /// Boosts saturation while preserving hue so provider marks read as their real,
+    /// vivid brand colors. Mode-independent: the glass cube is dark obsidian in both
+    /// light and dark appearance, so the dots always sit on a dark surface and glow.
+    static func vibrantProviderGlyphRGB(
+        r: Double,
+        g: Double,
+        b: Double,
+        saturation: Double = 1.5
+    ) -> (r: Double, g: Double, b: Double) {
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        let rr = luminance + (r - luminance) * saturation
+        let gg = luminance + (g - luminance) * saturation
+        let bb = luminance + (b - luminance) * saturation
+        return (
+            min(max(rr, 0), 1),
+            min(max(gg, 0), 1),
+            min(max(bb, 0), 1)
+        )
+    }
+}
 
 private func sampleDots(_ logoName: String) -> [Dot] {
     guard let img = loadPixels(logoName) else { return [] }
@@ -215,7 +260,8 @@ private func sampleGlyphDots(_ name: String, grid: Int = 40, maxDots: Int = 220)
         if a > 0.4 && lum < 0.985 {
             let mx = max(r, max(g, b))
             if mx < 0.06 { r = 0.92; g = 0.94; b = 0.97 } else if mx < 0.62 { let s = 0.62 / mx; r = min(1, r * s); g = min(1, g * s); b = min(1, b * s) }
-            pts.append(GDot(p: CGPoint(x: Double(gx) / Double(grid - 1) - 0.5, y: Double(gy) / Double(grid - 1) - 0.5), r: r, g: g, b: b))
+            let vivid = BurnBarLogoFormationColor.vibrantProviderGlyphRGB(r: r, g: g, b: b)
+            pts.append(GDot(p: BurnBarLogoFormationGeometry.providerGlyphPoint(gx: gx, gy: gy, grid: grid), r: vivid.r, g: vivid.g, b: vivid.b))
         }
     }}
     if pts.count > maxDots {
@@ -313,11 +359,27 @@ private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = 
     }
     func stop() { timer?.invalidate(); timer = nil }
 
+    /// Flashes the glyph nearest to `point` (design-canvas coordinates) while the
+    /// provider constellations are on screen, and reports whether one was flashed so
+    /// the caller can fire tap feedback (haptics). No distance cutoff — any tap once
+    /// the glyphs are up pops the closest one (brief size + brightness flash).
+    func flashGlyph(near point: CGPoint) -> Bool {
+        guard t > glyphStartT, !glyphs.isEmpty else { return false }
+        var hitIndex = 0
+        var nearest = CGFloat.greatestFiniteMagnitude
+        for i in glyphs.indices {
+            let distance = hypot(glyphs[i].pos.x - point.x, glyphs[i].pos.y - point.y)
+            if distance < nearest { nearest = distance; hitIndex = i }
+        }
+        glyphs[hitIndex].flash = 1
+        return true
+    }
+
     private func seed() {
         let n = providerCount
         let width = FormationLayout.W
-        glyphs = (0 ..< 3).map { i in
-            Glyph(pos: CGPoint(x: .random(in: 120 ... (width - 120)), y: .random(in: 115 ... 345)),
+        glyphs = (0 ..< 5).map { i in
+            Glyph(pos: CGPoint(x: .random(in: 70 ... (width - 70)), y: .random(in: 90 ... 380)),
                   vel: CGVector(dx: .random(in: -14 ... 14), dy: .random(in: -14 ... 14)),
                   prov: (i * 3) % n, flash: 0, formT: 0, seed: .random(in: 0 ... UInt64.max))
         }
@@ -329,10 +391,10 @@ private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = 
         for i in glyphs.indices {
             glyphs[i].pos.x += glyphs[i].vel.dx * CGFloat(dt)
             glyphs[i].pos.y += glyphs[i].vel.dy * CGFloat(dt)
-            if glyphs[i].pos.x < 85 { glyphs[i].pos.x = 85; glyphs[i].vel.dx = abs(glyphs[i].vel.dx) }
-            if glyphs[i].pos.x > width - 85 { glyphs[i].pos.x = width - 85; glyphs[i].vel.dx = -abs(glyphs[i].vel.dx) }
-            if glyphs[i].pos.y < 100 { glyphs[i].pos.y = 100; glyphs[i].vel.dy = abs(glyphs[i].vel.dy) }
-            if glyphs[i].pos.y > 360 { glyphs[i].pos.y = 360; glyphs[i].vel.dy = -abs(glyphs[i].vel.dy) }
+            if glyphs[i].pos.x < 60 { glyphs[i].pos.x = 60; glyphs[i].vel.dx = abs(glyphs[i].vel.dx) }
+            if glyphs[i].pos.x > width - 60 { glyphs[i].pos.x = width - 60; glyphs[i].vel.dx = -abs(glyphs[i].vel.dx) }
+            if glyphs[i].pos.y < 80 { glyphs[i].pos.y = 80; glyphs[i].vel.dy = abs(glyphs[i].vel.dy) }
+            if glyphs[i].pos.y > 400 { glyphs[i].pos.y = 400; glyphs[i].vel.dy = -abs(glyphs[i].vel.dy) }
             if glyphs[i].flash > 0 { glyphs[i].flash = max(0, glyphs[i].flash - dt * 2.2) }
             if glyphs[i].formT < 1 { glyphs[i].formT = min(1, glyphs[i].formT + dt / 1.6) }
         }
@@ -380,6 +442,15 @@ private struct FormationDriver: View {
         TimelineView(.animation(minimumInterval: 1.0 / 45.0)) { _ in
             FormationHero(p: min(sim.t / 5.0, 1.0), time: sim.t, glyphs: sim.glyphs,
                           logoName: logoName, providerDots: assets?.providerDots ?? [], dots: assets?.dots ?? [])
+                .contentShape(Rectangle())
+                .gesture(
+                    SpatialTapGesture(coordinateSpace: .local)
+                        .onEnded { value in
+                            if sim.flashGlyph(near: value.location) {
+                                playGlyphTapHaptic()
+                            }
+                        }
+                )
         }
         .onAppear {
             if assets == nil { assets = FormationAssets(logoName: logoName, providerNames: providerNames) }
@@ -472,7 +543,7 @@ private struct FormationHero: View {
                                     let alpha = min(1.0, glyphAppear * (0.22 + 0.78 * f) * (0.92 + 0.5 * gl.flash))
                                     if alpha < 0.02 { continue }
                                     ctx.opacity = alpha
-                                    let ds: CGFloat = 3.1 + 1.8 * gl.flash
+                                    let ds: CGFloat = 5.2 + 1.8 * gl.flash
                                     ctx.fill(Path(ellipseIn: CGRect(x: x - ds / 2, y: y - ds / 2, width: ds, height: ds)), with: .color(Color(.sRGB, red: d.r, green: d.g, blue: d.b, opacity: 1)))
                                 }
                             }
