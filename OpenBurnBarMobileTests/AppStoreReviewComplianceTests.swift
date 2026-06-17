@@ -175,6 +175,37 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(authGate.contains(".environment(\\.mobileAuthStore, authStore)"))
     }
 
+    func testStartupSurfacesDoNotTouchFirebaseAuthWhenFirebaseIsUnavailable() throws {
+        try skipSourceInspectionInSimulatorAppHost()
+        let appURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("App")
+        let servicesURL = repoRoot()
+            .appendingPathComponent("OpenBurnBarMobile")
+            .appendingPathComponent("Services")
+
+        let authGate = try String(
+            contentsOf: appURL.appendingPathComponent("AuthGateView.swift"),
+            encoding: .utf8
+        )
+        let rotationLifecycle = try String(
+            contentsOf: servicesURL.appendingPathComponent("CloudVaultRotationPickupLifecycle.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(rotationLifecycle.contains("AuthRepository.shared.currentUser?.isAnonymous == false"))
+        XCTAssertFalse(
+            rotationLifecycle.contains("Auth.auth()"),
+            "CloudVault rotation pickup is installed during app launch; raw Auth.auth() crashes when Firebase is intentionally unavailable."
+        )
+        XCTAssertTrue(authGate.contains("@State private var isSignedIn = AuthRepository.shared.isSignedIn"))
+        XCTAssertTrue(authGate.contains("AuthRepository.shared.addStateDidChangeListener"))
+        XCTAssertFalse(
+            authGate.contains("@State private var isSignedIn = Auth.auth().currentUser != nil"),
+            "Debug Cloud Store route must not crash clean debug installs that omit GoogleService-Info.plist."
+        )
+    }
+
     func testIPadRootInstallsAgentWatchLiveStageForScreenSharingParity() throws {
         try skipSourceInspectionInSimulatorAppHost()
         let rootNavigationURL = repoRoot()

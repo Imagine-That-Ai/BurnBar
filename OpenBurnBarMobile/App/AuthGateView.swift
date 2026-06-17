@@ -213,10 +213,10 @@ struct AuthGateView: View {
 
 #if DEBUG
 private struct MobileE2ECloudStoreRouteView: View {
-    @State private var isSignedIn = Auth.auth().currentUser != nil
+    @State private var isSignedIn = AuthRepository.shared.isSignedIn
     @State private var authHandle: AuthStateDidChangeListenerHandle?
     @State private var subscriptionStore = HostedQuotaSubscriptionStore(
-        isSignedIn: { Auth.auth().currentUser != nil }
+        isSignedIn: { AuthRepository.shared.isSignedIn }
     )
 
     var body: some View {
@@ -233,7 +233,7 @@ private struct MobileE2ECloudStoreRouteView: View {
         }
         .onAppear {
             guard authHandle == nil else { return }
-            authHandle = Auth.auth().addStateDidChangeListener { _, user in
+            authHandle = AuthRepository.shared.addStateDidChangeListener { user in
                 Task { @MainActor in
                     isSignedIn = user != nil
                 }
@@ -246,7 +246,7 @@ private struct MobileE2ECloudStoreRouteView: View {
         }
         .onDisappear {
             if let authHandle {
-                Auth.auth().removeStateDidChangeListener(authHandle)
+                AuthRepository.shared.removeStateDidChangeListener(authHandle)
                 self.authHandle = nil
             }
         }
