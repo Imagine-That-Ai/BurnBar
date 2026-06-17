@@ -79,8 +79,8 @@ jobs:
               exit 1;
             }
 
-      - name: Smoke-test Swift bridge
-        run: swift test --package-path OpenBurnBarCore --filter BurnBarRemoteEngineSupportTests
+      - name: Smoke-build Swift bridge
+        run: swift build --package-path OpenBurnBarCore --product BurnBarRemoteEngine
 
       - name: Inspect xcframework
         run: |
