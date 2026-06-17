@@ -115,7 +115,7 @@ final class DownloadSyncServiceMattersTests: XCTestCase {
 
         // The download still completed and imported the peer row (throw was caught,
         // not propagated up the download pipeline).
-        let remoteUsages = try dataStore.usageStore.fetchAllUsage().filter { $0.isRemote }
+        let remoteUsages = try await dataStore.fetchAllUsage().filter { $0.isRemote }
         XCTAssertEqual(remoteUsages.count, 1, "Peer usage row must still import despite the key fault")
 
         // FAIL CLOSED: with no usable key, the sealed project name is NOT opened.
@@ -151,7 +151,7 @@ final class DownloadSyncServiceMattersTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let remoteUsages = try dataStore.usageStore.fetchAllUsage().filter { $0.isRemote }
+        let remoteUsages = try await dataStore.fetchAllUsage().filter { $0.isRemote }
         XCTAssertEqual(remoteUsages.count, 1)
         XCTAssertEqual(remoteUsages.first?.projectName, "Top Secret Project")
     }

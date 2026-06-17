@@ -13,6 +13,7 @@ The daemon owns all persistence, project partitioning, secret scanning, audit, s
 ## Consequences
 
 - Static parsing can improve symbol tiers without introducing a new trusted storage process.
+- Default Project Code Memory indexing is limited to the helper-supported source extensions (`.swift`, `.ts`, `.tsx`, `.py`) until additional Tree-sitter parsers or SCIP importers are wired.
 - Hosted code sync remains off by default; this helper is local-only and does not weaken the hosted threat model.
 - The helper can be tested and shipped independently from the daemon.
 - Exact LSP tiers remain a later opt-in path and must only be emitted when a live language server answers for the current buffer within timeout.

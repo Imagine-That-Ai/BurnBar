@@ -18,44 +18,60 @@ final class BudgetSettings {
 
     /// In-memory cache of every enabled rule. Refreshed on `refresh()` and after every write.
     private(set) var rules: [BudgetRule] = []
+    private(set) var recentEventCache: [BudgetEvent] = []
 
     init(store: BudgetRulesStore, alertSettings: AlertSettings, deviceID: String) {
         self.store = store
         self.alertSettings = alertSettings
         self.deviceID = deviceID
-        loadFromStore()
-        migrateLegacyCostAlertThresholdIfNeeded()
+        Task { @MainActor in
+            await bootstrapFromStore()
+        }
     }
 
     // MARK: - Refresh
 
     /// Re-reads every enabled rule from SQLite. Call after CloudSync downloads or
     /// after the user re-enables a disabled rule via direct DB edit.
-    func refresh() {
-        loadFromStore()
+    func refresh() async {
+        await loadFromStore()
+        await loadRecentEvents()
     }
 
-    private func loadFromStore() {
+    private func bootstrapFromStore() async {
+        await refresh()
+        await migrateLegacyCostAlertThresholdIfNeeded()
+    }
+
+    private func loadFromStore() async {
         do {
-            rules = try store.fetchAllRules(includeDisabled: false)
+            rules = try await store.fetchAllRules(includeDisabled: false)
         } catch {
             rules = []
+        }
+    }
+
+    private func loadRecentEvents(limit: Int = 100) async {
+        do {
+            recentEventCache = try await store.recentEvents(limit: limit)
+        } catch {
+            recentEventCache = []
         }
     }
 
     // MARK: - Writes (UI / Hermes / MCP entry points)
 
     @discardableResult
-    func upsertRule(_ rule: BudgetRule, source: String = "settings_ui") -> BudgetRule {
+    func upsertRule(_ rule: BudgetRule, source: String = "settings_ui") async -> BudgetRule {
         var stamped = rule
         stamped.updatedAt = Date()
         stamped.syncedAt = nil
         stamped.sourceDeviceID = stamped.sourceDeviceID ?? deviceID
 
         do {
-            try store.upsertRule(stamped)
+            try await store.upsertRule(stamped)
             let kind: BudgetEventKind = rules.contains(where: { $0.id == stamped.id }) ? .ruleUpdated : .ruleCreated
-            try store.recordEvent(BudgetEvent(
+            try await store.recordEvent(BudgetEvent(
                 ruleID: stamped.id,
                 kind: kind,
                 source: source,
@@ -63,7 +79,7 @@ final class BudgetSettings {
                 limitAtEvent: stamped.amountUSD,
                 detailJSON: encodeDetail(["label": stamped.displayLabel, "period": stamped.period.rawValue])
             ))
-            loadFromStore()
+            await refresh()
         } catch {
             AppLogger.dataStore.silentFailure( // cov:ignore -- nonfatal-log
                 "budget_rule_upsert_failed", // cov:ignore -- nonfatal-log
@@ -74,11 +90,11 @@ final class BudgetSettings {
         return stamped
     }
 
-    func deleteRule(id: String, source: String = "settings_ui") {
+    func deleteRule(id: String, source: String = "settings_ui") async {
         guard let existing = rules.first(where: { $0.id == id }) else { return }
         do {
-            try store.deleteRule(id: id)
-            try store.recordEvent(BudgetEvent(
+            try await store.deleteRule(id: id)
+            try await store.recordEvent(BudgetEvent(
                 ruleID: id,
                 kind: .ruleDeleted,
                 source: source,
@@ -86,18 +102,18 @@ final class BudgetSettings {
                 limitAtEvent: existing.amountUSD,
                 detailJSON: encodeDetail(["label": existing.displayLabel])
             ))
-            loadFromStore()
+            await refresh()
         } catch {
             // Best-effort delete; refresh state regardless.
-            loadFromStore()
+            await refresh()
         }
     }
 
-    func pauseRule(id: String, until resumeAt: Date, source: String = "settings_ui") {
+    func pauseRule(id: String, until resumeAt: Date, source: String = "settings_ui") async {
         guard var rule = rules.first(where: { $0.id == id }) else { return }
         rule.pausedUntil = resumeAt
-        upsertRule(rule, source: source)
-        try? store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
+        await upsertRule(rule, source: source)
+        try? await store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
             ruleID: id,
             kind: .pause,
             source: source,
@@ -105,19 +121,21 @@ final class BudgetSettings {
             limitAtEvent: rule.amountUSD,
             detailJSON: encodeDetail(["pausedUntil": ISO8601DateFormatter().string(from: resumeAt)])
         ))
+        await loadRecentEvents()
     }
 
-    func resumeRule(id: String, source: String = "settings_ui") {
+    func resumeRule(id: String, source: String = "settings_ui") async {
         guard var rule = rules.first(where: { $0.id == id }) else { return }
         rule.pausedUntil = nil
-        upsertRule(rule, source: source)
-        try? store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
+        await upsertRule(rule, source: source)
+        try? await store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
             ruleID: id,
             kind: .resume,
             source: source,
             amountAtEvent: 0,
             limitAtEvent: rule.amountUSD
         ))
+        await loadRecentEvents()
     }
 
     // MARK: - Reads
@@ -153,7 +171,10 @@ final class BudgetSettings {
 
     /// Recent audit events. Wraps the store so views don't need to know about GRDB.
     func recentEvents(forRule ruleID: String? = nil, limit: Int = 100) -> [BudgetEvent] {
-        (try? store.recentEvents(forRule: ruleID, limit: limit)) ?? [] // try?-ok(read with [] fallback)
+        let events = ruleID.map { id in
+            recentEventCache.filter { $0.ruleID == id }
+        } ?? recentEventCache
+        return Array(events.prefix(max(0, limit)))
     }
 
     // MARK: - Legacy migration
@@ -161,7 +182,7 @@ final class BudgetSettings {
     /// Converts the legacy `AlertSettings.costAlertThreshold` value (a single `Double?` in
     /// `UserDefaults`) into a `BudgetRule(scope: .global, period: .month, behavior: .warnOnly)`
     /// on first launch after Phase 3 ships. Runs exactly once per device.
-    private func migrateLegacyCostAlertThresholdIfNeeded() {
+    private func migrateLegacyCostAlertThresholdIfNeeded() async {
         guard UserDefaults.standard.bool(forKey: migrationDefaultsKey) == false else { return }
         defer { UserDefaults.standard.set(true, forKey: migrationDefaultsKey) }
 
@@ -179,7 +200,7 @@ final class BudgetSettings {
             behavior: .warnOnly,
             sourceDeviceID: deviceID
         )
-        upsertRule(migrated, source: "legacy_migration")
+        await upsertRule(migrated, source: "legacy_migration")
     }
 
     // MARK: - Helpers

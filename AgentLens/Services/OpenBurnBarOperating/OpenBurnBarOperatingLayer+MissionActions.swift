@@ -2,7 +2,7 @@ import Foundation
 import OpenBurnBarCore
 
 extension OpenBurnBarOperatingLayer {
-    func approveMission(note: String = "") {
+    func approveMission(note: String = "") async {
         let current = snapshot
         guard let action = current.availableActions.first(where: { $0.kind == .missionApproval }) else {
             actionFeedback = OpenBurnBarActionFeedback(
@@ -33,16 +33,16 @@ extension OpenBurnBarOperatingLayer {
         }
 
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let record = OpenBurnBarOperatingActionRecord(
+            projectName: projectName,
+            missionFingerprint: current.mission.missionID,
+            actionKind: .missionApproval,
+            summary: "Mission approved",
+            detail: trimmedNote.isEmpty ? current.mission.recommendationSummary : trimmedNote
+        )
         do {
-            try dataStore.appendOperatingActionRecord(
-                OpenBurnBarOperatingActionRecord(
-                    projectName: projectName,
-                    missionFingerprint: current.mission.missionID,
-                    actionKind: .missionApproval,
-                    summary: "Mission approved",
-                    detail: trimmedNote.isEmpty ? current.mission.recommendationSummary : trimmedNote
-                )
-            )
+            try await dataStore.appendOperatingActionRecord(record)
+            rememberOperatingActionRecord(record)
         } catch {
             actionFeedback = OpenBurnBarActionFeedback(
                 kind: .missionApproval,
@@ -62,18 +62,18 @@ extension OpenBurnBarOperatingLayer {
     }
 
     /// Approve a specific mission by ID — used when multiple missions are pending in the Queue tab.
-    func approveMission(id: String, projectName: String, note: String = "") {
+    func approveMission(id: String, projectName: String, note: String = "") async {
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let record = OpenBurnBarOperatingActionRecord(
+            projectName: projectName,
+            missionFingerprint: id,
+            actionKind: .missionApproval,
+            summary: "Mission approved",
+            detail: trimmedNote.isEmpty ? nil : trimmedNote
+        )
         do {
-            try dataStore.appendOperatingActionRecord(
-                OpenBurnBarOperatingActionRecord(
-                    projectName: projectName,
-                    missionFingerprint: id,
-                    actionKind: .missionApproval,
-                    summary: "Mission approved",
-                    detail: trimmedNote.isEmpty ? nil : trimmedNote
-                )
-            )
+            try await dataStore.appendOperatingActionRecord(record)
+            rememberOperatingActionRecord(record)
         } catch {
             actionFeedback = OpenBurnBarActionFeedback(
                 kind: .missionApproval,
@@ -97,7 +97,7 @@ extension OpenBurnBarOperatingLayer {
         forcedStatus: OpenBurnBarDirectionAssessment?,
         summary: String,
         rationale: String
-    ) {
+    ) async {
         let current = snapshot
         guard let action = current.availableActions.first(where: { $0.kind == .directionOverride }) else {
             actionFeedback = OpenBurnBarActionFeedback(
@@ -148,17 +148,17 @@ extension OpenBurnBarOperatingLayer {
             return
         }
 
+        let record = OpenBurnBarOperatingActionRecord(
+            projectName: projectName,
+            actionKind: .directionOverride,
+            summary: trimmedSummary,
+            detail: trimmedRationale,
+            overrideMode: mode,
+            forcedDirectionStatus: forcedStatus
+        )
         do {
-            try dataStore.appendOperatingActionRecord(
-                OpenBurnBarOperatingActionRecord(
-                    projectName: projectName,
-                    actionKind: .directionOverride,
-                    summary: trimmedSummary,
-                    detail: trimmedRationale,
-                    overrideMode: mode,
-                    forcedDirectionStatus: forcedStatus
-                )
-            )
+            try await dataStore.appendOperatingActionRecord(record)
+            rememberOperatingActionRecord(record)
         } catch {
             actionFeedback = OpenBurnBarActionFeedback(
                 kind: .directionOverride,
@@ -257,15 +257,15 @@ extension OpenBurnBarOperatingLayer {
 
             // Record in local history as well
             do {
-                try dataStore.appendOperatingActionRecord(
-                    OpenBurnBarOperatingActionRecord(
-                        projectName: trimmedProjectSlug,
-                        missionFingerprint: response.mission.id.rawValue,
-                        actionKind: .missionCreation,
-                        summary: "Mission created: \(trimmedTitle)",
-                        detail: trimmedSummary
-                    )
+                let record = OpenBurnBarOperatingActionRecord(
+                    projectName: trimmedProjectSlug,
+                    missionFingerprint: response.mission.id.rawValue,
+                    actionKind: .missionCreation,
+                    summary: "Mission created: \(trimmedTitle)",
+                    detail: trimmedSummary
                 )
+                try await dataStore.appendOperatingActionRecord(record)
+                rememberOperatingActionRecord(record)
             } catch {
                 AppLogger.dataStore.silentFailure("appendOperatingActionRecord", error: error)
             }

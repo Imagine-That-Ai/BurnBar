@@ -384,7 +384,7 @@ final class OpenBurnBarDaemonManager {
             }
         }
         Task { @MainActor in
-            OpenBurnBarDaemonLocalNotificationRelay.shared.start()
+            OpenBurnBarDaemonLocalNotificationRelay.shared.start(settingsManager: settingsManager)
         }
         Task {
             await refreshInstalledDaemonIfNeededForCurrentAppBuild()
@@ -543,12 +543,12 @@ final class OpenBurnBarDaemonManager {
 
     private func scheduleImportedUsagePersistence(_ importedUsages: [TokenUsage]) {
         guard !importedUsages.isEmpty, let dataStore else { return }
-        let actor = dataStore.actor
 
-        Task(priority: .utility) { [weak self, weak dataStore, actor, importedUsages] in
+        Task(priority: .utility) { [weak self, weak dataStore, importedUsages] in
+            guard let dataStore else { return }
             do {
-                try await actor.insertUsages(importedUsages)
-                await dataStore?.refresh()
+                try await dataStore.insert(importedUsages)
+                await dataStore.refresh()
                 await self?.uploadImportedUsageIfNeeded(importedUsages.count)
             } catch {
                 AppLogger.dataStore.silentFailure("OpenBurnBarDaemonManager: Failed to import daemon usage", error: error)

@@ -153,8 +153,8 @@ extension ConversationStore {
             }
         }
 
-        func fileModifiedAtForConversation(id: String) throws -> Date? {
-            try dbQueue.read { db in
+        func fileModifiedAtForConversation(id: String) async throws -> Date? {
+            try await dbQueue.read { db in
                 try Date.fetchOne(
                     db,
                     sql: "SELECT fileModifiedAt FROM conversations WHERE id = ?",
@@ -224,8 +224,8 @@ extension ConversationStore {
             }
         }
 
-        func fetchAllSessionLogs(limit: Int = 1000) throws -> [ConversationRecord] {
-            try dbQueue.read { db in
+        func fetchAllSessionLogs(limit: Int = 1000) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
                     sql: "SELECT * FROM conversations WHERE deletedAt IS NULL ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
@@ -235,8 +235,8 @@ extension ConversationStore {
             }
         }
 
-        func fetchSessionLogSummaries(limit: Int = 1000) throws -> [ConversationRecord] {
-            try dbQueue.read { db in
+        func fetchSessionLogSummaries(limit: Int = 1000) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
                     sql: """
@@ -267,8 +267,8 @@ extension ConversationStore {
             model: String?,
             updatedAt: Date = Date(),
             runCostUSD: Double = 0
-        ) throws {
-            try dbQueue.write { db in
+        ) async throws {
+            try await dbQueue.write { db in
                 try db.execute(
                     sql: """
                     UPDATE conversations
@@ -296,8 +296,8 @@ extension ConversationStore {
             }
         }
 
-        func markConversationSummaryAttempt(id: String, attemptedAt: Date = Date()) throws {
-            try dbQueue.write { db in
+        func markConversationSummaryAttempt(id: String, attemptedAt: Date = Date()) async throws {
+            try await dbQueue.write { db in
                 try db.execute(
                     sql: """
                     UPDATE conversations
@@ -314,10 +314,10 @@ extension ConversationStore {
             now: Date = Date(),
             retryCooldown: TimeInterval = 60 * 60,
             indexedAfter: Date? = nil
-        ) throws -> [ConversationRecord] {
+        ) async throws -> [ConversationRecord] {
             let cutoff = now.addingTimeInterval(-max(retryCooldown, 0))
-            return try dbQueue.read { db in
-                let (whereSQL, whereArguments) = summaryCandidateWhereClause(
+            return try await dbQueue.read { db in
+                let (whereSQL, whereArguments) = self.summaryCandidateWhereClause(
                     cutoff: cutoff,
                     indexedAfter: indexedAfter
                 )
@@ -343,10 +343,10 @@ extension ConversationStore {
             now: Date = Date(),
             retryCooldown: TimeInterval = 60 * 60,
             indexedAfter: Date? = nil
-        ) throws -> Int {
+        ) async throws -> Int {
             let cutoff = now.addingTimeInterval(-max(retryCooldown, 0))
-            return try dbQueue.read { db in
-                let (whereSQL, arguments) = summaryCandidateWhereClause(
+            return try await dbQueue.read { db in
+                let (whereSQL, arguments) = self.summaryCandidateWhereClause(
                     cutoff: cutoff,
                     indexedAfter: indexedAfter
                 )
@@ -362,8 +362,8 @@ extension ConversationStore {
             }
         }
 
-        func summarySpendToday(now: Date = Date()) throws -> Double {
-            try dbQueue.read { db in
+        func summarySpendToday(now: Date = Date()) async throws -> Double {
+            try await dbQueue.read { db in
                 let calendar = Calendar.current
                 let start = calendar.startOfDay(for: now)
                 let end = calendar.date(byAdding: .day, value: 1, to: start) ?? now
@@ -411,8 +411,8 @@ extension ConversationStore {
             return (sql, arguments)
         }
 
-        func deleteAllIndexedConversations() throws {
-            try dbQueue.write { db in
+        func deleteAllIndexedConversations() async throws {
+            try await dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM conversations")
                 try db.execute(sql: "DELETE FROM summary_runs")
             }
@@ -423,8 +423,8 @@ extension ConversationStore {
         /// pipeline relies on the row disappearing so it can purge orphaned
         /// projections. User-initiated deletes go through `softDeleteConversation`
         /// so the tombstone propagates across devices before the row is collected.
-        func deleteConversation(id: String) throws {
-            try dbQueue.write { db in
+        func deleteConversation(id: String) async throws {
+            try await dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM conversations WHERE id = ?", arguments: [id])
             }
         }
@@ -435,8 +435,8 @@ extension ConversationStore {
         /// through `ConversationSyncService`/`SessionLogSyncService`. The row stays
         /// on disk until `ConversationTombstoneGCService` collects it after the
         /// retention window, which is what lets device B observe the deletion.
-        func softDeleteConversation(id: String, at date: Date = Date()) throws {
-            try dbQueue.write { db in
+        func softDeleteConversation(id: String, at date: Date = Date()) async throws {
+            try await dbQueue.write { db in
                 try db.execute(
                     sql: """
                     UPDATE conversations
@@ -452,8 +452,8 @@ extension ConversationStore {
         /// Local tombstones whose `deletedAt` is older than `before`. The GC sweep
         /// uses this to find conversations eligible for purge after the retention
         /// window, then deletes their cloud bodies/manifests before hard-deleting.
-        func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) throws -> [ConversationRecord] {
-            try dbQueue.read { db in
+        func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
                     sql: """
@@ -468,8 +468,8 @@ extension ConversationStore {
             }
         }
 
-        func approximateConversationStorageBytes() throws -> Int64 {
-            try dbQueue.read { db in
+        func approximateConversationStorageBytes() async throws -> Int64 {
+            try await dbQueue.read { db in
                 let text: Int64 = try Int64.fetchOne(
                     db,
                     sql: """
@@ -482,8 +482,8 @@ extension ConversationStore {
             }
         }
 
-        func backupUsageSnapshot(limits: CloudBackupPlanLimits = .standard) throws -> CloudBackupUsageSnapshot {
-            try dbQueue.read { db in
+        func backupUsageSnapshot(limits: CloudBackupPlanLimits = .standard) async throws -> CloudBackupUsageSnapshot {
+            try await dbQueue.read { db in
                 func aggregate(whereClause: String) throws -> (conversationCount: Int, rawBytes: Int64, searchChunks: Int) {
                     let payloadBytes = """
                     COALESCE(LENGTH(CAST(fullText AS BLOB)), 0)
@@ -548,8 +548,8 @@ extension ConversationStore {
             }
         }
 
-        func updateConversationFullText(id: String, fullText: String) throws {
-            try dbQueue.write { db in
+        func updateConversationFullText(id: String, fullText: String) async throws {
+            try await dbQueue.write { db in
                 try db.execute(
                     sql: "UPDATE conversations SET fullText = ? WHERE id = ?",
                     arguments: [fullText, id]

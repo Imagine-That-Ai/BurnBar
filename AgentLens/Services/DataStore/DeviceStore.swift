@@ -12,8 +12,8 @@ final class DeviceStore: Sendable {
         self.dbQueue = dbQueue
     }
 
-    func fetchDevices() throws -> [DeviceRecord] {
-        try dbQueue.read { db in
+    func fetchDevices() async throws -> [DeviceRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM devices ORDER BY isLocal DESC, deviceName ASC")
             return rows.compactMap { row -> DeviceRecord? in
                 guard let deviceId = row["deviceId"] as? String,
@@ -30,8 +30,8 @@ final class DeviceStore: Sendable {
         }
     }
 
-    func upsertDevice(_ device: DeviceRecord) throws {
-        try dbQueue.write { db in
+    func upsertDevice(_ device: DeviceRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                     INSERT INTO devices (deviceId, deviceName, isLocal, lastSeenAt, createdAt, hardwareModel, customIcon)
@@ -47,8 +47,8 @@ final class DeviceStore: Sendable {
         }
     }
 
-    func deviceUsageSummaries() throws -> [DeviceUsageSummary] {
-        try dbQueue.read { db in
+    func deviceUsageSummaries() async throws -> [DeviceUsageSummary] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT
                     COALESCE(tu.sourceDeviceId, d_local.deviceId) AS deviceId,
@@ -80,8 +80,8 @@ final class DeviceStore: Sendable {
         }
     }
 
-    func updateDeviceIcon(deviceId: String, customIcon: String?) throws {
-        try dbQueue.write { db in
+    func updateDeviceIcon(deviceId: String, customIcon: String?) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "UPDATE devices SET customIcon = ? WHERE deviceId = ?",
                 arguments: [customIcon, deviceId]

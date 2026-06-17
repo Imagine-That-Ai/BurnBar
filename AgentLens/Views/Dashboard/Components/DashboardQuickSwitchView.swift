@@ -117,6 +117,7 @@ struct DashboardQuickSwitchView: View {
     let dataStore: DataStore
     let onOpenSettings: () -> Void
     let settingsManager: SettingsManager
+    let accountManager: AccountManager
 
     // Injectable data source for testability
     // Production uses DataStoreSwitcherDataLoading wrapping dataStore.switcherStore
@@ -163,6 +164,7 @@ struct DashboardQuickSwitchView: View {
         dataStore: DataStore,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
+        accountManager: AccountManager = .shared,
         testInjectedError: String? = nil,
         skipLoadData: Bool = false,
         testAnnouncementHandler: ((String) -> Void)? = nil
@@ -170,6 +172,7 @@ struct DashboardQuickSwitchView: View {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.settingsManager = settingsManager
+        self.accountManager = accountManager
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
         self.testAnnouncementHandler = testAnnouncementHandler
@@ -193,6 +196,7 @@ struct DashboardQuickSwitchView: View {
         dataStore: DataStore,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
+        accountManager: AccountManager = .shared,
         switcherDataLoading: any SwitcherDataLoading,
         testInjectedError: String? = nil,
         skipLoadData: Bool = false,
@@ -201,6 +205,7 @@ struct DashboardQuickSwitchView: View {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.settingsManager = settingsManager
+        self.accountManager = accountManager
         self.switcherDataLoading = switcherDataLoading
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
@@ -211,11 +216,13 @@ struct DashboardQuickSwitchView: View {
     init(
         dataStore: DataStore,
         onOpenSettings: @escaping () -> Void,
-        settingsManager: SettingsManager = .shared
+        settingsManager: SettingsManager = .shared,
+        accountManager: AccountManager = .shared
     ) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.settingsManager = settingsManager
+        self.accountManager = accountManager
         self.switcherDataLoading = DataStoreSwitcherDataLoading(store: dataStore.switcherStore)
     }
     #endif
@@ -390,6 +397,7 @@ struct DashboardQuickSwitchView: View {
                 WindowManager.shared.openSwitcherOnboardingWizard(
                     dataStore: dataStore,
                     settingsManager: settingsManager,
+                    accountManager: accountManager,
                     onOpenSettings: onOpenSettings
                 )
             }

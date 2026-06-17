@@ -101,12 +101,6 @@ const RETIRED_HERMES_REALTIME_RELAY_SERVICE = "hermes-realtime-relay";
 const RETIRED_HERMES_REALTIME_REDIS_INSTANCE =
   process.env.OPENBURNBAR_RETIRED_REDIS_INSTANCE_NAME ||
   "hermes-realtime-relay-redis-prod-secure";
-const REQUIRED_CODEQL_CHECKS = [
-  "Analyze (swift)",
-  "Analyze (javascript-typescript)",
-  "Analyze (python)",
-  "Analyze (java-kotlin)",
-];
 const REQUIRED_BRANCH_CHECKS = [
   "Fast Feedback Gate",
   "guard",
@@ -122,8 +116,10 @@ const REQUIRED_BRANCH_CHECKS = [
   "Hosted MCP Security Smoke",
   "Hosted MCP Isolation Proofs (local, deterministic)",
   "Firestore Security Rules Tests",
+  "Android ktlint",
+  "Analyze (javascript-typescript)",
+  "Analyze (python)",
 ];
-const REQUIRED_MAIN_GATE_CHECK = "openburnbar-pr";
 const REQUIRED_GITHUB_SECURITY_SETTINGS = [
   "dependabot_security_updates",
   "secret_scanning",
@@ -640,31 +636,47 @@ function checkProtection() {
   const checks = [
     ...new Set([
       ...(protection.required_status_checks?.contexts || []),
-      ...((protection.required_status_checks?.checks || []).map((check) => check.context).filter(Boolean)),
+      ...((protection.required_status_checks?.checks || [])
+        .map((check) => check.context)
+        .filter(Boolean)),
     ]),
   ];
   const pullRequestReviews = protection.required_pull_request_reviews || {};
+  const reviewCount =
+    pullRequestReviews.required_approving_review_count ?? 0;
   const bypass = pullRequestReviews.bypass_pull_request_allowances || {};
   const bypassAllowanceCount =
-    (bypass.users || []).length + (bypass.teams || []).length + (bypass.apps || []).length;
+    (bypass.users || []).length +
+    (bypass.teams || []).length +
+    (bypass.apps || []).length;
+  const staleReviewsDismissed =
+    pullRequestReviews.dismiss_stale_reviews === true;
+  const latestPushApprovalRequired =
+    pullRequestReviews.require_last_push_approval === true;
   return {
     ok:
       protection.enforce_admins?.enabled === true &&
       protection.allow_force_pushes?.enabled === false &&
       protection.allow_deletions?.enabled === false &&
       protection.required_conversation_resolution?.enabled === true &&
-      pullRequestReviews.required_approving_review_count === 1 &&
+      reviewCount === 1 &&
       pullRequestReviews.require_code_owner_reviews === true &&
+      staleReviewsDismissed &&
+      latestPushApprovalRequired &&
       bypassAllowanceCount === 0 &&
       REQUIRED_BRANCH_CHECKS.every((check) =>
         checks.includes(check),
       ),
     requiredChecks: checks,
-    reviewCount: pullRequestReviews.required_approving_review_count ?? 0,
-    codeOwnerReviewsRequired: pullRequestReviews.require_code_owner_reviews === true,
+    codeOwnerReviewsRequired:
+      pullRequestReviews.require_code_owner_reviews === true,
+    staleReviewsDismissed,
+    latestPushApprovalRequired,
     bypassAllowanceCount,
+    reviewCount,
     adminsEnforced: protection.enforce_admins?.enabled === true,
-    conversationResolutionRequired: protection.required_conversation_resolution?.enabled === true,
+    conversationResolutionRequired:
+      protection.required_conversation_resolution?.enabled === true,
     forcePushesAllowed: protection.allow_force_pushes?.enabled === true,
     deletionsAllowed: protection.allow_deletions?.enabled === true,
   };

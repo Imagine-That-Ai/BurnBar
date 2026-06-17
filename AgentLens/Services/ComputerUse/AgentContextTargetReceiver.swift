@@ -166,10 +166,12 @@ final class AgentContextTargetReceiver: Sendable {
             )
 
             chatController.messages.append(userMsg)
-            do {
-                try chatController.dataStore.saveChatMessage(userMsg, threadID: activeThread)
-            } catch {
-                AppLogger.chat.silentFailure("saveChatMessage (copilot)", error: error)
+            Task {
+                do {
+                    try await chatController.dataStore.saveChatMessage(userMsg, threadID: activeThread)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (copilot)", error: error)
+                }
             }
             chatController.refreshHistory()
 

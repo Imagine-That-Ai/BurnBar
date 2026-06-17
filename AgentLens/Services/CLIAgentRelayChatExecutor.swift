@@ -85,9 +85,28 @@ actor CLIAgentRelayChunkSequencer {
 
 struct CLIRuntimeModelCatalogDiscovery: Sendable {
     private let resolver: CLIExecutableResolver
+    private let gatewayProvider: @MainActor @Sendable () -> RoutingClientGateway
 
-    init(resolver: CLIExecutableResolver = CLIExecutableResolver()) {
+    init(
+        resolver: CLIExecutableResolver = CLIExecutableResolver(),
+        settingsManager: SettingsManager
+    ) {
         self.resolver = resolver
+        self.gatewayProvider = {
+            RoutingClientGateway(
+                host: settingsManager.gatewayHost.isEmpty ? "127.0.0.1" : settingsManager.gatewayHost,
+                port: settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317,
+                authToken: settingsManager.gatewayAuthToken
+            )
+        }
+    }
+
+    init(
+        resolver: CLIExecutableResolver = CLIExecutableResolver(),
+        gatewayProvider: @escaping @MainActor @Sendable () -> RoutingClientGateway
+    ) {
+        self.resolver = resolver
+        self.gatewayProvider = gatewayProvider
     }
 
     func modelCatalog(for request: CLIRuntimeModelCatalogRequest) async throws -> CLIRuntimeModelCatalogResponse {
@@ -147,7 +166,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         case .hermes, .pi, .openClaw:
             throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
         }
-        let mergedOptions = await Self.mergingOpenBurnBarProxyRowsIfNeeded(
+        let mergedOptions = await mergingOpenBurnBarProxyRowsIfNeeded(
             nativeOptions: options,
             runtime: runtime
         )
@@ -159,19 +178,12 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         )
     }
 
-    private static func mergingOpenBurnBarProxyRowsIfNeeded(
+    private func mergingOpenBurnBarProxyRowsIfNeeded(
         nativeOptions: [CLIRuntimeModelOption],
         runtime: AssistantRuntimeID
     ) async -> [CLIRuntimeModelOption] {
         guard runtime == .codex || runtime == .claude else { return nativeOptions }
-        let gateway: RoutingClientGateway = await MainActor.run {
-            let settings = SettingsManager.shared.gateway
-            return RoutingClientGateway(
-                host: settings.gatewayHost.isEmpty ? "127.0.0.1" : settings.gatewayHost,
-                port: settings.gatewayPort > 0 ? settings.gatewayPort : 8317,
-                authToken: settings.gatewayAuthToken
-            )
-        }
+        let gateway = await gatewayProvider()
         let wiring = RoutingClientWiring()
         let target: RoutingClientWiringTarget = runtime == .codex ? .codex : .claudeCode
         let advertisedModels = await wiring.advertisedModels(gateway: gateway)
@@ -180,7 +192,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             .map { model in
                 Self.openBurnBarProxyOption(model: model, runtime: runtime)
             }
-        return deduplicated(nativeOptions + proxyRows)
+        return Self.deduplicated(nativeOptions + proxyRows)
     }
 
     private static func openBurnBarProxyOption(

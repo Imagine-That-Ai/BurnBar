@@ -11,18 +11,18 @@ final class FusionImpactLedgerTests: XCTestCase {
 
     // MARK: - Migration
 
-    func test_migration_v49_addsParentRequestIDColumnAndIndex() throws {
+    func test_migration_v49_addsParentRequestIDColumnAndIndex() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
-        let columns = try queue.read { db -> [String] in
+        let columns = try await queue.read { db -> [String] in
             try Row.fetchAll(db, sql: "PRAGMA table_info(token_usage)")
                 .compactMap { $0["name"] as? String }
         }
         XCTAssertTrue(columns.contains("parentRequestID"),
                       "v49 must add the nullable parentRequestID column")
 
-        let indexes = try queue.read { db -> [String] in
+        let indexes = try await queue.read { db -> [String] in
             try Row.fetchAll(
                 db,
                 sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'token_usage'"
@@ -32,20 +32,20 @@ final class FusionImpactLedgerTests: XCTestCase {
                       "v49 must add the partial fusion-row index")
     }
 
-    func test_insert_persistsParentRequestID() throws {
+    func test_insert_persistsParentRequestID() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = UsageStore(dbQueue: queue)
 
         let parent = "\(FusionUsageRow.fusionParentPrefix)\(UUID().uuidString)"
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .hermes, sessionId: "fusion-1", projectName: "Hermes",
             model: "claude-4-sonnet", inputTokens: 100, outputTokens: 50,
             costUSD: 0.02, startTime: Date(), endTime: Date(),
             usageSource: .daemon, parentRequestID: parent
         ))
 
-        let stored = try queue.read { db -> String? in
+        let stored = try await queue.read { db -> String? in
             try Row.fetchOne(db, sql: "SELECT parentRequestID FROM token_usage LIMIT 1")?["parentRequestID"] as? String
         }
         XCTAssertEqual(stored, parent)
@@ -63,27 +63,27 @@ final class FusionImpactLedgerTests: XCTestCase {
         let parentB = "\(FusionUsageRow.fusionParentPrefix)B"
 
         // Fusion run A: two sub-calls on two models.
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .hermes, sessionId: "a-panel", projectName: "Hermes",
             model: "claude-4-sonnet", inputTokens: 100, outputTokens: 100,
             costUSD: 0.10, startTime: now, endTime: now,
             usageSource: .daemon, parentRequestID: parentA
         ))
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .hermes, sessionId: "a-judge", projectName: "Hermes",
             model: "gpt-5", inputTokens: 50, outputTokens: 50,
             costUSD: 0.05, startTime: now, endTime: now,
             usageSource: .daemon, parentRequestID: parentA
         ))
         // Fusion run B: one sub-call.
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .hermes, sessionId: "b-final", projectName: "Hermes",
             model: "claude-4-sonnet", inputTokens: 200, outputTokens: 100,
             costUSD: 0.20, startTime: now, endTime: now,
             usageSource: .daemon, parentRequestID: parentB
         ))
         // Normal request (no parent).
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .claudeCode, sessionId: "normal-1", projectName: "Proj",
             model: "claude-4-sonnet", inputTokens: 300, outputTokens: 100,
             costUSD: 0.40, startTime: now, endTime: now
@@ -109,7 +109,7 @@ final class FusionImpactLedgerTests: XCTestCase {
 
         let now = Date()
         let old = now.addingTimeInterval(-90 * 24 * 60 * 60)
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .hermes, sessionId: "old-fusion", projectName: "Hermes",
             model: "gpt-5", inputTokens: 10, outputTokens: 10,
             costUSD: 9.99, startTime: old, endTime: old,

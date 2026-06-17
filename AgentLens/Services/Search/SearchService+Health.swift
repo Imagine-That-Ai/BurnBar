@@ -94,7 +94,7 @@ extension SearchService {
             rerankLatencyMs: Double?,
             hydrationLatencyMs: Double?,
             crossEncoderLatencyMs: Double?
-        ) {
+        ) async {
             let now = nowProvider()
             let details = LexicalRetrievalHealthDetails(
                 queryLength: query.count,
@@ -113,7 +113,7 @@ extension SearchService {
             do {
                 let detailsData = try JSONEncoder().encode(details)
                 let detailsJSON = String(data: detailsData, encoding: .utf8)
-                try dataStore.upsertRetrievalHealth(
+                try await dataStore.upsertRetrievalHealth(
                     RetrievalHealthRecord(
                         subsystem: .lexical,
                         status: status,
@@ -139,7 +139,7 @@ extension SearchService {
             query: String,
             lexicalCandidateCount: Int,
             error: Error
-        ) {
+        ) async {
             let now = nowProvider()
             let details = SemanticFallbackHealthDetails(
                 queryLength: query.count,
@@ -148,7 +148,7 @@ extension SearchService {
             do {
                 let detailsData = try JSONEncoder().encode(details)
                 let detailsJSON = String(data: detailsData, encoding: .utf8)
-                try dataStore.upsertRetrievalHealth(
+                try await dataStore.upsertRetrievalHealth(
                     RetrievalHealthRecord(
                         subsystem: .semantic,
                         status: .degraded,

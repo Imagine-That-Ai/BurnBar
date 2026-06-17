@@ -79,7 +79,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertFalse(display?.relative.contains("ago") ?? true)
     }
 
-    func test_visiblePopoverProviders_onlyIncludesConnectedProviders() throws {
+    func test_visiblePopoverProviders_onlyIncludesConnectedProviders() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let dataStore = try makeDataStore()
@@ -89,14 +89,18 @@ final class ProviderQuotaServiceTests: XCTestCase {
             refreshProviders: [.minimax, .cursor, .warp]
         )
 
-        try dataStore.providerAccountStore.upsert(providerAccount(provider: .cursor, status: .connected))
-        try dataStore.providerAccountStore.upsert(providerAccount(provider: .minimax, status: .disabled))
-        try dataStore.providerAccountStore.upsert(providerAccount(provider: .warp, status: .disconnected))
+        try await dataStore.upsertProviderAccount(providerAccount(provider: .cursor, status: .connected))
+        try await dataStore.upsertProviderAccount(providerAccount(provider: .minimax, status: .disabled))
+        try await dataStore.upsertProviderAccount(providerAccount(provider: .warp, status: .disconnected))
 
-        XCTAssertEqual(service.visiblePopoverProviders(dataStore: dataStore), [.cursor])
-        XCTAssertTrue(service.hasConnectedQuotaAccount(for: .cursor, dataStore: dataStore))
-        XCTAssertFalse(service.hasConnectedQuotaAccount(for: .minimax, dataStore: dataStore))
-        XCTAssertFalse(service.hasConnectedQuotaAccount(for: .warp, dataStore: dataStore))
+        let visibleProviders = await service.visiblePopoverProviders(dataStore: dataStore)
+        XCTAssertEqual(visibleProviders, [.cursor])
+        let hasCursor = await service.hasConnectedQuotaAccount(for: .cursor, dataStore: dataStore)
+        XCTAssertTrue(hasCursor)
+        let hasMiniMax = await service.hasConnectedQuotaAccount(for: .minimax, dataStore: dataStore)
+        XCTAssertFalse(hasMiniMax)
+        let hasWarp = await service.hasConnectedQuotaAccount(for: .warp, dataStore: dataStore)
+        XCTAssertFalse(hasWarp)
     }
 
     func test_visiblePopoverProviders_includesLocalQuotaSignalsWithoutAccount() async throws {
@@ -121,7 +125,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .codex, dataStore: dataStore)
 
-        XCTAssertEqual(service.visiblePopoverProviders(dataStore: dataStore), [.codex])
+        let visibleProviders = await service.visiblePopoverProviders(dataStore: dataStore)
+        XCTAssertEqual(visibleProviders, [.codex])
     }
 
     func test_refreshProviderPublishesDisplayableSnapshotsForCloudSync() async throws {
@@ -3186,7 +3191,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(account.primaryDisplayableBucket?.remainingPercent?.rounded(), 20)
     }
 
-    func test_routingStateUsesExactAccountQuotaSnapshots() throws {
+    func test_routingStateUsesExactAccountQuotaSnapshots() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
@@ -3252,16 +3257,190 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let service = makeService(home: home, appSupportRoot: appSupport)
         let dataStore = try makeDataStore()
-        try dataStore.providerAccountStore.upsert(routingAccount(id: "openai_work", label: "Work", sortKey: 0))
-        try dataStore.providerAccountStore.upsert(routingAccount(id: "openai_personal", label: "Personal", sortKey: 1))
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai_work", label: "Work", sortKey: 0))
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai_personal", label: "Personal", sortKey: 1))
 
-        let states = service.refreshRoutingState(dataStore: dataStore)
+        let states = await service.refreshRoutingState(dataStore: dataStore)
         let state = try XCTUnwrap(states[.openAI])
 
         XCTAssertEqual(state.activeAccount?.accountID, "openai_personal")
         XCTAssertEqual(state.activeAccount?.quotaState, .healthy)
         XCTAssertEqual(state.nextFallback?.accountID, "openai_work")
         XCTAssertEqual(state.nextFallback?.quotaState, .pressure)
+    }
+
+    func test_refreshRoutingState_drainsSoonestQuotaResetBeforeSelectedAccountAndRemainingConflict() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let soonReset = Date().addingTimeInterval(12 * 60)
+        let laterReset = Date().addingTimeInterval(2 * 60 * 60)
+        let work = routingQuotaSnapshot(accountID: "openai-work", label: "Work", remainingPercent: 95, resetsAt: laterReset)
+        let personal = routingQuotaSnapshot(accountID: "openai-personal", label: "Personal", remainingPercent: 25, resetsAt: soonReset)
+        store.persistSnapshots([.openAI: work], accountSnapshots: [
+            ProviderQuotaSnapshotStore.accountSnapshotKey(work): work,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal
+        ])
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+        let dataStore = try makeDataStore()
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-work", label: "Work", storageScope: .deviceKeychain))
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-personal", label: "Personal", storageScope: .deviceKeychain, sortKey: 1))
+
+        let states = await service.refreshRoutingState(
+            dataStore: dataStore,
+            request: ProviderRoutingRequest(
+                preferredProviderIDs: [.openAI],
+                selectedProviderID: .openAI,
+                selectedAccountID: "openai-work"
+            )
+        )
+        let state = try XCTUnwrap(states[.openAI])
+
+        XCTAssertEqual(state.activeAccount?.accountID, "openai-personal")
+        XCTAssertEqual(state.nextFallback?.accountID, "openai-work")
+        XCTAssertEqual(state.activeAccount?.remainingPercent, 25)
+        XCTAssertTrue(state.latestExplanation?.contains("resets in") ?? false)
+        XCTAssertTrue(state.latestExplanation?.contains("draining before Work") ?? false)
+    }
+
+    func test_refreshRoutingState_drainsHigherRemainingWhenQuotaResetTimesMatch() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let reset = Date().addingTimeInterval(2 * 60 * 60)
+        let work = routingQuotaSnapshot(accountID: "openai-work", label: "Work", remainingPercent: 30, resetsAt: reset)
+        let personal = routingQuotaSnapshot(accountID: "openai-personal", label: "Personal", remainingPercent: 80, resetsAt: reset)
+        store.persistSnapshots([.openAI: work], accountSnapshots: [
+            ProviderQuotaSnapshotStore.accountSnapshotKey(work): work,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal
+        ])
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+        let dataStore = try makeDataStore()
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-work", label: "Work", storageScope: .deviceKeychain))
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-personal", label: "Personal", storageScope: .deviceKeychain, sortKey: 1))
+
+        let states = await service.refreshRoutingState(
+            dataStore: dataStore,
+            request: ProviderRoutingRequest(
+                preferredProviderIDs: [.openAI],
+                selectedProviderID: .openAI,
+                selectedAccountID: "openai-work"
+            )
+        )
+        let state = try XCTUnwrap(states[.openAI])
+
+        XCTAssertEqual(state.activeAccount?.accountID, "openai-personal")
+        XCTAssertEqual(state.nextFallback?.accountID, "openai-work")
+        XCTAssertTrue(state.latestExplanation?.contains("80% remaining vs 30%") ?? false)
+    }
+
+    func test_refreshRoutingState_drainsHigherRemainingWhenQuotaResetTimesAreUnknown() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let work = routingQuotaSnapshot(accountID: "openai-work", label: "Work", remainingPercent: 30, resetsAt: nil)
+        let personal = routingQuotaSnapshot(accountID: "openai-personal", label: "Personal", remainingPercent: 80, resetsAt: nil)
+        store.persistSnapshots([.openAI: work], accountSnapshots: [
+            ProviderQuotaSnapshotStore.accountSnapshotKey(work): work,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal
+        ])
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+        let dataStore = try makeDataStore()
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-work", label: "Work", storageScope: .deviceKeychain))
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-personal", label: "Personal", storageScope: .deviceKeychain, sortKey: 1))
+
+        let states = await service.refreshRoutingState(dataStore: dataStore, request: ProviderRoutingRequest(preferredProviderIDs: [.openAI]))
+        let state = try XCTUnwrap(states[.openAI])
+
+        XCTAssertEqual(state.activeAccount?.accountID, "openai-personal")
+        XCTAssertEqual(state.nextFallback?.accountID, "openai-work")
+        XCTAssertTrue(state.latestExplanation?.contains("80% remaining vs 30%") ?? false)
+    }
+
+    func test_refreshRoutingState_exhaustedAccountStillLosesBeforeUtilizationOrdering() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let exhausted = routingQuotaSnapshot(
+            accountID: "openai-work",
+            label: "Work",
+            remainingPercent: 0,
+            resetsAt: Date().addingTimeInterval(5 * 60)
+        )
+        let healthy = routingQuotaSnapshot(
+            accountID: "openai-personal",
+            label: "Personal",
+            remainingPercent: 40,
+            resetsAt: Date().addingTimeInterval(3 * 60 * 60)
+        )
+        store.persistSnapshots([.openAI: healthy], accountSnapshots: [
+            ProviderQuotaSnapshotStore.accountSnapshotKey(exhausted): exhausted,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(healthy): healthy
+        ])
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+        let dataStore = try makeDataStore()
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-work", label: "Work", storageScope: .deviceKeychain))
+        try await dataStore.upsertProviderAccount(routingAccount(id: "openai-personal", label: "Personal", storageScope: .deviceKeychain, sortKey: 1))
+
+        let states = await service.refreshRoutingState(dataStore: dataStore, request: ProviderRoutingRequest(preferredProviderIDs: [.openAI]))
+        let state = try XCTUnwrap(states[.openAI])
+
+        XCTAssertEqual(state.activeAccount?.accountID, "openai-personal")
+        XCTAssertEqual(state.exhaustedOrCoolingDownAccounts.map(\.accountID), ["openai-work"])
+        XCTAssertTrue(state.rejectedAlternatives.contains { $0.accountID == "openai-work" && $0.reason.contains("exhausted") })
+    }
+
+    func test_providerRoutingPolicy_doesNotMixCrossProviderPoolsForUtilization() {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "shared-model",
+                preferredProviderIDs: [.openAI, .codex],
+                routerMode: .sameModelFailover,
+                requiredCanonicalModelID: "shared-model"
+            ),
+            candidates: [
+                ProviderRoutingCandidate(
+                    providerID: .openAI,
+                    accountID: "openai-work",
+                    accountLabel: "OpenAI Work",
+                    credentialHandle: "test",
+                    storageScope: .deviceKeychain,
+                    modelCompatibility: .compatible,
+                    canonicalModelID: "shared-model",
+                    quotaState: .healthy,
+                    quotaResetsAt: now.addingTimeInterval(4 * 60 * 60),
+                    remainingPercent: 20,
+                    localCredentialAvailable: true
+                ),
+                ProviderRoutingCandidate(
+                    providerID: .codex,
+                    accountID: "codex-work",
+                    accountLabel: "Codex Work",
+                    credentialHandle: "test",
+                    storageScope: .deviceKeychain,
+                    modelCompatibility: .compatible,
+                    canonicalModelID: "shared-model",
+                    quotaState: .healthy,
+                    quotaResetsAt: now.addingTimeInterval(5 * 60),
+                    remainingPercent: 95,
+                    localCredentialAvailable: true
+                )
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(decision.selected?.providerID, .openAI)
+        XCTAssertEqual(decision.selected?.accountID, "openai-work")
+        XCTAssertEqual(decision.nextFallback?.providerID, .codex)
     }
 
     func test_cliQuotaWindowDisplaysUseSuppliedProfileSnapshot() throws {
@@ -3507,7 +3686,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshots = service.snapshots(for: .minimax)
         let work = try XCTUnwrap(snapshots.first { $0.accountLabel == "Work" })
         let personal = try XCTUnwrap(snapshots.first { $0.accountLabel == "Personal" })
-        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "minimax"))
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "minimax"))
 
         XCTAssertEqual(work.accountID, "minimax-work")
         XCTAssertEqual(work.accountStorageScope, .deviceKeychain)
@@ -3602,7 +3781,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshots = service.snapshots(for: .deepSeek)
         let work = try XCTUnwrap(snapshots.first { $0.accountLabel == "Work" })
         let personal = try XCTUnwrap(snapshots.first { $0.accountLabel == "Personal" })
-        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "deepseek"))
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "deepseek"))
 
         XCTAssertEqual(work.accountID, "deepseek-work")
         XCTAssertEqual(work.sourceId, "daemon-slot:deepseek:work")
@@ -3690,7 +3869,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let snapshots = service.snapshots(for: AgentProvider.openCode)
         let primary = try XCTUnwrap(snapshots.first { $0.accountID == "opencode-8793" })
         let fallback = try XCTUnwrap(snapshots.first { $0.accountID == "opencode-ajnunezg" })
-        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: .openCode)
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: .openCode)
 
         XCTAssertEqual(primary.primaryDisplayableBucket?.key, "opencode-5h-estimated")
         XCTAssertEqual(primary.primaryDisplayableBucket?.remainingValue ?? -1, 6.75, accuracy: 0.01)
@@ -3783,7 +3962,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let snapshots = service.snapshots(for: AgentProvider.claudeCode)
         let gmail = try XCTUnwrap(snapshots.first { $0.accountLabel == "gmail" })
-        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "anthropic"))
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "anthropic"))
 
         XCTAssertEqual(gmail.accountID, "anthropic-gmail")
         XCTAssertEqual(gmail.sourceId, "daemon-slot:anthropic:gmail")
@@ -3996,7 +4175,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let dataStore = try makeDataStore()
         await service.refreshAll(dataStore: dataStore)
 
-        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: .openAI)
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: .openAI)
 
         // OpenAI is usage-only: refreshAll may surface placeholder snapshot
         // entries for the daemon credential slot, but none of them should
@@ -4050,7 +4229,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let dataStore = try makeDataStore()
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             ProviderAccountDoc(
                 id: "minimax-personal",
                 providerID: ProviderID(rawValue: "minimax"),
@@ -4093,7 +4272,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refreshAll(dataStore: dataStore)
 
-        let accounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "minimax"))
+        let accounts = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "minimax"))
         let work = try XCTUnwrap(accounts.first { $0.id == "minimax-work" })
         let removed = try XCTUnwrap(accounts.first { $0.id == "minimax-personal" })
 
@@ -4135,7 +4314,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         ])
 
         let dataStore = try makeDataStore()
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             routingAccount(id: "openai-work", label: "Work", storageScope: .deviceKeychain)
         )
         let session = makeStubSession { request in
@@ -4156,13 +4335,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(state.activeAccount?.quotaState, .unknown)
     }
 
-    func test_refreshRoutingState_persistsSanitizedRoutingEventTrail() throws {
+    func test_refreshRoutingState_persistsSanitizedRoutingEventTrail() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let dataStore = try makeDataStore()
 
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             routingAccount(
                 id: "openai-work",
                 label: "Work",
@@ -4174,12 +4353,12 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 lastErrorCode: "Authorization: " + "Bearer REDACTED_PLACEHOLDER"
             )
         )
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             routingAccount(id: "openai-personal", label: "Personal", storageScope: .deviceKeychain, sortKey: 1)
         )
 
         let service = makeService(home: home, appSupportRoot: appSupport, refreshProviders: [.openAI])
-        let states = service.refreshRoutingState(
+        let states = await service.refreshRoutingState(
             dataStore: dataStore,
             request: ProviderRoutingRequest(preferredProviderIDs: [.openAI])
         )
@@ -4203,7 +4382,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(reloaded.routingEvents.first?.selectedAccountID, "openai-personal")
     }
 
-    func test_refreshRoutingState_crossProviderEventAppearsForInvolvedProvidersOnly() throws {
+    func test_refreshRoutingState_crossProviderEventAppearsForInvolvedProvidersOnly() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let dataStore = try makeDataStore()
@@ -4252,7 +4431,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         store.persistRoutingEvents([crossProviderEvent])
 
         let now = Date(timeIntervalSinceReferenceDate: 800_200_000)
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             ProviderAccountDoc(
                 id: "openai-primary",
                 providerID: .openAI,
@@ -4270,7 +4449,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 updatedAt: now
             )
         )
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             ProviderAccountDoc(
                 id: "codex-backup",
                 providerID: .codex,
@@ -4288,7 +4467,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 updatedAt: now
             )
         )
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             ProviderAccountDoc(
                 id: "claude-primary",
                 providerID: .claudeCode,
@@ -4312,7 +4491,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport,
             refreshProviders: [.openAI, .codex, .claudeCode]
         )
-        let states = service.refreshRoutingState(
+        let states = await service.refreshRoutingState(
             dataStore: dataStore,
             request: ProviderRoutingRequest(preferredProviderIDs: [.openAI, .codex, .claudeCode])
         )
@@ -4927,6 +5106,42 @@ final class ProviderQuotaServiceTests: XCTestCase {
         )
     }
 
+    private func routingQuotaSnapshot(
+        accountID: String,
+        label: String,
+        remainingPercent: Double,
+        resetsAt: Date?
+    ) -> ProviderQuotaSnapshot {
+        let clampedRemaining = min(max(remainingPercent, 0), 100)
+        let usedPercent = 100 - clampedRemaining
+        return ProviderQuotaSnapshot(
+            provider: .openAI,
+            accountID: accountID,
+            accountLabel: label,
+            accountStorageScope: .deviceKeychain,
+            fetchedAt: Date(),
+            source: .officialAPI,
+            sourceId: "slot-\(accountID)",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "\(label) quota",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "\(accountID)-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: usedPercent,
+                    limitValue: 100,
+                    remainingValue: clampedRemaining,
+                    usedPercent: usedPercent,
+                    resetsAt: resetsAt,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+    }
+
     private func providerAccount(
         provider: AgentProvider,
         status: ProviderAccountStatus,
@@ -5457,7 +5672,7 @@ extension ProviderQuotaServiceTests {
         let snapshots = service.snapshots(for: AgentProvider.kimi)
         XCTAssertFalse(snapshots.isEmpty, "Expected Kimi snapshot from Moonshot daemon slot bleed-over")
 
-        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "moonshot"))
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "moonshot"))
         XCTAssertEqual(persistedAccounts.map(\.id), ["moonshot-session"])
         XCTAssertEqual(persistedAccounts.first?.label, "Browser Session")
         XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)
@@ -5498,417 +5713,4 @@ extension ProviderQuotaServiceTests {
         XCTAssertFalse(snapshot.hasDisplayableQuotaSignal)
     }
 
-    // MARK: - Cumulative across accounts
-    //
-    // Pure-logic tests against
-    // `ProviderQuotaService.cumulativeSnapshot(provider:from:now:)`. The
-    // service-level convenience method is a thin wrapper over this and
-    // exercises the same code path.
-
-    func test_cumulativeSnapshot_returnsNilForSingleAccount() {
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1",
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours, used: 30, limit: 100)]
-            )
-        ]
-        let result = ProviderQuotaService.cumulativeSnapshot(
-            provider: .claudeCode,
-            from: snapshots,
-            now: now
-        )
-        XCTAssertNil(result)
-    }
-
-    func test_cumulativeSnapshot_sumsTwoAccountsByKeyAndWindowKind() throws {
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1",
-                fetchedAt: now.addingTimeInterval(-60),
-                buckets: [
-                    makeBucket(key: "5h", windowKind: .rollingHours, used: 30, limit: 100,
-                               resetsAt: now.addingTimeInterval(3 * 60 * 60)),
-                    makeBucket(key: "7d", windowKind: .weekly, used: 200, limit: 1000,
-                               resetsAt: now.addingTimeInterval(5 * 24 * 60 * 60))
-                ]
-            ),
-            makeSnapshot(
-                accountID: "a2",
-                fetchedAt: now.addingTimeInterval(-30),
-                buckets: [
-                    makeBucket(key: "5h", windowKind: .rollingHours, used: 70, limit: 100,
-                               resetsAt: now.addingTimeInterval(60 * 60)),
-                    makeBucket(key: "7d", windowKind: .weekly, used: 500, limit: 1000,
-                               resetsAt: now.addingTimeInterval(2 * 24 * 60 * 60))
-                ]
-            )
-        ]
-
-        let result = try XCTUnwrap(
-            ProviderQuotaService.cumulativeSnapshot(
-                provider: .claudeCode,
-                from: snapshots,
-                now: now
-            )
-        )
-
-        XCTAssertEqual(result.accountLabel, "All accounts (2)")
-        XCTAssertNil(result.accountID)
-        XCTAssertEqual(result.buckets.count, 2)
-
-        let hourly = try XCTUnwrap(result.hourlyBucket(relativeTo: now))
-        XCTAssertEqual(hourly.usedValue, 100)
-        XCTAssertEqual(hourly.limitValue, 200)
-        XCTAssertEqual(try XCTUnwrap(hourly.usedPercent), 50, accuracy: 0.001)
-        // Earliest resetsAt wins.
-        XCTAssertEqual(hourly.resetsAt, now.addingTimeInterval(60 * 60))
-
-        let weekly = try XCTUnwrap(result.weeklyBucket(relativeTo: now))
-        XCTAssertEqual(weekly.usedValue, 700)
-        XCTAssertEqual(weekly.limitValue, 2000)
-        XCTAssertEqual(try XCTUnwrap(weekly.usedPercent), 35, accuracy: 0.001)
-    }
-
-    func test_cumulativeSnapshot_recomputesUsedPercentFromSums() throws {
-        // 10% of 1000 + 90% of 100 should NOT average to 50%. The
-        // weighted total is (100 + 90) / (1000 + 100) ≈ 17.27%.
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1",
-                fetchedAt: now,
-                buckets: [
-                    makeBucket(key: "5h", windowKind: .rollingHours,
-                               used: 100, limit: 1000,
-                               resetsAt: now.addingTimeInterval(60 * 60))
-                ]
-            ),
-            makeSnapshot(
-                accountID: "a2",
-                fetchedAt: now,
-                buckets: [
-                    makeBucket(key: "5h", windowKind: .rollingHours,
-                               used: 90, limit: 100,
-                               resetsAt: now.addingTimeInterval(60 * 60))
-                ]
-            )
-        ]
-        let merged = try XCTUnwrap(
-            ProviderQuotaService.cumulativeSnapshot(
-                provider: .claudeCode,
-                from: snapshots,
-                now: now
-            )
-        )
-        let hourly = try XCTUnwrap(merged.hourlyBucket(relativeTo: now))
-        let hourlyUsedPercent = try XCTUnwrap(hourly.usedPercent)
-        XCTAssertEqual(hourlyUsedPercent, 190.0 / 1100.0 * 100, accuracy: 0.01)
-        XCTAssertNotEqual(hourlyUsedPercent, 50, accuracy: 1)
-    }
-
-    func test_cumulativeSnapshot_marksEstimatedIfAnyInputEstimated() throws {
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1", fetchedAt: now,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 30, limit: 100, isEstimated: false,
-                                      resetsAt: now.addingTimeInterval(3600))]
-            ),
-            makeSnapshot(
-                accountID: "a2", fetchedAt: now,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 30, limit: 100, isEstimated: true,
-                                      resetsAt: now.addingTimeInterval(3600))]
-            )
-        ]
-        let merged = try XCTUnwrap(
-            ProviderQuotaService.cumulativeSnapshot(
-                provider: .claudeCode,
-                from: snapshots,
-                now: now
-            )
-        )
-        XCTAssertTrue(try XCTUnwrap(merged.hourlyBucket(relativeTo: now)).isEstimated)
-    }
-
-    func test_cumulativeSnapshot_excludesLocalOnlyScope() {
-        // localOnly snapshots are device-only scrape caches that
-        // shouldn't be aggregated across accounts. With only one non-
-        // localOnly account, the result should be nil (single account).
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1", fetchedAt: now,
-                scope: .cloudRefreshable,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 30, limit: 100,
-                                      resetsAt: now.addingTimeInterval(3600))]
-            ),
-            makeSnapshot(
-                accountID: "a2", fetchedAt: now,
-                scope: .localOnly,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 99, limit: 100,
-                                      resetsAt: now.addingTimeInterval(3600))]
-            )
-        ]
-        let merged = ProviderQuotaService.cumulativeSnapshot(
-            provider: .codex,
-            from: snapshots,
-            now: now
-        )
-        XCTAssertNil(merged)
-    }
-
-    func test_cumulativeSnapshot_mixedWindowKinds() throws {
-        // a1 has only 5h, a2 has only 7d. Cumulative emits both buckets,
-        // each summed across its own account (which is just that account).
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1", fetchedAt: now,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 40, limit: 100,
-                                      resetsAt: now.addingTimeInterval(3600))]
-            ),
-            makeSnapshot(
-                accountID: "a2", fetchedAt: now,
-                buckets: [makeBucket(key: "7d", windowKind: .weekly,
-                                      used: 50, limit: 100,
-                                      resetsAt: now.addingTimeInterval(86400))]
-            )
-        ]
-        let merged = try XCTUnwrap(
-            ProviderQuotaService.cumulativeSnapshot(
-                provider: .claudeCode,
-                from: snapshots,
-                now: now
-            )
-        )
-        XCTAssertEqual(merged.buckets.count, 2)
-        XCTAssertNotNil(merged.hourlyBucket(relativeTo: now))
-        XCTAssertNotNil(merged.weeklyBucket(relativeTo: now))
-    }
-
-    func test_cumulativeSnapshot_picksEarliestResetsAt() throws {
-        let later = now.addingTimeInterval(4 * 60 * 60)
-        let earlier = now.addingTimeInterval(60 * 60)
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1", fetchedAt: now,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 30, limit: 100, resetsAt: later)]
-            ),
-            makeSnapshot(
-                accountID: "a2", fetchedAt: now,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 70, limit: 100, resetsAt: earlier)]
-            )
-        ]
-        let merged = try XCTUnwrap(
-            ProviderQuotaService.cumulativeSnapshot(
-                provider: .claudeCode,
-                from: snapshots,
-                now: now
-            )
-        )
-        XCTAssertEqual(try XCTUnwrap(merged.hourlyBucket(relativeTo: now)).resetsAt, earlier)
-    }
-
-    func test_cumulativeSnapshot_staleFallbackWhenAllAccountsStale() throws {
-        // Both snapshots fetched > 12h ago — `isStale` will return true
-        // for each. The result should be the freshest single snapshot
-        // wrapped with a "Stale data merged" status and unavailable
-        // confidence.
-        let veryOld = now.addingTimeInterval(-13 * 60 * 60)
-        let slightlyLessOld = now.addingTimeInterval(-12 * 60 * 60 - 60)
-        let snapshots = [
-            makeSnapshot(
-                accountID: "a1", fetchedAt: veryOld,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 30, limit: 100,
-                                      resetsAt: now.addingTimeInterval(3600))]
-            ),
-            makeSnapshot(
-                accountID: "a2", fetchedAt: slightlyLessOld,
-                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
-                                      used: 70, limit: 100,
-                                      resetsAt: now.addingTimeInterval(3600))]
-            )
-        ]
-        let merged = try XCTUnwrap(
-            ProviderQuotaService.cumulativeSnapshot(
-                provider: .claudeCode,
-                from: snapshots,
-                now: now
-            )
-        )
-        XCTAssertEqual(merged.confidence, .unavailable)
-        XCTAssertTrue(merged.statusMessage.contains("Stale"))
-    }
-
-    // MARK: Cumulative-test fixtures
-
-    /// Reference clock used by the cumulative tests above. Fixed so
-    /// `isStale` boundaries are deterministic.
-    private var now: Date {
-        Date(timeIntervalSince1970: 1_750_000_000)
-    }
-
-    private func makeBucket(
-        key: String,
-        windowKind: ProviderQuotaWindowKind,
-        used: Double,
-        limit: Double,
-        isEstimated: Bool = false,
-        resetsAt: Date? = nil
-    ) -> ProviderQuotaBucket {
-        ProviderQuotaBucket(
-            key: key,
-            label: key,
-            windowKind: windowKind,
-            usedValue: used,
-            limitValue: limit,
-            remainingValue: max(limit - used, 0),
-            usedPercent: limit > 0 ? min(max(used / limit * 100, 0), 100) : nil,
-            resetsAt: resetsAt,
-            unit: .tokens,
-            isEstimated: isEstimated
-        )
-    }
-
-    private func makeSnapshot(
-        provider: AgentProvider = .claudeCode,
-        accountID: String,
-        fetchedAt: Date? = nil,
-        scope: ProviderAccountStorageScope = .cloudRefreshable,
-        buckets: [ProviderQuotaBucket]
-    ) -> ProviderQuotaSnapshot {
-        ProviderQuotaSnapshot(
-            provider: provider,
-            providerID: provider.providerID,
-            accountID: accountID,
-            accountLabel: "Account \(accountID)",
-            accountStorageScope: scope,
-            fetchedAt: fetchedAt ?? now,
-            source: .officialAPI,
-            sourceId: accountID,
-            confidence: .exact,
-            managementURL: nil,
-            statusMessage: "ok",
-            buckets: buckets
-        )
-    }
-
-    // MARK: - Claude context-window quota-boundary tests
-
-    /// Writes a Claude statusline snapshot that contains `context_window`
-    /// data but NO `rate_limits` key, plus the Claude settings needed for
-    /// the bridge to report `.ready`.
-    private func writeContextWindowOnlyFixture(
-        home: URL,
-        appPaths: OpenBurnBarAppPaths,
-        usedPercentage: Int = 26,
-        windowSize: Int = 1_000_000,
-        inputTokens: Int = 264_134,
-        outputTokens: Int = 491,
-        sessionName: String = "Fix loginwindow keystroke delivery",
-        modelName: String = "Opus 4.8 (1M context)",
-        costUSD: Double = 79.66,
-        stale: Bool = false
-    ) throws {
-        let snapshotURL = appPaths.claudeStatuslineSnapshotURL
-        try FileManager.default.createDirectory(
-            at: snapshotURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let payload = """
-        {
-          "session_name": "\(sessionName)",
-          "model": { "id": "claude-opus-4-8", "display_name": "\(modelName)" },
-          "cost": { "total_cost_usd": \(costUSD) },
-          "context_window": {
-            "total_input_tokens": \(inputTokens),
-            "total_output_tokens": \(outputTokens),
-            "context_window_size": \(windowSize),
-            "used_percentage": \(usedPercentage),
-            "remaining_percentage": \(100 - usedPercentage)
-          }
-        }
-        """
-        try Data(payload.utf8).write(to: snapshotURL)
-
-        if stale {
-            try FileManager.default.setAttributes(
-                [.modificationDate: Date().addingTimeInterval(-60 * 60)],
-                ofItemAtPath: snapshotURL.path
-            )
-        }
-
-        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
-        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
-        let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
-        let settings = """
-        {
-          "statusLine": {
-            "type": "command",
-            "command": "\(appPaths.claudeStatuslineBridgeScriptURL.path)"
-          }
-        }
-        """
-        try Data(settings.utf8).write(to: settingsURL)
-    }
-
-    func test_claudeRefresh_contextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
-
-        try writeContextWindowOnlyFixture(home: home, appPaths: appPaths)
-
-        let service = makeService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
-        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
-
-        XCTAssertEqual(snapshot.provider, .claudeCode)
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertFalse(snapshot.statusMessage.contains("Context window"))
-    }
-
-    func test_claudeRefresh_staleContextWindowOnlySnapshotDoesNotRenderAsQuota() async throws {
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
-
-        try writeContextWindowOnlyFixture(home: home, appPaths: appPaths, stale: true)
-
-        let service = makeService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
-        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
-
-        XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertFalse(snapshot.statusMessage.contains("context window"))
-    }
-
-    func test_claudeRefresh_statuslineRateLimitsWinEvenWhenContextWindowIsPresent() async throws {
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
-
-        // Write a fixture that has BOTH rate_limits and context_window
-        try writeFreshClaudeStatuslineFixture(
-            home: home,
-            appPaths: appPaths,
-            fiveHourUsedPercent: 42
-        )
-
-        let service = makeService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
-        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
-
-        XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertTrue(snapshot.buckets.contains(where: { $0.key != "context-window" }),
-                       "When rate_limits is present, primary path should produce standard quota buckets")
-        XCTAssertFalse(snapshot.buckets.contains(where: { $0.key == "context-window" }),
-                        "Context-window telemetry must not render as quota")
-    }
 }

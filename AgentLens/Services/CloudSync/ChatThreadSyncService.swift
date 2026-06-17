@@ -64,7 +64,7 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
 
         do {
             progress?.setPhase(.chatThreads, operation: "Loading chat threads…")
-            let threads = try context.dataStore.fetchChatThreadSummaries(limit: 500)
+            let threads = try await context.dataStore.fetchChatThreadSummaries(limit: 500)
             guard !threads.isEmpty else {
                 state.withLock { $0.lastSyncDate = Date() }
                 return

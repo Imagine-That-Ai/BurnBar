@@ -22,6 +22,7 @@ struct MercuryChromeRoot: View {
     @ObservedObject var router: MercuryRouter
     @ObservedObject var peerSource: MercuryPeerSource
     @ObservedObject var hudState: CallHUDState
+    @Environment(AccountManager.self) private var accountManager
 
     var body: some View {
         ZStack {
@@ -33,7 +34,7 @@ struct MercuryChromeRoot: View {
                     IncomingCallSheet(
                         pairedDeviceName: request.requesterName,
                         initial: String(request.requesterName.prefix(1)).uppercased(),
-                        avatarURL: AccountManager.shared.avatarURL,
+                        avatarURL: accountManager.avatarURL,
                         subtitle: request.requestsAgentTerminal
                             ? "Screen mirror + terminal request"
                             : "Screen mirror request",
@@ -62,7 +63,7 @@ struct MercuryChromeRoot: View {
                     IncomingCallSheet(
                         pairedDeviceName: request.requesterName,
                         initial: String(request.requesterName.prefix(1)).uppercased(),
-                        avatarURL: AccountManager.shared.avatarURL,
+                        avatarURL: accountManager.avatarURL,
                         subtitle: "Mercury call invite",
                         actionNoun: "call invite",
                         onAccept: {
@@ -131,6 +132,7 @@ final class MercuryIncomingPanelPresenter {
     private let router: MercuryRouter
     private let peerSource: MercuryPeerSource
     private let hudState: CallHUDState
+    private let accountManager: AccountManager
     private var panel: NSPanel?
     private var cancellables: Set<AnyCancellable> = []
     private var lastStreamingRequestID: String?
@@ -139,11 +141,13 @@ final class MercuryIncomingPanelPresenter {
     init(
         router: MercuryRouter,
         peerSource: MercuryPeerSource,
-        hudState: CallHUDState
+        hudState: CallHUDState,
+        accountManager: AccountManager
     ) {
         self.router = router
         self.peerSource = peerSource
         self.hudState = hudState
+        self.accountManager = accountManager
 
         router.$phase
             .receive(on: RunLoop.main)
@@ -196,6 +200,7 @@ final class MercuryIncomingPanelPresenter {
             peerSource: peerSource,
             hudState: hudState
         )
+        .environment(accountManager)
 
         if let panel {
             panel.contentView = NSHostingView(rootView: root)

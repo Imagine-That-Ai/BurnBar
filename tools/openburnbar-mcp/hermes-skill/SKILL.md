@@ -95,6 +95,14 @@ Tools are registered with the prefix `mcp_openburnbar_local_`:
 | `mcp_openburnbar_local_burnbar_semantic_search_conversations` | Local semantic search over indexed chunks when deterministic embeddings are present |
 | `mcp_openburnbar_local_burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search; requires cloud auth/vault env and decrypts snippets locally |
 | `mcp_openburnbar_local_burnbar_cloud_get_conversation_body` | Decrypt full hosted encrypted session text from a cloud search hit |
+| `mcp_openburnbar_local_burnbar_index_project` | Build the local Project Code Memory index through the daemon write path |
+| `mcp_openburnbar_local_burnbar_search_code` | Search indexed local project code; snippets are wrapped as untrusted content |
+| `mcp_openburnbar_local_burnbar_code_context_pack` | Build a token-budgeted context pack from indexed code |
+| `mcp_openburnbar_local_burnbar_get_symbol` | Find symbols with `exact_lsp`, `static_tree_sitter`, or `lexical_fallback` tier evidence |
+| `mcp_openburnbar_local_burnbar_find_references` | Find references for a symbol with tier evidence and stale-index degradation |
+| `mcp_openburnbar_local_burnbar_call_graph` | Traverse bounded call graph edges from indexed code |
+| `mcp_openburnbar_local_burnbar_index_status` | Inspect Project Code Memory index readiness, encryption, parser, and semantic status |
+| `mcp_openburnbar_local_burnbar_memory_doctor` | Diagnose memory/code schema, daemon write mode, and code-memory production readiness |
 | `mcp_openburnbar_local_burnbar_get_conversation` | Full transcript for a specific session by ID |
 | `mcp_openburnbar_local_burnbar_chat_messages` | Prior in-app assistant chat history (continuity questions) |
 | `mcp_openburnbar_local_burnbar_resolve_db_path` | Debug: confirm which DB file is being read |
@@ -152,6 +160,7 @@ quantify/analyze:
 investigate:
   → burnbar_search_conversations to find candidate sessions
   → burnbar_get_conversation for deep transcript dives
+  → burnbar_search_code / burnbar_get_symbol when the question is about local source truth
 
 coach/recommend:
   → burnbar_recent_usage to establish baseline

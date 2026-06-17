@@ -534,17 +534,17 @@ final class SmartHubBridgeController {
 
     private func pumpSnapshot() async {
         guard SmartHubBridgeServer.shared.isRunning else { return }
-        let snapshot = buildSnapshot()
+        let snapshot = await buildSnapshot()
         SmartHubBridgeServer.shared.updateSnapshot(snapshot)
     }
 
-    private func buildSnapshot() -> SmartHubBridgeSnapshot {
+    private func buildSnapshot() async -> SmartHubBridgeSnapshot {
         let period = settingsManager.smartHubQuotaTimePeriod
         let now = Date()
-        let runCostTotals = runCostTotalsForPeriod(period, now: now)
+        let runCostTotals = await runCostTotalsForPeriod(period, now: now)
         let quotaProviders = quotaProviders(period: period, runCostTotals: runCostTotals, now: now)
-        let runCostTotals5h = runCostTotalsForPeriod(.rolling5h, now: now)
-        let runCostTotals7d = runCostTotalsForPeriod(.rolling7d, now: now)
+        let runCostTotals5h = await runCostTotalsForPeriod(.rolling5h, now: now)
+        let runCostTotals7d = await runCostTotalsForPeriod(.rolling7d, now: now)
         let burnProviders = burnProviders(
             period: period,
             runCostTotals: runCostTotals,
@@ -597,10 +597,10 @@ final class SmartHubBridgeController {
     private func runCostTotalsForPeriod(
         _ period: SmartHubTimePeriod,
         now: Date
-    ) -> [AgentProvider: ProviderRunCostTotals] {
+    ) async -> [AgentProvider: ProviderRunCostTotals] {
         guard let dataStore else { return [:] }
         let range = Self.dateRange(for: period, now: now)
-        return (try? dataStore.usageStore.providerRunCostTotals(in: range)) ?? [:] // try?-ok(display metric, empty fallback)
+        return (try? await dataStore.providerRunCostTotals(in: range)) ?? [:] // try?-ok(display metric, empty fallback)
     }
 
     /// Iterate the providers OpenBurnBar tracks; for each, populate a

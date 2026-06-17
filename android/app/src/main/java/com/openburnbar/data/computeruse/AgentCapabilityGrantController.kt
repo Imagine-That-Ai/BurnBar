@@ -1,9 +1,6 @@
 package com.openburnbar.data.computeruse
 
 import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
@@ -16,13 +13,9 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionRequest
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
+import com.openburnbar.security.BiometricCryptoAuth
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 
 class AgentCapabilityGrantController(
     context: Context,
@@ -97,43 +90,17 @@ class AgentCapabilityGrantController(
 
     private suspend fun authenticateIfNeeded(activity: FragmentActivity, preset: AgentPermissionPreset): Boolean {
         if (!preset.requiresDeviceAuth) return false
-        return withContext(Dispatchers.Main) {
-            val authenticators =
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            val manager = BiometricManager.from(activity)
-            if (manager.canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
-                throw GrantError.LocalAuthenticationFailed
-            }
-            suspendCancellableCoroutine { continuation ->
-                val prompt =
-                    BiometricPrompt(
-                        activity,
-                        ContextCompat.getMainExecutor(activity),
-                        object : BiometricPrompt.AuthenticationCallback() {
-                            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                                if (continuation.isActive) continuation.resume(true)
-                            }
-
-                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                                if (continuation.isActive) {
-                                    continuation.resumeWithException(GrantError.LocalAuthenticationFailed)
-                                }
-                            }
-
-                            override fun onAuthenticationFailed() = Unit
-                        },
-                    )
-                val info =
-                    BiometricPrompt.PromptInfo.Builder()
-                        .setTitle("Allow ${preset.title} desktop permissions")
-                        .setSubtitle("This grant applies only to this agent thread.")
-                        .setAllowedAuthenticators(authenticators)
-                        .build()
-                continuation.invokeOnCancellation { prompt.cancelAuthentication() }
-                prompt.authenticate(info)
-            }
+        runCatching {
+            BiometricCryptoAuth.requireStrongBiometric(
+                activity = activity,
+                title = "Allow ${preset.title} desktop permissions",
+                subtitle = "This grant applies only to this agent thread.",
+                failureMessage = GrantError.LocalAuthenticationFailed.message.orEmpty(),
+            )
+        }.getOrElse {
+            throw GrantError.LocalAuthenticationFailed
         }
+        return true
     }
 
     private suspend fun ensurePhoneControlSender(uid: String, sourceDeviceId: String): PhoneControlSender = senderMutex.withLock {

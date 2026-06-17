@@ -2,6 +2,7 @@
 
 package com.openburnbar.ui.settings
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -27,18 +28,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,10 +54,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.R
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.components.WebsiteBackground
@@ -170,7 +166,7 @@ internal fun SettingsRootTopBar(
 internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (() -> Unit)?): List<RootRow> = listOf(
     RootRow(
         anchor = SettingsAnchor.CLOUD_SYNC,
-        icon = Icons.Filled.Cloud,
+        icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_cloud),
         title = "Cloud Sync",
         subtitle = "Sync usage and conversations to OpenBurnBar Cloud",
         pageRoute = SettingsPageRoute.ROOT,
@@ -178,7 +174,7 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
     ),
     RootRow(
         anchor = SettingsAnchor.TRANSCRIPT_CACHE,
-        icon = Icons.Filled.Storage,
+        icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_data),
         title = "Transcript Cache",
         subtitle = "Encrypted stream downloads, default 250 MB",
         pageRoute = SettingsPageRoute.TRANSCRIPT_CACHE,
@@ -186,7 +182,7 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
     ),
     RootRow(
         anchor = SettingsAnchor.CONNECTED_DEVICES,
-        icon = Icons.Filled.Devices,
+        icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_connections),
         title = "Connected Devices",
         subtitle = "Manage which devices can read your data",
         pageRoute = SettingsPageRoute.ROOT,
@@ -194,7 +190,7 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
     ),
     RootRow(
         anchor = SettingsAnchor.COMPUTER_USE_ROW,
-        icon = Icons.Filled.Computer,
+        icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_agent),
         title = "Computer Use",
         subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
         pageRoute = SettingsPageRoute.ROOT,
@@ -202,7 +198,7 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
     ),
     RootRow(
         anchor = SettingsAnchor.BUDGET_ROW,
-        icon = Icons.Filled.Tune,
+        icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_store),
         title = "Budgeting & Rules",
         subtitle = "Set hard limits and warnings on usage spends",
         pageRoute = SettingsPageRoute.BUDGET_PREFS,
@@ -210,7 +206,7 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
     ),
     RootRow(
         anchor = SettingsAnchor.TEXT_EXPANSION_ROW,
-        icon = Icons.Filled.Keyboard,
+        icon = SettingsRowIcon.Vector(Icons.Filled.Keyboard),
         title = "Text Expansion",
         subtitle = "Manage && snippets and the OpenBurnBar snippets keyboard",
         pageRoute = SettingsPageRoute.TEXT_EXPANSION,
@@ -221,7 +217,7 @@ internal fun buildSettingsSystemGroup(router: SettingsRouter, onComputerUse: (()
 internal fun buildSettingsVisualGroup(router: SettingsRouter): List<RootRow> = listOf(
     RootRow(
         anchor = SettingsAnchor.THEME_ROW,
-        icon = Icons.Filled.AutoAwesome,
+        icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_settings_a),
         title = "Theme & SOTA UX",
         subtitle = "Customise visual appearance, spring physics, and grid backdrops",
         pageRoute = SettingsPageRoute.THEME_PREFS,
@@ -229,7 +225,7 @@ internal fun buildSettingsVisualGroup(router: SettingsRouter): List<RootRow> = l
     ),
     RootRow(
         anchor = SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
-        icon = Icons.Filled.GridOn,
+        icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_settings_b),
         title = "Quota Customisation",
         subtitle = "Rearrange providers, toggle visible buckets, and format percentage displays",
         pageRoute = SettingsPageRoute.QUOTA_PREFS,
@@ -246,7 +242,7 @@ internal fun buildSettingsSmartDisplayRows(
     list.add(
         RootRow(
             anchor = SettingsAnchor.SMART_DISPLAYS_ROW,
-            icon = Icons.Filled.Tv,
+            icon = SettingsRowIcon.Vector(Icons.Filled.Tv),
             title = "Smart Displays",
             subtitle = "Google Smart Display · Pixel Clock",
             pageRoute = SettingsPageRoute.SMART_DISPLAYS,
@@ -259,7 +255,7 @@ internal fun buildSettingsSmartDisplayRows(
         list.add(
             RootRow(
                 anchor = SettingsAnchor.GOOGLE_SMART_DISPLAY,
-                icon = Icons.Filled.Tv,
+                icon = SettingsRowIcon.Vector(Icons.Filled.Tv),
                 title = "Google Smart Display",
                 subtitle = "Nest Hub and Pixel Tablet glance",
                 pageRoute = SettingsPageRoute.SMART_DISPLAYS,
@@ -270,7 +266,7 @@ internal fun buildSettingsSmartDisplayRows(
         list.add(
             RootRow(
                 anchor = SettingsAnchor.PIXEL_CLOCK,
-                icon = Icons.Filled.Tv,
+                icon = SettingsRowIcon.Vector(Icons.Filled.Tv),
                 title = "Pixel Clock",
                 subtitle = "Pixel Clock cost glance",
                 pageRoute = SettingsPageRoute.SMART_DISPLAYS,
@@ -291,7 +287,7 @@ internal fun buildSettingsNotificationRows(
     list.add(
         RootRow(
             anchor = SettingsAnchor.QUICK_GLANCE_ROW,
-            icon = Icons.Filled.Notifications,
+            icon = SettingsRowIcon.Vector(Icons.Filled.Notifications),
             title = "Quick-Glance Notification",
             subtitle = "BurnBar persistent cost glance",
             pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
@@ -304,7 +300,7 @@ internal fun buildSettingsNotificationRows(
         list.add(
             RootRow(
                 anchor = SettingsAnchor.PERSISTENT_NOTIFICATION,
-                icon = Icons.Filled.Notifications,
+                icon = SettingsRowIcon.Vector(Icons.Filled.Notifications),
                 title = "Show quick-glance notification",
                 subtitle = "Live cost glance in the notification shade",
                 pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
@@ -330,16 +326,10 @@ internal fun buildSettingsProvidersGroup(providersExpanded: Boolean, onProviders
     list.add(
         RootRow(
             anchor = SettingsAnchor.PROVIDERS_ROW,
-            icon = Icons.Filled.Search,
+            icon = SettingsRowIcon.Drawable(R.drawable.settings_icon_sign_in),
             title = "Provider connections",
             subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
             pageRoute = SettingsPageRoute.ROOT,
-            logoProviderKeys = listOf(
-                AgentProvider.CLAUDE_CODE.key,
-                AgentProvider.OPENCODE.key,
-                AgentProvider.FACTORY.key,
-                AgentProvider.OPEN_AI.key,
-            ),
             isCollapsibleHeader = true,
             isExpanded = providersExpanded,
             onTap = { onProvidersExpandedChange(!providersExpanded) },
@@ -352,7 +342,7 @@ internal fun buildSettingsProvidersGroup(providersExpanded: Boolean, onProviders
                 list.add(
                     RootRow(
                         anchor = SettingsAnchor.provider(provider.key),
-                        icon = Icons.Filled.Search,
+                        icon = SettingsRowIcon.Vector(Icons.Filled.Search),
                         title = provider.displayName,
                         subtitle = "${provider.displayName} quota, usage, and signal",
                         pageRoute = SettingsPageRoute.ROOT,
@@ -369,7 +359,7 @@ internal fun buildSettingsProvidersGroup(providersExpanded: Boolean, onProviders
 internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
     RootRow(
         anchor = SettingsAnchor.HERMES_CONNECTIONS,
-        icon = Icons.Filled.Search,
+        icon = SettingsRowIcon.Vector(Icons.Filled.Search),
         title = "Hermes Connections",
         subtitle = "Connected Hermes endpoints and tokens",
         pageRoute = SettingsPageRoute.ROOT,
@@ -379,7 +369,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_MODELS,
-        icon = Icons.Filled.Search,
+        icon = SettingsRowIcon.Vector(Icons.Filled.Search),
         title = "Hermes Models",
         subtitle = "Default models exposed by Hermes",
         pageRoute = SettingsPageRoute.ROOT,
@@ -389,7 +379,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_DISPLAY,
-        icon = Icons.Filled.Search,
+        icon = SettingsRowIcon.Vector(Icons.Filled.Search),
         title = "Hermes Display",
         subtitle = "TPS overlay and pretext",
         pageRoute = SettingsPageRoute.ROOT,
@@ -399,7 +389,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_GATEWAY,
-        icon = Icons.Filled.Search,
+        icon = SettingsRowIcon.Vector(Icons.Filled.Search),
         title = "Hermes Gateway",
         subtitle = "URL and token for the Hermes webapi gateway",
         pageRoute = SettingsPageRoute.ROOT,
@@ -409,7 +399,7 @@ internal fun buildSettingsHermesExpandedRows(): List<RootRow> = listOf(
     ),
     RootRow(
         anchor = SettingsAnchor.HERMES_STATUS,
-        icon = Icons.Filled.Search,
+        icon = SettingsRowIcon.Vector(Icons.Filled.Search),
         title = "Hermes Status",
         subtitle = "Live Hermes connection state",
         pageRoute = SettingsPageRoute.ROOT,
@@ -423,7 +413,7 @@ internal fun buildSettingsHermesGroup(hermesExpanded: Boolean, onHermesExpandedC
     val list = mutableListOf(
         RootRow(
             anchor = "root.hermes_dev_suite",
-            icon = Icons.Filled.Search,
+            icon = SettingsRowIcon.Vector(Icons.Filled.Search),
             title = "Hermes Developer Suite",
             subtitle = "Configure gateway, connections, and system pretext",
             pageRoute = SettingsPageRoute.ROOT,
@@ -661,9 +651,14 @@ internal fun getGroupShape(index: Int, count: Int): RoundedCornerShape {
     }
 }
 
+internal sealed interface SettingsRowIcon {
+    data class Vector(val imageVector: ImageVector) : SettingsRowIcon
+    data class Drawable(@param:DrawableRes val resId: Int) : SettingsRowIcon
+}
+
 internal data class RootRow(
     val anchor: String,
-    val icon: ImageVector,
+    val icon: SettingsRowIcon,
     val title: String,
     val subtitle: String,
     val pageRoute: SettingsPageRoute,
@@ -683,7 +678,7 @@ internal data class RowWithGroupInfo(
 
 @Composable
 internal fun SettingsRow(
-    icon: ImageVector,
+    icon: SettingsRowIcon,
     title: String,
     subtitle: String,
     highlighted: Boolean,
@@ -741,7 +736,7 @@ internal fun SettingsRow(
 }
 
 @Composable
-internal fun SettingsRowLeading(icon: ImageVector, logoProviderKeys: List<String>, isNested: Boolean, contentAlpha: Float) {
+internal fun SettingsRowLeading(icon: SettingsRowIcon, logoProviderKeys: List<String>, isNested: Boolean, contentAlpha: Float) {
     val logoProviders = logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
     if (logoProviders.isNotEmpty()) {
         SettingsProviderLogoStack(
@@ -749,12 +744,22 @@ internal fun SettingsRowLeading(icon: ImageVector, logoProviderKeys: List<String
             maxVisible = if (isNested) 1 else 4,
         )
     } else {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(if (isNested) 20.dp else 24.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
-        )
+        val iconModifier = Modifier.size(if (isNested) 20.dp else 24.dp)
+        val iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+        when (icon) {
+            is SettingsRowIcon.Vector -> Icon(
+                imageVector = icon.imageVector,
+                contentDescription = null,
+                modifier = iconModifier,
+                tint = iconTint,
+            )
+            is SettingsRowIcon.Drawable -> Icon(
+                painter = painterResource(id = icon.resId),
+                contentDescription = null,
+                modifier = iconModifier,
+                tint = iconTint,
+            )
+        }
     }
 }
 
@@ -822,7 +827,7 @@ internal fun SettingsRowBody(model: SettingsRowBodyModel) {
 }
 
 internal data class SettingsRowBodyModel(
-    val icon: ImageVector,
+    val icon: SettingsRowIcon,
     val title: String,
     val subtitle: String,
     val logoProviderKeys: List<String>,

@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Write};
+use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tree_sitter::{Language, Node, Parser};
 
@@ -100,7 +102,11 @@ fn main() {
         if writeln!(&mut stdout).is_err() {
             break;
         }
+        if stdout.flush().is_err() {
+            break;
+        }
     }
+    shutdown_lsp_pool();
 }
 
 fn parse_line(raw: &str) -> ParseResponse {
@@ -277,15 +283,15 @@ fn lsp_document_symbols(
     language: &str,
     sha_match: bool,
 ) -> Option<Vec<ParsedSymbol>> {
-    let mut session = LspSession::start(language, request)?;
-    let uri = document_uri(request);
-    session.open_document(language, request, &uri).ok()?;
-    let result = session
-        .request(
+    let result = with_lsp_session(language, request, |session| {
+        let uri = document_uri(request);
+        session.open_document(language, request, &uri)?;
+        session.request(
             "textDocument/documentSymbol",
             json!({"textDocument": {"uri": uri}}),
         )
-        .ok()?;
+    })
+    .ok()?;
     let mut symbols = Vec::new();
     collect_lsp_symbols(
         &result,
@@ -306,11 +312,10 @@ fn lsp_references(
     language: &str,
     position: LspPosition,
 ) -> Option<Vec<ParsedReference>> {
-    let mut session = LspSession::start(language, request)?;
-    let uri = document_uri(request);
-    session.open_document(language, request, &uri).ok()?;
-    let result = session
-        .request(
+    let result = with_lsp_session(language, request, |session| {
+        let uri = document_uri(request);
+        session.open_document(language, request, &uri)?;
+        session.request(
             "textDocument/references",
             json!({
                 "textDocument": {"uri": uri},
@@ -318,8 +323,32 @@ fn lsp_references(
                 "context": {"includeDeclaration": true}
             }),
         )
-        .ok()?;
+    })
+    .ok()?;
     parse_lsp_references_result(&result, request.root_path.as_deref())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum LspCommandConfig {
+    Args(Vec<String>),
+    Object {
+        command: Vec<String>,
+        #[serde(default, rename = "allowedExecutables")]
+        allowed_executables: Vec<String>,
+    },
+}
+
+impl LspCommandConfig {
+    fn parts(self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Args(parts) => (parts, Vec::new()),
+            Self::Object {
+                command,
+                allowed_executables,
+            } => (command, allowed_executables),
+        }
+    }
 }
 
 struct LspSession {
@@ -331,8 +360,11 @@ struct LspSession {
 }
 
 impl LspSession {
-    fn start(language: &str, request: &ParseRequest) -> Option<Self> {
-        let command = lsp_command_for(language)?;
+    fn start_with_command(
+        _language: &str,
+        request: &ParseRequest,
+        command: &[String],
+    ) -> Option<Self> {
         let (executable, args) = command.split_first()?;
         let mut child = Command::new(executable)
             .args(args)
@@ -427,13 +459,140 @@ impl Drop for LspSession {
     }
 }
 
+static LSP_POOL: OnceLock<Mutex<HashMap<String, LspSession>>> = OnceLock::new();
+
+fn lsp_pool() -> &'static Mutex<HashMap<String, LspSession>> {
+    LSP_POOL.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn with_lsp_session<T>(
+    language: &str,
+    request: &ParseRequest,
+    work: impl FnOnce(&mut LspSession) -> Result<T, String>,
+) -> Result<T, String> {
+    let command =
+        lsp_command_for(language).ok_or_else(|| "no allowlisted lsp command".to_string())?;
+    let key = lsp_pool_key(language, request.root_path.as_deref(), &command);
+    let mut pool = lsp_pool()
+        .lock()
+        .map_err(|_| "lsp pool lock poisoned".to_string())?;
+    if !pool.contains_key(&key) {
+        let session = LspSession::start_with_command(language, request, &command)
+            .ok_or_else(|| "lsp session failed to start".to_string())?;
+        pool.insert(key.clone(), session);
+    }
+    let result = {
+        let session = pool
+            .get_mut(&key)
+            .ok_or_else(|| "lsp session missing from pool".to_string())?;
+        work(session)
+    };
+    if result.is_err() {
+        pool.remove(&key);
+    }
+    result
+}
+
+fn shutdown_lsp_pool() {
+    if let Some(pool) = LSP_POOL.get() {
+        if let Ok(mut sessions) = pool.lock() {
+            sessions.clear();
+        }
+    }
+}
+
+fn lsp_pool_key(language: &str, root_path: Option<&str>, command: &[String]) -> String {
+    format!(
+        "{}\u{0}{}\u{0}{}",
+        language,
+        root_path.unwrap_or_default(),
+        command.join("\u{0}")
+    )
+}
+
 fn lsp_command_for(language: &str) -> Option<Vec<String>> {
     let raw = std::env::var("OPENBURNBAR_CODE_LSP_COMMANDS").ok()?;
-    let commands: HashMap<String, Vec<String>> = serde_json::from_str(&raw).ok()?;
-    commands
-        .get(language)
-        .filter(|parts| !parts.is_empty())
-        .cloned()
+    let commands: HashMap<String, LspCommandConfig> = serde_json::from_str(&raw).ok()?;
+    let (parts, explicit_allowlist) = commands.get(language)?.clone().parts();
+    validate_lsp_command(language, parts, explicit_allowlist)
+}
+
+fn validate_lsp_command(
+    language: &str,
+    parts: Vec<String>,
+    explicit_allowlist: Vec<String>,
+) -> Option<Vec<String>> {
+    if !matches!(language, "python" | "swift" | "typescript" | "tsx") {
+        return None;
+    }
+    if parts.is_empty() || parts.len() > 16 {
+        return None;
+    }
+    if parts
+        .iter()
+        .any(|part| part.is_empty() || part.len() > 4096 || part.contains('\0'))
+    {
+        return None;
+    }
+    let executable = parts.first()?;
+    let basename = Path::new(executable)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or(executable);
+    if basename == "env" {
+        let wrapped = parts.get(1)?;
+        if wrapped.starts_with('-') || wrapped.contains('=') {
+            return None;
+        }
+        validate_lsp_command(language, parts[1..].to_vec(), explicit_allowlist)?;
+        return Some(parts);
+    }
+    let mut allowlist = builtin_lsp_executable_allowlist();
+    allowlist.extend(
+        std::env::var("OPENBURNBAR_CODE_LSP_EXECUTABLE_ALLOWLIST")
+            .ok()
+            .into_iter()
+            .flat_map(|raw| {
+                raw.split(',')
+                    .map(|part| part.trim().to_string())
+                    .collect::<Vec<_>>()
+            }),
+    );
+    allowlist.extend(explicit_allowlist);
+    if !allowlist
+        .iter()
+        .any(|allowed| executable_name_matches(basename, allowed))
+    {
+        return None;
+    }
+    if matches!(basename, "sh" | "bash" | "zsh" | "fish" | "osascript") {
+        return None;
+    }
+    if basename.starts_with("python") && parts.iter().any(|part| part == "-c") {
+        return None;
+    }
+    Some(parts)
+}
+
+fn builtin_lsp_executable_allowlist() -> Vec<String> {
+    vec![
+        "sourcekit-lsp".to_string(),
+        "typescript-language-server".to_string(),
+        "pyright-langserver".to_string(),
+        "pylsp".to_string(),
+        "ruff-lsp".to_string(),
+        "python".to_string(),
+        "python3".to_string(),
+        "node".to_string(),
+        "env".to_string(),
+    ]
+}
+
+fn executable_name_matches(actual: &str, allowed: &str) -> bool {
+    if actual == allowed {
+        return true;
+    }
+    allowed == "python3" && actual.starts_with("python3")
 }
 
 fn lsp_timeout() -> Duration {
@@ -490,6 +649,12 @@ fn read_lsp_message(reader: &mut impl BufRead) -> Result<Option<Value>, String> 
     let Some(length) = content_length else {
         return Err("lsp response missing Content-Length".to_string());
     };
+    if length > lsp_max_response_bytes() {
+        return Err(format!(
+            "lsp response exceeded max bytes: {length} > {}",
+            lsp_max_response_bytes()
+        ));
+    }
     let mut body = vec![0; length];
     reader
         .read_exact(&mut body)
@@ -497,6 +662,15 @@ fn read_lsp_message(reader: &mut impl BufRead) -> Result<Option<Value>, String> 
     serde_json::from_slice(&body)
         .map(Some)
         .map_err(|error| error.to_string())
+}
+
+fn lsp_max_response_bytes() -> usize {
+    std::env::var("OPENBURNBAR_CODE_LSP_MAX_RESPONSE_BYTES")
+        .or_else(|_| std::env::var("OPENBURNBAR_CODE_HELPER_MAX_OUTPUT_BYTES"))
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .map(|value| value.clamp(16 * 1024, 8 * 1024 * 1024))
+        .unwrap_or(2 * 1024 * 1024)
 }
 
 fn write_lsp_message(stdin: &mut ChildStdin, payload: &Value) -> Result<(), String> {
@@ -1060,5 +1234,65 @@ mod tests {
         assert_eq!(references[0].start_character, 7);
         assert_eq!(references[0].end_character, 13);
         assert_eq!(references[0].confidence_tier, "exact_lsp");
+    }
+
+    #[test]
+    fn lsp_command_validation_rejects_shells_and_accepts_allowlisted_python() {
+        assert!(validate_lsp_command(
+            "python",
+            vec!["python3".to_string(), "/tmp/fake_lsp.py".to_string()],
+            Vec::new()
+        )
+        .is_some());
+        assert!(validate_lsp_command(
+            "python",
+            vec![
+                "/usr/bin/env".to_string(),
+                "python3".to_string(),
+                "/tmp/fake_lsp.py".to_string()
+            ],
+            Vec::new()
+        )
+        .is_some());
+        assert!(validate_lsp_command(
+            "python",
+            vec![
+                "/usr/bin/env".to_string(),
+                "-S".to_string(),
+                "python3".to_string(),
+                "/tmp/fake_lsp.py".to_string()
+            ],
+            Vec::new()
+        )
+        .is_none());
+        assert!(validate_lsp_command(
+            "python",
+            vec![
+                "bash".to_string(),
+                "-lc".to_string(),
+                "echo nope".to_string()
+            ],
+            vec!["bash".to_string()]
+        )
+        .is_none());
+        assert!(validate_lsp_command(
+            "python",
+            vec![
+                "python3".to_string(),
+                "-c".to_string(),
+                "print('nope')".to_string()
+            ],
+            Vec::new()
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn lsp_response_size_cap_is_bounded() {
+        std::env::set_var("OPENBURNBAR_CODE_LSP_MAX_RESPONSE_BYTES", "1");
+        assert_eq!(lsp_max_response_bytes(), 16 * 1024);
+        std::env::set_var("OPENBURNBAR_CODE_LSP_MAX_RESPONSE_BYTES", "999999999");
+        assert_eq!(lsp_max_response_bytes(), 8 * 1024 * 1024);
+        std::env::remove_var("OPENBURNBAR_CODE_LSP_MAX_RESPONSE_BYTES");
     }
 }

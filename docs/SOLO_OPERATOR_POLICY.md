@@ -30,8 +30,9 @@ is never acceptable.
 - Live governance proof is not a screenshot or memory. Run
   `bash scripts/ops/verify-github-governance.sh` before any release or
   commercial launch gate; it reads GitHub's branch-protection and environment
-  APIs and fails if admin enforcement, review/check requirements, PR bypass
-  allowances, or release/production environment protection drift.
+  APIs and fails if admin enforcement, required status checks, code-owner
+  review, stale-review dismissal, latest-push approval, zero-bypass policy, or
+  release/production environment protection drift.
 
 ## When break-glass solo merge is acceptable
 

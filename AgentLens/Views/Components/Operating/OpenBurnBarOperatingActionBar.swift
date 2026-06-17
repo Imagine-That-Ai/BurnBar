@@ -275,12 +275,14 @@ struct OpenBurnBarDirectionOverrideSheet: View {
                 Spacer()
 
                 Button("Save Override") {
-                    layer.saveDirectionOverride(
-                        mode: mode,
-                        forcedStatus: mode == .supersedeStatus ? forcedStatus : nil,
-                        summary: summary,
-                        rationale: rationale
-                    )
+                    Task {
+                        await layer.saveDirectionOverride(
+                            mode: mode,
+                            forcedStatus: mode == .supersedeStatus ? forcedStatus : nil,
+                            summary: summary,
+                            rationale: rationale
+                        )
+                    }
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
@@ -321,7 +323,9 @@ struct OpenBurnBarOperatingActionBar: View {
                     enabled: missionAction?.available == true,
                     emphasized: missionAction?.available == true
                 ) {
-                    layer.approveMission()
+                    Task {
+                        await layer.approveMission()
+                    }
                 }
 
                 OpenBurnBarActionButton(

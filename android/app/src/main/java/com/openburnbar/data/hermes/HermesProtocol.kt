@@ -20,7 +20,9 @@ import org.json.JSONObject
  * URL normalization mirrors iOS `validatedEndpointURL`:
  *   - http://localhost or http://127.0.0.1 always allowed
  *   - http:// allowed for RFC1918 LAN hosts (10/8, 172.16/12, 192.168/16)
- *   - https:// always allowed
+ *   - https:// is accepted by the generic validator for trusted first-party relay
+ *     records; direct Android runtime callers use `validatedLocalOrPrivateBaseURL`
+ *     so arbitrary public hosts are not contacted without certificate pinning
  *   - bare host:port → wrapped as http://
  *   - ws:// / wss:// → coerced to http:// / https:// (lifelong daemon nicety)
  *   - trailing `/v1` paths and `/health` stripped so callers can append them safely
@@ -70,6 +72,20 @@ object HermesProtocol {
         return when (scheme) {
             "https" -> normalized
             "http" -> normalized.takeIf { isLocalOrPrivateHost(hostPart) }
+            else -> null
+        }
+    }
+
+    fun validatedLocalOrPrivateBaseURL(raw: String?): String? {
+        val normalized = normalizeBaseURL(raw) ?: return null
+        val schemeEnd = normalized.indexOf("://")
+        if (schemeEnd < 0) return null
+        val scheme = normalized.substring(0, schemeEnd).lowercase()
+        val rest = normalized.substring(schemeEnd + URL_SCHEME_SUFFIX_LENGTH)
+        val hostPart = rest.substringBefore('/').substringBefore(':').lowercase()
+        if (rest.isEmpty() || hostPart.isEmpty() || !isLocalOrPrivateHost(hostPart)) return null
+        return when (scheme) {
+            "http", "https" -> normalized
             else -> null
         }
     }

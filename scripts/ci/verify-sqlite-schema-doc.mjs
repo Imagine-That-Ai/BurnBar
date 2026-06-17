@@ -31,6 +31,10 @@ function documentedTables() {
   return tables;
 }
 
+function schemaDocText() {
+  return readRepoFile("docs/SCHEMA_SQLITE.sql");
+}
+
 function sourceTables() {
   const tables = new Set();
   for (const sourcePath of sourcePaths) {
@@ -43,6 +47,13 @@ function sourceTables() {
     );
   }
   return tables;
+}
+
+function assertIncludes(haystack, needle, message) {
+  if (!haystack.includes(needle)) {
+    console.error(message);
+    process.exit(1);
+  }
 }
 
 const docs = documentedTables();
@@ -58,4 +69,46 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-console.log(`SQLite schema doc covers ${required.size} migration/source tables.`);
+const schema = schemaDocText();
+const pcmColumnChecks = {
+  agent_memories: ["body_ref", "body_redacted", "valid_from", "superseded_by"],
+  memory_audit: ["seq", "prev_hash", "hash"],
+  pcm_projects: ["project_id", "identity_version", "identity_fingerprint", "primary_path"],
+  pcm_project_aliases: ["project_id", "alias_path", "path_hash", "first_seen_at", "last_seen_at"],
+  code_artifacts: ["project_id", "file_path", "blob_sha", "content_hash", "byte_count", "mtime"],
+  pcm_file_manifest: ["project_id", "file_path", "artifact_id", "content_hash", "ignored_reason", "secret_labels_json"],
+  code_symbols: ["range_json", "confidence_tier", "tier_evidence_json"],
+  code_references: ["from_artifact_id", "to_symbol_id", "blob_sha", "confidence_tier"],
+  code_call_edges: ["caller_symbol_id", "callee_symbol_id", "confidence_tier"],
+  code_diagnostics_cache: ["payload_json", "blob_sha", "cached_at"],
+  code_index_checkpoints: ["storage_byte_count", "storage_budget_bytes", "vacuumed_at"],
+};
+for (const [table, columns] of Object.entries(pcmColumnChecks)) {
+  for (const column of columns) {
+    assertIncludes(
+      schema,
+      column,
+      `docs/SCHEMA_SQLITE.sql is missing Project Code Memory column ${table}.${column}`,
+    );
+  }
+}
+
+for (const indexName of [
+  "agent_memories_project_idx",
+  "pcm_projects_fingerprint_idx",
+  "pcm_project_aliases_path_hash_idx",
+  "pcm_project_aliases_project_idx",
+  "code_artifacts_project_path_idx",
+  "pcm_file_manifest_project_path_idx",
+  "code_symbols_project_name_idx",
+  "code_references_symbol_idx",
+  "code_call_edges_project_idx",
+]) {
+  assertIncludes(
+    schema,
+    indexName,
+    `docs/SCHEMA_SQLITE.sql is missing Project Code Memory index ${indexName}`,
+  );
+}
+
+console.log(`SQLite schema doc covers ${required.size} migration/source tables and Project Code Memory columns/indexes.`);

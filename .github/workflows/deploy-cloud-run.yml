@@ -1,0 +1,369 @@
+name: Deploy Cloud Run Services
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to deploy (v*). Defaults to ref when dispatching from a tag."
+        required: false
+        type: string
+      dry_run:
+        description: "Build, test, and Docker smoke only (no Cloud Run deploy)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
+
+jobs:
+  deploy-hosted-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      PROJECT_ID: burnbar
+      REGION: us-central1
+      SERVICE: openburnbar-hosted-mcp
+      MCP_RESOURCE: https://mcp.burnbar.ai/mcp
+      MCP_AUTH_ISSUER: https://mcp.burnbar.ai
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v ]]; then
+            echo "::error::Cloud Run production deploys must resolve to a v* tag."
+            exit 1
+          fi
+          git checkout "$TAG"
+          git submodule update --init --recursive
+          {
+            echo "tag=$TAG"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/hosted-mcp/package-lock.json
+
+      - name: Build and test hosted MCP
+        run: |
+          npm ci --prefix services/hosted-mcp
+          npm --prefix services/hosted-mcp test
+
+      - name: Docker build smoke
+        run: docker build -f services/hosted-mcp/Dockerfile -t openburnbar-hosted-mcp:deploy-smoke .
+
+      - name: Dry-run skip deploy
+        if: steps.tag.outputs.dry_run == 'true'
+        run: echo "dry_run=true - built and tested hosted MCP, skipped Cloud Run deploy"
+
+      - name: Authenticate to Google Cloud (WIF/OIDC only)
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
+
+      - name: Set up gcloud
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
+
+      - name: Verify deployer IAM
+        if: steps.tag.outputs.dry_run != 'true'
+        env:
+          GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "::error::No Google application credentials from WIF/OIDC auth. Cloud Run deploy requires workload identity federation."
+            exit 1
+          fi
+          if [[ -z "${GCP_DEPLOY_SERVICE_ACCOUNT:-}" ]]; then
+            echo "::error::GCP_DEPLOY_SERVICE_ACCOUNT is not configured for the production environment."
+            exit 1
+          fi
+          gcloud projects get-iam-policy "$PROJECT_ID" --format=json > deployer-iam-policy.json
+          python3 - "$GCP_DEPLOY_SERVICE_ACCOUNT" deployer-iam-policy.json <<'PY'
+          import json
+          import sys
+
+          service_account = sys.argv[1]
+          path = sys.argv[2]
+          required = {
+              "roles/run.admin",
+              "roles/cloudbuild.builds.editor",
+              "roles/iam.serviceAccountUser",
+              "roles/artifactregistry.admin",
+              "roles/secretmanager.admin",
+          }
+          member = f"serviceAccount:{service_account}"
+          with open(path, encoding="utf-8") as handle:
+              policy = json.load(handle)
+          roles = {
+              binding.get("role")
+              for binding in policy.get("bindings", [])
+              if member in binding.get("members", [])
+          }
+          missing = sorted(required - roles)
+          if missing:
+              print(f"::error::Deploy service account {service_account} is missing required project IAM roles: {', '.join(missing)}")
+              sys.exit(1)
+          print(f"deployer IAM ok: {service_account}")
+          PY
+
+      - name: Capture current Cloud Run state
+        id: current
+        if: steps.tag.outputs.dry_run != 'true'
+        run: |
+          set -euo pipefail
+          gcloud run services describe "$SERVICE" \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --format=json > cloud-run-hosted-mcp-before.json
+          python3 - cloud-run-hosted-mcp-before.json <<'PY'
+          import json
+          import os
+          import sys
+
+          def env_value(service, name):
+              containers = (
+                  service.get("spec", {})
+                  .get("template", {})
+                  .get("spec", {})
+                  .get("containers", [])
+              )
+              for container in containers:
+                  for item in container.get("env", []):
+                      if item.get("name") == name:
+                          return item.get("value")
+              return None
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              service = json.load(handle)
+
+          revision = service.get("status", {}).get("latestReadyRevisionName")
+          service_url = service.get("status", {}).get("url")
+          bucket = env_value(service, "OPENBURNBAR_STORAGE_BUCKET")
+          issuer = env_value(service, "MCP_AUTH_ISSUER") or "<unset>"
+
+          if not revision:
+              print("::error::Cloud Run service has no latestReadyRevisionName; refusing deploy without a rollback target.")
+              sys.exit(1)
+          if not bucket:
+              print("::error::Cloud Run service is missing OPENBURNBAR_STORAGE_BUCKET; refusing deploy rather than clearing body storage config.")
+              sys.exit(1)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"previous_revision={revision}\n")
+              output.write(f"service_url={service_url}\n")
+              output.write(f"storage_bucket={bucket}\n")
+              output.write(f"previous_issuer={issuer}\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"OPENBURNBAR_STORAGE_BUCKET={bucket}\n")
+
+          print(f"previous revision: {revision}")
+          print(f"service url: {service_url}")
+          print(f"storage bucket: {bucket}")
+          print(f"previous issuer: {issuer}")
+          PY
+
+      - name: Deploy hosted MCP
+        id: deploy
+        if: steps.tag.outputs.dry_run != 'true'
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
+          OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}
+          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
+        run: |
+          set -euo pipefail
+          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "::error::No Google application credentials from WIF/OIDC auth. Cloud Run deploy requires workload identity federation."
+            exit 1
+          fi
+          ./scripts/deploy-hosted-mcp.sh
+
+      - name: Read back hosted MCP deployment
+        id: readback
+        if: steps.tag.outputs.dry_run != 'true'
+        run: |
+          set -euo pipefail
+          gcloud run services describe "$SERVICE" \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --format=json > cloud-run-hosted-mcp-after.json
+          python3 - cloud-run-hosted-mcp-after.json <<'PY'
+          import json
+          import os
+          import sys
+
+          def env_value(service, name):
+              containers = (
+                  service.get("spec", {})
+                  .get("template", {})
+                  .get("spec", {})
+                  .get("containers", [])
+              )
+              for container in containers:
+                  for item in container.get("env", []):
+                      if item.get("name") == name:
+                          return item.get("value")
+              return None
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              service = json.load(handle)
+
+          status = service.get("status", {})
+          latest = status.get("latestReadyRevisionName")
+          service_url = status.get("url")
+          traffic = status.get("traffic", [])
+          traffic_ok = any(
+              entry.get("percent") == 100
+              and (entry.get("revisionName") == latest or entry.get("latestRevision") is True)
+              for entry in traffic
+          )
+
+          expected_bucket = os.environ["OPENBURNBAR_STORAGE_BUCKET"]
+          bucket = env_value(service, "OPENBURNBAR_STORAGE_BUCKET")
+          resource = env_value(service, "MCP_RESOURCE")
+          issuer = env_value(service, "MCP_AUTH_ISSUER")
+
+          errors = []
+          if not latest:
+              errors.append("missing latestReadyRevisionName")
+          if not traffic_ok:
+              errors.append("100% traffic is not on the latest ready revision")
+          if bucket != expected_bucket:
+              errors.append(f"OPENBURNBAR_STORAGE_BUCKET drifted: expected {expected_bucket}, got {bucket}")
+          if resource != os.environ["MCP_RESOURCE"]:
+              errors.append(f"MCP_RESOURCE drifted: expected {os.environ['MCP_RESOURCE']}, got {resource}")
+          if issuer != os.environ["MCP_AUTH_ISSUER"]:
+              errors.append(f"MCP_AUTH_ISSUER drifted: expected {os.environ['MCP_AUTH_ISSUER']}, got {issuer}")
+
+          evidence = {
+              "service": os.environ["SERVICE"],
+              "project": os.environ["PROJECT_ID"],
+              "region": os.environ["REGION"],
+              "tag": os.environ["DEPLOY_TAG"],
+              "sourceCommit": os.environ["DEPLOY_SOURCE_COMMIT"],
+              "previousRevision": os.environ["PREVIOUS_REVISION"],
+              "latestReadyRevisionName": latest,
+              "serviceUrl": service_url,
+              "traffic": traffic,
+              "environment": {
+                  "MCP_RESOURCE": resource,
+                  "MCP_AUTH_ISSUER": issuer,
+                  "OPENBURNBAR_STORAGE_BUCKET": bucket,
+              },
+          }
+          with open("cloud-run-hosted-mcp-deploy.json", "w", encoding="utf-8") as output:
+              json.dump(evidence, output, indent=2, sort_keys=True)
+              output.write("\n")
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"latest_revision={latest}\n")
+              output.write(f"service_url={service_url}\n")
+
+          print(f"latest revision: {latest}")
+          print(f"service url: {service_url}")
+          PY
+        env:
+          DEPLOY_TAG: ${{ steps.tag.outputs.tag }}
+          DEPLOY_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}
+          PREVIOUS_REVISION: ${{ steps.current.outputs.previous_revision }}
+
+      - name: Auto-rollback hosted MCP on failed deploy
+        if: ${{ always() && steps.tag.outputs.dry_run != 'true' && (steps.deploy.outcome == 'failure' || steps.readback.outcome == 'failure') }}
+        run: |
+          set -euo pipefail
+          PREVIOUS_REVISION="${{ steps.current.outputs.previous_revision }}"
+          if [[ -z "$PREVIOUS_REVISION" ]]; then
+            echo "::error::No previous revision captured; cannot run safe revision-pin rollback."
+            exit 1
+          fi
+          echo "::warning::Hosted MCP deploy unhealthy (deploy=${{ steps.deploy.outcome }}, readback=${{ steps.readback.outcome }}) - rolling back to ${PREVIOUS_REVISION}."
+          ./scripts/ops/rollback-revision.sh "$SERVICE" "$PREVIOUS_REVISION" \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --yes
+
+      - name: Upload Cloud Run deploy artifact
+        if: always() && hashFiles('cloud-run-hosted-mcp-deploy.json') != ''
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: cloud-run-hosted-mcp-${{ steps.tag.outputs.tag }}
+          path: cloud-run-hosted-mcp-deploy.json
+          if-no-files-found: ignore
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Cloud Run hosted-MCP deploy"
+            echo "- Tag: ${{ steps.tag.outputs.tag }}"
+            echo "- Commit: ${{ steps.tag.outputs.commit }}"
+            echo "- Dry run: ${{ steps.tag.outputs.dry_run }}"
+            echo "- Project: ${PROJECT_ID}"
+            echo "- Region: ${REGION}"
+            echo "- Service: ${SERVICE}"
+            echo "- Previous revision: ${{ steps.current.outputs.previous_revision }}"
+            echo "- Latest revision: ${{ steps.readback.outputs.latest_revision }}"
+            echo "- Storage bucket: ${{ steps.current.outputs.storage_bucket }}"
+            echo "- MCP resource: ${MCP_RESOURCE}"
+            echo "- MCP auth issuer: ${MCP_AUTH_ISSUER}"
+            echo ""
+            echo "### Rollback"
+            echo "- AUTOMATED: a failed deploy or readback auto-runs:"
+            echo "  \`./scripts/ops/rollback-revision.sh ${SERVICE} ${{ steps.current.outputs.previous_revision }} --region ${REGION} --project ${PROJECT_ID} --yes\`"
+            echo "- MANUAL: choose any previous-good revision from:"
+            echo "  \`gcloud run revisions list --service ${SERVICE} --region ${REGION} --project ${PROJECT_ID}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record Cloud Run deploy failure
+        if: failure() && startsWith(github.ref, 'refs/tags/v')
+        uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: open
+          lane: deploy-cloud-run
+          title-prefix: Cloud Run deploy failed
+          summary: >-
+            The hosted MCP Cloud Run deploy, health check, or post-deploy
+            readback failed. Production traffic should be verified against the
+            rollback revision before release continues.
+
+      - name: Close resolved Cloud Run deploy failure issue
+        if: success() && startsWith(github.ref, 'refs/tags/v')
+        uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: close
+          lane: deploy-cloud-run
+          title-prefix: Cloud Run deploy failed

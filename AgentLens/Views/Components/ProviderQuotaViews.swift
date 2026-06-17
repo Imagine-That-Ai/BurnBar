@@ -90,6 +90,7 @@ struct ProviderQuotaOverviewPanel: View {
     @Bindable var quotaService: ProviderQuotaService
     let dataStore: DataStore
     let onSelectProvider: (AgentProvider) -> Void
+    @Environment(SettingsManager.self) private var settingsManager
 
     var body: some View {
         GlassCard {
@@ -109,8 +110,8 @@ struct ProviderQuotaOverviewPanel: View {
                 }
 
                 VStack(spacing: DesignSystem.Spacing.sm) {
-                    ForEach(SettingsManager.shared.quotas.providerOrder, id: \.self) { provider in
-                        if SettingsManager.shared.quotas.visibleProviders.contains(provider) {
+                    ForEach(settingsManager.quotas.providerOrder, id: \.self) { provider in
+                        if settingsManager.quotas.visibleProviders.contains(provider) {
                             quotaRow(for: provider)
                         }
                     }

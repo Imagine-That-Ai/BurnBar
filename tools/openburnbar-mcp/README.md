@@ -21,7 +21,12 @@ cd tools/openburnbar-mcp
 ./setup.sh
 ```
 
-This creates the Python venv, installs deps, and symlinks the `burnbar-operator` Hermes skill into `~/.hermes/skills/` (if `~/.hermes` exists).
+This creates the Python venv, installs deps, builds or verifies the
+`crates/project-code-static-parser` release helper for the Project Code Memory
+static tier, and symlinks the `burnbar-operator` Hermes skill into
+`~/.hermes/skills/` (if `~/.hermes` exists). Set
+`OPENBURNBAR_MCP_ALLOW_LEXICAL_ONLY=true` only when you explicitly want setup to
+continue without the static parser helper.
 
 Optional: `export BURNBAR_DB_PATH="/path/to/openburnbar.sqlite"` if the DB is not under `~/Library/Application Support/OpenBurnBar/`.
 
@@ -141,7 +146,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_memory_analytics` | Aggregate local memory counts by kind and scope |
 | `burnbar_index_project` | **Write** a local-only, project-partitioned code index into the existing search substrate; accepts `storage_budget_bytes` |
 | `burnbar_watch_project` | **Write** start daemon-owned automatic reindexing for source/git-ref changes |
-| `burnbar_search_code` | Hybrid lexical/vector search over local-only indexed project code |
+| `burnbar_search_code` | Lexical/path search over local-only indexed project code; returns `semanticAvailable=false` until a real local embedding provider is configured |
 | `burnbar_context_pack` / `burnbar_code_context_pack` | Build token-budgeted code context packs |
 | `burnbar_get_symbol` | Symbol lookup with `exact_lsp` / `static_tree_sitter` / `lexical_fallback` tier evidence |
 | `burnbar_find_references` | Reference lookup for a project symbol, using exact LSP when a configured language server answers for the current buffer |
@@ -167,14 +172,6 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_set_budget_limit` | **Write** a daemon-backed budget limit |
 | `burnbar_pause_budget_gate` | **Write** a pause window for one budget gate |
 | `burnbar_resume_budget_gate` | **Write** a previously paused budget gate back into enforcement |
-| `burnbar_org_spend` | Aggregate organization spend and usage over a bounded window |
-
-Project Code Memory is local-only by default. The Rust helper
-`crates/project-code-static-parser` provides the static tier for Swift,
-TypeScript/TSX, and Python. Set `OPENBURNBAR_CODE_LSP_COMMANDS` to a JSON map
-like `{"python":["pyright-langserver","--stdio"],"swift":["sourcekit-lsp"]}` to
-enable opt-in `exact_lsp` symbol/reference tiers; the helper falls back when the
-language server is unavailable, slow, or stale.
 | `burnbar_list_resumable_conversations` | Return recent conversations eligible for native or ported resume |
 | `burnbar_resume_conversation` | Compose a native command hint or deterministic cross-harness briefing |
 | `burnbar_spawn_resume` | Spawn the selected native or ported resume command after an explicit tool call |
@@ -197,6 +194,19 @@ language server is unavailable, slow, or stale.
 | `castle_collect_result` | Classify a Castle worker from `result.done`, parsed completion, and HEAD-vs-base; writes Swift-readable status JSON |
 | `castle_status_snapshot` | Read Castle status records for dashboard/debug surfaces |
 | `castle_seed_worktree_isolation` | Seed `.git/info/exclude` with known agent scratch paths before launching a worker |
+
+Project Code Memory is local-only by default. Indexing uses a shared
+Swift/Python secret-scanner corpus, Git exclude-standard ignore semantics when
+the project is a Git worktree, manifest-backed delta indexing for
+unchanged/removed files, Git fingerprint-backed Project ID v2 with path aliases
+for moved checkouts, and untrusted-content wrappers on returned source text.
+Project-code search reports `semanticAvailable=false` until a real local
+embedding provider is configured. The Rust helper
+`crates/project-code-static-parser` provides the static tier for Swift,
+TypeScript/TSX, and Python. Set `OPENBURNBAR_CODE_LSP_COMMANDS` to a JSON map
+like `{"python":["pyright-langserver","--stdio"],"swift":["sourcekit-lsp"]}` to
+enable opt-in `exact_lsp` symbol/reference tiers; the helper falls back when the
+language server is unavailable, slow, or stale.
 
 Write-capable tools are explicit, daemon-scoped, and disabled until
 `OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE=true` or

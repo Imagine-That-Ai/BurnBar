@@ -27,7 +27,7 @@ actor LocalMetricsAggregator {
         let since = now.addingTimeInterval(-window)
 
         do {
-            let healthRecords = try dataStore.fetchRetrievalHealth()
+            let healthRecords = try await dataStore.fetchRetrievalHealth()
             let searchRecords = healthRecords.filter { $0.subsystem == .lexical || $0.subsystem == .semantic }
             let snapshot = Self.buildSnapshot(
                 searchRecords: searchRecords,

@@ -23,33 +23,74 @@ import AppKit
 //
 // `Color(hex:)` comes from `OpenBurnBarCore/ThemePrimitives`.
 
+// MARK: - Haptic events
+
+/// Semantic haptic moments emitted by the animation. The shared Core view
+/// stays UIKit-free; platform apps decide how to play these.
+public enum BurnBarLogoFormationHaptic: Hashable, Sendable {
+    case ignition
+    case coalescing
+    case logoLocked
+    case glassSettled
+    case providerGlyphs
+    case interaction
+}
+
+private extension BurnBarLogoFormationHaptic {
+    static let orderedMilestones: [BurnBarLogoFormationHaptic] = [
+        .ignition,
+        .coalescing,
+        .logoLocked,
+        .glassSettled,
+        .providerGlyphs
+    ]
+
+    var triggerTime: Double {
+        switch self {
+        case .ignition: return 0.18
+        case .coalescing: return 1.25
+        case .logoLocked: return 2.95
+        case .glassSettled: return 4.05
+        case .providerGlyphs: return glyphStartT
+        case .interaction: return 0
+        }
+    }
+}
+
+// MARK: - BurnBarLogoFormationView
+
 public struct BurnBarLogoFormationView: View {
-    /// Names of the provider logo assets to swarm (must exist in the app bundle).
-    private let providerNames: [String]
+    /// Providers whose brand marks swarm beneath the glass. These form from
+    /// the same canonical sampler (`SwarmGlyphSampler`) the rest of the app
+    /// uses for its swarm glyphs, so the marks read identically here.
+    private let providers: [AgentProvider]
     /// The brand mark asset name.
     private let logoName: String
+    /// Semantic haptic moments emitted by the animation. The shared Core view
+    /// stays UIKit-free; platform apps decide how to play these.
+    private let onHaptic: (BurnBarLogoFormationHaptic) -> Void
 
     public init(
         logoName: String = "AppLogo",
-        providerNames: [String] = [
-            "AnthropicLogo", "OpenAILogo", "GoogleLogo", "MistralLogo",
-            "MetaLogo", "GrokLogo", "DeepSeekLogo", "QwenLogo"
-        ]
+        providers: [AgentProvider] = AgentProvider.swarmGlyphProviders,
+        onHaptic: @escaping (BurnBarLogoFormationHaptic) -> Void = { _ in }
     ) {
         self.logoName = logoName
-        self.providerNames = providerNames
+        self.providers = providers
+        self.onHaptic = onHaptic
     }
 
     public var body: some View {
         GeometryReader { geo in
             let scale = min(geo.size.width / FormationLayout.W, geo.size.height / FormationLayout.H)
-            FormationDriver(logoName: logoName, providerNames: providerNames)
+            FormationDriver(logoName: logoName, providers: providers, onHaptic: onHaptic)
                 .frame(width: FormationLayout.W, height: FormationLayout.H)
                 .scaleEffect(scale)
                 .frame(width: geo.size.width, height: geo.size.height)
         }
         .accessibilityElement()
         .accessibilityLabel("OpenBurnBar")
+        .accessibilityHint("Tap to ripple the provider glyphs.")
     }
 }
 
@@ -171,9 +212,9 @@ private func loadPixels(_ name: String) -> PixelImage? {
 
 private struct Dot { let target: CGPoint; let start: CGPoint; let r: Double; let g: Double; let b: Double; let delay: Double; let driftA: CGFloat; let driftF: Double; let driftP: Double; let dotSize: Double }
 private struct GDot { let p: CGPoint; let r: Double; let g: Double; let b: Double }
-private struct Glyph { var pos: CGPoint; var vel: CGVector; var prov: Int; var flash: Double; var formT: Double; var seed: UInt64 }
+private struct Glyph { var pos: CGPoint; var vel: CGVector; var prov: Int; var baseProv: Int; var flash: Double; var formT: Double; var seed: UInt64; var lastSwapT: Double }
 
-private let glyphStartT = 5.8
+private let glyphStartT = 3.35
 
 private func sampleDots(_ logoName: String) -> [Dot] {
     guard let img = loadPixels(logoName) else { return [] }
@@ -191,12 +232,44 @@ private func sampleDots(_ logoName: String) -> [Dot] {
     var dots: [Dot] = []
     for item in raw {
         let (n, r, g, b) = item
-        let tx = FormationLayout.logoOX + n.x * FormationLayout.logoSize
-        let ty = FormationLayout.logoOY + n.y * FormationLayout.logoSize
-        let ang = rng.next() * 2 * Double.pi
-        let rad = (0.35 + rng.next() * 0.75) * Double(max(FormationLayout.W, FormationLayout.H)) * 0.6
-        let sx = FormationLayout.logoCX + CGFloat(cos(ang) * rad), sy = FormationLayout.logoCY + CGFloat(sin(ang) * rad)
-        let delay = 0.04 + rng.next() * 0.22 + Double(n.y) * 0.06
+        let visualY = 1 - n.y
+        let cell = FormationLayout.logoSize / CGFloat(grid)
+        let tx = FormationLayout.logoOX + n.x * FormationLayout.logoSize + CGFloat(rng.next() - 0.5) * cell * 0.8
+        let ty = FormationLayout.logoOY + visualY * FormationLayout.logoSize + CGFloat(rng.next() - 0.5) * cell * 0.8
+        let sx: CGFloat
+        let sy: CGFloat
+        // Keep the ignition swarm out of the hero box at rest. The particles
+        // should enter from screen edges and corners, never bloom from a
+        // rectangular field around the logo.
+        switch Int(rng.next() * 8) {
+        case 0:
+            sx = CGFloat(-96 - rng.next() * 190)
+            sy = CGFloat(rng.next()) * FormationLayout.H
+        case 1:
+            sx = FormationLayout.W + CGFloat(96 + rng.next() * 190)
+            sy = CGFloat(rng.next()) * FormationLayout.H
+        case 2:
+            sx = CGFloat(rng.next()) * FormationLayout.W
+            sy = CGFloat(-96 - rng.next() * 180)
+        case 3:
+            sx = CGFloat(rng.next()) * FormationLayout.W
+            sy = FormationLayout.H + CGFloat(96 + rng.next() * 180)
+        case 4:
+            sx = CGFloat(-108 - rng.next() * 170)
+            sy = CGFloat(-108 - rng.next() * 150)
+        case 5:
+            sx = FormationLayout.W + CGFloat(108 + rng.next() * 170)
+            sy = CGFloat(-108 - rng.next() * 150)
+        case 6:
+            sx = CGFloat(-108 - rng.next() * 170)
+            sy = FormationLayout.H + CGFloat(108 + rng.next() * 150)
+        default:
+            sx = FormationLayout.W + CGFloat(108 + rng.next() * 170)
+            sy = FormationLayout.H + CGFloat(108 + rng.next() * 150)
+        }
+        let targetAngle = atan2(Double(ty - FormationLayout.logoCY), Double(tx - FormationLayout.logoCX))
+        let radialBias = 0.04 + 0.08 * abs(sin(targetAngle))
+        let delay = radialBias + rng.next() * 0.36
         dots.append(Dot(target: CGPoint(x: tx, y: ty), start: CGPoint(x: sx, y: sy), r: r, g: g, b: b,
                         delay: min(delay, 0.30), driftA: CGFloat(8 + rng.next() * 22),
                         driftF: 0.5 + rng.next() * 1.3, driftP: rng.next() * 6.28, dotSize: 2.2 + rng.next() * 2.2))
@@ -204,32 +277,53 @@ private func sampleDots(_ logoName: String) -> [Dot] {
     return dots
 }
 
-private func sampleGlyphDots(_ name: String, grid: Int = 40, maxDots: Int = 220) -> [GDot] {
+private func sampleGlyphDots(_ name: String, maxDots: Int = 96) -> [GDot] {
     guard let img = loadPixels(name) else { return [] }
-    var pts: [GDot] = []
-    for gy in 0 ..< grid { for gx in 0 ..< grid {
-        let px = Int((Double(gx) + 0.5) / Double(grid) * Double(img.w))
-        let py = Int((Double(gy) + 0.5) / Double(grid) * Double(img.h))
-        var (r, g, b, a) = img.sample(px, py)
-        let lum = 0.299 * r + 0.587 * g + 0.114 * b
-        if a > 0.4 && lum < 0.985 {
-            let mx = max(r, max(g, b))
-            if mx < 0.06 { r = 0.92; g = 0.94; b = 0.97 } else if mx < 0.62 { let s = 0.62 / mx; r = min(1, r * s); g = min(1, g * s); b = min(1, b * s) }
-            pts.append(GDot(p: CGPoint(x: Double(gx) / Double(grid - 1) - 0.5, y: Double(gy) / Double(grid - 1) - 0.5), r: r, g: g, b: b))
+    let grid = 28
+    var dots: [GDot] = []
+    for gy in 0 ..< grid {
+        for gx in 0 ..< grid {
+            let px = Int((Double(gx) + 0.5) / Double(grid) * Double(img.w))
+            let py = Int((Double(gy) + 0.5) / Double(grid) * Double(img.h))
+            let (r, g, b, a) = img.sample(px, py)
+            guard a >= 0.45 else { continue }
+            let (br, bg, bb) = brightenedBrandColor(RGBA(r: r, g: g, b: b, a: a))
+            let nx = (Double(gx) + 0.5) / Double(grid) - 0.5
+            let ny = 0.5 - (Double(gy) + 0.5) / Double(grid)
+            dots.append(GDot(p: CGPoint(x: nx, y: ny), r: br, g: bg, b: bb))
         }
-    }}
-    if pts.count > maxDots {
-        let step = Double(pts.count) / Double(maxDots)
-        pts = (0 ..< maxDots).map { pts[min(Int(Double($0) * step), pts.count - 1)] }
     }
-    return pts
+    guard dots.count > maxDots else { return dots }
+    let step = Double(dots.count) / Double(maxDots)
+    return (0 ..< maxDots).map { dots[min(Int(Double($0) * step), dots.count - 1)] }
+}
+
+/// Lifts a sampled brand color so monochrome or dark marks (OpenAI, GitHub,
+/// Anthropic…) stay legible on the dark splash, where the constellation draws
+/// with `.plusLighter`. `nil` brand colors (vector / initials fallbacks)
+/// resolve to a warm white. Mirrors the brightening the splash always applied
+/// to sampled logos, now fed by the canonical glyph sampler.
+private func brightenedBrandColor(_ rgba: RGBA?) -> (Double, Double, Double) {
+    guard let rgba else { return (0.96, 0.97, 1.0) }
+    var r = rgba.r, g = rgba.g, b = rgba.b
+    let mx = max(r, max(g, b))
+    if mx < 0.06 { return (0.96, 0.97, 1.0) }
+    if mx < 0.68 {
+        let s = 0.68 / mx
+        r = min(1, r * s); g = min(1, g * s); b = min(1, b * s)
+    }
+    let avg = (r + g + b) / 3
+    r = clamp01(avg + (r - avg) * 1.12)
+    g = clamp01(avg + (g - avg) * 1.12)
+    b = clamp01(avg + (b - avg) * 1.12)
+    return (r, g, b)
 }
 
 private func scatterOffset(_ seed: UInt64, _ k: Int) -> CGPoint {
     var s = seed &+ (UInt64(bitPattern: Int64(k)) &* 0x9E37_79B9_7F4A_7C15)
     s ^= s >> 33; s = s &* 0xFF51_AFD7_ED55_8CCD; s ^= s >> 33
     let a = Double(s % 10000) / 10000.0 * 2 * Double.pi
-    let r = 30 + Double((s >> 20) % 10000) / 10000.0 * 55
+    let r = 12 + Double((s >> 20) % 10000) / 10000.0 * 24
     return CGPoint(x: cos(a) * r, y: sin(a) * r)
 }
 
@@ -237,9 +331,24 @@ private func scatterOffset(_ seed: UInt64, _ k: Int) -> CGPoint {
 @MainActor private final class FormationAssets {
     let dots: [Dot]
     let providerDots: [[GDot]]
-    init(logoName: String, providerNames: [String]) {
+    init(logoName: String, providers: [AgentProvider]) {
         dots = sampleDots(logoName)
-        providerDots = providerNames.map { sampleGlyphDots($0) }
+        providerDots = providers.map { providerGlyphDots(for: $0) }
+    }
+}
+
+/// Provider brand mark as constellation dots, sourced from the canonical
+/// `SwarmGlyphSampler` so the splash forms the exact same recognizable glyphs
+/// the rest of the app does. Uses the *filled* sampler (not the outline one):
+/// at hero scale a hollow ring is unreadable, a solid dot-logo reads as the
+/// real mark. Canonical glyph space is ~[-1, 1] on the long axis (y down); the
+/// constellation layer multiplies by 84, so we halve to keep marks at the
+/// on-canvas size this scene is tuned for.
+@MainActor
+private func providerGlyphDots(for provider: AgentProvider, maxDots: Int = 240) -> [GDot] {
+    SwarmGlyphSampler.filledGlyphPoints(for: provider, maxPoints: maxDots).map { point in
+        let (r, g, b) = brightenedBrandColor(point.brandColor)
+        return GDot(p: CGPoint(x: point.position.x * 0.5, y: point.position.y * 0.5), r: r, g: g, b: b)
     }
 }
 
@@ -291,16 +400,339 @@ private struct CubeRightF: Shape { func path(in _: CGRect) -> Path { let p = cub
 private struct CubeTopEdge: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); var pa = Path(); pa.move(to: p.topFrontLeft); pa.addLine(to: p.topFrontRight); pa.addLine(to: p.topBackRight); return pa } }
 private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = cubePoints(); var pa = Path(); pa.move(to: p.topFrontRight); pa.addLine(to: p.bottomFrontRight); return pa } }
 
+// MARK: - Liquid Glass Cube
+
+/// The isometric brand cube: a warm, luminous glass shell that wraps the flame.
+/// On iOS 26 / macOS 26 it uses native Liquid Glass; on earlier OSes it falls
+/// back to a hand-tuned translucent obsidian plate with specular highlights,
+/// rim lighting, and a slow mercury shimmer.
+private struct GlassCubeAssembly: View {
+    let time: Double
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private let cubeS = FormationLayout.cubeS
+    private let cubeCX = FormationLayout.cubeCX
+    private let cubeCY = FormationLayout.cubeCY
+    private let width = FormationLayout.W
+    private let height = FormationLayout.H
+
+    var body: some View {
+        let pts = cubePoints()
+        ZStack {
+            // Grounded shadow
+            Ellipse()
+                .fill(Color.black.opacity(0.55))
+                .frame(width: cubeS * 1.75, height: cubeS * 0.5)
+                .blur(radius: cubeS * 0.22)
+                .position(x: cubeCX, y: pts.bottomFrontRight.y + cubeS * 0.08)
+
+            // Inner ember glow — warm light that appears to live inside the cube.
+            RadialGradient(
+                colors: [
+                    Color(hex: "F25205").opacity(0.30),
+                    Color(hex: "FF6A2A").opacity(0.10),
+                    .clear
+                ],
+                center: .center,
+                startRadius: 0,
+                endRadius: cubeS * 0.85
+            )
+            .frame(width: cubeS * 1.55, height: cubeS * 1.55)
+            .position(x: cubeCX, y: cubeCY + cubeS * 0.10)
+            .blur(radius: 10)
+            .blendMode(.plusLighter)
+            .clipShape(CubeSil())
+
+            // Pre-Liquid-Glass fallback faces. More translucent than before so
+            // the highlights and glyphs read through the "glass" rather than
+            // sitting on a dark solid block.
+            if #unavailable(iOS 26.0, macOS 26.0) {
+                fallbackGlassFaces
+            }
+
+            // Native Liquid Glass on iOS 26 / macOS 26. A faint warm tint makes
+            // the cube feel on-brand; `.interactive()` gives it a subtle living
+            // response as the device moves.
+            if #available(iOS 26.0, macOS 26.0, *) {
+                Color.clear
+                    .frame(width: width, height: height)
+                    .glassEffect(
+                        .regular
+                            .tint(Color(hex: "FF6A2A").opacity(colorScheme == .dark ? 0.10 : 0.06))
+                            .interactive(),
+                        in: CubeSil()
+                    )
+            }
+
+            // Specular highlights, caustics, and animated shimmer.
+            glassHighlights
+
+            // Rim edges that catch the light.
+            glassEdges
+        }
+        .frame(width: width, height: height)
+    }
+
+    // MARK: - Subviews
+
+    @ViewBuilder
+    private var fallbackGlassFaces: some View {
+        ZStack {
+            CubeRightF().fill(
+                LinearGradient(
+                    colors: [
+                        Color(hex: "1A1C26").opacity(0.70),
+                        Color(hex: "0E1018").opacity(0.78)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            CubeLeftF().fill(
+                LinearGradient(
+                    colors: [
+                        Color(hex: "232533").opacity(0.66),
+                        Color(hex: "14161F").opacity(0.74)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            CubeTopF().fill(
+                LinearGradient(
+                    colors: [
+                        Color(hex: "4A4D5C").opacity(0.58),
+                        Color(hex: "2E303C").opacity(0.66)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        }
+        .clipShape(CubeSil())
+    }
+
+    @ViewBuilder
+    private var glassHighlights: some View {
+        ZStack {
+            // Top-face specular hotspot — the brightest reflection on the cube.
+            CubeTopF().fill(
+                RadialGradient(
+                    colors: [
+                        Color.white.opacity(colorScheme == .dark ? 0.26 : 0.38),
+                        Color.white.opacity(0.08),
+                        .clear
+                    ],
+                    center: UnitPoint(x: 0.35, y: 0.18),
+                    startRadius: 0,
+                    endRadius: cubeS
+                )
+            )
+            .blendMode(.plusLighter)
+
+            // Warm caustic glow rising from the lower interior.
+            RadialGradient(
+                colors: [
+                    Color(hex: "FF6A2A").opacity(0.20),
+                    Color(hex: "F25205").opacity(0.07),
+                    .clear
+                ],
+                center: .center,
+                startRadius: 0,
+                endRadius: cubeS * 0.78
+            )
+            .frame(width: cubeS * 1.55, height: cubeS * 1.55)
+            .position(x: cubeCX, y: cubeCY + cubeS * 0.18)
+            .blendMode(.plusLighter)
+            .clipShape(CubeSil())
+
+            // Slow mercury shimmer across the glass surface.
+            if !reduceTransparency {
+                GlassCubeShimmer()
+                    .clipShape(CubeSil())
+            }
+        }
+        .clipShape(CubeSil())
+    }
+
+    @ViewBuilder
+    private var glassEdges: some View {
+        ZStack {
+            CubeTopEdge().stroke(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.55),
+                        Color(hex: "FF6A2A").opacity(0.35),
+                        Color(hex: "6E7180").opacity(0.65)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                lineWidth: max(1.2, cubeS * 0.014)
+            )
+            CubeTopEdge().stroke(
+                Color.white.opacity(0.18),
+                lineWidth: max(0.5, cubeS * 0.004)
+            )
+            CubeFrontEdge().stroke(
+                LinearGradient(
+                    colors: [
+                        Color(hex: "5C5E6C").opacity(0.9),
+                        Color(hex: "FF6A2A").opacity(0.28),
+                        Color(hex: "23242C").opacity(0.8)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: max(1.2, cubeS * 0.014)
+            )
+        }
+        .clipShape(CubeSil())
+    }
+}
+
+// MARK: - Glass cube shimmer
+
+/// A slow diagonal shimmer band that traverses the cube, giving the surface
+/// a living, refractive quality. Disabled under Reduce Motion.
+private struct GlassCubeShimmer: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: Double = 0
+
+    var body: some View {
+        GeometryReader { _ in
+            shimmerGradient
+                .mask(shimmerMask)
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
+                phase = 1.0
+            }
+        }
+    }
+
+    private var shimmerGradient: some View {
+        LinearGradient(
+            colors: [
+                .clear,
+                Color.white.opacity(0.06),
+                Color.white.opacity(0.18),
+                Color.white.opacity(0.06),
+                .clear
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var shimmerMask: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [.clear, .white, .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .rotationEffect(.degrees(18))
+            .offset(x: -FormationLayout.cubeS * 1.6 + phase * FormationLayout.cubeS * 3.4)
+            .blur(radius: 6)
+    }
+}
+
+// MARK: - Provider glyph constellation
+
+/// Provider marks live as a full-canvas field, not as a cube texture. They form
+/// around and beyond the glass, then respond to taps with a re-scatter pulse.
+private struct ProviderGlyphConstellationLayer: View {
+    let time: Double
+    let glyphs: [Glyph]
+    let providerDots: [[GDot]]
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let width = FormationLayout.W
+    private let height = FormationLayout.H
+
+    var body: some View {
+        let appear = smooth((time - glyphStartT) / 0.72)
+        if appear > 0.001, !providerDots.isEmpty {
+            Canvas { ctx, _ in
+                let scale: CGFloat = 84
+                let isLight = colorScheme == .light
+                if isLight {
+                    ctx.addFilter(.shadow(color: Color.black.opacity(0.13), radius: 2.4, x: 0, y: 0.8))
+                } else {
+                    ctx.addFilter(.shadow(color: Color(hex: "FF6A2A").opacity(0.18), radius: 4, x: 0, y: 0))
+                }
+
+                for gl in glyphs {
+                    guard providerDots.indices.contains(gl.prov) else { continue }
+                    let points = providerDots[gl.prov]
+                    let form = easeOut(gl.formT)
+                    let breathe = reduceMotion ? 0 : sin(time * 0.7 + Double(gl.seed % 997) * 0.01) * 1.2
+
+                    for (index, dot) in points.enumerated() {
+                        let targetX = gl.pos.x + dot.p.x * scale
+                        let targetY = gl.pos.y + dot.p.y * scale
+                        let off = scatterOffset(gl.seed, index)
+                        let startX = gl.pos.x + off.x * 1.25
+                        let startY = gl.pos.y + off.y * 1.25
+                        let x = startX + (targetX - startX) * CGFloat(form)
+                        let y = startY + (targetY - startY) * CGFloat(form) + CGFloat(breathe)
+                        let alpha = min(0.72, appear * (0.18 + 0.70 * form) * (0.82 + 0.20 * gl.flash))
+                        guard alpha >= 0.018 else { continue }
+
+                        // Filled dot-logos read solid only when dots roughly
+                        // meet at this density; smaller and the mark stipples
+                        // into an unreadable scatter.
+                        let size: CGFloat = isLight ? 4.5 + 0.9 * gl.flash : 4.2 + 0.8 * gl.flash
+                        let rect = CGRect(x: x - size / 2, y: y - size / 2, width: size, height: size)
+                        if isLight {
+                            ctx.opacity = alpha * 0.16
+                            ctx.fill(Path(ellipseIn: rect.insetBy(dx: -0.7, dy: -0.7)), with: .color(Color.black))
+                        }
+                        ctx.opacity = alpha
+                        ctx.fill(
+                            Path(ellipseIn: rect),
+                            with: .color(Color(.sRGB, red: dot.r, green: dot.g, blue: dot.b, opacity: 1))
+                        )
+                    }
+                }
+            }
+            .frame(width: width, height: height)
+            .blendMode(colorScheme == .dark ? .plusLighter : .normal)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+}
+
 // MARK: - Glyph physics
 
 @MainActor private final class FormationSim: ObservableObject {
     @Published var t: Double = 0
     @Published var glyphs: [Glyph] = []
+    @Published var interactionNonce: Int = 0
     private var timer: Timer?
     private let dt = 1.0 / 45.0
-    private let providerCount: Int
+    private let swapCooldown = 1.15
+    private var providerCount: Int
+    private var providerCursor: Int = 0
 
     init(providerCount: Int) { self.providerCount = max(1, providerCount) }
+
+    func configureProviderCount(_ count: Int) {
+        let resolved = max(1, count)
+        guard providerCount != resolved else { return }
+        providerCount = resolved
+        seed()
+    }
 
     func start() {
         guard timer == nil else { return }
@@ -313,28 +745,80 @@ private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = 
     }
     func stop() { timer?.invalidate(); timer = nil }
 
-    private func seed() {
-        let n = providerCount
-        let width = FormationLayout.W
-        glyphs = (0 ..< 3).map { i in
-            Glyph(pos: CGPoint(x: .random(in: 120 ... (width - 120)), y: .random(in: 115 ... 345)),
-                  vel: CGVector(dx: .random(in: -14 ... 14), dy: .random(in: -14 ... 14)),
-                  prov: (i * 3) % n, flash: 0, formT: 0, seed: .random(in: 0 ... UInt64.max))
+    func pulse(at point: CGPoint) {
+        if t < glyphStartT { t = glyphStartT }
+        for i in glyphs.indices {
+            let dx = glyphs[i].pos.x - point.x
+            let dy = glyphs[i].pos.y - point.y
+            let d = max(hypot(dx, dy), 1)
+            let impulse = CGFloat(12 + Double(i) * 2)
+            glyphs[i].vel.dx = dx / d * impulse + .random(in: -2 ... 2)
+            glyphs[i].vel.dy = dy / d * impulse + .random(in: -2 ... 2)
+            advanceProvider(at: i, flash: 1)
         }
     }
+
+    private func seed() {
+        let n = providerCount
+        let visibleCount = max(1, min(n, 5))
+        providerCursor = visibleCount % max(n, 1)
+        glyphs = (0 ..< visibleCount).map { i in
+            let base = i % n
+            let position = orbitPoint(index: i, count: visibleCount)
+            let angle = Double(i) / Double(max(visibleCount, 1)) * 2 * Double.pi
+            return Glyph(
+                pos: position,
+                vel: CGVector(dx: CGFloat(cos(angle + .pi / 2) * 0.8), dy: CGFloat(sin(angle + .pi / 2) * 0.6)),
+                prov: base,
+                baseProv: base,
+                flash: 0,
+                formT: 0,
+                seed: .random(in: 0 ... UInt64.max),
+                lastSwapT: 0
+            )
+        }
+    }
+
+    private func orbitPoint(index: Int, count: Int) -> CGPoint {
+        let angle = -Double.pi / 2 + Double(index) / Double(max(count, 1)) * 2 * Double.pi
+        let x = FormationLayout.logoCX + CGFloat(cos(angle)) * 205
+        let y = FormationLayout.logoCY + CGFloat(sin(angle)) * 142
+        return CGPoint(
+            x: min(max(x, 58), FormationLayout.W - 58),
+            y: min(max(y, 50), FormationLayout.H - 50)
+        )
+    }
+
+    private func advanceProvider(at index: Int, flash: Double) {
+        guard providerCount > 1, glyphs.indices.contains(index) else {
+            if glyphs.indices.contains(index) { glyphs[index].flash = max(glyphs[index].flash, flash) }
+            return
+        }
+        let next = providerCursor % providerCount
+        providerCursor = (providerCursor + 1) % providerCount
+        glyphs[index].prov = next
+        glyphs[index].baseProv = next
+        glyphs[index].formT = 0
+        glyphs[index].flash = max(glyphs[index].flash, flash)
+        glyphs[index].seed = .random(in: 0 ... UInt64.max)
+        glyphs[index].lastSwapT = t
+    }
+
     private func step() {
         t += dt
         guard t > glyphStartT else { return }
-        let r: CGFloat = 44, n = providerCount, width = FormationLayout.W
+        let r: CGFloat = 40, width = FormationLayout.W, height = FormationLayout.H
         for i in glyphs.indices {
             glyphs[i].pos.x += glyphs[i].vel.dx * CGFloat(dt)
             glyphs[i].pos.y += glyphs[i].vel.dy * CGFloat(dt)
-            if glyphs[i].pos.x < 85 { glyphs[i].pos.x = 85; glyphs[i].vel.dx = abs(glyphs[i].vel.dx) }
-            if glyphs[i].pos.x > width - 85 { glyphs[i].pos.x = width - 85; glyphs[i].vel.dx = -abs(glyphs[i].vel.dx) }
-            if glyphs[i].pos.y < 100 { glyphs[i].pos.y = 100; glyphs[i].vel.dy = abs(glyphs[i].vel.dy) }
-            if glyphs[i].pos.y > 360 { glyphs[i].pos.y = 360; glyphs[i].vel.dy = -abs(glyphs[i].vel.dy) }
+            glyphs[i].vel.dx *= 0.996
+            glyphs[i].vel.dy *= 0.996
+            if glyphs[i].pos.x < 58 { glyphs[i].pos.x = 58; glyphs[i].vel.dx = abs(glyphs[i].vel.dx) }
+            if glyphs[i].pos.x > width - 58 { glyphs[i].pos.x = width - 58; glyphs[i].vel.dx = -abs(glyphs[i].vel.dx) }
+            if glyphs[i].pos.y < 48 { glyphs[i].pos.y = 48; glyphs[i].vel.dy = abs(glyphs[i].vel.dy) }
+            if glyphs[i].pos.y > height - 48 { glyphs[i].pos.y = height - 48; glyphs[i].vel.dy = -abs(glyphs[i].vel.dy) }
             if glyphs[i].flash > 0 { glyphs[i].flash = max(0, glyphs[i].flash - dt * 2.2) }
-            if glyphs[i].formT < 1 { glyphs[i].formT = min(1, glyphs[i].formT + dt / 1.6) }
+            if glyphs[i].formT < 1 { glyphs[i].formT = min(1, glyphs[i].formT + dt / 2.8) }
         }
         guard glyphs.count >= 2 else { return }
         for i in 0 ..< (glyphs.count - 1) {
@@ -349,13 +833,20 @@ private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = 
                     let pj = glyphs[j].vel.dx * nx + glyphs[j].vel.dy * ny
                     glyphs[i].vel.dx += (pj - pi) * nx; glyphs[i].vel.dy += (pj - pi) * ny
                     glyphs[j].vel.dx += (pi - pj) * nx; glyphs[j].vel.dy += (pi - pj) * ny
-                    if n > 1 {
-                        glyphs[i].prov = (glyphs[i].prov + Int.random(in: 1 ..< n)) % n
-                        glyphs[j].prov = (glyphs[j].prov + Int.random(in: 1 ..< n)) % n
+                    var didAdvance = false
+                    if t - glyphs[i].lastSwapT >= swapCooldown {
+                        advanceProvider(at: i, flash: 0.9)
+                        didAdvance = true
+                    } else {
+                        glyphs[i].flash = max(glyphs[i].flash, 0.45)
                     }
-                    glyphs[i].formT = 0; glyphs[i].seed = .random(in: 0 ... UInt64.max)
-                    glyphs[j].formT = 0; glyphs[j].seed = .random(in: 0 ... UInt64.max)
-                    glyphs[i].flash = 1; glyphs[j].flash = 1
+                    if t - glyphs[j].lastSwapT >= swapCooldown {
+                        advanceProvider(at: j, flash: 0.9)
+                        didAdvance = true
+                    } else {
+                        glyphs[j].flash = max(glyphs[j].flash, 0.45)
+                    }
+                    if didAdvance { interactionNonce &+= 1 }
                 }
             }
         }
@@ -366,14 +857,17 @@ private struct CubeFrontEdge: Shape { func path(in _: CGRect) -> Path { let p = 
 
 private struct FormationDriver: View {
     let logoName: String
-    let providerNames: [String]
+    let providers: [AgentProvider]
+    let onHaptic: (BurnBarLogoFormationHaptic) -> Void
     @StateObject private var sim: FormationSim
     @State private var assets: FormationAssets?
+    @State private var emittedHaptics: Set<BurnBarLogoFormationHaptic> = []
 
-    init(logoName: String, providerNames: [String]) {
+    init(logoName: String, providers: [AgentProvider], onHaptic: @escaping (BurnBarLogoFormationHaptic) -> Void) {
         self.logoName = logoName
-        self.providerNames = providerNames
-        _sim = StateObject(wrappedValue: FormationSim(providerCount: providerNames.count))
+        self.providers = providers
+        self.onHaptic = onHaptic
+        _sim = StateObject(wrappedValue: FormationSim(providerCount: providers.count))
     }
 
     var body: some View {
@@ -381,11 +875,40 @@ private struct FormationDriver: View {
             FormationHero(p: min(sim.t / 5.0, 1.0), time: sim.t, glyphs: sim.glyphs,
                           logoName: logoName, providerDots: assets?.providerDots ?? [], dots: assets?.dots ?? [])
         }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { value in
+                    sim.pulse(at: value.location)
+                    onHaptic(.interaction)
+                }
+        )
         .onAppear {
-            if assets == nil { assets = FormationAssets(logoName: logoName, providerNames: providerNames) }
+            if assets == nil {
+                let loadedAssets = FormationAssets(logoName: logoName, providers: providers)
+                assets = loadedAssets
+                sim.configureProviderCount(loadedAssets.providerDots.count)
+            } else {
+                sim.configureProviderCount(assets?.providerDots.count ?? providers.count)
+            }
+            emittedHaptics.removeAll()
             sim.start()
         }
+        .onChange(of: sim.t) { _, newValue in
+            emitMilestoneHaptics(at: newValue)
+        }
+        .onChange(of: sim.interactionNonce) { _, _ in
+            onHaptic(.interaction)
+        }
         .onDisappear { sim.stop() }
+    }
+
+    private func emitMilestoneHaptics(at time: Double) {
+        for event in BurnBarLogoFormationHaptic.orderedMilestones
+        where time >= event.triggerTime && !emittedHaptics.contains(event) {
+            emittedHaptics.insert(event)
+            onHaptic(event)
+        }
     }
 }
 
@@ -445,58 +968,11 @@ private struct FormationHero: View {
             .frame(width: width, height: height)
 
             if glass > 0.001 {
-                let pts = cubePoints()
-                ZStack {
-                    Ellipse().fill(Color.black.opacity(0.5))
-                        .frame(width: cubeS * 1.7, height: cubeS * 0.46).blur(radius: cubeS * 0.18)
-                        .position(x: cubeCX, y: pts.bottomFrontRight.y + cubeS * 0.1)
-                    ZStack {
-                        CubeRightF().fill(LinearGradient(colors: [Color(hex: "171924"), Color(hex: "0C0D14")], startPoint: .top, endPoint: .bottom))
-                        CubeLeftF().fill(LinearGradient(colors: [Color(hex: "21232F"), Color(hex: "15161F")], startPoint: .top, endPoint: .bottom))
-                        CubeTopF().fill(LinearGradient(colors: [Color(hex: "3B3D49"), Color(hex: "2C2E38")], startPoint: .top, endPoint: .bottom))
-                    }.clipShape(CubeSil())
-
-                    let glyphAppear = smooth((time - glyphStartT) / 1.2)
-                    if glyphAppear > 0.001, !providerDots.isEmpty {
-                        Canvas { ctx, _ in
-                            let scale: CGFloat = 98
-                            for gl in glyphs {
-                                guard providerDots.indices.contains(gl.prov) else { continue }
-                                let gd = providerDots[gl.prov]
-                                let f = easeOut(gl.formT)
-                                for (k, d) in gd.enumerated() {
-                                    let tx = gl.pos.x + d.p.x * scale, ty = gl.pos.y + d.p.y * scale
-                                    let off = scatterOffset(gl.seed, k)
-                                    let sx = gl.pos.x + off.x * 1.5, sy = gl.pos.y + off.y * 1.5
-                                    let x = sx + (tx - sx) * CGFloat(f), y = sy + (ty - sy) * CGFloat(f)
-                                    let alpha = min(1.0, glyphAppear * (0.22 + 0.78 * f) * (0.92 + 0.5 * gl.flash))
-                                    if alpha < 0.02 { continue }
-                                    ctx.opacity = alpha
-                                    let ds: CGFloat = 3.1 + 1.8 * gl.flash
-                                    ctx.fill(Path(ellipseIn: CGRect(x: x - ds / 2, y: y - ds / 2, width: ds, height: ds)), with: .color(Color(.sRGB, red: d.r, green: d.g, blue: d.b, opacity: 1)))
-                                }
-                            }
-                        }
-                        .frame(width: width, height: height).blendMode(.plusLighter).allowsHitTesting(false)
-                    }
-
-                    if #available(iOS 26.0, macOS 26.0, *) {
-                        Color.clear.frame(width: width, height: height).glassEffect(.regular, in: CubeSil())
-                    }
-
-                    ZStack {
-                        CubeTopF().fill(RadialGradient(colors: [Color.white.opacity(0.18), .clear], center: UnitPoint(x: 0.38, y: 0.18), startRadius: 0, endRadius: cubeS)).blendMode(.plusLighter)
-                        RadialGradient(colors: [Color(hex: "F25205").opacity(0.16), .clear], center: .center, startRadius: 0, endRadius: cubeS * 0.66)
-                            .frame(width: cubeS * 1.6, height: cubeS * 1.6).position(x: cubeCX, y: cubeCY + cubeS * 0.18).blendMode(.plusLighter)
-                    }.clipShape(CubeSil())
-
-                    ZStack {
-                        CubeTopEdge().stroke(Color(hex: "6E7180").opacity(0.85), lineWidth: max(1, cubeS * 0.012))
-                        CubeTopEdge().stroke(Color.white.opacity(0.16), lineWidth: max(0.5, cubeS * 0.004))
-                        CubeFrontEdge().stroke(LinearGradient(colors: [Color(hex: "5C5E6C"), Color(hex: "23242C")], startPoint: .top, endPoint: .bottom), lineWidth: max(1, cubeS * 0.012))
-                    }.clipShape(CubeSil())
-                }.frame(width: width, height: height).opacity(glass)
+                GlassCubeAssembly(time: time)
+                    .opacity(glass)
             }
+
+            ProviderGlyphConstellationLayer(time: time, glyphs: glyphs, providerDots: providerDots)
 
             if solidFade > 0.001 {
                 Image(logoName).resizable().scaledToFit()

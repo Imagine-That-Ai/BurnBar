@@ -4,7 +4,7 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class SharedArtifactSyncStateStoreTests: XCTestCase {
-    func test_sharedArtifactSyncStateStore_roundTripLookupAndFiltering() throws {
+    func test_sharedArtifactSyncStateStore_roundTripLookupAndFiltering() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_112_000)
 
@@ -31,7 +31,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(artifact)
+        _ = try await store.upsertSourceArtifact(artifact)
 
         let syncedState = SharedArtifactSyncStateRecord(
             sourceArtifactID: artifact.id,
@@ -51,13 +51,13 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        try store.upsertSharedArtifactSyncState(syncedState)
+        try await store.upsertSharedArtifactSyncState(syncedState)
 
-        let fetchedBySource = try store.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
+        let fetchedBySource = try await store.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
         XCTAssertEqual(fetchedBySource?.remoteArtifactID, "remote-1")
         XCTAssertEqual(fetchedBySource?.syncStatus, .synced)
 
-        let fetchedByRemote = try store.fetchSharedArtifactSyncState(remoteArtifactID: "remote-1")
+        let fetchedByRemote = try await store.fetchSharedArtifactSyncState(remoteArtifactID: "remote-1")
         XCTAssertEqual(fetchedByRemote?.sourceArtifactID, artifact.id)
 
         let conflictedState = SharedArtifactSyncStateRecord(
@@ -78,9 +78,9 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base.addingTimeInterval(30)
         )
-        try store.upsertSharedArtifactSyncState(conflictedState)
+        try await store.upsertSharedArtifactSyncState(conflictedState)
 
-        let conflicted = try store.fetchSharedArtifactSyncStates(
+        let conflicted = try await store.fetchSharedArtifactSyncStates(
             workspaceID: "workspace-a",
             teamID: "team-a",
             statuses: [.conflicted],
@@ -90,7 +90,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         XCTAssertEqual(conflicted.first?.lastErrorCode, "SHARED_ARTIFACT_DIVERGED")
     }
 
-    func test_sharedArtifactPermissionStore_roundTripFilteringAndReadableLookup() throws {
+    func test_sharedArtifactPermissionStore_roundTripFilteringAndReadableLookup() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_125_000)
 
@@ -112,7 +112,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(artifact)
+        _ = try await store.upsertSourceArtifact(artifact)
 
         let ownerPermission = SharedArtifactPermissionRecord(
             sourceArtifactID: artifact.id,
@@ -128,8 +128,10 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        XCTAssertEqual(try store.upsertSharedArtifactPermission(ownerPermission), .inserted)
-        XCTAssertEqual(try store.upsertSharedArtifactPermission(ownerPermission), .unchanged)
+        let insertedPermissionResult = try await store.upsertSharedArtifactPermission(ownerPermission)
+        XCTAssertEqual(insertedPermissionResult, .inserted)
+        let unchangedPermissionResult = try await store.upsertSharedArtifactPermission(ownerPermission)
+        XCTAssertEqual(unchangedPermissionResult, .unchanged)
 
         let updatedOwnerPermission = SharedArtifactPermissionRecord(
             sourceArtifactID: artifact.id,
@@ -145,9 +147,10 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base.addingTimeInterval(15)
         )
-        XCTAssertEqual(try store.upsertSharedArtifactPermission(updatedOwnerPermission), .updated)
+        let updatedPermissionResult = try await store.upsertSharedArtifactPermission(updatedOwnerPermission)
+        XCTAssertEqual(updatedPermissionResult, .updated)
 
-        let fetchedPermissions = try store.fetchSharedArtifactPermissions(
+        let fetchedPermissions = try await store.fetchSharedArtifactPermissions(
             sourceArtifactID: artifact.id,
             workspaceID: "workspace-a",
             teamID: "team-a",
@@ -159,7 +162,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         XCTAssertEqual(fetchedPermissions.first?.role, .editor)
         XCTAssertEqual(fetchedPermissions.first?.canShare, false)
 
-        let readableForOwner = try store.fetchReadableSharedArtifactSourceIDs(
+        let readableForOwner = try await store.fetchReadableSharedArtifactSourceIDs(
             accessContext: SharedArtifactAccessContext(
                 userID: "user-1",
                 workspaceID: "workspace-a",
@@ -168,7 +171,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         )
         XCTAssertEqual(readableForOwner, Set([artifact.id]))
 
-        let readableForOther = try store.fetchReadableSharedArtifactSourceIDs(
+        let readableForOther = try await store.fetchReadableSharedArtifactSourceIDs(
             accessContext: SharedArtifactAccessContext(
                 userID: "user-2",
                 workspaceID: "workspace-a",
@@ -178,7 +181,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         XCTAssertTrue(readableForOther.isEmpty)
     }
 
-    func test_sharedArtifactReadableLookup_includesSyncOwnerFallback() throws {
+    func test_sharedArtifactReadableLookup_includesSyncOwnerFallback() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_127_500)
 
@@ -200,8 +203,8 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(artifact)
-        try store.upsertSharedArtifactSyncState(
+        _ = try await store.upsertSourceArtifact(artifact)
+        try await store.upsertSharedArtifactSyncState(
             SharedArtifactSyncStateRecord(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: "remote-owner-1",
@@ -222,7 +225,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             )
         )
 
-        let ownerReadable = try store.fetchReadableSharedArtifactSourceIDs(
+        let ownerReadable = try await store.fetchReadableSharedArtifactSourceIDs(
             accessContext: SharedArtifactAccessContext(
                 userID: "user-owner",
                 workspaceID: "workspace-a",
@@ -231,7 +234,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         )
         XCTAssertEqual(ownerReadable, Set([artifact.id]))
 
-        let otherReadable = try store.fetchReadableSharedArtifactSourceIDs(
+        let otherReadable = try await store.fetchReadableSharedArtifactSourceIDs(
             accessContext: SharedArtifactAccessContext(
                 userID: "user-other",
                 workspaceID: "workspace-a",
@@ -353,7 +356,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         )
     }
 
-    func test_sharedArtifactAuditEvents_captureConflictAndRecoveryOutcomes() throws {
+    func test_sharedArtifactAuditEvents_captureConflictAndRecoveryOutcomes() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_140_000)
 
@@ -375,8 +378,8 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(artifact)
-        try store.upsertSharedArtifactSyncState(
+        _ = try await store.upsertSourceArtifact(artifact)
+        try await store.upsertSharedArtifactSyncState(
             SharedArtifactSyncStateRecord(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: "remote-audit-1",
@@ -397,7 +400,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             )
         )
 
-        try store.appendSharedArtifactAuditEvent(
+        try await store.appendSharedArtifactAuditEvent(
             SharedArtifactAuditEventRecord(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: "remote-audit-1",
@@ -411,7 +414,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
                 createdAt: base.addingTimeInterval(5)
             )
         )
-        try store.upsertSharedArtifactSyncState(
+        try await store.upsertSharedArtifactSyncState(
             SharedArtifactSyncStateRecord(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: "remote-audit-1",
@@ -431,7 +434,7 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
                 updatedAt: base.addingTimeInterval(10)
             )
         )
-        try store.appendSharedArtifactAuditEvent(
+        try await store.appendSharedArtifactAuditEvent(
             SharedArtifactAuditEventRecord(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: "remote-audit-1",
@@ -446,12 +449,12 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
             )
         )
 
-        let syncState = try store.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
+        let syncState = try await store.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
         XCTAssertEqual(syncState?.syncStatus, .synced)
         XCTAssertEqual(syncState?.remoteArtifactID, "remote-audit-1")
         XCTAssertEqual(syncState?.revisionID, "rev-peer")
 
-        let events = try store.fetchSharedArtifactAuditEvents(
+        let events = try await store.fetchSharedArtifactAuditEvents(
             sourceArtifactID: artifact.id,
             workspaceID: "workspace-a",
             teamID: "team-a",

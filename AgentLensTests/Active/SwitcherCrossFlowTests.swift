@@ -22,15 +22,11 @@ final class SwitcherCrossFlowTests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            try Self.addMigrationv32(to: dbQueue)
-            store = SwitcherProfileStore(dbQueue: dbQueue)
-        } catch {
-            XCTFail("Failed to set up test store: \(error)")
-        }
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        try await Self.addMigrationv32(to: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue)
     }
 
     override func tearDown() {
@@ -41,8 +37,8 @@ final class SwitcherCrossFlowTests: XCTestCase {
 
     // MARK: - Migration Helper
 
-    private static func addMigrationv32(to dbQueue: DatabaseQueue) throws {
-        try dbQueue.write { db in
+    private static func addMigrationv32(to dbQueue: DatabaseQueue) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -391,7 +387,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
     }
 
     /// Relaunch hydration handles legacy multi-row state correctly.
-    func test_crossSurface_relaunchWithLegacyMultiRow_resolvesDeterministically() throws {
+    func test_crossSurface_relaunchWithLegacyMultiRow_resolvesDeterministically() async throws {
         // Create and activate a profile
         let profile = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -402,7 +398,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
         try store.setActiveProfile(profile.id)
 
         // Inject legacy duplicate rows
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
                 arguments: ["old-profile", Date().addingTimeInterval(-50)]
@@ -420,7 +416,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
         XCTAssertEqual(state.activeProfileID, profile.id)
 
         // Verify exactly one row remains after cleanup
-        let rowCount = try dbQueue.read { db in
+        let rowCount = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
         XCTAssertEqual(rowCount, 1, "Legacy multi-row should be cleaned up on hydration")
@@ -601,7 +597,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
 
     /// On startup rehydration and cross-surface sync, logs include operational state only
     /// and never include raw credentials/tokens/auth headers.
-    func test_crossSurface_noSecretFields_inStoredProfiles() throws {
+    func test_crossSurface_noSecretFields_inStoredProfiles() async throws {
         // Create profile with metadata that could be mistaken for secrets
         let profile = try store.create(SwitcherProfileRecord(
             targetKind: .cli,
@@ -620,7 +616,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
         XCTAssertFalse(profile.cliMetadata?.envKeysToPass.contains { $0.contains("=") } ?? false)
 
         // Verify the raw stored data (via direct fetch)
-        let rawJSON = try dbQueue.read { db in
+        let rawJSON = try await dbQueue.read { db in
             try String.fetchOne(db, sql: "SELECT cliMetadataJSON FROM switcher_profiles WHERE id = ?", arguments: [profile.id])
         }
 
@@ -777,7 +773,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
     }
 
     /// Error recovery preserves actionable context.
-    func test_crossSurface_errorRecovery_preservesContext() throws {
+    func test_crossSurface_errorRecovery_preservesContext() async throws {
         // Create profiles
         let p1 = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -795,7 +791,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
         try store.setActiveProfile(p1.id)
 
         // Simulate error that requires recovery (stale active marker)
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_profiles WHERE id = ?", arguments: [p1.id])
         }
 
@@ -1004,10 +1000,10 @@ extension SwitcherCrossFlowTests {
     /// VERIFICATION: Settings-created profile is immediately usable in Dashboard view.
     /// Tests that DashboardQuickSwitchView reflects newly created profiles.
     @MainActor
-    func test_ui_crossSurface_dashboardReflectsNewlyCreatedProfile() throws {
+    func test_ui_crossSurface_dashboardReflectsNewlyCreatedProfile() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1050,10 +1046,10 @@ extension SwitcherCrossFlowTests {
     /// VERIFICATION: Settings-created profile is immediately usable in Popover view.
     /// Tests that PopoverQuickSwitchView reflects newly created profiles.
     @MainActor
-    func test_ui_crossSurface_popoverReflectsNewlyCreatedProfile() throws {
+    func test_ui_crossSurface_popoverReflectsNewlyCreatedProfile() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1097,10 +1093,10 @@ extension SwitcherCrossFlowTests {
     /// VERIFICATION: Active profile persists across relaunch and is reflected in Dashboard.
     /// Tests that Dashboard view shows the correct active profile after "relaunch".
     @MainActor
-    func test_ui_crossSurface_dashboardRestoresActiveProfileAfterRelaunch() throws {
+    func test_ui_crossSurface_dashboardRestoresActiveProfileAfterRelaunch() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1147,10 +1143,10 @@ extension SwitcherCrossFlowTests {
 
     /// VERIFICATION: Switch then launch uses the final committed active profile.
     /// Tests that after a switch, the store's active state is consistent.
-    func test_ui_crossSurface_switchThenLaunch_usesFinalActiveProfile() throws {
+    func test_ui_crossSurface_switchThenLaunch_usesFinalActiveProfile() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
 
         // Create profile and set as active
         let localStore = SwitcherProfileStore(dbQueue: dbQueue)
@@ -1199,10 +1195,10 @@ extension SwitcherCrossFlowTests {
     /// VERIFICATION: Cross-surface switch and launch chaining is consistent.
     /// Tests that switching in Dashboard and launching from Popover uses same active profile.
     @MainActor
-    func test_ui_crossSurface_switchInDashboard_launchInPopover_usesSameProfile() throws {
+    func test_ui_crossSurface_switchInDashboard_launchInPopover_usesSameProfile() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1244,10 +1240,10 @@ extension SwitcherCrossFlowTests {
     /// VERIFICATION: UI surfaces do not leak profile metadata between surfaces.
     /// Tests that Dashboard and Popover show correct profile metadata.
     @MainActor
-    func test_ui_crossSurface_noMetadataBleedBetweenSurfaces() throws {
+    func test_ui_crossSurface_noMetadataBleedBetweenSurfaces() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1387,10 +1383,10 @@ extension SwitcherCrossFlowTests {
     /// VERIFICATION: Empty state in Dashboard leads to Settings create flow.
     /// Tests that Dashboard empty state shows actionable CTA.
     @MainActor
-    func test_ui_crossSurface_dashboardEmptyState_showsSettingsCTA() throws {
+    func test_ui_crossSurface_dashboardEmptyState_showsSettingsCTA() async throws {
         // Create DataStore with empty database
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1419,10 +1415,10 @@ extension SwitcherCrossFlowTests {
 
     /// VERIFICATION: Popover empty state leads to Settings create flow.
     @MainActor
-    func test_ui_crossSurface_popoverEmptyState_showsSettingsCTA() throws {
+    func test_ui_crossSurface_popoverEmptyState_showsSettingsCTA() async throws {
         // Create DataStore with empty database
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1451,10 +1447,10 @@ extension SwitcherCrossFlowTests {
     /// VERIFICATION: Dashboard error state shows Open Settings CTA.
     /// Tests that error CTA routes correctly to settings.
     @MainActor
-    func test_ui_crossSurface_dashboardErrorState_showsOpenSettingsCTA() throws {
+    func test_ui_crossSurface_dashboardErrorState_showsOpenSettingsCTA() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1486,10 +1482,10 @@ extension SwitcherCrossFlowTests {
 
     /// VERIFICATION: Popover error state shows Settings CTA.
     @MainActor
-    func test_ui_crossSurface_popoverErrorState_showsSettingsCTA() throws {
+    func test_ui_crossSurface_popoverErrorState_showsSettingsCTA() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1521,10 +1517,10 @@ extension SwitcherCrossFlowTests {
 
     /// VERIFICATION: Error state has both Retry and Open Settings actions.
     @MainActor
-    func test_ui_crossSurface_dashboardErrorState_hasBothRetryAndSettingsCTA() throws {
+    func test_ui_crossSurface_dashboardErrorState_hasBothRetryAndSettingsCTA() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1550,10 +1546,10 @@ extension SwitcherCrossFlowTests {
 
     /// VERIFICATION: Active context preserved through navigation handoffs.
     @MainActor
-    func test_ui_crossSurface_activeContext_preservedThroughNavigation() throws {
+    func test_ui_crossSurface_activeContext_preservedThroughNavigation() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1599,10 +1595,10 @@ extension SwitcherCrossFlowTests {
 
     /// VERIFICATION: Settings -> Dashboard -> Popover preserves active context.
     @MainActor
-    func test_ui_crossSurface_settingsToDashboardToPopover_preservesContext() throws {
+    func test_ui_crossSurface_settingsToDashboardToPopover_preservesContext() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1663,10 +1659,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Taps Open Settings CTA in Dashboard error state and verifies callback fires.
     /// VAL-CROSS-008: Recovery CTAs from Dashboard error states navigate to correct Settings destination.
     @MainActor
-    func test_ui_crossSurface_dashboardErrorCTA_tapsOpenSettingsAndCallbackFires() throws {
+    func test_ui_crossSurface_dashboardErrorCTA_tapsOpenSettingsAndCallbackFires() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1726,10 +1722,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Taps Open Settings CTA in Popover error state and verifies callback fires.
     /// VAL-CROSS-008: Recovery CTAs from Popover error states navigate to correct Settings destination.
     @MainActor
-    func test_ui_crossSurface_popoverErrorCTA_tapsSettingsAndCallbackFires() throws {
+    func test_ui_crossSurface_popoverErrorCTA_tapsSettingsAndCallbackFires() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1787,10 +1783,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Taps Retry CTA in Dashboard error state and verifies reload behavior.
     /// VAL-CROSS-008: Error CTAs trigger retry/open-settings actions.
     @MainActor
-    func test_ui_crossSurface_dashboardErrorCTA_tapsRetryAndVerifiesReload() throws {
+    func test_ui_crossSurface_dashboardErrorCTA_tapsRetryAndVerifiesReload() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1862,10 +1858,10 @@ extension SwitcherCrossFlowTests {
     /// VAL-CROSS-009: Switching in one surface (Dashboard) and launching in another (Popover)
     /// always uses the globally current active profile.
     @MainActor
-    func test_ui_crossSurface_switchInDashboard_updatesPopoverActiveState() throws {
+    func test_ui_crossSurface_switchInDashboard_updatesPopoverActiveState() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1943,10 +1939,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Executes switch action in Popover and verifies Dashboard sees updated state.
     /// VAL-CROSS-009: Switch in Popover updates global state reflected in Dashboard.
     @MainActor
-    func test_ui_crossSurface_switchInPopover_updatesDashboardActiveState() throws {
+    func test_ui_crossSurface_switchInPopover_updatesDashboardActiveState() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2019,10 +2015,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Invokes browser launch through real adapter path and verifies final profile routing.
     /// VAL-CROSS-004: Launch actions use the final committed active profile after rapid switches.
     @MainActor
-    func test_ui_crossSurface_browserLaunch_usesFinalCommittedActiveProfile() throws {
+    func test_ui_crossSurface_browserLaunch_usesFinalCommittedActiveProfile() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
 
         // Create two browser profiles
         let localStore = SwitcherProfileStore(dbQueue: dbQueue)
@@ -2083,10 +2079,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Invokes CLI launch through real adapter path and verifies final profile routing.
     /// VAL-CROSS-004/009: CLI launch actions use globally current active profile.
     @MainActor
-    func test_ui_crossSurface_cliLaunch_usesFinalCommittedActiveProfile() throws {
+    func test_ui_crossSurface_cliLaunch_usesFinalCommittedActiveProfile() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
 
         // Create CLI profiles
         let localStore = SwitcherProfileStore(dbQueue: dbQueue)
@@ -2131,10 +2127,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Creates profile in store (Settings action) and verifies Dashboard reflects it.
     /// VAL-CROSS-001/002: Settings-created profile is usable in Dashboard and Popover.
     @MainActor
-    func test_ui_crossSurface_settingsCreateProfile_dashboardReflectsAfterLoad() throws {
+    func test_ui_crossSurface_settingsCreateProfile_dashboardReflectsAfterLoad() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2179,10 +2175,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Creates profile in store and verifies Popover reflects it.
     /// VAL-CROSS-001/002: Profile created in Settings appears in Popover.
     @MainActor
-    func test_ui_crossSurface_settingsCreateProfile_popoverReflectsAfterLoad() throws {
+    func test_ui_crossSurface_settingsCreateProfile_popoverReflectsAfterLoad() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2227,10 +2223,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Both Retry and Open Settings CTAs in Dashboard error state are tappable.
     /// VAL-CROSS-008: Error CTA navigation routes correctly with both actions available.
     @MainActor
-    func test_ui_crossSurface_dashboardErrorState_bothCTAsAreTappable() throws {
+    func test_ui_crossSurface_dashboardErrorState_bothCTAsAreTappable() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2282,10 +2278,10 @@ extension SwitcherCrossFlowTests {
     /// ACTIONABLE TEST: Both Retry and Settings CTAs in Popover error state are tappable.
     /// VAL-CROSS-008: Popover error CTAs route correctly.
     @MainActor
-    func test_ui_crossSurface_popoverErrorState_bothCTAsAreTappable() throws {
+    func test_ui_crossSurface_popoverErrorState_bothCTAsAreTappable() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2340,10 +2336,10 @@ extension SwitcherCrossFlowTests {
     /// VAL-CROSS-001: Settings-created profile is usable in Dashboard (rendered view).
     /// VAL-CROSS-002: Dashboard reflects active profile state via rendered indicators.
     @MainActor
-    func test_ui_crossSurface_dashboardRendersCreatedProfile_withActiveIndicator() throws {
+    func test_ui_crossSurface_dashboardRendersCreatedProfile_withActiveIndicator() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2391,10 +2387,10 @@ extension SwitcherCrossFlowTests {
     /// VAL-CROSS-001: Settings-created profile is usable in Popover (rendered view).
     /// VAL-CROSS-002: Popover reflects active profile state via rendered indicators.
     @MainActor
-    func test_ui_crossSurface_popoverRendersCreatedProfile_withActiveIndicator() throws {
+    func test_ui_crossSurface_popoverRendersCreatedProfile_withActiveIndicator() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2443,10 +2439,10 @@ extension SwitcherCrossFlowTests {
     /// VAL-CROSS-002: Global active profile state remains consistent across surfaces.
     /// Uses testTriggerReload to verify rendered state reflects store changes.
     @MainActor
-    func test_ui_crossSurface_dashboardSwitch_updatesPopoverRenderedActiveState() throws {
+    func test_ui_crossSurface_dashboardSwitch_updatesPopoverRenderedActiveState() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2515,10 +2511,10 @@ extension SwitcherCrossFlowTests {
     /// VAL-CROSS-002: Global active profile state remains consistent across surfaces.
     /// Uses testTriggerReload to verify rendered state reflects store changes.
     @MainActor
-    func test_ui_crossSurface_popoverSwitch_updatesDashboardRenderedActiveState() throws {
+    func test_ui_crossSurface_popoverSwitch_updatesDashboardRenderedActiveState() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2588,10 +2584,10 @@ extension SwitcherCrossFlowTests {
     /// UI-DRIVEN TEST: Taps Open Settings CTA and verifies rendered side effect (no crash, view remains stable).
     /// VAL-CROSS-008: Error CTA navigation routes correctly; view remains stable after navigation.
     @MainActor
-    func test_ui_crossSurface_dashboardErrorCTA_tappingOpenSettingsLeavesViewStable() throws {
+    func test_ui_crossSurface_dashboardErrorCTA_tappingOpenSettingsLeavesViewStable() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2646,10 +2642,10 @@ extension SwitcherCrossFlowTests {
     /// UI-DRIVEN TEST: Taps Settings CTA in Popover error state and verifies rendered side effect.
     /// VAL-CROSS-008: Error CTA navigation routes correctly in Popover.
     @MainActor
-    func test_ui_crossSurface_popoverErrorCTA_tappingSettingsLeavesViewStable() throws {
+    func test_ui_crossSurface_popoverErrorCTA_tappingSettingsLeavesViewStable() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2709,7 +2705,7 @@ extension SwitcherCrossFlowTests {
     func test_ui_crossSurface_dashboardSwitch_launchUsesCorrectRenderedProfile() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -2801,7 +2797,7 @@ extension SwitcherCrossFlowTests {
     func test_ui_crossSurface_popoverSwitch_launchUsesCorrectRenderedProfile() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,

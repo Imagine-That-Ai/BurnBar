@@ -7,6 +7,7 @@ extension BurnBarProviderRouter {
         let cooldownUntil: Date?
         let lastSelectedAt: Date?
         let lastQuotaResetsAt: Date?
+        let lastQuotaRemainingPercent: Double?
         let latencyMs: Double
         let isPreferredSlot: Bool
     }
@@ -33,6 +34,7 @@ extension BurnBarProviderRouter {
                         cooldownUntil: slot.cooldownUntil,
                         lastSelectedAt: slot.lastSelectedAt,
                         lastQuotaResetsAt: slot.lastQuotaResetsAt,
+                        lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
                         latencyMs: latencyMs,
                         isPreferredSlot: isPreferred
                     )
@@ -43,18 +45,20 @@ extension BurnBarProviderRouter {
         return slotMap
     }
 
-    static func compareQuotaReset(_ lhs: Date?, _ rhs: Date?, now: Date) -> Bool? {
-        switch (activeQuotaReset(lhs, now: now), activeQuotaReset(rhs, now: now)) {
-        case let (.some(lhsReset), .some(rhsReset)):
-            guard lhsReset != rhsReset else { return nil }
-            return lhsReset < rhsReset
-        case (.some, .none):
-            return true
-        case (.none, .some):
-            return false
-        case (.none, .none):
-            return nil
-        }
+    static func compareQuotaDrain(
+        lhsReset: Date?,
+        lhsRemainingPercent: Double?,
+        rhsReset: Date?,
+        rhsRemainingPercent: Double?,
+        now: Date
+    ) -> ProviderQuotaUtilizationComparison? {
+        ProviderQuotaUtilizationOrdering.compare(
+            lhsReset: lhsReset,
+            lhsRemainingPercent: lhsRemainingPercent,
+            rhsReset: rhsReset,
+            rhsRemainingPercent: rhsRemainingPercent,
+            now: now
+        )
     }
 
     func sameQuotaDrainPool(_ lhs: BurnBarProviderRoute, _ rhs: BurnBarProviderRoute) -> Bool {
@@ -63,11 +67,6 @@ extension BurnBarProviderRouter {
             && lhs.canonicalModelID == rhs.canonicalModelID
             && lhs.formatFamily == rhs.formatFamily
             && lhs.endpointProfileID == rhs.endpointProfileID
-    }
-
-    private static func activeQuotaReset(_ value: Date?, now: Date) -> Date? {
-        guard let value, value > now else { return nil }
-        return value
     }
 
     private func estimateLatencyMs(for slot: BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot) -> Double {

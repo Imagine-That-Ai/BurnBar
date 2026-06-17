@@ -24,8 +24,9 @@ firestore.rules @Ajnunezg @emilio3435
 firestore.indexes.json @Ajnunezg @emilio3435
 project.yml @Ajnunezg @emilio3435
 
-# Security-sensitive trees — keep these explicit rules last because GitHub
-# CODEOWNERS uses the final matching rule.
+# Security-sensitive trees — explicit rules so review routing is intentional
+# for the highest-risk surfaces (closes OPUS-F-012). Keep this block last:
+# GitHub CODEOWNERS uses the final matching rule.
 .github/CODEOWNERS @Ajnunezg @emilio3435
 .github/workflows/ @Ajnunezg @emilio3435
 functions/src/security/ @Ajnunezg @emilio3435

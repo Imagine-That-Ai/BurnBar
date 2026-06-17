@@ -22,10 +22,15 @@ const cloudPro = tiers.find((t) => t.id === "cloud_pro")!;
 const ultra = tiers.find((t) => t.id === "ultra")!;
 
 const ladder = [
-  { tier: free, cap: free.allowance.wandParallelMax, accent: "neutral" },
-  { tier: cloud, cap: cloud.allowance.wandParallelMax, accent: "fire" },
-  { tier: cloudPro, cap: cloudPro.allowance.wandParallelMax, accent: "teal" },
-  { tier: ultra, cap: ultra.allowance.wandParallelMax, accent: "gold" }
+  { tier: free, cap: free.allowance.wandParallelMax, accent: "neutral", capCopy: "Free opens 1" },
+  { tier: cloud, cap: cloud.allowance.wandParallelMax, accent: "fire", capCopy: "Cloud opens 3" },
+  {
+    tier: cloudPro,
+    cap: cloudPro.allowance.wandParallelMax,
+    accent: "teal",
+    capCopy: "Cloud Pro opens 8"
+  },
+  { tier: ultra, cap: ultra.allowance.wandParallelMax, accent: "gold", capCopy: "Ultra opens 16" }
 ];
 
 const wandModes = [
@@ -43,7 +48,7 @@ const wandModes = [
     name: "Pareto Wand",
     tagline: "Best quality per quota",
     description:
-      "Balances model strength against provider cost signals so you get more landed work for your spend. The routing picks each agent's model for you.",
+      "Balances model strength against live quota so you get the most landed work for your spend. The routing picks each agent's model for you.",
     icon: "scale",
     best: "for everyday parallel work"
   }
@@ -59,8 +64,8 @@ const wandModes = [
       </h2>
       <p class="wand-module__lead">
         The Wand sends one job to a team of agents at once. Each worker runs in its own branch,
-        routed to a fitting model across the providers you connect. More parallel workers means more
-        model diversity and faster convergence.
+        routed to the right model by live quota across the providers you connect. More parallel
+        workers means more model diversity and faster convergence.
       </p>
     </header>
 
@@ -191,7 +196,7 @@ const wandModes = [
         <span class="wand-ladder__cell wand-ladder__cell--head mono">Visual</span>
       </div>
       {
-        ladder.map(({ tier, cap, accent }) => (
+        ladder.map(({ tier, cap, accent, capCopy }) => (
           <div class="wand-ladder__row" data-accent={accent}>
             <span class="wand-ladder__cell wand-ladder__cell--tier">
               <span class="wand-ladder__tier-name">{tier.shortName}</span>
@@ -199,7 +204,10 @@ const wandModes = [
                 {tier.priceMonthlyUSD === "0" ? "Free" : `$${tier.priceMonthlyUSD}/mo`}
               </span>
             </span>
-            <span class="wand-ladder__cell wand-ladder__cell--cap mono">{cap}</span>
+            <span class="wand-ladder__cell wand-ladder__cell--cap mono">
+              <span>{cap}</span>
+              <span class="wand-ladder__cap-copy">{capCopy}</span>
+            </span>
             <span class="wand-ladder__cell wand-ladder__cell--viz">
               <span class="wand-ladder__dots" aria-hidden="true">
                 {Array.from({ length: cap }, () => (
@@ -268,9 +276,9 @@ const wandModes = [
         <div class="wand-cta__copy">
           <h3 class="wand-cta__h">Go wider with Cloud Pro</h3>
           <p class="wand-cta__p">
-            Free opens 1 agent. Cloud can cast 3 agents at once. Cloud Pro opens 8; Ultra opens 16.
-            More parallel attempts means more model diversity and faster convergence. Your model
-            tokens still come from your connected providers.
+            Cloud can cast 3 agents at once. Cloud Pro opens 8; Ultra opens 16. More parallel
+            attempts means more model diversity and faster convergence. Your model tokens still come
+            from your connected providers.
           </p>
         </div>
         <div class="wand-cta__actions">
@@ -546,10 +554,20 @@ const wandModes = [
     color: var(--text-dim);
   }
   .wand-ladder__cell--cap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
     font-size: 1.6rem;
     font-weight: 700;
     color: var(--text-bright);
     text-align: center;
+  }
+  .wand-ladder__cap-copy {
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: var(--text-muted);
+    white-space: nowrap;
   }
   .wand-ladder__row[data-accent="fire"] .wand-ladder__cell--cap {
     color: var(--core-fire);

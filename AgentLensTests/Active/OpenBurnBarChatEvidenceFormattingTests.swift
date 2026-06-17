@@ -9,13 +9,13 @@ private typealias AppTokenUsage = OpenBurnBar.TokenUsage
 private typealias AppUsageSource = OpenBurnBar.UsageSource
 final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
 
-    func test_emptyResults_showsPlaceholder() throws {
+    func test_emptyResults_showsPlaceholder() async throws {
         let s = OpenBurnBarChatEvidenceFormatting.formatPack(results: [], maxTotalChars: 2_000)
         XCTAssertTrue(s.contains("## Retrieved evidence"))
         XCTAssertTrue(s.contains("No matching indexed excerpts"))
     }
 
-    func test_dedupesSecondChunkFromSameConversation() throws {
+    func test_dedupesSecondChunkFromSameConversation() async throws {
         let now = Date()
         let conv = ConversationRecord(
             id: "cursor:abc",
@@ -85,7 +85,7 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         XCTAssertFalse(s.contains("`ch2`"))
     }
 
-    func test_truncatesToMaxChars() throws {
+    func test_truncatesToMaxChars() async throws {
         let now = Date()
         let longSnippet = String(repeating: "x", count: 500)
         var results: [RetrievalResult] = []
@@ -135,10 +135,10 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
     }
 
     @MainActor
-    func test_dataStoreLocalAuthoritySnapshot_reportsCountsAndControllerMirrorPresence() throws {
+    func test_dataStoreLocalAuthoritySnapshot_reportsCountsAndControllerMirrorPresence() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        try store.insert(
+        try await store.insert(
             TokenUsage(
                 provider: .factory,
                 sessionId: "authority-1",
@@ -151,9 +151,9 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
                 endTime: Date()
             )
         )
-        try store.saveControllerRuntimeMirror(OpenBurnBarControllerRuntimeSnapshot.empty)
+        try await store.saveControllerRuntimeMirror(OpenBurnBarControllerRuntimeSnapshot.empty)
 
-        let snapshot = try store.localAuthoritySnapshot()
+        let snapshot = try await store.localAuthoritySnapshot()
 
         XCTAssertEqual(snapshot.usageRowCount, 1)
         XCTAssertEqual(snapshot.conversationRowCount, 0)
@@ -161,7 +161,7 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         XCTAssertTrue(snapshot.controllerRuntimeCached)
     }
 
-    func test_notificationReplySealerBindsReplyToUserAndDocumentAAD() throws {
+    func test_notificationReplySealerBindsReplyToUserAndDocumentAAD() async throws {
         let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         let sealed = try MacAgentNotificationReplySealer.sealedReplyMap(

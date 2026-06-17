@@ -24,17 +24,20 @@ import OpenBurnBarIrohRelay
 /// }
 /// ```
 final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
-    static let shared = FirestoreIrohPairingDirectory()
-
     private let firestoreProvider: @Sendable () -> Firestore
+    private let deviceIDProvider: @Sendable () async -> String
 
-    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
+    init(
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        deviceIDProvider: @escaping @Sendable () async -> String
+    ) {
         self.firestoreProvider = firestoreProvider
+        self.deviceIDProvider = deviceIDProvider
     }
 
     func publish(_ record: IrohPairingRecord, for uid: String) async throws {
         try await ComputerUseSecurityCallableClient.publishIrohPairingRecord(
-            deviceId: AccountManager.shared.deviceId,
+            deviceId: await deviceIDProvider(),
             record: record
         )
     }
@@ -52,7 +55,7 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
 
     func revoke(uid: String, connectionId: String) async throws {
         try await ComputerUseSecurityCallableClient.revokeIrohPairingRecord(
-            deviceId: AccountManager.shared.deviceId,
+            deviceId: await deviceIDProvider(),
             connectionId: connectionId
         )
     }

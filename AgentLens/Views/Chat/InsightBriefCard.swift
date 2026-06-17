@@ -47,8 +47,10 @@ struct InsightBriefSnapshot {
         refreshRollups: Bool = true
     ) -> InsightBriefSnapshot {
         let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
+        let searchService = intelligenceService ?? SearchService(dataStore: dataStore)
         return assemble(
             from: dataStore,
+            conversations: searchService.recentConversations(limit: 200),
             rollupSnapshot: rollups.snapshot(refreshIfStale: refreshRollups)
         )
     }
@@ -65,19 +67,23 @@ struct InsightBriefSnapshot {
     ) async -> InsightBriefSnapshot {
         let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
         let rollupSnapshot = await rollups.snapshotAsync(refreshIfStale: refreshRollups)
-        return assemble(from: dataStore, rollupSnapshot: rollupSnapshot)
+        let conversations = (try? await dataStore.fetchSessionLogSummaries(limit: 200)) ?? []
+        return assemble(
+            from: dataStore,
+            conversations: conversations,
+            rollupSnapshot: rollupSnapshot
+        )
     }
 
     @MainActor
     private static func assemble(
         from dataStore: DataStore,
+        conversations: [ConversationRecord],
         rollupSnapshot: WorkflowInsightRollupSnapshot
     ) -> InsightBriefSnapshot {
         let calendar = Calendar.current
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
-        // Chat bootstrap only needs lightweight conversation metadata; avoid hydrating transcript bodies.
-        let conversations = (try? dataStore.fetchSessionLogSummaries(limit: 200)) ?? []
         let latestConv = latestConversation(in: conversations)
 
         let whereLeftOff = latestConv?.lastAssistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)

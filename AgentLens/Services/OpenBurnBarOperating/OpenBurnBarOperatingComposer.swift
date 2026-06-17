@@ -12,7 +12,8 @@ enum OpenBurnBarOperatingComposer {
         aggregator: UsageAggregator?,
         chatController: ChatSessionController?,
         actionRecords: [OpenBurnBarOperatingActionRecord],
-        cachedControllerRuntime: OpenBurnBarControllerRuntimeSnapshot?
+        cachedControllerRuntime: OpenBurnBarControllerRuntimeSnapshot?,
+        cachedRetrievalHealth: RetrievalSystemHealthSnapshot
     ) -> OpenBurnBarOperatingSnapshot {
         let searchService = SearchService.makeConversationSearchService(
             dataStore: dataStore,
@@ -25,10 +26,7 @@ enum OpenBurnBarOperatingComposer {
             rollupService: rollupService,
             refreshRollups: false
         )
-        let retrievalHealth = RetrievalHealthService(dataStore: dataStore).snapshot(
-            indexingEnabled: settingsManager.conversationIndexingEnabled,
-            sharedFeaturesAvailable: accountManager.isSignedIn
-        )
+        let retrievalHealth = cachedRetrievalHealth
 
         let recentConversations = searchService
             .recentConversations(limit: 120)

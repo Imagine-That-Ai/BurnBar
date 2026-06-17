@@ -15,6 +15,8 @@ import org.json.JSONObject
 
 private const val TOOL_ARGUMENT_PREVIEW_CHARS = 200
 
+// reason: dynamic localhost/private Hermes endpoints cannot use stable public certificate pins.
+@SuppressWarnings("java/android/missing-certificate-pinning")
 internal class PiServiceChatStreamSupport(
     private val client: OkHttpClient,
     private val messages: MutableStateFlow<List<PiChatMessage>>,

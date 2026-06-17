@@ -3,27 +3,27 @@ import GRDB
 import OpenBurnBarCore
 
 extension DataStore {
-    nonisolated func upsertSearchDocument(_ document: SearchDocumentRecord) throws {
-        try searchIndexStore.upsertDocument(document)
+    func upsertSearchDocument(_ document: SearchDocumentRecord) async throws {
+        try await actor.searchIndexStore.upsertDocument(document)
     }
 
-    nonisolated func fetchSearchDocuments(limit: Int = 500) throws -> [SearchDocumentRecord] {
-        try searchIndexStore.fetchDocuments(limit: limit)
+    func fetchSearchDocuments(limit: Int = 500) async throws -> [SearchDocumentRecord] {
+        try await actor.searchIndexStore.fetchDocuments(limit: limit)
     }
 
     /// Paginated document fetch using offset-based cursor.
-    nonisolated func fetchSearchDocuments(limit: Int, offset: Int) throws -> [SearchDocumentRecord] {
-        try searchIndexStore.fetchDocuments(limit: limit, offset: offset)
+    func fetchSearchDocuments(limit: Int, offset: Int) async throws -> [SearchDocumentRecord] {
+        try await actor.searchIndexStore.fetchDocuments(limit: limit, offset: offset)
     }
 
-    nonisolated func fetchSearchDocuments(
+    func fetchSearchDocuments(
         limit: Int = 500,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         sourceKinds: [SearchSourceKind]? = nil,
         dateRange: ClosedRange<Date>? = nil
-    ) throws -> [SearchDocumentRecord] {
-        try searchIndexStore.fetchDocuments(
+    ) async throws -> [SearchDocumentRecord] {
+        try await actor.searchIndexStore.fetchDocuments(
             limit: limit,
             provider: provider?.rawValue,
             projectName: projectName,
@@ -33,12 +33,12 @@ extension DataStore {
     }
 
     /// Paginated document fetch with filtering using offset-based cursor.
-    nonisolated func fetchSearchDocuments(
+    func fetchSearchDocuments(
         limit: Int,
         offset: Int,
         sourceKinds: [SearchSourceKind]?
-    ) throws -> [SearchDocumentRecord] {
-        try searchIndexStore.fetchDocuments(
+    ) async throws -> [SearchDocumentRecord] {
+        try await actor.searchIndexStore.fetchDocuments(
             limit: limit,
             offset: offset,
             provider: nil,
@@ -48,25 +48,25 @@ extension DataStore {
         )
     }
 
-    nonisolated func fetchSearchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
-        try searchIndexStore.fetchDocuments(ids: ids)
+    func fetchSearchDocuments(ids: [String]) async throws -> [SearchDocumentRecord] {
+        try await actor.searchIndexStore.fetchDocuments(ids: ids)
     }
 
-    nonisolated func fetchSearchDocument(id: String) throws -> SearchDocumentRecord? {
-        try searchIndexStore.fetchDocument(id: id)
+    func fetchSearchDocument(id: String) async throws -> SearchDocumentRecord? {
+        try await actor.searchIndexStore.fetchDocument(id: id)
     }
 
-    nonisolated func fetchSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
-        try searchIndexStore.fetchDocuments(sourceKind: sourceKind, sourceID: sourceID)
+    func fetchSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) async throws -> [SearchDocumentRecord] {
+        try await actor.searchIndexStore.fetchDocuments(sourceKind: sourceKind, sourceID: sourceID)
     }
 
-    nonisolated func countSearchDocuments(
+    func countSearchDocuments(
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         sourceKinds: [SearchSourceKind]? = nil,
         dateRange: ClosedRange<Date>? = nil
-    ) throws -> Int {
-        try searchIndexStore.countDocuments(
+    ) async throws -> Int {
+        try await actor.searchIndexStore.countDocuments(
             provider: provider?.rawValue,
             projectName: projectName,
             sourceKinds: sourceKinds,
@@ -74,48 +74,48 @@ extension DataStore {
         )
     }
 
-    nonisolated func countSearchChunks(
+    func countSearchChunks(
         sourceKinds: [SearchSourceKind]? = nil,
         dateRange: ClosedRange<Date>? = nil
-    ) throws -> Int {
-        try searchIndexStore.countChunks(sourceKinds: sourceKinds, dateRange: dateRange)
+    ) async throws -> Int {
+        try await actor.searchIndexStore.countChunks(sourceKinds: sourceKinds, dateRange: dateRange)
     }
 
-    nonisolated func countSearchChunks(documentID: String) throws -> Int {
-        try searchIndexStore.countChunks(documentID: documentID)
+    func countSearchChunks(documentID: String) async throws -> Int {
+        try await actor.searchIndexStore.countChunks(documentID: documentID)
     }
 
-    nonisolated func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
-        try searchIndexStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
+    func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws {
+        try await actor.searchIndexStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
     }
 
     /// Incrementally applies a chunk diff for a document.
     /// Compares new chunks against existing chunks by contentHash to minimize writes.
     /// Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-    nonisolated func applySearchChunkDiff(documentID: String, title: String, chunks: [SearchChunkRecord]) throws -> ChunkDiffResult {
-        try searchIndexStore.applyChunkDiff(documentID: documentID, title: title, newChunks: chunks)
+    func applySearchChunkDiff(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws -> ChunkDiffResult {
+        try await actor.searchIndexStore.applyChunkDiff(documentID: documentID, title: title, newChunks: chunks)
     }
 
     /// Fetches existing embeddings keyed by contentHash for a document.
     /// Returns a mapping of contentHash -> (chunkID, vectorBlob) for chunks
     /// that have embeddings for the given version.
-    nonisolated func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) throws -> [String: (chunkID: String, vectorBlob: Data)] {
-        try searchIndexStore.fetchEmbeddingByContentHash(documentID: documentID, embeddingVersionID: embeddingVersionID)
+    func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) async throws -> [String: (chunkID: String, vectorBlob: Data)] {
+        try await actor.searchIndexStore.fetchEmbeddingByContentHash(documentID: documentID, embeddingVersionID: embeddingVersionID)
     }
 
-    nonisolated func fetchSearchChunks(documentID: String) throws -> [SearchChunkRecord] {
-        try searchIndexStore.fetchChunks(documentID: documentID)
+    func fetchSearchChunks(documentID: String) async throws -> [SearchChunkRecord] {
+        try await actor.searchIndexStore.fetchChunks(documentID: documentID)
     }
 
-    nonisolated func fetchSearchChunks(ids: [String]) throws -> [SearchChunkRecord] {
-        try searchIndexStore.fetchChunks(ids: ids)
+    func fetchSearchChunks(ids: [String]) async throws -> [SearchChunkRecord] {
+        try await actor.searchIndexStore.fetchChunks(ids: ids)
     }
 
-    nonisolated func fetchSearchChunks(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchChunkRecord] {
-        try searchIndexStore.fetchChunks(sourceKind: sourceKind, sourceID: sourceID)
+    func fetchSearchChunks(sourceKind: SearchSourceKind, sourceID: String) async throws -> [SearchChunkRecord] {
+        try await actor.searchIndexStore.fetchChunks(sourceKind: sourceKind, sourceID: sourceID)
     }
 
-    nonisolated func searchLexicalChunks(
+    func searchLexicalChunks(
         ftsQuery: String,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
@@ -125,11 +125,11 @@ extension DataStore {
         sharedArtifactAccessContext: SharedArtifactAccessContext? = nil,
         sourceIDs: [String]? = nil,
         limit: Int = 120
-    ) throws -> [SearchChunkLexicalMatch] {
+    ) async throws -> [SearchChunkLexicalMatch] {
         let trimmed = ftsQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return [] }
 
-        return try searchIndexStore.searchLexicalChunks(
+        return try await actor.searchIndexStore.searchLexicalChunks(
             ftsQuery: trimmed,
             provider: provider?.rawValue,
             projectName: projectName,
@@ -142,18 +142,18 @@ extension DataStore {
         )
     }
 
-    nonisolated func deleteSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws {
-        try searchIndexStore.deleteDocuments(sourceKind: sourceKind, sourceID: sourceID)
+    func deleteSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) async throws {
+        try await actor.searchIndexStore.deleteDocuments(sourceKind: sourceKind, sourceID: sourceID)
     }
 
     /// Sums non-overlapping substring occurrence counts of each pattern in `conversations.fullText` (case-insensitive).
-    nonisolated func countOccurrencesInConversationFullText(
+    func countOccurrencesInConversationFullText(
         patterns: [String],
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
         conversationSources: Set<ConversationSourceType>? = nil
-    ) throws -> Int {
+    ) async throws -> Int {
         let cleaned = patterns
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -163,7 +163,7 @@ extension DataStore {
         for raw in cleaned {
             let pattern = raw.lowercased()
             guard pattern.isEmpty == false else { continue }
-            let count = try dbQueue.read { db -> Int in
+            let count = try await actor.dbQueue.read { db -> Int in
                 var sql = """
                 SELECT COALESCE(SUM(
                     (LENGTH(COALESCE(c.fullText,'')) - LENGTH(REPLACE(LOWER(COALESCE(c.fullText,'')), ?, ''))) / LENGTH(?)
@@ -203,14 +203,14 @@ extension DataStore {
         return total
     }
 
-    nonisolated func findConversationFullTextMatches(
+    func findConversationFullTextMatches(
         patterns: [String],
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
         conversationSources: Set<ConversationSourceType>? = nil,
         limit: Int = 12
-    ) throws -> [ConversationJumpTarget] {
+    ) async throws -> [ConversationJumpTarget] {
         let cleanedPatterns = Array(
             Set(
                 patterns
@@ -223,7 +223,7 @@ extension DataStore {
         guard cleanedPatterns.isEmpty == false else { return [] }
 
         // Phase 1: SQL prefilter — only materialise IDs for rows that actually contain a pattern.
-        let candidateIDs = try dbQueue.read { db -> [String] in
+        let candidateIDs = try await actor.dbQueue.read { db -> [String] in
             var instrConditions: [String] = []
             var args: [any DatabaseValueConvertible] = []
             for pattern in cleanedPatterns {
@@ -267,7 +267,7 @@ extension DataStore {
         guard !candidateIDs.isEmpty else { return [] }
 
         // Phase 2: Fetch full records only for the candidate IDs.
-        let conversations = try dbQueue.read { db -> [ConversationRecord] in
+        let conversations = try await actor.dbQueue.read { db -> [ConversationRecord] in
             let placeholders = Array(repeating: "?", count: candidateIDs.count).joined(separator: ", ")
             let sql = """
             SELECT * FROM conversations
@@ -323,12 +323,12 @@ extension DataStore {
         return results
     }
 
-    nonisolated func countOccurrencesInConversationFullTextByProvider(
+    func countOccurrencesInConversationFullTextByProvider(
         patterns: [String],
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
         conversationSources: Set<ConversationSourceType>? = nil
-    ) throws -> [ConversationProviderOccurrence] {
+    ) async throws -> [ConversationProviderOccurrence] {
         let cleanedPatterns = Array(
             Set(
                 patterns
@@ -339,7 +339,7 @@ extension DataStore {
         .sorted()
         guard cleanedPatterns.isEmpty == false else { return [] }
 
-        return try dbQueue.read { db -> [ConversationProviderOccurrence] in
+        return try await actor.dbQueue.read { db -> [ConversationProviderOccurrence] in
             var occurrenceExprs: [String] = []
             var instrConditions: [String] = []
             var args: [any DatabaseValueConvertible] = []
@@ -408,13 +408,13 @@ extension DataStore {
         }
     }
 
-    nonisolated func scanConversationFullTextForCredentialExposure(
+    func scanConversationFullTextForCredentialExposure(
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
         conversationSources: Set<ConversationSourceType>? = nil,
         limit: Int = 12
-    ) throws -> CredentialExposureScanResult {
+    ) async throws -> CredentialExposureScanResult {
         let boundedLimit = max(1, min(limit, 200))
         let regexes = Self.credentialExposureRegexes
         guard regexes.isEmpty == false else {
@@ -428,7 +428,7 @@ extension DataStore {
         var offset = 0
 
         while jumpTargets.count < boundedLimit {
-            let batch = try conversationStore.fetchTranscriptScanBatch(
+            let batch = try await actor.conversationStore.fetchTranscriptScanBatch(
                 provider: provider,
                 projectName: projectName,
                 dateRange: dateRange,
@@ -457,7 +457,7 @@ extension DataStore {
 
                         totalMatches += 1
                         if jumpTargets.count < boundedLimit {
-                            let conversation = try dbQueue.read { db -> ConversationRecord? in
+                            let conversation = try await actor.dbQueue.read { db -> ConversationRecord? in
                                 try ConversationStore.fetchConversationRow(db, id: item.id)
                             }
                             guard let conversation else { continue }
@@ -479,7 +479,7 @@ extension DataStore {
         return CredentialExposureScanResult(totalMatches: totalMatches, jumpTargets: jumpTargets)
     }
 
-    private static nonisolated func aggregateMatchSnippet(text: NSString, matchRange: NSRange, radius: Int = 120) -> String {
+    private static func aggregateMatchSnippet(text: NSString, matchRange: NSRange, radius: Int = 120) -> String {
         let start = max(0, matchRange.location - radius)
         let end = min(text.length, matchRange.location + matchRange.length + radius)
         let snippetRange = NSRange(location: start, length: max(0, end - start))
@@ -496,7 +496,7 @@ extension DataStore {
         return prefix + compact + suffix
     }
 
-    private static nonisolated let _credentialExposureRegexes: [NSRegularExpression]? = {
+    private static let _credentialExposureRegexes: [NSRegularExpression]? = {
         let patterns = [
             #"(?i)\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?TOKEN|TOKEN|SECRET|PASSWORD)\b\s*[:=]\s*["']?[A-Za-z0-9_\-./+=]{8,}"#,
             #"\bsk-[A-Za-z0-9]{16,}\b"#,
@@ -506,11 +506,11 @@ extension DataStore {
         return patterns.compactMap { try? NSRegularExpression(pattern: $0) } // try?-ok(literal regex compile)
     }()
 
-    private static nonisolated var credentialExposureRegexes: [NSRegularExpression] {
+    private static var credentialExposureRegexes: [NSRegularExpression] {
         _credentialExposureRegexes ?? []
     }
 
-    private static nonisolated func nonOverlappingOccurrenceCount(of pattern: String, in lowercasedText: String) -> Int {
+    private static func nonOverlappingOccurrenceCount(of pattern: String, in lowercasedText: String) -> Int {
         guard pattern.isEmpty == false, lowercasedText.isEmpty == false else { return 0 }
         var count = 0
         var searchStart = lowercasedText.startIndex
@@ -522,7 +522,7 @@ extension DataStore {
         return count
     }
 
-    private static nonisolated func looksLikePlaceholderCredential(_ text: String) -> Bool {
+    private static func looksLikePlaceholderCredential(_ text: String) -> Bool {
         let lower = text.lowercased()
         let placeholders = [
             "your-key", "your_key", "your key", "key-here", "placeholder",

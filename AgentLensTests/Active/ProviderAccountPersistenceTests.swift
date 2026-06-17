@@ -19,16 +19,16 @@ final class ProviderAccountPersistenceTests: XCTestCase {
             return rawValue
         }
     }
-    func test_migration_v35_createsProviderAccountAndUsageAttributionSchema() throws {
+    func test_migration_v35_createsProviderAccountAndUsageAttributionSchema() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
-        let tables = try queue.read { db in
+        let tables = try await queue.read { db in
             try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         XCTAssertTrue(tables.contains("provider_accounts"))
 
-        let usageColumns = try queue.read { db -> [String] in
+        let usageColumns = try await queue.read { db -> [String] in
             let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(token_usage)")
             return rows.compactMap { $0["name"] as? String }
         }
@@ -37,14 +37,14 @@ final class ProviderAccountPersistenceTests: XCTestCase {
         XCTAssertTrue(usageColumns.contains("providerAccountLabel"))
         XCTAssertTrue(usageColumns.contains("providerAccountSource"))
 
-        let indexes = try queue.read { db -> [String] in
+        let indexes = try await queue.read { db -> [String] in
             let rows = try Row.fetchAll(db, sql: "PRAGMA index_list(token_usage)")
             return rows.compactMap { $0["name"] as? String }
         }
         XCTAssertTrue(indexes.contains("token_usage_unique_session_model_device_account_idx"))
     }
 
-    func test_usageStore_preservesProviderAccountAttributionOnInsertAndFetch() throws {
+    func test_usageStore_preservesProviderAccountAttributionOnInsertAndFetch() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = UsageStore(dbQueue: queue)
@@ -54,24 +54,25 @@ final class ProviderAccountPersistenceTests: XCTestCase {
             label: "Work",
             source: .cloudRefreshable
         )
-        try store.insert(usage)
+        try await store.insert(usage)
 
-        let fetched = try XCTUnwrap(store.fetchAllUsage().first)
+        let rows = try await store.fetchAllUsage()
+        let fetched = try XCTUnwrap(rows.first)
         XCTAssertEqual(fetched.providerID, .openAI)
         XCTAssertEqual(fetched.providerAccountID, persistedProviderAccountID("openai_work"))
         XCTAssertEqual(fetched.providerAccountLabel, "Work")
         XCTAssertEqual(fetched.providerAccountSource, .cloudRefreshable)
     }
 
-    func test_usageStore_keepsSameProviderSessionSeparateByAccountID() throws {
+    func test_usageStore_keepsSameProviderSessionSeparateByAccountID() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = UsageStore(dbQueue: queue)
 
-        try store.insert(makeUsage(accountID: "openai_work", label: "Work", inputTokens: 100))
-        try store.insert(makeUsage(accountID: "openai_personal", label: "Personal", inputTokens: 200))
+        try await store.insert(makeUsage(accountID: "openai_work", label: "Work", inputTokens: 100))
+        try await store.insert(makeUsage(accountID: "openai_personal", label: "Personal", inputTokens: 200))
 
-        let rows = try queue.read { db in
+        let rows = try await queue.read { db in
             try Row.fetchAll(
                 db,
                 sql: """
@@ -93,7 +94,7 @@ final class ProviderAccountPersistenceTests: XCTestCase {
         )
     }
 
-    func test_insertRemoteUsage_preservesAccountFields() throws {
+    func test_insertRemoteUsage_preservesAccountFields() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = UsageStore(dbQueue: queue)
@@ -104,15 +105,16 @@ final class ProviderAccountPersistenceTests: XCTestCase {
             source: .serverPrivate,
             isRemote: true
         )
-        try store.insertRemoteUsage(usage)
+        try await store.insertRemoteUsage(usage)
 
-        let fetched = try XCTUnwrap(store.fetchAllUsage().first)
+        let rows = try await store.fetchAllUsage()
+        let fetched = try XCTUnwrap(rows.first)
         XCTAssertEqual(fetched.providerAccountID, persistedProviderAccountID("openai_client"))
         XCTAssertEqual(fetched.providerAccountLabel, "Client")
         XCTAssertEqual(fetched.providerAccountSource, .serverPrivate)
     }
 
-    func test_providerAccountStore_roundTripsMultipleAccountsForSameProvider() throws {
+    func test_providerAccountStore_roundTripsMultipleAccountsForSameProvider() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = ProviderAccountStore(dbQueue: queue)
@@ -120,43 +122,50 @@ final class ProviderAccountPersistenceTests: XCTestCase {
         let work = makeAccount(id: "openai_work", label: "Work", sortKey: 2)
         let personal = makeAccount(id: "openai_personal", label: "Personal", sortKey: 1)
 
-        try store.upsert(work)
-        try store.upsert(personal)
+        try await store.upsert(work)
+        try await store.upsert(personal)
 
-        let fetched = try store.fetchAll(providerID: .openAI)
+        let fetched = try await store.fetchAll(providerID: .openAI)
         XCTAssertEqual(fetched.map(\.id), ["openai_personal", "openai_work"])
-        XCTAssertEqual(try store.fetch(id: "openai_work")?.label, "Work")
-        XCTAssertEqual(try store.fetchAll(providerID: .claudeCode), [])
+        let workAccount = try await store.fetch(id: "openai_work")
+        XCTAssertEqual(workAccount?.label, "Work")
+        let claudeAccounts = try await store.fetchAll(providerID: .claudeCode)
+        XCTAssertEqual(claudeAccounts, [])
     }
 
-    func test_providerAccountStore_setDefaultIsScopedToProvider() throws {
+    func test_providerAccountStore_setDefaultIsScopedToProvider() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = ProviderAccountStore(dbQueue: queue)
 
-        try store.upsert(makeAccount(id: "openai_work", label: "Work", providerID: .openAI, isDefault: true))
-        try store.upsert(makeAccount(id: "openai_personal", label: "Personal", providerID: .openAI))
-        try store.upsert(makeAccount(id: "claude_default", label: "Claude", providerID: .claudeCode, isDefault: true))
+        try await store.upsert(makeAccount(id: "openai_work", label: "Work", providerID: .openAI, isDefault: true))
+        try await store.upsert(makeAccount(id: "openai_personal", label: "Personal", providerID: .openAI))
+        try await store.upsert(makeAccount(id: "claude_default", label: "Claude", providerID: .claudeCode, isDefault: true))
 
-        try store.setDefault(accountID: "openai_personal", providerID: .openAI)
+        try await store.setDefault(accountID: "openai_personal", providerID: .openAI)
 
-        XCTAssertEqual(try store.fetchDefault(providerID: .openAI)?.id, "openai_personal")
-        XCTAssertEqual(try store.fetchDefault(providerID: .claudeCode)?.id, "claude_default")
-        XCTAssertFalse(try XCTUnwrap(store.fetch(id: "openai_work")).isDefault)
+        let openAIDefault = try await store.fetchDefault(providerID: .openAI)
+        XCTAssertEqual(openAIDefault?.id, "openai_personal")
+        let claudeDefault = try await store.fetchDefault(providerID: .claudeCode)
+        XCTAssertEqual(claudeDefault?.id, "claude_default")
+        let workAccount = try await store.fetch(id: "openai_work")
+        XCTAssertFalse(try XCTUnwrap(workAccount).isDefault)
     }
 
-    func test_providerAccountStore_deleteRemovesOnlySelectedAccount() throws {
+    func test_providerAccountStore_deleteRemovesOnlySelectedAccount() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = ProviderAccountStore(dbQueue: queue)
 
-        try store.upsert(makeAccount(id: "openai_work", label: "Work"))
-        try store.upsert(makeAccount(id: "openai_personal", label: "Personal"))
+        try await store.upsert(makeAccount(id: "openai_work", label: "Work"))
+        try await store.upsert(makeAccount(id: "openai_personal", label: "Personal"))
 
-        try store.delete(id: "openai_work")
+        try await store.delete(id: "openai_work")
 
-        XCTAssertNil(try store.fetch(id: "openai_work"))
-        XCTAssertEqual(try store.fetchAll(providerID: .openAI).map(\.id), ["openai_personal"])
+        let deletedAccount = try await store.fetch(id: "openai_work")
+        XCTAssertNil(deletedAccount)
+        let openAIAccounts = try await store.fetchAll(providerID: .openAI)
+        XCTAssertEqual(openAIAccounts.map(\.id), ["openai_personal"])
     }
 
     private func makeUsage(

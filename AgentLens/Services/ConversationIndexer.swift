@@ -41,7 +41,7 @@ final class ConversationIndexer {
 
             try dataStore.upsertConversation(record)
             let jobType: ProjectionJobType = existingConversation == nil ? .project : .reproject
-            try dataStore.enqueueConversationProjectionJob(conversationID: record.id, jobType: jobType)
+            try await dataStore.enqueueConversationProjectionJob(conversationID: record.id, jobType: jobType)
             report.changedRecordCount += 1
             report.enqueuedProjectionJobCount += 1
 

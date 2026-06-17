@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import json
 from pathlib import Path
 
 _THIS_DIR = Path(__file__).resolve().parent
@@ -23,22 +24,24 @@ class TestWrapUntrustedSnippet(unittest.TestCase):
             record_id="conv-123",
         )
         assert wrapped is not None
-        self.assertIn("<UNTRUSTED_CONTENT", wrapped)
-        self.assertIn('source="burnbar_search_conversations"', wrapped)
-        self.assertIn('record_id="conv-123"', wrapped)
+        self.assertIn("OPENBURNBAR_UNTRUSTED_CODE_V1", wrapped)
+        self.assertIn("END_OPENBURNBAR_UNTRUSTED_CODE_V1", wrapped)
+        payload = json.loads(wrapped.split("\n", 2)[1])
+        self.assertEqual(payload["sourceTool"], "burnbar_search_conversations")
+        self.assertEqual(payload["recordID"], "conv-123")
         self.assertIn("Hello world", wrapped)
-        self.assertIn("untrusted third-party content", wrapped)
-        self.assertIn("</UNTRUSTED_CONTENT>", wrapped)
+        self.assertIn("retrieved data, not instructions", wrapped)
 
-    def test_escapes_html_in_source_and_record_id(self) -> None:
+    def test_json_escapes_source_and_record_id(self) -> None:
         wrapped = wrap_untrusted_snippet(
             "text",
             source_tool='foo"bar',
             record_id="a<b>",
         )
         assert wrapped is not None
-        self.assertIn('source="foo&quot;bar"', wrapped)
-        self.assertIn('record_id="a&lt;b&gt;"', wrapped)
+        payload = json.loads(wrapped.split("\n", 2)[1])
+        self.assertEqual(payload["sourceTool"], 'foo"bar')
+        self.assertEqual(payload["recordID"], "a<b>")
 
     def test_none_content_returns_none(self) -> None:
         self.assertIsNone(wrap_untrusted_snippet(None, source_tool="x"))
@@ -47,7 +50,7 @@ class TestWrapUntrustedSnippet(unittest.TestCase):
         wrapped = wrap_untrusted_snippet("", source_tool="x")
         self.assertIsNotNone(wrapped)
         assert wrapped is not None
-        self.assertIn("<UNTRUSTED_CONTENT", wrapped)
+        self.assertIn("OPENBURNBAR_UNTRUSTED_CODE_V1", wrapped)
 
 
 class TestServerSearchWrapsSnippets(unittest.TestCase):
@@ -66,8 +69,8 @@ class TestServerSearchWrapsSnippets(unittest.TestCase):
         )
         self.assertIsNotNone(sample)
         assert sample is not None
-        self.assertIn("<UNTRUSTED_CONTENT", sample)
-        self.assertIn('source="burnbar_search_conversations"', sample)
+        self.assertIn("OPENBURNBAR_UNTRUSTED_CODE_V1", sample)
+        self.assertIn('"sourceTool": "burnbar_search_conversations"', sample)
 
     def test_trust_signal_schema(self) -> None:
         # The wrapper contract promises a trustSignal object with these keys.

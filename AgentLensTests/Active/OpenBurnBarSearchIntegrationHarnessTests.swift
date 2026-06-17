@@ -55,7 +55,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         XCTAssertEqual(report.insertedArtifacts, 2)
         XCTAssertEqual(report.issues.count, 0)
 
-        let artifacts = try harness.dataStore.fetchSourceArtifacts(
+        let artifacts = try await harness.dataStore.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]
@@ -65,7 +65,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             artifacts.allSatisfy { $0.rootPath == harness.fileRoots.registeredProjectRootURL.path }
         )
 
-        let queuedJobs = try harness.dataStore.fetchProjectionJobs(statuses: [.queued], limit: 20)
+        let queuedJobs = try await harness.dataStore.fetchProjectionJobs(statuses: [.queued], limit: 20)
         XCTAssertEqual(queuedJobs.count, 2)
     }
 
@@ -87,13 +87,13 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         )
 
         try harness.dataStore.upsertConversation(conversation)
-        _ = try harness.dataStore.upsertSourceArtifact(skill)
-        _ = try harness.dataStore.upsertSourceArtifact(shared)
-        _ = try harness.grantSharedReadAccess(to: shared.id)
+        _ = try await harness.dataStore.upsertSourceArtifact(skill)
+        _ = try await harness.dataStore.upsertSourceArtifact(shared)
+        _ = try await harness.grantSharedReadAccess(to: shared.id)
 
-        _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
-        _ = try harness.enqueueArtifactProjection(skill, jobType: .project)
-        _ = try harness.enqueueArtifactProjection(shared, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
+        _ = try await harness.enqueueArtifactProjection(skill, jobType: .project)
+        _ = try await harness.enqueueArtifactProjection(shared, jobType: .project)
         let report = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 32,
@@ -134,15 +134,19 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         )
 
         try harness.dataStore.upsertConversation(conversation)
-        _ = try harness.dataStore.upsertSourceArtifact(activeArtifact)
-        _ = try harness.dataStore.upsertSourceArtifact(deletedArtifact)
-        XCTAssertTrue(try harness.dataStore.markSourceArtifactDeleted(id: deletedArtifact.id, deletedAt: harness.clock.now()))
+        _ = try await harness.dataStore.upsertSourceArtifact(activeArtifact)
+        _ = try await harness.dataStore.upsertSourceArtifact(deletedArtifact)
+        let markedDeleted = try await harness.dataStore.markSourceArtifactDeleted(
+            id: deletedArtifact.id,
+            deletedAt: harness.clock.now()
+        )
+        XCTAssertTrue(markedDeleted)
 
-        try harness.enqueueRebuild(reason: "harness-rebuild", priority: 1)
+        try await harness.enqueueRebuild(reason: "harness-rebuild", priority: 1)
         let rebuildSweep = try await harness.runProjectionSweep(maxJobs: 1, leaseOwner: "rebuild-harness-worker")
         XCTAssertEqual(rebuildSweep.completedJobs, 1)
 
-        let queued = try harness.dataStore.fetchProjectionJobs(statuses: [.queued], limit: 40)
+        let queued = try await harness.dataStore.fetchProjectionJobs(statuses: [.queued], limit: 40)
         XCTAssertTrue(
             queued.contains(where: {
                 $0.jobType == .reproject && $0.sourceKind == .conversation && $0.sourceID == conversation.id
@@ -165,12 +169,12 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         XCTAssertTrue(queued.contains(where: { $0.jobType == .reembed }))
     }
 
-    func test_degradedStateAssertions_detectSemanticFailures() throws {
+    func test_degradedStateAssertions_detectSemanticFailures() async throws {
         let harness = try OpenBurnBarSearchIntegrationHarness(name: "degraded-assertions")
         defer { harness.cleanup() }
 
         let now = harness.clock.now()
-        try harness.dataStore.upsertRetrievalHealth(
+        try await harness.dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .semantic,
                 status: .degraded,
@@ -182,11 +186,11 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             )
         )
 
-        try harness.assertDegraded(
+        try await harness.assertDegraded(
             subsystem: .semantic,
             errorCode: "SEMANTIC_EMBEDDING_INDEXING_FAILED"
         )
-        harness.assertDegradedModes(
+        await harness.assertDegradedModes(
             [.semanticUnavailable],
             indexingEnabled: true,
             sharedFeaturesAvailable: true
@@ -207,7 +211,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
                 )
             )
             try harness.dataStore.upsertConversation(conversation)
-            _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
+            _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         }
 
         let startedAt = monotonicNow()
@@ -224,11 +228,14 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(report.completedJobs, jobCount)
         XCTAssertLessThan(elapsedMs, maxElapsedMs)
         XCTAssertGreaterThanOrEqual(throughputJobsPerSecond, minThroughputJobsPerSecond)
-        XCTAssertTrue(
-            try harness.dataStore.fetchProjectionJobs(statuses: [.queued, .failed, .leased, .running], limit: 1).isEmpty
+        let activeProjectionJobs = try await harness.dataStore.fetchProjectionJobs(
+            statuses: [.queued, .failed, .leased, .running],
+            limit: 1
         )
+        XCTAssertTrue(activeProjectionJobs.isEmpty)
 
-        let projectionHealth = try XCTUnwrap(harness.retrievalHealthRecord(for: .projection))
+        let projectionHealthRecord = try await harness.retrievalHealthRecord(for: .projection)
+        let projectionHealth = try XCTUnwrap(projectionHealthRecord)
         let details = try XCTUnwrap(decodeJSONDictionary(projectionHealth.detailsJSON))
         let performance = try XCTUnwrap(details["performance"] as? [String: Any])
         XCTAssertNotNil(doubleValue(from: performance["sweepDurationMs"]))
@@ -250,7 +257,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
                 """
             )
             try harness.dataStore.upsertConversation(conversation)
-            _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
+            _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         }
 
         for index in 0..<90 {
@@ -264,8 +271,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
                 \(String(repeating: "semantic candidate and lexical fallback validation. ", count: 30))
                 """
             )
-            _ = try harness.dataStore.upsertSourceArtifact(artifact)
-            _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
+            _ = try await harness.dataStore.upsertSourceArtifact(artifact)
+            _ = try await harness.enqueueArtifactProjection(artifact, jobType: .project)
         }
 
         _ = try await harness.drainProjectionQueue(maxSweeps: 24, maxJobsPerSweep: 96, advanceClockBy: 1)
@@ -302,7 +309,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         let p95LatencyMs = percentile(95, in: latencies)
         XCTAssertLessThan(p95LatencyMs, 900)
 
-        let lexicalHealth = try XCTUnwrap(harness.retrievalHealthRecord(for: .lexical))
+        let lexicalHealthRecord = try await harness.retrievalHealthRecord(for: .lexical)
+        let lexicalHealth = try XCTUnwrap(lexicalHealthRecord)
         let lexicalDetails = try XCTUnwrap(decodeJSONDictionary(lexicalHealth.detailsJSON))
         XCTAssertNotNil(doubleValue(from: lexicalDetails["totalQueryLatencyMs"]))
         XCTAssertNotNil(doubleValue(from: lexicalDetails["lexicalQueryLatencyMs"]))
@@ -323,8 +331,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
                     ? "reliability hardening checklist rollout runbook \(index) \(String(repeating: "focus term ", count: 20))"
                     : "generic indexing payload \(index) \(String(repeating: "background term ", count: 20))"
             )
-            _ = try harness.dataStore.upsertSourceArtifact(artifact)
-            _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
+            _ = try await harness.dataStore.upsertSourceArtifact(artifact)
+            _ = try await harness.enqueueArtifactProjection(artifact, jobType: .project)
         }
         _ = try await harness.drainProjectionQueue(maxSweeps: 24, maxJobsPerSweep: 96, advanceClockBy: 1)
 
@@ -357,7 +365,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         let annElapsedMs = elapsedMilliseconds(since: annStartedAt)
         XCTAssertFalse(annCandidates.isEmpty)
 
-        let semanticHealth = try XCTUnwrap(harness.retrievalHealthRecord(for: .semantic))
+        let semanticHealthRecord = try await harness.retrievalHealthRecord(for: .semantic)
+        let semanticHealth = try XCTUnwrap(semanticHealthRecord)
         let semanticDetails = try XCTUnwrap(decodeJSONDictionary(semanticHealth.detailsJSON))
         XCTAssertFalse(boolValue(from: semanticDetails["fallbackToExact"]) ?? true)
         XCTAssertLessThanOrEqual(intValue(from: semanticDetails["candidateCount"]) ?? Int.max, 24)
@@ -408,9 +417,9 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
 
         let residentBefore = residentMemoryBytes()
         try harness.dataStore.upsertConversation(longConversation)
-        _ = try harness.dataStore.upsertSourceArtifact(longArtifact)
-        _ = try harness.enqueueConversationProjection(conversationID: longConversation.id, jobType: .project)
-        _ = try harness.enqueueArtifactProjection(longArtifact, jobType: .project)
+        _ = try await harness.dataStore.upsertSourceArtifact(longArtifact)
+        _ = try await harness.enqueueConversationProjection(conversationID: longConversation.id, jobType: .project)
+        _ = try await harness.enqueueArtifactProjection(longArtifact, jobType: .project)
         _ = try await harness.drainProjectionQueue(maxSweeps: 20, maxJobsPerSweep: 64, advanceClockBy: 1)
 
         let retrieval = harness.makeSearchService(semanticEnabled: true)
@@ -428,12 +437,12 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             XCTAssertLessThan(Double(residentAfter - residentBefore), 220 * 1_024 * 1_024)
         }
 
-        let documents = try harness.dataStore.fetchSearchDocuments(limit: 100)
+        let documents = try await harness.dataStore.fetchSearchDocuments(limit: 100)
         let conversationDocument = try XCTUnwrap(documents.first(where: { $0.sourceID == longConversation.id }))
         let artifactDocument = try XCTUnwrap(documents.first(where: { $0.sourceID == longArtifact.id }))
 
-        let conversationChunks = try harness.dataStore.fetchSearchChunks(documentID: conversationDocument.id)
-        let artifactChunks = try harness.dataStore.fetchSearchChunks(documentID: artifactDocument.id)
+        let conversationChunks = try await harness.dataStore.fetchSearchChunks(documentID: conversationDocument.id)
+        let artifactChunks = try await harness.dataStore.fetchSearchChunks(documentID: artifactDocument.id)
         XCTAssertFalse(conversationChunks.isEmpty)
         XCTAssertFalse(artifactChunks.isEmpty)
         XCTAssertLessThanOrEqual(conversationChunks.count, 400)
@@ -487,12 +496,12 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
 
         try harness.dataStore.upsertConversation(recentConversation)
         try harness.dataStore.upsertConversation(oldConversation)
-        try harness.dataStore.enqueueConversationProjectionJob(
+        try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: recentConversation.id,
             jobType: .project,
             now: base
         )
-        try harness.dataStore.enqueueConversationProjectionJob(
+        try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: oldConversation.id,
             jobType: .project,
             now: base
@@ -506,7 +515,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
                 calendar: .current
             )
         )
-        let directCount = try harness.dataStore.countOccurrencesInConversationFullText(
+        let directCount = try await harness.dataStore.countOccurrencesInConversationFullText(
             patterns: ["fuck"],
             dateRange: lastWeek
         )

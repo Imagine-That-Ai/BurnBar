@@ -491,11 +491,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
                 try await self.latestReplySender?(frame)
             }
         )
-        phoneReceiverInstance.attestationRequirementProvider = {
-            let strict = await MainActor.run {
-                SettingsManager.shared.computerUsePhoneControlAttestationRequired
-            }
-            return await MacAppCheckAttestationReader.attestationRequirement(strictMode: strict)
+        phoneReceiverInstance.attestationRequirementProvider = { [weak self] in
+            guard let self else { return .none }
+            return await self.phoneControlAttestationRequirement()
         }
         phoneReceiver = phoneReceiverInstance
 
