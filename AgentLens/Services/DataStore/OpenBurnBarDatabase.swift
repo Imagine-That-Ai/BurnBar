@@ -12,8 +12,6 @@ import OpenBurnBarCore
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
 final class OpenBurnBarDatabase: Sendable {
-    static let legacyChatThreadID = "openburnbar-chat-legacy"
-
     /// The identifier of the last registered migration, derived from the migrator
     /// so the backup gate always tracks the newest schema and self-heals on every
     /// future migration. Hardcoding this previously pinned it to a stale "v45",
@@ -25,19 +23,6 @@ final class OpenBurnBarDatabase: Sendable {
 
     init(databaseQueue: any DatabaseWriter) {
         self.dbQueue = databaseQueue
-    }
-
-    /// Post-open WAL mode configuration (idempotent).
-    /// WAL is automatically enabled by GRDB's DatabasePool, but we explicitly
-    /// tune the checkpoint threshold for our workload.
-    static func configureWALMode(_ dbQueue: any DatabaseWriter) throws {
-        try dbQueue.write { db in
-            try db.execute(sql: "PRAGMA journal_mode = WAL")
-            try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
-        }
-        try dbQueue.writeWithoutTransaction { db in
-            try db.execute(sql: "PRAGMA synchronous = NORMAL")
-        }
     }
 
     /// Run all registered migrations in order.
