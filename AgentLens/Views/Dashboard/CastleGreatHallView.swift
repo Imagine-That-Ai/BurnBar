@@ -104,7 +104,7 @@ struct CastleGreatHallView: View {
                 metricsRow
                 workerGrid
                 failureStrip
-                if allFailed, let onRetry {
+                if allFailed, onRetry != nil {
                     retryBar
                 }
             }
@@ -284,32 +284,6 @@ struct CastleGreatHallView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DesignSystem.Colors.surfaceElevated.opacity(0.52)))
         .accessibilityLabel("Loading Wand worker status")
-    }
-
-    @ViewBuilder
-    private var retryBar: some View {
-        if let onRetry {
-            HStack(spacing: 10) {
-                Image(systemName: "arrow.clockwise.circle.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.amber)
-                    .accessibilityHidden(true)
-                Text("All workers failed. Retry the cast to try again.")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                Spacer(minLength: 0)
-                Button("Retry") {
-                    onRetry()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(DesignSystem.Colors.amber)
-                .accessibilityLabel("Retry Wand cast")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DesignSystem.Colors.amber.opacity(0.08)))
-        }
     }
 
     private var loadingState: some View {

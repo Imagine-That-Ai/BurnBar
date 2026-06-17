@@ -1328,7 +1328,7 @@ struct SessionLogsView: View {
         do {
             switch dataSource {
             case .local:
-                let messages = try dataStore.fetchChatMessages()
+                let messages = try await dataStore.fetchChatMessages()
                 if !messages.isEmpty { try await dataStore.upsertCLIConversation(from: messages) }
                 allLogs = try await dataStore.fetchSessionLogSummaries()
 

@@ -47,6 +47,8 @@ private enum ProjectCodeSecretScanner {
     }
 
     private static let unavailableLabel = "Secret scanner corpus unavailable"
+    private static let corpusFileName = "secret-pattern-corpus.json"
+    private static let installedResourceDirectoryName = "ProjectCodeMemory"
     private static let corpus = loadCorpus()
     private static let base64CandidateRegex = try? NSRegularExpression(
         pattern: #"(?<![A-Za-z0-9+/=])(?:[A-Za-z0-9+/]{32,}={0,2})(?![A-Za-z0-9+/=])"#
@@ -111,27 +113,28 @@ private enum ProjectCodeSecretScanner {
     }
 
     private static func corpusURL() -> URL? {
-        var bases: [URL] = []
         if let explicit = ProcessInfo.processInfo.environment["OPENBURNBAR_CODE_SECRET_CORPUS_PATH"], explicit.isEmpty == false {
             let url = URL(fileURLWithPath: NSString(string: explicit).expandingTildeInPath)
             if FileManager.default.fileExists(atPath: url.path) {
                 return url
             }
         }
+
+        var bases: [URL] = []
         bases.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true))
+        if let resourceURL = Bundle.main.resourceURL {
+            bases.append(resourceURL)
+        }
         if let executableURL = Bundle.main.executableURL {
             bases.append(executableURL.deletingLastPathComponent())
         }
         bases.append(Bundle.main.bundleURL)
+        bases.append(URL(fileURLWithPath: #filePath, isDirectory: false).deletingLastPathComponent())
 
         for base in bases {
             var cursor = base.standardizedFileURL
             for _ in 0..<8 {
-                let candidate = cursor
-                    .appendingPathComponent("tools", isDirectory: true)
-                    .appendingPathComponent("project-code-memory", isDirectory: true)
-                    .appendingPathComponent("secret-pattern-corpus.json", isDirectory: false)
-                if FileManager.default.fileExists(atPath: candidate.path) {
+                for candidate in corpusCandidates(under: cursor) where FileManager.default.fileExists(atPath: candidate.path) {
                     return candidate
                 }
                 let parent = cursor.deletingLastPathComponent()
@@ -142,6 +145,28 @@ private enum ProjectCodeSecretScanner {
             }
         }
         return nil
+    }
+
+    private static func corpusCandidates(under base: URL) -> [URL] {
+        [
+            base.appendingPathComponent(corpusFileName, isDirectory: false),
+            base
+                .appendingPathComponent(installedResourceDirectoryName, isDirectory: true)
+                .appendingPathComponent(corpusFileName, isDirectory: false),
+            base
+                .appendingPathComponent("Resources", isDirectory: true)
+                .appendingPathComponent(installedResourceDirectoryName, isDirectory: true)
+                .appendingPathComponent(corpusFileName, isDirectory: false),
+            base
+                .appendingPathComponent("Contents", isDirectory: true)
+                .appendingPathComponent("Resources", isDirectory: true)
+                .appendingPathComponent(installedResourceDirectoryName, isDirectory: true)
+                .appendingPathComponent(corpusFileName, isDirectory: false),
+            base
+                .appendingPathComponent("tools", isDirectory: true)
+                .appendingPathComponent("project-code-memory", isDirectory: true)
+                .appendingPathComponent(corpusFileName, isDirectory: false)
+        ]
     }
 
     private static func scanViews(for text: String) -> [String] {
@@ -887,6 +912,24 @@ extension BurnBarProjectCodeMemoryStore {
             return "\"\(query.replacingOccurrences(of: "\"", with: "\"\""))\""
         }
         return tokens.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: " OR ")
+    }
+
+    static func isExactIdentifierSearchIntent(_ query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+        let tokens = trimmed
+            .split { !$0.isLetter && !$0.isNumber && $0 != "_" }
+            .map(String.init)
+            .filter { $0.isEmpty == false }
+        guard tokens.count == 1, tokens[0] == trimmed else { return false }
+        let token = tokens[0]
+        if token.contains("_") || token.rangeOfCharacter(from: .decimalDigits) != nil {
+            return true
+        }
+        let scalars = Array(token.unicodeScalars)
+        let hasLowercase = scalars.contains { CharacterSet.lowercaseLetters.contains($0) }
+        let hasUppercase = scalars.contains { CharacterSet.uppercaseLetters.contains($0) }
+        return (hasLowercase && hasUppercase) || token.count >= 12
     }
 
     static func identifierTokens(in line: String) -> Set<String> {

@@ -211,6 +211,24 @@ targets:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputExecution
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarVirtualHIDBridge
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog
+      - name: Bundle Project Code Memory Resources
+        script: |
+          set -euo pipefail
+          SOURCE="${PROJECT_DIR}/tools/project-code-memory/secret-pattern-corpus.json"
+          DEST_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ProjectCodeMemory"
+          DEST="${DEST_DIR}/secret-pattern-corpus.json"
+
+          if [[ ! -f "${SOURCE}" ]]; then
+            echo "error: missing Project Code Memory secret-scanner corpus at ${SOURCE}" >&2
+            exit 1
+          fi
+
+          mkdir -p "${DEST_DIR}"
+          cp "${SOURCE}" "${DEST}"
+        inputFiles:
+          - $(PROJECT_DIR)/tools/project-code-memory/secret-pattern-corpus.json
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ProjectCodeMemory/secret-pattern-corpus.json
     dependencies:
       - target: OpenBurnBarDaemonExecutable
         link: false
@@ -496,6 +514,8 @@ targets:
     platform: macOS
     sources:
       - path: OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests
+      - path: tools/project-code-memory/secret-pattern-corpus.json
+        buildPhase: resources
     settings:
       base:
         SWIFT_VERSION: "5.10"

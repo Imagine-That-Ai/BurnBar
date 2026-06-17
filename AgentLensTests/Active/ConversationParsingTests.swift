@@ -218,7 +218,7 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: base,
             fileModifiedAt: base
         )
-        try store.upsertConversation(original)
+        try await store.upsertConversation(original)
         try await store.markConversationSummaryAttempt(id: id, attemptedAt: base.addingTimeInterval(10))
 
         let updated = makeFactoryConversationRecord(

@@ -1,6 +1,5 @@
 import CoreServices
 import CryptoKit
-import CoreServices
 import Darwin
 import Foundation
 import OpenBurnBarCore
@@ -498,10 +497,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
 
                 try execute("DELETE FROM code_call_edges WHERE project_id = ?", [.text(projectID)])
                 try execute("DELETE FROM code_references WHERE project_id = ?", [.text(projectID)])
-                try execute("DELETE FROM code_symbols WHERE project_id = ?", [.text(projectID)])
-                try execute("DELETE FROM code_chunk_embeddings WHERE project_id = ?", [.text(projectID)])
-                try execute("DELETE FROM code_artifacts WHERE project_id = ?", [.text(projectID)])
 
+                var seenArtifactIDs = Set<String>()
                 // Age-aware budget eviction: index newest-first so a project larger than
                 // its storage budget keeps the most-recently-modified (most relevant)
                 // files and the over-budget rejections are the oldest — deterministic,
@@ -2317,6 +2314,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 .map { $0.string(0) }
             for chunkID in chunkIDs {
                 try execute("DELETE FROM chunk_embeddings WHERE chunkID = ?", [.text(chunkID)])
+                try execute("DELETE FROM code_chunk_embeddings WHERE chunk_id = ?", [.text(chunkID)])
             }
             try execute("DELETE FROM search_chunks_fts WHERE documentID = ?", [.text(docID)])
             try execute("DELETE FROM search_chunks WHERE documentID = ?", [.text(docID)])
@@ -2639,7 +2637,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             // has room to reorder lexical (BM25) and semantic (cosine) hits.
             let pool = min(200, max(capped * 5, capped))
             let lexicalIDs = try self.lexicalCodeChunkIDs(query: trimmed, projectID: projectID, limit: pool)
-            let semanticIDs = try self.semanticCodeChunkIDs(query: trimmed, projectID: projectID, limit: pool)
+            let semanticIDs = Self.isExactIdentifierSearchIntent(trimmed)
+                ? []
+                : try self.semanticCodeChunkIDs(query: trimmed, projectID: projectID, limit: pool)
             // Hybrid when both retrievers return; lexical-only when embeddings are
             // unavailable so search never regresses below the keyword baseline.
             let fusedIDs = semanticIDs.isEmpty
@@ -2713,15 +2713,22 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
 
     /// Resolve fused chunk ids to hits, preserving fused order, dropping rows whose file no
     /// longer matches the indexed blob (stale), up to `limit`.
-    private func resolveCodeHits(chunkIDs: [String], root: URL, projectID: String, query: String, limit: Int) throws -> [BurnBarProjectCodeSearchHit] {
-        guard chunkIDs.isEmpty == false else { return [] }
+    private func resolveCodeHits(chunkIDs: [String], root: URL, projectID: String, query: String, limit: Int) throws -> CodeSearchEvaluation {
+        guard chunkIDs.isEmpty == false else {
+            return CodeSearchEvaluation(
+                hits: [],
+                staleCandidateCount: 0,
+                totalCandidateCount: 0,
+                degradation: nil
+            )
+        }
         let placeholders = chunkIDs.map { _ in "?" }.joined(separator: ",")
         var binds: [SQLiteBind] = chunkIDs.map { .text($0) }
         binds.append(.text(Self.codeSourceKind))
         binds.append(.text(projectID))
         let rows = try queryRows(
             """
-            SELECT c.id, a.file_path, a.blob_sha, c.text
+            SELECT c.id, a.file_path, a.blob_sha, c.contentHash, c.text
             FROM search_chunks c
             JOIN search_documents d ON d.id = c.documentID
             JOIN code_artifacts a ON a.id = d.sourceID
@@ -2731,25 +2738,54 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             """,
             binds
         )
-        var byID: [String: (filePath: String, blobSHA: String, text: String)] = [:]
+        var byID: [String: (filePath: String, blobSHA: String, contentHash: String?, text: String)] = [:]
         for row in rows {
-            byID[row.string(0)] = (row.string(1), row.string(2), row.string(3))
+            byID[row.string(0)] = (row.string(1), row.string(2), row.optionalString(3), row.string(4))
         }
         var hits: [BurnBarProjectCodeSearchHit] = []
-        for chunkID in chunkIDs {
-            guard let meta = byID[chunkID],
-                  Self.isCurrentBlob(root: root, filePath: meta.filePath, blobSHA: meta.blobSHA) else { continue }
-            hits.append(
-                BurnBarProjectCodeSearchHit(
-                    chunkID: chunkID,
+        var staleCount = 0
+        for (fusedRank, chunkID) in chunkIDs.enumerated() {
+            guard let meta = byID[chunkID] else { continue }
+            guard Self.isCurrentBlob(root: root, filePath: meta.filePath, blobSHA: meta.blobSHA) else {
+                staleCount += 1
+                continue
+            }
+            if hits.count < limit {
+                let wrapped = Self.wrapUntrustedCode(
+                    Self.codeSnippet(text: meta.text, query: query),
+                    sourceTool: "daemon.code.search",
+                    projectID: projectID,
                     filePath: meta.filePath,
-                    snippet: Self.codeSnippet(text: meta.text, query: query),
-                    rank: Double(hits.count)
+                    chunkID: chunkID,
+                    blobSHA: meta.blobSHA,
+                    contentHash: meta.contentHash
                 )
-            )
-            if hits.count >= limit { break }
+                hits.append(
+                    BurnBarProjectCodeSearchHit(
+                        chunkID: chunkID,
+                        filePath: meta.filePath,
+                        snippet: wrapped,
+                        rank: Double(fusedRank),
+                        rankFeatures: [
+                            "fusedRank": Double(fusedRank),
+                            "candidatePool": Double(chunkIDs.count)
+                        ],
+                        blobSHA: meta.blobSHA,
+                        contentHash: meta.contentHash
+                    )
+                )
+            }
         }
-        return hits
+        return CodeSearchEvaluation(
+            hits: hits,
+            staleCandidateCount: staleCount,
+            totalCandidateCount: rows.count,
+            degradation: try staleDegradation(
+                projectID: projectID,
+                staleCandidateCount: staleCount,
+                totalCandidateCount: rows.count
+            )
+        )
     }
 
     /// A short snippet windowed around the first query-token match, else the text head.
@@ -3186,22 +3222,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
 
         guard stableParts.isEmpty == false else { return "path:\(canonicalPath)" }
         return "git:" + stableParts.sorted().joined(separator: "|")
-    }
-
-    static func gitOutput(root: URL, arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git", "-C", root.path] + arguments
-        let input = Pipe()
-        let output = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = Pipe()
-        guard runHelperProcess(process, input: input, payload: Data()) else { return nil }
-        guard process.terminationStatus == 0 else { return nil }
-        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nonEmpty
     }
 
     private static func normalizedStorageBudgetBytes(_ requested: Int?) -> Int {

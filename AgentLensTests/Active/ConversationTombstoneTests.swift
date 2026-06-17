@@ -75,24 +75,29 @@ final class ConversationTombstoneTests: XCTestCase {
         // Mark it synced so we can prove the soft-delete re-dirties it for upload.
         try await dataStore.markConversationsSynced(ids: [id])
 
-        XCTAssertNotNil(try dataStore.fetchConversation(id: id))
-        XCTAssertEqual(try dataStore.fetchConversations().count, 1)
+        let liveConversation = try await dataStore.fetchConversation(id: id)
+        let liveConversations = try await dataStore.fetchConversations()
+        XCTAssertNotNil(liveConversation)
+        XCTAssertEqual(liveConversations.count, 1)
         let liveConversationCount = try await dataStore.countConversations()
         XCTAssertEqual(liveConversationCount, 1)
 
         try await dataStore.softDeleteConversation(id: id)
 
         // Every user-facing read now treats it as absent.
-        XCTAssertNil(try dataStore.fetchConversation(id: id), "Soft-deleted conversation must read as absent by id.")
-        XCTAssertTrue(try dataStore.fetchConversations().isEmpty, "Soft-deleted conversation must drop out of list reads.")
+        let visibleConversation = try await dataStore.fetchConversation(id: id)
+        let visibleConversations = try await dataStore.fetchConversations()
+        XCTAssertNil(visibleConversation, "Soft-deleted conversation must read as absent by id.")
+        XCTAssertTrue(visibleConversations.isEmpty, "Soft-deleted conversation must drop out of list reads.")
         let visibleConversationCount = try await dataStore.countConversations()
         let visibleSessionSummaries = try await dataStore.fetchSessionLogSummaries()
         let visibleSessionLogs = try await dataStore.fetchAllSessionLogs()
         XCTAssertEqual(visibleConversationCount, 0)
         XCTAssertTrue(visibleSessionSummaries.isEmpty)
         XCTAssertTrue(visibleSessionLogs.isEmpty)
+        let batchVisibleConversations = try await dataStore.fetchConversations(ids: [id])
         XCTAssertEqual(
-            try dataStore.fetchConversations(ids: [id]).count, 0,
+            batchVisibleConversations.count, 0,
             "Batch id fetch must exclude tombstones."
         )
 
@@ -123,7 +128,7 @@ final class ConversationTombstoneTests: XCTestCase {
 
     func test_softDelete_payloadEmitsDeletedAtAndVersion() async throws {
         let id = "conv-upload-tombstone"
-        try dataStore.upsertConversation(makeRecord(id: id))
+        try await dataStore.upsertConversation(makeRecord(id: id))
         try await dataStore.softDeleteConversation(id: id)
 
         let sync = ConversationSyncService(context: context, vaultKeyProvider: TestConversationVaultKeyProvider())

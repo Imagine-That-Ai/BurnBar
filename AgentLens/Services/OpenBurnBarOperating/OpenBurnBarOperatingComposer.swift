@@ -28,7 +28,7 @@ enum OpenBurnBarOperatingComposer {
         )
         let retrievalHealth = cachedRetrievalHealth
 
-        let recentProviderConversations = recentConversations
+        let recentProviderConversations = fetchRecentConversationsSynchronously(from: dataStore, limit: 120)
             .filter { $0.sourceType == .providerLog }
         let focus = selectProjectFocus(
             conversations: recentProviderConversations,
@@ -173,6 +173,16 @@ enum OpenBurnBarOperatingComposer {
         }
 
         return state
+    }
+
+    private static func fetchRecentConversationsSynchronously(from dataStore: DataStore, limit: Int) -> [ConversationRecord] {
+        let bounded = max(1, min(limit, 1_000))
+        do {
+            return try dataStore.fetchConversationsSynchronously(limit: bounded)
+        } catch {
+            AppLogger.search.silentFailure("operating_composer_recent_conversations_fetch_failed", error: error)
+            return []
+        }
     }
 
     private static func historyEntries(

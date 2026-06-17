@@ -11,7 +11,7 @@ extension ProjectionPipelineService {
 
         switch sourceKind {
         case .conversation:
-            guard let conversation = try dataStore.fetchConversation(id: sourceID) else {
+            guard let conversation = try await dataStore.fetchConversation(id: sourceID) else {
                 try await dataStore.deleteSearchDocuments(sourceKind: .conversation, sourceID: sourceID)
                 return
             }

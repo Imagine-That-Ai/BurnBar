@@ -51,7 +51,7 @@ actor DataStoreActor {
     // MARK: - Search / Retrieval
 
     func fetchConversations(limit: Int = 500) async throws -> [ConversationRecord] {
-        try conversationStore.fetchConversations(limit: limit)
+        try await conversationStore.fetchConversations(limit: limit)
     }
 
     func updateConversationSummary(

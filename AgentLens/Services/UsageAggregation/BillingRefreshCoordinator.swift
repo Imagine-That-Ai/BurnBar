@@ -78,7 +78,7 @@ enum BillingRefreshCoordinator {
         // VAL-CROSS-011: Use canonical multi-source baseline from database, not just parser output.
         let canonicalBaseline: [TokenUsage]
         do {
-            canonicalBaseline = try await dataStoreActor.usageStore.fetchAllUsage()
+            canonicalBaseline = try await fetchCanonicalUsage()
         } catch {
             canonicalBaseline = allParsedUsages
             result.errors.append("Failed to fetch canonical usage baseline: \(error.localizedDescription)")

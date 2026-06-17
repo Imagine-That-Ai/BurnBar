@@ -239,7 +239,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: "Embedding lineage test for hybrid retrieval indexing.",
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await service.runSweep(maxJobs: 20)
 
@@ -284,7 +284,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: "Re-embed this conversation into the new embedding version.",
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await serviceV1.runSweep(maxJobs: 20)
 
@@ -468,7 +468,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Confirm non-stale documents were NOT rewritten
         let nonStale1Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv1.id).first
-        let nonStale1Record = try store.fetchConversation(id: nonStaleConv1.id)
+        let nonStale1Record = try await store.fetchConversation(id: nonStaleConv1.id)
         XCTAssertNotNil(nonStale1Record)
         XCTAssertEqual(
             nonStale1Doc?.contentHash,
@@ -477,7 +477,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         let nonStale2Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv2.id).first
-        let nonStale2Record = try store.fetchConversation(id: nonStaleConv2.id)
+        let nonStale2Record = try await store.fetchConversation(id: nonStaleConv2.id)
         XCTAssertNotNil(nonStale2Record)
         XCTAssertEqual(
             nonStale2Doc?.contentHash,
@@ -614,7 +614,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: String(repeating: "This is a test sentence for chunking. ", count: 80),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain initial projection
@@ -741,7 +741,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         // Create a conversation with enough text to produce multiple chunks
         let longText = String(repeating: "Line of conversation text that will be chunked. ", count: 100)
         let conversation = makeConversation(id: "conv-partial", fullText: longText, indexedAt: base)
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
@@ -843,7 +843,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: String(repeating: "Embedding reuse test content. ", count: 60),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
@@ -957,7 +957,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: String(repeating: "Test content for embedding impact verification. ", count: 80),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
@@ -1158,7 +1158,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Documents for conv1 and conv3 should remain unchanged
         let conv1Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv1.id).first
-        let conv1Record = try store.fetchConversation(id: conv1.id)
+        let conv1Record = try await store.fetchConversation(id: conv1.id)
         XCTAssertNotNil(conv1Doc)
         XCTAssertEqual(
             conv1Doc?.contentHash,
@@ -1167,7 +1167,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         let conv3Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv3.id).first
-        let conv3Record = try store.fetchConversation(id: conv3.id)
+        let conv3Record = try await store.fetchConversation(id: conv3.id)
         XCTAssertNotNil(conv3Doc)
         XCTAssertEqual(
             conv3Doc?.contentHash,
@@ -1197,7 +1197,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: String(repeating: "Original text content for stale version test. ", count: 40),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain all jobs including backfill rebuild
@@ -1455,7 +1455,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
                 fullText: String(repeating: "Conversation \(i) reembed pagination content. ", count: 30),
                 indexedAt: base
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
@@ -1523,7 +1523,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: "Lexical continuity test — this text should be searchable even when embedding fails.",
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Sweep should complete (embedding failure is non-fatal for project jobs, strict=false)
@@ -1588,7 +1588,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             fullText: "Original remote content for reprojection test.",
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain initial projection including backfill rebuild
@@ -1707,7 +1707,7 @@ extension ProjectionPipelineServiceTests {
                 fullText: "Original content for conversation \(i).",
                 indexedAt: base
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
@@ -1770,7 +1770,7 @@ extension ProjectionPipelineServiceTests {
         // Verify each stale conversation's document hash was updated
         for staleID in staleIDs {
             let doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
-            let conv = try store.fetchConversation(id: staleID)
+            let conv = try await store.fetchConversation(id: staleID)
             XCTAssertNotNil(doc, "Document should exist for stale conversation \(staleID).")
             XCTAssertNotNil(conv, "Conversation should exist for stale conversation \(staleID).")
             XCTAssertEqual(
@@ -1810,7 +1810,7 @@ extension ProjectionPipelineServiceTests {
                 fullText: "Deterministic content \(i).",
                 indexedAt: base
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
@@ -2028,7 +2028,7 @@ extension ProjectionPipelineServiceTests {
             summaryModel: nil,
             sourceType: convStale.sourceType
         )
-        try store.upsertConversation(updatedStale)
+        try await store.upsertConversation(updatedStale)
         try await store.deleteConversation(id: convMissing.id)
 
         let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
@@ -2045,7 +2045,7 @@ extension ProjectionPipelineServiceTests {
 
         // Verify stale was reprojected
         let staleDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convStale.id).first
-        let staleRecord = try store.fetchConversation(id: convStale.id)
+        let staleRecord = try await store.fetchConversation(id: convStale.id)
         XCTAssertNotNil(staleDoc)
         XCTAssertNotNil(staleRecord)
         XCTAssertEqual(
@@ -2060,7 +2060,7 @@ extension ProjectionPipelineServiceTests {
 
         // Verify keep was not touched
         let keepDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convKeep.id).first
-        let keepRecord = try store.fetchConversation(id: convKeep.id)
+        let keepRecord = try await store.fetchConversation(id: convKeep.id)
         XCTAssertNotNil(keepDoc)
         XCTAssertNotNil(keepRecord)
         XCTAssertEqual(
@@ -2356,7 +2356,7 @@ extension ProjectionPipelineServiceTests {
             fullText: String(repeating: "Chunk persistence write amplification test content. ", count: 80),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
@@ -2460,7 +2460,7 @@ extension ProjectionPipelineServiceTests {
         // 80 repetitions produces enough chunks that head chunks are stable under append.
         let longText = String(repeating: "Line of conversation text that will be chunked. ", count: 80)
         let conversation = makeConversation(id: "conv-incr-partial", fullText: longText, indexedAt: base)
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
@@ -2800,7 +2800,7 @@ extension ProjectionPipelineServiceTests {
                 summaryModel: nil,
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
         }
 
@@ -2887,7 +2887,7 @@ extension ProjectionPipelineServiceTests {
                 summaryModel: nil,
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
         }
 
@@ -2951,7 +2951,7 @@ extension ProjectionPipelineServiceTests {
         // Verify each document hash was updated
         for staleID in staleIDs {
             let doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
-            let conv = try store.fetchConversation(id: staleID)
+            let conv = try await store.fetchConversation(id: staleID)
             XCTAssertNotNil(doc, "Document should exist for \(staleID).")
             XCTAssertNotNil(conv, "Conversation should exist for \(staleID).")
             XCTAssertEqual(
@@ -3132,7 +3132,7 @@ extension ProjectionPipelineServiceTests {
                 fullText: "Original gap boundary content \(i).",
                 indexedAt: base
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
@@ -3196,7 +3196,7 @@ extension ProjectionPipelineServiceTests {
         // Verify each stale document hash was updated
         for staleID in staleIDs {
             let doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
-            let conv = try store.fetchConversation(id: staleID)
+            let conv = try await store.fetchConversation(id: staleID)
             XCTAssertNotNil(doc, "Document should exist for stale conversation \(staleID).")
             XCTAssertNotNil(conv, "Conversation should exist for stale conversation \(staleID).")
             XCTAssertEqual(
@@ -3227,7 +3227,7 @@ extension ProjectionPipelineServiceTests {
                 fullText: "Mixed boundary content \(i).",
                 indexedAt: base
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
@@ -3310,7 +3310,7 @@ extension ProjectionPipelineServiceTests {
                 fullText: String(repeating: "Reembed boundary content \(i). ", count: 20),
                 indexedAt: base
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
@@ -3435,7 +3435,7 @@ extension ProjectionPipelineServiceTests {
                 fullText: "Doc pagination content \(i).",
                 indexedAt: base
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 

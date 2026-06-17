@@ -37,6 +37,8 @@ struct DatabaseWorkspaceView: View {
     @State var indexedDocumentDetailCache: [String: SearchDocumentRecord] = [:]
     @State var indexedChunksCache: [String: [SearchChunkRecord]] = [:]
     @State var indexedDetailError: String?
+    @State var conversationDetailCache: [String: ConversationRecord] = [:]
+    @State var conversationDetailError: String?
 
     var showInspector: Bool {
         selection != nil && (mode == .atlas || mode == .system)
@@ -308,6 +310,25 @@ struct DatabaseWorkspaceView: View {
 
     func conversationDetail(id: String) -> ConversationRecord? {
         conversationDetailCache[id]
+    }
+
+    @MainActor
+    func loadConversationDetail(id: String) async {
+        if conversationDetailCache[id] != nil {
+            return
+        }
+
+        conversationDetailError = nil
+        do {
+            guard let conversation = try await dataStore.fetchConversation(id: id) else {
+                conversationDetailError = "Conversation not found."
+                return
+            }
+            conversationDetailCache[id] = conversation
+        } catch {
+            AppLogger.dataStore.silentFailure("database_workspace_conversation_detail_fetch_failed", error: error)
+            conversationDetailError = error.localizedDescription
+        }
     }
 
     func sourceArtifactDetail(id: String) -> SourceArtifactRecord? {

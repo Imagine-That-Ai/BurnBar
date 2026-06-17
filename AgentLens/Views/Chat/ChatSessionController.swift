@@ -1249,7 +1249,7 @@ final class ChatSessionController {
                 _ = try await dataStore.createChatThread(id: threadID)
             }
             guard activeThreadID == threadID else { return }
-            messages = try dataStore.fetchChatMessages(threadID: threadID)
+            messages = try await dataStore.fetchChatMessages(threadID: threadID)
         } catch {
             AppLogger.chat.silentFailure("openOrCreateChatThread", error: error)
             await startNewChatThreadAsync()

@@ -227,6 +227,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     case daemonBinaryUnavailable
     case daemonBinarySignatureInvalid(path: String, reason: String)
     case daemonResourceBundleUnavailable(expectedPath: String)
+    case daemonProjectCodeMemoryResourceUnavailable(expectedPath: String)
     case launchctlFailed(String)
     case timedOutWaitingForHealth(logTail: String?, logFilePath: String)
     case daemonSocketAuthTokenUnavailable
@@ -244,6 +245,12 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
             return """
             OpenBurnBarDaemon resources are missing (OpenBurnBarCore_OpenBurnBarCore.bundle).
             Expected bundle at: \(expectedPath)
+            Rebuild OpenBurnBar and run Install again.
+            """
+        case .daemonProjectCodeMemoryResourceUnavailable(let expectedPath):
+            return """
+            OpenBurnBarDaemon Project Code Memory resources are missing (secret-pattern-corpus.json).
+            Expected corpus at: \(expectedPath)
             Rebuild OpenBurnBar and run Install again.
             """
         case .launchctlFailed(let message):
@@ -632,4 +639,6 @@ final class OpenBurnBarDaemonManager {
 
     nonisolated static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
     nonisolated static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
+    nonisolated static let projectCodeMemoryResourceDirectoryName = "ProjectCodeMemory"
+    nonisolated static let projectCodeMemorySecretCorpusFileName = "secret-pattern-corpus.json"
 }

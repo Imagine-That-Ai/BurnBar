@@ -145,7 +145,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -195,7 +195,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -239,7 +239,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -277,7 +277,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -316,7 +316,7 @@ final class SearchServiceTests: XCTestCase {
                 indexedAt: base.addingTimeInterval(Double(i)),
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
         _ = try await projector.runSweep(maxJobs: 100)
@@ -356,7 +356,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -413,7 +413,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
 
         let sharedArtifact = makeArtifact(
@@ -548,8 +548,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(claudeConv)
-        try store.upsertConversation(codexConv)
+        try await store.upsertConversation(claudeConv)
+        try await store.upsertConversation(codexConv)
         try await store.enqueueConversationProjectionJob(conversationID: claudeConv.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: codexConv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 40)
@@ -589,8 +589,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(conv1)
-        try store.upsertConversation(conv2)
+        try await store.upsertConversation(conv1)
+        try await store.upsertConversation(conv2)
         try await store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 40)
@@ -629,8 +629,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(conv1)
-        try store.upsertConversation(conv2)
+        try await store.upsertConversation(conv1)
+        try await store.upsertConversation(conv2)
         try await store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 40)
@@ -669,8 +669,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .cliAssistant
         )
 
-        try store.upsertConversation(providerConv)
-        try store.upsertConversation(cliConv)
+        try await store.upsertConversation(providerConv)
+        try await store.upsertConversation(cliConv)
         try await store.enqueueConversationProjectionJob(conversationID: providerConv.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: cliConv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 40)
@@ -717,7 +717,7 @@ final class SearchServiceTests: XCTestCase {
                 indexedAt: base.addingTimeInterval(Double(index)),
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
         _ = try await projector.runSweep(maxJobs: 40)
@@ -765,8 +765,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(recentConv)
-        try store.upsertConversation(oldConv)
+        try await store.upsertConversation(recentConv)
+        try await store.upsertConversation(oldConv)
         try await store.enqueueConversationProjectionJob(conversationID: recentConv.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: oldConv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 40)
@@ -820,7 +820,7 @@ final class SearchServiceTests: XCTestCase {
             sourceType: oldConv.sourceType
         )
 
-        try store.upsertConversation(oldConvWithEndTime)
+        try await store.upsertConversation(oldConvWithEndTime)
         try await store.enqueueConversationProjectionJob(conversationID: oldConvWithEndTime.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -854,7 +854,7 @@ final class SearchServiceTests: XCTestCase {
                 indexedAt: base.addingTimeInterval(Double(i)),
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
         _ = try await projector.runSweep(maxJobs: 200)
@@ -924,7 +924,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -954,7 +954,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -986,7 +986,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1035,7 +1035,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1084,7 +1084,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1116,7 +1116,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1260,7 +1260,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1295,8 +1295,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(claudeConv)
-        try store.upsertConversation(codexConv)
+        try await store.upsertConversation(claudeConv)
+        try await store.upsertConversation(codexConv)
         try await store.enqueueConversationProjectionJob(conversationID: claudeConv.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: codexConv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 40)
@@ -1322,7 +1322,7 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(recentConv)
+        try await store.upsertConversation(recentConv)
         try await store.enqueueConversationProjectionJob(conversationID: recentConv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1347,7 +1347,7 @@ final class SearchServiceTests: XCTestCase {
                 indexedAt: base.addingTimeInterval(Double(i)),
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
         _ = try await projector.runSweep(maxJobs: 500)
@@ -1374,7 +1374,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1445,7 +1445,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1491,7 +1491,7 @@ final class SearchServiceTests: XCTestCase {
             fileModifiedAt: base
         )
 
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         _ = try await store.upsertSourceArtifact(artifact)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         try await projector.enqueueSelectiveReproject(
@@ -1538,7 +1538,7 @@ final class SearchServiceTests: XCTestCase {
             fileModifiedAt: base
         )
 
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         _ = try await store.upsertSourceArtifact(artifact)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         try await projector.enqueueSelectiveReproject(
@@ -1585,8 +1585,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(oldConv)
-        try store.upsertConversation(newConv)
+        try await store.upsertConversation(oldConv)
+        try await store.upsertConversation(newConv)
         try await store.enqueueConversationProjectionJob(conversationID: oldConv.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: newConv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 40)
@@ -1619,7 +1619,7 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(convWithMatch)
+        try await store.upsertConversation(convWithMatch)
         try await store.enqueueConversationProjectionJob(conversationID: convWithMatch.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1652,7 +1652,7 @@ final class SearchServiceTests: XCTestCase {
                 indexedAt: base.addingTimeInterval(Double(i)),
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
         _ = try await projector.runSweep(maxJobs: 200)
@@ -1694,7 +1694,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1745,7 +1745,7 @@ final class SearchServiceTests: XCTestCase {
             fileModifiedAt: base
         )
 
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         _ = try await store.upsertSourceArtifact(artifact)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         try await projector.enqueueSelectiveReproject(
@@ -1802,7 +1802,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1846,7 +1846,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base.addingTimeInterval(-5 * 86_400),
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -1891,7 +1891,7 @@ final class SearchServiceTests: XCTestCase {
             fileModifiedAt: base
         )
 
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         _ = try await store.upsertSourceArtifact(artifact)
         try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         try await projector.enqueueSelectiveReproject(
@@ -1941,9 +1941,9 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(matchingConv)
-        try store.upsertConversation(wrongProvider)
-        try store.upsertConversation(wrongProject)
+        try await store.upsertConversation(matchingConv)
+        try await store.upsertConversation(wrongProvider)
+        try await store.upsertConversation(wrongProject)
         try await store.enqueueConversationProjectionJob(conversationID: matchingConv.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: wrongProvider.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: wrongProject.id, jobType: .project, now: base)
@@ -1981,7 +1981,7 @@ final class SearchServiceTests: XCTestCase {
                 indexedAt: base.addingTimeInterval(Double(i)),
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
             try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
         _ = try await projector.runSweep(maxJobs: 100)
@@ -2034,7 +2034,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
         try await breakConversationsTable(store)
 
         let service = SearchService(dataStore: store, nowProvider: { base })

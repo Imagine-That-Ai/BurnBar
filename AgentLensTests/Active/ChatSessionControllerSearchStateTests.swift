@@ -89,7 +89,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             id: "conv-api-key-index-oracle",
             fullText: "I entered an api key in the test env file and then rotated it."
         )
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: conversation.id,
             jobType: .project,
@@ -126,7 +126,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             id: "conv-api-key-exposure",
             fullText: "I fixed the env by running export OPENAI_API_KEY=TEST_KEY_PLACEHOLDER and then retried."
         )
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: conversation.id,
             jobType: .project,
@@ -167,7 +167,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             Maybe we refactor the parser docs too.
             """
         )
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: conversation.id,
             jobType: .project,

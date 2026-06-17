@@ -86,7 +86,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             body: "# Shared\nharnessneedle collaborative runbook"
         )
 
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         _ = try await harness.dataStore.upsertSourceArtifact(skill)
         _ = try await harness.dataStore.upsertSourceArtifact(shared)
         _ = try await harness.grantSharedReadAccess(to: shared.id)
@@ -133,7 +133,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             body: "# Shared\ndeleted"
         )
 
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
         _ = try await harness.dataStore.upsertSourceArtifact(activeArtifact)
         _ = try await harness.dataStore.upsertSourceArtifact(deletedArtifact)
         let markedDeleted = try await harness.dataStore.markSourceArtifactDeleted(
@@ -210,7 +210,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
                     count: 55
                 )
             )
-            try harness.dataStore.upsertConversation(conversation)
+            try await harness.dataStore.upsertConversation(conversation)
             _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         }
 
@@ -256,7 +256,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
                 \(String(repeating: "token\(index) search ranking coverage. ", count: 36))
                 """
             )
-            try harness.dataStore.upsertConversation(conversation)
+            try await harness.dataStore.upsertConversation(conversation)
             _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         }
 
@@ -416,7 +416,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         )
 
         let residentBefore = residentMemoryBytes()
-        try harness.dataStore.upsertConversation(longConversation)
+        try await harness.dataStore.upsertConversation(longConversation)
         _ = try await harness.dataStore.upsertSourceArtifact(longArtifact)
         _ = try await harness.enqueueConversationProjection(conversationID: longConversation.id, jobType: .project)
         _ = try await harness.enqueueArtifactProjection(longArtifact, jobType: .project)
@@ -494,8 +494,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             indexedAt: base.addingTimeInterval(-10 * 86_400)
         )
 
-        try harness.dataStore.upsertConversation(recentConversation)
-        try harness.dataStore.upsertConversation(oldConversation)
+        try await harness.dataStore.upsertConversation(recentConversation)
+        try await harness.dataStore.upsertConversation(oldConversation)
         try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: recentConversation.id,
             jobType: .project,

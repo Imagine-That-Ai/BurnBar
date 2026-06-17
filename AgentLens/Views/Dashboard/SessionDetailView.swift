@@ -7,7 +7,6 @@ struct SessionDetailView: View {
     let session: TokenUsage
     let theme: ProviderTheme
     var dataStore: DataStore
-    var settingsManager: SettingsManager = .shared
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -52,7 +51,7 @@ struct SessionDetailView: View {
                         session: session,
                         conversation: conversation,
                         dataStore: dataStore,
-                        settingsManager: settingsManager
+                        isIndexingEnabled: isIndexingEnabled
                     ) { anchorId, anchorProject in
                         contextPackAnchorId = anchorId
                         contextPackAnchorProject = anchorProject

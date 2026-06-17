@@ -158,12 +158,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let disabledRow = SessionDetailContextPackRow(
             session: session,
             conversation: conversation,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { anchorId, anchorProject in
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let disabledView = try disabledRow.environment(SettingsManager.shared).inspect()
+        let disabledView = try disabledRow.inspect()
         XCTAssertNoThrow(disabledView, "Disabled row should render without crashing")
 
         // Row should be disabled when indexing is off
@@ -175,12 +176,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let enabledRow = SessionDetailContextPackRow(
             session: session,
             conversation: conversation,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { anchorId, anchorProject in
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let enabledView = try enabledRow.environment(SettingsManager.shared).inspect()
+        let enabledView = try enabledRow.inspect()
         XCTAssertNoThrow(enabledView, "Enabled row should render without crashing")
         XCTAssertTrue(SettingsManager.shared.conversationIndexingEnabled)
         XCTAssertNotNil(conversation)
@@ -190,12 +192,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let nilConvRow = SessionDetailContextPackRow(
             session: session,
             conversation: nil,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { anchorId, anchorProject in
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let nilConvView = try nilConvRow.environment(SettingsManager.shared).inspect()
+        let nilConvView = try nilConvRow.inspect()
         XCTAssertNoThrow(nilConvView, "Row with nil conversation should render without crashing")
         // With nil conversation, the button is disabled, so we verify the callback was not called
         // Note: We can't tap a disabled button, so we just verify state
@@ -244,12 +247,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let row = SessionDetailContextPackRow(
             session: session,
             conversation: conversation,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { anchorId, anchorProject in
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let view = try row.environment(SettingsManager.shared).inspect()
+        let view = try row.inspect()
         XCTAssertNoThrow(view, "ContextPackRow should render without crashing")
     }
 
@@ -285,13 +289,14 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let row = SessionDetailContextPackRow(
             session: session,
             conversation: conversation,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { anchorId, anchorProject in
             presentedAnchor = (anchorId, anchorProject)
         }
 
         // Tap the button
-        let view = try row.environment(SettingsManager.shared).inspect()
+        let view = try row.inspect()
         try view.find(ViewType.Button.self).tap()
 
         // Verify callback was invoked with correct values
@@ -334,12 +339,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             let row = SessionDetailContextPackRow(
                 session: session,
                 conversation: conversation,
-                dataStore: dataStore
+                dataStore: dataStore,
+                isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
             ) { anchorId, _ in
                 capturedAnchor = anchorId
             }
 
-            let view = try row.environment(SettingsManager.shared).inspect()
+            let view = try row.inspect()
             try view.find(ViewType.Button.self).tap()
 
             XCTAssertEqual(capturedAnchor, expectedStableId, "[\(provider.rawValue)] Anchor ID should match stableId")
@@ -376,12 +382,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let row = SessionDetailContextPackRow(
             session: session,
             conversation: conversation,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { _, anchorProject in
             capturedProject = anchorProject
         }
 
-        let view = try row.environment(SettingsManager.shared).inspect()
+        let view = try row.inspect()
         try view.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(capturedProject, projectName, "Anchor project should match session project")
@@ -468,12 +475,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let rowA = SessionDetailContextPackRow(
             session: sessionA,
             conversation: conversationA,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { id, proj in
             anchorA = (id, proj)
         }
 
-        let viewA = try rowA.environment(SettingsManager.shared).inspect()
+        let viewA = try rowA.inspect()
         try viewA.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(anchorA.0, stableIdA)
@@ -484,12 +492,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let rowB = SessionDetailContextPackRow(
             session: sessionB,
             conversation: conversationB,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { id, proj in
             anchorB = (id, proj)
         }
 
-        let viewB = try rowB.environment(SettingsManager.shared).inspect()
+        let viewB = try rowB.inspect()
         try viewB.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(anchorB.0, stableIdB)
@@ -570,12 +579,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             let row = SessionDetailContextPackRow(
                 session: session,
                 conversation: fetched,
-                dataStore: dataStore
+                dataStore: dataStore,
+                isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
             ) { id, _ in
                 capturedAnchor = id
             }
 
-            let view = try row.environment(SettingsManager.shared).inspect()
+            let view = try row.inspect()
             try view.find(ViewType.Button.self).tap()
 
             XCTAssertEqual(capturedAnchor, stableId, "[\(provider.rawValue)] Anchor should match stableId")
@@ -619,12 +629,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let row1 = SessionDetailContextPackRow(
             session: session1,
             conversation: fetched1,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { id, proj in
             anchor1 = (id, proj)
         }
 
-        let view1 = try row1.environment(SettingsManager.shared).inspect()
+        let view1 = try row1.inspect()
         try view1.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(anchor1.0, stableId1)
@@ -644,12 +655,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let row2 = SessionDetailContextPackRow(
             session: session2,
             conversation: fetched2,
-            dataStore: dataStore
+            dataStore: dataStore,
+            isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
         ) { id, proj in
             anchor2 = (id, proj)
         }
 
-        let view2 = try row2.environment(SettingsManager.shared).inspect()
+        let view2 = try row2.inspect()
         try view2.find(ViewType.Button.self).tap()
 
         // Should be anchored to session2, not session1

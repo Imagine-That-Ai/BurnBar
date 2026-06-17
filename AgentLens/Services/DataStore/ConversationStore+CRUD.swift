@@ -178,8 +178,30 @@ extension ConversationStore {
             }
         }
 
+        func fetchConversationSynchronously(id: String) throws -> ConversationRecord? {
+            try dbQueue.read { db in
+                guard let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT * FROM conversations WHERE id = ? AND deletedAt IS NULL",
+                    arguments: [id]
+                ) else { return nil }
+                return Self.conversation(from: row)
+            }
+        }
+
         func fetchConversations(limit: Int = 500) async throws -> [ConversationRecord] {
             try await dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT * FROM conversations WHERE deletedAt IS NULL ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
+                    arguments: [limit]
+                )
+                return rows.compactMap { Self.conversation(from: $0) }
+            }
+        }
+
+        func fetchConversationsSynchronously(limit: Int = 500) throws -> [ConversationRecord] {
+            try dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
                     sql: "SELECT * FROM conversations WHERE deletedAt IS NULL ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",

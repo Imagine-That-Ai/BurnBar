@@ -177,6 +177,31 @@ extension OpenBurnBarDaemonManager {
                 expectedPath: installedBundleURL.path
             )
         }
+
+        let installedProjectCodeMemoryDirectory = paths.daemonDirectory
+            .appendingPathComponent(Self.projectCodeMemoryResourceDirectoryName, isDirectory: true)
+        let installedSecretCorpusURL = installedProjectCodeMemoryDirectory
+            .appendingPathComponent(Self.projectCodeMemorySecretCorpusFileName, isDirectory: false)
+        if let sourceCorpusURL = OpenBurnBarDaemonBinaryResolver.resolveProjectCodeMemorySecretCorpus(
+            nearBinaryURL: sourceBinaryURL,
+            appBundleURL: Bundle.main.bundleURL,
+            fileManager: dependencies.fileManager
+        ), sourceCorpusURL.standardizedFileURL != installedSecretCorpusURL.standardizedFileURL {
+            try dependencies.fileManager.createDirectory(
+                at: installedProjectCodeMemoryDirectory,
+                withIntermediateDirectories: true
+            )
+            if dependencies.fileManager.fileExists(atPath: installedSecretCorpusURL.path) {
+                try dependencies.fileManager.removeItem(at: installedSecretCorpusURL)
+            }
+            try dependencies.fileManager.copyItem(at: sourceCorpusURL, to: installedSecretCorpusURL)
+        }
+
+        guard dependencies.fileManager.fileExists(atPath: installedSecretCorpusURL.path) else {
+            throw OpenBurnBarDaemonManagerError.daemonProjectCodeMemoryResourceUnavailable(
+                expectedPath: installedSecretCorpusURL.path
+            )
+        }
     }
 
     /// Atomically replaces the installed daemon binary so `launchd` (KeepAlive: true)

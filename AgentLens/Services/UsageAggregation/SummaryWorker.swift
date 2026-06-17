@@ -59,10 +59,10 @@ protocol SummaryPersistenceStore: SummaryDailySpendReading {
 }
 
 struct DataStoreSummaryPersistenceStore: SummaryPersistenceStore {
-    private let actor: DataStoreActor
+    private let dataStore: DataStore
 
     init(dataStore: DataStore) {
-        self.actor = dataStore.actor
+        self.dataStore = dataStore
     }
 
     func updateConversationSummary(
@@ -74,7 +74,7 @@ struct DataStoreSummaryPersistenceStore: SummaryPersistenceStore {
         updatedAt: Date,
         runCostUSD: Double
     ) async throws {
-        try await actor.conversationStore.updateConversationSummary(
+        try await dataStore.updateConversationSummary(
             id: id,
             title: title,
             summary: summary,
@@ -86,11 +86,11 @@ struct DataStoreSummaryPersistenceStore: SummaryPersistenceStore {
     }
 
     func markConversationSummaryAttempt(id: String, attemptedAt: Date) async throws {
-        try await actor.conversationStore.markConversationSummaryAttempt(id: id, attemptedAt: attemptedAt)
+        try await dataStore.markConversationSummaryAttempt(id: id, attemptedAt: attemptedAt)
     }
 
     func summarySpendToday(now: Date) async throws -> Double {
-        try await actor.conversationStore.summarySpendToday(now: now)
+        try await dataStore.summarySpendToday(now: now)
     }
 }
 
@@ -163,26 +163,7 @@ actor SummaryWorker {
                             model: settings.localModel,
                             estimatedCostUSD: 0
                         )
-                        do {
-                            try await dataStoreActor.updateConversationSummary(
-                                id: conversation.id,
-                                title: result.title,
-                                summary: result.summary,
-                                provider: result.provider.rawValue,
-                                model: result.model,
-                                runCostUSD: result.estimatedCostUSD
-                            )
-                        } catch {
-                            AppLogger.dataStore.silentFailure(
-                                "summary_worker_update_failed",
-                                error: error,
-                                context: [
-                                    "conversationId": conversation.id,
-                                    "provider": result.provider.rawValue,
-                                    "model": result.model
-                                ]
-                            )
-                        }
+                        await persist(result, for: conversation)
                         return result
                     }
                 }
@@ -204,26 +185,7 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    do {
-                        try await dataStoreActor.updateConversationSummary(
-                            id: conversation.id,
-                            title: result.title,
-                            summary: result.summary,
-                            provider: result.provider.rawValue,
-                            model: result.model,
-                            runCostUSD: result.estimatedCostUSD
-                        )
-                    } catch {
-                        AppLogger.dataStore.silentFailure(
-                            "summary_worker_update_failed",
-                            error: error,
-                            context: [
-                                "conversationId": conversation.id,
-                                "provider": result.provider.rawValue,
-                                "model": result.model
-                            ]
-                        )
-                    }
+                    await persist(result, for: conversation)
                     return result
                 }
 
@@ -239,26 +201,7 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    do {
-                        try await dataStoreActor.updateConversationSummary(
-                            id: conversation.id,
-                            title: result.title,
-                            summary: result.summary,
-                            provider: result.provider.rawValue,
-                            model: result.model,
-                            runCostUSD: result.estimatedCostUSD
-                        )
-                    } catch {
-                        AppLogger.dataStore.silentFailure(
-                            "summary_worker_update_failed",
-                            error: error,
-                            context: [
-                                "conversationId": conversation.id,
-                                "provider": result.provider.rawValue,
-                                "model": result.model
-                            ]
-                        )
-                    }
+                    await persist(result, for: conversation)
                     return result
                 }
 
@@ -279,26 +222,7 @@ actor SummaryWorker {
                         openRouterHeaders: true,
                         settings: settings
                     ) {
-                        do {
-                            try await dataStoreActor.updateConversationSummary(
-                                id: conversation.id,
-                                title: result.title,
-                                summary: result.summary,
-                                provider: result.provider.rawValue,
-                                model: result.model,
-                                runCostUSD: result.estimatedCostUSD
-                            )
-                        } catch {
-                            AppLogger.dataStore.silentFailure(
-                                "summary_worker_update_failed",
-                                error: error,
-                                context: [
-                                    "conversationId": conversation.id,
-                                    "provider": result.provider.rawValue,
-                                    "model": result.model
-                                ]
-                            )
-                        }
+                        await persist(result, for: conversation)
                         return result
                     }
                 }
@@ -315,26 +239,7 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    do {
-                        try await dataStoreActor.updateConversationSummary(
-                            id: conversation.id,
-                            title: result.title,
-                            summary: result.summary,
-                            provider: result.provider.rawValue,
-                            model: result.model,
-                            runCostUSD: result.estimatedCostUSD
-                        )
-                    } catch {
-                        AppLogger.dataStore.silentFailure(
-                            "summary_worker_update_failed",
-                            error: error,
-                            context: [
-                                "conversationId": conversation.id,
-                                "provider": result.provider.rawValue,
-                                "model": result.model
-                            ]
-                        )
-                    }
+                    await persist(result, for: conversation)
                     return result
                 }
 
@@ -354,33 +259,14 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    do {
-                        try await dataStoreActor.updateConversationSummary(
-                            id: conversation.id,
-                            title: result.title,
-                            summary: result.summary,
-                            provider: result.provider.rawValue,
-                            model: result.model,
-                            runCostUSD: result.estimatedCostUSD
-                        )
-                    } catch {
-                        AppLogger.dataStore.silentFailure(
-                            "summary_worker_update_failed",
-                            error: error,
-                            context: [
-                                "conversationId": conversation.id,
-                                "provider": result.provider.rawValue,
-                                "model": result.model
-                            ]
-                        )
-                    }
+                    await persist(result, for: conversation)
                     return result
                 }
             }
         }
 
         do {
-            try await dataStoreActor.markConversationSummaryAttempt(id: conversation.id)
+            try await summaryStore.markConversationSummaryAttempt(id: conversation.id, attemptedAt: Date())
         } catch {
             AppLogger.dataStore.silentFailure("mark_summary_attempt_failed", error: error, context: ["conversationId": conversation.id])
         }

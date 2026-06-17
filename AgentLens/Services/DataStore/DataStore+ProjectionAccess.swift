@@ -8,7 +8,7 @@ extension DataStore {
         priority: Int = 5,
         now: Date = Date()
     ) async throws {
-        guard let conversation = try fetchConversation(id: conversationID) else { return }
+        guard let conversation = try await fetchConversation(id: conversationID) else { return }
         let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
         try await enqueueProjectionJob(
             ProjectionJobRecord(

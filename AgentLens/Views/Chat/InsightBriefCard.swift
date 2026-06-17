@@ -42,15 +42,14 @@ struct InsightBriefSnapshot {
     @MainActor
     static func build(
         from dataStore: DataStore,
-        intelligenceService: SearchService? = nil,
+        intelligenceService _: SearchService? = nil,
         rollupService: WorkflowInsightRollupService? = nil,
         refreshRollups: Bool = true
     ) -> InsightBriefSnapshot {
         let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
-        let searchService = intelligenceService ?? SearchService(dataStore: dataStore)
         return assemble(
             from: dataStore,
-            conversations: searchService.recentConversations(limit: 200),
+            conversations: fetchRecentConversationsSynchronously(from: dataStore, limit: 200),
             rollupSnapshot: rollups.snapshot(refreshIfStale: refreshRollups)
         )
     }
@@ -129,6 +128,16 @@ struct InsightBriefSnapshot {
             let bd = b.endTime ?? b.startTime ?? .distantPast
             return ad < bd
         })
+    }
+
+    private static func fetchRecentConversationsSynchronously(from dataStore: DataStore, limit: Int) -> [ConversationRecord] {
+        let bounded = max(1, min(limit, 1_000))
+        do {
+            return try dataStore.fetchConversationsSynchronously(limit: bounded)
+        } catch {
+            AppLogger.search.silentFailure("insight_brief_recent_conversations_fetch_failed", error: error)
+            return []
+        }
     }
 }
 

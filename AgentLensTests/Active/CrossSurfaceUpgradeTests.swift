@@ -195,7 +195,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             fullText: String(repeating: "Test content for indexing. ", count: 50),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await drainProjectionJobs(service)
 
@@ -343,7 +343,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             fullText: String(repeating: "Refresh test content. ", count: 60),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         let initialCompleted = try await drainProjectionJobs(service)
         XCTAssertGreaterThan(initialCompleted, 0, "Initial drain must complete at least one job")
@@ -395,7 +395,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             fullText: String(repeating: "Embedding reuse test content. ", count: 40),
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain initial projection
@@ -430,8 +430,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         // Create two conversations and project them, draining all initial jobs
         let conv1 = makeConversation(id: "conv-gap-1", fullText: "First conversation content.", indexedAt: base)
         let conv2 = makeConversation(id: "conv-gap-2", fullText: "Second conversation content.", indexedAt: base)
-        try store.upsertConversation(conv1)
-        try store.upsertConversation(conv2)
+        try await store.upsertConversation(conv1)
+        try await store.upsertConversation(conv2)
         try await store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
 
@@ -468,7 +468,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             fullText: "Convergence test conversation content for both paths.",
             indexedAt: base
         )
-        try storeA.upsertConversation(conversationA)
+        try await storeA.upsertConversation(conversationA)
         try await storeA.enqueueConversationProjectionJob(conversationID: conversationA.id, jobType: .project, now: base)
 
         _ = try await drainProjectionJobs(serviceA)
@@ -488,7 +488,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             fullText: "OLD content that will be updated.",
             indexedAt: base
         )
-        try storeB.upsertConversation(conversationBv1)
+        try await storeB.upsertConversation(conversationBv1)
         try await storeB.enqueueConversationProjectionJob(conversationID: conversationBv1.id, jobType: .project, now: base)
         _ = try await drainProjectionJobs(serviceB)
 

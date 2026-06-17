@@ -139,10 +139,11 @@ private enum CLIAgentMissionWandRouter {
 
             let deadline = Date().addingTimeInterval(12)
             while process.isRunning && Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.05)
+                try await Task.sleep(nanoseconds: 50_000_000)
             }
             if process.isRunning {
                 process.terminate()
+                process.waitUntilExit()
                 throw CLIAgentMissionWandRoutingError.selectorFailed("selector timed out")
             }
 

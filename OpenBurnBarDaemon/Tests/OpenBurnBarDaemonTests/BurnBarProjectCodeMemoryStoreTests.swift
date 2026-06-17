@@ -739,13 +739,14 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let newer = sources.appendingPathComponent("Newer.swift")
         try write("func olderSymbol() {}\n", to: older)
         try write("func newerSymbol() {}\n", to: newer)
-        // Deterministic ages: the budget fits exactly one ~22-byte file, forcing one eviction.
+        // Deterministic ages: the budget fits one full indexed entry (source + chunk
+        // mirror + metadata), forcing one eviction without depending on raw source size.
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: older.path)
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 2_000)], ofItemAtPath: newer.path)
 
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
         let indexed = try store.indexProject(
-            BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20, maxFileBytes: 10_000, storageBudgetBytes: 30)
+            BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20, maxFileBytes: 10_000, storageBudgetBytes: 180)
         )
 
         // Age-aware eviction: the NEWEST file is kept, the OLDEST is evicted — not whatever

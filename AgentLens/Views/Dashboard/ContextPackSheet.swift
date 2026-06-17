@@ -499,15 +499,10 @@ struct SessionDetailContextPackRow: View {
     let session: TokenUsage
     let conversation: ConversationRecord?
     @Bindable var dataStore: DataStore
-    var settingsManager: SettingsManager = .shared
+    let isIndexingEnabled: Bool
     var onPresentSheet: (String?, String?) -> Void
 
-    @Environment(SettingsManager.self) private var settingsManager
     @State private var isHovered = false
-
-    private var isIndexingEnabled: Bool {
-        settingsManager.conversationIndexingEnabled
-    }
 
     private var isEnabled: Bool {
         isIndexingEnabled && conversation != nil

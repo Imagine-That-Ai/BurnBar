@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import OpenBurnBarCore
 
 extension DataStore {

@@ -487,7 +487,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Body",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
         let unsyncedCount = try await dataStore.countUnsyncedSessionLogs()
         XCTAssertEqual(unsyncedCount, 1)
     }
@@ -529,8 +529,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fullText: "Pending body that should still count toward backup storage.",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(synced)
-        try dataStore.upsertConversation(pending)
+        try await dataStore.upsertConversation(synced)
+        try await dataStore.upsertConversation(pending)
         try await dataStore.markSessionLogsSynced(ids: [synced.id])
 
         let usage = try await dataStore.backupUsageSnapshot(
