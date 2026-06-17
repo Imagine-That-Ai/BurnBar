@@ -105,7 +105,11 @@ if (!args.skipTrigger) {
 }
 
 if (!args.confirmDelivered) {
-  console.error("Canary triggered. Re-run with --confirm-delivered after the human endpoint receives it.");
+  if (args.skipTrigger) {
+    console.error("Canary trigger skipped. Re-run without --skip-trigger, then use --confirm-delivered after the human endpoint receives it.");
+  } else {
+    console.error("Canary triggered. Re-run with --confirm-delivered after the human endpoint receives it.");
+  }
   process.exit(2);
 }
 if (!args.operator.trim()) {
