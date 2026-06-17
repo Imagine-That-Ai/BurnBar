@@ -5,6 +5,7 @@
 export { onUsageWritten } from "./triggers.js";
 export {
   rebuildRollups,
+  rollupUserRebuild,
   refreshAllProviderQuotas,
   refreshModelLandscapeBenchmarks,
   anchorAuditLogHeads,

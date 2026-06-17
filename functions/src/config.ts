@@ -94,7 +94,7 @@ function buildNumericSettings(
       process.env.REFRESH_RATE_LIMIT_SECONDS ?? configString(openburnbar, "refresh_rate_limit_seconds"),
       60,
     ),
-    rollupBatchSize: toNum(process.env.ROLLUP_BATCH_SIZE ?? configString(openburnbar, "rollup_batch_size"), 50),
+    rollupBatchSize: toNum(process.env.ROLLUP_BATCH_SIZE ?? configString(openburnbar, "rollup_batch_size"), 1000),
     rollupRepairPageSize: toNum(
       process.env.ROLLUP_REPAIR_PAGE_SIZE ?? configString(openburnbar, "rollup_repair_page_size"),
       500,

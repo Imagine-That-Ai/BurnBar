@@ -11,6 +11,7 @@ import { getConfig } from "./config.js";
 import { WINDOW_KEYS, stripUndefinedDocument, type WindowKey } from "./rollupCounters.js";
 import { computeUserRollups, computeUserRollupsFromCounters } from "./rollupCompute.js";
 import { drainPendingCounterDeltas } from "./rollupPendingDeltas.js";
+import { logError } from "./logging.js";
 
 /**
  * Reads the rollup job's current `dirtiedAt` marker.
@@ -297,6 +298,22 @@ type RefreshUserRollupsResult = {
   rebuiltCounters: boolean;
 };
 
+type RollupUserRebuildSkipReason =
+  | "not_dirty"
+  | "stale_dirty_epoch"
+  | "full_rebuild_circuit_open"
+  | "full_rebuild_in_flight";
+
+type RollupUserRebuildProcessResult =
+  | { status: "processed"; uid: string; rebuiltCounters: boolean; keepDirty?: boolean }
+  | {
+      status: "skipped";
+      uid: string;
+      reason: RollupUserRebuildSkipReason;
+      taskDirtiedAt?: string;
+      currentDirtiedAt?: string;
+    };
+
 /** Runs the gated full-rebuild path for {@link refreshUserRollups}. */
 async function refreshViaFullRebuild(
   db: Firestore,
@@ -382,6 +399,100 @@ export async function refreshUserRollups(
     await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
   }
   return { rollups, rebuiltCounters };
+}
+
+export function shouldProcessRollupUserRebuildTask(
+  job: RollupJobDoc | undefined,
+  taskDirtiedAt: string | undefined,
+): { process: true } | { process: false; reason: "not_dirty" | "stale_dirty_epoch"; currentDirtiedAt?: string } {
+  if (job?.dirty !== true) {
+    return { process: false, reason: "not_dirty", currentDirtiedAt: job?.dirtiedAt };
+  }
+  if (taskDirtiedAt !== undefined && job.dirtiedAt !== taskDirtiedAt) {
+    return { process: false, reason: "stale_dirty_epoch", currentDirtiedAt: job.dirtiedAt };
+  }
+  return { process: true };
+}
+
+/**
+ * Rebuilds one user's dirty usage rollups. This is shared by the Cloud Tasks
+ * worker and any future direct repair path so the delta drain, full-rebuild
+ * gate, and dirty-epoch clear semantics stay identical.
+ */
+export async function processRollupUserRebuild(
+  db: Firestore,
+  uid: string,
+  options: { taskDirtiedAt?: string } = {},
+): Promise<RollupUserRebuildProcessResult> {
+  const {
+    rollupRepairPageSize,
+    rollupMaxConsecutiveFullRebuildFailures,
+    rollupFullRebuildCircuitBreakerMinutes,
+    rollupPendingDeltaDrainMaxPages,
+  } = getConfig();
+  let claimedFullRebuildGate = false;
+  try {
+    const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
+    const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : undefined;
+    const taskState = shouldProcessRollupUserRebuildTask(job, options.taskDirtiedAt);
+    if (!taskState.process) {
+      return {
+        status: "skipped",
+        uid,
+        reason: taskState.reason,
+        taskDirtiedAt: options.taskDirtiedAt,
+        currentDirtiedAt: taskState.currentDirtiedAt,
+      };
+    }
+
+    const needsFullRebuild = job?.lastErrorCode != null;
+    if (needsFullRebuild) {
+      const gate = await beginFullRebuildAttempt(db, uid, {
+        maxConsecutiveFullRebuildFailures: rollupMaxConsecutiveFullRebuildFailures,
+        circuitBreakerMinutes: rollupFullRebuildCircuitBreakerMinutes,
+      });
+      if (gate.status === "circuit_open") {
+        logError({
+          event: "rollup.full_rebuild_circuit_open",
+          uid,
+          error: `full rebuild paused until ${gate.openUntil}`,
+        });
+        return {
+          status: "skipped",
+          uid,
+          reason: "full_rebuild_circuit_open",
+          taskDirtiedAt: options.taskDirtiedAt,
+          currentDirtiedAt: job?.dirtiedAt,
+        };
+      }
+      if (gate.status !== "started") {
+        return {
+          status: "skipped",
+          uid,
+          reason: "full_rebuild_in_flight",
+          taskDirtiedAt: options.taskDirtiedAt,
+          currentDirtiedAt: job?.dirtiedAt,
+        };
+      }
+      claimedFullRebuildGate = true;
+      const rollups = await computeUserRollups(db, uid, { repairPageSize: rollupRepairPageSize });
+      await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { clearFullRebuildAttempt: true });
+      return { status: "processed", uid, rebuiltCounters: true };
+    }
+
+    const drain = await drainPendingCounterDeltas(db, uid, { maxPages: rollupPendingDeltaDrainMaxPages });
+    const rollups = await computeUserRollupsFromCounters(db, uid);
+    await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
+    return { status: "processed", uid, rebuiltCounters: false, keepDirty: drain.capped };
+  } catch (err) {
+    logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
+    await recordRollupRebuildFailure(db, uid, errorMessage(err), {
+      maxConsecutiveFullRebuildFailures: rollupMaxConsecutiveFullRebuildFailures,
+      circuitBreakerMinutes: rollupFullRebuildCircuitBreakerMinutes,
+      clearAttemptMarker: claimedFullRebuildGate,
+    });
+    throw err;
+  }
 }
 
 export async function writeUserRollups(

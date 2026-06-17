@@ -37,6 +37,7 @@ import {
   computeUserRollupsFromCounters,
   drainPendingCounterDeltas,
   FULL_REBUILD_ATTEMPT_STALE_MS,
+  processRollupUserRebuild,
   rebuildUserRollupCounters,
   recordRollupRebuildFailure,
   refreshUserRollups,
@@ -546,6 +547,55 @@ describe("pending-delta drain page cap", () => {
   });
 });
 
+describe("rollupUserRebuild task processor", () => {
+  it("drains pending deltas and clears the dirty marker for the current dirty epoch", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, { dirty: true, dirtiedAt: T0 });
+    seedQueue(fake, 2);
+
+    const result = await processRollupUserRebuild(fake.asFirestore(), UID, { taskDirtiedAt: T0 });
+
+    expect(result).toMatchObject({ status: "processed", uid: UID, rebuiltCounters: false, keepDirty: false });
+    expect(fake.store.get(JOB_PATH)?.dirty).toBe(false);
+    expect(queueSize(fake)).toBe(0);
+    expect(fake.recursiveDeletes).toEqual([]);
+  });
+
+  it("uses the full-rebuild repair path and clears failure state when the job carries lastErrorCode", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, { dirty: true, dirtiedAt: T0, lastErrorCode: "delta drain failed" });
+    seedUsage(fake, 3);
+
+    const result = await processRollupUserRebuild(fake.asFirestore(), UID, { taskDirtiedAt: T0 });
+
+    expect(result).toMatchObject({ status: "processed", uid: UID, rebuiltCounters: true });
+    expect(fake.recursiveDeletes).toHaveLength(4);
+    const job = fake.store.get(JOB_PATH);
+    expect(job?.dirty).toBe(false);
+    expect(job?.lastErrorCode).toBeUndefined();
+    expect(job?.fullRebuildAttemptInFlightAt).toBeUndefined();
+  });
+
+  it("no-ops stale dirty epochs without draining or rebuilding", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, { dirty: true, dirtiedAt: "2026-06-09T00:00:01.000Z" });
+    seedQueue(fake, 2);
+
+    const result = await processRollupUserRebuild(fake.asFirestore(), UID, { taskDirtiedAt: T0 });
+
+    expect(result).toEqual({
+      status: "skipped",
+      uid: UID,
+      reason: "stale_dirty_epoch",
+      taskDirtiedAt: T0,
+      currentDirtiedAt: "2026-06-09T00:00:01.000Z",
+    });
+    expect(queueSize(fake)).toBe(2);
+    expect(fake.recursiveDeletes).toEqual([]);
+    expect(fake.store.get(JOB_PATH)?.dirty).toBe(true);
+  });
+});
+
 describe("full-history pagination (large account synthetic)", () => {
   it("replays a 2,500-doc usage history at repair page size 500: exactly 5 pages, exact convergence", async () => {
     const fake = new FakeFirestore();
@@ -579,8 +629,9 @@ describe("alertable structured log event keys", () => {
       .map((name) => read(`../${name}`))
       .join("\n");
 
-    expect(scheduled).toContain('event: "rollup.full_rebuild_circuit_open"');
-    expect(scheduled).toContain('event: "rollup.rebuild_failed"');
+    expect(scheduled).toContain("rollupUserRebuild");
+    expect(rollups).toContain('event: "rollup.full_rebuild_circuit_open"');
+    expect(rollups).toContain('event: "rollup.rebuild_failed"');
     expect(rollups).toContain('event: "rollup.delta_drain_capped"');
     expect(misc).toContain('event: "rollup.full_rebuild_circuit_open"');
   });

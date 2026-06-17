@@ -19,7 +19,12 @@ function exportedNames() {
     for (const part of match[1].split(",")) {
       const raw = part.trim();
       if (!raw) continue;
-      names.push(raw.split(/\s+as\s+/u).pop()?.trim() ?? raw);
+      names.push(
+        raw
+          .split(/\s+as\s+/u)
+          .pop()
+          ?.trim() ?? raw,
+      );
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
@@ -214,6 +219,24 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  rollupUserRebuild: {
+    trigger: "task-queue",
+    authMethod: "Cloud Tasks OIDC / platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "job-owned users/{uid}/rollup_jobs/current dirty marker",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "worker accepts only scheduler-created dirty epochs and re-reads the server-side rollup job before rebuilding",
+    handlerModule: "scheduled.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["rollupUserRebuild"],
+      },
+    ],
+  },
   triggerVoIPCall: {
     bolaCoverage: [
       {
@@ -305,7 +328,9 @@ ${indent(level)}}`;
 
 const names = exportedNames();
 const existing = readFileSync(outPath, "utf8");
-const existingJson = existing.match(/export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u);
+const existingJson = existing.match(
+  /export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u,
+);
 if (!existingJson) {
   console.error("Could not parse existing catalog — aborting to avoid data loss.");
   process.exit(1);

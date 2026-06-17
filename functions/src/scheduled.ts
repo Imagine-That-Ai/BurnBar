@@ -11,18 +11,14 @@
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onTaskDispatched } from "firebase-functions/v2/tasks";
+import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
-import {
-  beginFullRebuildAttempt,
-  computeUserRollups,
-  computeUserRollupsFromCounters,
-  drainPendingCounterDeltas,
-  recordRollupRebuildFailure,
-  writeUserRollups,
-} from "./rollups.js";
+import { processRollupUserRebuild } from "./rollups.js";
+import { enqueueRollupUserRebuildTasks, parseRollupUserRebuildTaskData } from "./rollupTaskQueue.js";
 import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
 import { runQuotaRefreshSweep } from "./quotaRefreshSweep.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
@@ -57,13 +53,7 @@ export const rebuildRollups = onSchedule(
   async (_event) =>
     runScheduledJob("rebuildRollups", async () => {
       const db = getFirestore();
-      const {
-        rollupBatchSize,
-        rollupRepairPageSize,
-        rollupMaxConsecutiveFullRebuildFailures,
-        rollupFullRebuildCircuitBreakerMinutes,
-        rollupPendingDeltaDrainMaxPages,
-      } = getConfig();
+      const { rollupBatchSize } = getConfig();
 
       const snapshot = await scheduledFirestore("rollup_jobs.dirty", () =>
         db.collectionGroup("rollup_jobs").where("dirty", "==", true).limit(rollupBatchSize).get(),
@@ -73,83 +63,44 @@ export const rebuildRollups = onSchedule(
       }
 
       // Each doc path: users/{uid}/rollup_jobs/current
-      const jobs = snapshot.docs.map((doc) => {
+      const jobsByUid = new Map<string, { uid: string; dirtiedAt?: string }>();
+      for (const doc of snapshot.docs) {
         const parts = doc.ref.path.split("/");
         const uid = parts[1];
-        return uid;
-      });
-
-      // Deduplicate in case of racing writes.
-      const uniqueUids = [...new Set(jobs)];
-
-      for (const uid of uniqueUids) {
-        // True once this iteration claimed the full-rebuild gate (and thus
-        // owns an in-flight attempt marker the failure path must clear).
-        let claimedFullRebuildGate = false;
-        try {
-          // If a previous incremental attempt failed, the counters may be
-          // corrupt. Fall back to a full rebuild that re-reads all raw usage
-          // events and reconstructs counters from scratch.
-          const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
-          const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
-          const needsFullRebuild = job?.lastErrorCode != null;
-
-          let rollups;
-          if (needsFullRebuild) {
-            // The gate persists the attempt marker BEFORE the destructive
-            // rebuild starts, so even a timeout/OOM-killed invocation
-            // advances the breaker on the next pass (see
-            // beginFullRebuildAttempt); a fresh marker from a still-running
-            // invocation dedupes concurrent rebuilds.
-            const gate = await beginFullRebuildAttempt(db, uid, {
-              maxConsecutiveFullRebuildFailures: rollupMaxConsecutiveFullRebuildFailures,
-              circuitBreakerMinutes: rollupFullRebuildCircuitBreakerMinutes,
-            });
-            if (gate.status === "circuit_open") {
-              // Stable jsonPayload.event key — GCP log metrics/alerts are
-              // wired to exactly this string. Do not rename.
-              logError({
-                event: "rollup.full_rebuild_circuit_open",
-                uid,
-                error: `full rebuild paused until ${gate.openUntil}`,
-              });
-              continue;
-            }
-            if (gate.status !== "started") {
-              continue;
-            }
-            claimedFullRebuildGate = true;
-            // computeUserRollups purges the pending-delta queue as part of
-            // the raw-usage counter rebuild.
-            rollups = await computeUserRollups(db, uid, { repairPageSize: rollupRepairPageSize });
-            // `dirtiedAt` observed before compute: events that land
-            // mid-compute refresh it, which keeps the job dirty for the next
-            // pass. Success clears this invocation's attempt marker.
-            await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { clearFullRebuildAttempt: true });
-          } else {
-            // Fold queued trigger deltas into the counters, then project.
-            // A drain failure lands in the catch below, which records
-            // `lastErrorCode` and routes the next pass to the full rebuild.
-            const drain = await drainPendingCounterDeltas(db, uid, { maxPages: rollupPendingDeltaDrainMaxPages });
-            rollups = await computeUserRollupsFromCounters(db, uid);
-            // A capped drain left queue docs behind: keep the job dirty so
-            // the next 5-minute tick resumes the queue.
-            await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
-          }
-        } catch (err) {
-          // Stable jsonPayload.event key — GCP log metrics/alerts are wired
-          // to exactly this string. Do not rename.
-          logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
-          await recordRollupRebuildFailure(db, uid, errorMessage(err), {
-            maxConsecutiveFullRebuildFailures: rollupMaxConsecutiveFullRebuildFailures,
-            circuitBreakerMinutes: rollupFullRebuildCircuitBreakerMinutes,
-            // A cheap-path failure never wrote an attempt marker; clearing
-            // one here could erase a CONCURRENT full rebuild's marker and
-            // hide its kill from the breaker.
-            clearAttemptMarker: claimedFullRebuildGate,
-          });
+        const job = parseRollupJobDoc(doc.data());
+        if (uid && job?.dirty === true) {
+          jobsByUid.set(uid, { uid, dirtiedAt: job.dirtiedAt });
         }
       }
+
+      await enqueueRollupUserRebuildTasks([...jobsByUid.values()]);
+    }),
+);
+
+export const rollupUserRebuild = onTaskDispatched(
+  {
+    region: FUNCTIONS_REGION,
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    invoker: "private",
+    retryConfig: {
+      maxAttempts: 5,
+      minBackoffSeconds: 60,
+      maxBackoffSeconds: 600,
+      maxRetrySeconds: 3600,
+    },
+    rateLimits: {
+      maxConcurrentDispatches: 10,
+      maxDispatchesPerSecond: 5,
+    },
+  },
+  async (request) =>
+    runScheduledJob("rollupUserRebuild", async () => {
+      const data = parseRollupUserRebuildTaskData(request.data);
+      if (!data) {
+        throw new HttpsError("invalid-argument", "rollupUserRebuild requires uid and optional dirtiedAt.");
+      }
+      await processRollupUserRebuild(getFirestore(), data.uid, { taskDirtiedAt: data.dirtiedAt });
     }),
 );
 

@@ -124,6 +124,36 @@ export const OPS_SLO_ALERT_POLICIES = [
     ],
   },
   {
+    displayName: "OpenBurnBar Rollup task queue backlog",
+    documentation: {
+      content:
+        "The Cloud Tasks queue rollup-user-rebuilds is not draining. Scheduler fan-out may be healthy while dashboards still stale if this queue backs up. Runbook: docs/runbooks/usage-rollup-cloud-tasks.md.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["cloudtasks.googleapis.com/queue/depth"],
+    conditions: [
+      {
+        displayName: "rollup-user-rebuilds queue depth > 500 for 15 min",
+        conditionThreshold: {
+          filter:
+            'resource.type="cloud_tasks_queue" AND metric.type="cloudtasks.googleapis.com/queue/depth" AND resource.labels.queue_id="rollup-user-rebuilds"',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_MEAN",
+              crossSeriesReducer: "REDUCE_MAX",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 500,
+          duration: "900s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
     displayName: "OpenBurnBar Circuit breaker open",
     documentation: {
       content:
