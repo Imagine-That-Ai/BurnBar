@@ -725,6 +725,19 @@ jobs:
       - name: Check privacy invariants (run-09)
         run: node scripts/ci/check-privacy-invariants.mjs
 
+  env-no-secrets:
+    name: Production env has no secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Self-test production env secret guard
+        run: bash scripts/ci/check-env-no-secrets.test.sh
+
+      - name: Check production env files
+        run: bash scripts/ci/check-env-no-secrets.sh
+
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
   # allowance, and account-deletion harnesses guard revenue and compliance. They
