@@ -144,7 +144,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 
     @MainActor
-    func test_installedDaemonBinaryNeedsRefreshDetectsStaleInstalledDaemon() throws {
+    func test_installedDaemonBinaryNeedsRefreshDetectsStaleInstalledDaemon() async throws {
         let harness = try makeRuntimePathsHarness(name: "stale-daemon")
         defer { harness.cleanup() }
 
@@ -176,7 +176,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 
     @MainActor
-    func test_installFilesRejectsDaemonBinaryWhenSignatureValidationFails() throws {
+    func test_installFilesRejectsDaemonBinaryWhenSignatureValidationFails() async throws {
         let harness = try makeRuntimePathsHarness(name: "daemon-signature-reject")
         defer { harness.cleanup() }
 
@@ -208,7 +208,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
     }
 
-    func test_daemonBinaryResolverPrefersBundledHelperOverBuildProductSibling() throws {
+    func test_daemonBinaryResolverPrefersBundledHelperOverBuildProductSibling() async throws {
         let harness = try makeRuntimePathsHarness(name: "binary-resolver-helper")
         defer { harness.cleanup() }
 
@@ -391,7 +391,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
     }
 
-    func test_usageSync_readsProviderConfigurationSnapshot() throws {
+    func test_usageSync_readsProviderConfigurationSnapshot() async throws {
         let harness = try makeRuntimePathsHarness(name: "provider-config")
         defer { harness.cleanup() }
 
@@ -407,7 +407,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.providerConfigurations.last?.baseURL, "https://api.minimax.io/v1")
     }
 
-    func test_usageSync_keepsCatalogOnlyProviderIdentityUnmappedForBranding() throws {
+    func test_usageSync_keepsCatalogOnlyProviderIdentityUnmappedForBranding() async throws {
         let harness = try makeRuntimePathsHarness(name: "catalog-provider-branding")
         defer { harness.cleanup() }
 
@@ -595,7 +595,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(refreshedSlot.status, .ready)
     }
 
-    func test_usageSync_importsDaemonUsageIntoLocalShape() throws {
+    func test_usageSync_importsDaemonUsageIntoLocalShape() async throws {
         let harness = try makeRuntimePathsHarness(name: "usage-import")
         defer { harness.cleanup() }
 
@@ -623,7 +623,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertTrue(refreshed)
     }
 
-    func test_usageSync_importsHermesLedgerRowsAsHermesProvider() throws {
+    func test_usageSync_importsHermesLedgerRowsAsHermesProvider() async throws {
         let harness = try makeRuntimePathsHarness(name: "hermes-import")
         defer { harness.cleanup() }
 
@@ -736,14 +736,15 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
         let deadline = Date().addingTimeInterval(2)
         while Date() < deadline {
-            if uploadCalls == 1, try store.fetchUnsynced().count == 2 {
+            if uploadCalls == 1, try await store.fetchUnsynced().count == 2 {
                 break
             }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
 
         XCTAssertEqual(uploadCalls, 1)
-        XCTAssertEqual(try store.fetchUnsynced().count, 2)
+        let unsyncedUsageCount = try await store.fetchUnsynced().count
+        XCTAssertEqual(unsyncedUsageCount, 2)
     }
 
     @MainActor
@@ -1147,7 +1148,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         .joined(separator: "\n") + "\n"
     }
 
-    func test_resourceBundleResolverFindsBundleInSiblingResourcesDirectory() throws {
+    func test_resourceBundleResolverFindsBundleInSiblingResourcesDirectory() async throws {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("BurnBarDaemonResolver-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: rootURL) }

@@ -332,11 +332,13 @@ struct QuotaWorkspaceView: View {
     }
 
     private func rebuild() {
-        viewModel.rebuild(
-            quotaService: quotaService,
-            dataStore: dataStore,
-            providerSpendByID: providerSpendByID,
-            cumulativeAcrossAccounts: settingsManager.cumulativeAcrossAccounts
-        )
+        Task { @MainActor in
+            await viewModel.rebuild(
+                quotaService: quotaService,
+                dataStore: dataStore,
+                providerSpendByID: providerSpendByID,
+                cumulativeAcrossAccounts: settingsManager.cumulativeAcrossAccounts
+            )
+        }
     }
 }

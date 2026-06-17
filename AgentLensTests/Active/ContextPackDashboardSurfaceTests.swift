@@ -76,8 +76,8 @@ final class ContextPackDashboardSurfaceTests: XCTestCase {
         sessionId: String,
         projectName: String,
         daysAgo: Int
-    ) throws {
-        try dbQueue.write { db in
+    ) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 INSERT INTO conversations (id, provider, sessionId, projectName, startTime, endTime,
                     messageCount, userWordCount, assistantWordCount, keyFiles, keyCommands, keyTools,

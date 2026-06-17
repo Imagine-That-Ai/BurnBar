@@ -13,8 +13,8 @@ public final class ProviderAccountStore: Sendable {
         self.dbQueue = dbQueue
     }
 
-    public func upsert(_ account: ProviderAccountDoc) throws {
-        try dbQueue.write { db in
+    public func upsert(_ account: ProviderAccountDoc) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO provider_accounts (
@@ -47,8 +47,8 @@ public final class ProviderAccountStore: Sendable {
         }
     }
 
-    public func fetch(id: String) throws -> ProviderAccountDoc? {
-        try dbQueue.read { db in
+    public func fetch(id: String) async throws -> ProviderAccountDoc? {
+        try await dbQueue.read { db in
             let row = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM provider_accounts WHERE id = ?",
@@ -58,8 +58,8 @@ public final class ProviderAccountStore: Sendable {
         }
     }
 
-    public func fetchAll(providerID: ProviderID? = nil) throws -> [ProviderAccountDoc] {
-        try dbQueue.read { db in
+    public func fetchAll(providerID: ProviderID? = nil) async throws -> [ProviderAccountDoc] {
+        try await dbQueue.read { db in
             let rows: [Row]
             if let providerID {
                 rows = try Row.fetchAll(
@@ -84,8 +84,8 @@ public final class ProviderAccountStore: Sendable {
         }
     }
 
-    public func fetchDefault(providerID: ProviderID) throws -> ProviderAccountDoc? {
-        try dbQueue.read { db in
+    public func fetchDefault(providerID: ProviderID) async throws -> ProviderAccountDoc? {
+        try await dbQueue.read { db in
             let row = try Row.fetchOne(
                 db,
                 sql: """
@@ -100,8 +100,8 @@ public final class ProviderAccountStore: Sendable {
         }
     }
 
-    public func setDefault(accountID: String, providerID: ProviderID) throws {
-        try dbQueue.write { db in
+    public func setDefault(accountID: String, providerID: ProviderID) async throws {
+        try await dbQueue.write { db in
             let existingProviderID = try String.fetchOne(
                 db,
                 sql: "SELECT providerID FROM provider_accounts WHERE id = ?",
@@ -131,8 +131,8 @@ public final class ProviderAccountStore: Sendable {
         }
     }
 
-    public func delete(id: String) throws {
-        try dbQueue.write { db in
+    public func delete(id: String) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "DELETE FROM provider_accounts WHERE id = ?",
                 arguments: [id]
@@ -200,6 +200,32 @@ public final class ProviderAccountStore: Sendable {
             createdAt: OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date(),
             updatedAt: OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? Date()
         )
+    }
+}
+
+extension DataStore {
+    func upsertProviderAccount(_ account: ProviderAccountDoc) async throws {
+        try await actor.providerAccountStore.upsert(account)
+    }
+
+    func fetchProviderAccount(id: String) async throws -> ProviderAccountDoc? {
+        try await actor.providerAccountStore.fetch(id: id)
+    }
+
+    func fetchProviderAccounts(providerID: ProviderID? = nil) async throws -> [ProviderAccountDoc] {
+        try await actor.providerAccountStore.fetchAll(providerID: providerID)
+    }
+
+    func fetchDefaultProviderAccount(providerID: ProviderID) async throws -> ProviderAccountDoc? {
+        try await actor.providerAccountStore.fetchDefault(providerID: providerID)
+    }
+
+    func setDefaultProviderAccount(accountID: String, providerID: ProviderID) async throws {
+        try await actor.providerAccountStore.setDefault(accountID: accountID, providerID: providerID)
+    }
+
+    func deleteProviderAccount(id: String) async throws {
+        try await actor.providerAccountStore.delete(id: id)
     }
 }
 

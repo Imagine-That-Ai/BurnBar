@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - Backfill Cursor Record
@@ -87,8 +87,8 @@ final class BackfillCursorStore: Sendable {
     // MARK: - Read
 
     /// Fetches the current backfill cursor for a provider.
-    func fetchCursor(for provider: AgentProvider) throws -> BackfillCursorRecord? {
-        try dbQueue.read { db in
+    func fetchCursor(for provider: AgentProvider) async throws -> BackfillCursorRecord? {
+        try await dbQueue.read { db in
             try BackfillCursorRecord.fetchOne(db, sql: """
                 SELECT * FROM backfill_cursors WHERE provider = ?
                 """, arguments: [provider.rawValue])
@@ -96,8 +96,8 @@ final class BackfillCursorStore: Sendable {
     }
 
     /// Fetches all backfill cursors for all providers.
-    func fetchAllCursors() throws -> [BackfillCursorRecord] {
-        try dbQueue.read { db in
+    func fetchAllCursors() async throws -> [BackfillCursorRecord] {
+        try await dbQueue.read { db in
             try BackfillCursorRecord.fetchAll(db, sql: "SELECT * FROM backfill_cursors")
         }
     }
@@ -122,8 +122,8 @@ final class BackfillCursorStore: Sendable {
         for provider: AgentProvider,
         newUpperBound: Date,
         earliestSourceDate: Date? = nil
-    ) throws {
-        try dbQueue.write { db in
+    ) async throws {
+        try await dbQueue.write { db in
             let now = Date()
 
             // Fetch current cursor to validate monotonicity
@@ -189,8 +189,8 @@ final class BackfillCursorStore: Sendable {
 
     /// Resets the backfill cursor for a provider, forcing a full backfill on next run.
     /// Used when cache corruption or data loss is detected.
-    func resetCursor(for provider: AgentProvider) throws {
-        try dbQueue.write { db in
+    func resetCursor(for provider: AgentProvider) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 DELETE FROM backfill_cursors WHERE provider = ?
                 """, arguments: [provider.rawValue])
@@ -198,8 +198,8 @@ final class BackfillCursorStore: Sendable {
     }
 
     /// Resets all backfill cursors (e.g., for a full reset).
-    func resetAllCursors() throws {
-        try dbQueue.write { db in
+    func resetAllCursors() async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM backfill_cursors")
         }
     }
@@ -209,8 +209,8 @@ final class BackfillCursorStore: Sendable {
     ///
     /// - Returns: A closed range from the cursor position to 7 days later,
     ///   or nil if backfill is complete (cursor has reached or passed current date).
-    func nextBackfillWindow(for provider: AgentProvider, currentDate: Date = Date()) throws -> ClosedRange<Date>? {
-        let cursor = try fetchCursor(for: provider)
+    func nextBackfillWindow(for provider: AgentProvider, currentDate: Date = Date()) async throws -> ClosedRange<Date>? {
+        let cursor = try await fetchCursor(for: provider)
 
         // If no cursor exists, backfill has never run - start from earliest source date or 7 days ago
         let windowStart: Date
@@ -250,5 +250,42 @@ enum BackfillCursorError: Error, CustomStringConvertible {
         case .windowExceedsBound(let provider, let windowDuration, let maxAllowed):
             return "Backfill window for \(provider.rawValue) exceeds 7-day bound: duration=\(windowDuration)s, max=\(maxAllowed)s"
         }
+    }
+}
+
+extension DataStore {
+    func fetchBackfillCursor(for provider: AgentProvider) async throws -> BackfillCursorRecord? {
+        try await actor.backfillCursorStore.fetchCursor(for: provider)
+    }
+
+    func fetchAllBackfillCursors() async throws -> [BackfillCursorRecord] {
+        try await actor.backfillCursorStore.fetchAllCursors()
+    }
+
+    func advanceBackfillCursor(
+        for provider: AgentProvider,
+        newUpperBound: Date,
+        earliestSourceDate: Date? = nil
+    ) async throws {
+        try await actor.backfillCursorStore.advanceCursor(
+            for: provider,
+            newUpperBound: newUpperBound,
+            earliestSourceDate: earliestSourceDate
+        )
+    }
+
+    func resetBackfillCursor(for provider: AgentProvider) async throws {
+        try await actor.backfillCursorStore.resetCursor(for: provider)
+    }
+
+    func resetAllBackfillCursors() async throws {
+        try await actor.backfillCursorStore.resetAllCursors()
+    }
+
+    func nextBackfillWindow(
+        for provider: AgentProvider,
+        currentDate: Date = Date()
+    ) async throws -> ClosedRange<Date>? {
+        try await actor.backfillCursorStore.nextBackfillWindow(for: provider, currentDate: currentDate)
     }
 }

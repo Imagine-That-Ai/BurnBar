@@ -33,8 +33,8 @@ extension SearchService {
                 semanticFallbackUsed: Bool,
                 errorCode: String?,
                 errorMessage: String?
-            ) {
-                persistLexicalHealth(
+            ) async {
+                await persistLexicalHealth(
                     status: status,
                     query: trimmed,
                     lexicalCandidateCount: lexicalCandidateCount,
@@ -68,7 +68,7 @@ extension SearchService {
                 lexicalQueryLatencyMs = 0
             } else {
                 do {
-                    lexicalMatches = try dataStore.searchLexicalChunks(
+                    lexicalMatches = try await dataStore.searchLexicalChunks(
                         ftsQuery: lexicalFTSInput,
                         provider: query.filters.provider,
                         projectName: query.filters.projectName,
@@ -82,7 +82,7 @@ extension SearchService {
                     lexicalQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
                 } catch {
                     lexicalQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
-                    persistQueryHealth(
+                    await persistQueryHealth(
                         status: .failed,
                         lexicalCandidateCount: 0,
                         resultCount: 0,
@@ -180,7 +180,7 @@ extension SearchService {
                 } catch {
                     semanticQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: semanticStartedAt)
                     semanticFallbackUsed = true
-                    persistSemanticFallbackHealth(
+                    await persistSemanticFallbackHealth(
                         query: trimmed,
                         lexicalCandidateCount: lexicalMatches.count,
                         error: error
@@ -202,7 +202,7 @@ extension SearchService {
                     lexicalSkippedEmptyQuery: lexicalSkippedEmptyQuery,
                     indexStaleError: indexStaleError
                 )
-                persistQueryHealth(
+                await persistQueryHealth(
                     status: lexicalStatus,
                     lexicalCandidateCount: lexicalMatches.count,
                     resultCount: 0,
@@ -261,7 +261,7 @@ extension SearchService {
                 fetchedChunks = []
             } else {
                 do {
-                    fetchedChunks = try dataStore.fetchSearchChunks(ids: missingChunkIDs)
+                    fetchedChunks = try await dataStore.fetchSearchChunks(ids: missingChunkIDs)
                 } catch {
                     fetchedChunks = []
                     indexStale = true
@@ -284,7 +284,7 @@ extension SearchService {
                 fetchedDocuments = []
             } else {
                 do {
-                    fetchedDocuments = try dataStore.fetchSearchDocuments(ids: Array(missingDocumentIDs))
+                    fetchedDocuments = try await dataStore.fetchSearchDocuments(ids: Array(missingDocumentIDs))
                 } catch {
                     fetchedDocuments = []
                     indexStale = true
@@ -306,7 +306,7 @@ extension SearchService {
                         // letting `try?` swallow the error (a `nil` set would also deny here, but
                         // silently, with no health signal). We additionally mark the index stale so
                         // the failure is observable and the result is reported as degraded.
-                        readableSharedSourceIDs = try dataStore.fetchReadableSharedArtifactSourceIDs(
+                        readableSharedSourceIDs = try await dataStore.fetchReadableSharedArtifactSourceIDs(
                             accessContext: sharedArtifactAccessContext
                         )
                     } catch {
@@ -441,7 +441,7 @@ extension SearchService {
                     lexicalSkippedEmptyQuery: lexicalSkippedEmptyQuery,
                     indexStaleError: indexStaleError
                 )
-                persistQueryHealth(
+                await persistQueryHealth(
                     status: lexicalStatus,
                     lexicalCandidateCount: lexicalMatches.count,
                     resultCount: 0,
@@ -516,7 +516,7 @@ extension SearchService {
                 lexicalSkippedEmptyQuery: lexicalSkippedEmptyQuery,
                 indexStaleError: indexStaleError
             )
-            persistQueryHealth(
+            await persistQueryHealth(
                 status: lexicalStatus,
                 lexicalCandidateCount: lexicalMatches.count,
                 resultCount: dedupedResults.count,

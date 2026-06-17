@@ -174,7 +174,7 @@ final class ConversationParsingTests: XCTestCase {
         XCTAssertEqual(row.indexedAt.timeIntervalSince1970, indexedAt.timeIntervalSince1970, accuracy: 0.0001)
     }
 
-    func test_fetchConversationsNeedingSummary_throttles_recent_failed_attempts() throws {
+    func test_fetchConversationsNeedingSummary_throttles_recent_failed_attempts() async throws {
         let store = try makeInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_700_010_000)
         let record = makeFactoryConversationRecord(
@@ -184,23 +184,23 @@ final class ConversationParsingTests: XCTestCase {
         )
         try store.upsertConversation(record)
 
-        let beforeAttempt = try store.fetchConversationsNeedingSummary(
+        let beforeAttempt = try await store.fetchConversationsNeedingSummary(
             limit: 10,
             now: base,
             retryCooldown: 3_600
         )
         XCTAssertTrue(beforeAttempt.contains(where: { $0.id == record.id }))
 
-        try store.markConversationSummaryAttempt(id: record.id, attemptedAt: base.addingTimeInterval(10))
+        try await store.markConversationSummaryAttempt(id: record.id, attemptedAt: base.addingTimeInterval(10))
 
-        let withinCooldown = try store.fetchConversationsNeedingSummary(
+        let withinCooldown = try await store.fetchConversationsNeedingSummary(
             limit: 10,
             now: base.addingTimeInterval(60),
             retryCooldown: 3_600
         )
         XCTAssertFalse(withinCooldown.contains(where: { $0.id == record.id }))
 
-        let afterCooldown = try store.fetchConversationsNeedingSummary(
+        let afterCooldown = try await store.fetchConversationsNeedingSummary(
             limit: 10,
             now: base.addingTimeInterval(3_700),
             retryCooldown: 3_600
@@ -208,7 +208,7 @@ final class ConversationParsingTests: XCTestCase {
         XCTAssertTrue(afterCooldown.contains(where: { $0.id == record.id }))
     }
 
-    func test_fetchConversationsNeedingSummary_allows_immediate_retry_when_content_changes() throws {
+    func test_fetchConversationsNeedingSummary_allows_immediate_retry_when_content_changes() async throws {
         let store = try makeInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_700_020_000)
         let id = "Factory:test-summary-content-change"
@@ -219,7 +219,7 @@ final class ConversationParsingTests: XCTestCase {
             fileModifiedAt: base
         )
         try store.upsertConversation(original)
-        try store.markConversationSummaryAttempt(id: id, attemptedAt: base.addingTimeInterval(10))
+        try await store.markConversationSummaryAttempt(id: id, attemptedAt: base.addingTimeInterval(10))
 
         let updated = makeFactoryConversationRecord(
             id: id,
@@ -228,7 +228,7 @@ final class ConversationParsingTests: XCTestCase {
         )
         try store.upsertConversation(updated)
 
-        let pending = try store.fetchConversationsNeedingSummary(
+        let pending = try await store.fetchConversationsNeedingSummary(
             limit: 10,
             now: base.addingTimeInterval(40),
             retryCooldown: 3_600

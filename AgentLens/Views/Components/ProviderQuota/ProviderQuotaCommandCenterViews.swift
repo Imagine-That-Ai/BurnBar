@@ -11,6 +11,7 @@ import AppKit
 struct ProviderQuotaPopoverStrip: View {
     @Bindable private var quotaService = ProviderQuotaService.shared
     let dataStore: DataStore
+    @Environment(SettingsManager.self) private var settingsManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -22,8 +23,8 @@ struct ProviderQuotaPopoverStrip: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: DesignSystem.Spacing.sm) {
-                    ForEach(SettingsManager.shared.quotas.providerOrder, id: \.self) { provider in
-                        if SettingsManager.shared.quotas.visibleProviders.contains(provider) {
+                    ForEach(settingsManager.quotas.providerOrder, id: \.self) { provider in
+                        if settingsManager.quotas.visibleProviders.contains(provider) {
                             popoverQuotaChip(provider: provider)
                         }
                     }

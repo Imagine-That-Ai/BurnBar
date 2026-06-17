@@ -24,48 +24,44 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            dataStore = try DataStore(databaseQueue: dbQueue, refreshOnInit: false)
-            // Ensure migrations are applied
-            try dbQueue.write { db in
-                try db.execute(sql: """
-                    CREATE TABLE IF NOT EXISTS conversations (
-                        id TEXT PRIMARY KEY,
-                        provider TEXT NOT NULL,
-                        sessionId TEXT NOT NULL,
-                        projectName TEXT NOT NULL,
-                        startTime DATETIME,
-                        endTime DATETIME,
-                        messageCount INTEGER NOT NULL DEFAULT 0,
-                        userWordCount INTEGER NOT NULL DEFAULT 0,
-                        assistantWordCount INTEGER NOT NULL DEFAULT 0,
-                        keyFiles TEXT,
-                        keyCommands TEXT,
-                        keyTools TEXT,
-                        inferredTaskTitle TEXT NOT NULL DEFAULT '',
-                        lastAssistantMessage TEXT NOT NULL DEFAULT '',
-                        fullText TEXT NOT NULL DEFAULT '',
-                        indexedAt DATETIME NOT NULL,
-                        fileModifiedAt DATETIME,
-                        summary TEXT,
-                        conversationSyncedAt DATETIME,
-                        sourceType TEXT NOT NULL DEFAULT 'provider_log',
-                        logSyncedAt DATETIME,
-                        summaryTitle TEXT,
-                        summaryUpdatedAt DATETIME,
-                        summaryProvider TEXT,
-                        summaryModel TEXT,
-                        sourceDeviceId TEXT,
-                        sourceDeviceName TEXT,
-                        isRemote INTEGER NOT NULL DEFAULT 0
-                    )
-                """)
-            }
-        } catch {
-            XCTFail("Failed to set up test database: \(error)")
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        dataStore = try DataStore(databaseQueue: dbQueue, refreshOnInit: false)
+        // Ensure migrations are applied
+        try await dbQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    sessionId TEXT NOT NULL,
+                    projectName TEXT NOT NULL,
+                    startTime DATETIME,
+                    endTime DATETIME,
+                    messageCount INTEGER NOT NULL DEFAULT 0,
+                    userWordCount INTEGER NOT NULL DEFAULT 0,
+                    assistantWordCount INTEGER NOT NULL DEFAULT 0,
+                    keyFiles TEXT,
+                    keyCommands TEXT,
+                    keyTools TEXT,
+                    inferredTaskTitle TEXT NOT NULL DEFAULT '',
+                    lastAssistantMessage TEXT NOT NULL DEFAULT '',
+                    fullText TEXT NOT NULL DEFAULT '',
+                    indexedAt DATETIME NOT NULL,
+                    fileModifiedAt DATETIME,
+                    summary TEXT,
+                    conversationSyncedAt DATETIME,
+                    sourceType TEXT NOT NULL DEFAULT 'provider_log',
+                    logSyncedAt DATETIME,
+                    summaryTitle TEXT,
+                    summaryUpdatedAt DATETIME,
+                    summaryProvider TEXT,
+                    summaryModel TEXT,
+                    sourceDeviceId TEXT,
+                    sourceDeviceName TEXT,
+                    isRemote INTEGER NOT NULL DEFAULT 0
+                )
+            """)
         }
     }
 
@@ -106,12 +102,12 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         daysAgo: Int = 1,
         fullText: String = "Full conversation text for testing",
         summary: String? = nil
-    ) throws {
+    ) async throws {
         let startTime = Date().addingTimeInterval(-86400 * Double(daysAgo + 1))
         let endTime = Date().addingTimeInterval(-86400 * Double(daysAgo))
         let indexedAt = Date().addingTimeInterval(-86400 * Double(daysAgo - 1))
 
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 INSERT INTO conversations (id, provider, sessionId, projectName, startTime, endTime,
                     messageCount, userWordCount, assistantWordCount, keyFiles, keyCommands, keyTools,
@@ -141,11 +137,11 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
     /// and conversation != nil.
     ///
     /// This test verifies visibility conditions through real SessionDetailContextPackRow instantiation.
-    func test_rowVisibility_requiresIndexingEnabledAndConversation() throws {
+    func test_rowVisibility_requiresIndexingEnabledAndConversation() async throws {
         // Create session and conversation
         let session = makeTestSession(provider: .claudeCode, sessionId: "visibility-test-session")
         let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
-        try insertConversation(
+        try await insertConversation(
             id: stableId,
             provider: session.provider,
             sessionId: session.sessionId,
@@ -215,7 +211,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
     /// Note: ViewInspector has limitations with complex view hierarchies that have
     /// async state. We verify the row renders without crashing and that the stableId
     /// ordering is correct per the view code structure.
-    func test_rowPlacementBelowSessionLogAction() throws {
+    func test_rowPlacementBelowSessionLogAction() async throws {
         let session = makeTestSession(provider: .claudeCode, sessionId: "ordering-test-session")
         let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
 
@@ -235,7 +231,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         // Also verify that SessionDetailContextPackRow can be instantiated standalone
         // and renders without crashing
         configureSettings(indexingEnabled: true)
-        try insertConversation(
+        try await insertConversation(
             id: stableId,
             provider: session.provider,
             sessionId: session.sessionId,
@@ -262,13 +258,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
     /// Tapping Create Context Pack from Session Detail presents ContextPackSheet.
     ///
     /// This test verifies the callback captures correct anchor values.
-    func test_tapPresentsContextPackSheet() throws {
+    func test_tapPresentsContextPackSheet() async throws {
         let session = makeTestSession(provider: .claudeCode, sessionId: "tap-test-session")
         let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
         let projectName = session.projectName
 
         // Insert conversation
-        try insertConversation(
+        try await insertConversation(
             id: stableId,
             provider: session.provider,
             sessionId: session.sessionId,
@@ -307,7 +303,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Session Detail launch passes anchor identity equal to
     /// ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId).
-    func test_anchorCarriesSelectedSessionIdentity() throws {
+    func test_anchorCarriesSelectedSessionIdentity() async throws {
         // Test with different providers to verify stableId differentiation
         let providers: [AgentProvider] = [.claudeCode, .factory, .kiloCode]
 
@@ -320,7 +316,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             XCTAssertTrue(expectedStableId.contains("unique-session-id"), "[\(provider.rawValue)] Stable ID should contain sessionId")
 
             // Insert and fetch conversation
-            try insertConversation(
+            try await insertConversation(
                 id: expectedStableId,
                 provider: session.provider,
                 sessionId: session.sessionId,
@@ -354,13 +350,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Session Detail launch preselects and scopes context-pack assembly
     /// to the selected session's project.
-    func test_anchorCarriesSelectedProjectScope() throws {
+    func test_anchorCarriesSelectedProjectScope() async throws {
         let session = makeTestSession(provider: .claudeCode, sessionId: "project-scope-session")
         let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
         let projectName = session.projectName
 
         // Insert conversation with this project
-        try insertConversation(
+        try await insertConversation(
             id: stableId,
             provider: session.provider,
             sessionId: session.sessionId,
@@ -429,13 +425,13 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Open from Session A, dismiss, then open from Session B always reanchors
     /// identity and project scope to B.
-    func test_reopenReanchorsToCurrentSession() throws {
+    func test_reopenReanchorsToCurrentSession() async throws {
         // Session A - use factory provider with ProjectA
         let sessionA = makeTestSession(provider: .factory, sessionId: "session-A", projectName: "ProjectA")
         let stableIdA = ConversationRecord.stableId(provider: sessionA.provider, sessionId: sessionA.sessionId)
         let projectA = sessionA.projectName
 
-        try insertConversation(
+        try await insertConversation(
             id: stableIdA,
             provider: sessionA.provider,
             sessionId: sessionA.sessionId,
@@ -450,7 +446,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let stableIdB = ConversationRecord.stableId(provider: sessionB.provider, sessionId: sessionB.sessionId)
         let projectB = sessionB.projectName
 
-        try insertConversation(
+        try await insertConversation(
             id: stableIdB,
             provider: sessionB.provider,
             sessionId: sessionB.sessionId,
@@ -507,11 +503,11 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
     // MARK: - VAL-CTXDETAIL-008: Existing Session-Log Action Remains Intact
 
     /// Adding the new row does not regress View Full Session Log action behavior.
-    func test_viewFullSessionLogStillRoutesCorrectly() throws {
+    func test_viewFullSessionLogStillRoutesCorrectly() async throws {
         let session = makeTestSession()
         let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
 
-        try insertConversation(
+        try await insertConversation(
             id: stableId,
             provider: session.provider,
             sessionId: session.sessionId,
@@ -547,7 +543,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
     /// Both provider-ledger and model-ledger Dashboard flows include a reachable
     /// path that presents Session Detail with Create Context Pack for
     /// conversation-backed selections.
-    func test_sessionDetailContextPackEntryReachableFromDashboardFlow() throws {
+    func test_sessionDetailContextPackEntryReachableFromDashboardFlow() async throws {
         // Insert conversations for different providers
         let providers: [AgentProvider] = [.claudeCode, .factory, .kiloCode]
 
@@ -555,7 +551,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             let session = makeTestSession(provider: provider, sessionId: "\(provider.rawValue)-session")
             let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
 
-            try insertConversation(
+            try await insertConversation(
                 id: stableId,
                 provider: session.provider,
                 sessionId: session.sessionId,
@@ -590,11 +586,11 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Opening Session Detail for a new session does not show stale prior-session
     /// Context Pack row state before async resolution completes.
-    func test_initialRenderDoesNotLeakPriorSessionState() throws {
+    func test_initialRenderDoesNotLeakPriorSessionState() async throws {
         // Insert two conversations
         let session1 = makeTestSession(provider: .factory, sessionId: "session-1")
         let stableId1 = ConversationRecord.stableId(provider: session1.provider, sessionId: session1.sessionId)
-        try insertConversation(
+        try await insertConversation(
             id: stableId1,
             provider: session1.provider,
             sessionId: session1.sessionId,
@@ -603,7 +599,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
         let session2 = makeTestSession(provider: .claudeCode, sessionId: "session-2")
         let stableId2 = ConversationRecord.stableId(provider: session2.provider, sessionId: session2.sessionId)
-        try insertConversation(
+        try await insertConversation(
             id: stableId2,
             provider: session2.provider,
             sessionId: session2.sessionId,

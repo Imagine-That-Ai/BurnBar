@@ -77,12 +77,28 @@ const describeMatch = (content, match) => {
   return JSON.stringify(content.slice(start, match.index + match[0].length + 60));
 };
 
+function* inlineScriptBodies(html) {
+  const lower = html.toLowerCase();
+  let cursor = 0;
+  while (cursor < html.length) {
+    const open = lower.indexOf("<script", cursor);
+    if (open < 0) return;
+    const tagEnd = lower.indexOf(">", open);
+    if (tagEnd < 0) return;
+    const close = lower.indexOf("</script", tagEnd + 1);
+    if (close < 0) return;
+    const attrs = lower.slice(open + "<script".length, tagEnd);
+    const body = html.slice(tagEnd + 1, close);
+    cursor = close + "</script".length;
+    if (!attrs.includes("src=") && !attrs.includes("type=\"application/json\"") && !attrs.includes("type='application/json'")) {
+      yield body;
+    }
+  }
+}
+
 for (const file of htmlFiles) {
   const html = readFileSync(file, "utf8");
-  for (const tag of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
-    const [, attrs, body] = tag;
-    if (/\bsrc\s*=/i.test(attrs)) continue; // external tags handled above
-    if (/\btype\s*=\s*["'][^"']*json[^"']*["']/i.test(attrs)) continue; // JSON-LD etc. cannot execute
+  for (const body of inlineScriptBodies(html)) {
     const match = body.match(crossOriginImport);
     assert.ok(
       !match,

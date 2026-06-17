@@ -37,7 +37,7 @@ extension ComputerUseSessionCoordinator {
     }
 
     func phoneControlAttestationRequirement() async -> PhoneControlAttestationRequirement {
-        let strict = SettingsManager.shared.computerUsePhoneControlAttestationRequired
+        let strict = configuration.phoneControlAttestationRequired
         return await MacAppCheckAttestationReader.attestationRequirement(strictMode: strict)
     }
 

@@ -195,7 +195,7 @@ enum ContextBuilder {
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
 
-        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
+        let allUsages = (try? await dataStore.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
         let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
@@ -336,7 +336,7 @@ enum ContextBuilder {
             "High-level usage from OpenBurnBar tables—not a substitute for retrieved excerpts. Use for spend/time questions when retrieval is thin."
         )
 
-        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
+        let allUsages = (try? await dataStore.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
         let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }

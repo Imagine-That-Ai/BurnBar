@@ -17,6 +17,7 @@ build/
 build-derived/
 Vendor/OpenBurnBarIroh.xcframework/
 Vendor/OpenBurnBarSignalFfi.xcframework/
+Vendor/BurnBarRemote.xcframework/
 build_ios/
 DerivedData/
 *.ipa

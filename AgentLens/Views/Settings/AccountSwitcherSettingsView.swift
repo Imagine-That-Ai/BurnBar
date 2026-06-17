@@ -24,6 +24,7 @@ struct AccountSwitcherSettingsView: View {
 
     let dataStore: DataStore
     let settingsManager: SettingsManager
+    let accountManager: AccountManager
     let mode: Mode
 
     @State var profiles: [SwitcherProfileRecord] = []
@@ -94,10 +95,12 @@ struct AccountSwitcherSettingsView: View {
     init(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
+        accountManager: AccountManager = .shared,
         mode: Mode = .all
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
+        self.accountManager = accountManager
         self.mode = mode
     }
 }

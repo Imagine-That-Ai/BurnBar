@@ -53,6 +53,7 @@ struct PopoverQuickSwitchView: View {
     let dataStore: DataStore
     let onOpenSettings: () -> Void
     let settingsManager: SettingsManager
+    let accountManager: AccountManager
     let autoRefreshQuotaOnLoad: Bool
 
     @State private var profiles: [SwitcherProfileRecord] = []
@@ -96,6 +97,7 @@ struct PopoverQuickSwitchView: View {
         dataStore: DataStore,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
+        accountManager: AccountManager = .shared,
         autoRefreshQuotaOnLoad: Bool = true,
         testInjectedError: String? = nil,
         skipLoadData: Bool = false,
@@ -104,6 +106,7 @@ struct PopoverQuickSwitchView: View {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.settingsManager = settingsManager
+        self.accountManager = accountManager
         self.autoRefreshQuotaOnLoad = autoRefreshQuotaOnLoad
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
@@ -120,11 +123,13 @@ struct PopoverQuickSwitchView: View {
         dataStore: DataStore,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
+        accountManager: AccountManager = .shared,
         autoRefreshQuotaOnLoad: Bool = true
     ) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.settingsManager = settingsManager
+        self.accountManager = accountManager
         self.autoRefreshQuotaOnLoad = autoRefreshQuotaOnLoad
     }
     #endif
@@ -263,6 +268,7 @@ struct PopoverQuickSwitchView: View {
                     WindowManager.shared.openSwitcherOnboardingWizard(
                         dataStore: dataStore,
                         settingsManager: settingsManager,
+                        accountManager: accountManager,
                         onOpenSettings: onOpenSettings
                     )
                 } label: {

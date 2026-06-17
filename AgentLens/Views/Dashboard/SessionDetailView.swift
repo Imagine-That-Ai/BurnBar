@@ -10,7 +10,7 @@ struct SessionDetailView: View {
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(SettingsManager.self) private var settingsManager: SettingsManager?
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var conversation: ConversationRecord?
     @State private var summaryText: String?
     @State private var summarizing = false
@@ -21,7 +21,7 @@ struct SessionDetailView: View {
     @State private var contextPackAnchorProject: String?
 
     private var isIndexingEnabled: Bool {
-        settingsManager?.conversationIndexingEnabled ?? SettingsManager.shared.conversationIndexingEnabled
+        settingsManager.conversationIndexingEnabled
     }
 
     var body: some View {
@@ -194,7 +194,7 @@ struct SessionDetailView: View {
                     summaryText = acc
                 }
             }
-            try dataStore.updateConversationSummary(
+            try await dataStore.updateConversationSummary(
                 id: conv.id,
                 title: conv.summaryTitle,
                 summary: acc,

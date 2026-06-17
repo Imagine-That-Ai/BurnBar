@@ -22,7 +22,7 @@ import Security
 ///      envelope, see `docs/runbooks/media-budget.md`).
 @MainActor
 final class MacMediaCapabilityGate: MediaCapabilityGate {
-    static let shared: MacMediaCapabilityGate = {
+    static func live(settingsManager: SettingsManager) -> MacMediaCapabilityGate {
         MediaBudgetStatusStore.shared.startListening()
         MacCloudEntitlementStore.shared.start()
         return MacMediaCapabilityGate(
@@ -40,9 +40,12 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
             },
             concurrentSessionsProvider: { feature in
                 MacMediaActiveSessionRegistry.shared.count(for: feature)
+            },
+            killSwitchProvider: { [settingsManager] in
+                settingsManager.mediaKillSwitch
             }
         )
-    }()
+    }
 
     struct EntitlementState: Sendable, Equatable {
         var active: Bool
@@ -68,7 +71,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         usageProvider: @escaping UsageProvider,
         budgetProvider: @escaping BudgetProvider,
         concurrentSessionsProvider: @escaping ConcurrentSessionsProvider,
-        killSwitchProvider: @escaping KillSwitchProvider = { SettingsManager.shared.mediaKillSwitch }
+        killSwitchProvider: @escaping KillSwitchProvider
     ) {
         self.entitlementProvider = entitlementProvider
         self.usageProvider = usageProvider

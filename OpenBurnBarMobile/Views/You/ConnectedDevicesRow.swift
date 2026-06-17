@@ -12,14 +12,7 @@ struct ConnectedDevicesRow: View {
     var body: some View {
         AuroraGlassCard(variant: .standard, cornerRadius: 16) {
             HStack(spacing: 12) {
-                Image(systemName: "rectangle.connected.to.line.below")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(MobileTheme.whimsy)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(MobileTheme.whimsy.opacity(0.16))
-                    )
+                YouRowIcon(imageName: "SettingsIconConnections")
                     .symbolEffect(.bounce, value: devices.count)
 
                 VStack(alignment: .leading, spacing: 2) {

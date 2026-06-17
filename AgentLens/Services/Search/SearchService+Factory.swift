@@ -6,10 +6,36 @@ extension SearchService {
         static func makeConversationSearchService(
             dataStore: DataStore,
             settingsManager: SettingsManager = .shared,
+            accountManager: AccountManager = .shared,
             providerAPIKeyStore: ProviderAPIKeyStore = .shared,
             nowProvider: @escaping @Sendable () -> Date = { Date() }
         ) -> SearchService {
-            let selection = resolvedEmbeddingSelection(
+            let preferredVersionID = settingsManager.preferredIndexEmbeddingVersionIDValue?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let queryEmbedder = makeQueryEmbedder(
+                selection: nil,
+                providerAPIKeyStore: providerAPIKeyStore
+            )
+            return makeConversationSearchService(
+                dataStore: dataStore,
+                accountManager: accountManager,
+                queryEmbedder: queryEmbedder,
+                preferredVersionID: preferredVersionID?.isEmpty == false ? preferredVersionID : nil,
+                settingsManager: settingsManager,
+                providerAPIKeyStore: providerAPIKeyStore,
+                nowProvider: nowProvider
+            )
+        }
+
+        @MainActor
+        static func makeConversationSearchServiceUsingStoredEmbeddings(
+            dataStore: DataStore,
+            settingsManager: SettingsManager = .shared,
+            accountManager: AccountManager = .shared,
+            providerAPIKeyStore: ProviderAPIKeyStore = .shared,
+            nowProvider: @escaping @Sendable () -> Date = { Date() }
+        ) async -> SearchService {
+            let selection = await resolvedEmbeddingSelection(
                 dataStore: dataStore,
                 preferredEmbeddingVersionID: settingsManager.preferredIndexEmbeddingVersionIDValue
             )
@@ -18,6 +44,27 @@ extension SearchService {
                 selection: selection,
                 providerAPIKeyStore: providerAPIKeyStore
             )
+            return makeConversationSearchService(
+                dataStore: dataStore,
+                accountManager: accountManager,
+                queryEmbedder: queryEmbedder,
+                preferredVersionID: preferredVersionID,
+                settingsManager: settingsManager,
+                providerAPIKeyStore: providerAPIKeyStore,
+                nowProvider: nowProvider
+            )
+        }
+
+        @MainActor
+        private static func makeConversationSearchService(
+            dataStore: DataStore,
+            accountManager: AccountManager,
+            queryEmbedder: any QueryEmbeddingProviding,
+            preferredVersionID: String?,
+            settingsManager: SettingsManager,
+            providerAPIKeyStore: ProviderAPIKeyStore,
+            nowProvider: @escaping @Sendable () -> Date
+        ) -> SearchService {
             let semanticProvider = VectorSemanticCandidateProvider(
                 dataStore: dataStore,
                 queryEmbedder: queryEmbedder,
@@ -35,7 +82,7 @@ extension SearchService {
                 semanticProvider: semanticProvider,
                 reranker: reranker,
                 sharedArtifactAccessContextProvider: { @MainActor @Sendable in
-                    SearchService.defaultSharedArtifactAccessContext()
+                    SearchService.defaultSharedArtifactAccessContext(accountManager: accountManager)
                 },
                 nowProvider: nowProvider
             )
@@ -228,7 +275,7 @@ extension SearchService {
         private static func resolvedEmbeddingSelection(
             dataStore: DataStore,
             preferredEmbeddingVersionID: String?
-        ) -> (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)? {
+        ) async -> (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)? {
             // A projection-store fault (locked/corrupt DB, schema fault) is NOT the same
             // as "no embedding models indexed yet": the former should be observable, the
             // latter is a normal empty state. The old `try?` collapsed both into a silent
@@ -237,7 +284,7 @@ extension SearchService {
             // surfaced while preserving the graceful skip-to-deterministic behavior.
             let models: [EmbeddingModelRecord]
             do {
-                models = try dataStore.fetchEmbeddingModels()
+                models = try await dataStore.fetchEmbeddingModels()
             } catch {
                 AppLogger.dataStore.error(
                     "search_embedding_models_fetch_failed",
@@ -251,7 +298,7 @@ extension SearchService {
 
             let versions: [EmbeddingVersionRecord]
             do {
-                versions = try dataStore.fetchEmbeddingVersions()
+                versions = try await dataStore.fetchEmbeddingVersions()
             } catch {
                 AppLogger.dataStore.error(
                     "search_embedding_versions_fetch_failed",
@@ -275,9 +322,9 @@ extension SearchService {
             return (model, version)
         }
 
-        @MainActor private static func defaultSharedArtifactAccessContext() -> SharedArtifactAccessContext? {
+        @MainActor private static func defaultSharedArtifactAccessContext(accountManager: AccountManager) -> SharedArtifactAccessContext? {
             guard
-                let userID = AccountManager.shared.userID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                let userID = accountManager.userID?.trimmingCharacters(in: .whitespacesAndNewlines),
                 userID.isEmpty == false
             else {
                 return nil

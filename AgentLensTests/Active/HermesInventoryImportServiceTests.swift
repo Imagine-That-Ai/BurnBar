@@ -219,7 +219,8 @@ final class HermesInventoryImportServiceTests: XCTestCase {
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage") ?? 0
         }
         XCTAssertEqual(storedUsages, 0, "Fail-closed import must not write any usage rows")
-        XCTAssertEqual(try dataStore.countConversations(), 0, "Fail-closed import must not index any conversations")
+        let conversationCount = try await dataStore.countConversations()
+        XCTAssertEqual(conversationCount, 0, "Fail-closed import must not index any conversations")
     }
 
     func testImportInventoryIsIdempotentForExistingHermesConversations() async throws {
@@ -259,7 +260,8 @@ final class HermesInventoryImportServiceTests: XCTestCase {
         await service.importInventory()
 
         XCTAssertEqual(service.summary.conversationCount, 1)
-        XCTAssertEqual(try dataStore.countConversations(), 1)
+        let conversationCount = try await dataStore.countConversations()
+        XCTAssertEqual(conversationCount, 1)
         XCTAssertEqual(service.progress.skippedConversationCount, 1)
     }
 }

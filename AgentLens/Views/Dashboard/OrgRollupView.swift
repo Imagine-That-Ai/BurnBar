@@ -27,8 +27,8 @@ struct OrgRollupView: View {
             }
         }
         .navigationTitle("Organization Rollup")
-        .task { loadRollups() }
-        .refreshable { loadRollups() }
+        .task { await loadRollups() }
+        .refreshable { await loadRollups() }
     }
 
     // MARK: - Disabled state
@@ -83,7 +83,7 @@ struct OrgRollupView: View {
             Spacer()
 
             Button {
-                loadRollups()
+                Task { await loadRollups() }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
@@ -125,18 +125,18 @@ struct OrgRollupView: View {
 
     // MARK: - Data loading
 
-    private func loadRollups() {
+    private func loadRollups() async {
         isLoading = true
-        rollups = queryOrgRollup()
+        rollups = await queryOrgRollup()
         isLoading = false
     }
 
     /// Queries token_usage grouped by the selected dimension. Reuses the same GROUP BY
     /// pattern as `UsageStore.makeProjectSpendSummaries` but adds `sourceDeviceID` /
     /// `sourceDeviceName` for per-seat attribution.
-    private func queryOrgRollup() -> [OrgRollupRow] {
+    private func queryOrgRollup() async -> [OrgRollupRow] {
         do {
-            return try dataStore.usageStore.fetchOrgRollup(groupBy: groupBy, period: period)
+            return try await dataStore.fetchOrgRollup(groupBy: groupBy, period: period)
         } catch {
             return []
         }

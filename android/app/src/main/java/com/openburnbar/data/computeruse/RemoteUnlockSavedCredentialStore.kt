@@ -18,7 +18,7 @@ private const val AES_KEY_BITS = 256
  * Android-local Remote Unlock credential persistence. The Mac never receives
  * anything at rest from this store: passwords are AES-GCM wrapped with an
  * AndroidKeyStore key, scoped per Remote Unlock recipient, and decrypted only
- * after the caller has completed BiometricPrompt / device-credential auth.
+ * after the caller has completed a strong biometric CryptoObject prompt.
  */
 class RemoteUnlockSavedCredentialStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

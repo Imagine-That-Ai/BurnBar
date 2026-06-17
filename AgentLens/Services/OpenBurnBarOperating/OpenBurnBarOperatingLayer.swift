@@ -38,6 +38,9 @@ final class OpenBurnBarOperatingLayer {
 
     private var snapshotCacheKey: SnapshotCacheKey?
     private var cachedSnapshot: OpenBurnBarOperatingSnapshot?
+    private var cachedOperatingActionRecords: [OpenBurnBarOperatingActionRecord] = []
+    private var cachedControllerRuntimeMirror: OpenBurnBarControllerRuntimeSnapshot?
+    private var cachedRetrievalHealth: RetrievalSystemHealthSnapshot = .empty
 
     init(
         dataStore: DataStore,
@@ -53,6 +56,10 @@ final class OpenBurnBarOperatingLayer {
         self.daemonManager = daemonManager
         self.aggregator = aggregator
         self.chatController = chatController
+
+        Task { @MainActor [weak self] in
+            await self?.refreshControlPlaneCache()
+        }
     }
 
     var snapshot: OpenBurnBarOperatingSnapshot {
@@ -71,8 +78,6 @@ final class OpenBurnBarOperatingLayer {
             return cachedSnapshot
         }
 
-        let actionRecords = (try? dataStore.fetchOperatingActionRecords(limit: 200)) ?? [] // try?-ok(display read fallback)
-        let cachedControllerRuntime = (try? dataStore.fetchControllerRuntimeMirror()) ?? nil // try?-ok(display read fallback)
         let composed = OpenBurnBarOperatingComposer.build(
             dataStore: dataStore,
             settingsManager: settingsManager,
@@ -80,8 +85,9 @@ final class OpenBurnBarOperatingLayer {
             daemonStatus: daemonManager.status,
             aggregator: aggregator,
             chatController: chatController,
-            actionRecords: actionRecords,
-            cachedControllerRuntime: cachedControllerRuntime
+            actionRecords: cachedOperatingActionRecords,
+            cachedControllerRuntime: cachedControllerRuntimeMirror,
+            cachedRetrievalHealth: cachedRetrievalHealth
         )
         snapshotCacheKey = cacheKey
         cachedSnapshot = composed
@@ -94,5 +100,29 @@ final class OpenBurnBarOperatingLayer {
 
     func clearControllerFeedback() {
         controllerFeedback = nil
+    }
+
+    func refreshControlPlaneCache() async {
+        // try?-ok(best-effort dashboard cache refresh; stale cache is recovered by the next daemon sync)
+        cachedOperatingActionRecords = (try? await dataStore.fetchOperatingActionRecords(limit: 200)) ?? []
+        // try?-ok(best-effort dashboard cache refresh; nil mirror is an explicit offline/unknown state)
+        cachedControllerRuntimeMirror = (try? await dataStore.fetchControllerRuntimeMirror()) ?? nil
+        cachedRetrievalHealth = await RetrievalHealthService(dataStore: dataStore).snapshot(
+            indexingEnabled: settingsManager.conversationIndexingEnabled,
+            sharedFeaturesAvailable: accountManager.isSignedIn
+        )
+        snapshotCacheKey = nil
+        stateRevision += 1
+    }
+
+    func rememberControllerRuntimeMirror(_ snapshot: OpenBurnBarControllerRuntimeSnapshot) {
+        cachedControllerRuntimeMirror = snapshot
+        snapshotCacheKey = nil
+    }
+
+    func rememberOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) {
+        cachedOperatingActionRecords.insert(record, at: 0)
+        cachedOperatingActionRecords = Array(cachedOperatingActionRecords.prefix(200))
+        snapshotCacheKey = nil
     }
 }

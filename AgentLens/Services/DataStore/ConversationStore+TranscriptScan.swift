@@ -13,8 +13,8 @@ extension ConversationStore {
             dateRange: ClosedRange<Date>?,
             conversationSources: Set<ConversationSourceType>?,
             limit: Int = 500
-        ) throws -> [ConversationRecord] {
-            try dbQueue.read { db -> [ConversationRecord] in
+        ) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db -> [ConversationRecord] in
                 var sql = """
                 SELECT *
                 FROM conversations AS c
@@ -60,8 +60,8 @@ extension ConversationStore {
             conversationSources: Set<ConversationSourceType>?,
             limit: Int,
             offset: Int
-        ) throws -> [(id: String, fullText: String)] {
-            try dbQueue.read { db -> [(id: String, fullText: String)] in
+        ) async throws -> [(id: String, fullText: String)] {
+            try await dbQueue.read { db -> [(id: String, fullText: String)] in
                 var sql = """
                 SELECT c.id, c.fullText
                 FROM conversations AS c

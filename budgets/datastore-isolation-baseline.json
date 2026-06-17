@@ -1,0 +1,7 @@
+{
+  "nonisolatedDataStoreMembers": 28,
+  "syncDbQueueAccesses": 21,
+  "total": 49,
+  "generatedAt": "2026-06-17T17:40:00Z",
+  "note": "Baseline for scripts/debt/check-datastore-isolation-budget.sh after the accretive main catch-up merge. Counts code-line nonisolated members on AgentLens/Services/DataStore/{DataStore.swift,DataStoreCoordinator.swift,DataStore+*.swift} plus synchronous try dbQueue.read/write/writeWithoutTransaction sites under AgentLens/Services/DataStore, excluding database infrastructure and query tracer docs. Live detail at capture: DataStore+ConversationAccess.swift=7, DataStore.swift=4, DataStoreCoordinator.swift=17 nonisolated members; ConversationStore+CRUD.swift=5, ConversationStore+Chat.swift=2, DataStoreCoordinator.swift=2, SwitcherProfileStore.swift=12 sync dbQueue accesses. Lower this baseline only by removing direct-store exposure or migrating sync GRDB call sites to async slices."
+}

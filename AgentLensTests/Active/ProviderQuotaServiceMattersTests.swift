@@ -66,15 +66,12 @@ final class ProviderQuotaServiceMattersTests: XCTestCase {
 
     // MARK: - L482: refreshRoutingState degrades gracefully on a read fault
 
-    func test_refreshRoutingState_doesNotCrashWhenAccountFetchThrows() throws {
+    func test_refreshRoutingState_doesNotCrashWhenAccountFetchThrows() async throws {
         let service = makeService(appSupportRoot: tempRoot)
         let dataStore = try makeDataStore()
-        try breakProviderAccountsTable(dataStore)
+        try await breakProviderAccountsTable(dataStore)
 
-        var states: [ProviderID: ProviderRoutingStateSnapshot] = [:]
-        XCTAssertNoThrow(
-            states = service.refreshRoutingState(dataStore: dataStore)
-        )
+        let states = await service.refreshRoutingState(dataStore: dataStore)
         // With no locally-known accounts available (the read faulted) and no
         // daemon configs / snapshots seeded in this hermetic instance, routing
         // produces no candidate-backed states — but it must reach that result
@@ -84,16 +81,14 @@ final class ProviderQuotaServiceMattersTests: XCTestCase {
 
     // MARK: - L823: connected-account read fault is not cached
 
-    func test_hasConnectedQuotaAccount_falseOnReadFaultWithoutPoisoningCache() throws {
+    func test_hasConnectedQuotaAccount_falseOnReadFaultWithoutPoisoningCache() async throws {
         let service = makeService(appSupportRoot: tempRoot)
 
         // First, a broken store: the connected-account read faults.
         let brokenStore = try makeDataStore()
-        try breakProviderAccountsTable(brokenStore)
-        XCTAssertFalse(
-            service.hasConnectedQuotaAccount(for: .minimax, dataStore: brokenStore),
-            "A read fault must report no connected accounts, not crash"
-        )
+        try await breakProviderAccountsTable(brokenStore)
+        let brokenStoreHasMiniMax = await service.hasConnectedQuotaAccount(for: .minimax, dataStore: brokenStore)
+        XCTAssertFalse(brokenStoreHasMiniMax, "A read fault must report no connected accounts, not crash")
 
         // Then, a healthy store with a genuinely-connected MiniMax account.
         // If the fault-derived empty set had been cached (the old behaviour),
@@ -101,21 +96,21 @@ final class ProviderQuotaServiceMattersTests: XCTestCase {
         // skips caching on failure, so the very next call re-probes and sees
         // the connected account.
         let healthyStore = try makeDataStore()
-        try seedConnectedAccount(in: healthyStore, provider: .minimax)
-        XCTAssertTrue(
-            service.hasConnectedQuotaAccount(for: .minimax, dataStore: healthyStore),
-            "A transient read fault must not pin an empty set in the 15s cache"
-        )
+        try await seedConnectedAccount(in: healthyStore, provider: .minimax)
+        let healthyStoreHasMiniMax = await service.hasConnectedQuotaAccount(for: .minimax, dataStore: healthyStore)
+        XCTAssertTrue(healthyStoreHasMiniMax, "A transient read fault must not pin an empty set in the 15s cache")
     }
 
-    func test_hasConnectedQuotaAccount_trueForConnectedAccount() throws {
+    func test_hasConnectedQuotaAccount_trueForConnectedAccount() async throws {
         let service = makeService(appSupportRoot: tempRoot)
         let dataStore = try makeDataStore()
-        try seedConnectedAccount(in: dataStore, provider: .minimax)
+        try await seedConnectedAccount(in: dataStore, provider: .minimax)
 
-        XCTAssertTrue(service.hasConnectedQuotaAccount(for: .minimax, dataStore: dataStore))
+        let hasMiniMax = await service.hasConnectedQuotaAccount(for: .minimax, dataStore: dataStore)
+        XCTAssertTrue(hasMiniMax)
         // Sanity: an unconnected provider stays false.
-        XCTAssertFalse(service.hasConnectedQuotaAccount(for: .deepSeek, dataStore: dataStore))
+        let hasDeepSeek = await service.hasConnectedQuotaAccount(for: .deepSeek, dataStore: dataStore)
+        XCTAssertFalse(hasDeepSeek)
     }
 
     // MARK: - Helpers
@@ -154,15 +149,15 @@ final class ProviderQuotaServiceMattersTests: XCTestCase {
     /// Drops `provider_accounts` so `fetchAll`'s SELECT throws a real GRDB
     /// "no such table" error — the cleanest available stand-in for a
     /// corrupted/locked local store.
-    private func breakProviderAccountsTable(_ dataStore: DataStore) throws {
-        try dataStore.dbQueue.write { db in
+    private func breakProviderAccountsTable(_ dataStore: DataStore) async throws {
+        try await dataStore.actor.dbQueue.write { db in
             try db.execute(sql: "DROP TABLE IF EXISTS provider_accounts")
         }
     }
 
-    private func seedConnectedAccount(in dataStore: DataStore, provider: AgentProvider) throws {
+    private func seedConnectedAccount(in dataStore: DataStore, provider: AgentProvider) async throws {
         let now = Date()
-        try dataStore.providerAccountStore.upsert(
+        try await dataStore.upsertProviderAccount(
             ProviderAccountDoc(
                 id: "\(provider.providerID.rawValue)-test",
                 providerID: provider.providerID,

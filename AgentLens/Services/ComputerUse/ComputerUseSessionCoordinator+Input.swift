@@ -367,7 +367,7 @@ extension ComputerUseSessionCoordinator {
             let receipt: AgentCapabilityGrantReceipt
             do {
                 let attestation = await MacAppCheckAttestationReader.attestationRequirement(
-                    strictMode: SettingsManager.shared.computerUsePhoneControlAttestationRequired
+                    strictMode: configuration.phoneControlAttestationRequired
                 )
                 _ = try phoneValidator.validate(
                     envelope: wireRequest.authority,

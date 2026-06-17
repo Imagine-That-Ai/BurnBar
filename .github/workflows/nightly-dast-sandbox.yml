@@ -16,13 +16,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Boots the real virtual-HID bridge as root on a live socket and proves an
-  # unsigned probe is rejected by peer authentication. Hosted macOS cannot
-  # currently load the privileged HID stack reliably, so this lane records
-  # advisory evidence without paging the core nightly.
+  # Hosted-runner advisory lane. These jobs are intentionally isolated from
+  # nightly-e2e because public DAST, local Functions-emulator DAST, and live
+  # privileged-socket red-team checks have environment prerequisites that should
+  # not keep the paged nightly lane red on GitHub-hosted runners.
   privileged-socket-redteam:
     runs-on: macos-26
     timeout-minutes: 30
+    continue-on-error: true
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
     steps:
@@ -50,6 +51,7 @@ jobs:
     name: DAST - Website (OWASP ZAP baseline)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: true
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
     steps:
@@ -60,11 +62,11 @@ jobs:
         continue-on-error: true
         uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed # v0.14.0
         with:
-          target: 'https://burnbar.ai'
-          rules_file_name: '.github/zap-rules.tsv'
-          cmd_options: '-a -j'
+          target: "https://burnbar.ai"
+          rules_file_name: ".github/zap-rules.tsv"
+          cmd_options: "-a -j"
           fail_action: true
-          artifact_name: 'zap-website-report'
+          artifact_name: "zap-website-report"
 
       - name: Record advisory outcome
         id: outcome
@@ -81,6 +83,7 @@ jobs:
     name: DAST - Functions health endpoints (OWASP ZAP API scan)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: true
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
     steps:
@@ -94,12 +97,13 @@ jobs:
         id: emulator
         continue-on-error: true
         run: |
+          set -euo pipefail
           npm ci --prefix functions
           npm run build --prefix functions
           npm --prefix functions exec -- firebase emulators:start --project openburnbar-dev --only functions &
           # Readiness must be explicit. A dead emulator is an advisory failure,
           # not a blind ZAP pass.
-          timeout 60 bash -c 'until curl -sf http://localhost:5001 2>/dev/null; do sleep 2; done'
+          timeout 60 bash -c 'until curl -sf http://localhost:5001 >/dev/null; do sleep 2; done'
 
       - name: Run OWASP ZAP API scan against health endpoints
         id: zap
@@ -107,12 +111,12 @@ jobs:
         continue-on-error: true
         uses: zaproxy/action-api-scan@77dfa9a647bb0f583e39d4df8531634d6ddd8df4 # v0.9.0
         with:
-          target: 'functions/openapi.yaml'
+          target: "functions/openapi.yaml"
           format: openapi
-          rules_file_name: '.github/zap-rules.tsv'
-          cmd_options: '-a -j'
+          rules_file_name: ".github/zap-rules.tsv"
+          cmd_options: "-a -j"
           fail_action: true
-          artifact_name: 'zap-functions-report'
+          artifact_name: "zap-functions-report"
 
       - name: Record advisory outcome
         id: outcome

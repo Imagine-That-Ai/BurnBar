@@ -15,8 +15,8 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         UsageStore(dbQueue: queue)
     }
 
-    private func fetchCanonicalRow(queue: DatabaseQueue, sessionId: String) throws -> Row? {
-        try queue.read { db in
+    private func fetchCanonicalRow(queue: DatabaseQueue, sessionId: String) async throws -> Row? {
+        try await queue.read { db in
             try Row.fetchOne(db, sql: """
                 SELECT * FROM token_usage 
                 WHERE sessionId = ? 
@@ -25,8 +25,8 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         }
     }
 
-    private func countCanonicalRows(queue: DatabaseQueue, sessionId: String) throws -> Int {
-        try queue.read { db in
+    private func countCanonicalRows(queue: DatabaseQueue, sessionId: String) async throws -> Int {
+        try await queue.read { db in
             try Int.fetchOne(db, sql: """
                 SELECT COUNT(*) FROM token_usage 
                 WHERE sessionId = ?
@@ -36,7 +36,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
     // MARK: - VAL-PERSIST-002: Exact rows cannot be downgraded
 
-    func test_exactRow_isNotDowngradedByLowerConfidenceEstimate() throws {
+    func test_exactRow_isNotDowngradedByLowerConfidenceEstimate() async throws {
         // Given: an exact row already exists
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -59,7 +59,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(exactUsage)
+        try await store.insert(exactUsage)
 
         // When: a lower-confidence estimate tries to overwrite
         let estimateUsage = TokenUsage(
@@ -78,10 +78,10 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try store.insert(estimateUsage)
+        try await store.insert(estimateUsage)
 
         // Then: exact row is preserved (not downgraded)
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
 
         XCTAssertEqual(inputTokens, 1000, "Exact row must not be downgraded by estimate")
@@ -90,7 +90,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual(row?["projectName"] as? String, "ExactProject")
     }
 
-    func test_exactRow_isNotDowngraded_evenWithDifferentValues() throws {
+    func test_exactRow_isNotDowngraded_evenWithDifferentValues() async throws {
         // Given: an exact row exists
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -111,7 +111,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(exactUsage)
+        try await store.insert(exactUsage)
 
         // When: a derived-exact tries to overwrite with different values
         let derivedUsage = TokenUsage(
@@ -128,19 +128,19 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .derivedExact,
             estimatorVersion: ""
         )
-        try store.insert(derivedUsage)
+        try await store.insert(derivedUsage)
 
         // Then: derivedExact should still win (higher than estimate but lower than exact... wait)
         // derivedExact has precedence 3, exact has precedence 4
         // So exact > derivedExact, meaning derived should NOT replace exact
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
 
         XCTAssertEqual(inputTokens, 5000, "Exact row must not be downgraded")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
     }
 
-    func test_highConfidenceEstimate_isNotDowngradedByLowConfidence() throws {
+    func test_highConfidenceEstimate_isNotDowngradedByLowConfidence() async throws {
         // Given: a high-confidence estimate row
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -161,7 +161,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v2"
         )
-        try store.insert(hceUsage)
+        try await store.insert(hceUsage)
 
         // When: a low-confidence estimate tries to overwrite
         let lceUsage = TokenUsage(
@@ -178,10 +178,10 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "coarse-v1"
         )
-        try store.insert(lceUsage)
+        try await store.insert(lceUsage)
 
         // Then: high-confidence estimate is preserved
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
 
         XCTAssertEqual(inputTokens, 3000, "High-confidence estimate must not be downgraded")
@@ -190,7 +190,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
     // MARK: - VAL-PERSIST-003: Late exact arrivals upgrade prior estimates
 
-    func test_lateExactPromotesEstimatedCanonicalRow() throws {
+    func test_lateExactPromotesEstimatedCanonicalRow() async throws {
         // Given: an estimated row exists
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -211,7 +211,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try store.insert(estimateUsage)
+        try await store.insert(estimateUsage)
 
         // When: exact data arrives later
         let exactUsage = TokenUsage(
@@ -228,10 +228,10 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(exactUsage)
+        try await store.insert(exactUsage)
 
         // Then: canonical row is upgraded to exact
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
 
         XCTAssertEqual(inputTokens, 2000, "Late exact must upgrade estimated row")
@@ -239,7 +239,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual(row?["provenanceMethod"] as? String, "provider_log")
     }
 
-    func test_lateExactPromotesDerivedExactRow() throws {
+    func test_lateExactPromotesDerivedExactRow() async throws {
         // Given: a derived-exact row exists
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -260,7 +260,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .derivedExact,
             estimatorVersion: ""
         )
-        try store.insert(derivedUsage)
+        try await store.insert(derivedUsage)
 
         // When: true exact data arrives later
         let exactUsage = TokenUsage(
@@ -277,10 +277,10 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(exactUsage)
+        try await store.insert(exactUsage)
 
         // Then: canonical row is upgraded to exact (and projectName updated)
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
 
         XCTAssertEqual(inputTokens, 2500, "Late exact must upgrade derived-exact row")
@@ -288,7 +288,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual(row?["projectName"] as? String, "ProjectUpdated")
     }
 
-    func test_lateHighConfidencePromotesLowConfidenceEstimate() throws {
+    func test_lateHighConfidencePromotesLowConfidenceEstimate() async throws {
         // Given: a low-confidence estimate exists
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -309,7 +309,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "coarse-v1"
         )
-        try store.insert(lowUsage)
+        try await store.insert(lowUsage)
 
         // When: high-confidence estimate arrives
         let highUsage = TokenUsage(
@@ -326,10 +326,10 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v2"
         )
-        try store.insert(highUsage)
+        try await store.insert(highUsage)
 
         // Then: row is promoted to high-confidence
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
 
         XCTAssertEqual(inputTokens, 1500, "Late high-confidence must promote low-confidence row")
@@ -338,7 +338,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
     // MARK: - VAL-TOKEN-007: Idempotent local upsert (no duplicates)
 
-    func test_localReingest_sameLogicalKey_remainsDuplicateFree() throws {
+    func test_localReingest_sameLogicalKey_remainsDuplicateFree() async throws {
         // Given: a usage row exists
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -359,7 +359,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(originalUsage)
+        try await store.insert(originalUsage)
 
         // When: same logical key is re-ingested
         let reingestUsage = TokenUsage(
@@ -376,18 +376,18 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(reingestUsage)
+        try await store.insert(reingestUsage)
 
         // Then: no duplicates created
-        let count = try countCanonicalRows(queue: queue, sessionId: sessionId)
+        let count = try await countCanonicalRows(queue: queue, sessionId: sessionId)
         XCTAssertEqual(count, 1, "Re-ingest must not create duplicate rows")
 
         // And the row is still there
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         XCTAssertNotNil(row, "Canonical row must still exist")
     }
 
-    func test_localReingest_differentConfidence_equalPrecedence_updatesInPlace() throws {
+    func test_localReingest_differentConfidence_equalPrecedence_updatesInPlace() async throws {
         // Given: a usage row with unknown confidence
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -408,7 +408,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .unknown,
             estimatorVersion: ""
         )
-        try store.insert(originalUsage)
+        try await store.insert(originalUsage)
 
         // When: same key is re-ingested with same confidence but updated values
         let reingestUsage = TokenUsage(
@@ -425,13 +425,13 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact, // higher confidence - should upgrade
             estimatorVersion: ""
         )
-        try store.insert(reingestUsage)
+        try await store.insert(reingestUsage)
 
         // Then: still one row, but updated to exact
-        let count = try countCanonicalRows(queue: queue, sessionId: sessionId)
+        let count = try await countCanonicalRows(queue: queue, sessionId: sessionId)
         XCTAssertEqual(count, 1, "Re-ingest must not create duplicate rows")
 
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
         XCTAssertEqual(inputTokens, 2500, "Row should be updated")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
@@ -463,7 +463,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
     // MARK: - Source Device ID Handling
 
-    func test_upsert_withDifferentSourceDeviceId_createsSeparateRows() throws {
+    func test_upsert_withDifferentSourceDeviceId_createsSeparateRows() async throws {
         // Given: a usage row from device A
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -486,7 +486,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(deviceAUsage)
+        try await store.insert(deviceAUsage)
 
         // When: same session from device B
         let deviceBUsage = TokenUsage(
@@ -505,14 +505,14 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(deviceBUsage)
+        try await store.insert(deviceBUsage)
 
         // Then: both rows exist (different source device = different canonical key)
-        let count = try countCanonicalRows(queue: queue, sessionId: sessionId)
+        let count = try await countCanonicalRows(queue: queue, sessionId: sessionId)
         XCTAssertEqual(count, 2, "Different source devices should create separate rows")
     }
 
-    func test_upsert_withNullSourceDeviceId_conflictsWithEmptySourceDeviceId() throws {
+    func test_upsert_withNullSourceDeviceId_conflictsWithEmptySourceDeviceId() async throws {
         // The conflict target is COALESCE(sourceDeviceId, '')
         // So null and empty string should be treated as the same
         let queue = try DatabaseQueue()
@@ -537,7 +537,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(nilDeviceUsage)
+        try await store.insert(nilDeviceUsage)
 
         // Second insert with empty string sourceDeviceId
         let emptyDeviceUsage = TokenUsage(
@@ -555,16 +555,16 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(emptyDeviceUsage)
+        try await store.insert(emptyDeviceUsage)
 
         // Then: only one row exists (nil and empty are same conflict key)
-        let count = try countCanonicalRows(queue: queue, sessionId: sessionId)
+        let count = try await countCanonicalRows(queue: queue, sessionId: sessionId)
         XCTAssertEqual(count, 1, "nil and empty sourceDeviceId should conflict")
     }
 
     // MARK: - Equal Confidence Updates
 
-    func test_equalConfidence_differentValues_updatesCorrectly() throws {
+    func test_equalConfidence_differentValues_updatesCorrectly() async throws {
         // Given: a row with high-confidence estimate
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -585,7 +585,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v2"
         )
-        try store.insert(originalUsage)
+        try await store.insert(originalUsage)
 
         // When: another high-confidence estimate with different values
         let updatedUsage = TokenUsage(
@@ -602,10 +602,10 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate, // same confidence
             estimatorVersion: "cjk-aware-v2"
         )
-        try store.insert(updatedUsage)
+        try await store.insert(updatedUsage)
 
         // Then: row is updated
-        let row = try fetchCanonicalRow(queue: queue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
         let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
 
         XCTAssertEqual(inputTokens, 2000, "Equal confidence with different values should update")
@@ -614,14 +614,14 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
     // MARK: - Duplicate Repairs
 
-    func test_factoryRoutedProviderMirror_isSuppressedWhenFactoryRowExists() throws {
+    func test_factoryRoutedProviderMirror_isSuppressedWhenFactoryRowExists() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
         let now = Date()
         let sessionId = "factory-routed-minimax"
 
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .factory,
             sessionId: sessionId,
             projectName: "FactoryProject",
@@ -635,7 +635,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact
         ))
 
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .minimax,
             sessionId: sessionId,
             projectName: "FactoryProject",
@@ -649,7 +649,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact
         ))
 
-        let rows = try queue.read { db in
+        let rows = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT provider, cost FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
         }
         XCTAssertEqual(rows.count, 1)
@@ -657,14 +657,14 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual((rows.first?["cost"] as? Double) ?? -1, 0, accuracy: 0.000001)
     }
 
-    func test_factoryRowDeletesExistingRoutedProviderMirror() throws {
+    func test_factoryRowDeletesExistingRoutedProviderMirror() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
         let now = Date()
         let sessionId = "factory-replaces-zai-mirror"
 
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .zai,
             sessionId: sessionId,
             projectName: "FactoryProject",
@@ -678,7 +678,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact
         ))
 
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .factory,
             sessionId: sessionId,
             projectName: "FactoryProject",
@@ -692,21 +692,21 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact
         ))
 
-        let rows = try queue.read { db in
+        let rows = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT provider, cost FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
         }
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?["provider"] as? String, AgentProvider.factory.rawValue)
     }
 
-    func test_lateExactWithCorrectedModelDeletesLowerConfidenceModelRow() throws {
+    func test_lateExactWithCorrectedModelDeletesLowerConfidenceModelRow() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
         let now = Date()
         let sessionId = "model-correction"
 
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .claudeCode,
             sessionId: sessionId,
             projectName: "Project",
@@ -721,7 +721,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             estimatorVersion: "char-ratio-v1"
         ))
 
-        try store.insert(TokenUsage(
+        try await store.insert(TokenUsage(
             provider: .claudeCode,
             sessionId: sessionId,
             projectName: "Project",
@@ -735,7 +735,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
             provenanceConfidence: .exact
         ))
 
-        let rows = try queue.read { db in
+        let rows = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT model, provenanceConfidence FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
         }
         XCTAssertEqual(rows.count, 1)

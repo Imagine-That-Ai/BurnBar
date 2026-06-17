@@ -125,7 +125,7 @@ final class WorkflowInsightRollupService {
     }
 
     func snapshot(refreshIfStale: Bool = true) -> WorkflowInsightRollupSnapshot {
-        buildSnapshot(inputs: captureInputs(), refreshIfStale: refreshIfStale)
+        WorkflowInsightRollupSnapshot.unavailable
     }
 
     /// Off-main variant for hot UI paths (popover open, `usagesVersion`
@@ -145,23 +145,23 @@ final class WorkflowInsightRollupService {
         inputs: MainActorInputs,
         refreshIfStale: Bool
     ) async -> WorkflowInsightRollupSnapshot {
-        buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
+        await buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
     }
 
     private nonisolated func buildSnapshot(
         inputs: MainActorInputs,
         refreshIfStale: Bool
-    ) -> WorkflowInsightRollupSnapshot {
+    ) async -> WorkflowInsightRollupSnapshot {
         // Single health-row read feeds both the materialized payload and
         // the write-skip comparison in `upsertHealthIfChanged`.
-        let existingHealth = loadHealthRecord()
+        let existingHealth = await loadHealthRecord()
 
         let context: RollupContext
         do {
-            context = try buildContext(inputs: inputs)
+            context = try await buildContext(inputs: inputs)
         } catch {
             let message = "Workflow insights are unavailable: \(error.localizedDescription)"
-            upsertHealthIfChanged(
+            await upsertHealthIfChanged(
                 existing: existingHealth,
                 payloadJSON: nil,
                 status: .failed,
@@ -195,7 +195,7 @@ final class WorkflowInsightRollupService {
                 freshness = .fresh
             } catch {
                 let message = "Workflow insights could not refresh: \(error.localizedDescription)"
-                upsertHealthIfChanged(
+                await upsertHealthIfChanged(
                     existing: existingHealth,
                     payloadJSON: payloadJSON,
                     status: .failed,
@@ -211,7 +211,7 @@ final class WorkflowInsightRollupService {
             }
         }
 
-        upsertHealthIfChanged(
+        await upsertHealthIfChanged(
             existing: existingHealth,
             payloadJSON: payloadJSON,
             status: healthStatus(for: freshness),
@@ -227,14 +227,14 @@ final class WorkflowInsightRollupService {
         )
     }
 
-    private nonisolated func buildContext(inputs: MainActorInputs) throws -> RollupContext {
-        let pendingCount = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
-        let failedCount = try dataStore.countProjectionJobs(statuses: [.failed, .canceled])
-        let rebuildInProgress = try dataStore.hasProjectionJobs(
+    private nonisolated func buildContext(inputs: MainActorInputs) async throws -> RollupContext {
+        let pendingCount = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        let failedCount = try await dataStore.countProjectionJobs(statuses: [.failed, .canceled])
+        let rebuildInProgress = try await dataStore.hasProjectionJobs(
             statuses: [.queued, .leased, .running],
             jobTypes: [.rebuild, .reembed]
         )
-        let latestIndexedAt = try dataStore.fetchSearchDocuments(limit: 1).first?.indexedAt
+        let latestIndexedAt = try await dataStore.fetchSearchDocuments(limit: 1).first?.indexedAt
         let hasInputs = inputs.totalUsageSessionCount > 0 || latestIndexedAt != nil
         return RollupContext(
             latestUsageAt: inputs.latestUsageAt,
@@ -289,8 +289,8 @@ final class WorkflowInsightRollupService {
         return (payload, json)
     }
 
-    private nonisolated func loadHealthRecord() -> RetrievalHealthRecord? {
-        guard let rows = try? dataStore.fetchRetrievalHealth() else { return nil } // try?-ok(cache read recovered)
+    private nonisolated func loadHealthRecord() async -> RetrievalHealthRecord? {
+        guard let rows = try? await dataStore.fetchRetrievalHealth() else { return nil } // try?-ok(cache read recovered)
         return rows.first(where: { $0.subsystem == .insightRollups })
     }
 
@@ -311,7 +311,7 @@ final class WorkflowInsightRollupService {
         status: RetrievalHealthStatus,
         errorCode: String?,
         errorMessage: String?
-    ) {
+    ) async {
         if let existing,
            existing.status == status,
            existing.detailsJSON == payloadJSON,
@@ -321,7 +321,7 @@ final class WorkflowInsightRollupService {
         }
         let now = nowProvider()
         do {
-            try dataStore.upsertRetrievalHealth(
+            try await dataStore.upsertRetrievalHealth(
                 RetrievalHealthRecord(
                     subsystem: .insightRollups,
                     status: status,

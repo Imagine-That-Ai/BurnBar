@@ -315,13 +315,14 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let commitsAfterFirstSync = fakeGateway.batchCommitCount
         XCTAssertGreaterThan(commitsAfterFirstSync, 0)
 
-        try await dataStore.dbQueue.write { db in
+        try await dataStore.actor.dbQueue.write { db in
             try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE id = ?", arguments: [record.id])
         }
 
         await sessionLogSync.sync()
         XCTAssertEqual(fakeGateway.batchCommitCount, commitsAfterFirstSync)
-        XCTAssertTrue(try dataStore.fetchUnsyncedSessionLogs().isEmpty)
+        let remainingLogs = try await dataStore.fetchUnsyncedSessionLogs()
+        XCTAssertTrue(remainingLogs.isEmpty)
     }
 
     func test_sessionLogUpload_skipPathScrubsLegacyChunkPlaintext() async throws {
@@ -370,7 +371,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             "terms": ["orphaned", "plaintext"]
         ], at: orphanChunkPath)
 
-        try await dataStore.dbQueue.write { db in
+        try await dataStore.actor.dbQueue.write { db in
             try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE id = ?", arguments: [record.id])
         }
 
@@ -379,7 +380,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 1)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 1)
         XCTAssertEqual(fakeGateway.batchCommitCount, commitsAfterFirstSync + 1)
-        XCTAssertTrue(try dataStore.fetchUnsyncedSessionLogs().isEmpty)
+        let remainingLogs = try await dataStore.fetchUnsyncedSessionLogs()
+        XCTAssertTrue(remainingLogs.isEmpty)
 
         let chunk = try XCTUnwrap(fakeGateway.documentData(at: chunkPath))
         XCTAssertEqual(chunk["bodyStorage"] as? String, "firebase_storage_encrypted")
@@ -466,7 +468,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertNotNil(chunk["sealedSnippet"] as? [String: Any])
     }
 
-    func test_countUnsyncedSessionLogs_tracksDirtyFlags() throws {
+    func test_countUnsyncedSessionLogs_tracksDirtyFlags() async throws {
         let record = ConversationRecord(
             id: ConversationRecord.stableId(provider: .cursor, sessionId: "sess-count"),
             provider: .cursor,
@@ -486,10 +488,11 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             fileModifiedAt: nil
         )
         try dataStore.upsertConversation(record)
-        XCTAssertEqual(try dataStore.countUnsyncedSessionLogs(), 1)
+        let unsyncedCount = try await dataStore.countUnsyncedSessionLogs()
+        XCTAssertEqual(unsyncedCount, 1)
     }
 
-    func test_backupUsageSnapshot_countsPendingStorageAndLimits() throws {
+    func test_backupUsageSnapshot_countsPendingStorageAndLimits() async throws {
         let synced = ConversationRecord(
             id: ConversationRecord.stableId(provider: .cursor, sessionId: "sess-usage-synced"),
             provider: .cursor,
@@ -528,9 +531,9 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         )
         try dataStore.upsertConversation(synced)
         try dataStore.upsertConversation(pending)
-        try dataStore.markSessionLogsSynced(ids: [synced.id])
+        try await dataStore.markSessionLogsSynced(ids: [synced.id])
 
-        let usage = try dataStore.backupUsageSnapshot(
+        let usage = try await dataStore.backupUsageSnapshot(
             limits: CloudBackupPlanLimits(
                 transcriptByteLimit: 16 * 1024,
                 searchableIndexByteLimit: 128 * 1024,
@@ -546,7 +549,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertGreaterThan(usage.estimatedSearchIndexBytes, usage.rawTranscriptBytes)
         XCTAssertTrue(usage.isWithinLimits)
 
-        let blocked = try dataStore.backupUsageSnapshot(
+        let blocked = try await dataStore.backupUsageSnapshot(
             limits: CloudBackupPlanLimits(
                 transcriptByteLimit: 1,
                 searchableIndexByteLimit: .max,
@@ -600,7 +603,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 0)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 0)
-        XCTAssertEqual(try dataStore.countUnsyncedSessionLogs(), 1)
+        let unsyncedCount = try await dataStore.countUnsyncedSessionLogs()
+        XCTAssertEqual(unsyncedCount, 1)
         XCTAssertEqual(limitedSync.lastSyncError?.contains("Backup storage limit reached"), true)
     }
 

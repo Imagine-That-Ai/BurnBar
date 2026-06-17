@@ -24,30 +24,27 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
     private var store: SwitcherProfileStore!
     private var logCapture: RuntimeLogCapture!
     /// Captured log messages from the production log emitter
-    private var capturedLogMessages: [String] = []
+    private let capturedLogMessages = CapturedLogMessages()
     /// The log emitter with capture handler for intercepting production logs
     private var logEmitter: LogEmitter!
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            try Self.addMigrationv32(to: dbQueue)
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        try await Self.addMigrationv32(to: dbQueue)
 
-            // Create log emitter with capture handler for deterministic interception
-            capturedLogMessages = []
-            logEmitter = LogEmitter { [weak self] message in
-                self?.capturedLogMessages.append(message)
-            }
-
-            // Create store with injectable log emitter for test capture
-            store = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
-            logCapture = RuntimeLogCapture()
-        } catch {
-            XCTFail("Failed to set up test store: \(error)")
+        // Create log emitter with capture handler for deterministic interception
+        capturedLogMessages.removeAll()
+        let capturedLogMessages = capturedLogMessages
+        logEmitter = LogEmitter { message in
+            capturedLogMessages.append(message)
         }
+
+        // Create store with injectable log emitter for test capture
+        store = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
+        logCapture = RuntimeLogCapture()
     }
 
     override func tearDown() {
@@ -59,10 +56,42 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         super.tearDown()
     }
 
+    private final class CapturedLogMessages: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage: [String] = []
+
+        func append(_ message: String) {
+            lock.lock()
+            storage.append(message)
+            lock.unlock()
+        }
+
+        func removeAll() {
+            lock.lock()
+            storage.removeAll()
+            lock.unlock()
+        }
+
+        func snapshot() -> [String] {
+            lock.lock()
+            let messages = storage
+            lock.unlock()
+            return messages
+        }
+
+        var isEmpty: Bool {
+            snapshot().isEmpty
+        }
+
+        func contains(where predicate: (String) -> Bool) -> Bool {
+            snapshot().contains(where: predicate)
+        }
+    }
+
     // MARK: - Migration Helper
 
-    private static func addMigrationv32(to dbQueue: DatabaseQueue) throws {
-        try dbQueue.write { db in
+    private static func addMigrationv32(to dbQueue: DatabaseQueue) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -285,7 +314,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         logCapture.captureActiveProfileState(state)
 
         // Combine captured log messages from production log emitter with test helper captures
-        var allLogs = capturedLogMessages
+        var allLogs = capturedLogMessages.snapshot()
         allLogs.append(contentsOf: logCapture.capturedLogs)
 
         // Assert no secret patterns in captured runtime emitted logs
@@ -328,7 +357,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         )
 
         // Combine captured log messages
-        var allLogs = capturedLogMessages
+        var allLogs = capturedLogMessages.snapshot()
         allLogs.append(contentsOf: logCapture.capturedLogs)
 
         assertNoSecretPatternsInLogs(logs: allLogs, context: "test_startupProfileFetch_capturesRuntimeLogs_noSecrets")
@@ -364,7 +393,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         logCapture.captureActiveProfileState(state)
 
         // Combine captured log messages
-        var allLogs = capturedLogMessages
+        var allLogs = capturedLogMessages.snapshot()
         allLogs.append(contentsOf: logCapture.capturedLogs)
 
         assertNoSecretPatternsInLogs(logs: allLogs, context: "test_startupActiveProfileRehydration_capturesRuntimeLogs_noSecrets")
@@ -417,7 +446,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         }
 
         // Combine captured log messages
-        var allLogs = capturedLogMessages
+        var allLogs = capturedLogMessages.snapshot()
         allLogs.append(contentsOf: logCapture.capturedLogs)
 
         assertNoSecretPatternsInLogs(logs: allLogs, context: "test_syncProfileUpdate_capturesRuntimeLogs_noSecrets")
@@ -453,7 +482,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         }
 
         // Combine captured log messages
-        var allLogs = capturedLogMessages
+        var allLogs = capturedLogMessages.snapshot()
         allLogs.append(contentsOf: logCapture.capturedLogs)
 
         assertNoSecretPatternsInLogs(logs: allLogs, context: "test_syncProfileDeletion_capturesRuntimeLogs_noSecrets")
@@ -496,7 +525,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         try store.setActiveProfileWithLogging(cliProfile.id)
 
         // Verify captured logs from creation and activation
-        let allLogs = capturedLogMessages
+        let allLogs = capturedLogMessages.snapshot()
         assertNoSecretPatternsInLogs(logs: allLogs, context: "test_crossSurfaceSync_capturesRuntimeLogs_noSecrets")
 
         // Verify we captured logs for both profiles and active state
@@ -609,7 +638,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
     // MARK: - Metadata Schema Log Tests
 
     /// VAL-CROSS-006: Tests that stored metadata schema emits no raw secrets.
-    func test_metadataSchema_capturesRuntimeLogs_noSecrets() throws {
+    func test_metadataSchema_capturesRuntimeLogs_noSecrets() async throws {
         // Clear logs
         capturedLogMessages.removeAll()
 
@@ -643,7 +672,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         logCapture.captureProfileTextualRepresentations(browserProfile)
 
         // Also capture raw database content (handle NULL values)
-        let rawJSON = try dbQueue.read { db -> [String] in
+        let rawJSON = try await dbQueue.read { db -> [String] in
             let rows = try Row.fetchAll(db, sql: "SELECT cliMetadataJSON, browserMetadataJSON FROM switcher_profiles")
             return rows.compactMap { row -> String? in
                 let cliJSON: String? = row["cliMetadataJSON"]
@@ -654,7 +683,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         logCapture.captureAll(rawJSON)
 
         // Combine with captured production logs
-        var allLogs = capturedLogMessages
+        var allLogs = capturedLogMessages.snapshot()
         allLogs.append(contentsOf: logCapture.capturedLogs)
 
         assertNoSecretPatternsInLogs(logs: allLogs, context: "test_metadataSchema_capturesRuntimeLogs_noSecrets")
@@ -719,7 +748,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
     // MARK: - Validation and Recovery Log Tests
 
     /// VAL-CROSS-006: Tests that validation and recovery emit no raw secrets.
-    func test_validationRecovery_capturesRuntimeLogs_noSecrets() throws {
+    func test_validationRecovery_capturesRuntimeLogs_noSecrets() async throws {
         // Create profile and set as active
         let profile = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -734,7 +763,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         try store.setActiveProfile(profile.id)
 
         // Simulate external deletion (legacy state)
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_profiles WHERE id = ?", arguments: [profile.id])
         }
 

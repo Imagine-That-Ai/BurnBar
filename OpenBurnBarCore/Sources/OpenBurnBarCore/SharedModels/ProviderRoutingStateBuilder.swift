@@ -159,6 +159,7 @@ public enum ProviderRoutingStateBuilder {
             .filter { $0.accountID == account.id }
             .max(by: { $0.fetchedAt < $1.fetchedAt })
         let state = quotaState(for: account, snapshot: snapshot, now: now)
+        let utilizationBucket = utilizationQuotaBucket(for: snapshot, now: now)
 
         // The router treats an empty `credentialHandle` as
         // `.missingCredential` and skips the account. Synced surfaces cannot
@@ -189,7 +190,8 @@ public enum ProviderRoutingStateBuilder {
             storageScope: account.storageScope,
             modelCompatibility: .unknown,
             quotaState: state,
-            quotaResetsAt: weeklyQuotaResetsAt(for: snapshot, now: now),
+            quotaResetsAt: utilizationBucket?.resetsAt,
+            remainingPercent: utilizationBucket?.displayRemainingPercent,
             cooldownUntil: nil,
             // Lower wins; default account has already been moved to index 0
             // by the caller, so we just forward the deterministic rank.
@@ -201,41 +203,25 @@ public enum ProviderRoutingStateBuilder {
         )
     }
 
-    private static func weeklyQuotaResetsAt(
+    private static func utilizationQuotaBucket(
         for snapshot: ProviderQuotaSnapshot?,
         now: Date
-    ) -> Date? {
+    ) -> ProviderQuotaBucket? {
         guard let snapshot else { return nil }
         return snapshot.buckets
             .filter(\.isDisplayableQuotaSignal)
             .map { $0.reconcilingElapsedWindow(asOf: now) }
-            .filter(isWeeklyQuotaBucket)
-            .compactMap(\.resetsAt)
-            .filter { $0 > now }
-            .min()
-    }
-
-    private static func isWeeklyQuotaBucket(_ bucket: ProviderQuotaBucket) -> Bool {
-        let window = bucket.window?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        if window == ProviderQuotaWindowKind.weekly.rawValue.lowercased() {
-            return true
-        }
-
-        let marker = [
-            bucket.name,
-            bucket.meta?["label"],
-            bucket.window
-        ]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .lowercased()
-
-        return marker.contains("week")
-            || marker.contains("7 day")
-            || marker.contains("7-day")
-            || marker.contains("7d")
-            || marker.contains("seven day")
+            .min { lhs, rhs in
+                if let resetOrder = ProviderQuotaUtilizationOrdering.compareQuotaReset(lhs.resetsAt, rhs.resetsAt, now: now) {
+                    return resetOrder
+                }
+                if let remainingOrder = ProviderQuotaUtilizationOrdering.compareRemainingPercent(
+                    lhs.displayRemainingPercent,
+                    rhs.displayRemainingPercent
+                ) {
+                    return remainingOrder
+                }
+                return lhs.key < rhs.key
+            }
     }
 }

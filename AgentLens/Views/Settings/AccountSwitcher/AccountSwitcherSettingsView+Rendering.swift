@@ -394,6 +394,7 @@ extension AccountSwitcherSettingsView {
                 WindowManager.shared.openSwitcherOnboardingWizard(
                     dataStore: dataStore,
                     settingsManager: settingsManager,
+                    accountManager: accountManager,
                     onOpenSettings: {}
                 )
             } label: {

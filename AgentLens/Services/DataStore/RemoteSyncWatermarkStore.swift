@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - Remote Sync Watermark Record
@@ -73,8 +73,8 @@ final class RemoteSyncWatermarkStore: Sendable {
 
     /// Fetches the current watermark for a specific account and collection.
     /// Returns nil if no watermark exists yet (fresh sync).
-    func fetchWatermark(accountUid: String, collectionKind: RemoteSyncCollectionKind) throws -> RemoteSyncWatermarkRecord? {
-        try dbQueue.read { db in
+    func fetchWatermark(accountUid: String, collectionKind: RemoteSyncCollectionKind) async throws -> RemoteSyncWatermarkRecord? {
+        try await dbQueue.read { db in
             try RemoteSyncWatermarkRecord.fetchOne(db, sql: """
                 SELECT * FROM remote_sync_watermarks
                 WHERE accountUid = ? AND collectionKind = ?
@@ -83,8 +83,8 @@ final class RemoteSyncWatermarkStore: Sendable {
     }
 
     /// Fetches all watermarks for a specific account.
-    func fetchAllWatermarks(accountUid: String) throws -> [RemoteSyncWatermarkRecord] {
-        try dbQueue.read { db in
+    func fetchAllWatermarks(accountUid: String) async throws -> [RemoteSyncWatermarkRecord] {
+        try await dbQueue.read { db in
             try RemoteSyncWatermarkRecord.fetchAll(db, sql: """
                 SELECT * FROM remote_sync_watermarks
                 WHERE accountUid = ?
@@ -94,8 +94,8 @@ final class RemoteSyncWatermarkStore: Sendable {
 
     /// Fetches the watermark value for a collection, or a default cutoff date if none exists.
     /// The default is 90 days ago (matches CloudSyncService cutoff).
-    func fetchWatermarkOrDefault(accountUid: String, collectionKind: RemoteSyncCollectionKind) throws -> Date {
-        if let watermark = try fetchWatermark(accountUid: accountUid, collectionKind: collectionKind) {
+    func fetchWatermarkOrDefault(accountUid: String, collectionKind: RemoteSyncCollectionKind) async throws -> Date {
+        if let watermark = try await fetchWatermark(accountUid: accountUid, collectionKind: collectionKind) {
             return watermark.lastProcessedRemoteUpdateAt ?? watermark.lastSyncedAt
         }
         // Default cutoff: 90 days ago
@@ -118,9 +118,9 @@ final class RemoteSyncWatermarkStore: Sendable {
         accountUid: String,
         collectionKind: RemoteSyncCollectionKind,
         lastProcessedRemoteUpdateAt: Date
-    ) throws {
+    ) async throws {
         let now = Date()
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 INSERT INTO remote_sync_watermarks (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
                 VALUES (?, ?, ?, ?, 1)
@@ -138,8 +138,8 @@ final class RemoteSyncWatermarkStore: Sendable {
     }
 
     /// Clears the watermark for a specific account and collection (forces full re-sync).
-    func clearWatermark(accountUid: String, collectionKind: RemoteSyncCollectionKind) throws {
-        try dbQueue.write { db in
+    func clearWatermark(accountUid: String, collectionKind: RemoteSyncCollectionKind) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 DELETE FROM remote_sync_watermarks
                 WHERE accountUid = ? AND collectionKind = ?
@@ -148,8 +148,8 @@ final class RemoteSyncWatermarkStore: Sendable {
     }
 
     /// Clears all watermarks for a specific account (e.g., on account switch).
-    func clearAllWatermarks(accountUid: String) throws {
-        try dbQueue.write { db in
+    func clearAllWatermarks(accountUid: String) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 DELETE FROM remote_sync_watermarks
                 WHERE accountUid = ?
@@ -158,8 +158,8 @@ final class RemoteSyncWatermarkStore: Sendable {
     }
 
     /// Clears all watermarks for all accounts (full reset).
-    func clearAllWatermarks() throws {
-        try dbQueue.write { db in
+    func clearAllWatermarks() async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM remote_sync_watermarks")
         }
     }
@@ -206,7 +206,7 @@ final class AtomicRemoteSyncTransaction {
     /// This is the ONLY place where watermark advances.
     ///
     /// VAL-PERSIST-010: Watermark advances only after successful commit.
-    func commit() throws {
+    func commit() async throws {
         guard !isCommitted else { return }
         guard let latestUpdate = latestRemoteUpdateAt else {
             // No items processed - still commit but don't advance watermark
@@ -214,7 +214,7 @@ final class AtomicRemoteSyncTransaction {
             return
         }
 
-        try watermarkStore.advanceWatermark(
+        try await watermarkStore.advanceWatermark(
             accountUid: accountUid,
             collectionKind: collectionKind,
             lastProcessedRemoteUpdateAt: latestUpdate
@@ -233,4 +233,63 @@ final class AtomicRemoteSyncTransaction {
     var wasCommitted: Bool { isCommitted }
     var processedCount: Int { processedItems }
     var latestUpdate: Date? { latestRemoteUpdateAt }
+}
+
+extension DataStore {
+    func fetchRemoteSyncWatermark(
+        accountUid: String,
+        collectionKind: RemoteSyncCollectionKind
+    ) async throws -> RemoteSyncWatermarkRecord? {
+        try await actor.remoteSyncWatermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
+    }
+
+    func fetchAllRemoteSyncWatermarks(accountUid: String) async throws -> [RemoteSyncWatermarkRecord] {
+        try await actor.remoteSyncWatermarkStore.fetchAllWatermarks(accountUid: accountUid)
+    }
+
+    func fetchRemoteSyncWatermarkOrDefault(
+        accountUid: String,
+        collectionKind: RemoteSyncCollectionKind
+    ) async throws -> Date {
+        try await actor.remoteSyncWatermarkStore.fetchWatermarkOrDefault(
+            accountUid: accountUid,
+            collectionKind: collectionKind
+        )
+    }
+
+    func advanceRemoteSyncWatermark(
+        accountUid: String,
+        collectionKind: RemoteSyncCollectionKind,
+        lastProcessedRemoteUpdateAt: Date
+    ) async throws {
+        try await actor.remoteSyncWatermarkStore.advanceWatermark(
+            accountUid: accountUid,
+            collectionKind: collectionKind,
+            lastProcessedRemoteUpdateAt: lastProcessedRemoteUpdateAt
+        )
+    }
+
+    func clearRemoteSyncWatermark(accountUid: String, collectionKind: RemoteSyncCollectionKind) async throws {
+        try await actor.remoteSyncWatermarkStore.clearWatermark(accountUid: accountUid, collectionKind: collectionKind)
+    }
+
+    func clearAllRemoteSyncWatermarks(accountUid: String) async throws {
+        try await actor.remoteSyncWatermarkStore.clearAllWatermarks(accountUid: accountUid)
+    }
+
+    func clearAllRemoteSyncWatermarks() async throws {
+        try await actor.remoteSyncWatermarkStore.clearAllWatermarks()
+    }
+
+    nonisolated func makeRemoteSyncTransaction(
+        accountUid: String,
+        collectionKind: RemoteSyncCollectionKind
+    ) -> AtomicRemoteSyncTransaction {
+        AtomicRemoteSyncTransaction(
+            dbQueue: actor.dbQueue,
+            watermarkStore: actor.remoteSyncWatermarkStore,
+            accountUid: accountUid,
+            collectionKind: collectionKind
+        )
+    }
 }

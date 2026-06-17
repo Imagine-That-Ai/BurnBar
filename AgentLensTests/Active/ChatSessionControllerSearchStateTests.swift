@@ -90,7 +90,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             fullText: "I entered an api key in the test env file and then rotated it."
         )
         try harness.dataStore.upsertConversation(conversation)
-        try harness.dataStore.enqueueConversationProjectionJob(
+        try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: conversation.id,
             jobType: .project,
             now: harness.clock.now()
@@ -102,7 +102,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: searchService
         )
-        controller.startNewChatThread()
+        await controller.startNewChatThreadAsync()
         controller.chatBackend = .hermes
         controller.hermesAvailable = true
         controller.inputText = "can you find an instance where ive enterd an api key"
@@ -127,7 +127,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             fullText: "I fixed the env by running export OPENAI_API_KEY=TEST_KEY_PLACEHOLDER and then retried."
         )
         try harness.dataStore.upsertConversation(conversation)
-        try harness.dataStore.enqueueConversationProjectionJob(
+        try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: conversation.id,
             jobType: .project,
             now: harness.clock.now()
@@ -139,7 +139,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: searchService
         )
-        controller.startNewChatThread()
+        await controller.startNewChatThreadAsync()
         controller.chatBackend = .hermes
         controller.hermesAvailable = true
         controller.inputText = "how many times have i dropped api keys in the chat in the last week?"
@@ -168,7 +168,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             """
         )
         try harness.dataStore.upsertConversation(conversation)
-        try harness.dataStore.enqueueConversationProjectionJob(
+        try await harness.dataStore.enqueueConversationProjectionJob(
             conversationID: conversation.id,
             jobType: .project,
             now: harness.clock.now()
@@ -180,7 +180,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
             dataStore: harness.dataStore,
             searchService: searchService
         )
-        controller.startNewChatThread()
+        await controller.startNewChatThreadAsync()
         controller.chatBackend = .hermes
         controller.hermesAvailable = true
         controller.inputText = #"show me the top 3 exact jump targets for "refactor the parser""#

@@ -12,14 +12,14 @@ extension ConversationStore {
             provider: AgentProvider? = nil,
             projectName: String? = nil,
             dateRange: ClosedRange<Date>? = nil
-        ) throws -> [SearchResult] {
+        ) async throws -> [SearchResult] {
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return [] }
 
             let ftsQuery = BurnBarFTSQueryBuilder.naturalLanguage(from: trimmed)
             guard !ftsQuery.isEmpty else { return [] }
 
-            return try dbQueue.read { db -> [SearchResult] in
+            return try await dbQueue.read { db -> [SearchResult] in
                 var sql = """
                 SELECT c.*, bm25(conversations_fts) AS rank,
                 snippet(conversations_fts, 1, '<b>', '</b>', '…', 10) AS snip

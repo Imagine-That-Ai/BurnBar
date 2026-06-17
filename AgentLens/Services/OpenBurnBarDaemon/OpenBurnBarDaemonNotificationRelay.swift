@@ -10,8 +10,10 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
     static let shared = OpenBurnBarDaemonLocalNotificationRelay()
 
     private var started = false
+    private var settingsManager: SettingsManager?
 
-    func start() {
+    func start(settingsManager: SettingsManager) {
+        self.settingsManager = settingsManager
         guard !started else { return }
         started = true
         DistributedNotificationCenter.default().addObserver(
@@ -31,15 +33,16 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
             return
         }
         Task { [title, body] in
-            await Self.deliverUserNotification(title: title, body: body)
+            await self.deliverUserNotification(title: title, body: body)
         }
     }
 
-    private static func deliverUserNotification(title: String, body: String) async {
-        let pixelClock = SettingsManager.shared.pixelClockConfig
+    private func deliverUserNotification(title: String, body: String) async {
+        guard let settingsManager else { return }
+        let pixelClock = settingsManager.pixelClockConfig
         if pixelClock.completionClockSoundEnabled,
            let completion = AgentCompletionNotificationParser.parse(title: title, body: body) {
-            let controller = PixelClockController(settingsManager: .shared, quotaService: nil)
+            let controller = PixelClockController(settingsManager: settingsManager, quotaService: nil)
             controller.start()
             await controller.notifyAgentCompletion(
                 providerID: completion.providerID,

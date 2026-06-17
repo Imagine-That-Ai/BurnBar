@@ -21,6 +21,7 @@ final class TextExpansionRuntimeController: ObservableObject {
         var buffer = ""
         var cachedSnippets: [TextExpansionSnippet] = []
         var lastSnippetLoad = Date.distantPast
+        var snippetRefreshInFlight = false
         var suppressEventsUntil = Date.distantPast
     }
     private let callbackState = OSAllocatedUnfairLock<CallbackState>(uncheckedState: CallbackState())
@@ -41,6 +42,9 @@ final class TextExpansionRuntimeController: ObservableObject {
     func start() {
         installObserversIfNeeded()
         reconcileEventTap()
+        Task { @MainActor [weak self] in
+            await self?.refreshCachedSnippets()
+        }
     }
 
     @MainActor
@@ -72,6 +76,15 @@ final class TextExpansionRuntimeController: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.reconcileEventTap()
+            }
+        })
+        observers.append(center.addObserver(
+            forName: .textExpansionSnippetsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refreshCachedSnippets()
             }
         })
     }
@@ -225,12 +238,28 @@ final class TextExpansionRuntimeController: ObservableObject {
         let now = Date()
         guard now.timeIntervalSince(state.lastSnippetLoad) > 2 else { return state.cachedSnippets }
         state.lastSnippetLoad = now
-        do {
-            state.cachedSnippets = try dataStore.fetchEnabledTextExpansionSnippets(surface: .macGlobal)
-        } catch {
-            state.cachedSnippets = []
+        if !state.snippetRefreshInFlight {
+            state.snippetRefreshInFlight = true
+            Task { @MainActor [weak self] in
+                await self?.refreshCachedSnippets()
+            }
         }
         return state.cachedSnippets
+    }
+
+    @MainActor
+    private func refreshCachedSnippets() async {
+        let snippets: [TextExpansionSnippet]
+        do {
+            snippets = try await dataStore.fetchEnabledTextExpansionSnippets(surface: .macGlobal)
+        } catch {
+            snippets = []
+        }
+        callbackState.withLockUnchecked { state in
+            state.cachedSnippets = snippets
+            state.lastSnippetLoad = Date()
+            state.snippetRefreshInFlight = false
+        }
     }
 
     nonisolated private func resetBuffer() {

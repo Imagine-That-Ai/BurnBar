@@ -814,7 +814,7 @@ final class OpenBurnBarDatabase: Sendable {
             }
 
             try db.alter(table: "chat_messages") { t in
-                t.add(column: "threadId", .text).notNull().defaults(to: DataStore.legacyChatThreadID)
+                t.add(column: "threadId", .text).notNull().defaults(to: Self.legacyChatThreadID)
             }
 
             try db.create(
@@ -832,7 +832,7 @@ final class OpenBurnBarDatabase: Sendable {
                     COALESCE((SELECT MAX(timestamp) FROM chat_messages), CURRENT_TIMESTAMP)
                 )
                 """,
-                arguments: [DataStore.legacyChatThreadID]
+                arguments: [Self.legacyChatThreadID]
             )
         }
 
@@ -1701,6 +1701,248 @@ final class OpenBurnBarDatabase: Sendable {
                 CREATE INDEX IF NOT EXISTS token_usage_parent_request_idx
                 ON token_usage(parentRequestID, startTime)
                 WHERE parentRequestID IS NOT NULL
+                """
+            )
+        }
+
+        migrator.registerMigration("v50_project_code_memory_schema") { db in
+            // Project Code Memory is daemon-owned at runtime, but the shared
+            // application database schema must still be declared by the canonical
+            // GRDB migrator. The daemon's raw-SQLite bootstrap remains a
+            // compatibility/self-heal bridge for pre-v50 databases and daemon-only
+            // test fixtures; new schema changes should land here first.
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS agent_memories (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    body_ref TEXT NOT NULL,
+                    body_redacted TEXT NOT NULL,
+                    tags_json TEXT NOT NULL,
+                    source_path TEXT,
+                    valid_from TEXT NOT NULL,
+                    valid_to TEXT,
+                    superseded_by TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS agent_memories_project_idx
+                ON agent_memories(project_id, scope, updated_at)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE VIRTUAL TABLE IF NOT EXISTS agent_memories_fts USING fts5(
+                    memoryID UNINDEXED,
+                    projectID UNINDEXED,
+                    bodyText,
+                    tags,
+                    tokenize='porter unicode61'
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS memory_audit (
+                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    domain TEXT NOT NULL,
+                    project_id TEXT,
+                    subject_id TEXT,
+                    labels_json TEXT NOT NULL,
+                    prev_hash TEXT,
+                    hash TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS pcm_projects (
+                    project_id TEXT PRIMARY KEY,
+                    identity_version INTEGER NOT NULL,
+                    identity_fingerprint TEXT NOT NULL,
+                    project_name TEXT NOT NULL,
+                    primary_path TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS pcm_projects_fingerprint_idx
+                ON pcm_projects(identity_fingerprint)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS pcm_project_aliases (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    alias_path TEXT NOT NULL,
+                    path_hash TEXT NOT NULL,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES pcm_projects(project_id) ON DELETE CASCADE
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS pcm_project_aliases_path_hash_idx
+                ON pcm_project_aliases(path_hash)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS pcm_project_aliases_project_idx
+                ON pcm_project_aliases(project_id)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS code_artifacts (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    blob_sha TEXT NOT NULL,
+                    content_hash TEXT,
+                    commit_sha TEXT,
+                    lang TEXT,
+                    byte_count INTEGER NOT NULL,
+                    mtime REAL NOT NULL,
+                    indexed_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS code_artifacts_project_path_idx
+                ON code_artifacts(project_id, file_path)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS pcm_file_manifest (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    artifact_id TEXT,
+                    blob_sha TEXT,
+                    content_hash TEXT,
+                    byte_count INTEGER NOT NULL DEFAULT 0,
+                    mtime REAL NOT NULL DEFAULT 0,
+                    lang TEXT,
+                    ignored_reason TEXT,
+                    secret_labels_json TEXT NOT NULL DEFAULT '[]',
+                    parser_tier TEXT,
+                    indexed_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS pcm_file_manifest_project_path_idx
+                ON pcm_file_manifest(project_id, file_path)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS code_symbols (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    blob_sha TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    range_json TEXT NOT NULL,
+                    confidence_tier TEXT NOT NULL,
+                    tier_evidence_json TEXT,
+                    indexed_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS code_symbols_project_name_idx
+                ON code_symbols(project_id, name)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS code_references (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    from_artifact_id TEXT NOT NULL,
+                    to_symbol_id TEXT NOT NULL,
+                    range_json TEXT NOT NULL,
+                    blob_sha TEXT NOT NULL,
+                    confidence_tier TEXT NOT NULL,
+                    indexed_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS code_references_symbol_idx
+                ON code_references(project_id, to_symbol_id)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS code_call_edges (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    caller_symbol_id TEXT NOT NULL,
+                    callee_symbol_id TEXT NOT NULL,
+                    confidence_tier TEXT NOT NULL,
+                    indexed_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS code_call_edges_project_idx
+                ON code_call_edges(project_id, caller_symbol_id)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS code_diagnostics_cache (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    tool TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    blob_sha TEXT,
+                    cached_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS code_index_checkpoints (
+                    project_id TEXT PRIMARY KEY,
+                    project_root TEXT NOT NULL,
+                    last_commit_sha TEXT,
+                    indexed_at TEXT NOT NULL,
+                    artifact_count INTEGER NOT NULL,
+                    chunk_count INTEGER NOT NULL,
+                    rejected_count INTEGER NOT NULL,
+                    storage_byte_count INTEGER NOT NULL DEFAULT 0,
+                    storage_budget_bytes INTEGER NOT NULL DEFAULT 0,
+                    vacuumed_at TEXT
+                )
                 """
             )
         }

@@ -127,11 +127,16 @@ final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
         return try DataStore(databaseQueue: queue, runMigrations: false, refreshOnInit: false)
     }
 
-    func test_makeConversationSearchService_buildsDespiteProjectionStoreFault() throws {
+    func test_makeConversationSearchService_buildsDespiteProjectionStoreFault() async throws {
         // Sanity: the schema-less store genuinely faults on the embedding read,
         // so this test drives the real catch path rather than an empty-result path.
         let store = try makeSchemalessStore()
-        XCTAssertThrowsError(try store.fetchEmbeddingModels())
+        do {
+            _ = try await store.fetchEmbeddingModels()
+            XCTFail("Expected schemaless store to throw when fetching embedding models.")
+        } catch {
+            // Expected: this test drives the factory's fault-tolerant projection read path.
+        }
 
         // The factory must absorb that fault (log + skip-to-deterministic) and still
         // return a usable service. The old `try?` also returned a service, but
@@ -140,23 +145,24 @@ final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
         XCTAssertNotNil(service)
     }
 
-    func test_makeConversationSearchService_buildsForHealthyEmptyStore() throws {
+    func test_makeConversationSearchService_buildsForHealthyEmptyStore() async throws {
         // A migrated store with zero embedding rows is a NORMAL empty state, not a
         // fault. The factory must keep building a service (deterministic embedder).
         let store = try makeDiscoveryInMemoryStore()
-        XCTAssertEqual(try store.fetchEmbeddingModels().count, 0)
+        let embeddingModelCount = try await store.fetchEmbeddingModels().count
+        XCTAssertEqual(embeddingModelCount, 0)
 
         let service = SearchService.makeConversationSearchService(dataStore: store)
         XCTAssertNotNil(service)
     }
 
-    func test_makeConversationSearchService_resolvesSelectionAcrossBothFetches() throws {
+    func test_makeConversationSearchService_resolvesSelectionAcrossBothFetches() async throws {
         // Both reads succeed and return rows: selection resolves and the factory
         // builds. Guards the do/catch refactor against breaking the happy path that
         // depends on BOTH fetchEmbeddingModels() and fetchEmbeddingVersions().
         let store = try makeDiscoveryInMemoryStore()
         let modelID = "embedding-model-resolve"
-        try store.upsertEmbeddingModel(
+        try await store.upsertEmbeddingModel(
             EmbeddingModelRecord(
                 id: modelID,
                 provider: "openai",
@@ -167,7 +173,7 @@ final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertEmbeddingVersion(
+        try await store.upsertEmbeddingVersion(
             EmbeddingVersionRecord(
                 id: "embedding-version-resolve",
                 modelID: modelID,
@@ -181,20 +187,22 @@ final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(try store.fetchEmbeddingModels().count, 1)
-        XCTAssertEqual(try store.fetchEmbeddingVersions().count, 1)
+        let embeddingModelCount = try await store.fetchEmbeddingModels().count
+        let embeddingVersionCount = try await store.fetchEmbeddingVersions().count
+        XCTAssertEqual(embeddingModelCount, 1)
+        XCTAssertEqual(embeddingVersionCount, 1)
 
         let service = SearchService.makeConversationSearchService(dataStore: store)
         XCTAssertNotNil(service)
     }
 
-    func test_makeConversationSearchService_buildsWhenOpenAIModelUnsupported() throws {
+    func test_makeConversationSearchService_buildsWhenOpenAIModelUnsupported() async throws {
         // Selection names the OpenAI provider but with a model name the real provider
         // rejects (unsupported -> init throws). The migrated do/catch must catch that
         // and degrade to the deterministic embedder instead of crashing/propagating.
         let store = try makeDiscoveryInMemoryStore()
         let modelID = "embedding-model-unsupported-openai"
-        try store.upsertEmbeddingModel(
+        try await store.upsertEmbeddingModel(
             EmbeddingModelRecord(
                 id: modelID,
                 provider: "openai",
@@ -205,7 +213,7 @@ final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertEmbeddingVersion(
+        try await store.upsertEmbeddingVersion(
             EmbeddingVersionRecord(
                 id: "embedding-version-unsupported-openai",
                 modelID: modelID,
@@ -232,12 +240,12 @@ final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
         XCTAssertNotNil(service)
     }
 
-    func test_makeConversationSearchService_buildsForSupportedOpenAIModel() throws {
+    func test_makeConversationSearchService_buildsForSupportedOpenAIModel() async throws {
         // Happy OpenAI path: a supported model constructs the real provider. Guards
         // the do/catch refactor against regressing the success branch.
         let store = try makeDiscoveryInMemoryStore()
         let modelID = "embedding-model-supported-openai"
-        try store.upsertEmbeddingModel(
+        try await store.upsertEmbeddingModel(
             EmbeddingModelRecord(
                 id: modelID,
                 provider: "openai",
@@ -248,7 +256,7 @@ final class SearchServiceFactoryEmbeddingSelectionTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertEmbeddingVersion(
+        try await store.upsertEmbeddingVersion(
             EmbeddingVersionRecord(
                 id: "embedding-version-supported-openai",
                 modelID: modelID,

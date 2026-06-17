@@ -25,6 +25,10 @@ struct SettingsDrillRow: View {
     /// trailing region next to the existing `value` text. Self-hides when
     /// the provider has no quota signal yet, so rows stay clean.
     let quotaProvider: AgentProvider?
+    /// Optional asset-catalog image name for a whimsical SVG icon. When
+    /// provided, it renders inside the colored squircle instead of the
+    /// SF Symbol.
+    let customIcon: String?
 
     init(
         icon: String,
@@ -37,7 +41,8 @@ struct SettingsDrillRow: View {
         badgeTint: Color? = nil,
         logoProvider: AgentProvider? = nil,
         logoProviders: [AgentProvider] = [],
-        quotaProvider: AgentProvider? = nil
+        quotaProvider: AgentProvider? = nil,
+        customIcon: String? = nil
     ) {
         self.icon = icon
         self.iconTint = iconTint
@@ -53,6 +58,7 @@ struct SettingsDrillRow: View {
             self.logoProviders = logoProviders
         }
         self.quotaProvider = quotaProvider
+        self.customIcon = customIcon
     }
 
     var body: some View {
@@ -124,9 +130,16 @@ struct SettingsDrillRow: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(iconTint)
                 .frame(width: 28, height: 28)
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+            if let customIcon {
+                Image(customIcon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
         }
         .accessibilityHidden(true)
     }

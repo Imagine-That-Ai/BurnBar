@@ -725,6 +725,20 @@ jobs:
       - name: Check privacy invariants (run-09)
         run: node scripts/ci/check-privacy-invariants.mjs
 
+  # ── Mac/iOS Swift twin-basename gate (stop new forked twins) ───────────────
+  twin-basenames:
+    name: Swift twin basenames
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Self-test Swift twin-basename gate
+        run: bash scripts/ci/check-twin-basenames.test.sh
+
+      - name: Check Swift twin basenames
+        run: bash scripts/ci/check-twin-basenames.sh
+
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
   # allowance, and account-deletion harnesses guard revenue and compliance. They
@@ -833,6 +847,7 @@ jobs:
       - signal-honesty-copy
       - services-fast
       - no-suppressions
+      - twin-basenames
       - debt-budgets
       - functions-correctness
     runs-on: ubuntu-latest

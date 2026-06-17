@@ -367,8 +367,8 @@ public final class SwitcherProfileStore: Sendable {
     }
 
     /// Fetches all profiles of a given target kind.
-    public func fetchProfiles(targetKind: SwitcherProfileTargetKind) throws -> [SwitcherProfileRecord] {
-        try dbQueue.read { db in
+    public func fetchProfiles(targetKind: SwitcherProfileTargetKind) async throws -> [SwitcherProfileRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -431,14 +431,14 @@ public final class SwitcherProfileStore: Sendable {
         }
     }
 
-    public enum MoveDirection {
+    public enum MoveDirection: Sendable {
         case up
         case down
     }
 
     /// Moves a profile one slot up or down in deterministic priority order.
     /// Reassigns contiguous sort keys so ordering stays explicit and user-visible.
-    public func moveProfile(id: String, direction: MoveDirection) throws {
+    public func moveProfile(id: String, direction: MoveDirection) async throws {
         let orderedProfiles = try fetchAllProfiles()
         guard let currentIndex = orderedProfiles.firstIndex(where: { $0.id == id }) else {
             throw SwitcherProfileStoreError.profileNotFound(id)
@@ -456,17 +456,18 @@ public final class SwitcherProfileStore: Sendable {
 
         var reordered = orderedProfiles
         reordered.swapAt(currentIndex, targetIndex)
+        let reorderedIDs = reordered.map(\.id)
 
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             let now = Date()
-            for (index, profile) in reordered.enumerated() {
+            for (index, profileID) in reorderedIDs.enumerated() {
                 try db.execute(
                     sql: """
                     UPDATE switcher_profiles
                     SET sortKey = ?, updatedAt = ?
                     WHERE id = ?
                     """,
-                    arguments: [index + 1, now, profile.id]
+                    arguments: [index + 1, now, profileID]
                 )
             }
         }
@@ -474,7 +475,7 @@ public final class SwitcherProfileStore: Sendable {
 
     /// Reassigns deterministic sort keys to match the provided full profile ordering.
     /// All existing profile IDs must be present exactly once.
-    public func reorderProfiles(idsInOrder: [String]) throws {
+    public func reorderProfiles(idsInOrder: [String]) async throws {
         let existingProfiles = try fetchAllProfiles()
         let existingIDs = existingProfiles.map(\.id)
 
@@ -483,7 +484,7 @@ public final class SwitcherProfileStore: Sendable {
             throw SwitcherProfileStoreError.invalidProfileOrdering
         }
 
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             let now = Date()
             for (index, profileID) in idsInOrder.enumerated() {
                 try db.execute(
@@ -528,9 +529,9 @@ public final class SwitcherProfileStore: Sendable {
 
     /// Checks if a profile with the given display name already exists
     /// (normalized, case-insensitive). Excludes a specific profile ID if provided.
-    public func existsProfileWithNormalizedName(_ name: String, excludingID: String? = nil) throws -> Bool {
+    public func existsProfileWithNormalizedName(_ name: String, excludingID: String? = nil) async throws -> Bool {
         let normalized = SwitcherProfileRecord.normalizeName(name)
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             var sql = """
                 SELECT 1 FROM switcher_profiles
                 WHERE (

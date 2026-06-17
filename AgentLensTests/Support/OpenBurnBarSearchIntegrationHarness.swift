@@ -229,7 +229,7 @@ final class OpenBurnBarSearchIntegrationHarness {
         visibility: SharedArtifactVisibility = .team,
         canWrite: Bool = true,
         canShare: Bool = false
-    ) throws -> SharedArtifactPermissionRecord {
+    ) async throws -> SharedArtifactPermissionRecord {
         let permission = OpenBurnBarSearchFixtureBuilder.sharedArtifactPermission(
             sourceArtifactID: sourceArtifactID,
             accessContext: sharedAccessContext,
@@ -242,7 +242,7 @@ final class OpenBurnBarSearchIntegrationHarness {
             canShare: canShare,
             at: clock.now()
         )
-        _ = try dataStore.upsertSharedArtifactPermission(permission)
+        _ = try await dataStore.upsertSharedArtifactPermission(permission)
         return permission
     }
 
@@ -301,12 +301,12 @@ final class OpenBurnBarSearchIntegrationHarness {
         conversationID: String,
         jobType: ProjectionJobType = .project,
         priority: Int = 5
-    ) throws -> String {
+    ) async throws -> String {
         guard let conversation = try dataStore.fetchConversation(id: conversationID) else {
             throw OpenBurnBarSearchIntegrationHarnessError.missingConversation(conversationID)
         }
         let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
-        try dataStore.enqueueConversationProjectionJob(
+        try await dataStore.enqueueConversationProjectionJob(
             conversationID: conversationID,
             jobType: jobType,
             priority: priority,
@@ -326,13 +326,13 @@ final class OpenBurnBarSearchIntegrationHarness {
         jobType: ProjectionJobType = .project,
         priority: Int = 10,
         leaseOwner: String = "harness-artifact-enqueue"
-    ) throws -> String {
-        _ = try dataStore.upsertSourceArtifact(artifact)
+    ) async throws -> String {
+        _ = try await dataStore.upsertSourceArtifact(artifact)
         let sourceVersionID = artifact.status == .deleted || jobType == .purge
             ? ProjectionIdentity.deletedSourceVersionID
             : ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash)
 
-        try makeProjectionService(leaseOwner: leaseOwner).enqueueSelectiveReproject(
+        try await makeProjectionService(leaseOwner: leaseOwner).enqueueSelectiveReproject(
             sourceKind: artifact.sourceKind,
             sourceID: artifact.id,
             sourceVersionID: sourceVersionID,
@@ -351,8 +351,8 @@ final class OpenBurnBarSearchIntegrationHarness {
         reason: String = "harness-rebuild",
         priority: Int = 1,
         leaseOwner: String = "harness-rebuild-enqueue"
-    ) throws {
-        try makeProjectionService(leaseOwner: leaseOwner).enqueueRebuildJob(
+    ) async throws {
+        try await makeProjectionService(leaseOwner: leaseOwner).enqueueRebuildJob(
             reason: reason,
             priority: priority
         )
@@ -383,7 +383,7 @@ final class OpenBurnBarSearchIntegrationHarness {
             )
             aggregate.adding(report)
 
-            let pending = try dataStore.fetchProjectionJobs(
+            let pending = try await dataStore.fetchProjectionJobs(
                 statuses: [.queued, .failed, .leased, .running],
                 limit: 1
             )
@@ -410,8 +410,8 @@ final class OpenBurnBarSearchIntegrationHarness {
 
     func retrievalHealthRecord(
         for subsystem: RetrievalSubsystem
-    ) throws -> RetrievalHealthRecord? {
-        try dataStore.fetchRetrievalHealth().first(where: { $0.subsystem == subsystem })
+    ) async throws -> RetrievalHealthRecord? {
+        try await dataStore.fetchRetrievalHealth().first(where: { $0.subsystem == subsystem })
     }
 
     func assertHealthStatus(
@@ -420,8 +420,8 @@ final class OpenBurnBarSearchIntegrationHarness {
         errorCode: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) throws {
-        guard let row = try retrievalHealthRecord(for: subsystem) else {
+    ) async throws {
+        guard let row = try await retrievalHealthRecord(for: subsystem) else {
             XCTFail("Missing retrieval health row for subsystem \(subsystem.rawValue).", file: file, line: line)
             return
         }
@@ -436,8 +436,8 @@ final class OpenBurnBarSearchIntegrationHarness {
         errorCode: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) throws {
-        try assertHealthStatus(
+    ) async throws {
+        try await assertHealthStatus(
             subsystem: subsystem,
             status: .degraded,
             errorCode: errorCode,
@@ -449,8 +449,8 @@ final class OpenBurnBarSearchIntegrationHarness {
     func healthSnapshot(
         indexingEnabled: Bool = true,
         sharedFeaturesAvailable: Bool = true
-    ) -> RetrievalSystemHealthSnapshot {
-        makeRetrievalHealthService().snapshot(
+    ) async -> RetrievalSystemHealthSnapshot {
+        await makeRetrievalHealthService().snapshot(
             indexingEnabled: indexingEnabled,
             sharedFeaturesAvailable: sharedFeaturesAvailable
         )
@@ -462,9 +462,9 @@ final class OpenBurnBarSearchIntegrationHarness {
         sharedFeaturesAvailable: Bool = true,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) {
+    ) async {
         let modes = Set(
-            healthSnapshot(
+            await healthSnapshot(
                 indexingEnabled: indexingEnabled,
                 sharedFeaturesAvailable: sharedFeaturesAvailable
             ).degradedModes.map(\.mode)
@@ -480,7 +480,7 @@ final class OpenBurnBarSearchIntegrationHarness {
 }
 
 @MainActor
-final class OpenBurnBarHarnessArtifactDiscoverySettings: ArtifactDiscoverySettingsProviding {
+final class OpenBurnBarHarnessArtifactDiscoverySettings: @preconcurrency ArtifactDiscoverySettingsProviding {
     var artifactDiscoveryEnabled: Bool
     var artifactDiscoveryRegisteredRoots: [String]
     var artifactDiscoveryAdditionalKnownPatterns: [String]

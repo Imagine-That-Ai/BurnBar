@@ -33,7 +33,7 @@ actor ProjectionPipelineService {
     /// straight to `dataStore.upsertChunkEmbedding`. Production never injects this;
     /// it exists so failure-recovery of the reuse copy can be exercised without
     /// touching the fresh-embedding write path in `indexChunks`.
-    nonisolated let reusedEmbeddingWriter: (@Sendable (ChunkEmbeddingRecord) throws -> Void)?
+    nonisolated let reusedEmbeddingWriter: (@Sendable (ChunkEmbeddingRecord) async throws -> Void)?
 
     @MainActor static func makeConfigured(
         dataStore: DataStore,
@@ -63,7 +63,7 @@ actor ProjectionPipelineService {
         chunker: ProjectionChunker = ProjectionChunker(),
         chunkEmbedder: any ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider(),
         paginationPageSize: Int = 1000,
-        reusedEmbeddingWriter: (@Sendable (ChunkEmbeddingRecord) throws -> Void)? = nil
+        reusedEmbeddingWriter: (@Sendable (ChunkEmbeddingRecord) async throws -> Void)? = nil
     ) {
         self.dataStore = dataStore
         self.leaseOwner = leaseOwner
@@ -143,7 +143,7 @@ actor ProjectionPipelineService {
             createdAt: now,
             updatedAt: now
         )
-        try dataStore.upsertSearchDocument(document)
+        try await dataStore.upsertSearchDocument(document)
 
         let chunks = chunker.makeChunks(
             text: searchableBody,
@@ -158,19 +158,19 @@ actor ProjectionPipelineService {
         // After replace, chunks with matching contentHash get their embeddings
         // copied to the new chunk ID instead of being regenerated (VAL-INDEX-004/006).
         // try?-ok(reuse cache, falls back to [:])
-        let embeddingByHash = (try? dataStore.fetchEmbeddingByContentHash(
+        let embeddingByHash = (try? await dataStore.fetchEmbeddingByContentHash(
             documentID: document.id,
             embeddingVersionID: embeddingVersionID
         )) ?? [:]
 
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-        let chunkDiff = try dataStore.applySearchChunkDiff(documentID: document.id, title: title, chunks: chunks)
+        let chunkDiff = try await dataStore.applySearchChunkDiff(documentID: document.id, title: title, chunks: chunks)
         self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
         // This avoids expensive embedding provider calls for content that hasn't changed.
-        let reuse = copyReusedEmbeddings(
+        let reuse = await copyReusedEmbeddings(
             chunks: chunks,
             embeddingByHash: embeddingByHash,
             now: now,
@@ -179,7 +179,7 @@ actor ProjectionPipelineService {
         )
         self.lastEmbeddingReuseOutcome = reuse
         if reuse.reusedCount > 0 {
-            try markVectorIndexSnapshotStale(now: now)
+            try await markVectorIndexSnapshotStale(now: now)
         }
 
         // Embed every chunk whose embedding was not confirmed-reused. A chunk whose
@@ -196,7 +196,7 @@ actor ProjectionPipelineService {
             sourceID: conversation.id
         )
         if indexedCount > 0 {
-            try upsertSemanticProjectionHealth(
+            try await upsertSemanticProjectionHealth(
                 status: .healthy,
                 errorCode: nil,
                 errorMessage: nil,
@@ -237,7 +237,7 @@ actor ProjectionPipelineService {
             createdAt: now,
             updatedAt: now
         )
-        try dataStore.upsertSearchDocument(document)
+        try await dataStore.upsertSearchDocument(document)
 
         let chunks = chunker.makeChunks(
             text: searchableBody,
@@ -252,18 +252,18 @@ actor ProjectionPipelineService {
         // After replace, chunks with matching contentHash get their embeddings
         // copied to the new chunk ID instead of being regenerated (VAL-INDEX-004/006).
         // try?-ok(reuse cache, falls back to [:])
-        let embeddingByHash = (try? dataStore.fetchEmbeddingByContentHash(
+        let embeddingByHash = (try? await dataStore.fetchEmbeddingByContentHash(
             documentID: document.id,
             embeddingVersionID: embeddingVersionID
         )) ?? [:]
 
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-        let chunkDiff = try dataStore.applySearchChunkDiff(documentID: document.id, title: artifact.title, chunks: chunks)
+        let chunkDiff = try await dataStore.applySearchChunkDiff(documentID: document.id, title: artifact.title, chunks: chunks)
         self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
-        let reuse = copyReusedEmbeddings(
+        let reuse = await copyReusedEmbeddings(
             chunks: chunks,
             embeddingByHash: embeddingByHash,
             now: now,
@@ -272,7 +272,7 @@ actor ProjectionPipelineService {
         )
         self.lastEmbeddingReuseOutcome = reuse
         if reuse.reusedCount > 0 {
-            try markVectorIndexSnapshotStale(now: now)
+            try await markVectorIndexSnapshotStale(now: now)
         }
 
         // Embed every chunk whose embedding was not confirmed-reused. A chunk whose
@@ -290,7 +290,7 @@ actor ProjectionPipelineService {
             sourceID: artifact.id
         )
         if indexedCount > 0 {
-            try upsertSemanticProjectionHealth(
+            try await upsertSemanticProjectionHealth(
                 status: .healthy,
                 errorCode: nil,
                 errorMessage: nil,
@@ -343,7 +343,7 @@ actor ProjectionPipelineService {
         now: Date,
         sourceKind: SearchSourceKind,
         sourceID: String
-    ) -> EmbeddingReuseOutcome {
+    ) async -> EmbeddingReuseOutcome {
         var outcome = EmbeddingReuseOutcome(reusedChunkIDs: [], failedChunkIDs: [], reusedCount: 0)
         for chunk in chunks {
             guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
@@ -358,9 +358,9 @@ actor ProjectionPipelineService {
             )
             do {
                 if let writer = reusedEmbeddingWriter {
-                    try writer(record)
+                    try await writer(record)
                 } else {
-                    try dataStore.upsertChunkEmbedding(record)
+                    try await dataStore.upsertChunkEmbedding(record)
                 }
                 outcome.reusedChunkIDs.insert(chunk.id)
                 outcome.reusedCount += 1
