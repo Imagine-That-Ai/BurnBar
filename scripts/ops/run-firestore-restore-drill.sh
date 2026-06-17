@@ -44,28 +44,85 @@ cleanup_drill_database() {
   fi
   if [[ ! "$RESTORE_DATABASE_ID" =~ ^dr-drill- ]]; then
     echo "Refusing cleanup for non-drill database id: ${RESTORE_DATABASE_ID}" >&2
-    return
+    return 1
   fi
-  if gcloud firestore databases describe --database="$RESTORE_DATABASE_ID" --project="$PROJECT" >/dev/null 2>&1; then
+  local cleanup_timeout="${FIRESTORE_DRILL_CLEANUP_TIMEOUT_SECONDS:-900}"
+  local cleanup_deadline=$(( $(date +%s) + cleanup_timeout ))
+  while gcloud firestore databases describe --database="$RESTORE_DATABASE_ID" --project="$PROJECT" >/dev/null 2>&1; do
     gcloud firestore databases update \
       --database="$RESTORE_DATABASE_ID" \
       --project="$PROJECT" \
       --no-delete-protection \
       --quiet >/dev/null 2>&1 || true
-    gcloud firestore databases delete \
+    if gcloud firestore databases delete \
       --database="$RESTORE_DATABASE_ID" \
       --project="$PROJECT" \
-      --quiet >/dev/null 2>&1 || true
-  fi
+      --quiet >/dev/null 2>&1; then
+      echo "==> deleted drill database ${RESTORE_DATABASE_ID}"
+      return
+    fi
+    if (( $(date +%s) >= cleanup_deadline )); then
+      echo "FAIL: timed out cleaning up drill database ${RESTORE_DATABASE_ID}" >&2
+      return 1
+    fi
+    sleep 30
+  done
 }
 
 wait_firestore_operation() {
   local operation="$1"
-  if gcloud firestore operations wait --help >/dev/null 2>&1; then
-    gcloud firestore operations wait "$operation" --project="$PROJECT"
-  else
-    gcloud alpha firestore operations wait "$operation" --project="$PROJECT"
-  fi
+  local wait_timeout="${FIRESTORE_DRILL_WAIT_TIMEOUT_SECONDS:-14400}"
+  local poll_seconds="${FIRESTORE_DRILL_WAIT_POLL_SECONDS:-30}"
+  local deadline=$(( $(date +%s) + wait_timeout ))
+  while true; do
+    local operation_json
+    operation_json="$(gcloud alpha firestore operations describe "$operation" --project="$PROJECT" --format=json)"
+    local status
+    status="$(
+      OPERATION_JSON="$operation_json" python3 - <<'PY'
+import json
+import os
+operation = json.loads(os.environ["OPERATION_JSON"])
+done = operation.get("done") is True
+error = operation.get("error")
+metadata = operation.get("metadata", {})
+state = metadata.get("operationState", "UNKNOWN")
+progress = metadata.get("progressPercentage", {})
+completed = progress.get("completedWork", "?")
+estimated = progress.get("estimatedWork", "?")
+print(json.dumps({
+    "done": done,
+    "state": state,
+    "completed": completed,
+    "estimated": estimated,
+    "error": error,
+}, separators=(",", ":")))
+PY
+    )"
+    echo "    operation status: ${status}" >&2
+    if [[ "$(STATUS="$status" python3 - <<'PY'
+import json
+import os
+print("1" if json.loads(os.environ["STATUS"])["done"] else "0")
+PY
+)" == "1" ]]; then
+      if [[ "$(STATUS="$status" python3 - <<'PY'
+import json
+import os
+print("1" if json.loads(os.environ["STATUS"])["error"] else "0")
+PY
+)" == "1" ]]; then
+        echo "FAIL: Firestore restore operation failed: ${status}" >&2
+        return 1
+      fi
+      return
+    fi
+    if (( $(date +%s) >= deadline )); then
+      echo "FAIL: Firestore restore operation did not finish within ${wait_timeout}s: ${operation}" >&2
+      return 1
+    fi
+    sleep "$poll_seconds"
+  done
 }
 
 trap cleanup_drill_database EXIT
