@@ -71,6 +71,12 @@ if (reviewCount !== 1) {
 if (protection.required_pull_request_reviews?.require_code_owner_reviews !== true) {
   fail("main branch protection must require code owner reviews.");
 }
+if (protection.required_pull_request_reviews?.dismiss_stale_reviews !== true) {
+  fail("main branch protection must dismiss stale pull request reviews.");
+}
+if (protection.required_pull_request_reviews?.require_last_push_approval !== true) {
+  fail("main branch protection must require approval of the latest push.");
+}
 if (protection.required_conversation_resolution?.enabled !== true) {
   fail("main branch protection must require conversation resolution.");
 }
@@ -112,6 +118,8 @@ const summary = {
   adminsEnforced: protection.enforce_admins?.enabled === true,
   reviewCount,
   codeOwnerReviewsRequired: protection.required_pull_request_reviews?.require_code_owner_reviews === true,
+  staleReviewsDismissed: protection.required_pull_request_reviews?.dismiss_stale_reviews === true,
+  latestPushApprovalRequired: protection.required_pull_request_reviews?.require_last_push_approval === true,
   bypassAllowanceCount: bypassCount,
   reviewBypassUsers: bypassUsers,
   requiredChecksPresent: requiredChecks.filter((check) => contexts.has(check)),

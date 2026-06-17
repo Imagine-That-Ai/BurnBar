@@ -626,6 +626,10 @@ function checkProtection() {
     (bypass.users || []).length +
     (bypass.teams || []).length +
     (bypass.apps || []).length;
+  const staleReviewsDismissed =
+    pullRequestReviews.dismiss_stale_reviews === true;
+  const latestPushApprovalRequired =
+    pullRequestReviews.require_last_push_approval === true;
   return {
     ok:
       protection.enforce_admins?.enabled === true &&
@@ -634,6 +638,8 @@ function checkProtection() {
       protection.required_conversation_resolution?.enabled === true &&
       reviewCount === 1 &&
       pullRequestReviews.require_code_owner_reviews === true &&
+      staleReviewsDismissed &&
+      latestPushApprovalRequired &&
       bypassAllowanceCount === 0 &&
       ["openburnbar-pr", ...REQUIRED_CODEQL_CHECKS].every((check) =>
         checks.includes(check),
@@ -641,6 +647,8 @@ function checkProtection() {
     requiredChecks: checks,
     codeOwnerReviewsRequired:
       pullRequestReviews.require_code_owner_reviews === true,
+    staleReviewsDismissed,
+    latestPushApprovalRequired,
     bypassAllowanceCount,
     reviewCount,
     adminsEnforced: protection.enforce_admins?.enabled === true,
