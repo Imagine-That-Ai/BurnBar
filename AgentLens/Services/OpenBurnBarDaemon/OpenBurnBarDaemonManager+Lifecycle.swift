@@ -330,7 +330,12 @@ extension OpenBurnBarDaemonManager {
     /// Always rotates the daemon socket auth token on daemon reinstall.
     /// This invalidates any previously leaked token without requiring coordination.
     func rotateDaemonSocketAuthToken() throws -> String {
-        let generatedToken = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let generatedToken: String
+        do {
+            generatedToken = try OpenBurnBarSecureToken.randomBase64URL()
+        } catch {
+            throw OpenBurnBarDaemonManagerError.daemonSocketAuthTokenUnavailable
+        }
         do {
             try Self.controllerRuntimeSecrets.set(generatedToken, for: Self.daemonSocketAuthTokenAccount)
             OpenBurnBarDaemonSocketClient.cacheDaemonSocketAuthToken(generatedToken)

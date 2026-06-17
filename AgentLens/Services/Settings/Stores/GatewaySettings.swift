@@ -84,12 +84,11 @@ final class GatewaySettings {
         self.crossVendorDegradeEnabled = persistence.bool(forKey: "crossVendorDegradeEnabled")
     }
 
-    /// Generates a random URL-safe bearer token. The hex-encoded UUID form
+    /// Generates a 256-bit URL-safe bearer token from the OS CSPRNG. The format
     /// matches `rotateDaemonSocketAuthToken()` so both runtime secrets read the
     /// same way and survive a `ps auxww` redaction audit identically.
     static func generateAuthToken() -> String {
-        UUID().uuidString.replacingOccurrences(of: "-", with: "")
-            + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        OpenBurnBarSecureToken.randomBase64URLOrPreconditionFailure()
     }
 
     /// Ensures the gateway has a bearer token to enforce before the daemon is

@@ -12,7 +12,11 @@ import { join } from "node:path";
 import process from "node:process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
+import {
+  REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  evaluateFirebaseAppCheckEnforcement,
+  evaluateFirebaseAppCheckServiceSet,
+} from "./lib/evaluate-firebase-app-check-enforcement.mjs";
 import {
   VERIFIABLE_CHANNEL_TYPES,
   checkBillingAlerts,
@@ -20,7 +24,11 @@ import {
 } from "./lib/ops-alerts-gate.mjs";
 import { validateLaunchEvidenceBundle } from "./validate-launch-evidence-bundle.mjs";
 
-export { evaluateFirebaseAppCheckEnforcement };
+export {
+  REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS,
+  evaluateFirebaseAppCheckEnforcement,
+  evaluateFirebaseAppCheckServiceSet,
+};
 
 const REPO = process.env.OPENBURNBAR_GITHUB_REPO || "Imagine-That-Ai/BurnBar";
 const PROJECT = process.env.OPENBURNBAR_FIREBASE_PROJECT || "burnbar";
@@ -603,42 +611,59 @@ function checkFirebaseAppCheckEnforcement() {
     return { ok: false, error: token.stderr || token.stdout || token.error };
   }
 
-  const serviceName = `projects/${projectNumber.stdout.trim()}/services/firestore.googleapis.com`;
-  const result = run(
-    "curl",
-    [
-      "-fsS",
-      "--connect-timeout",
-      "15",
-      "--max-time",
-      "45",
-      "--retry",
-      "2",
-      "--retry-delay",
-      "2",
-      "--retry-all-errors",
-      "-H",
-      `Authorization: Bearer ${token.stdout.trim()}`,
-      "-H",
-      `x-goog-user-project: ${PROJECT}`,
-      `https://firebaseappcheck.googleapis.com/v1beta/${serviceName}`,
-    ],
-    { timeout: 180_000 },
-  );
-  if (!result.ok) {
-    return {
-      ok: false,
+  const configs = [];
+  for (const serviceId of REQUIRED_FIREBASE_APP_CHECK_SERVICE_IDS) {
+    const serviceName = `projects/${projectNumber.stdout.trim()}/services/${serviceId}`;
+    const result = run(
+      "curl",
+      [
+        "-fsS",
+        "--connect-timeout",
+        "15",
+        "--max-time",
+        "45",
+        "--retry",
+        "2",
+        "--retry-delay",
+        "2",
+        "--retry-all-errors",
+        "-H",
+        `Authorization: Bearer ${token.stdout.trim()}`,
+        "-H",
+        `x-goog-user-project: ${PROJECT}`,
+        `https://firebaseappcheck.googleapis.com/v1beta/${serviceName}`,
+      ],
+      { timeout: 180_000 },
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        serviceId,
+        serviceName,
+        error: result.stderr || result.stdout || result.error,
+      };
+    }
+
+    let config;
+    try {
+      config = JSON.parse(result.stdout);
+    } catch (error) {
+      return {
+        ok: false,
+        serviceId,
+        serviceName,
+        error: `invalid Firebase App Check service response: ${error.message}`,
+      };
+    }
+    configs.push({
+      serviceId,
       serviceName,
-      error: result.stderr || result.stdout || result.error,
-    };
+      enforcementMode: config.enforcementMode || null,
+      updateTime: config.updateTime || null,
+    });
   }
 
-  const config = JSON.parse(result.stdout);
-  return evaluateFirebaseAppCheckEnforcement({
-    serviceName,
-    enforcementMode: config.enforcementMode || null,
-    updateTime: config.updateTime || null,
-  });
+  return evaluateFirebaseAppCheckServiceSet(configs);
 }
 
 function checkProtection() {

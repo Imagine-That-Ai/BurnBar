@@ -13,6 +13,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
+    private var vaultKeyProvider: TestConversationVaultKeyProvider!
     private var collaborationSync: CollaborationSyncService!
     private var coordinator: CloudSyncCoordinator!
 
@@ -29,13 +30,17 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway
         )
-        collaborationSync = CollaborationSyncService(context: context)
+        vaultKeyProvider = TestConversationVaultKeyProvider()
+        collaborationSync = CollaborationSyncService(
+            context: context,
+            sharedArtifactVaultKeyProvider: vaultKeyProvider
+        )
         coordinator = CloudSyncCoordinator(
             dataStore: dataStore,
             accountManager: accountManager,
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway,
-            conversationVaultKeyProvider: TestConversationVaultKeyProvider(),
+            conversationVaultKeyProvider: vaultKeyProvider,
             sessionLogEncryptedCloudClient: FakeSessionLogEncryptedCloudClient(),
             sessionLogVaultKeyStore: StaticSessionLogVaultKeyStore(),
             sessionLogVaultKeyPublisher: NoopSessionLogVaultKeyPublisher()
@@ -50,6 +55,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         settingsManager = nil
         accountManager = nil
         dataStore = nil
+        vaultKeyProvider = nil
 
         try super.tearDownWithError()
     }
@@ -86,13 +92,73 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
 
         let headPath = docs.keys.min()!
         let head = try XCTUnwrap(fakeGateway.documentData(at: headPath))
-        XCTAssertEqual(head["title"] as? String, "Runbook")
-        XCTAssertEqual(head["contentHash"] as? String, "hash-runbook-v1")
-        XCTAssertEqual(head["body"] as? String, "# Runbook v1")
+        XCTAssertNil(head["title"], "Shared artifact head must not store plaintext title")
+        XCTAssertNil(head["contentHash"], "Shared artifact head must not store plaintext content hash")
+        XCTAssertNil(head["body"], "Shared artifact head must not store plaintext body")
+        XCTAssertNil(head["relativePath"], "Shared artifact head must not store plaintext relative path")
+        XCTAssertEqual(head["contentSealed"] as? Bool, true)
+        XCTAssertEqual(head["vaultKeyID"] as? String, try vaultKeyProvider.resolvedKey().vaultKeyID)
+
+        let headEnvelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: head["sealedPayload"]))
+        let headAAD = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactAADCollection,
+            docID: artifact.id,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        let headPlaintext = try CloudVaultCrypto.openPayload(
+            headEnvelope,
+            keyData: vaultKeyProvider.keyData,
+            aadContext: headAAD
+        )
+        let headPrivatePayload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: headPlaintext) as? [String: Any]
+        )
+        XCTAssertEqual(headPrivatePayload["title"] as? String, "Runbook")
+        XCTAssertEqual(headPrivatePayload["contentHash"] as? String, "hash-runbook-v1")
+        XCTAssertEqual(headPrivatePayload["body"] as? String, "# Runbook v1")
+
+        let revisionID = try XCTUnwrap(head["revisionID"] as? String)
+        let versionPath = "\(headPath)/versions/\(revisionID)"
+        let version = try XCTUnwrap(fakeGateway.documentData(at: versionPath))
+        XCTAssertNil(version["title"], "Shared artifact versions must not store plaintext title")
+        let versionEnvelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: version["sealedPayload"]))
+        let versionAAD = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactVersionAADCollection,
+            docID: revisionID,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        XCTAssertNoThrow(
+            try CloudVaultCrypto.openPayload(
+                versionEnvelope,
+                keyData: vaultKeyProvider.keyData,
+                aadContext: versionAAD
+            )
+        )
 
         let syncState = try await dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
         XCTAssertEqual(syncState?.syncStatus, .synced)
         XCTAssertNil(syncState?.lastErrorCode)
+    }
+
+    func test_collaborationPush_withNoLocalArtifactsDoesNotCreateVaultKey() async throws {
+        let countingProvider = CountingConversationVaultKeyProvider()
+        let sync = CollaborationSyncService(
+            context: context,
+            sharedArtifactVaultKeyProvider: countingProvider
+        )
+        var report = SharedArtifactSyncReport(scope: .defaultScope(for: "test-uid-1"))
+
+        try await sync.pushLocalSharedArtifacts(
+            scope: .defaultScope(for: "test-uid-1"),
+            deviceId: "test-device-1",
+            report: &report
+        )
+
+        XCTAssertEqual(report.localArtifactsEvaluated, 0)
+        XCTAssertEqual(countingProvider.keyForWritingCallCount, 0)
+        XCTAssertEqual(countingProvider.keyForReadingCallCount, 0)
     }
 
     // MARK: - Collaboration pull
@@ -296,5 +362,49 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         XCTAssertEqual(fetched?.syncStatus, .synced)
         XCTAssertNil(fetched?.lastErrorCode)
         XCTAssertEqual(fetched?.revisionID, "rev-2")
+    }
+}
+
+private final class CountingConversationVaultKeyProvider: ConversationCloudVaultKeyProviding, @unchecked Sendable {
+    private let keyData: Data
+    private let lock = NSLock()
+    private var writeCalls = 0
+    private var readCalls = 0
+
+    init(keyData: Data = Data(repeating: 0x42, count: 32)) {
+        self.keyData = keyData
+    }
+
+    var keyForWritingCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return writeCalls
+    }
+
+    var keyForReadingCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return readCalls
+    }
+
+    func keyForWriting(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey {
+        lock.lock()
+        writeCalls += 1
+        lock.unlock()
+        return try resolvedKey()
+    }
+
+    func keyForReading(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey? {
+        lock.lock()
+        readCalls += 1
+        lock.unlock()
+        return try resolvedKey()
+    }
+
+    private func resolvedKey() throws -> CloudVaultResolvedKey {
+        try CloudVaultResolvedKey(
+            keyData: keyData,
+            vaultKeyID: CloudVaultCrypto.vaultKeyID(for: keyData)
+        )
     }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Verify Firebase App Check enforcement for Cloud Firestore in the production
-# project. Fails closed when the state is off or cannot be determined.
+# Verify Firebase App Check enforcement for Cloud Firestore and Firebase Storage
+# in the production project. Fails closed when any required service is off or
+# cannot be determined.
 #
 # Requires gcloud auth (or GOOGLE_APPLICATION_CREDENTIALS) and either
 # GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT / OPENBURNBAR_FIREBASE_PROJECT.
@@ -33,31 +34,69 @@ if [[ -z "$access_token" ]]; then
   exit 1
 fi
 
-service_name="projects/${project_number}/services/firestore.googleapis.com"
-response="$(curl -fsS \
-  -H "Authorization: Bearer ${access_token}" \
-  -H "x-goog-user-project: ${PROJECT}" \
-  "https://firebaseappcheck.googleapis.com/v1beta/${service_name}" 2>/dev/null || true)"
+DEFAULT_SERVICES="firestore.googleapis.com,firebasestorage.googleapis.com"
+IFS=',' read -r -a requested_services <<< "${FIREBASE_APP_CHECK_SERVICES:-$DEFAULT_SERVICES}"
+services=()
+for raw_service in "${requested_services[@]}"; do
+  # Strip leading/trailing whitespace via bash parameter expansion (no subprocess).
+  service="${raw_service#"${raw_service%%[![:space:]]*}"}"
+  service="${service%"${service##*[![:space:]]}"}"
+  if [[ -n "$service" ]]; then
+    services+=("$service")
+  fi
+done
 
-if [[ -z "$response" ]]; then
-  echo "ERROR: Firebase App Check API request failed for ${service_name}." >&2
+if [[ "${#services[@]}" -eq 0 ]]; then
+  echo "ERROR: No Firebase App Check services requested." >&2
   exit 1
 fi
-
-enforcement_mode="$(python3 - <<'PY' "$response"
-import json, sys
-payload = json.loads(sys.argv[1])
-print(payload.get("enforcementMode") or "")
-PY
-)"
 
 timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "{\"project\":\"${PROJECT}\",\"service\":\"firestore.googleapis.com\",\"enforcementMode\":\"${enforcement_mode:-<unset>}\",\"verifiedAt\":\"${timestamp}\"}"
+failed=0
 
-if [[ "$enforcement_mode" != "ENFORCED" ]]; then
-  echo "ERROR: Firestore App Check enforcementMode=${enforcement_mode:-<unset>} (expected ENFORCED)." >&2
-  echo "Configure enforcement in Firebase Console → App Check → Firestore before shipping." >&2
+for service in "${services[@]}"; do
+  service_name="projects/${project_number}/services/${service}"
+  response="$(curl -fsS \
+    -H "Authorization: Bearer ${access_token}" \
+    -H "x-goog-user-project: ${PROJECT}" \
+    "https://firebaseappcheck.googleapis.com/v1beta/${service_name}" 2>/dev/null || true)"
+
+  if [[ -z "$response" ]]; then
+    echo "ERROR: Firebase App Check API request failed for ${service_name}." >&2
+    failed=1
+    continue
+  fi
+
+  enforcement_mode="$(python3 -c '
+import json, sys
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+print(payload.get("enforcementMode") or "")
+' <<< "$response" 2>/dev/null || true)"
+
+  printf '%s\0%s\0%s\0%s\0' "$PROJECT" "$service" "${enforcement_mode:-}" "$timestamp" \
+    | python3 -c '
+import json, sys
+project, service, mode, ts = sys.stdin.read().split("\0")[:4]
+print(json.dumps({
+    "project": project,
+    "service": service,
+    "enforcementMode": mode or "<unset>",
+    "verifiedAt": ts,
+}, separators=(",", ":")))
+'
+
+  if [[ "$enforcement_mode" != "ENFORCED" ]]; then
+    echo "ERROR: ${service} App Check enforcementMode=${enforcement_mode:-<unset>} (expected ENFORCED)." >&2
+    echo "Configure enforcement in Firebase Console → App Check → APIs before shipping." >&2
+    failed=1
+  else
+    echo "PASS: ${service} App Check enforcementMode=ENFORCED for project ${PROJECT}."
+  fi
+done
+
+if [[ "$failed" -ne 0 ]]; then
   exit 1
 fi
-
-echo "PASS: Firestore App Check enforcementMode=ENFORCED for project ${PROJECT}."
