@@ -13,7 +13,11 @@ import process from "node:process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { evaluateFirebaseAppCheckEnforcement } from "./lib/evaluate-firebase-app-check-enforcement.mjs";
-import { checkBillingAlerts, checkOpsAlerts } from "./lib/ops-alerts-gate.mjs";
+import {
+  VERIFIABLE_CHANNEL_TYPES,
+  checkBillingAlerts,
+  checkOpsAlerts,
+} from "./lib/ops-alerts-gate.mjs";
 import { validateLaunchEvidenceBundle } from "./validate-launch-evidence-bundle.mjs";
 
 export { evaluateFirebaseAppCheckEnforcement };
@@ -26,14 +30,14 @@ const LIVE_IOS_STATE = "READY_FOR_SALE";
 const LAUNCH_EVIDENCE_MANIFEST =
   process.env.OPENBURNBAR_LAUNCH_EVIDENCE_MANIFEST ||
   "launch-evidence/final-launch-evidence.json";
+const ALERT_DELIVERY_EVIDENCE_PATH =
+  process.env.OPENBURNBAR_ALERT_DELIVERY_EVIDENCE ||
+  "launch-evidence/alert-channel-verified.json";
+const ALERT_DELIVERY_TTL_HOURS = Number(
+  process.env.OPENBURNBAR_ALERT_DELIVERY_TTL_HOURS || "168",
+);
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID =
   "com.openburnbar.hostedQuotaSync.cloud.monthly";
-const ADMIN_REVIEW_BYPASS_USERS = (
-  process.env.OPENBURNBAR_ADMIN_REVIEW_BYPASS_USERS || "Ajnunezg"
-)
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
 export const COMMERCIAL_PRODUCTS = Object.freeze({
   legacyHostedQuota: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
   cloudMonthly: "com.openburnbar.pro.monthly",
@@ -103,6 +107,23 @@ const REQUIRED_CODEQL_CHECKS = [
   "Analyze (python)",
   "Analyze (java-kotlin)",
 ];
+const REQUIRED_BRANCH_CHECKS = [
+  "Fast Feedback Gate",
+  "guard",
+  "BurnBar AGPL product posture",
+  "Secret Detection (gitleaks)",
+  "Dependency Review (CVE check)",
+  "npm Audit (Node package locks)",
+  "Remote Installer Policy",
+  "Vendored Agent Provenance",
+  "Signal Activation Parity (fail-closed default)",
+  "Browser Target Policy (SSRF / DNS-rebinding)",
+  "OSV Scanner (open source vulnerabilities)",
+  "Hosted MCP Security Smoke",
+  "Hosted MCP Isolation Proofs (local, deterministic)",
+  "Firestore Security Rules Tests",
+];
+const REQUIRED_MAIN_GATE_CHECK = "openburnbar-pr";
 const REQUIRED_GITHUB_SECURITY_SETTINGS = [
   "dependabot_security_updates",
   "secret_scanning",
@@ -616,31 +637,34 @@ function checkProtection() {
   ]);
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
   const protection = JSON.parse(result.stdout);
-  const checks = protection.required_status_checks?.contexts || [];
-  const reviewCount =
-    protection.required_pull_request_reviews
-      ?.required_approving_review_count ?? 0;
-  const reviewBypassUsers =
-    protection.required_pull_request_reviews?.bypass_pull_request_allowances
-      ?.users?.map((user) => user.login)
-      .filter(Boolean) || [];
-  const adminHumanApprovalBypassed =
-    reviewCount === 0 ||
-    ADMIN_REVIEW_BYPASS_USERS.every((user) => reviewBypassUsers.includes(user));
+  const checks = [
+    ...new Set([
+      ...(protection.required_status_checks?.contexts || []),
+      ...((protection.required_status_checks?.checks || []).map((check) => check.context).filter(Boolean)),
+    ]),
+  ];
+  const pullRequestReviews = protection.required_pull_request_reviews || {};
+  const bypass = pullRequestReviews.bypass_pull_request_allowances || {};
+  const bypassAllowanceCount =
+    (bypass.users || []).length + (bypass.teams || []).length + (bypass.apps || []).length;
   return {
     ok:
       protection.enforce_admins?.enabled === true &&
       protection.allow_force_pushes?.enabled === false &&
       protection.allow_deletions?.enabled === false &&
-      adminHumanApprovalBypassed &&
-      ["openburnbar-pr", ...REQUIRED_CODEQL_CHECKS].every((check) =>
+      protection.required_conversation_resolution?.enabled === true &&
+      pullRequestReviews.required_approving_review_count === 1 &&
+      pullRequestReviews.require_code_owner_reviews === true &&
+      bypassAllowanceCount === 0 &&
+      REQUIRED_BRANCH_CHECKS.every((check) =>
         checks.includes(check),
       ),
     requiredChecks: checks,
-    adminHumanApprovalBypassed,
-    reviewBypassUsers,
-    reviewCount,
+    reviewCount: pullRequestReviews.required_approving_review_count ?? 0,
+    codeOwnerReviewsRequired: pullRequestReviews.require_code_owner_reviews === true,
+    bypassAllowanceCount,
     adminsEnforced: protection.enforce_admins?.enabled === true,
+    conversationResolutionRequired: protection.required_conversation_resolution?.enabled === true,
     forcePushesAllowed: protection.allow_force_pushes?.enabled === true,
     deletionsAllowed: protection.allow_deletions?.enabled === true,
   };
@@ -763,25 +787,23 @@ function checkLatestMergedPrGate() {
     };
   }
 
+  const checkedSha = merged.merge_commit_sha === mainSha ? mainSha : merged.head.sha;
   const runs = run("gh", [
     "api",
     "-H",
     "Accept: application/vnd.github+json",
-    `/repos/${REPO}/commits/${merged.head.sha}/check-runs`,
+    `/repos/${REPO}/commits/${checkedSha}/check-runs?per_page=100`,
   ]);
   if (!runs.ok)
     return { ok: false, pr: merged.number, error: runs.stderr || runs.stdout };
   const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const required = checkRuns.find((check) => check.name === "openburnbar-pr");
-  const functional = checkRuns.find((check) => check.name === "functional-qa");
+  const required = checkRuns.find((check) => check.name === REQUIRED_MAIN_GATE_CHECK);
   return {
-    ok:
-      required?.conclusion === "success" &&
-      functional?.conclusion === "success",
+    ok: required?.status === "completed" && required?.conclusion === "success",
     pr: merged.number,
     headSha: merged.head.sha,
+    checkedSha,
     openburnbarPr: required ? pickCheck(required) : null,
-    functionalQa: functional ? pickCheck(functional) : null,
   };
 }
 
@@ -802,7 +824,7 @@ function checkMainRequiredGate() {
   ]);
   if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
   const checkRuns = JSON.parse(runs.stdout).check_runs || [];
-  const required = checkRuns.find((check) => check.name === "openburnbar-pr");
+  const required = checkRuns.find((check) => check.name === REQUIRED_MAIN_GATE_CHECK);
   return {
     ok: required?.status === "completed" && required?.conclusion === "success",
     sha,
@@ -951,6 +973,165 @@ function compactCommandOutput(text) {
     .slice(0, 6)
     .join("\n")
     .slice(0, 1200);
+}
+
+function parseFirstJsonObject(output) {
+  const text = String(output || "");
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) {
+    return { ok: false, error: "no JSON object found in command output" };
+  }
+  try {
+    return { ok: true, value: JSON.parse(text.slice(start, end + 1)) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `invalid JSON object in command output: ${error.message}`,
+    };
+  }
+}
+
+function checkFirestoreDisasterRecovery() {
+  const result = run("bash", ["scripts/ops/verify-firestore-disaster-recovery.sh"], {
+    env: { ...process.env, FIRESTORE_DR_JSON_ONLY: "1" },
+    timeout: 180_000,
+  });
+  const parsed = parseFirstJsonObject(result.stdout);
+  if (!result.ok) {
+    return {
+      ok: false,
+      ...(parsed.ok ? parsed.value : {}),
+      error: compactCommandOutput(result.stderr || result.stdout || result.error || parsed.error),
+    };
+  }
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error };
+  }
+  return {
+    ...parsed.value,
+    ok: parsed.value?.ok === true,
+  };
+}
+
+export function requiredVerifiableAlertChannels(...alertChecks) {
+  const byName = new Map();
+  for (const alertCheck of alertChecks) {
+    for (const policy of alertCheck?.required || []) {
+      for (const channel of policy.notificationChannelStatuses || []) {
+        if (!VERIFIABLE_CHANNEL_TYPES.has(channel.type)) continue;
+        if (!channel.name) continue;
+        if (!byName.has(channel.name)) {
+          byName.set(channel.name, {
+            name: channel.name,
+            type: channel.type,
+            target: channel.target || channel.emailAddress || null,
+            policyDisplayNames: [],
+          });
+        }
+        byName.get(channel.name).policyDisplayNames.push(policy.displayName);
+      }
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function parseEvidenceTime(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const millis = Date.parse(value);
+  return Number.isFinite(millis) ? new Date(millis) : null;
+}
+
+export function evaluateAlertDeliverabilityEvidence(evidence, requiredChannels, options = {}) {
+  const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
+  const ttlHours = Number(options.ttlHours ?? ALERT_DELIVERY_TTL_HOURS);
+  const ttlMs = ttlHours * 60 * 60 * 1000;
+  const failures = [];
+  const generatedAt = parseEvidenceTime(evidence?.generatedAt);
+  const channels = Array.isArray(evidence?.channels) ? evidence.channels : [];
+
+  if (!Number.isFinite(ttlHours) || ttlHours <= 0) {
+    failures.push("alert-delivery TTL must be a positive number of hours");
+  }
+  if (!generatedAt) {
+    failures.push("evidence.generatedAt is missing or invalid");
+  } else if (now.getTime() - generatedAt.getTime() > ttlMs) {
+    failures.push(`evidence.generatedAt is older than ${ttlHours}h`);
+  }
+  if (!Array.isArray(requiredChannels) || requiredChannels.length === 0) {
+    failures.push("no verifiable alert notification channels were present in ops/billing alert checks");
+  }
+
+  const evidenceByName = new Map(
+    channels
+      .filter((channel) => typeof channel?.name === "string")
+      .map((channel) => [channel.name, channel]),
+  );
+  const checkedChannels = (requiredChannels || []).map((required) => {
+    const channel = evidenceByName.get(required.name);
+    const deliveredAt = parseEvidenceTime(channel?.deliveredAt || channel?.confirmedAt);
+    const problems = [];
+    if (!channel) {
+      problems.push("missing from evidence");
+    } else {
+      if (channel.deliveryConfirmed !== true) {
+        problems.push("deliveryConfirmed is not true");
+      }
+      if (!deliveredAt) {
+        problems.push("deliveredAt is missing or invalid");
+      } else if (now.getTime() - deliveredAt.getTime() > ttlMs) {
+        problems.push(`deliveredAt is older than ${ttlHours}h`);
+      }
+      if (required.type && channel.type && channel.type !== required.type) {
+        problems.push(`type mismatch: expected ${required.type}, saw ${channel.type}`);
+      }
+    }
+    failures.push(...problems.map((problem) => `${required.name}: ${problem}`));
+    return {
+      ...required,
+      deliveredAt: deliveredAt?.toISOString() || null,
+      verifiedBy: channel?.verifiedBy || null,
+      ok: problems.length === 0,
+      problems,
+    };
+  });
+
+  return {
+    ok: failures.length === 0,
+    generatedAt: generatedAt?.toISOString() || evidence?.generatedAt || null,
+    ttlHours,
+    requiredChannels: checkedChannels,
+    failures,
+  };
+}
+
+function checkAlertDeliverabilityEvidence(alertChecks) {
+  const requiredChannels = requiredVerifiableAlertChannels(...alertChecks);
+  if (!existsSync(ALERT_DELIVERY_EVIDENCE_PATH)) {
+    return {
+      ok: false,
+      path: ALERT_DELIVERY_EVIDENCE_PATH,
+      requiredChannels,
+      failures: [`missing ${ALERT_DELIVERY_EVIDENCE_PATH}`],
+    };
+  }
+
+  let evidence;
+  try {
+    evidence = JSON.parse(readFileSync(ALERT_DELIVERY_EVIDENCE_PATH, "utf8"));
+  } catch (error) {
+    return {
+      ok: false,
+      path: ALERT_DELIVERY_EVIDENCE_PATH,
+      requiredChannels,
+      failures: [`invalid JSON: ${error.message}`],
+    };
+  }
+
+  return {
+    path: ALERT_DELIVERY_EVIDENCE_PATH,
+    ...evaluateAlertDeliverabilityEvidence(evidence, requiredChannels),
+  };
 }
 
 function checkRunnerReadyz() {
@@ -1415,6 +1596,8 @@ export function verdict(checks) {
 
 async function main() {
   const appStore = checkAppStore();
+  const opsAlerts = checkOpsAlerts();
+  const billingAlerts = checkBillingAlerts();
   const checks = {
     repo: checkRepo(),
     appStore,
@@ -1432,8 +1615,10 @@ async function main() {
     commercialBillingRuntime: checkCommercialBillingRuntime(),
     elderWandHostedSearchRuntime: checkElderWandHostedSearchRuntime(),
     remoteConfigCaps: checkRemoteConfigCaps(),
-    opsAlerts: checkOpsAlerts(),
-    billingAlerts: checkBillingAlerts(),
+    opsAlerts,
+    billingAlerts,
+    alertDeliverability: checkAlertDeliverabilityEvidence([opsAlerts, billingAlerts]),
+    firestoreDisasterRecovery: checkFirestoreDisasterRecovery(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
     launchEvidence: checkLaunchEvidence(),
   };

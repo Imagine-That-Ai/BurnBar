@@ -11,10 +11,12 @@ import {
   evaluateAppStoreProductReadiness,
   evaluateCloudRunServiceReadiness,
   evaluateElderWandHostedSearchRuntime,
+  evaluateAlertDeliverabilityEvidence,
   evaluateEnvRequirements,
   evaluateRetiredCloudRunServiceAbsence,
   evaluateRemoteConfigDefaults,
   evaluateRequiredProductIDs,
+  requiredVerifiableAlertChannels,
   verdict,
 } from "./commercial-launch-gate.mjs";
 
@@ -32,6 +34,8 @@ assert.match(launchGateSource, /READY_FOR_PUBLIC_RELEASE/);
 assert.match(launchGateSource, /LAUNCH_DONE/);
 assert.match(launchGateSource, /prove:paid-tier/);
 assert.match(launchGateSource, /validateLaunchEvidenceBundle/);
+assert.match(launchGateSource, /firestoreDisasterRecovery/);
+assert.match(launchGateSource, /alertDeliverability/);
 
 assert.equal(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
@@ -72,6 +76,8 @@ function passingChecks(overrides = {}) {
     remoteConfigCaps: { ok: true },
     opsAlerts: { ok: true },
     billingAlerts: { ok: true },
+    alertDeliverability: { ok: true },
+    firestoreDisasterRecovery: { ok: true },
     firebaseFunctionsInventory: { ok: true },
     launchEvidence: {
       ok: true,
@@ -134,6 +140,14 @@ function passingChecks(overrides = {}) {
   );
   assert.equal(
     verdict(passingChecks({ billingAlerts: { ok: false } })).status,
+    "NO_GO",
+  );
+  assert.equal(
+    verdict(passingChecks({ firestoreDisasterRecovery: { ok: false } })).status,
+    "NO_GO",
+  );
+  assert.equal(
+    verdict(passingChecks({ alertDeliverability: { ok: false } })).status,
     "NO_GO",
   );
 }
@@ -396,6 +410,65 @@ function passingChecks(overrides = {}) {
   );
   assert.equal(retired.absent, false);
   assert.equal(retired.url, "https://relay.example.run.app");
+}
+
+{
+  const alertChecks = [
+    {
+      required: [
+        {
+          displayName: "OpenBurnBar alert-delivery drill canary",
+          notificationChannelStatuses: [
+            {
+              name: "projects/burnbar/notificationChannels/email",
+              type: "email",
+              target: "ops@burnbar.ai",
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  const required = requiredVerifiableAlertChannels(...alertChecks);
+  assert.deepEqual(required.map((channel) => channel.name), [
+    "projects/burnbar/notificationChannels/email",
+  ]);
+
+  const fresh = evaluateAlertDeliverabilityEvidence(
+    {
+      generatedAt: "2026-06-17T12:00:00.000Z",
+      channels: [
+        {
+          name: "projects/burnbar/notificationChannels/email",
+          type: "email",
+          deliveryConfirmed: true,
+          deliveredAt: "2026-06-17T11:58:00.000Z",
+          verifiedBy: "operator",
+        },
+      ],
+    },
+    required,
+    { now: new Date("2026-06-17T12:30:00.000Z"), ttlHours: 168 },
+  );
+  assert.equal(fresh.ok, true);
+
+  const stale = evaluateAlertDeliverabilityEvidence(
+    {
+      generatedAt: "2026-06-01T12:00:00.000Z",
+      channels: [
+        {
+          name: "projects/burnbar/notificationChannels/email",
+          type: "email",
+          deliveryConfirmed: true,
+          deliveredAt: "2026-06-01T12:00:00.000Z",
+        },
+      ],
+    },
+    required,
+    { now: new Date("2026-06-17T12:30:00.000Z"), ttlHours: 168 },
+  );
+  assert.equal(stale.ok, false);
+  assert.match(stale.failures.join("\n"), /older than 168h/);
 }
 
 console.log("commercial-launch-gate commercial evaluator tests passed");
