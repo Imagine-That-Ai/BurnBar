@@ -99,7 +99,7 @@ public enum WandModelRouter {
         let capability = capabilityScore(option)
         let quotaCost = quotaCostScore(option)
         switch selector {
-        case .headmaster:
+        case .highestCapability:
             return SortKey(
                 primary: -capability,
                 secondary: quotaCost,

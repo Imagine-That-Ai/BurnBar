@@ -190,7 +190,7 @@ extension BurnBarHTTPGatewayServer {
                 }
             },
             emptyRankedRoutesRejection: { clientModelID in
-                let detail = "no eligible route for \(clientModelID). "
+                let detail = "No eligible route for \(clientModelID). "
                     + "Add or enable an advertised OpenBurnBar provider that can serve /v1/messages."
                 return (
                     failureMessage: "No eligible route for \(clientModelID).",

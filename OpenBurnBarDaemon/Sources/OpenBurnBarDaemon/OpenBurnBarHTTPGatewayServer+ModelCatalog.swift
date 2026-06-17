@@ -215,7 +215,7 @@ extension BurnBarHTTPGatewayServer {
            providerID.caseInsensitiveCompare("ollama") != .orderedSame {
             return [:]
         }
-        guard canonicalOllamaCloudModelID(requestedModel.modelID) != nil else {
+        guard let canonicalCloudModelID = canonicalOllamaCloudModelID(requestedModel.modelID) else {
             return [:]
         }
 
@@ -223,6 +223,10 @@ extension BurnBarHTTPGatewayServer {
         for configuration in try await configStore.resolvedConfigurations()
             where configuration.provider.id.caseInsensitiveCompare("ollama") == .orderedSame
                 && configuration.settings.isEnabled {
+            guard configuration.settings.isModelAdvertisementEnabled(requestedModel.modelID),
+                  configuration.settings.isModelAdvertisementEnabled(canonicalCloudModelID) else {
+                continue
+            }
             if configuration.credentialSlots.isEmpty {
                 if requestedModel.accountID == nil || requestedModel.accountID?.caseInsensitiveCompare("legacy") == .orderedSame,
                    OpenBurnBarProviderCredentialNormalizer.routingAPIKey(

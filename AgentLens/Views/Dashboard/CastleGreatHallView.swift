@@ -34,28 +34,28 @@ struct CastleGreatHallContainer: View {
 
 /// The Wand mode the user is casting with.
 enum WandCastMode: String, CaseIterable, Identifiable {
-    case headmaster = "headmaster"
-    case pareto = "pareto"
+    case highestCapability = "headmaster"
+    case pareto
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .headmaster: return "Headmaster's"
+        case .highestCapability: return "Headmaster's"
         case .pareto: return "Pareto"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .headmaster: return "Highest capability"
+        case .highestCapability: return "Highest capability"
         case .pareto: return "Best quality per quota"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .headmaster: return "crown.fill"
+        case .highestCapability: return "crown.fill"
         case .pareto: return "scalemass.fill"
         }
     }
@@ -66,7 +66,7 @@ struct CastleGreatHallView: View {
     let failures: [CastleStatusLoadFailure]
     let lastRefreshed: Date?
     var isLoading: Bool = false
-    var onRetry: (() -> Void)? = nil
+    var onRetry: (() -> Void)?
 
     @State private var selectedMode: WandCastMode = .pareto
     @State private var showUpgradeSheet = false

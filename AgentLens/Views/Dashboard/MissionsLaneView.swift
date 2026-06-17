@@ -982,7 +982,7 @@ private struct NewMissionSheet: View {
     @State private var title: String = ""
     @State private var summary: String = ""
     @State private var recommendation: BurnBarMissionRecommendation = .proceed
-    @State private var wandMode: WandCastMode? = nil
+    @State private var wandMode: WandCastMode?
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
@@ -1194,7 +1194,7 @@ private struct NewMissionSheet: View {
                     subtitle: "You pick models"
                 )
                 wandModeChip(
-                    mode: .headmaster,
+                    mode: .highestCapability,
                     title: "Headmaster's",
                     icon: "crown.fill",
                     subtitle: "Best model wins"

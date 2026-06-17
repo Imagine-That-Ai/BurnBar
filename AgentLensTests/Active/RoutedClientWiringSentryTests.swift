@@ -367,7 +367,7 @@ final class RoutedClientWiringSentryTests: XCTestCase {
                     now: { Date(timeIntervalSince1970: 1_700_000_000) }
                 )
             },
-            advertisedModelsProvider: { gateway, _ in
+            advertisedModelsProvider: { _, _ in
                 if let advertisedModels {
                     return advertisedModels
                 }

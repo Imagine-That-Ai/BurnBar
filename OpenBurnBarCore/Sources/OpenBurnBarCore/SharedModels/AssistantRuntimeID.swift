@@ -88,8 +88,8 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
 // MARK: - WandPolicy
 
 /// A routing policy the fan-out dispatcher consults to choose a model per
-/// runtime. Maps directly to the Ministry's `selector` field (`headmaster` =
-/// highest capability, `pareto` = best quality per quota signal).
+/// runtime. Maps directly to the Ministry's `selector` field (highest
+/// capability or best quality per quota signal).
 ///
 /// When a `WandPolicy` is passed to `dispatchFanOut`, each child mission's
 /// `requestedModelID` is resolved via `routedModelID(for:)` instead of the
@@ -103,7 +103,7 @@ public struct WandPolicy: Codable, Hashable, Sendable {
     public let routedModels: [AssistantRuntimeID: String]
 
     public enum Selector: String, Codable, Hashable, Sendable, CaseIterable {
-        case headmaster
+        case highestCapability = "headmaster"
         case pareto
     }
 
