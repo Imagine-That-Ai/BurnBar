@@ -80,7 +80,7 @@ jobs:
             }
 
       - name: Smoke-build Swift bridge
-        run: swift build --package-path OpenBurnBarCore --product BurnBarRemoteEngine
+        run: swift build --package-path OpenBurnBarCore --target BurnBarRemoteEngine
 
       - name: Inspect xcframework
         run: |
