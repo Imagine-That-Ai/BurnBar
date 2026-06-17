@@ -45,14 +45,13 @@ enum class BurnBarRemotePermission {
 object BurnBarRemoteBridge {
     @Volatile private var cachedAvailability: Boolean? = null
 
-    fun readiness(): BurnBarRemoteReadiness =
-        BurnBarRemoteReadiness(
-            protocolVersion = REMOTE_PROTOCOL_VERSION,
-            supportsIrohTransport = true,
-            supportsAdaptiveQuality = true,
-            supportsPermissionGate = true,
-            nativeBridgeAvailable = isNativeAvailable(),
-        )
+    fun readiness(): BurnBarRemoteReadiness = BurnBarRemoteReadiness(
+        protocolVersion = REMOTE_PROTOCOL_VERSION,
+        supportsIrohTransport = true,
+        supportsAdaptiveQuality = true,
+        supportsPermissionGate = true,
+        nativeBridgeAvailable = isNativeAvailable(),
+    )
 
     fun isNativeAvailable(): Boolean {
         if (isAndroidRuntime() && !BurnBarRemoteNativeContext.ensureLoaded()) {
@@ -70,11 +69,7 @@ object BurnBarRemoteBridge {
         return ok
     }
 
-    fun scaledDimensions(
-        dimensions: BurnBarRemoteDimensions,
-        numerator: UInt,
-        denominator: UInt,
-    ): BurnBarRemoteDimensions {
+    fun scaledDimensions(dimensions: BurnBarRemoteDimensions, numerator: UInt, denominator: UInt): BurnBarRemoteDimensions {
         val divisor = denominator.toULong().coerceAtLeast(1u)
         val width =
             ((dimensions.width.toULong() * numerator.toULong()) / divisor)
@@ -89,24 +84,19 @@ object BurnBarRemoteBridge {
         return BurnBarRemoteDimensions(width = width, height = height)
     }
 
-    fun modeRequiresPermission(
-        mode: BurnBarRemoteSessionMode,
-        permission: BurnBarRemotePermission,
-    ): Boolean =
-        when (mode) {
-            BurnBarRemoteSessionMode.ViewOnly,
-            BurnBarRemoteSessionMode.AgentObserve,
-            -> permission == BurnBarRemotePermission.ViewScreen
+    fun modeRequiresPermission(mode: BurnBarRemoteSessionMode, permission: BurnBarRemotePermission): Boolean = when (mode) {
+        BurnBarRemoteSessionMode.ViewOnly,
+        BurnBarRemoteSessionMode.AgentObserve,
+        -> permission == BurnBarRemotePermission.ViewScreen
 
-            BurnBarRemoteSessionMode.Control,
-            BurnBarRemoteSessionMode.AgentAssist,
-            -> permission == BurnBarRemotePermission.ViewScreen ||
-                permission == BurnBarRemotePermission.InjectInput
-        }
+        BurnBarRemoteSessionMode.Control,
+        BurnBarRemoteSessionMode.AgentAssist,
+        -> permission == BurnBarRemotePermission.ViewScreen ||
+            permission == BurnBarRemotePermission.InjectInput
+    }
 
-    private fun isAndroidRuntime(): Boolean =
-        System.getProperty("java.runtime.name")?.contains("Android", ignoreCase = true) == true ||
-            System.getProperty("java.vm.vendor")?.contains("Android", ignoreCase = true) == true
+    private fun isAndroidRuntime(): Boolean = System.getProperty("java.runtime.name")?.contains("Android", ignoreCase = true) == true ||
+        System.getProperty("java.vm.vendor")?.contains("Android", ignoreCase = true) == true
 }
 
 object BurnBarRemoteNativeContext {
