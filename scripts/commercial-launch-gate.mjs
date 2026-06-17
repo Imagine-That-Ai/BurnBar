@@ -28,12 +28,6 @@ const LAUNCH_EVIDENCE_MANIFEST =
   "launch-evidence/final-launch-evidence.json";
 const LEGACY_HOSTED_QUOTA_PRODUCT_ID =
   "com.openburnbar.hostedQuotaSync.cloud.monthly";
-const ADMIN_REVIEW_BYPASS_USERS = (
-  process.env.OPENBURNBAR_ADMIN_REVIEW_BYPASS_USERS || "Ajnunezg"
-)
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
 export const COMMERCIAL_PRODUCTS = Object.freeze({
   legacyHostedQuota: LEGACY_HOSTED_QUOTA_PRODUCT_ID,
   cloudMonthly: "com.openburnbar.pro.monthly",
@@ -616,31 +610,42 @@ function checkProtection() {
   ]);
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
   const protection = JSON.parse(result.stdout);
-  const checks = protection.required_status_checks?.contexts || [];
+  const checks = [
+    ...new Set([
+      ...(protection.required_status_checks?.contexts || []),
+      ...((protection.required_status_checks?.checks || [])
+        .map((check) => check.context)
+        .filter(Boolean)),
+    ]),
+  ];
+  const pullRequestReviews = protection.required_pull_request_reviews || {};
   const reviewCount =
-    protection.required_pull_request_reviews
-      ?.required_approving_review_count ?? 0;
-  const reviewBypassUsers =
-    protection.required_pull_request_reviews?.bypass_pull_request_allowances
-      ?.users?.map((user) => user.login)
-      .filter(Boolean) || [];
-  const adminHumanApprovalBypassed =
-    reviewCount === 0 ||
-    ADMIN_REVIEW_BYPASS_USERS.every((user) => reviewBypassUsers.includes(user));
+    pullRequestReviews.required_approving_review_count ?? 0;
+  const bypass = pullRequestReviews.bypass_pull_request_allowances || {};
+  const bypassAllowanceCount =
+    (bypass.users || []).length +
+    (bypass.teams || []).length +
+    (bypass.apps || []).length;
   return {
     ok:
       protection.enforce_admins?.enabled === true &&
       protection.allow_force_pushes?.enabled === false &&
       protection.allow_deletions?.enabled === false &&
-      adminHumanApprovalBypassed &&
+      protection.required_conversation_resolution?.enabled === true &&
+      reviewCount === 1 &&
+      pullRequestReviews.require_code_owner_reviews === true &&
+      bypassAllowanceCount === 0 &&
       ["openburnbar-pr", ...REQUIRED_CODEQL_CHECKS].every((check) =>
         checks.includes(check),
       ),
     requiredChecks: checks,
-    adminHumanApprovalBypassed,
-    reviewBypassUsers,
+    codeOwnerReviewsRequired:
+      pullRequestReviews.require_code_owner_reviews === true,
+    bypassAllowanceCount,
     reviewCount,
     adminsEnforced: protection.enforce_admins?.enabled === true,
+    conversationResolutionRequired:
+      protection.required_conversation_resolution?.enabled === true,
     forcePushesAllowed: protection.allow_force_pushes?.enabled === true,
     deletionsAllowed: protection.allow_deletions?.enabled === true,
   };
