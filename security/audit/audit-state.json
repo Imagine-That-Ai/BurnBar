@@ -1,0 +1,42 @@
+{
+  "run_mode": "FULL_BASELINE",
+  "date": "2026-06-16T01:11:00Z",
+  "commit": "60faa70227",
+  "branch": "security/run-09-privacy-invariants-hardening",
+  "previous_audit_reference": "security-audit/merged/FINAL_REPORT.md (2026-06-14)",
+  "score": {
+    "raw": 72,
+    "final": 71,
+    "confidence": "medium-high",
+    "caps": ["engineering-maturity-cap-max-79"]
+  },
+  "findings": {
+    "critical": [],
+    "high": [],
+    "medium": [
+      "FINDING-001", "FINDING-002", "FINDING-003", "FINDING-004", "FINDING-005",
+      "FINDING-006", "FINDING-007", "FINDING-008", "FINDING-009", "FINDING-010"
+    ],
+    "low": [
+      "FINDING-011", "FINDING-012", "FINDING-013", "FINDING-014", "FINDING-015"
+    ],
+    "informational": ["FINDING-016", "FINDING-017"]
+  },
+  "threats_count": 18,
+  "claims_count": 15,
+  "unknowns_count": 8,
+  "previous_findings_preserved": true,
+  "new_items": ["FINDING-001 (phone trust mode elevation)"],
+  "fixed_items": [
+    "M-002", "M-005", "M-006", "M-007", "M-009", "M-010", "M-011",
+    "M-012", "M-013", "M-014", "M-015", "M-016", "M-017", "M-019",
+    "M-020", "M-022", "M-023", "M-024", "M-025", "M-026", "M-027",
+    "M-028", "M-029", "M-037", "M-038", "M-039", "M-040"
+  ],
+  "reopened_items": [],
+  "accepted_risks": [
+    "FINDING-002 (CloudVault quorum - product decision)",
+    "FINDING-003 (iroh first-contact - product decision)",
+    "FINDING-004 (CLI provenance - design tradeoff)"
+  ]
+}
