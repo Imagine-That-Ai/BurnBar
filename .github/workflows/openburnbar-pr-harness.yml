@@ -9,7 +9,10 @@ permissions:
 
 concurrency:
   group: full-harness-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  # Main push runs are the post-merge proof lane, so they must settle instead
+  # of cancelling each other during a fast merge train. Keep cancellation for
+  # ad-hoc/manual runs where replacing stale work is harmless.
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 on:
   workflow_dispatch:
