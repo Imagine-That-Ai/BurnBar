@@ -5,9 +5,9 @@ import OpenBurnBarCore
 @MainActor
 final class LocalSearchSchemaStoreTests: XCTestCase {
 
-    func test_localSearchSchemaInventory_containsExpectedObjects() throws {
+    func test_localSearchSchemaInventory_containsExpectedObjects() async throws {
         let store = try makeInMemoryStore()
-        let inventory = try store.localSearchSchemaInventory()
+        let inventory = try await store.localSearchSchemaInventory()
 
         XCTAssertEqual(
             Set(inventory.tables),
@@ -56,7 +56,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         )
     }
 
-    func test_localSearchStore_roundTrips_document_chunk_job_embedding_and_health() throws {
+    func test_localSearchStore_roundTrips_document_chunk_job_embedding_and_health() async throws {
         let store = try makeInMemoryStore()
         let now = Date(timeIntervalSince1970: 1_742_009_600)
 
@@ -76,7 +76,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try store.upsertSearchDocument(document)
+        try await store.upsertSearchDocument(document)
 
         let chunks = [
             SearchChunkRecord(
@@ -106,24 +106,27 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: now
             )
         ]
-        try store.replaceSearchChunks(documentID: "doc-1", title: document.title, chunks: chunks)
+        try await store.replaceSearchChunks(documentID: "doc-1", title: document.title, chunks: chunks)
 
-        let fetchedDocuments = try store.fetchSearchDocuments(limit: 10)
+        let fetchedDocuments = try await store.fetchSearchDocuments(limit: 10)
         XCTAssertEqual(fetchedDocuments.count, 1)
         XCTAssertEqual(fetchedDocuments.first?.id, "doc-1")
 
-        let fetchedChunks = try store.fetchSearchChunks(documentID: "doc-1")
+        let fetchedChunks = try await store.fetchSearchChunks(documentID: "doc-1")
         XCTAssertEqual(fetchedChunks.map(\.id), ["chunk-1", "chunk-2"])
         XCTAssertEqual(fetchedChunks.map(\.startOffset), [0, 33])
         XCTAssertEqual(fetchedChunks.map(\.endOffset), [32, 70])
-        XCTAssertEqual(
-            try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: "conv-1").map(\.id),
-            ["doc-1"]
-        )
-        XCTAssertEqual(
-            try store.fetchSearchChunks(sourceKind: .conversation, sourceID: "conv-1").map(\.id),
-            ["chunk-1", "chunk-2"]
-        )
+        let conversationDocumentIDs = try await store.fetchSearchDocuments(
+            sourceKind: .conversation,
+            sourceID: "conv-1"
+        ).map(\.id)
+        XCTAssertEqual(conversationDocumentIDs, ["doc-1"])
+
+        let conversationChunkIDs = try await store.fetchSearchChunks(
+            sourceKind: .conversation,
+            sourceID: "conv-1"
+        ).map(\.id)
+        XCTAssertEqual(conversationChunkIDs, ["chunk-1", "chunk-2"])
 
         let queuedJob = ProjectionJobRecord(
             id: "job-1",
@@ -140,13 +143,16 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try store.enqueueProjectionJob(queuedJob)
-        XCTAssertEqual(try store.fetchProjectionJobs(statuses: [.queued], limit: 10).count, 1)
+        try await store.enqueueProjectionJob(queuedJob)
+        let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        XCTAssertEqual(queuedJobs.count, 1)
 
-        try store.markProjectionJobLeased(id: "job-1", leaseOwner: "worker-1", leaseDuration: 120, now: now)
-        XCTAssertEqual(try store.fetchProjectionJobs(statuses: [.leased], limit: 10).first?.id, "job-1")
-        try store.markProjectionJobCompleted(id: "job-1", completedAt: now.addingTimeInterval(60))
-        XCTAssertEqual(try store.fetchProjectionJobs(statuses: [.completed], limit: 10).first?.id, "job-1")
+        try await store.markProjectionJobLeased(id: "job-1", leaseOwner: "worker-1", leaseDuration: 120, now: now)
+        let leasedJobs = try await store.fetchProjectionJobs(statuses: [.leased], limit: 10)
+        XCTAssertEqual(leasedJobs.first?.id, "job-1")
+        try await store.markProjectionJobCompleted(id: "job-1", completedAt: now.addingTimeInterval(60))
+        let completedJobs = try await store.fetchProjectionJobs(statuses: [.completed], limit: 10)
+        XCTAssertEqual(completedJobs.first?.id, "job-1")
 
         let model = EmbeddingModelRecord(
             id: "model-1",
@@ -157,8 +163,9 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try store.upsertEmbeddingModel(model)
-        XCTAssertEqual(try store.fetchEmbeddingModels().map(\.id), ["model-1"])
+        try await store.upsertEmbeddingModel(model)
+        let embeddingModelIDs = try await store.fetchEmbeddingModels().map(\.id)
+        XCTAssertEqual(embeddingModelIDs, ["model-1"])
 
         let version = EmbeddingVersionRecord(
             id: "version-1",
@@ -171,8 +178,9 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try store.upsertEmbeddingVersion(version)
-        XCTAssertEqual(try store.fetchEmbeddingVersions(modelID: "model-1").map(\.id), ["version-1"])
+        try await store.upsertEmbeddingVersion(version)
+        let embeddingVersionIDs = try await store.fetchEmbeddingVersions(modelID: "model-1").map(\.id)
+        XCTAssertEqual(embeddingVersionIDs, ["version-1"])
 
         let embedding = ChunkEmbeddingRecord(
             chunkID: "chunk-1",
@@ -181,14 +189,12 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try store.upsertChunkEmbedding(embedding)
-        let fetchedEmbeddings = try store.fetchChunkEmbeddings(chunkID: "chunk-1")
+        try await store.upsertChunkEmbedding(embedding)
+        let fetchedEmbeddings = try await store.fetchChunkEmbeddings(chunkID: "chunk-1")
         XCTAssertEqual(fetchedEmbeddings.count, 1)
         XCTAssertEqual(fetchedEmbeddings.first?.vectorBlob, Data([0, 1, 2, 3]))
-        XCTAssertEqual(
-            try store.fetchChunkEmbeddings(embeddingVersionID: "version-1").map(\.chunkID),
-            ["chunk-1"]
-        )
+        let fetchedEmbeddingChunkIDs = try await store.fetchChunkEmbeddings(embeddingVersionID: "version-1").map(\.chunkID)
+        XCTAssertEqual(fetchedEmbeddingChunkIDs, ["chunk-1"])
 
         let snapshot = VectorIndexSnapshotRecord(
             embeddingVersionID: "version-1",
@@ -205,15 +211,15 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             updatedAt: now,
             lastBuiltAt: now
         )
-        try store.upsertVectorIndexSnapshot(snapshot)
-        let fetchedSnapshot = try store.fetchVectorIndexSnapshot(
+        try await store.upsertVectorIndexSnapshot(snapshot)
+        let fetchedSnapshot = try await store.fetchVectorIndexSnapshot(
             embeddingVersionID: "version-1",
             backendID: "usearch_hnsw_v1"
         )
         XCTAssertEqual(fetchedSnapshot?.state, .ready)
         XCTAssertEqual(fetchedSnapshot?.storageRelativePath, "test/version-1/usearch")
 
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
                 status: .degraded,
@@ -224,14 +230,14 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: now
             )
         )
-        let healthRows = try store.fetchRetrievalHealth()
+        let healthRows = try await store.fetchRetrievalHealth()
         XCTAssertEqual(healthRows.count, 1)
         XCTAssertEqual(healthRows.first?.subsystem, .projection)
         XCTAssertEqual(healthRows.first?.status, .degraded)
         XCTAssertEqual(healthRows.first?.errorCode, "PROJECTOR_TIMEOUT")
     }
 
-    func test_replacingDiffingAndDeletingSearchChunksKeepsFTSInSync() throws {
+    func test_replacingDiffingAndDeletingSearchChunksKeepsFTSInSync() async throws {
         let store = try makeInMemoryStore()
         let now = Date(timeIntervalSince1970: 1_742_009_600)
         let document = SearchDocumentRecord(
@@ -250,9 +256,9 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try store.upsertSearchDocument(document)
+        try await store.upsertSearchDocument(document)
 
-        try store.replaceSearchChunks(
+        try await store.replaceSearchChunks(
             documentID: document.id,
             title: document.title,
             chunks: [
@@ -272,9 +278,9 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 )
             ]
         )
-        try assertChunkAndFTSCounts(documentID: document.id, expected: 2, store: store)
+        try await assertChunkAndFTSCounts(documentID: document.id, expected: 2, store: store)
 
-        try store.replaceSearchChunks(
+        try await store.replaceSearchChunks(
             documentID: document.id,
             title: document.title,
             chunks: [
@@ -287,9 +293,9 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 )
             ]
         )
-        try assertChunkAndFTSCounts(documentID: document.id, expected: 1, store: store)
+        try await assertChunkAndFTSCounts(documentID: document.id, expected: 1, store: store)
 
-        let diff = try store.applySearchChunkDiff(
+        let diff = try await store.applySearchChunkDiff(
             documentID: document.id,
             title: document.title,
             chunks: [
@@ -311,17 +317,17 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         )
         XCTAssertEqual(diff.added, 2)
         XCTAssertEqual(diff.deleted, 1)
-        try assertChunkAndFTSCounts(documentID: document.id, expected: 2, store: store)
+        try await assertChunkAndFTSCounts(documentID: document.id, expected: 2, store: store)
 
-        try store.deleteSearchDocuments(sourceKind: document.sourceKind, sourceID: document.sourceID)
-        try assertChunkAndFTSCounts(documentID: document.id, expected: 0, store: store)
+        try await store.deleteSearchDocuments(sourceKind: document.sourceKind, sourceID: document.sourceID)
+        try await assertChunkAndFTSCounts(documentID: document.id, expected: 0, store: store)
     }
 
-    func test_projectionJobs_queueOrdering_and_failureRetryState() throws {
+    func test_projectionJobs_queueOrdering_and_failureRetryState() async throws {
         let store = try makeInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_100_000)
 
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "job-ready",
                 jobType: .project,
@@ -333,7 +339,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "job-later",
                 jobType: .project,
@@ -345,7 +351,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base.addingTimeInterval(1)
             )
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "job-low-priority",
                 jobType: .project,
@@ -358,11 +364,11 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             )
         )
 
-        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
         XCTAssertEqual(queued.map(\.id), ["job-ready", "job-later", "job-low-priority"])
 
         let retryAt = base.addingTimeInterval(300)
-        try store.markProjectionJobFailed(
+        try await store.markProjectionJobFailed(
             id: "job-ready",
             errorCode: "EMBEDDING_UNAVAILABLE",
             errorMessage: "Embedder offline",
@@ -370,7 +376,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             updatedAt: retryAt
         )
 
-        let failed = try store.fetchProjectionJobs(statuses: [.failed], limit: 10)
+        let failed = try await store.fetchProjectionJobs(statuses: [.failed], limit: 10)
         XCTAssertEqual(failed.count, 1)
         guard let failedJob = failed.first else {
             XCTFail("Expected one failed job record")
@@ -492,7 +498,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: base.addingTimeInterval(10),
             updatedAt: base.addingTimeInterval(10)
         )
-        _ = try store.upsertSourceArtifact(skillArtifact)
+        _ = try await store.upsertSourceArtifact(skillArtifact)
 
         let sharedArtifact = SourceArtifactRecord(
             id: "artifact-shared",
@@ -510,7 +516,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: base.addingTimeInterval(20),
             updatedAt: base.addingTimeInterval(20)
         )
-        _ = try store.upsertSourceArtifact(sharedArtifact)
+        _ = try await store.upsertSourceArtifact(sharedArtifact)
 
         let skillDocument = SearchDocumentRecord(
             id: "doc-skill",
@@ -544,10 +550,10 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             createdAt: base.addingTimeInterval(20),
             updatedAt: base.addingTimeInterval(20)
         )
-        try store.upsertSearchDocument(conversationDocument)
-        try store.upsertSearchDocument(skillDocument)
-        try store.upsertSearchDocument(sharedDocument)
-        try store.replaceSearchChunks(
+        try await store.upsertSearchDocument(conversationDocument)
+        try await store.upsertSearchDocument(skillDocument)
+        try await store.upsertSearchDocument(sharedDocument)
+        try await store.replaceSearchChunks(
             documentID: conversationDocument.id,
             title: conversationDocument.title,
             chunks: [
@@ -566,7 +572,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 )
             ]
         )
-        try store.replaceSearchChunks(
+        try await store.replaceSearchChunks(
             documentID: skillDocument.id,
             title: skillDocument.title,
             chunks: [
@@ -585,7 +591,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 )
             ]
         )
-        try store.replaceSearchChunks(
+        try await store.replaceSearchChunks(
             documentID: sharedDocument.id,
             title: sharedDocument.title,
             chunks: [
@@ -605,7 +611,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             ]
         )
 
-        try store.upsertSharedArtifactSyncState(
+        try await store.upsertSharedArtifactSyncState(
             SharedArtifactSyncStateRecord(
                 sourceArtifactID: sharedArtifact.id,
                 remoteArtifactID: "remote-shared",
@@ -619,7 +625,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base.addingTimeInterval(25)
             )
         )
-        try store.upsertSharedArtifactPermission(
+        try await store.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sharedArtifact.id,
                 workspaceID: "workspace-a",
@@ -635,7 +641,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base.addingTimeInterval(25)
             )
         )
-        try store.appendSharedArtifactAuditEvent(
+        try await store.appendSharedArtifactAuditEvent(
             SharedArtifactAuditEventRecord(
                 sourceArtifactID: sharedArtifact.id,
                 remoteArtifactID: "remote-shared",
@@ -649,7 +655,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             )
         )
 
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "job-queued",
                 jobType: .project,
@@ -660,7 +666,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "job-running",
                 jobType: .reproject,
@@ -672,7 +678,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base.addingTimeInterval(5)
             )
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "job-failed",
                 jobType: .reembed,
@@ -688,7 +694,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             )
         )
 
-        try store.upsertEmbeddingModel(
+        try await store.upsertEmbeddingModel(
             EmbeddingModelRecord(
                 id: "embedding-model",
                 provider: "openai",
@@ -699,7 +705,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertEmbeddingVersion(
+        try await store.upsertEmbeddingVersion(
             EmbeddingVersionRecord(
                 id: "embedding-version",
                 modelID: "embedding-model",
@@ -712,7 +718,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertChunkEmbedding(
+        try await store.upsertChunkEmbedding(
             ChunkEmbeddingRecord(
                 chunkID: "chunk-skill-1",
                 embeddingVersionID: "embedding-version",
@@ -748,7 +754,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertTrue(snapshot.loadIssues.isEmpty)
     }
 
-    func test_fetchSearchDocuments_appliesAtlasFilters() throws {
+    func test_fetchSearchDocuments_appliesAtlasFilters() async throws {
         let store = try makeInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_210_000)
 
@@ -834,8 +840,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         )
 
         for document in [included, wrongSource, wrongProvider, wrongProject, wrongDate] {
-            try store.upsertSearchDocument(document)
-            try store.replaceSearchChunks(
+            try await store.upsertSearchDocument(document)
+            try await store.replaceSearchChunks(
                 documentID: document.id,
                 title: document.title,
                 chunks: [
@@ -857,7 +863,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         }
 
         let atlasDateRange = base.addingTimeInterval(-3_600)...base.addingTimeInterval(3_600)
-        let filteredDocuments = try store.fetchSearchDocuments(
+        let filteredDocuments = try await store.fetchSearchDocuments(
             limit: 20,
             provider: .claudeCode,
             projectName: "OpenBurnBar",
@@ -865,22 +871,18 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             dateRange: atlasDateRange
         )
         XCTAssertEqual(filteredDocuments.map(\.id), ["doc-included"])
-        XCTAssertEqual(
-            try store.countSearchDocuments(
-                provider: .claudeCode,
-                projectName: "OpenBurnBar",
-                sourceKinds: [.conversation],
-                dateRange: atlasDateRange
-            ),
-            1
+        let filteredDocumentCount = try await store.countSearchDocuments(
+            provider: .claudeCode,
+            projectName: "OpenBurnBar",
+            sourceKinds: [.conversation],
+            dateRange: atlasDateRange
         )
-        XCTAssertEqual(
-            try store.countSearchChunks(
-                sourceKinds: [.conversation],
-                dateRange: atlasDateRange
-            ),
-            3
+        XCTAssertEqual(filteredDocumentCount, 1)
+        let filteredChunkCount = try await store.countSearchChunks(
+            sourceKinds: [.conversation],
+            dateRange: atlasDateRange
         )
+        XCTAssertEqual(filteredChunkCount, 3)
     }
 
     private func makeInMemoryStore() throws -> DataStore {
@@ -917,9 +919,10 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         store: DataStore,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) throws {
-        XCTAssertEqual(try store.countSearchChunks(documentID: documentID), expected, file: file, line: line)
-        let ftsCount = try store.dbQueue.read { db in
+    ) async throws {
+        let chunkCount = try await store.countSearchChunks(documentID: documentID)
+        XCTAssertEqual(chunkCount, expected, file: file, line: line)
+        let ftsCount = try await store.actor.dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: "SELECT COUNT(*) FROM search_chunks_fts WHERE documentID = ?",

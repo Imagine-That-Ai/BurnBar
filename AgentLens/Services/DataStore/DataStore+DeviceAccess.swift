@@ -2,19 +2,19 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    nonisolated func fetchDevices() throws -> [DeviceRecord] {
-        try deviceStore.fetchDevices()
+    func fetchDevices() async throws -> [DeviceRecord] {
+        try await actor.deviceStore.fetchDevices()
     }
 
-    nonisolated func upsertDevice(_ device: DeviceRecord) throws {
-        try deviceStore.upsertDevice(device)
+    func upsertDevice(_ device: DeviceRecord) async throws {
+        try await actor.deviceStore.upsertDevice(device)
     }
 
-    nonisolated func deviceUsageSummaries() throws -> [DeviceUsageSummary] {
-        try deviceStore.deviceUsageSummaries()
+    func deviceUsageSummaries() async throws -> [DeviceUsageSummary] {
+        try await actor.deviceStore.deviceUsageSummaries()
     }
 
-    nonisolated func updateDeviceIcon(deviceId: String, customIcon: String?) throws {
-        try deviceStore.updateDeviceIcon(deviceId: deviceId, customIcon: customIcon)
+    func updateDeviceIcon(deviceId: String, customIcon: String?) async throws {
+        try await actor.deviceStore.updateDeviceIcon(deviceId: deviceId, customIcon: customIcon)
     }
 }

@@ -7,7 +7,7 @@ import OpenBurnBarCore
 extension ConversationStore {
         // MARK: - Chat Messages
 
-        func saveChatMessage(_ message: ChatMessageRecord, threadID: String) throws {
+        func saveChatMessage(_ message: ChatMessageRecord, threadID: String) async throws {
             let piecesJSON: String?
             if message.transcriptPieces.isEmpty {
                 piecesJSON = nil
@@ -22,7 +22,7 @@ extension ConversationStore {
                 attachmentsJSON = try OpenBurnBarDatabase.encodeChatAttachments(message.attachments)
             }
 
-            try dbQueue.write { db in
+            try await dbQueue.write { db in
                 try Self.upsertChatThread(threadID, at: message.timestamp, db: db)
                 try db.execute(
                     sql: """
@@ -43,15 +43,15 @@ extension ConversationStore {
             }
         }
 
-        func createChatThread(id: String, at date: Date) throws -> String {
-            try dbQueue.write { db in
+        func createChatThread(id: String, at date: Date) async throws -> String {
+            try await dbQueue.write { db in
                 try Self.upsertChatThread(id, at: date, db: db)
             }
             return id
         }
 
-        func chatThreadExists(id: String) throws -> Bool {
-            try dbQueue.read { db in
+        func chatThreadExists(id: String) async throws -> Bool {
+            try await dbQueue.read { db in
                 let count = try Int.fetchOne(
                     db,
                     sql: "SELECT COUNT(1) FROM chat_threads WHERE id = ?",
@@ -61,8 +61,8 @@ extension ConversationStore {
             }
         }
 
-        func fetchMostRecentChatThreadID() throws -> String? {
-            try dbQueue.read { db in
+        func fetchMostRecentChatThreadID() async throws -> String? {
+            try await dbQueue.read { db in
                 try String.fetchOne(
                     db,
                     sql: """
@@ -188,8 +188,8 @@ extension ConversationStore {
             }
         }
 
-        func deleteAllChatMessages() throws {
-            try dbQueue.write { db in
+        func deleteAllChatMessages() async throws {
+            try await dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM chat_messages")
                 try db.execute(sql: "DELETE FROM chat_threads")
                 let now = Date()

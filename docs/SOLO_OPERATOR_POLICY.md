@@ -12,6 +12,11 @@ is never acceptable.
 ## The default
 
 - `enforce_admins` stays **on**. It is not toggled to merge.
+- `CODEOWNERS` defaults to `* @Ajnunezg @emilio3435`, branch protection
+  requires one code-owner approval, and there are **zero** standing PR bypass
+  allowances. With two writers, that is the deadlock-free two-person review
+  policy: the PR author cannot approve their own change, so the other writer
+  must approve routine and sensitive paths alike.
 - Every PR runs the required fast merge suite: `Fast Feedback Gate`,
   confidentiality guard, product-license posture, and PR security gates. A red
   required check is fixed, not redefined. **Changing a gate's definition in the
@@ -29,9 +34,11 @@ is never acceptable.
   review bypass, unexpected bypass allowances, or release/production
   environment protection drift.
 
-## When a solo merge is acceptable
+## When break-glass solo merge is acceptable
 
-A solo merge (no second human review) is acceptable only when **all** hold:
+A solo merge is no longer a standing path. It is acceptable only as
+break-glass, with branch protection changed temporarily and restored
+immediately, when **all** hold:
 
 1. The change does not touch a **sensitive surface**: crypto/E2EE lanes,
    privileged input (daemon/HID/XPC/socket), billing/entitlements
@@ -42,6 +49,8 @@ A solo merge (no second human review) is acceptable only when **all** hold:
    having changed in the same PR**.
 3. An AI review (e.g. `/code-review`) ran on the final diff and its findings
    were addressed or explicitly dispositioned in the PR description.
+4. A P0 issue is opened before the bypass, the bypass window is bounded to the
+   incident, and a postmortem is written within 72 hours.
 
 ## Sensitive-surface changes (the list in rule 1)
 
@@ -59,7 +68,7 @@ Require one of, in order of preference:
 
 ## Never acceptable
 
-- Toggling `enforce_admins` or branch protection to land a change.
+- Toggling `enforce_admins` or branch protection to land routine work.
 - Marking a launch/security gate "cleared" against an artifact that is not
   durably published (e.g. pinning a commit that exists on no remote — the
   exact failure of commit `e0ba632f5`, reverted hours later).
@@ -74,12 +83,20 @@ Require one of, in order of preference:
   reviewed; any lane red >7 days becomes paged work (a P0 issue with an
   owner), not background noise. Close-on-green automation keeps failure
   issues honest — never close one by hand without a green run or a fix.
+- **Nightly lane ownership**: `nightly-e2e` is the paged launch lane
+  (production health, full nightly tests, commercial launch gate).
+  `nightly-dast-sandbox` is the advisory hosted-runner sandbox for public DAST,
+  Functions-emulator DAST, and live privileged-socket redteam. It has its own
+  `lane:nightly-sandbox` issue dedupe so sandbox failures cannot suppress the
+  paged nightly lane. The live privileged-socket redteam returns to the paged
+  lane only after a self-hosted privileged macOS runner is armed.
 - **Advisory-lane budget**: a quality lane may be advisory for at most 30
   days, then it enforces (ratchet baselines are the house pattern) or it is
   deleted. A lane that asserts nothing is removed rather than left green.
 - **Quarterly restore drill**: roll back functions + hosting + one Cloud Run
-  service from a machine that is not the primary operator's laptop, following
-  only the runbooks (`docs/RELEASE_ROLLBACK.md`,
+  service and PITR-restore Firestore into a throwaway database from a machine
+  that is not the primary operator's laptop, following only the runbooks
+  (`docs/RELEASE_ROLLBACK.md`, `docs/runbooks/firestore-disaster-recovery.md`,
   `docs/runbooks/functions-break-glass.md`).
 
 ## Why this document exists

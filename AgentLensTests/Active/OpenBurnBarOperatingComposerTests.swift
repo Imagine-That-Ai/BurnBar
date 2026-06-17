@@ -192,7 +192,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     }
 
     @MainActor
-    func testMissionBlocksOnProjectionFailure() throws {
+    func testMissionBlocksOnProjectionFailure() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -204,7 +204,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             latestSummaryTitle: "Ship the approval sheet",
             usageCosts: [2.0, 1.6]
         )
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
                 status: .failed,
@@ -220,7 +220,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     }
 
     @MainActor
-    func testDirectionOverrideWinsEvenWhenSignalIsSparse() throws {
+    func testDirectionOverrideWinsEvenWhenSignalIsSparse() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -234,7 +234,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
         )
 
         let layer = makeLayer(dataStore: store)
-        layer.saveDirectionOverride(
+        await layer.saveDirectionOverride(
             mode: .supersedeStatus,
             forcedStatus: .aligned,
             summary: "Stay on the approval sheet release path.",
@@ -249,7 +249,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     }
 
     @MainActor
-    func testMissionFingerprintStaysStableAcrossReindexTimestampChurn() throws {
+    func testMissionFingerprintStaysStableAcrossReindexTimestampChurn() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -264,7 +264,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
 
         let initialLayer = makeLayer(dataStore: store)
         let initialMissionID = initialLayer.snapshot.mission.missionID
-        initialLayer.approveMission(note: "Carry this forward.")
+        await initialLayer.approveMission(note: "Carry this forward.")
 
         let updatedConversation = ConversationRecord(
             id: "Codex:apollo-4",
@@ -407,7 +407,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-001 Evidence: Approve action is disabled when mission is already approved
     @MainActor
-    func testVAL_APP_001_ApproveActionIsDisabledWhenMissionAlreadyApproved() throws {
+    func testVAL_APP_001_ApproveActionIsDisabledWhenMissionAlreadyApproved() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -422,7 +422,7 @@ extension OpenBurnBarOperatingComposerTests {
 
         let layer = makeLayer(dataStore: store)
         // First approve the mission
-        layer.approveMission(note: "Initial approval.")
+        await layer.approveMission(note: "Initial approval.")
 
         let snapshot = layer.snapshot
         let approvalAction = snapshot.availableActions.first(where: { $0.kind == .missionApproval })
@@ -460,7 +460,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-002 Evidence: Approval action success feedback is deterministic
     @MainActor
-    func testVAL_APP_002_ApprovalSuccessFeedbackIsDeterministic() throws {
+    func testVAL_APP_002_ApprovalSuccessFeedbackIsDeterministic() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -474,7 +474,7 @@ extension OpenBurnBarOperatingComposerTests {
         )
 
         let layer = makeLayer(dataStore: store)
-        layer.approveMission(note: "Operator approval.")
+        await layer.approveMission(note: "Operator approval.")
 
         let feedback = layer.actionFeedback
 
@@ -486,11 +486,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-002 Evidence: Approval action failure feedback provides explicit reason
     @MainActor
-    func testVAL_APP_002_ApprovalFailureFeedbackIsExplicit() throws {
+    func testVAL_APP_002_ApprovalFailureFeedbackIsExplicit() async throws {
         let store = try makeInMemoryStore()
         // No project seeded - approval will fail
         let layer = makeLayer(dataStore: store)
-        layer.approveMission(note: "Operator approval.")
+        await layer.approveMission(note: "Operator approval.")
 
         let feedback = layer.actionFeedback
 
@@ -504,7 +504,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-003 Evidence: Override save rejects missing summary
     @MainActor
-    func testVAL_APP_003_DirectionOverrideRejectsMissingSummary() throws {
+    func testVAL_APP_003_DirectionOverrideRejectsMissingSummary() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -518,7 +518,7 @@ extension OpenBurnBarOperatingComposerTests {
         )
 
         let layer = makeLayer(dataStore: store)
-        layer.saveDirectionOverride(
+        await layer.saveDirectionOverride(
             mode: .annotate,
             forcedStatus: nil,
             summary: "",  // Empty summary
@@ -535,7 +535,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-003 Evidence: Override save rejects missing rationale
     @MainActor
-    func testVAL_APP_003_DirectionOverrideRejectsMissingRationale() throws {
+    func testVAL_APP_003_DirectionOverrideRejectsMissingRationale() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -549,7 +549,7 @@ extension OpenBurnBarOperatingComposerTests {
         )
 
         let layer = makeLayer(dataStore: store)
-        layer.saveDirectionOverride(
+        await layer.saveDirectionOverride(
             mode: .annotate,
             forcedStatus: nil,
             summary: "Stay on the approval sheet release path.",  // Summary provided
@@ -566,7 +566,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-003 Evidence: Override save rejects force-status-without-status
     @MainActor
-    func testVAL_APP_003_DirectionOverrideRejectsSupersedeStatusWithoutForcedStatus() throws {
+    func testVAL_APP_003_DirectionOverrideRejectsSupersedeStatusWithoutForcedStatus() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
         try seedProject(
@@ -580,7 +580,7 @@ extension OpenBurnBarOperatingComposerTests {
         )
 
         let layer = makeLayer(dataStore: store)
-        layer.saveDirectionOverride(
+        await layer.saveDirectionOverride(
             mode: .supersedeStatus,  // Force status mode
             forcedStatus: nil,  // But no status provided
             summary: "Stay on the approval sheet release path.",
@@ -1044,9 +1044,10 @@ extension OpenBurnBarOperatingComposerTests {
             missions: [],
             recentEvents: []
         )
-        try store.saveControllerRuntimeMirror(snapshot)
+        try await store.saveControllerRuntimeMirror(snapshot)
 
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
 
         // Complete the followup
         await layer.completeFollowup(id: followupID)
@@ -1102,9 +1103,10 @@ extension OpenBurnBarOperatingComposerTests {
             missions: [],
             recentEvents: []
         )
-        try store.saveControllerRuntimeMirror(snapshot)
+        try await store.saveControllerRuntimeMirror(snapshot)
 
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
         let snoozeUntil = now.addingTimeInterval(60 * 60) // 1 hour from now
 
         // Snooze the followup
@@ -1162,9 +1164,10 @@ extension OpenBurnBarOperatingComposerTests {
             missions: [],
             recentEvents: []
         )
-        try store.saveControllerRuntimeMirror(snapshot)
+        try await store.saveControllerRuntimeMirror(snapshot)
 
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
 
         // Schedule calendar for the followup
         await layer.scheduleFollowupCalendar(id: followupID, title: "Review session")
@@ -1197,7 +1200,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-002 Evidence: Dashboard renders exactly one top-level next-question card when questions exist
     @MainActor
-    func testVAL_BRIEF_002_DashboardSingletonQuestionCard() throws {
+    func testVAL_BRIEF_002_DashboardSingletonQuestionCard() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
@@ -1265,9 +1268,10 @@ extension OpenBurnBarOperatingComposerTests {
             missions: [],
             recentEvents: []
         )
-        try store.saveControllerRuntimeMirror(controllerRuntime)
+        try await store.saveControllerRuntimeMirror(controllerRuntime)
 
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
         let snapshot = layer.snapshot
 
         // Dashboard next-question card is surfaced via pendingQuestions in controllerRuntime
@@ -1288,7 +1292,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-CROSS-002 Evidence: App closure runtime presents done-or-one-question invariant.
     @MainActor
-    func testVAL_CROSS_002_AppClosureRuntimeShowsDoneOrOnePendingQuestion() throws {
+    func testVAL_CROSS_002_AppClosureRuntimeShowsDoneOrOnePendingQuestion() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
@@ -1342,9 +1346,10 @@ extension OpenBurnBarOperatingComposerTests {
             ],
             recentEvents: []
         )
-        try store.saveControllerRuntimeMirror(doneRuntime)
+        try await store.saveControllerRuntimeMirror(doneRuntime)
 
         var layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
         let doneSnapshot = layer.snapshot.controllerRuntime
         XCTAssertEqual(doneSnapshot.pendingQuestions.count, 0)
         XCTAssertEqual(doneSnapshot.pendingQuestions.prefix(1).count, 0)
@@ -1419,9 +1424,10 @@ extension OpenBurnBarOperatingComposerTests {
             ],
             recentEvents: []
         )
-        try store.saveControllerRuntimeMirror(awaitingRuntime)
+        try await store.saveControllerRuntimeMirror(awaitingRuntime)
 
         layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
         let awaitingSnapshot = layer.snapshot.controllerRuntime
         XCTAssertEqual(awaitingSnapshot.pendingQuestions.count, 1)
         XCTAssertEqual(awaitingSnapshot.pendingQuestions.prefix(1).count, 1)
@@ -1824,7 +1830,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-003 Evidence: Next recommendation messaging differs deterministically for running/blocked/partial/completed
     @MainActor
-    func testVAL_BRIEF_003_StateSpecificRecommendationMatrixIsDeterministic() throws {
+    func testVAL_BRIEF_003_StateSpecificRecommendationMatrixIsDeterministic() async throws {
         let now = Date()
 
         // Running
@@ -1857,7 +1863,7 @@ extension OpenBurnBarOperatingComposerTests {
                 latestSummaryTitle: "Blocked checkpoint",
                 usageCosts: [1.2]
             )
-            try store.upsertRetrievalHealth(
+            try await store.upsertRetrievalHealth(
                 RetrievalHealthRecord(
                     subsystem: .projection,
                     status: .failed,
@@ -2082,7 +2088,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-006 Evidence: Mission brief exposes explicit empty/sparse/blocked copy
     @MainActor
-    func testVAL_APP_006_MissionBriefShowsExplicitEmptySparseBlockedStates() throws {
+    func testVAL_APP_006_MissionBriefShowsExplicitEmptySparseBlockedStates() async throws {
         let now = Date()
 
         // Empty
@@ -2123,7 +2129,7 @@ extension OpenBurnBarOperatingComposerTests {
                 latestSummaryTitle: "Blocked checkpoint",
                 usageCosts: [1.0]
             )
-            try store.upsertRetrievalHealth(
+            try await store.upsertRetrievalHealth(
                 RetrievalHealthRecord(
                     subsystem: .projection,
                     status: .failed,
@@ -2139,7 +2145,7 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-006 Evidence: Mission brief replaces stale blocked copy after recovery
     @MainActor
-    func testVAL_APP_006_BlockedStateDoesNotStayStaleAfterRecovery() throws {
+    func testVAL_APP_006_BlockedStateDoesNotStayStaleAfterRecovery() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
@@ -2152,7 +2158,7 @@ extension OpenBurnBarOperatingComposerTests {
             latestSummaryTitle: "Recovery checkpoint",
             usageCosts: [1.3]
         )
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
                 status: .failed,
@@ -2165,7 +2171,7 @@ extension OpenBurnBarOperatingComposerTests {
         let blockedMission = layer.snapshot.mission
         XCTAssertEqual(blockedMission.state, .blocked, "VAL-APP-006: Preconditions should start blocked")
 
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
                 status: .healthy,

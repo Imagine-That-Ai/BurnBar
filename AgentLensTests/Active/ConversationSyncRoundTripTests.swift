@@ -56,7 +56,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
         )
         try dataStore.upsertConversation(record)
 
-        let unsyncedBefore = try dataStore.fetchUnsyncedConversations(limit: 400)
+        let unsyncedBefore = try await dataStore.fetchUnsyncedConversations(limit: 400)
         XCTAssertEqual(unsyncedBefore.count, 1)
 
         await conversationSync.sync()
@@ -75,7 +75,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
         XCTAssertNil(docData?["lastAssistantMessage"])
         XCTAssertNil(docData?["summary"])
 
-        let unsyncedAfter = try dataStore.fetchUnsyncedConversations(limit: 400)
+        let unsyncedAfter = try await dataStore.fetchUnsyncedConversations(limit: 400)
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 

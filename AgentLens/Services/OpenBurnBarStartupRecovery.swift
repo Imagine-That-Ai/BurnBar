@@ -251,6 +251,7 @@ final class OpenBurnBarRuntimeContext {
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self.chatController = chatController
         self.operatingLayer = operatingLayer
+        CLIAgentSessionMirror.configureShared(accountManager: accountManager)
     }
 
     func startRelayServices() {
@@ -592,7 +593,8 @@ final class OpenBurnBarRuntimeContext {
         guard mercuryRouter == nil else { return }
         let consent = MercuryConsentStore()
         let peerSource = makeMercuryPeerSource()
-        let session = MediaSessionCoordinator(capabilityGate: MacMediaCapabilityGate.shared)
+        let mediaCapabilityGate = MacMediaCapabilityGate.live(settingsManager: settingsManager)
+        let session = MediaSessionCoordinator(capabilityGate: mediaCapabilityGate)
         let hud = CallHUDState()
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         let router = MercuryRouter(
@@ -634,7 +636,8 @@ final class OpenBurnBarRuntimeContext {
         self.mercuryIncomingPanelPresenter = MercuryIncomingPanelPresenter(
             router: router,
             peerSource: peerSource,
-            hudState: hud
+            hudState: hud,
+            accountManager: accountManager
         )
         router.setMirrorSinkFactory { request, frame, replySender in
             // F7: when the phone wrapped a media-seal key into its mirror

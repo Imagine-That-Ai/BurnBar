@@ -768,7 +768,7 @@ final class CursorConnectorManager {
                 provenanceConfidence: .exact
             )
             do {
-                try dataStore.insert(usage)
+                try await dataStore.insert(usage)
             } catch {
                 AppLogger.dataStore.error("cursor_connector_usage_insert_failed", metadata: ["sessionId": usage.sessionId, "provider": usage.provider.rawValue, "error": String(describing: error)])
             }

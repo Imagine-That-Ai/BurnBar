@@ -25,6 +25,7 @@ import sqlite3
 import string
 import struct
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, UTC
@@ -74,6 +75,49 @@ LOCAL_MCP_CAPABILITY_ENV = {
     "sensitive_read": "OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ",
     "spawn_process": "OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN",
 }
+LOCAL_MCP_RATE_LIMIT_BUCKETS: dict[tuple[str, str, int], int] = {}
+LOCAL_MCP_RATE_LIMIT_WINDOW_SECONDS = 60
+
+
+def _local_mcp_rate_limit_per_minute(family: str) -> int:
+    raw = (
+        os.environ.get(f"OPENBURNBAR_LOCAL_MCP_{family.upper()}_RATE_LIMIT_PER_MINUTE")
+        or os.environ.get("OPENBURNBAR_LOCAL_MCP_RATE_LIMIT_PER_MINUTE")
+        or "120"
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 120
+    return max(1, min(value, 10_000))
+
+
+def _local_mcp_rate_limit(tool: str, family: str) -> str | None:
+    limit = _local_mcp_rate_limit_per_minute(family)
+    window = int(time.monotonic() // LOCAL_MCP_RATE_LIMIT_WINDOW_SECONDS)
+    key = (family, tool, window)
+    stale = [bucket for bucket in LOCAL_MCP_RATE_LIMIT_BUCKETS if bucket[2] < window - 1]
+    for bucket in stale:
+        LOCAL_MCP_RATE_LIMIT_BUCKETS.pop(bucket, None)
+    count = LOCAL_MCP_RATE_LIMIT_BUCKETS.get(key, 0) + 1
+    LOCAL_MCP_RATE_LIMIT_BUCKETS[key] = count
+    if count <= limit:
+        return None
+    return json.dumps(
+        {
+            "status": "unavailable",
+            "code": "LOCAL_MCP_RATE_LIMITED",
+            "tool": tool,
+            "family": family,
+            "limitPerMinute": limit,
+            "retryAfterSeconds": LOCAL_MCP_RATE_LIMIT_WINDOW_SECONDS,
+        },
+        indent=2,
+    )
+
+
+def _reset_local_mcp_rate_limiter_for_tests() -> None:
+    LOCAL_MCP_RATE_LIMIT_BUCKETS.clear()
 
 DETERMINISTIC_EMBEDDING_PROVIDER = "openburnbar"
 DETERMINISTIC_EMBEDDING_MODEL = "deterministic-fake-embedding"
@@ -1533,6 +1577,8 @@ def burnbar_remember(
     Writes are disabled by default. Enable `local_write`; memory writes still
     fail closed unless the OpenBurnBar daemon accepts the write over its socket.
     """
+    if limited := _local_mcp_rate_limit("burnbar_remember", "memory"):
+        return limited
     normalized_tags = _normalize_tags(tags)
     authority = _local_memory_write_authority(
         "burnbar_remember",
@@ -1563,6 +1609,8 @@ def burnbar_recall(
     limit: int = 20,
 ) -> str:
     """Recall durable local memories for one project. Cross-project recall is opt-in."""
+    if limited := _local_mcp_rate_limit("burnbar_recall", "memory"):
+        return limited
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
@@ -1583,6 +1631,8 @@ def burnbar_recall(
 @mcp.tool()
 def burnbar_forget(memory_id: str, project_path: str | None = None) -> str:
     """Hard-delete one local memory for the active project and append a label-only audit event."""
+    if limited := _local_mcp_rate_limit("burnbar_forget", "memory"):
+        return limited
     authority = _local_memory_write_authority(
         "burnbar_forget",
         "daemon.memory.forget",
@@ -1598,6 +1648,8 @@ def burnbar_forget(memory_id: str, project_path: str | None = None) -> str:
 @mcp.tool()
 def burnbar_audit_trail(project_path: str | None = None, limit: int = 50) -> str:
     """Return the local label-only memory/code audit hash chain for a project."""
+    if limited := _local_mcp_rate_limit("burnbar_audit_trail", "memory"):
+        return limited
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
@@ -1607,6 +1659,8 @@ def burnbar_audit_trail(project_path: str | None = None, limit: int = 50) -> str
 @mcp.tool()
 def burnbar_memory_analytics(project_path: str | None = None) -> str:
     """Aggregate local durable memory counts by kind and scope for one project."""
+    if limited := _local_mcp_rate_limit("burnbar_memory_analytics", "memory"):
+        return limited
     path = _default_db_path()
     with _connect_rw(path) as conn:
         conn.row_factory = sqlite3.Row
@@ -1627,6 +1681,8 @@ def burnbar_index_project(
     SHA, rejects secret-bearing files before persistence, and writes code chunks
     into the existing local search substrate.
     """
+    if limited := _local_mcp_rate_limit("burnbar_index_project", "code"):
+        return limited
     authority = _local_memory_write_authority(
         "burnbar_index_project",
         "daemon.code.index_project",
@@ -1659,6 +1715,8 @@ def burnbar_watch_project(
     and git-ref signatures and reuses the daemon's transactional index path
     when they change.
     """
+    if limited := _local_mcp_rate_limit("burnbar_watch_project", "code"):
+        return limited
     authority = _local_memory_write_authority(
         "burnbar_watch_project",
         "daemon.code.watch_project",
@@ -1679,9 +1737,11 @@ def burnbar_watch_project(
 
 @mcp.tool()
 def burnbar_search_code(query: str, project_path: str | None = None, limit: int = 20) -> str:
-    """Hybrid lexical/vector search over local-only project code memory."""
+    """Lexical local-only project code search; semanticAvailable=false until real local embeddings are configured."""
+    if limited := _local_mcp_rate_limit("burnbar_search_code", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(
             pcm.search_code(conn, query=query, project_path=project_path, limit=limit), indent=2, default=str
@@ -1696,8 +1756,10 @@ def burnbar_context_pack(
     limit: int = 12,
 ) -> str:
     """Build a token-budgeted code context pack from local project code memory."""
+    if limited := _local_mcp_rate_limit("burnbar_context_pack", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(
             pcm.context_pack(
@@ -1726,8 +1788,10 @@ def burnbar_code_context_pack(
 @mcp.tool()
 def burnbar_get_symbol(name: str, project_path: str | None = None, limit: int = 20) -> str:
     """Return lexical-tier symbol matches for a project, with blob-staleness evidence."""
+    if limited := _local_mcp_rate_limit("burnbar_get_symbol", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(
             pcm.get_symbol(conn, name=name, project_path=project_path, limit=limit), indent=2, default=str
@@ -1737,8 +1801,10 @@ def burnbar_get_symbol(name: str, project_path: str | None = None, limit: int = 
 @mcp.tool()
 def burnbar_find_references(symbol_name: str, project_path: str | None = None, limit: int = 100) -> str:
     """Return lexical-tier references for a symbol name within one project."""
+    if limited := _local_mcp_rate_limit("burnbar_find_references", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(
             pcm.find_references(conn, symbol_name=symbol_name, project_path=project_path, limit=limit),
@@ -1750,8 +1816,10 @@ def burnbar_find_references(symbol_name: str, project_path: str | None = None, l
 @mcp.tool()
 def burnbar_call_graph(symbol_name: str, project_path: str | None = None, depth: int = 1, limit: int = 100) -> str:
     """Return the lexical-tier local call graph edges touching a symbol name."""
+    if limited := _local_mcp_rate_limit("burnbar_call_graph", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(
             pcm.call_graph(conn, symbol_name=symbol_name, project_path=project_path, depth=depth, limit=limit),
@@ -1763,8 +1831,10 @@ def burnbar_call_graph(symbol_name: str, project_path: str | None = None, depth:
 @mcp.tool()
 def burnbar_diagnostics(project_path: str | None = None, tool: str | None = None, limit: int = 50) -> str:
     """Read cached diagnostics for a project. This is a cached-file tier, not live LSP."""
+    if limited := _local_mcp_rate_limit("burnbar_diagnostics", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(
             pcm.diagnostics(conn, project_path=project_path, tool=tool, limit=limit), indent=2, default=str
@@ -1774,8 +1844,10 @@ def burnbar_diagnostics(project_path: str | None = None, tool: str | None = None
 @mcp.tool()
 def burnbar_index_status(project_path: str | None = None) -> str:
     """Return project-scoped local code-memory index status and storage counts."""
+    if limited := _local_mcp_rate_limit("burnbar_index_status", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         return json.dumps(pcm.index_status(conn, project_path=project_path), indent=2, default=str)
 
@@ -1788,6 +1860,8 @@ def burnbar_explore(
     limit: int = 12,
 ) -> str:
     """Auto-index if needed, then search and return a code context pack."""
+    if limited := _local_mcp_rate_limit("burnbar_explore", "code"):
+        return limited
     authority = _local_memory_write_authority(
         "burnbar_explore",
         "daemon.code.explore",
@@ -1803,8 +1877,10 @@ def burnbar_explore(
 @mcp.tool()
 def burnbar_memory_doctor(project_path: str | None = None) -> str:
     """Run local memory/code index checks for one project."""
+    if limited := _local_mcp_rate_limit("burnbar_memory_doctor", "code"):
+        return limited
     path = _default_db_path()
-    with _connect_rw(path) as conn:
+    with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
         status = pcm.index_status(conn, project_path=project_path)
         tables = pcm.table_names(conn)
@@ -1820,11 +1896,18 @@ def burnbar_memory_doctor(project_path: str | None = None) -> str:
         "chunk_embeddings",
     }
     missing = sorted(required - tables)
+    production_ready = bool(status.get("productionReady"))
     return json.dumps(
         {
-            "status": "ok" if not missing else "degraded",
+            "status": "ok" if not missing and production_ready else "degraded",
             "missingTables": missing,
             "writePath": "daemon_required",
+            "PROJECT_CODE_MEMORY_PRODUCTION_READY": production_ready,
+            "productionReadinessReasons": status.get("productionReadinessReasons", []),
+            "parserAvailable": status.get("parserAvailable"),
+            "databaseEncrypted": status.get("databaseEncrypted"),
+            "semanticAvailable": status.get("semanticAvailable"),
+            "hostedCodeToolsEnabled": status.get("hostedCodeToolsEnabled"),
             "index": status,
         },
         indent=2,

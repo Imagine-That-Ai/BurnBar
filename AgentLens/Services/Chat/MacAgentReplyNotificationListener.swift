@@ -189,6 +189,7 @@ final class MacAgentReplyNotificationListener: NSObject {
     static let shared = MacAgentReplyNotificationListener()
 
     private weak var chatController: ChatSessionController?
+    private weak var accountManager: AccountManager?
     private nonisolated(unsafe) var authHandle: AuthStateDidChangeListenerHandle?
     private var listener: ListenerRegistration?
     private var replyListener: ListenerRegistration?
@@ -212,8 +213,9 @@ final class MacAgentReplyNotificationListener: NSObject {
         return value
     }
 
-    func start(chatController: ChatSessionController) {
+    func start(chatController: ChatSessionController, accountManager: AccountManager) {
         self.chatController = chatController
+        self.accountManager = accountManager
         guard !started else {
             Task { await persistDeviceState(uid: Auth.auth().currentUser?.uid) }
             return
@@ -386,10 +388,11 @@ final class MacAgentReplyNotificationListener: NSObject {
         processedReplyIDs.insert(replyId)
         let callable = Functions.functions(region: "us-central1").httpsCallable("submitAgentNotificationReply")
         do {
+            guard let accountManager else { return }
             guard let uid = Auth.auth().currentUser?.uid else { return }
             let key = try await MacCloudVaultKeyAccess.keyForWriting(
                 uid: uid,
-                deviceId: AccountManager.shared.deviceId,
+                deviceId: accountManager.deviceId,
                 firestore: Firestore.firestore()
             )
             _ = try await callable.call([
@@ -446,10 +449,11 @@ final class MacAgentReplyNotificationListener: NSObject {
 
         Task {
             do {
+                guard let accountManager else { return }
                 try await markReplyCommand(uid: uid, replyID: command.id, status: "processing", error: nil)
                 guard let key = try await MacCloudVaultKeyAccess.keyForReading(
                     uid: uid,
-                    deviceId: AccountManager.shared.deviceId,
+                    deviceId: accountManager.deviceId,
                     firestore: Firestore.firestore()
                 ) else {
                     throw CloudVaultAccessError.vaultKeyUnavailable

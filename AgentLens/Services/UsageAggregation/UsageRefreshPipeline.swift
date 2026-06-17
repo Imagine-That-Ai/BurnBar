@@ -87,13 +87,13 @@ struct UsageRefreshPipeline: Sendable {
         return result
     }
 
-    func persist(parsed: ParsedBatch) -> PersistResult {
+    func persist(parsed: ParsedBatch) async -> PersistResult {
         var result = PersistResult()
         let startedAt = Date()
 
         do {
             if !parsed.allUsages.isEmpty {
-                try dataStore.usageStore.insertChunked(parsed.allUsages, chunkSize: 500)
+                try await dataStore.insertChunked(parsed.allUsages, chunkSize: 500)
             }
         } catch {
             let typed = OpenBurnBarError.database(
@@ -112,8 +112,8 @@ struct UsageRefreshPipeline: Sendable {
     func writeParserHealth(
         parsed: ParsedBatch,
         persist: PersistResult
-    ) throws {
-        try RefreshBackgroundWork.writeParserImportHealth(
+    ) async throws {
+        try await RefreshBackgroundWork.writeParserImportHealth(
             parserHealth: parsed.parserHealth,
             parsers: parsers,
             dataStore: dataStore,

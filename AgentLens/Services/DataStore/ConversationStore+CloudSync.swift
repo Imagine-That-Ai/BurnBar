@@ -7,8 +7,8 @@ import OpenBurnBarCore
 extension ConversationStore {
         // MARK: - Sync
 
-        func fetchUnsyncedConversations(limit: Int = 400) throws -> [ConversationRecord] {
-            try dbQueue.read { db in
+        func fetchUnsyncedConversations(limit: Int = 400) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db in
                 // Deliberately includes tombstones: a soft-delete clears
                 // `conversationSyncedAt`, so the row resurfaces here and its
                 // `deletedAt` is uploaded to Firestore — that upload is exactly how
@@ -27,10 +27,10 @@ extension ConversationStore {
             }
         }
 
-        func markConversationsSynced(ids: [String]) throws {
+        func markConversationsSynced(ids: [String]) async throws {
             guard !ids.isEmpty else { return }
             let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
-            try dbQueue.write { db in
+            try await dbQueue.write { db in
                 var args = StatementArguments([Date()])
                 args += StatementArguments(ids)
                 try db.execute(
@@ -40,8 +40,8 @@ extension ConversationStore {
             }
         }
 
-        func insertRemoteConversation(_ record: ConversationRecord) throws {
-            try dbQueue.write { db in
+        func insertRemoteConversation(_ record: ConversationRecord) async throws {
+            try await dbQueue.write { db in
                 try db.execute(
                     sql: """
                         INSERT OR IGNORE INTO conversations (
@@ -86,8 +86,8 @@ extension ConversationStore {
             }
         }
 
-        func fetchUnsyncedSessionLogs(limit: Int = 100) throws -> [ConversationRecord] {
-            try dbQueue.read { db in
+        func fetchUnsyncedSessionLogs(limit: Int = 100) async throws -> [ConversationRecord] {
+            try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
                     sql: """
@@ -102,8 +102,8 @@ extension ConversationStore {
             }
         }
 
-        func countUnsyncedSessionLogs() throws -> Int {
-            try dbQueue.read { db in
+        func countUnsyncedSessionLogs() async throws -> Int {
+            try await dbQueue.read { db in
                 try Int.fetchOne(
                     db,
                     sql: """
@@ -114,10 +114,10 @@ extension ConversationStore {
             }
         }
 
-        func markSessionLogsSynced(ids: [String]) throws {
+        func markSessionLogsSynced(ids: [String]) async throws {
             guard !ids.isEmpty else { return }
             let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
-            try dbQueue.write { db in
+            try await dbQueue.write { db in
                 var args = StatementArguments([Date()])
                 args += StatementArguments(ids)
                 try db.execute(
@@ -130,15 +130,15 @@ extension ConversationStore {
         /// Clears the encrypted-backup dirty flag for every local conversation so a facet-schema
         /// bump re-enqueues each one through `SessionLogSyncService` exactly once.
         @discardableResult
-        func markAllSessionLogsUnsynced() throws -> Int {
-            try dbQueue.write { db in
+        func markAllSessionLogsUnsynced() async throws -> Int {
+            try await dbQueue.write { db in
                 try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE isRemote = 0 AND deletedAt IS NULL")
                 return db.changesCount
             }
         }
 
-        func countConversations() throws -> Int {
-            try dbQueue.read { db in
+        func countConversations() async throws -> Int {
+            try await dbQueue.read { db in
                 try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations WHERE deletedAt IS NULL") ?? 0
             }
         }

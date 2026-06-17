@@ -1,0 +1,7 @@
+{
+  "nonisolatedDataStoreMembers": 13,
+  "syncDbQueueAccesses": 18,
+  "total": 31,
+  "generatedAt": "2026-06-17T00:00:00Z",
+  "note": "Baseline for scripts/debt/check-datastore-isolation-budget.sh. Counts code-line nonisolated members on AgentLens/Services/DataStore/{DataStore.swift,DataStoreCoordinator.swift,DataStore+*.swift} plus synchronous try dbQueue.read/write/writeWithoutTransaction sites under AgentLens/Services/DataStore, excluding database infrastructure and query tracer docs. Locked after moving chat message persistence, chat thread lifecycle helpers, Switcher profile reorder writes, Switcher duplicate-name validation, target-kind profile filtering to GRDB async, removing unused DataStoreCoordinator store mirrors, replacing remote-sync watermark/backfill cursor coordinator store exposure with typed DataStore pass-throughs, removing the public usageStore coordinator facade, dropping the extra DataStoreCoordinator database facade, removing the public conversationStore coordinator facade, removing the public dbQueue coordinator facade, hiding the DataStoreActor database owner behind a typed backfill method, isolating async-pass-through-only store owners on DataStoreActor, hiding usage/checkpoint/backfill owner fields behind actor-level operations, and converting conversation upserts to GRDB async. Remaining sync sites are Conversation CRUD/chat reads and the documented SwitcherProfileStore exception; lower after each GRDB async migration slice or direct-store exposure removal."
+}

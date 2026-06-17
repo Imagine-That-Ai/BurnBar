@@ -408,5 +408,5 @@ struct HermesToolCall: Identifiable, Equatable {
     }
 }
 
-// `nilIfBlank` lives in Models/StringNilIfBlank.swift (shared across the
+// `nilIfBlank` lives in Models/MobileStringNilIfBlank.swift (shared across the
 // mobile target).

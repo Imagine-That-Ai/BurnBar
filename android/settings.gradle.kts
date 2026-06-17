@@ -18,5 +18,6 @@ dependencyResolutionManagement {
 rootProject.name = "BurnBar"
 include(":app")
 include(":openburnbar-iroh-relay")
+include(":burnbar-remote")
 // Macrobenchmark + baseline-profile producer (on-device only; see module README header).
 include(":macrobenchmark")

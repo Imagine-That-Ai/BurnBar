@@ -2,6 +2,10 @@
 
 This document covers how to roll back a bad OpenBurnBar release at any stage of the release pipeline.
 
+Firestore data recovery is covered separately in
+[`docs/runbooks/firestore-disaster-recovery.md`](runbooks/firestore-disaster-recovery.md);
+release rollback does not restore over the production `(default)` database.
+
 ## Release Pipeline Overview
 
 ```text

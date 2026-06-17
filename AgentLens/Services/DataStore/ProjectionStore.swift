@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - ProjectionStore
@@ -14,8 +14,8 @@ final class ProjectionStore: Sendable {
 
     // MARK: - Projection Jobs
 
-    func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
-        try dbQueue.write { db in
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO projection_jobs (
@@ -70,12 +70,11 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func fetchProjectionJobs(statuses: [ProjectionJobStatus], limit: Int) throws -> [ProjectionJobRecord] {
+    func fetchProjectionJobs(statuses: [ProjectionJobStatus], limit: Int) async throws -> [ProjectionJobRecord] {
         guard statuses.isEmpty == false else { return [] }
         let placeholders = statuses.map { _ in "?" }.joined(separator: ", ")
-        var args: [any DatabaseValueConvertible] = statuses.map { $0.rawValue }
-        args.append(limit)
-        return try dbQueue.read { db in
+        let args: [any DatabaseValueConvertible] = statuses.map { $0.rawValue } + [limit]
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -90,13 +89,13 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func countProjectionJobs(statuses: [ProjectionJobStatus]?) throws -> Int {
+    func countProjectionJobs(statuses: [ProjectionJobStatus]?) async throws -> Int {
         let normalizedStatuses = statuses ?? ProjectionJobStatus.allCases
         guard normalizedStatuses.isEmpty == false else { return 0 }
         let placeholders = normalizedStatuses.map { _ in "?" }.joined(separator: ", ")
         let args: [any DatabaseValueConvertible] = normalizedStatuses.map(\.rawValue)
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -112,13 +111,13 @@ final class ProjectionStore: Sendable {
     func hasProjectionJobs(
         statuses: [ProjectionJobStatus],
         jobTypes: [ProjectionJobType]
-    ) throws -> Bool {
+    ) async throws -> Bool {
         guard statuses.isEmpty == false, jobTypes.isEmpty == false else { return false }
         let statusPlaceholders = statuses.map { _ in "?" }.joined(separator: ", ")
         let jobTypePlaceholders = jobTypes.map { _ in "?" }.joined(separator: ", ")
         let args: [any DatabaseValueConvertible] = statuses.map(\.rawValue) + jobTypes.map(\.rawValue)
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             (try Int.fetchOne(
                 db,
                 sql: """
@@ -135,8 +134,8 @@ final class ProjectionStore: Sendable {
 
     /// Drops redundant queued/failed/canceled conversation projection jobs, keeping only
     /// the newest entry per `(sourceID, jobType)` so large stale backlogs do not monopolize sweeps.
-    func compactConversationProjectionBacklog() throws -> Int {
-        try dbQueue.write { db in
+    func compactConversationProjectionBacklog() async throws -> Int {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 DELETE FROM projection_jobs
@@ -179,8 +178,8 @@ final class ProjectionStore: Sendable {
     ///   - now: Injected clock for deterministic testing (defaults to wall time).
     /// - Returns: The number of rows actually removed.
     @discardableResult
-    func reapTerminalProjectionJobs(olderThan cutoff: Date, now: Date = Date()) throws -> Int {
-        try dbQueue.write { db in
+    func reapTerminalProjectionJobs(olderThan cutoff: Date, now: Date = Date()) async throws -> Int {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 DELETE FROM projection_jobs
@@ -197,8 +196,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func leaseNextJob(leaseOwner: String, leaseExpiresAt: Date, now: Date) throws -> ProjectionJobRecord? {
-        try dbQueue.write { db in
+    func leaseNextJob(leaseOwner: String, leaseExpiresAt: Date, now: Date) async throws -> ProjectionJobRecord? {
+        try await dbQueue.write { db in
             guard let row = try Row.fetchOne(
                 db,
                 sql: """
@@ -254,8 +253,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func markJobLeased(id: String, leaseOwner: String, leaseExpiresAt: Date, updatedAt: Date) throws {
-        try dbQueue.write { db in
+    func markJobLeased(id: String, leaseOwner: String, leaseExpiresAt: Date, updatedAt: Date) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 UPDATE projection_jobs
@@ -267,8 +266,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func markJobCompleted(id: String, completedAt: Date) throws {
-        try dbQueue.write { db in
+    func markJobCompleted(id: String, completedAt: Date) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 UPDATE projection_jobs
@@ -287,8 +286,8 @@ final class ProjectionStore: Sendable {
         errorMessage: String?,
         retryAt: Date?,
         updatedAt: Date
-    ) throws {
-        try dbQueue.write { db in
+    ) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 UPDATE projection_jobs
@@ -306,8 +305,8 @@ final class ProjectionStore: Sendable {
         errorCode: String?,
         errorMessage: String?,
         updatedAt: Date
-    ) throws {
-        try dbQueue.write { db in
+    ) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 UPDATE projection_jobs
@@ -322,8 +321,8 @@ final class ProjectionStore: Sendable {
 
     // MARK: - Embedding Models
 
-    func upsertEmbeddingModel(_ model: EmbeddingModelRecord) throws {
-        try dbQueue.write { db in
+    func upsertEmbeddingModel(_ model: EmbeddingModelRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO embedding_models (
@@ -349,8 +348,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func fetchEmbeddingModels() throws -> [EmbeddingModelRecord] {
-        try dbQueue.read { db in
+    func fetchEmbeddingModels() async throws -> [EmbeddingModelRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -362,16 +361,16 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func countEmbeddingModels() throws -> Int {
-        try dbQueue.read { db in
+    func countEmbeddingModels() async throws -> Int {
+        try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM embedding_models") ?? 0
         }
     }
 
     // MARK: - Embedding Versions
 
-    func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
-        try dbQueue.write { db in
+    func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) async throws {
+        try await dbQueue.write { db in
             if version.isActive {
                 try db.execute(
                     sql: "UPDATE embedding_versions SET isActive = 0, updatedAt = ? WHERE modelID = ?",
@@ -409,8 +408,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func fetchEmbeddingVersions(modelID: String?) throws -> [EmbeddingVersionRecord] {
-        try dbQueue.read { db in
+    func fetchEmbeddingVersions(modelID: String?) async throws -> [EmbeddingVersionRecord] {
+        try await dbQueue.read { db in
             let rows: [Row]
             if let modelID {
                 rows = try Row.fetchAll(
@@ -435,8 +434,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func countEmbeddingVersions(modelID: String?) throws -> Int {
-        try dbQueue.read { db in
+    func countEmbeddingVersions(modelID: String?) async throws -> Int {
+        try await dbQueue.read { db in
             if let modelID {
                 return try Int.fetchOne(
                     db,
@@ -451,8 +450,8 @@ final class ProjectionStore: Sendable {
 
     // MARK: - Chunk Embeddings
 
-    func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) throws {
-        try dbQueue.write { db in
+    func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO chunk_embeddings (
@@ -473,8 +472,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func fetchChunkEmbeddings(chunkID: String?) throws -> [ChunkEmbeddingRecord] {
-        try dbQueue.read { db in
+    func fetchChunkEmbeddings(chunkID: String?) async throws -> [ChunkEmbeddingRecord] {
+        try await dbQueue.read { db in
             let rows: [Row]
             if let chunkID {
                 rows = try Row.fetchAll(
@@ -499,8 +498,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func fetchChunkEmbeddings(embeddingVersionID: String) throws -> [ChunkEmbeddingRecord] {
-        try dbQueue.read { db in
+    func fetchChunkEmbeddings(embeddingVersionID: String) async throws -> [ChunkEmbeddingRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -517,7 +516,7 @@ final class ProjectionStore: Sendable {
     func countChunkEmbeddings(
         chunkID: String?,
         embeddingVersionID: String?
-    ) throws -> Int {
+    ) async throws -> Int {
         var clauses: [String] = []
         var args: [any DatabaseValueConvertible] = []
 
@@ -531,7 +530,8 @@ final class ProjectionStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let queryArguments = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -539,7 +539,7 @@ final class ProjectionStore: Sendable {
                 FROM chunk_embeddings
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(queryArguments)
             ) ?? 0
         }
     }
@@ -547,7 +547,7 @@ final class ProjectionStore: Sendable {
     func countChunkEmbeddings(
         documentID: String,
         embeddingVersionID: String?
-    ) throws -> Int {
+    ) async throws -> Int {
         var clauses: [String] = ["c.documentID = ?"]
         var args: [any DatabaseValueConvertible] = [documentID]
 
@@ -556,16 +556,18 @@ final class ProjectionStore: Sendable {
             args.append(embeddingVersionID)
         }
 
-        return try dbQueue.read { db in
+        let whereSQL = clauses.joined(separator: " AND ")
+        let queryArguments = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
                 SELECT COUNT(*)
                 FROM chunk_embeddings AS e
                 JOIN search_chunks AS c ON c.id = e.chunkID
-                WHERE \(clauses.joined(separator: " AND "))
+                WHERE \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(queryArguments)
             ) ?? 0
         }
     }
@@ -574,8 +576,8 @@ final class ProjectionStore: Sendable {
         embeddingVersionID: String,
         limit: Int,
         offset: Int
-    ) throws -> [ChunkEmbeddingRecord] {
-        try dbQueue.read { db in
+    ) async throws -> [ChunkEmbeddingRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -593,9 +595,9 @@ final class ProjectionStore: Sendable {
     func fetchChunkEmbeddings(
         chunkIDs: [String],
         embeddingVersionID: String
-    ) throws -> [ChunkEmbeddingRecord] {
+    ) async throws -> [ChunkEmbeddingRecord] {
         guard chunkIDs.isEmpty == false else { return [] }
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -611,8 +613,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func chunkEmbeddingVersionStats(embeddingVersionID: String) throws -> ChunkEmbeddingVersionStats {
-        try dbQueue.read { db in
+    func chunkEmbeddingVersionStats(embeddingVersionID: String) async throws -> ChunkEmbeddingVersionStats {
+        try await dbQueue.read { db in
             let row = try Row.fetchOne(
                 db,
                 sql: """
@@ -632,8 +634,8 @@ final class ProjectionStore: Sendable {
 
     // MARK: - Vector Index Snapshots
 
-    func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) throws {
-        try dbQueue.write { db in
+    func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO vector_index_snapshots (
@@ -679,8 +681,8 @@ final class ProjectionStore: Sendable {
     func fetchVectorIndexSnapshot(
         embeddingVersionID: String,
         backendID: String
-    ) throws -> VectorIndexSnapshotRecord? {
-        try dbQueue.read { db in
+    ) async throws -> VectorIndexSnapshotRecord? {
+        try await dbQueue.read { db in
             try Row.fetchOne(
                 db,
                 sql: """
@@ -693,8 +695,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func fetchVectorIndexSnapshots(embeddingVersionID: String?) throws -> [VectorIndexSnapshotRecord] {
-        try dbQueue.read { db in
+    func fetchVectorIndexSnapshots(embeddingVersionID: String?) async throws -> [VectorIndexSnapshotRecord] {
+        try await dbQueue.read { db in
             let rows: [Row]
             if let embeddingVersionID, embeddingVersionID.isEmpty == false {
                 rows = try Row.fetchAll(
@@ -723,8 +725,8 @@ final class ProjectionStore: Sendable {
 
     // MARK: - Retrieval Health
 
-    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
-        try dbQueue.write { db in
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO retrieval_health (
@@ -751,8 +753,8 @@ final class ProjectionStore: Sendable {
         }
     }
 
-    func fetchRetrievalHealth() throws -> [RetrievalHealthRecord] {
-        try dbQueue.read { db in
+    func fetchRetrievalHealth() async throws -> [RetrievalHealthRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -766,7 +768,7 @@ final class ProjectionStore: Sendable {
 
     // MARK: - Schema Inventory
 
-    func schemaInventory() throws -> LocalSearchSchemaInventory {
+    func schemaInventory() async throws -> LocalSearchSchemaInventory {
         let expectedTables = [
             "controller_runtime_cache",
             "search_documents",
@@ -807,7 +809,7 @@ final class ProjectionStore: Sendable {
             "operating_action_history_mission_time_idx"
         ]
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let tables = try String.fetchAll(
                 db,
                 sql: """

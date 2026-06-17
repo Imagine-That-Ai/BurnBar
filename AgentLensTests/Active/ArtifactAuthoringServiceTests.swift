@@ -24,8 +24,8 @@ final class ArtifactAuthoringServiceTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try store.upsertSearchDocument(contextDocument)
-        try store.replaceSearchChunks(
+        try await store.upsertSearchDocument(contextDocument)
+        try await store.replaceSearchChunks(
             documentID: contextDocument.id,
             title: contextDocument.title,
             chunks: [
@@ -124,7 +124,7 @@ final class ArtifactAuthoringServiceTests: XCTestCase {
             contextLimit: 3
         )
         let destinationPath = root.appendingPathComponent("SKILL.md").path
-        let saveResult = try service.saveDraft(draft, to: destinationPath)
+        let saveResult = try await service.saveDraft(draft, to: destinationPath)
 
         XCTAssertEqual(saveResult.disposition, .inserted)
         XCTAssertTrue(saveResult.projectionJobEnqueued)

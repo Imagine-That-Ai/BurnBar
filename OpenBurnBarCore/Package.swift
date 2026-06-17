@@ -17,6 +17,12 @@ let hasSignalFfiXCFramework = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
+let hasBurnBarRemoteXCFramework = FileManager.default.fileExists(
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/BurnBarRemote.xcframework")
+        .standardizedFileURL
+        .path
+)
 let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarCore",
@@ -37,6 +43,10 @@ let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarMedia",
         targets: ["OpenBurnBarMedia"]
+    ),
+    .library(
+        name: "BurnBarRemoteEngine",
+        targets: ["BurnBarRemoteEngine"]
     ),
     // Computer Use substrate (Agent Watch, Browser CU, Mac CU,
     // Phone-as-controller). See
@@ -66,6 +76,11 @@ let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarIrohFFI",
         targets: ["OpenBurnBarIrohFFI"]
+    )
+] : []) + (hasBurnBarRemoteXCFramework ? [
+    .library(
+        name: "BurnBarRemoteFFI",
+        targets: ["BurnBarRemoteFFI"]
     )
 ] : []) + (hasSignalFfiXCFramework ? [
     .library(
@@ -97,6 +112,27 @@ let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
             .linkedFramework("SystemConfiguration")
         ]
     )
+] : []
+
+let burnBarRemoteBinaryTargets: [Target] = hasBurnBarRemoteXCFramework ? [
+    .binaryTarget(
+        name: "BurnBarRemote",
+        path: "../Vendor/BurnBarRemote.xcframework"
+    ),
+    .target(
+        name: "BurnBarRemoteFFI",
+        dependencies: ["BurnBarRemote"],
+        path: "Sources/BurnBarRemote/Generated",
+        exclude: [
+            "burnbar_remote.modulemap",
+            "burnbar_remoteFFI.h"
+        ],
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    )
+] : []
+
+let burnBarRemoteEngineDependencies: [Target.Dependency] = hasBurnBarRemoteXCFramework ? [
+    "BurnBarRemoteFFI"
 ] : []
 
 let signalCoreDependencies: [Target.Dependency] = [
@@ -146,6 +182,10 @@ let firstPartyTargets: [Target] = [
         .target(
             name: "OpenBurnBarMedia",
             dependencies: ["OpenBurnBarCore", "OpenBurnBarIrohRelay"]
+        ),
+        .target(
+            name: "BurnBarRemoteEngine",
+            dependencies: burnBarRemoteEngineDependencies
         ),
         .target(
             name: "OpenBurnBarComputerUseCore",
@@ -212,6 +252,10 @@ let firstPartyTargets: [Target] = [
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
+            name: "BurnBarRemoteEngineTests",
+            dependencies: ["BurnBarRemoteEngine", swiftTestingDependency]
+        ),
+        .testTarget(
             name: "OpenBurnBarComputerUseCoreTests",
             dependencies: [
                 "OpenBurnBarComputerUseCore",
@@ -257,7 +301,7 @@ let firstPartyTargets: [Target] = [
         )
     ]
 
-let allTargets: [Target] = irohBinaryTargets + signalBinaryTargets + firstPartyTargets
+let allTargets: [Target] = irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + firstPartyTargets
 
 let package = Package(
     name: "OpenBurnBarCore",

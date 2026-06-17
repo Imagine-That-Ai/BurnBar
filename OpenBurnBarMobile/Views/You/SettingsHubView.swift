@@ -462,6 +462,9 @@ struct SettingsLabel: View {
     let color: Color
     let title: String
     var logoProviders: [AgentProvider] = []
+    /// Optional custom asset image name. When set, it overrides the SF Symbol
+    /// and renders as the original colorful SVG inside the same rounded plate.
+    var imageName: String? = nil
 
     var body: some View {
         if logoProviders.isEmpty {
@@ -474,9 +477,16 @@ struct SettingsLabel: View {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(color)
                         .frame(width: 29, height: 29)
-                    Image(systemName: icon)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                    if let imageName {
+                        Image(imageName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 19, height: 19)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
                 }
             }
         } else {

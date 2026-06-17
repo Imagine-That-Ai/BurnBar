@@ -100,7 +100,7 @@ struct FanOutComposerSheet: View {
 
     private var activeWandColor: Color {
         switch wandSelector {
-        case .highestCapability: return cloudTier.holoStops.first ?? DesignSystemColors.amber
+        case .headmaster: return cloudTier.holoStops.first ?? DesignSystemColors.amber
         case .pareto:     return DesignSystemColors.success
         case nil:         return DesignSystemColors.textSecondary
         }
@@ -382,7 +382,7 @@ struct FanOutComposerSheet: View {
                     colors: [DesignSystemColors.textMuted, DesignSystemColors.textMuted.opacity(0.5)]
                 )
                 wandCard(
-                    selector: .highestCapability,
+                    selector: .headmaster,
                     title: "Headmaster's",
                     subtitle: "Best model wins",
                     icon: "crown.fill",

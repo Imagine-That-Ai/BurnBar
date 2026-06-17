@@ -232,6 +232,7 @@ struct CloudSyncSettingsSnapshot: Sendable, Equatable {
     let conversationCloudBackupEnabled: Bool
     let sessionLogCloudBackupEnabled: Bool
     let chatThreadContentCloudBackupEnabled: Bool
+    let textExpansionCloudSyncEnabled: Bool
 }
 
 /// Combined gate evaluated once at the start of a sync operation.
@@ -343,7 +344,8 @@ extension CloudSyncContext {
                 settings: CloudSyncSettingsSnapshot(
                     conversationCloudBackupEnabled: settingsManager.conversationCloudBackupEnabled,
                     sessionLogCloudBackupEnabled: settingsManager.sessionLogCloudBackupEnabled,
-                    chatThreadContentCloudBackupEnabled: settingsManager.chatThreadContentCloudBackupEnabled
+                    chatThreadContentCloudBackupEnabled: settingsManager.chatThreadContentCloudBackupEnabled,
+                    textExpansionCloudSyncEnabled: settingsManager.textExpansionCloudSyncEnabled
                 ),
                 syncSuppressed: syncIsSuppressed(now: now)
             )

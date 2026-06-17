@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenBurnBarCore
 
 final class WandModelRouterTests: XCTestCase {
-    func test_highestCapabilityPrefersHighestCapabilityModelInRuntimeCatalog() {
+    func test_headmasterPrefersHighestCapabilityModelInRuntimeCatalog() {
         let rows = [
             option("claude-haiku-4-5", tier: "small", providerID: "anthropic", source: .claudeModelCatalog),
             option("claude-opus-4-8", tier: "flagship", providerID: "anthropic", source: .claudeModelCatalog),
@@ -10,7 +10,7 @@ final class WandModelRouterTests: XCTestCase {
         ]
 
         let selected = WandModelRouter.select(
-            selector: .highestCapability,
+            selector: .headmaster,
             runtimes: [.claude],
             catalogs: [.claude: rows]
         )
@@ -36,7 +36,7 @@ final class WandModelRouterTests: XCTestCase {
 
     func test_policyEmitsConcretePerRuntimeRoutedModels() {
         let policy = WandModelRouter.policy(
-            selector: .highestCapability,
+            selector: .headmaster,
             runtimes: [.codex, .claude],
             catalogs: [
                 .codex: [
@@ -48,14 +48,14 @@ final class WandModelRouterTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(policy.selector, .highestCapability)
+        XCTAssertEqual(policy.selector, .headmaster)
         XCTAssertEqual(policy.routedModelID(for: .codex), "gpt-5.5")
         XCTAssertEqual(policy.routedModelID(for: .claude), "claude-opus-4-8")
     }
 
     func test_providerDiversityFallsBackOnlyWhenNoAlternativeProviderExists() {
         let selected = WandModelRouter.select(
-            selector: .highestCapability,
+            selector: .headmaster,
             runtimes: [.codex, .claude],
             catalogs: [
                 .codex: [

@@ -22,10 +22,10 @@ const cloudPro = tiers.find((t) => t.id === "cloud_pro")!;
 const ultra = tiers.find((t) => t.id === "ultra")!;
 
 const ladder = [
-  { tier: free, cap: free.allowance.wandParallelMax, accent: "neutral" },
-  { tier: cloud, cap: cloud.allowance.wandParallelMax, accent: "fire" },
-  { tier: cloudPro, cap: cloudPro.allowance.wandParallelMax, accent: "teal" },
-  { tier: ultra, cap: ultra.allowance.wandParallelMax, accent: "gold" }
+  { tier: free, cap: free.allowance.wandParallelMax, accent: "neutral", capCopy: "Free opens 1" },
+  { tier: cloud, cap: cloud.allowance.wandParallelMax, accent: "fire", capCopy: "Cloud opens 3" },
+  { tier: cloudPro, cap: cloudPro.allowance.wandParallelMax, accent: "teal", capCopy: "Cloud Pro opens 8" },
+  { tier: ultra, cap: ultra.allowance.wandParallelMax, accent: "gold", capCopy: "Ultra opens 16" }
 ];
 
 const wandModes = [
@@ -43,7 +43,7 @@ const wandModes = [
     name: "Pareto Wand",
     tagline: "Best quality per quota",
     description:
-      "Balances model strength against provider cost signals so you get more landed work for your spend. The routing picks each agent's model for you.",
+      "Balances model strength against live quota so you get the most landed work for your spend. The routing picks each agent's model for you.",
     icon: "scale",
     best: "for everyday parallel work"
   }
@@ -54,32 +54,21 @@ const wandModes = [
   <div class="container container--wide wand-module__inner">
     <header class="wand-module__head">
       <span class="eyebrow eyebrow--ember">The Wand</span>
-      <h2 id="wand-module-h" class="wand-module__title">
-        Cast once. Workers branch, route, and land.
-      </h2>
+      <h2 id="wand-module-h" class="wand-module__title">Cast once. Workers branch, route, and land.</h2>
       <p class="wand-module__lead">
         The Wand sends one job to a team of agents at once. Each worker runs in its own branch,
-        routed to a fitting model across the providers you connect. More parallel workers means more
-        model diversity and faster convergence.
+        routed to the right model by live quota across the providers you connect. More parallel
+        workers means more model diversity and faster convergence.
       </p>
     </header>
 
     <!-- ── Cast → Route → Work lands rail ── -->
-    <div
-      class="wand-rail"
-      role="img"
-      aria-label="Cast one task, route to parallel worker lanes, converge into landed results"
-    >
+    <div class="wand-rail" role="img" aria-label="Cast one task, route to parallel worker lanes, converge into landed results">
       <div class="wand-rail__origin">
         <span class="wand-rail__label mono">Cast</span>
         <div class="wand-rail__node wand-rail__node--origin">
           <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
-            <path
-              d="M8 32L28 8M28 8L18 8M28 8L28 18"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"></path>
+            <path d="M8 32L28 8M28 8L18 8M28 8L28 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
             <circle cx="10" cy="32" r="3" fill="currentColor"></circle>
           </svg>
           <div class="wand-rail__spark" aria-hidden="true"></div>
@@ -89,27 +78,9 @@ const wandModes = [
 
       <div class="wand-rail__track" aria-hidden="true">
         <svg class="wand-rail__lines" viewBox="0 0 200 120" preserveAspectRatio="none">
-          <path
-            d="M0 60 Q50 60 50 20 L180 20"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            opacity="0.5"
-            class="wand-rail__path"></path>
-          <path
-            d="M0 60 L180 60"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            opacity="0.5"
-            class="wand-rail__path"></path>
-          <path
-            d="M0 60 Q50 60 50 100 L180 100"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            opacity="0.5"
-            class="wand-rail__path"></path>
+          <path d="M0 60 Q50 60 50 20 L180 20" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5" class="wand-rail__path" />
+          <path d="M0 60 L180 60" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5" class="wand-rail__path" />
+          <path d="M0 60 Q50 60 50 100 L180 100" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5" class="wand-rail__path" />
         </svg>
       </div>
 
@@ -117,12 +88,7 @@ const wandModes = [
         <div class="wand-rail__lane">
           <div class="wand-rail__node wand-rail__node--worker" data-status="landed">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="wand-rail__check">
-              <path
-                d="M5 10L9 14L15 6"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"></path>
+              <path d="M5 10L9 14L15 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </div>
           <span class="wand-rail__sub mono">landed</span>
@@ -141,27 +107,9 @@ const wandModes = [
 
       <div class="wand-rail__track" aria-hidden="true">
         <svg class="wand-rail__lines" viewBox="0 0 200 120" preserveAspectRatio="none">
-          <path
-            d="M20 20 Q100 20 180 60"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            opacity="0.5"
-            class="wand-rail__path wand-rail__path--converge"></path>
-          <path
-            d="M20 60 L180 60"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            opacity="0.5"
-            class="wand-rail__path wand-rail__path--converge"></path>
-          <path
-            d="M20 100 Q100 100 180 60"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            opacity="0.5"
-            class="wand-rail__path wand-rail__path--converge"></path>
+          <path d="M20 20 Q100 20 180 60" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5" class="wand-rail__path wand-rail__path--converge" />
+          <path d="M20 60 L180 60" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5" class="wand-rail__path wand-rail__path--converge" />
+          <path d="M20 100 Q100 100 180 60" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5" class="wand-rail__path wand-rail__path--converge" />
         </svg>
       </div>
 
@@ -169,12 +117,7 @@ const wandModes = [
         <span class="wand-rail__label mono">Work lands</span>
         <div class="wand-rail__node wand-rail__node--dest">
           <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
-            <path
-              d="M8 20L16 28L32 12"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"></path>
+            <path d="M8 20L16 28L32 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
           </svg>
           <div class="wand-rail__spark wand-rail__spark--dest" aria-hidden="true"></div>
         </div>
@@ -186,12 +129,11 @@ const wandModes = [
     <div class="wand-ladder" role="table" aria-label="The Wand parallel worker cap by tier">
       <div class="wand-ladder__row wand-ladder__row--head">
         <span class="wand-ladder__cell wand-ladder__cell--head mono">Tier</span>
-        <span class="wand-ladder__cell wand-ladder__cell--head mono">Parallel workers per cast</span
-        >
+        <span class="wand-ladder__cell wand-ladder__cell--head mono">Parallel workers per cast</span>
         <span class="wand-ladder__cell wand-ladder__cell--head mono">Visual</span>
       </div>
       {
-        ladder.map(({ tier, cap, accent }) => (
+        ladder.map(({ tier, cap, accent, capCopy }) => (
           <div class="wand-ladder__row" data-accent={accent}>
             <span class="wand-ladder__cell wand-ladder__cell--tier">
               <span class="wand-ladder__tier-name">{tier.shortName}</span>
@@ -199,7 +141,10 @@ const wandModes = [
                 {tier.priceMonthlyUSD === "0" ? "Free" : `$${tier.priceMonthlyUSD}/mo`}
               </span>
             </span>
-            <span class="wand-ladder__cell wand-ladder__cell--cap mono">{cap}</span>
+            <span class="wand-ladder__cell wand-ladder__cell--cap mono">
+              <span>{cap}</span>
+              <span class="wand-ladder__cap-copy">{capCopy}</span>
+            </span>
             <span class="wand-ladder__cell wand-ladder__cell--viz">
               <span class="wand-ladder__dots" aria-hidden="true">
                 {Array.from({ length: cap }, () => (
@@ -226,28 +171,13 @@ const wandModes = [
               <div class="wand-mode__icon-wrap">
                 {mode.icon === "crown" ? (
                   <svg viewBox="0 0 48 48" fill="none" aria-hidden="true" class="wand-mode__icon">
-                    <path
-                      d="M8 36L12 16L20 26L24 14L28 26L36 16L40 36H8Z"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linejoin="round"
-                    />
-                    <path
-                      d="M8 40H40"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    />
+                    <path d="M8 36L12 16L20 26L24 14L28 26L36 16L40 36H8Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                    <path d="M8 40H40" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                     <circle cx="24" cy="10" r="2.5" fill="currentColor" />
                   </svg>
                 ) : (
                   <svg viewBox="0 0 48 48" fill="none" aria-hidden="true" class="wand-mode__icon">
-                    <path
-                      d="M24 6V14M24 34V42M14 24H6M42 24H34M16 16L11 11M37 37L32 32M32 16L37 11M11 37L16 32"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    />
+                    <path d="M24 6V14M24 34V42M14 24H6M42 24H34M16 16L11 11M37 37L32 32M32 16L37 11M11 37L16 32" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                     <circle cx="24" cy="24" r="7" stroke="currentColor" stroke-width="2" />
                   </svg>
                 )}
@@ -268,9 +198,9 @@ const wandModes = [
         <div class="wand-cta__copy">
           <h3 class="wand-cta__h">Go wider with Cloud Pro</h3>
           <p class="wand-cta__p">
-            Free opens 1 agent. Cloud can cast 3 agents at once. Cloud Pro opens 8; Ultra opens 16.
-            More parallel attempts means more model diversity and faster convergence. Your model
-            tokens still come from your connected providers.
+            Cloud can cast 3 agents at once. Cloud Pro opens 8; Ultra opens 16. More parallel attempts
+            means more model diversity and faster convergence. Your model tokens still come from your
+            connected providers.
           </p>
         </div>
         <div class="wand-cta__actions">
@@ -290,7 +220,8 @@ const wandModes = [
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
     background:
-      radial-gradient(80% 50% at 50% 0%, rgba(250, 107, 6, 0.04), transparent 70%), var(--ink-void);
+      radial-gradient(80% 50% at 50% 0%, rgba(250, 107, 6, 0.04), transparent 70%),
+      var(--ink-void);
   }
   .wand-module__inner {
     display: grid;
@@ -391,15 +322,8 @@ const wandModes = [
     background: radial-gradient(circle, rgba(60, 214, 192, 0.15), transparent 60%);
   }
   @keyframes sparkGlow {
-    0%,
-    100% {
-      opacity: 0.6;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 1;
-      transform: scale(1.15);
-    }
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.15); }
   }
 
   /* animated flow along routing paths */
@@ -411,9 +335,7 @@ const wandModes = [
     animation-delay: 0.4s;
   }
   @keyframes flowDash {
-    to {
-      stroke-dashoffset: -20;
-    }
+    to { stroke-dashoffset: -20; }
   }
   .wand-rail__track {
     height: 80px;
@@ -467,14 +389,8 @@ const wandModes = [
     pointer-events: none;
   }
   @keyframes pulseRing {
-    0% {
-      opacity: 0.7;
-      transform: scale(1);
-    }
-    100% {
-      opacity: 0;
-      transform: scale(1.6);
-    }
+    0% { opacity: 0.7; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.6); }
   }
   .wand-rail__node--worker[data-status="no-op"] {
     border-color: var(--text-dim);
@@ -546,10 +462,20 @@ const wandModes = [
     color: var(--text-dim);
   }
   .wand-ladder__cell--cap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
     font-size: 1.6rem;
     font-weight: 700;
     color: var(--text-bright);
     text-align: center;
+  }
+  .wand-ladder__cap-copy {
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: var(--text-muted);
+    white-space: nowrap;
   }
   .wand-ladder__row[data-accent="fire"] .wand-ladder__cell--cap {
     color: var(--core-fire);
@@ -581,15 +507,8 @@ const wandModes = [
     animation-delay: 1s;
   }
   @keyframes dotShimmer {
-    0%,
-    100% {
-      opacity: 0.5;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 1;
-      transform: scale(1.2);
-    }
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
   }
   .wand-ladder__row[data-accent="neutral"] .wand-ladder__dot {
     background: var(--text-mute);

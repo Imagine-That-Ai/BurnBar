@@ -130,7 +130,7 @@ struct TextExpansionSettingsView: View {
                 .zIndex(999)
             }
         }
-        .task { reloadSnippets(selectFirst: true) }
+        .task { await reloadSnippets(selectFirst: true) }
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             accessibilityTrusted = AXIsProcessTrusted()
@@ -234,7 +234,9 @@ struct TextExpansionSettingsView: View {
                                     selectSnippet(snippet.id)
                                 },
                                 onToggle: {
-                                    toggleSnippet(snippet)
+                                    Task { @MainActor in
+                                        await toggleSnippet(snippet)
+                                    }
                                 }
                             )
                             .equatable()
@@ -707,7 +709,9 @@ struct TextExpansionSettingsView: View {
                 // Action buttons
                 HStack(spacing: DesignSystem.Spacing.md) {
                     Button {
-                        saveSnippet()
+                        Task { @MainActor in
+                            await saveSnippet()
+                        }
                     } label: {
                         Label("Save Snippet", systemImage: "checkmark.circle.fill")
                             .font(.system(size: 12, weight: .bold))
@@ -718,7 +722,9 @@ struct TextExpansionSettingsView: View {
                     .disabled(!canSave)
 
                     Button(role: .destructive) {
-                        deleteSelectedSnippet()
+                        Task { @MainActor in
+                            await deleteSelectedSnippet()
+                        }
                     } label: {
                         Label("Delete", systemImage: "trash")
                             .font(.system(size: 12, weight: .medium))
@@ -812,9 +818,10 @@ struct TextExpansionSettingsView: View {
         )
     }
 
-    private func reloadSnippets(selectFirst: Bool = false) {
+    @MainActor
+    private func reloadSnippets(selectFirst: Bool = false) async {
         do {
-            snippets = try dataStore.fetchTextExpansionSnippets()
+            snippets = try await dataStore.fetchTextExpansionSnippets()
             if selectFirst, selectedID == nil {
                 selectedID = snippets.first { $0.deletedAt == nil }?.id
             }
@@ -857,7 +864,8 @@ struct TextExpansionSettingsView: View {
         isEnabled = true
     }
 
-    private func saveSnippet() {
+    @MainActor
+    private func saveSnippet() async {
         let now = Date()
         let id = selectedSnippet?.id ?? UUID().uuidString
         let revision = (selectedSnippet?.revision ?? 0) + 1
@@ -878,10 +886,10 @@ struct TextExpansionSettingsView: View {
             sourceDeviceID: selectedSnippet?.sourceDeviceID
         )
         do {
-            try dataStore.upsertTextExpansionSnippet(snippet)
+            try await dataStore.upsertTextExpansionSnippet(snippet)
             selectedID = id
             showToast("Saved \(snippet.activationToken) successfully")
-            reloadSnippets()
+            await reloadSnippets()
             // Trigger immediate Firestore upload so iOS picks it up in seconds
             NotificationCenter.default.post(name: .textExpansionSnippetsDidChange, object: nil)
         } catch {
@@ -889,28 +897,30 @@ struct TextExpansionSettingsView: View {
         }
     }
 
-    private func deleteSelectedSnippet() {
+    @MainActor
+    private func deleteSelectedSnippet() async {
         guard let selectedID else { return }
         do {
-            try dataStore.deleteTextExpansionSnippet(id: selectedID)
+            try await dataStore.deleteTextExpansionSnippet(id: selectedID)
             self.selectedID = nil
             showToast("Snippet deleted successfully")
-            reloadSnippets(selectFirst: true)
+            await reloadSnippets(selectFirst: true)
             NotificationCenter.default.post(name: .textExpansionSnippetsDidChange, object: nil)
         } catch {
             showToast("Delete failed: \(error.localizedDescription)")
         }
     }
 
-    private func toggleSnippet(_ snippet: TextExpansionSnippet) {
+    @MainActor
+    private func toggleSnippet(_ snippet: TextExpansionSnippet) async {
         var updated = snippet
         updated.isEnabled.toggle()
         updated.updatedAt = Date()
         updated.revision += 1
         do {
-            try dataStore.upsertTextExpansionSnippet(updated)
+            try await dataStore.upsertTextExpansionSnippet(updated)
             showToast("\(updated.isEnabled ? "Enabled" : "Disabled") \(updated.activationToken)")
-            reloadSnippets()
+            await reloadSnippets()
             NotificationCenter.default.post(name: .textExpansionSnippetsDidChange, object: nil)
         } catch {
             showToast("Failed to toggle: \(error.localizedDescription)")

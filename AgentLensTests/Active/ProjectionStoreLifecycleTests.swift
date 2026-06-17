@@ -59,9 +59,9 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
         count: Int,
         sourceID: String = "shared-conv",
         at instant: Date = Date(timeIntervalSince1970: 1_742_400_000)
-    ) throws {
+    ) async throws {
         for index in 0..<count {
-            try store.enqueueProjectionJob(
+            try await store.enqueueProjectionJob(
                 ProjectionJobRecord(
                     id: "backlog-\(index)",
                     jobType: .reproject,
@@ -89,7 +89,7 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
     func test_runPostPersistencePhase_compactsRunawayBacklog() async throws {
         let store = try makeInMemoryDataStore()
         let seeded = ProjectionWorkerPolicy.backlogCompactionThreshold + 5
-        try seedRedundantBacklogAndAssert(store: store, seeded: seeded)
+        try await seedRedundantBacklogAndAssert(store: store, seeded: seeded)
 
         let result = await makeOrchestrator(for: store).runPostPersistencePhase(
             refreshStartedAt: Date(),
@@ -100,7 +100,8 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
         )
 
         // Only the single newest entry per (sourceID, jobType) survives.
-        XCTAssertEqual(try store.countProjectionJobs(), 1)
+        let compactedJobCount = try await store.countProjectionJobs()
+        XCTAssertEqual(compactedJobCount, 1)
         XCTAssertEqual(
             result.pendingProjectionJobs,
             1,
@@ -115,11 +116,11 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
     func test_runPostPersistencePhase_survivesCompactionWriteFailure() async throws {
         let store = try makeInMemoryDataStore()
         let seeded = ProjectionWorkerPolicy.backlogCompactionThreshold + 5
-        try seedRedundantBacklogAndAssert(store: store, seeded: seeded)
+        try await seedRedundantBacklogAndAssert(store: store, seeded: seeded)
 
         // Force the compaction DELETE to throw while reads/COUNT keep working, so the
         // count gate at L180 still trips and we exercise the compaction branch itself.
-        try installDeleteTrap(on: store)
+        try await installDeleteTrap(on: store)
 
         let result = await makeOrchestrator(for: store).runPostPersistencePhase(
             refreshStartedAt: Date(),
@@ -131,8 +132,9 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
 
         // Graceful degradation: no crash, nothing deleted, and the runaway backlog is
         // still reported at full depth instead of a fabricated "compacted" value.
+        let postFailureJobCount = try await store.countProjectionJobs()
         XCTAssertEqual(
-            try store.countProjectionJobs(),
+            postFailureJobCount,
             seeded,
             "A failed compaction write must not remove any rows."
         )
@@ -143,16 +145,17 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
         )
     }
 
-    private func seedRedundantBacklogAndAssert(store: DataStore, seeded: Int) throws {
-        try seedRedundantQueuedBacklog(in: store, count: seeded)
-        XCTAssertEqual(try store.countProjectionJobs(), seeded)
+    private func seedRedundantBacklogAndAssert(store: DataStore, seeded: Int) async throws {
+        try await seedRedundantQueuedBacklog(in: store, count: seeded)
+        let jobCount = try await store.countProjectionJobs()
+        XCTAssertEqual(jobCount, seeded)
         XCTAssertGreaterThanOrEqual(seeded, ProjectionWorkerPolicy.backlogCompactionThreshold)
     }
 
     /// Installs a BEFORE DELETE trigger that aborts any delete on `projection_jobs`,
     /// leaving SELECT/COUNT fully functional.
-    private func installDeleteTrap(on store: DataStore) throws {
-        try store.dbQueue.write { db in
+    private func installDeleteTrap(on store: DataStore) async throws {
+        try await store.actor.dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TRIGGER projection_jobs_delete_trap
                 BEFORE DELETE ON projection_jobs
@@ -165,58 +168,63 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
 
     // MARK: - Finding 148: projection_jobs reaping
 
-    func test_reapTerminalProjectionJobs_removesAgedTerminalRows() throws {
+    func test_reapTerminalProjectionJobs_removesAgedTerminalRows() async throws {
         let store = try makeInMemoryDataStore()
         let now = Date(timeIntervalSince1970: 1_742_200_000)
         let old = now.addingTimeInterval(-72 * 60 * 60) // 3 days ago
         let cutoff = now.addingTimeInterval(-24 * 60 * 60) // 1 day ago
 
         // Two aged terminal rows that should be reaped.
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             makeJob(id: "completed-old", status: .completed, updatedAt: old, completedAt: old)
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             makeJob(id: "canceled-old", status: .canceled, updatedAt: old)
         )
         // A fresh completed row (inside the grace horizon) — must survive.
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             makeJob(id: "completed-fresh", status: .completed, updatedAt: now, completedAt: now)
         )
         // A queued row (still live work) — must survive regardless of age.
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             makeJob(id: "queued-old", status: .queued, updatedAt: old)
         )
 
-        XCTAssertEqual(try store.countProjectionJobs(), 4)
+        let initialJobCount = try await store.countProjectionJobs()
+        XCTAssertEqual(initialJobCount, 4)
 
-        let reaped = try store.reapTerminalProjectionJobs(olderThan: cutoff, now: now)
+        let reaped = try await store.reapTerminalProjectionJobs(olderThan: cutoff, now: now)
 
         XCTAssertEqual(reaped, 2, "Both aged terminal rows should be deleted.")
-        XCTAssertEqual(try store.countProjectionJobs(), 2)
-        XCTAssertEqual(try store.countProjectionJobs(statuses: [.completed]), 1)
-        XCTAssertEqual(try store.countProjectionJobs(statuses: [.queued]), 1)
+        let remainingJobCount = try await store.countProjectionJobs()
+        let completedJobCount = try await store.countProjectionJobs(statuses: [.completed])
+        let queuedJobCount = try await store.countProjectionJobs(statuses: [.queued])
+        XCTAssertEqual(remainingJobCount, 2)
+        XCTAssertEqual(completedJobCount, 1)
+        XCTAssertEqual(queuedJobCount, 1)
 
-        let survivors = try store.fetchProjectionJobs(
+        let survivors = try await store.fetchProjectionJobs(
             statuses: ProjectionJobStatus.allCases,
             limit: 100
         ).map(\.id).sorted()
         XCTAssertEqual(survivors, ["completed-fresh", "queued-old"])
     }
 
-    func test_reapTerminalProjectionJobs_keepsRunningAndFailedRows() throws {
+    func test_reapTerminalProjectionJobs_keepsRunningAndFailedRows() async throws {
         let store = try makeInMemoryDataStore()
         let now = Date(timeIntervalSince1970: 1_742_300_000)
         let old = now.addingTimeInterval(-100 * 60 * 60)
         let cutoff = now
 
-        try store.enqueueProjectionJob(makeJob(id: "running", status: .running, updatedAt: old))
-        try store.enqueueProjectionJob(makeJob(id: "failed", status: .failed, updatedAt: old))
-        try store.enqueueProjectionJob(makeJob(id: "leased", status: .leased, updatedAt: old))
+        try await store.enqueueProjectionJob(makeJob(id: "running", status: .running, updatedAt: old))
+        try await store.enqueueProjectionJob(makeJob(id: "failed", status: .failed, updatedAt: old))
+        try await store.enqueueProjectionJob(makeJob(id: "leased", status: .leased, updatedAt: old))
 
-        let reaped = try store.reapTerminalProjectionJobs(olderThan: cutoff, now: now)
+        let reaped = try await store.reapTerminalProjectionJobs(olderThan: cutoff, now: now)
 
         XCTAssertEqual(reaped, 0, "Non-terminal rows must never be reaped.")
-        XCTAssertEqual(try store.countProjectionJobs(), 3)
+        let remainingJobCount = try await store.countProjectionJobs()
+        XCTAssertEqual(remainingJobCount, 3)
     }
 
     // MARK: - Finding 186: retention purge stub replacement
@@ -227,14 +235,15 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
         // Aged well past the built-in terminal-job retention horizon.
         let stale = now.addingTimeInterval(-(ProjectionWorkerPolicy.terminalJobRetention + 60 * 60))
 
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             makeJob(id: "stale-completed", status: .completed, updatedAt: stale, completedAt: stale)
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             makeJob(id: "fresh-completed", status: .completed, updatedAt: now, completedAt: now)
         )
 
-        XCTAssertEqual(try store.countProjectionJobs(), 2)
+        let initialJobCount = try await store.countProjectionJobs()
+        XCTAssertEqual(initialJobCount, 2)
 
         let orchestrator = RefreshOrchestrator(
             dataStore: store,
@@ -248,12 +257,13 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
 
         await orchestrator.runRetentionPurgeIfNeeded()
 
+        let remainingJobCount = try await store.countProjectionJobs()
         XCTAssertEqual(
-            try store.countProjectionJobs(),
+            remainingJobCount,
             1,
             "Retention purge should reap the stale completed job and keep the fresh one."
         )
-        let survivors = try store.fetchProjectionJobs(
+        let survivors = try await store.fetchProjectionJobs(
             statuses: ProjectionJobStatus.allCases,
             limit: 10
         ).map(\.id)

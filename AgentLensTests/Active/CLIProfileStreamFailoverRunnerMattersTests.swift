@@ -26,9 +26,9 @@ final class CLIProfileStreamFailoverRunnerMattersTests: XCTestCase {
     // MARK: - Schema helpers
 
     /// Builds a fully-migrated, healthy store backed by an in-memory queue.
-    private func makeHealthyStore() throws -> (SwitcherProfileStore, DatabaseQueue) {
+    private func makeHealthyStore() async throws -> (SwitcherProfileStore, DatabaseQueue) {
         let queue = try DatabaseQueue()
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -76,8 +76,8 @@ final class CLIProfileStreamFailoverRunnerMattersTests: XCTestCase {
 
     // MARK: - Happy path: contract preserved
 
-    func test_healthyStore_roundTripsAllAdapterReadsAndWrites() throws {
-        let (store, _) = try makeHealthyStore()
+    func test_healthyStore_roundTripsAllAdapterReadsAndWrites() async throws {
+        let (store, _) = try await makeHealthyStore()
         let adapter = ProductionSwitcherProfileStoreAdapter(store: store)
 
         let primary = makeCLIProfile(id: "primary", sortKey: 1)
@@ -158,8 +158,8 @@ final class CLIProfileStreamFailoverRunnerMattersTests: XCTestCase {
     /// A failed write against a faulting store must not silently mutate a separate
     /// healthy store's persisted active-profile pointer — i.e. the lost write does
     /// not masquerade as success and the previously-pinned drain target stands.
-    func test_faultingWrite_leavesPreviouslyPinnedDrainTargetIntact() throws {
-        let (healthyStore, _) = try makeHealthyStore()
+    func test_faultingWrite_leavesPreviouslyPinnedDrainTargetIntact() async throws {
+        let (healthyStore, _) = try await makeHealthyStore()
         let healthyAdapter = ProductionSwitcherProfileStoreAdapter(store: healthyStore)
 
         _ = try healthyStore.create(makeCLIProfile(id: "good", sortKey: 1))

@@ -1,0 +1,7 @@
+{
+  "settingsAccountSharedReferences": 0,
+  "staticSharedSingletons": 56,
+  "total": 56,
+  "generatedAt": "2026-06-17T00:00:00Z",
+  "note": "Baseline for scripts/debt/check-singleton-budget.sh. Counts production AgentLens SettingsManager.shared and AccountManager.shared references plus total static let shared singletons, excluding the runtime-context construction site. Lower as SettingsManager/AccountManager usage moves to dependency injection; staticSharedSingletons is a stable guard against adding new global singletons."
+}

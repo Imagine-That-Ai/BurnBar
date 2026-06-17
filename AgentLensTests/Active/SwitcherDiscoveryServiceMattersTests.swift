@@ -187,7 +187,7 @@ final class SwitcherDiscoveryServiceMattersTests: XCTestCase {
         let service = SwitcherDiscoveryService()
         let dataStore = try makeTestDataStore()
 
-        try await dataStore.dbQueue.write { db in
+        try await dataStore.actor.dbQueue.write { db in
             try db.execute(sql: "DROP TABLE switcher_profiles")
         }
 

@@ -427,7 +427,7 @@ final class DataStoreCoordinator {
     }
 
     func deleteAll() async throws {
-        try await actor.deleteAll()
+        try await actor.deleteAllUsageRows()
         await refresh()
     }
 }

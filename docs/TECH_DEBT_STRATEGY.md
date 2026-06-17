@@ -8,6 +8,8 @@
 
 **Status note, 2026-05-27:** Phase 5–6 SOTA remediation landed SLO runbook, Architecture ADRs, CI tech-debt metrics snapshot, and daemon `GET /metrics` stub. This document remains the debt register; live counts are in [TECH_DEBT_METRICS.md](TECH_DEBT_METRICS.md).
 
+**Status note, 2026-06-17:** The remaining-structural-debt review closed two recurring "debt" claims as non-debt. First, `PixelClockPreviewView` intentionally lives in `OpenBurnBarCore` and is consumed by both the macOS and mobile smart-display settings cards; it has no platform guard and is a shared pure SwiftUI preview, not an accidental app/core split violation. Second, the `crates/burnbar-remote/` Rust workspace is an ADR 008 composition foundation, not production stubs: its security note explicitly marks it non-shipping and the current workspace contains 5,724 lines of Rust source across 12 files for protocol, network, media, security, observability, host/client seams, FFI, and benchmarks. Do not re-open either item as structural debt unless the source evidence changes.
+
 **Status note, 2026-04-30:** This document is still the debt register, but several release-critical findings have moved since the original audit. The release workflow now uploads build artifacts before smoke/publish, smokes the downloaded DMG, and publishes the same downloaded assets. Daemon socket auth is required across app, extension, CLI, and smoke scripts. Stale app tests now belong in `AgentLensTests/Quarantine/`, not hidden under `Active/` excludes.
 
 ---

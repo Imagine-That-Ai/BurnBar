@@ -105,7 +105,7 @@ final class UsageAggregatorTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_779_010_000)
 
         for index in 0..<jobCount {
-            try dataStore.enqueueProjectionJob(
+            try await dataStore.enqueueProjectionJob(
                 ProjectionJobRecord(
                     id: "startup-projection-backlog-\(index)",
                     jobType: .reproject,
@@ -127,13 +127,13 @@ final class UsageAggregatorTests: XCTestCase {
 
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
-            let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+            let pending = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
             if pending == 0 { break }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
-        let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
-        let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
+        let pending = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        let completed = try await dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
         XCTAssertEqual(pending, 0)
         XCTAssertEqual(completed, jobCount)
     }
@@ -294,7 +294,7 @@ final class UsageAggregatorTests: XCTestCase {
         // semantic indexing throughput; projection content is covered by the
         // ProjectionPipelineService suite.
         for index in 0..<jobCount {
-            try dataStore.enqueueProjectionJob(
+            try await dataStore.enqueueProjectionJob(
                 ProjectionJobRecord(
                     id: "projection-backlog-orphan-\(index)",
                     jobType: .reproject,
@@ -319,13 +319,13 @@ final class UsageAggregatorTests: XCTestCase {
 
         let deadline = Date().addingTimeInterval(75)
         while Date() < deadline {
-            let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
+            let completed = try await dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
             if completed >= jobCount { break }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
 
-        let completed = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
-        let pending = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        let completed = try await dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
+        let pending = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
         let diagnostic = "completed=\(completed) pending=\(pending) expected=\(jobCount)"
         XCTAssertEqual(completed, jobCount, diagnostic)
         XCTAssertEqual(pending, 0, diagnostic)

@@ -1010,12 +1010,276 @@ final class BurnBarProviderRouterTests: XCTestCase {
             preferredProviderID: "zai"
         )
         XCTAssertEqual(ranking.winner?.credentialSlotID, "slot-sooner")
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "glm-5")
+        XCTAssertTrue(event.explanation.contains("utilization:"))
+        XCTAssertTrue(event.explanation.contains("resets in"))
+        XCTAssertTrue(event.explanation.contains("draining before"))
 
         let route = try await harness.router.route(
             modelName: "glm-5",
             preferredProviderID: "zai"
         )
         XCTAssertEqual(route.credentialSlotID, "slot-sooner")
+    }
+
+    func testRouterUsesResetBeforeRemainingWhenUtilizationSignalsConflict() async throws {
+        let harness = try makeHarness(name: "slot-quota-reset-before-remaining")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"],
+                preferredCredentialSlotID: "slot-later-high"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-later-high",
+            label: "Later High Remaining",
+            apiKey: "zai-key-later-high"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-sooner-low",
+            label: "Sooner Low Remaining",
+            apiKey: "zai-key-sooner-low"
+        )
+
+        let now = Date()
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-later-high",
+            remainingPercent: 95,
+            resetsAt: now.addingTimeInterval(4 * 60 * 60),
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-sooner-low",
+            remainingPercent: 25,
+            resetsAt: now.addingTimeInterval(30 * 60),
+            message: nil
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(ranking.winner?.credentialSlotID, "slot-sooner-low")
+
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "glm-5")
+        XCTAssertTrue(event.explanation.contains("resets in"))
+        XCTAssertTrue(event.explanation.contains("draining before"))
+    }
+
+    func testRouterPrefersHigherRemainingWhenQuotaResetTimesMatch() async throws {
+        let harness = try makeHarness(name: "slot-quota-remaining-equal-reset")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"],
+                preferredCredentialSlotID: "slot-low"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-low",
+            label: "Low Remaining",
+            apiKey: "zai-key-low"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-high",
+            label: "High Remaining",
+            apiKey: "zai-key-high"
+        )
+
+        let reset = Date().addingTimeInterval(2 * 60 * 60)
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-low",
+            remainingPercent: 20,
+            resetsAt: reset,
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-high",
+            remainingPercent: 90,
+            resetsAt: reset,
+            message: nil
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(ranking.winner?.credentialSlotID, "slot-high")
+
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "glm-5")
+        XCTAssertTrue(event.explanation.contains("90% remaining vs 20%"))
+    }
+
+    func testRouterPrefersHigherRemainingWhenQuotaResetTimesAreUnknown() async throws {
+        let harness = try makeHarness(name: "slot-quota-remaining-unknown-reset")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-low",
+            label: "Low Remaining",
+            apiKey: "zai-key-low"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-high",
+            label: "High Remaining",
+            apiKey: "zai-key-high"
+        )
+
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-low",
+            remainingPercent: 30,
+            resetsAt: nil,
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-high",
+            remainingPercent: 80,
+            resetsAt: nil,
+            message: nil
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(ranking.winner?.credentialSlotID, "slot-high")
+
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "glm-5")
+        XCTAssertTrue(event.explanation.contains("80% remaining vs 30%"))
+    }
+
+    func testRouterSkipsExhaustedSlotBeforeQuotaDrainOrdering() async throws {
+        let harness = try makeHarness(name: "slot-quota-exhausted-before-drain")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-exhausted",
+            label: "Exhausted Soon",
+            apiKey: "zai-key-exhausted"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-healthy",
+            label: "Healthy Later",
+            apiKey: "zai-key-healthy"
+        )
+
+        let now = Date()
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-exhausted",
+            remainingPercent: 0,
+            resetsAt: now.addingTimeInterval(5 * 60),
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "slot-healthy",
+            remainingPercent: 40,
+            resetsAt: now.addingTimeInterval(3 * 60 * 60),
+            message: nil
+        )
+
+        let candidates = try await harness.router.candidateRoutes(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(candidates.map(\.credentialSlotID), ["slot-healthy"])
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "glm-5",
+            preferredProviderID: "zai"
+        )
+        XCTAssertEqual(ranking.winner?.credentialSlotID, "slot-healthy")
+    }
+
+    func testRouterDoesNotApplyQuotaDrainAcrossProviderPools() async throws {
+        let harness = try makeHarness(name: "slot-quota-cross-provider-boundary", catalog: exactSameModelFailoverCatalog())
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["gpt-5.4"]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["beta-gpt-5.4"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alpha",
+            slotID: "slot-alpha",
+            label: "Alpha Later",
+            apiKey: "alpha-key"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "beta",
+            slotID: "slot-beta",
+            label: "Beta Sooner",
+            apiKey: "beta-key"
+        )
+
+        let now = Date()
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "alpha",
+            slotID: "slot-alpha",
+            remainingPercent: 20,
+            resetsAt: now.addingTimeInterval(4 * 60 * 60),
+            message: nil
+        )
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "beta",
+            slotID: "slot-beta",
+            remainingPercent: 95,
+            resetsAt: now.addingTimeInterval(5 * 60),
+            message: nil
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "gpt-5.4",
+            requiredCanonicalModelID: "gpt-5.4",
+            routerMode: .sameModelFailover
+        )
+
+        XCTAssertEqual(ranking.winner?.providerID, "alpha")
+        XCTAssertEqual(ranking.winner?.credentialSlotID, "slot-alpha")
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "gpt-5.4")
+        XCTAssertFalse(event.explanation.contains("utilization:"))
     }
 
     func testRouterDoesNotDrainQuotaAcrossEndpointProfiles() async throws {
@@ -1058,6 +1322,13 @@ final class BurnBarProviderRouterTests: XCTestCase {
             resetsAt: now.addingTimeInterval(24 * 60 * 60),
             message: nil
         )
+
+        let candidates = try await harness.router.candidateRoutes(
+            modelName: "minimax-m2.7-highspeed",
+            preferredProviderID: "minimax"
+        )
+        XCTAssertEqual(candidates.map(\.credentialSlotID), ["z-token-later", "a-payg-sooner"])
+        XCTAssertEqual(candidates.map(\.endpointProfileID), ["minimax.token-plan", "minimax.payg"])
 
         let ranking = try await harness.router.scoreAndRankRoutes(
             modelName: "minimax-m2.7-highspeed",

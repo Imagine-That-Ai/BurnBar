@@ -375,12 +375,19 @@ dependencies {
     // Local Kotlin library: Android-side iroh transport + pairing
     // verifier. 1:1 mirror of the Swift OpenBurnBarIrohRelay package.
     implementation(project(":openburnbar-iroh-relay"))
+    // Local Kotlin facade for the burnbar-remote UniFFI engine. It runs with
+    // deterministic Kotlin fallbacks until Vendor/burnbar-remote.aar exists.
+    implementation(project(":burnbar-remote"))
     // Computer Use phone-control intents are signed on Android with the
     // same portable Ed25519 primitive used by the relay pairing verifier.
     implementation("com.google.crypto.tink:tink-android:1.15.0")
     val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
     if (irohAar.exists()) {
         implementation(files(irohAar))
+    }
+    val burnBarRemoteAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/burnbar-remote.aar")
+    if (burnBarRemoteAar.exists()) {
+        implementation(files(burnBarRemoteAar))
     }
 
     // Baseline profiles: explicit profileinstaller pin (already present

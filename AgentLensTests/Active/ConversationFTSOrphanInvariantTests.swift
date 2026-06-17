@@ -56,9 +56,9 @@ final class ConversationFTSOrphanInvariantTests: XCTestCase {
         )
 
         // The index reflects the latest revision, not a stale or duplicated copy.
-        let hits = try dataStore.searchConversationsFTS(query: "third")
+        let hits = try await dataStore.searchConversationsFTS(query: "third")
         XCTAssertTrue(hits.contains { $0.conversation.id == id }, "Latest revision must be searchable after re-upsert.")
-        let stale = try dataStore.searchConversationsFTS(query: "first")
+        let stale = try await dataStore.searchConversationsFTS(query: "first")
         XCTAssertFalse(stale.contains { $0.conversation.id == id }, "Superseded revision text must not linger in the index.")
     }
 

@@ -27,7 +27,20 @@ import OSLog
 final class CLIAgentSessionMirror: Sendable {
 
     @MainActor
-    static let shared = CLIAgentSessionMirror(accountManager: AccountManager.shared)
+    private static var configuredShared: CLIAgentSessionMirror?
+
+    @MainActor
+    static var shared: CLIAgentSessionMirror {
+        guard let configuredShared else {
+            preconditionFailure("CLIAgentSessionMirror.shared used before OpenBurnBarRuntimeContext configuration")
+        }
+        return configuredShared
+    }
+
+    @MainActor
+    static func configureShared(accountManager: AccountManager) {
+        configuredShared = CLIAgentSessionMirror(accountManager: accountManager)
+    }
 
     /// User preference key controlling whether the mirror is active.
     /// Defaults to `true` once the user opts into cloud sync — keeps

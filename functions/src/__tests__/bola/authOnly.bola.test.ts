@@ -75,6 +75,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "backfillProviderAccountDeviceLinksScheduled",
   "onUsageWritten",
   "rebuildRollups",
+  "rollupUserRebuild",
   "refreshAllProviderQuotas",
   "refreshModelLandscapeBenchmarks",
   "anchorAuditLogHeads",

@@ -70,7 +70,8 @@ final class LiquidGlassTransparencyTests: XCTestCase {
         let nearCenter = LiquidGlassTransparency.clearBridgeScrimOpacity(0.05)
         let nearClear = LiquidGlassTransparency.clearBridgeScrimOpacity(0.95)
         XCTAssertGreaterThan(nearCenter, nearClear)
-        XCTAssertEqual(LiquidGlassTransparency.clearBridgeScrimOpacity(1), 0, accuracy: 0.0001)
+        // A small floor remains at full clear so the plate doesn't vanish.
+        XCTAssertEqual(LiquidGlassTransparency.clearBridgeScrimOpacity(1), 0.06, accuracy: 0.0001)
     }
 
     // MARK: - Fallback plate (pre-26 systems)

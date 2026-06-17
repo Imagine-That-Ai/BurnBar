@@ -370,8 +370,10 @@ struct BudgetRuleEditorView: View {
     private var saveSection: some View {
         Section {
             Button("Save changes") {
-                budgetSettings.upsertRule(rule)
-                dismiss()
+                Task { @MainActor in
+                    await budgetSettings.upsertRule(rule)
+                    dismiss()
+                }
             }
             .disabled(rule.amountUSD <= 0)
         }
@@ -380,8 +382,10 @@ struct BudgetRuleEditorView: View {
     private var deleteSection: some View {
         Section {
             Button("Delete rule", role: .destructive) {
-                budgetSettings.deleteRule(id: rule.id)
-                dismiss()
+                Task { @MainActor in
+                    await budgetSettings.deleteRule(id: rule.id)
+                    dismiss()
+                }
             }
         }
     }
@@ -438,8 +442,10 @@ struct BudgetRuleEditorSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         if rule.label?.isEmpty != false { rule.label = nil }
-                        budgetSettings.upsertRule(rule)
-                        dismiss()
+                        Task { @MainActor in
+                            await budgetSettings.upsertRule(rule)
+                            dismiss()
+                        }
                     }
                     .disabled(saveDisabled)
                 }

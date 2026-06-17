@@ -50,7 +50,9 @@ struct DeviceBreakdownCard: View {
     }
 
     private func loadSummaries() {
-        summaries = (try? dataStore.deviceUsageSummaries()) ?? []
+        Task { @MainActor in
+            summaries = (try? await dataStore.deviceUsageSummaries()) ?? []
+        }
     }
 }
 

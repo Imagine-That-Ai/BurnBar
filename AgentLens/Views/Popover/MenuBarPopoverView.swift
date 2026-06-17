@@ -342,7 +342,8 @@ struct MenuBarPopoverView: View {
                     dismiss()
                     onOpenSettings()
                 },
-                settingsManager: settingsManager
+                settingsManager: settingsManager,
+                accountManager: runtimeContext?.accountManager ?? .shared
             )
             .padding(.horizontal, DesignSystem.Spacing.sm)
             .padding(.vertical, DesignSystem.Spacing.xs)

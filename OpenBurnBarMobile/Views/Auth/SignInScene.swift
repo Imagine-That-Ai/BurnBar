@@ -51,7 +51,7 @@ struct SignInScene: View {
                         Spacer(minLength: MobileTheme.Spacing.lg)
 
                         VStack(spacing: 0) {
-                            BurnBarLogoFormationView()
+                            BurnBarLogoFormationView(onHaptic: HapticBus.logoFormation)
                                 .frame(maxWidth: 360)
                                 .frame(height: 300)
                                 .padding(.bottom, MobileTheme.Spacing.lg)
@@ -681,7 +681,7 @@ struct FirebaseUnavailableScene: View {
                 .ignoresSafeArea()
 
             VStack(spacing: MobileTheme.Spacing.xl) {
-                BurnBarLogoFormationView()
+                BurnBarLogoFormationView(onHaptic: HapticBus.logoFormation)
                     .frame(maxWidth: 320)
                     .frame(height: 260)
 

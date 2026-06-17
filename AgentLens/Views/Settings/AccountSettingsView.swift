@@ -357,6 +357,16 @@ struct AccountSettingsView: View {
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack(spacing: DesignSystem.Spacing.md) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(DesignSystem.Colors.blaze)
+                            .frame(width: 28, height: 28)
+                        Image("SettingsIconStore")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 18, height: 18)
+                    }
+
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                         HStack {
                             Text("Free Plan")

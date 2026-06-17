@@ -31,43 +31,55 @@ struct SessionUsageFacets: Sendable {
 }
 
 extension DataStore {
-    nonisolated func insert(_ usage: TokenUsage) throws {
-        try usageStore.insert(usage)
+    func insert(_ usage: TokenUsage) async throws {
+        try await actor.usageStore.insert(usage)
     }
 
-    nonisolated func insert(_ newUsages: [TokenUsage]) throws {
-        try usageStore.insert(newUsages)
+    func insert(_ newUsages: [TokenUsage]) async throws {
+        try await actor.usageStore.insert(newUsages)
     }
 
-    nonisolated func insertChunked(_ newUsages: [TokenUsage], chunkSize: Int = 100) throws {
-        try usageStore.insertChunked(newUsages, chunkSize: chunkSize)
+    func insertChunked(_ newUsages: [TokenUsage], chunkSize: Int = 100) async throws {
+        try await actor.usageStore.insertChunked(newUsages, chunkSize: chunkSize)
     }
 
-    nonisolated func checkpointTruncate() throws {
-        try usageStore.checkpointTruncate()
+    func fetchAllUsage() async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchAllUsage()
     }
 
-    nonisolated func deleteUsage(sessionIDPrefix: String) throws {
-        try usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
+    func checkpointTruncate() async throws {
+        try await actor.usageStore.checkpointTruncate()
     }
 
-    nonisolated func fetchUnsynced() throws -> [TokenUsage] {
-        try usageStore.fetchUnsynced()
+    func deleteUsage(sessionIDPrefix: String) async throws {
+        try await actor.usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
     }
 
-    nonisolated func markSynced(ids: [UUID]) throws {
-        try usageStore.markSynced(ids: ids)
+    func fetchUnsynced() async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchUnsynced()
     }
 
-    nonisolated func sessionModelMap() throws -> [String: String] {
-        try usageStore.sessionModelMap()
+    func markSynced(ids: [UUID]) async throws {
+        try await actor.usageStore.markSynced(ids: ids)
     }
 
-    nonisolated func sessionFacetsMap() throws -> [String: SessionUsageFacets] {
-        try usageStore.sessionFacetsMap()
+    func sessionModelMap() async throws -> [String: String] {
+        try await actor.usageStore.sessionModelMap()
     }
 
-    nonisolated func insertRemoteUsage(_ usage: TokenUsage) throws {
-        try usageStore.insertRemoteUsage(usage)
+    func sessionFacetsMap() async throws -> [String: SessionUsageFacets] {
+        try await actor.usageStore.sessionFacetsMap()
+    }
+
+    func insertRemoteUsage(_ usage: TokenUsage) async throws {
+        try await actor.usageStore.insertRemoteUsage(usage)
+    }
+
+    func providerRunCostTotals(in dateRange: ClosedRange<Date>?) async throws -> [AgentProvider: ProviderRunCostTotals] {
+        try await actor.usageStore.providerRunCostTotals(in: dateRange)
+    }
+
+    func fetchOrgRollup(groupBy: OrgGroupBy, period: BudgetPeriod) async throws -> [OrgRollupRow] {
+        try await actor.usageStore.fetchOrgRollup(groupBy: groupBy, period: period)
     }
 }

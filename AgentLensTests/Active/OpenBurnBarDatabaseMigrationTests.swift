@@ -7,14 +7,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
     // MARK: - Integrity Check
 
-    func test_runMigrationsSafely_runsMigrations_onFreshDB() throws {
+    func test_runMigrationsSafely_runsMigrations_onFreshDB() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
 
         try database.runMigrationsSafely()
 
         // Verify a v1 table exists
-        let tables = try queue.read { db -> [String] in
+        let tables = try await queue.read { db -> [String] in
             try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         XCTAssertTrue(tables.contains("token_usage"))
@@ -22,7 +22,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
     // MARK: - Backup
 
-    func test_runMigrationsSafely_createsBackup_forFileBasedDB() throws {
+    func test_runMigrationsSafely_createsBackup_forFileBasedDB() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -30,7 +30,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let dbPath = tempDir.appendingPathComponent("test.sqlite").path
         let queue = try DatabaseQueue(path: dbPath)
-        try seedLegacyDatabaseThroughV35(queue)
+        try await Self.seedLegacyDatabaseThroughV35(queue)
         let database = OpenBurnBarDatabase(databaseQueue: queue)
 
         try database.runMigrationsSafely()
@@ -82,7 +82,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     /// gate saw the prior version already applied and skipped the backup entirely
     /// — this test fails on that code and passes once the identifier is
     /// migrator-derived, and it tracks forward as new migrations land.
-    func test_runMigrationsSafely_createsBackup_whenUpgradingToLatestMigration() throws {
+    func test_runMigrationsSafely_createsBackup_whenUpgradingToLatestMigration() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -103,7 +103,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(backups.count, 1, "Upgrading v46→v47 must take exactly one pre-migration backup, got: \(backups)")
 
         // And the upgrade actually completed through the latest migration.
-        let applied = try queue.read { db in
+        let applied = try await queue.read { db in
             try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations")
         }
         XCTAssertTrue(
@@ -196,7 +196,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(workingDirectory, "/Users/test/project/Sources")
     }
 
-    func test_runMigrationsSafely_integrityCheckFails_onCorruptedFile() throws {
+    func test_runMigrationsSafely_integrityCheckFails_onCorruptedFile() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -205,7 +205,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let dbPath = tempDir.appendingPathComponent("corrupt.sqlite").path
 
         let queue = try DatabaseQueue(path: dbPath)
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: "CREATE TABLE test (id INTEGER PRIMARY KEY)")
         }
         _ = queue
@@ -236,7 +236,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         }
     }
 
-    func test_dataStoreActor_corruptedDatabaseThrowsWithoutFatalError() throws {
+    func test_dataStoreActor_corruptedDatabaseThrowsWithoutFatalError() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -244,7 +244,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let dbPath = tempDir.appendingPathComponent("startup-corrupt.sqlite").path
         let queue = try DatabaseQueue(path: dbPath)
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: "CREATE TABLE token_usage (id TEXT PRIMARY KEY)")
         }
         _ = queue
@@ -261,7 +261,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         }())
     }
 
-    func test_runMigrationsSafely_prunesOldBackups() throws {
+    func test_runMigrationsSafely_prunesOldBackups() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -282,7 +282,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let dbPath = tempDir.appendingPathComponent("test.sqlite").path
         let queue = try DatabaseQueue(path: dbPath)
-        try seedLegacyDatabaseThroughV35(queue)
+        try await Self.seedLegacyDatabaseThroughV35(queue)
         let database = OpenBurnBarDatabase(databaseQueue: queue)
 
         try database.runMigrationsSafely()
@@ -294,12 +294,12 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
     // MARK: - Data Repairs
 
-    func test_v36_repairsKimiRequestIDModelsAndDropsDuplicateCorrectedRows() throws {
+    func test_v36_repairsKimiRequestIDModelsAndDropsDuplicateCorrectedRows() async throws {
         let queue = try DatabaseQueue()
-        try seedLegacyDatabaseThroughV35(queue)
+        try await Self.seedLegacyDatabaseThroughV35(queue)
 
-        try queue.write { db in
-            try insertUsageRow(
+        try await queue.write { db in
+            try Self.insertUsageRow(
                 db,
                 id: "bad-duplicate",
                 sessionID: "session-with-corrected-row",
@@ -311,7 +311,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 totalTokens: 1_950,
                 cost: 0.01
             )
-            try insertUsageRow(
+            try Self.insertUsageRow(
                 db,
                 id: "already-corrected",
                 sessionID: "session-with-corrected-row",
@@ -323,7 +323,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 totalTokens: 1_700,
                 cost: 0.00188
             )
-            try insertUsageRow(
+            try Self.insertUsageRow(
                 db,
                 id: "bad-only",
                 sessionID: "session-needing-repair",
@@ -340,7 +340,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrations()
 
-        let rows = try queue.read { db in
+        let rows = try await queue.read { db in
             try Row.fetchAll(
                 db,
                 sql: """
@@ -372,14 +372,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(duplicateTotalTokens, 1_700)
     }
 
-    func test_v37_createsTokenUsagePerformanceIndexes() throws {
+    func test_v37_createsTokenUsagePerformanceIndexes() async throws {
         let queue = try DatabaseQueue()
-        try seedLegacyDatabaseThroughV35(queue)
+        try await Self.seedLegacyDatabaseThroughV35(queue)
 
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrations()
 
-        let indexes = try queue.read { db in
+        let indexes = try await queue.read { db in
             try String.fetchAll(
                 db,
                 sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'token_usage'"
@@ -392,13 +392,13 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("token_usage_provider_id_time_idx"))
     }
 
-    func test_v44_removesFactoryRoutedProviderMirrorsAndStaleModelRows() throws {
+    func test_v44_removesFactoryRoutedProviderMirrorsAndStaleModelRows() async throws {
         let queue = try DatabaseQueue()
-        try seedLegacyDatabaseThroughV35(queue)
+        try await Self.seedLegacyDatabaseThroughV35(queue)
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-        try queue.write { db in
-            try insertUsageRow(
+        try await queue.write { db in
+            try Self.insertUsageRow(
                 db,
                 id: "factory-canonical",
                 provider: "Factory",
@@ -411,7 +411,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 providerID: "factory",
                 now: now
             )
-            try insertUsageRow(
+            try Self.insertUsageRow(
                 db,
                 id: "minimax-mirror",
                 provider: "MiniMax",
@@ -424,7 +424,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 providerID: "minimax",
                 now: now
             )
-            try insertUsageRow(
+            try Self.insertUsageRow(
                 db,
                 id: "stale-estimate",
                 provider: "Claude Code",
@@ -437,7 +437,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 providerID: "claude-code",
                 now: now
             )
-            try insertUsageRow(
+            try Self.insertUsageRow(
                 db,
                 id: "exact-correction",
                 provider: "Claude Code",
@@ -455,7 +455,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrations()
 
-        let rows = try queue.read { db in
+        let rows = try await queue.read { db in
             try Row.fetchAll(
                 db,
                 sql: "SELECT provider, sessionId, model FROM token_usage ORDER BY sessionId, provider"
@@ -467,8 +467,8 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(rows.contains { ($0["model"] as? String) == "claude-4-sonnet" && ($0["sessionId"] as? String) == "corrected-model-session" })
     }
 
-    private func seedLegacyDatabaseThroughV35(_ queue: DatabaseQueue) throws {
-        try queue.write { db in
+    nonisolated private static func seedLegacyDatabaseThroughV35(_ queue: DatabaseQueue) async throws {
+        try await queue.write { db in
             try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
             for migration in Self.migrationIdentifiersThroughV35 {
                 try db.execute(sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)", arguments: [migration])
@@ -527,7 +527,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         }
     }
 
-    private func insertUsageRow(
+    nonisolated private static func insertUsageRow(
         _ db: Database,
         id: String,
         sessionID: String,
@@ -566,7 +566,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
     }
 
-    private func insertUsageRow(
+    nonisolated private static func insertUsageRow(
         _ db: Database,
         id: String,
         provider: String,

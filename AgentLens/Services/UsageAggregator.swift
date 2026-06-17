@@ -113,9 +113,12 @@ final class UsageAggregator {
         Task {
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                let pendingProjectionJobs = (try? self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
-                if pendingProjectionJobs > 0 {
-                    self.requestProjectionSweep()
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let pendingProjectionJobs = (try? await self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
+                    if pendingProjectionJobs > 0 {
+                        self.requestProjectionSweep()
+                    }
                 }
             }
         }
@@ -269,7 +272,7 @@ final class UsageAggregator {
             parserImportError = typed.message
             typedPersistenceError = typed
             do {
-                try upsertParserImportHealth(importedUsageCount: 0, persistenceError: typed.message)
+                try await upsertParserImportHealth(importedUsageCount: 0, persistenceError: typed.message)
             } catch {
                 let healthTyped = OpenBurnBarError.database(
                     "parser_health_persist_failed",
@@ -325,7 +328,7 @@ final class UsageAggregator {
         await dataStore.refresh()
 
         do {
-            try upsertParserImportHealth(
+            try await upsertParserImportHealth(
                 importedUsageCount: result.usages.count,
                 persistenceError: result.error
             )
@@ -339,7 +342,7 @@ final class UsageAggregator {
             typedPersistenceError = typed
         }
 
-        let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
+        let pendingProjectionJobs = (try? await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
         launchArtifactDiscoverySweep()
         if result.indexedConversationChanges > 0 {
             summaryEngine.launchAutoSummarySweep(indexedAfter: refreshStartedAt)
@@ -356,7 +359,7 @@ final class UsageAggregator {
 // MARK: - Private Helpers
 
 private extension UsageAggregator {
-    func upsertParserImportHealth(importedUsageCount: Int, persistenceError: String?) throws {
+    func upsertParserImportHealth(importedUsageCount: Int, persistenceError: String?) async throws {
         let providers = parsers.keys.sorted { $0.rawValue < $1.rawValue }
         let providerStates = providers.map { provider -> ParserImportHealthProviderState in
             let health = parserHealth[provider] ?? .notConfigured
@@ -408,7 +411,7 @@ private extension UsageAggregator {
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
         let now = Date()
-        try dataStore.upsertRetrievalHealth(
+        try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .parserImport,
                 status: status,
@@ -454,7 +457,7 @@ private extension UsageAggregator {
         } catch {
             let now = Date()
             do {
-                try dataStore.upsertRetrievalHealth(
+                try await dataStore.upsertRetrievalHealth(
                     RetrievalHealthRecord(
                         subsystem: .discovery,
                         status: .failed,
@@ -479,14 +482,14 @@ private extension UsageAggregator {
     @discardableResult
     func runProjectionSweep() async -> Bool {
         do {
-            let queueDepthBeforeSweep = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+            let queueDepthBeforeSweep = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
             let maxJobs = queueDepthBeforeSweep >= ProjectionWorkerPolicy.backlogCompactionThreshold
                 ? ProjectionWorkerPolicy.catchUpMaxJobsPerPass
                 : ProjectionWorkerPolicy.maxJobsPerPass
             let report = try await makeProjectionPipelineService().runSweep(
                 maxJobs: maxJobs
             )
-            let queueDepth = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+            let queueDepth = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
             let hasBacklog = queueDepth > 0 || report.leasedJobs >= maxJobs
 
             if shouldRefreshProjectionInsights(report: report, hasBacklog: hasBacklog) {
@@ -497,7 +500,7 @@ private extension UsageAggregator {
         } catch {
             let now = Date()
             do {
-                try dataStore.upsertRetrievalHealth(
+                try await dataStore.upsertRetrievalHealth(
                     RetrievalHealthRecord(
                         subsystem: .projection,
                         status: .failed,

@@ -2,15 +2,15 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    nonisolated func enqueueConversationProjectionJob(
+    func enqueueConversationProjectionJob(
         conversationID: String,
         jobType: ProjectionJobType = .reproject,
         priority: Int = 5,
         now: Date = Date()
-    ) throws {
+    ) async throws {
         guard let conversation = try fetchConversation(id: conversationID) else { return }
         let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
-        try enqueueProjectionJob(
+        try await enqueueProjectionJob(
             ProjectionJobRecord(
                 id: ProjectionIdentity.jobID(
                     jobType: jobType,
@@ -34,56 +34,56 @@ extension DataStore {
         )
     }
 
-    nonisolated func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
-        try projectionStore.enqueueProjectionJob(job)
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {
+        try await actor.projectionStore.enqueueProjectionJob(job)
     }
 
-    nonisolated func fetchProjectionJobs(
+    func fetchProjectionJobs(
         statuses: [ProjectionJobStatus] = [.queued, .leased, .running, .failed],
         limit: Int = 100
-    ) throws -> [ProjectionJobRecord] {
-        try projectionStore.fetchProjectionJobs(statuses: statuses, limit: limit)
+    ) async throws -> [ProjectionJobRecord] {
+        try await actor.projectionStore.fetchProjectionJobs(statuses: statuses, limit: limit)
     }
 
-    nonisolated func countProjectionJobs(statuses: [ProjectionJobStatus]? = nil) throws -> Int {
-        try projectionStore.countProjectionJobs(statuses: statuses)
+    func countProjectionJobs(statuses: [ProjectionJobStatus]? = nil) async throws -> Int {
+        try await actor.projectionStore.countProjectionJobs(statuses: statuses)
     }
 
-    nonisolated func compactConversationProjectionBacklog() throws -> Int {
-        try projectionStore.compactConversationProjectionBacklog()
+    func compactConversationProjectionBacklog() async throws -> Int {
+        try await actor.projectionStore.compactConversationProjectionBacklog()
     }
 
     @discardableResult
-    nonisolated func reapTerminalProjectionJobs(olderThan cutoff: Date, now: Date = Date()) throws -> Int {
-        try projectionStore.reapTerminalProjectionJobs(olderThan: cutoff, now: now)
+    func reapTerminalProjectionJobs(olderThan cutoff: Date, now: Date = Date()) async throws -> Int {
+        try await actor.projectionStore.reapTerminalProjectionJobs(olderThan: cutoff, now: now)
     }
 
-    nonisolated func hasProjectionJobs(
+    func hasProjectionJobs(
         statuses: [ProjectionJobStatus],
         jobTypes: [ProjectionJobType]
-    ) throws -> Bool {
-        try projectionStore.hasProjectionJobs(statuses: statuses, jobTypes: jobTypes)
+    ) async throws -> Bool {
+        try await actor.projectionStore.hasProjectionJobs(statuses: statuses, jobTypes: jobTypes)
     }
 
-    nonisolated func leaseNextProjectionJob(
+    func leaseNextProjectionJob(
         leaseOwner: String,
         leaseDuration: TimeInterval,
         now: Date = Date()
-    ) throws -> ProjectionJobRecord? {
-        try projectionStore.leaseNextJob(
+    ) async throws -> ProjectionJobRecord? {
+        try await actor.projectionStore.leaseNextJob(
             leaseOwner: leaseOwner,
             leaseExpiresAt: now.addingTimeInterval(leaseDuration),
             now: now
         )
     }
 
-    nonisolated func markProjectionJobLeased(
+    func markProjectionJobLeased(
         id: String,
         leaseOwner: String,
         leaseDuration: TimeInterval,
         now: Date = Date()
-    ) throws {
-        try projectionStore.markJobLeased(
+    ) async throws {
+        try await actor.projectionStore.markJobLeased(
             id: id,
             leaseOwner: leaseOwner,
             leaseExpiresAt: now.addingTimeInterval(leaseDuration),
@@ -91,18 +91,18 @@ extension DataStore {
         )
     }
 
-    nonisolated func markProjectionJobCompleted(id: String, completedAt: Date = Date()) throws {
-        try projectionStore.markJobCompleted(id: id, completedAt: completedAt)
+    func markProjectionJobCompleted(id: String, completedAt: Date = Date()) async throws {
+        try await actor.projectionStore.markJobCompleted(id: id, completedAt: completedAt)
     }
 
-    nonisolated func markProjectionJobFailed(
+    func markProjectionJobFailed(
         id: String,
         errorCode: String?,
         errorMessage: String?,
         retryAt: Date? = nil,
         updatedAt: Date = Date()
-    ) throws {
-        try projectionStore.markJobFailed(
+    ) async throws {
+        try await actor.projectionStore.markJobFailed(
             id: id,
             errorCode: errorCode,
             errorMessage: errorMessage,
@@ -111,13 +111,13 @@ extension DataStore {
         )
     }
 
-    nonisolated func markProjectionJobCanceled(
+    func markProjectionJobCanceled(
         id: String,
         errorCode: String?,
         errorMessage: String?,
         updatedAt: Date = Date()
-    ) throws {
-        try projectionStore.markJobCanceled(
+    ) async throws {
+        try await actor.projectionStore.markJobCanceled(
             id: id,
             errorCode: errorCode,
             errorMessage: errorMessage,
@@ -125,103 +125,103 @@ extension DataStore {
         )
     }
 
-    nonisolated func upsertEmbeddingModel(_ model: EmbeddingModelRecord) throws {
-        try projectionStore.upsertEmbeddingModel(model)
+    func upsertEmbeddingModel(_ model: EmbeddingModelRecord) async throws {
+        try await actor.projectionStore.upsertEmbeddingModel(model)
     }
 
-    nonisolated func fetchEmbeddingModels() throws -> [EmbeddingModelRecord] {
-        try projectionStore.fetchEmbeddingModels()
+    func fetchEmbeddingModels() async throws -> [EmbeddingModelRecord] {
+        try await actor.projectionStore.fetchEmbeddingModels()
     }
 
-    nonisolated func countEmbeddingModels() throws -> Int {
-        try projectionStore.countEmbeddingModels()
+    func countEmbeddingModels() async throws -> Int {
+        try await actor.projectionStore.countEmbeddingModels()
     }
 
-    nonisolated func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
-        try projectionStore.upsertEmbeddingVersion(version)
+    func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) async throws {
+        try await actor.projectionStore.upsertEmbeddingVersion(version)
     }
 
-    nonisolated func fetchEmbeddingVersions(modelID: String? = nil) throws -> [EmbeddingVersionRecord] {
-        try projectionStore.fetchEmbeddingVersions(modelID: modelID)
+    func fetchEmbeddingVersions(modelID: String? = nil) async throws -> [EmbeddingVersionRecord] {
+        try await actor.projectionStore.fetchEmbeddingVersions(modelID: modelID)
     }
 
-    nonisolated func countEmbeddingVersions(modelID: String? = nil) throws -> Int {
-        try projectionStore.countEmbeddingVersions(modelID: modelID)
+    func countEmbeddingVersions(modelID: String? = nil) async throws -> Int {
+        try await actor.projectionStore.countEmbeddingVersions(modelID: modelID)
     }
 
-    nonisolated func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) throws {
-        try projectionStore.upsertChunkEmbedding(embedding)
+    func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) async throws {
+        try await actor.projectionStore.upsertChunkEmbedding(embedding)
     }
 
-    nonisolated func fetchChunkEmbeddings(chunkID: String? = nil) throws -> [ChunkEmbeddingRecord] {
-        try projectionStore.fetchChunkEmbeddings(chunkID: chunkID)
+    func fetchChunkEmbeddings(chunkID: String? = nil) async throws -> [ChunkEmbeddingRecord] {
+        try await actor.projectionStore.fetchChunkEmbeddings(chunkID: chunkID)
     }
 
-    nonisolated func fetchChunkEmbeddings(embeddingVersionID: String) throws -> [ChunkEmbeddingRecord] {
-        try projectionStore.fetchChunkEmbeddings(embeddingVersionID: embeddingVersionID)
+    func fetchChunkEmbeddings(embeddingVersionID: String) async throws -> [ChunkEmbeddingRecord] {
+        try await actor.projectionStore.fetchChunkEmbeddings(embeddingVersionID: embeddingVersionID)
     }
 
-    nonisolated func fetchChunkEmbeddings(
+    func fetchChunkEmbeddings(
         embeddingVersionID: String,
         limit: Int,
         offset: Int
-    ) throws -> [ChunkEmbeddingRecord] {
-        try projectionStore.fetchChunkEmbeddings(
+    ) async throws -> [ChunkEmbeddingRecord] {
+        try await actor.projectionStore.fetchChunkEmbeddings(
             embeddingVersionID: embeddingVersionID,
             limit: limit,
             offset: offset
         )
     }
 
-    nonisolated func fetchChunkEmbeddings(
+    func fetchChunkEmbeddings(
         chunkIDs: [String],
         embeddingVersionID: String
-    ) throws -> [ChunkEmbeddingRecord] {
-        try projectionStore.fetchChunkEmbeddings(chunkIDs: chunkIDs, embeddingVersionID: embeddingVersionID)
+    ) async throws -> [ChunkEmbeddingRecord] {
+        try await actor.projectionStore.fetchChunkEmbeddings(chunkIDs: chunkIDs, embeddingVersionID: embeddingVersionID)
     }
 
-    nonisolated func countChunkEmbeddings(
+    func countChunkEmbeddings(
         chunkID: String? = nil,
         embeddingVersionID: String? = nil
-    ) throws -> Int {
-        try projectionStore.countChunkEmbeddings(chunkID: chunkID, embeddingVersionID: embeddingVersionID)
+    ) async throws -> Int {
+        try await actor.projectionStore.countChunkEmbeddings(chunkID: chunkID, embeddingVersionID: embeddingVersionID)
     }
 
-    nonisolated func countChunkEmbeddings(
+    func countChunkEmbeddings(
         documentID: String,
         embeddingVersionID: String? = nil
-    ) throws -> Int {
-        try projectionStore.countChunkEmbeddings(documentID: documentID, embeddingVersionID: embeddingVersionID)
+    ) async throws -> Int {
+        try await actor.projectionStore.countChunkEmbeddings(documentID: documentID, embeddingVersionID: embeddingVersionID)
     }
 
-    nonisolated func chunkEmbeddingVersionStats(embeddingVersionID: String) throws -> ChunkEmbeddingVersionStats {
-        try projectionStore.chunkEmbeddingVersionStats(embeddingVersionID: embeddingVersionID)
+    func chunkEmbeddingVersionStats(embeddingVersionID: String) async throws -> ChunkEmbeddingVersionStats {
+        try await actor.projectionStore.chunkEmbeddingVersionStats(embeddingVersionID: embeddingVersionID)
     }
 
-    nonisolated func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) throws {
-        try projectionStore.upsertVectorIndexSnapshot(snapshot)
+    func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) async throws {
+        try await actor.projectionStore.upsertVectorIndexSnapshot(snapshot)
     }
 
-    nonisolated func fetchVectorIndexSnapshot(
+    func fetchVectorIndexSnapshot(
         embeddingVersionID: String,
         backendID: String
-    ) throws -> VectorIndexSnapshotRecord? {
-        try projectionStore.fetchVectorIndexSnapshot(embeddingVersionID: embeddingVersionID, backendID: backendID)
+    ) async throws -> VectorIndexSnapshotRecord? {
+        try await actor.projectionStore.fetchVectorIndexSnapshot(embeddingVersionID: embeddingVersionID, backendID: backendID)
     }
 
-    nonisolated func fetchVectorIndexSnapshots(embeddingVersionID: String? = nil) throws -> [VectorIndexSnapshotRecord] {
-        try projectionStore.fetchVectorIndexSnapshots(embeddingVersionID: embeddingVersionID)
+    func fetchVectorIndexSnapshots(embeddingVersionID: String? = nil) async throws -> [VectorIndexSnapshotRecord] {
+        try await actor.projectionStore.fetchVectorIndexSnapshots(embeddingVersionID: embeddingVersionID)
     }
 
-    nonisolated func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
-        try projectionStore.upsertRetrievalHealth(health)
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws {
+        try await actor.projectionStore.upsertRetrievalHealth(health)
     }
 
-    nonisolated func fetchRetrievalHealth() throws -> [RetrievalHealthRecord] {
-        try projectionStore.fetchRetrievalHealth()
+    func fetchRetrievalHealth() async throws -> [RetrievalHealthRecord] {
+        try await actor.projectionStore.fetchRetrievalHealth()
     }
 
-    nonisolated func localSearchSchemaInventory() throws -> LocalSearchSchemaInventory {
-        try projectionStore.schemaInventory()
+    func localSearchSchemaInventory() async throws -> LocalSearchSchemaInventory {
+        try await actor.projectionStore.schemaInventory()
     }
 }
