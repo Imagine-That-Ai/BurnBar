@@ -9,6 +9,8 @@
     "test:storage-rules": "firebase emulators:exec --only storage --project burnbar-test 'node storage-rules.test.js'",
     "test:all": "npm run test:ci && npm run test:storage-rules",
     "test:session-log-backup": "firebase emulators:exec --only firestore --project burnbar-test 'node session-log-backup.test.js'",
+    "test:shared-artifact-sealed": "firebase emulators:exec --only firestore --project burnbar-test 'node shared-artifact-sealed.test.js'",
+    "test:cloud-vault-generation-monotonic": "firebase emulators:exec --only firestore --project burnbar-test 'node cloud-vault-generation-monotonic.test.js'",
     "test:m007-path-bound-sealed-payload": "firebase emulators:exec --only firestore --project burnbar-test 'node m007-path-bound-sealed-payload.test.js'",
     "test:chat-thread-path-bound": "firebase emulators:exec --only firestore --project burnbar-test 'node chat-thread-path-bound.test.js'",
     "test:cli-session-path-bound": "firebase emulators:exec --only firestore --project burnbar-test 'node cli-session-path-bound.test.js'",
