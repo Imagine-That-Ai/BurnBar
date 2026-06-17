@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - SearchIndexStore
@@ -14,8 +14,8 @@ final class SearchIndexStore: Sendable {
 
     // MARK: - Documents
 
-    func upsertDocument(_ document: SearchDocumentRecord) throws {
-        try dbQueue.write { db in
+    func upsertDocument(_ document: SearchDocumentRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO search_documents (
@@ -56,8 +56,8 @@ final class SearchIndexStore: Sendable {
         }
     }
 
-    func fetchDocuments(limit: Int) throws -> [SearchDocumentRecord] {
-        try dbQueue.read { db in
+    func fetchDocuments(limit: Int) async throws -> [SearchDocumentRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -72,8 +72,8 @@ final class SearchIndexStore: Sendable {
     }
 
     /// Paginated document fetch using offset-based cursor.
-    func fetchDocuments(limit: Int, offset: Int) throws -> [SearchDocumentRecord] {
-        try dbQueue.read { db in
+    func fetchDocuments(limit: Int, offset: Int) async throws -> [SearchDocumentRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -93,7 +93,7 @@ final class SearchIndexStore: Sendable {
         projectName: String?,
         sourceKinds: [SearchSourceKind]?,
         dateRange: ClosedRange<Date>?
-    ) throws -> [SearchDocumentRecord] {
+    ) async throws -> [SearchDocumentRecord] {
         let (whereSQL, args) = Self.filteredDocumentClause(
             provider: provider,
             projectName: projectName,
@@ -103,7 +103,9 @@ final class SearchIndexStore: Sendable {
         var queryArgs = args
         queryArgs.append(max(1, limit))
 
-        return try dbQueue.read { db in
+        let capturedArgs = queryArgs
+
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -112,7 +114,7 @@ final class SearchIndexStore: Sendable {
                 ORDER BY COALESCE(sourceUpdatedAt, indexedAt) DESC, indexedAt DESC, createdAt DESC
                 LIMIT ?
                 """,
-                arguments: StatementArguments(queryArgs)
+                arguments: StatementArguments(capturedArgs)
             )
             return rows.compactMap(Self.document(from:))
         }
@@ -127,7 +129,7 @@ final class SearchIndexStore: Sendable {
         projectName: String?,
         sourceKinds: [SearchSourceKind]?,
         dateRange: ClosedRange<Date>?
-    ) throws -> [SearchDocumentRecord] {
+    ) async throws -> [SearchDocumentRecord] {
         let (whereSQL, args) = Self.filteredDocumentClause(
             provider: provider,
             projectName: projectName,
@@ -138,7 +140,9 @@ final class SearchIndexStore: Sendable {
         queryArgs.append(max(1, limit))
         queryArgs.append(max(0, offset))
 
-        return try dbQueue.read { db in
+        let capturedArgs = queryArgs
+
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -147,17 +151,17 @@ final class SearchIndexStore: Sendable {
                 ORDER BY COALESCE(sourceUpdatedAt, indexedAt) DESC, indexedAt DESC, createdAt DESC, id ASC
                 LIMIT ? OFFSET ?
                 """,
-                arguments: StatementArguments(queryArgs)
+                arguments: StatementArguments(capturedArgs)
             )
             return rows.compactMap(Self.document(from:))
         }
     }
 
-    func fetchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
+    func fetchDocuments(ids: [String]) async throws -> [SearchDocumentRecord] {
         let uniqueIDs = Array(Set(ids)).sorted()
         guard uniqueIDs.isEmpty == false else { return [] }
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -171,12 +175,12 @@ final class SearchIndexStore: Sendable {
         }
     }
 
-    func fetchDocument(id: String) throws -> SearchDocumentRecord? {
-        try fetchDocuments(ids: [id]).first
+    func fetchDocument(id: String) async throws -> SearchDocumentRecord? {
+        try await fetchDocuments(ids: [id]).first
     }
 
-    func fetchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
-        try dbQueue.read { db in
+    func fetchDocuments(sourceKind: SearchSourceKind, sourceID: String) async throws -> [SearchDocumentRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -195,15 +199,16 @@ final class SearchIndexStore: Sendable {
         projectName: String?,
         sourceKinds: [SearchSourceKind]?,
         dateRange: ClosedRange<Date>?
-    ) throws -> Int {
+    ) async throws -> Int {
         let (whereSQL, args) = Self.filteredDocumentClause(
             provider: provider,
             projectName: projectName,
             sourceKinds: sourceKinds,
             dateRange: dateRange
         )
+        let capturedArgs = args
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -211,13 +216,13 @@ final class SearchIndexStore: Sendable {
                 FROM search_documents
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(capturedArgs)
             ) ?? 0
         }
     }
 
-    func deleteDocuments(sourceKind: SearchSourceKind, sourceID: String) throws {
-        try dbQueue.write { db in
+    func deleteDocuments(sourceKind: SearchSourceKind, sourceID: String) async throws {
+        try await dbQueue.write { db in
             let documentIDs = try String.fetchAll(
                 db,
                 sql: """
@@ -250,7 +255,7 @@ final class SearchIndexStore: Sendable {
     func countChunks(
         sourceKinds: [SearchSourceKind]?,
         dateRange: ClosedRange<Date>?
-    ) throws -> Int {
+    ) async throws -> Int {
         let normalizedSourceKinds = Array(Set(sourceKinds ?? [])).sorted { $0.rawValue < $1.rawValue }
         var clauses: [String] = []
         var args: [any DatabaseValueConvertible] = []
@@ -268,7 +273,8 @@ final class SearchIndexStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let capturedArgs = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -277,13 +283,13 @@ final class SearchIndexStore: Sendable {
                 JOIN search_documents AS d ON d.id = c.documentID
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(capturedArgs)
             ) ?? 0
         }
     }
 
-    func countChunks(documentID: String) throws -> Int {
-        try dbQueue.read { db in
+    func countChunks(documentID: String) async throws -> Int {
+        try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -313,16 +319,16 @@ final class SearchIndexStore: Sendable {
         documentID: String,
         title: String,
         newChunks: [SearchChunkRecord]
-    ) throws -> ChunkDiffResult {
+    ) async throws -> ChunkDiffResult {
         // Fetch existing chunks for this document
-        let existingChunks = try fetchChunks(documentID: documentID)
+        let existingChunks = try await fetchChunks(documentID: documentID)
 
         // If no existing chunks, just insert all (first projection)
         if existingChunks.isEmpty {
             guard newChunks.isEmpty == false else {
                 return ChunkDiffResult(unchanged: 0, rekeyed: 0, added: newChunks.count, deleted: 0, existingTotal: 0, newTotal: newChunks.count)
             }
-            try replaceChunks(documentID: documentID, title: title, chunks: newChunks)
+            try await replaceChunks(documentID: documentID, title: title, chunks: newChunks)
             return ChunkDiffResult(unchanged: 0, rekeyed: 0, added: newChunks.count, deleted: 0, existingTotal: 0, newTotal: newChunks.count)
         }
 
@@ -383,9 +389,8 @@ final class SearchIndexStore: Sendable {
         }
 
         // Apply the diff
-        var actualAdded = 0
-        var actualDeleted = 0
-        try dbQueue.write { db in
+        let (actualAdded, actualDeleted) = try await dbQueue.write { db -> (Int, Int) in
+            var actualAdded = 0
             let documentRow = try Row.fetchOne(
                 db,
                 sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
@@ -417,7 +422,7 @@ final class SearchIndexStore: Sendable {
                 try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
                 try db.execute(sql: "DELETE FROM search_chunks WHERE id = ?", arguments: [chunkID])
             }
-            actualDeleted = oldIDsToDelete.count
+            let actualDeleted = oldIDsToDelete.count
 
             // Insert added chunks (new content hashes)
             for hash in addedHashes {
@@ -442,6 +447,8 @@ final class SearchIndexStore: Sendable {
                     }
                 }
             }
+
+            return (actualAdded, actualDeleted)
         }
 
         return ChunkDiffResult(
@@ -454,8 +461,8 @@ final class SearchIndexStore: Sendable {
         )
     }
 
-    func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
-        try dbQueue.write { db in
+    func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws {
+        try await dbQueue.write { db in
             let documentRow = try Row.fetchOne(
                 db,
                 sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
@@ -484,8 +491,8 @@ final class SearchIndexStore: Sendable {
     /// that have embeddings for the given version. Used for embedding reuse:
     /// when a new chunk has the same contentHash, the existing embedding
     /// can be copied to the new chunk ID instead of regenerating it.
-    func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) throws -> [String: (chunkID: String, vectorBlob: Data)] {
-        try dbQueue.read { db in
+    func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) async throws -> [String: (chunkID: String, vectorBlob: Data)] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -551,8 +558,8 @@ final class SearchIndexStore: Sendable {
         )
     }
 
-    func fetchChunks(documentID: String) throws -> [SearchChunkRecord] {
-        try dbQueue.read { db in
+    func fetchChunks(documentID: String) async throws -> [SearchChunkRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -566,11 +573,11 @@ final class SearchIndexStore: Sendable {
         }
     }
 
-    func fetchChunks(ids: [String]) throws -> [SearchChunkRecord] {
+    func fetchChunks(ids: [String]) async throws -> [SearchChunkRecord] {
         let uniqueIDs = Array(Set(ids)).sorted()
         guard uniqueIDs.isEmpty == false else { return [] }
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -584,8 +591,8 @@ final class SearchIndexStore: Sendable {
         }
     }
 
-    func fetchChunks(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchChunkRecord] {
-        try dbQueue.read { db in
+    func fetchChunks(sourceKind: SearchSourceKind, sourceID: String) async throws -> [SearchChunkRecord] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -611,7 +618,7 @@ final class SearchIndexStore: Sendable {
         sharedArtifactAccessContext: SharedArtifactAccessContext?,
         sourceIDs: [String]?,
         limit: Int
-    ) throws -> [SearchChunkLexicalMatch] {
+    ) async throws -> [SearchChunkLexicalMatch] {
         guard ftsQuery.isEmpty == false, limit > 0 else { return [] }
 
         let normalizedSourceKinds = Array(Set(sourceKinds ?? [])).sorted { $0.rawValue < $1.rawValue }
@@ -708,8 +715,9 @@ final class SearchIndexStore: Sendable {
 
         let whereSQL = clauses.joined(separator: " AND ")
         args.append(limit)
+        let capturedArgs = args
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -740,7 +748,7 @@ final class SearchIndexStore: Sendable {
                 ORDER BY lexicalRank ASC, d.indexedAt DESC, c.ordinal ASC
                 LIMIT ?
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(capturedArgs)
             )
             return rows.compactMap(Self.lexicalMatch(from:))
         }

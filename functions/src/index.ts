@@ -169,6 +169,7 @@ export {
 export {
   onUsageWritten,
   rebuildRollups,
+  rollupUserRebuild,
   refreshAllProviderQuotas,
   refreshModelLandscapeBenchmarks,
   anchorAuditLogHeads,

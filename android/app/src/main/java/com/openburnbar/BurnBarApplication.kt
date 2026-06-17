@@ -33,6 +33,7 @@ import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
+import com.openburnbar.remote.BurnBarRemoteBridge
 import com.openburnbar.services.media.AgentReplyNotificationState
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -145,6 +146,12 @@ class BurnBarApplication : Application() {
         super.onCreate()
         appContext = applicationContext
         OpenBurnBarIrohNativeContext.install(applicationContext)
+        val remoteReadiness = BurnBarRemoteBridge.readiness()
+        Log.i(
+            "BurnBar",
+            "BurnBar remote engine readiness: protocol=${remoteReadiness.protocolVersion}, " +
+                "native=${remoteReadiness.nativeBridgeAvailable}",
+        )
         // T-AND-06: install the Sentry privacy scrubber BEFORE anything can capture a crash/ANR,
         // so no payload or breadcrumb can ship prompt/credential fragments off device. This reads
         // the manifest-configured DSN/options and adds beforeSend/beforeBreadcrumb on top.

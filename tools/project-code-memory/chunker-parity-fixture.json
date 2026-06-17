@@ -1,0 +1,31 @@
+{
+  "schema": "openburnbar.project-code-memory.chunker-parity.v1",
+  "chunker": {
+    "maxCharacters": 2400,
+    "overlapCharacters": 240
+  },
+  "cases": [
+    {
+      "name": "short_text",
+      "parts": [
+        { "text": "alpha\nbeta\n", "count": 1 }
+      ],
+      "expectedRanges": [[0, 11]]
+    },
+    {
+      "name": "overlap_without_newline",
+      "parts": [
+        { "text": "0123456789", "count": 270 }
+      ],
+      "expectedRanges": [[0, 2400], [2160, 2700]]
+    },
+    {
+      "name": "newline_boundary",
+      "parts": [
+        { "text": "line\n", "count": 300 },
+        { "text": "tail", "count": 300 }
+      ],
+      "expectedRanges": [[0, 1500], [1260, 2700]]
+    }
+  ]
+}

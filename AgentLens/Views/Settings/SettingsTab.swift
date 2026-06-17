@@ -90,6 +90,20 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Optional whimsical SVG asset name rendered in place of the SF Symbol
+    /// for settings tabs that have a matching custom icon.
+    var customIcon: String? {
+        switch self {
+        case .general: return "SettingsIconSettingsB"
+        case .cloud: return "SettingsIconCloud"
+        case .agents: return "SettingsIconAgent"
+        case .account: return "SettingsIconSignIn"
+        case .devicesAndSync: return "SettingsIconConnections"
+        case .dataPrivacy: return "SettingsIconData"
+        default: return nil
+        }
+    }
+
     var accentColor: Color {
         switch self {
         case .general: return DesignSystem.Colors.amber

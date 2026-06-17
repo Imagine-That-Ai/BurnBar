@@ -1,0 +1,4 @@
+module burnbar_remoteFFI {
+    header "burnbar_remoteFFI.h"
+    export *
+}

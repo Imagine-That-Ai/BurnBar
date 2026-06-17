@@ -17,7 +17,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
         let expiredLeaseTime = Date(timeIntervalSince1970: 1_742_200_010)
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: ProjectionIdentity.jobID(
                     jobType: .project,
@@ -46,15 +46,15 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let report = try await service.runSweep(maxJobs: 5)
         XCTAssertGreaterThanOrEqual(report.completedJobs, 1)
 
-        let completed = try store.fetchProjectionJobs(statuses: [.completed], limit: 20)
+        let completed = try await store.fetchProjectionJobs(statuses: [.completed], limit: 20)
         XCTAssertTrue(completed.contains(where: { $0.sourceID == conversation.id }))
 
-        let documents = try store.fetchSearchDocuments(limit: 20)
+        let documents = try await store.fetchSearchDocuments(limit: 20)
         guard let projectedConversationDocument = documents.first(where: { $0.sourceID == conversation.id }) else {
             XCTFail("Expected projected document for crash-recovered conversation.")
             return
         }
-        let chunks = try store.fetchSearchChunks(documentID: projectedConversationDocument.id)
+        let chunks = try await store.fetchSearchChunks(documentID: projectedConversationDocument.id)
         XCTAssertFalse(chunks.isEmpty)
     }
 
@@ -88,21 +88,22 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             updatedAt: now
         )
 
-        try store.enqueueProjectionJob(job)
-        try store.enqueueProjectionJob(job)
+        try await store.enqueueProjectionJob(job)
+        try await store.enqueueProjectionJob(job)
         _ = try await service.runSweep(maxJobs: 10)
 
-        let documents = try store.fetchSearchDocuments(limit: 10)
+        let documents = try await store.fetchSearchDocuments(limit: 10)
         XCTAssertEqual(documents.count, 1)
-        let chunkCount = try store.fetchSearchChunks(documentID: documents[0].id).count
+        let chunkCount = try await store.fetchSearchChunks(documentID: documents[0].id).count
         XCTAssertGreaterThan(chunkCount, 1)
 
-        try store.enqueueProjectionJob(job)
-        XCTAssertTrue(try store.fetchProjectionJobs(statuses: [.queued], limit: 10).isEmpty)
+        try await store.enqueueProjectionJob(job)
+        let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        XCTAssertTrue(queuedJobs.isEmpty)
 
         let secondSweep = try await service.runSweep(maxJobs: 10)
         XCTAssertEqual(secondSweep.completedJobs, 0)
-        let secondChunkCount = try store.fetchSearchChunks(documentID: documents[0].id).count
+        let secondChunkCount = try await store.fetchSearchChunks(documentID: documents[0].id).count
         XCTAssertEqual(secondChunkCount, chunkCount)
     }
 
@@ -129,9 +130,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(artifact)
+        _ = try await store.upsertSourceArtifact(artifact)
 
-        try service.enqueueSelectiveReproject(
+        try await service.enqueueSelectiveReproject(
             sourceKind: artifact.sourceKind,
             sourceID: artifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
@@ -139,10 +140,15 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             priority: 5
         )
         _ = try await service.runSweep(maxJobs: 10)
-        XCTAssertEqual(try store.fetchSearchDocuments(limit: 10).count, 1)
+        let documentCountAfterProject = try await store.fetchSearchDocuments(limit: 10).count
+        XCTAssertEqual(documentCountAfterProject, 1)
 
-        XCTAssertTrue(try store.markSourceArtifactDeleted(id: artifact.id, deletedAt: base.addingTimeInterval(60)))
-        try service.enqueueSelectiveReproject(
+        let markedDeleted = try await store.markSourceArtifactDeleted(
+            id: artifact.id,
+            deletedAt: base.addingTimeInterval(60)
+        )
+        XCTAssertTrue(markedDeleted)
+        try await service.enqueueSelectiveReproject(
             sourceKind: artifact.sourceKind,
             sourceID: artifact.id,
             sourceVersionID: ProjectionIdentity.deletedSourceVersionID,
@@ -151,7 +157,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
         _ = try await service.runSweep(maxJobs: 10)
 
-        XCTAssertEqual(try store.fetchSearchDocuments(limit: 10).count, 0)
+        let documentCountAfterPurge = try await store.fetchSearchDocuments(limit: 10).count
+        XCTAssertEqual(documentCountAfterPurge, 0)
     }
 
     func test_rebuildJob_enqueuesReprojectAndPurgeCandidates() async throws {
@@ -180,7 +187,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(activeArtifact)
+        _ = try await store.upsertSourceArtifact(activeArtifact)
 
         let deletedArtifact = SourceArtifactRecord(
             id: "artifact-deleted",
@@ -200,14 +207,18 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(deletedArtifact)
-        XCTAssertTrue(try store.markSourceArtifactDeleted(id: deletedArtifact.id, deletedAt: base.addingTimeInterval(120)))
+        _ = try await store.upsertSourceArtifact(deletedArtifact)
+        let markedDeleted = try await store.markSourceArtifactDeleted(
+            id: deletedArtifact.id,
+            deletedAt: base.addingTimeInterval(120)
+        )
+        XCTAssertTrue(markedDeleted)
 
-        try service.enqueueRebuildJob(reason: "test-rebuild", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-rebuild", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1)
 
-        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 20)
+        let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 20)
         XCTAssertTrue(queued.contains(where: { $0.sourceKind == .conversation && $0.sourceID == conversation.id && $0.jobType == .reproject }))
         XCTAssertTrue(queued.contains(where: { $0.sourceKind == activeArtifact.sourceKind && $0.sourceID == activeArtifact.id && $0.jobType == .reproject }))
         XCTAssertTrue(queued.contains(where: { $0.sourceKind == deletedArtifact.sourceKind && $0.sourceID == deletedArtifact.id && $0.jobType == .purge }))
@@ -229,26 +240,28 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await service.runSweep(maxJobs: 20)
 
         let expectedModelID = EmbeddingIdentity.modelID(for: embedder.descriptor)
         let expectedVersionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
 
-        XCTAssertEqual(try store.fetchEmbeddingModels().map(\.id), [expectedModelID])
-        XCTAssertEqual(try store.fetchEmbeddingVersions(modelID: expectedModelID).first?.id, expectedVersionID)
-        XCTAssertEqual(try store.fetchEmbeddingVersions(modelID: expectedModelID).first?.isActive, true)
+        let embeddingModels = try await store.fetchEmbeddingModels()
+        let embeddingVersions = try await store.fetchEmbeddingVersions(modelID: expectedModelID)
+        XCTAssertEqual(embeddingModels.map(\.id), [expectedModelID])
+        XCTAssertEqual(embeddingVersions.first?.id, expectedVersionID)
+        XCTAssertEqual(embeddingVersions.first?.isActive, true)
 
         guard
-            let document = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id })
+            let document = try await store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id })
         else {
             XCTFail("Expected projected conversation document for embedding lineage test.")
             return
         }
-        let chunks = try store.fetchSearchChunks(documentID: document.id)
+        let chunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertFalse(chunks.isEmpty)
 
-        let indexedEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: expectedVersionID)
+        let indexedEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: expectedVersionID)
         XCTAssertEqual(Set(indexedEmbeddings.map(\.chunkID)), Set(chunks.map(\.id)))
         if let firstVector = indexedEmbeddings.first?.vectorBlob, let decoded = VectorBlobCodec.decode(firstVector) {
             XCTAssertEqual(decoded.count, embedder.descriptor.dimensions)
@@ -272,12 +285,12 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await serviceV1.runSweep(maxJobs: 20)
 
         guard
-            let document = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id }),
-            let chunk = try store.fetchSearchChunks(documentID: document.id).first
+            let document = try await store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id }),
+            let chunk = try await store.fetchSearchChunks(documentID: document.id).first
         else {
             XCTFail("Expected projected chunk before re-embed.")
             return
@@ -285,7 +298,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         let versionV1ID = EmbeddingIdentity.versionID(for: embedderV1.descriptor)
         guard
-            let blobV1 = try store.fetchChunkEmbeddings(chunkID: chunk.id).first(where: { $0.embeddingVersionID == versionV1ID })?.vectorBlob
+            let blobV1 = try await store.fetchChunkEmbeddings(chunkID: chunk.id).first(where: { $0.embeddingVersionID == versionV1ID })?.vectorBlob
         else {
             XCTFail("Expected initial embedding for first version.")
             return
@@ -297,7 +310,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             leaseOwner: "worker-reembed-v2",
             chunkEmbedder: embedderV2
         )
-        try serviceV2.enqueueReembedJob(
+        try await serviceV2.enqueueReembedJob(
             reason: "test-reembed",
             sourceKind: .conversation,
             sourceID: conversation.id,
@@ -306,7 +319,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         _ = try await serviceV2.runSweep(maxJobs: 20)
 
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
-        let chunkEmbeddings = try store.fetchChunkEmbeddings(chunkID: chunk.id)
+        let chunkEmbeddings = try await store.fetchChunkEmbeddings(chunkID: chunk.id)
         XCTAssertTrue(chunkEmbeddings.contains { $0.embeddingVersionID == versionV1ID })
         XCTAssertTrue(chunkEmbeddings.contains { $0.embeddingVersionID == versionV2ID })
         XCTAssertNotEqual(
@@ -315,8 +328,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         let modelID = EmbeddingIdentity.modelID(for: embedderV2.descriptor)
-        XCTAssertEqual(try store.fetchEmbeddingVersions(modelID: modelID).first?.id, versionV2ID)
-        XCTAssertEqual(try store.fetchEmbeddingVersions(modelID: modelID).first?.isActive, true)
+        let embeddingVersions = try await store.fetchEmbeddingVersions(modelID: modelID)
+        XCTAssertEqual(embeddingVersions.first?.id, versionV2ID)
+        XCTAssertEqual(embeddingVersions.first?.isActive, true)
     }
 
     // MARK: - Gap Repair Deterministic Tests (VAL-INDEX-003)
@@ -352,9 +366,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         // Project all three conversations — this creates search_documents with content hashes.
         // Use a high maxJobs to ensure the initial backfill rebuild + projections + reembed
         // are all fully drained in one or two sweeps.
-        try store.enqueueConversationProjectionJob(conversationID: staleConv.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: nonStaleConv1.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: nonStaleConv2.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: staleConv.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: nonStaleConv1.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: nonStaleConv2.id, jobType: .project, now: base)
 
         // Drain the queue completely (backfill rebuild may generate extra jobs)
         for _ in 0..<5 {
@@ -363,7 +377,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         // Verify all three are indexed
-        let indexedDocs = try store.fetchSearchDocuments(
+        let indexedDocs = try await store.fetchSearchDocuments(
             limit: 10,
             sourceKinds: [.conversation]
         )
@@ -400,7 +414,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         // nonStaleConv1 and nonStaleConv2 remain unchanged — they should NOT be re-enqueued
 
         // Record the stale hash before gap repair to confirm it was different
-        let staleDocBeforeRepair = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleConv.id).first
+        let staleDocBeforeRepair = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleConv.id).first
         XCTAssertNotNil(staleDocBeforeRepair, "Stale conversation should still have an indexed document.")
         let staleHashBeforeRepair = staleDocBeforeRepair?.contentHash ?? ""
         let expectedNewHash = ProjectionIdentity.conversationContentHash(for: updatedStaleConv)
@@ -410,11 +424,11 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // Clear any remaining queued jobs from initial projection to isolate gap repair results
-        let pendingBefore = try store.fetchProjectionJobs(statuses: [.queued, .failed], limit: 50)
+        let pendingBefore = try await store.fetchProjectionJobs(statuses: [.queued, .failed], limit: 50)
         XCTAssertTrue(pendingBefore.isEmpty, "Queue should be empty before gap repair sweep.")
 
         // Record completed job count before gap repair sweep
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
 
         // Trigger sweep — gap repair runs at the start of runSweep before processing queued jobs.
         // The sweep will both detect the stale gap (enqueue reproject) and process it within
@@ -422,12 +436,12 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let repairReport = try await service.runSweep(maxJobs: 20)
 
         // Verify that exactly one new job was completed (the gap repair reproject)
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
         let newCompletedCount = completedAfter - completedBefore
         XCTAssertEqual(newCompletedCount, 1, "Gap repair should have completed exactly one new reproject job for the stale conversation.")
 
         // Verify the completed job was a reproject for the stale conversation
-        let recentlyCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 200)
+        let recentlyCompleted = try await store.fetchProjectionJobs(statuses: [.completed], limit: 200)
         let staleReprojectCompleted = recentlyCompleted.filter {
             $0.sourceID == staleConv.id && $0.jobType == .reproject
             && $0.sourceVersionID == ProjectionIdentity.conversationSourceVersionID(for: updatedStaleConv)
@@ -435,11 +449,11 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertEqual(staleReprojectCompleted.count, 1, "Stale conversation should have exactly one completed reproject job with the updated source version.")
 
         // No queued jobs should remain
-        let queuedAfterRepair = try store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        let queuedAfterRepair = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
         XCTAssertTrue(queuedAfterRepair.isEmpty, "No queued jobs should remain after gap repair sweep.")
 
         // Verify the stale document was updated with the new hash
-        let staleDocAfterRepair = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleConv.id).first
+        let staleDocAfterRepair = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleConv.id).first
         XCTAssertNotNil(staleDocAfterRepair, "Stale conversation document should exist after reproject.")
         XCTAssertEqual(
             staleDocAfterRepair?.contentHash,
@@ -453,7 +467,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // Confirm non-stale documents were NOT rewritten
-        let nonStale1Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv1.id).first
+        let nonStale1Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv1.id).first
         let nonStale1Record = try store.fetchConversation(id: nonStaleConv1.id)
         XCTAssertNotNil(nonStale1Record)
         XCTAssertEqual(
@@ -462,7 +476,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             "Non-stale document 1 hash should still match source (was never rewritten)."
         )
 
-        let nonStale2Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv2.id).first
+        let nonStale2Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv2.id).first
         let nonStale2Record = try store.fetchConversation(id: nonStaleConv2.id)
         XCTAssertNotNil(nonStale2Record)
         XCTAssertEqual(
@@ -495,8 +509,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         try store.upsertConversation(conv2)
 
         // Project both
-        try store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
 
         // Drain the queue completely (backfill rebuild generates extra jobs beyond the 2 project jobs)
         for _ in 0..<5 {
@@ -505,18 +519,18 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         // Verify both are indexed
-        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, 2, "Both conversations should be indexed.")
 
         // No source data changes — conversations remain identical to indexed state
         // Record completed count before running the no-gap sweep
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
 
         // Run another sweep; gap repair should produce zero new jobs
         let noGapReport = try await service.runSweep(maxJobs: 20)
 
         // No queued gap-repair jobs should exist (priority 3 reproject = gap repair)
-        let queuedJobs = try store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
         let repairJobs = queuedJobs.filter { $0.jobType == .reproject && $0.priority == 3 }
         XCTAssertTrue(
             repairJobs.isEmpty,
@@ -524,7 +538,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // No new completed jobs should have been added (sweep was a no-op)
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
         XCTAssertEqual(
             completedAfter, completedBefore,
             "No new jobs should be completed when all conversations are current and queue is drained."
@@ -601,7 +615,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain initial projection
         for _ in 0..<5 {
@@ -610,19 +624,19 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document after initial projection.")
             return
         }
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertFalse(initialChunks.isEmpty, "Should have chunks after initial projection.")
         let initialContentHashes = Set(initialChunks.compactMap(\.contentHash))
         XCTAssertFalse(initialContentHashes.isEmpty, "Chunks should have content hashes.")
 
         // Record total embedding count after initial projection
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let initialEmbeddingCount = initialEmbeddings.count
         XCTAssertEqual(initialEmbeddingCount, initialChunks.count, "All chunks should have embeddings initially.")
 
@@ -668,7 +682,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // With stable chunk identity, chunk IDs remain stable when content is unchanged.
         // No delete+insert churn occurs for rekeyed chunks.
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
         XCTAssertEqual(
             initialContentHashes, finalContentHashes,
@@ -681,7 +695,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let finalChunkIDs = Set(finalChunks.map(\.id))
 
         // All chunks should have embeddings (reused from old chunks via contentHash)
-        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let embeddedChunkIDs = Set(finalEmbeddings.map(\.chunkID))
         XCTAssertEqual(
             embeddedChunkIDs, finalChunkIDs,
@@ -728,7 +742,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let longText = String(repeating: "Line of conversation text that will be chunked. ", count: 100)
         let conversation = makeConversation(id: "conv-partial", fullText: longText, indexedAt: base)
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
             let report = try await service.runSweep(maxJobs: 50)
@@ -736,17 +750,17 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document.")
             return
         }
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         let initialContentHashes = Set(initialChunks.compactMap(\.contentHash))
         XCTAssertGreaterThan(initialChunks.count, 1, "Should have multiple chunks.")
 
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertEqual(initialEmbeddings.count, initialChunks.count)
 
         // Modify only the END of the text (partial edit) — this should only affect the last few chunks
@@ -783,7 +797,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             if report.leasedJobs == 0 { break }
         }
 
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
 
         // Most chunks should have the SAME content hash since only the tail changed
@@ -799,7 +813,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // All final chunks should have embeddings
-        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let finalChunkIDs = Set(finalChunks.map(\.id))
         XCTAssertEqual(
             Set(finalEmbeddings.map(\.chunkID)), finalChunkIDs,
@@ -830,7 +844,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
             let report = try await service.runSweep(maxJobs: 50)
@@ -838,7 +852,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document.")
             return
@@ -847,8 +861,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
 
         // Record initial embeddings
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
-        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
+        let initialEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let initialEmbedMap = Dictionary(uniqueKeysWithValues: initialEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
         XCTAssertEqual(initialEmbeddings.count, initialChunks.count)
 
@@ -886,8 +900,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         // New chunks should have same content hashes
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
-        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
+        let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let finalEmbedMap = Dictionary(uniqueKeysWithValues: finalEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
 
         // Map old chunks by contentHash for cross-referencing
@@ -944,7 +958,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
             let report = try await service.runSweep(maxJobs: 50)
@@ -952,16 +966,16 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document.")
             return
         }
 
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         let initialContentHashes = Set(initialChunks.compactMap(\.contentHash))
-        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let initialEmbedMap = Dictionary(uniqueKeysWithValues: initialEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
         XCTAssertGreaterThan(initialChunks.count, 1)
 
@@ -998,9 +1012,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             if report.leasedJobs == 0 { break }
         }
 
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
-        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let finalEmbedMap = Dictionary(uniqueKeysWithValues: finalEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
 
         // Map old chunks by contentHash
@@ -1064,9 +1078,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         try store.upsertConversation(conv3)
 
         // Project all three
-        try store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: conv3.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv3.id, jobType: .project, now: base)
 
         // Drain all initial jobs including backfill rebuild
         for _ in 0..<10 {
@@ -1074,12 +1088,12 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, 3, "All three should be indexed.")
 
         // Record completed job count — ensure queue is fully drained
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
-        let queuedBefore = try store.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 100)
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let queuedBefore = try await store.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 100)
 
         // Verify queue is fully drained
         XCTAssertTrue(queuedBefore.isEmpty, "Queue should be fully drained before delta test. Remaining: \(queuedBefore.count)")
@@ -1116,17 +1130,17 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let deltaReport = try await service.runSweep(maxJobs: 20)
 
         // Count rebuild jobs across ALL statuses — should be only the initial backfill (1)
-        let allJobs = try store.fetchProjectionJobs(statuses: [.completed, .queued, .running, .failed], limit: 500)
+        let allJobs = try await store.fetchProjectionJobs(statuses: [.completed, .queued, .running, .failed], limit: 500)
         let rebuildJobs = allJobs.filter { $0.jobType == .rebuild }
         XCTAssertEqual(rebuildJobs.count, 1, "Only the initial backfill rebuild should exist. Found: \(rebuildJobs.count)")
 
         // Exactly one new reproject job should have completed (for conv2 via gap repair)
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         let newCompleted = completedAfter - completedBefore
         XCTAssertEqual(newCompleted, 1, "Exactly one new job should complete (reproject for conv2). Was: \(newCompleted)")
 
         // Verify the completed job was for conv2 specifically
-        let recentCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 500)
+        let recentCompleted = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500)
         let conv2Reproject = recentCompleted.filter {
             $0.sourceID == conv2.id && $0.jobType == .reproject && $0.priority == 3
         }
@@ -1143,7 +1157,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertTrue(conv3Jobs.isEmpty, "Conv3 should not have a gap-repair job.")
 
         // Documents for conv1 and conv3 should remain unchanged
-        let conv1Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv1.id).first
+        let conv1Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv1.id).first
         let conv1Record = try store.fetchConversation(id: conv1.id)
         XCTAssertNotNil(conv1Doc)
         XCTAssertEqual(
@@ -1152,7 +1166,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             "Conv1 document should remain unchanged."
         )
 
-        let conv3Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv3.id).first
+        let conv3Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv3.id).first
         let conv3Record = try store.fetchConversation(id: conv3.id)
         XCTAssertNotNil(conv3Doc)
         XCTAssertEqual(
@@ -1184,7 +1198,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain all jobs including backfill rebuild
         for _ in 0..<10 {
@@ -1193,17 +1207,17 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document after initial projection.")
             return
         }
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertFalse(initialChunks.isEmpty, "Should have chunks after initial projection.")
 
         // Record state after initial projection
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let initialEmbeddingCount = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        let initialEmbeddingCount = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
         let initialUpdatedAt = document.updatedAt
         let initialContentHash = document.contentHash
 
@@ -1217,7 +1231,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             sourceID: conversation.id,
             sourceVersionID: staleVersionID
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: staleJobID,
                 jobType: .reproject,
@@ -1236,7 +1250,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // Verify queue has exactly the stale job (no gap repair since conversation hasn't changed)
-        let queuedJobs = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
         XCTAssertTrue(
             queuedJobs.contains(where: { $0.id == staleJobID }),
             "Stale job should be queued."
@@ -1249,7 +1263,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Verify NO writes occurred:
         // Document should still have the same updatedAt and contentHash
-        let docAfterStale = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        let docAfterStale = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         XCTAssertNotNil(docAfterStale)
         XCTAssertEqual(
             docAfterStale?.updatedAt, initialUpdatedAt,
@@ -1261,7 +1275,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // Chunks should remain unchanged
-        let chunksAfterStale = try store.fetchSearchChunks(documentID: document.id)
+        let chunksAfterStale = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertEqual(
             chunksAfterStale.count, initialChunks.count,
             "Chunk count should NOT change when processing a stale job."
@@ -1274,7 +1288,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // Embedding count should remain unchanged
-        let embeddingCountAfterStale = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        let embeddingCountAfterStale = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
         XCTAssertEqual(
             embeddingCountAfterStale, initialEmbeddingCount,
             "Embedding count should NOT change when processing a stale job."
@@ -1304,14 +1318,14 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         try store.upsertConversation(conversation)
 
         // First, project the conversation normally so backfill doesn't interfere
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         for _ in 0..<10 {
             let report = try await service.runSweep(maxJobs: 50)
             if report.leasedJobs == 0 { break }
         }
 
         // Verify conversation is already projected
-        let existingDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        let existingDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         XCTAssertNotNil(existingDoc, "Conversation should already be projected.")
 
         let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
@@ -1322,7 +1336,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         // hasn't been processed yet with a valid sourceVersionID.
         let expiredTime = base.addingTimeInterval(-30)
         let recoveryJobID = "projection-recovery-test-\(ProjectionIdentity.sha256Hex("recovery-lease-test"))"
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: recoveryJobID,
                 jobType: .reproject,
@@ -1345,8 +1359,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Record state before lease recovery
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let embedCountBefore = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
-        let chunksBefore = try store.fetchSearchChunks(documentID: existingDoc!.id)
+        let embedCountBefore = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        let chunksBefore = try await store.fetchSearchChunks(documentID: existingDoc!.id)
         let docContentHashBefore = existingDoc!.contentHash
 
         // First sweep recovers the expired job
@@ -1354,13 +1368,13 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(firstReport.completedJobs, 1, "Expired job should be recovered and completed.")
 
         // Verify the recovered job is completed
-        let completedJobs = try store.fetchProjectionJobs(statuses: [.completed], limit: 100)
+        let completedJobs = try await store.fetchProjectionJobs(statuses: [.completed], limit: 100)
         let recoveryJob = completedJobs.first(where: { $0.id == recoveryJobID })
         XCTAssertNotNil(recoveryJob, "Recovery job should be in completed status.")
 
         // Verify deduped end state: content hash should remain the same
         // (sourceVersionID matched, so projection ran, but content was identical → same hash)
-        let docAfterRecovery = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        let docAfterRecovery = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         XCTAssertEqual(
             docAfterRecovery?.contentHash, docContentHashBefore,
             "Document content hash should remain the same (content is identical)."
@@ -1371,11 +1385,11 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertEqual(secondReport.completedJobs, 0, "No additional jobs should complete on second sweep.")
 
         // Embedding count should remain stable (reused via contentHash)
-        let embedCountAfter = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        let embedCountAfter = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
         XCTAssertEqual(embedCountAfter, embedCountBefore, "Embedding count should remain stable after recovery.")
 
         // Chunk count should remain stable
-        let chunksAfter = try store.fetchSearchChunks(documentID: existingDoc!.id)
+        let chunksAfter = try await store.fetchSearchChunks(documentID: existingDoc!.id)
         XCTAssertEqual(chunksAfter.count, chunksBefore.count, "Chunk count should remain stable after recovery.")
     }
 
@@ -1404,12 +1418,12 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         // Enqueue rebuild job
-        try service.enqueueRebuildJob(reason: "test-rebuild-pagination", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-rebuild-pagination", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
 
         // Verify ALL conversations got enqueued for reproject
-        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let queuedAfterRebuild = try await store.fetchProjectionJobs(statuses: [.queued], limit: 500)
         let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject }
         XCTAssertEqual(
             reprojectQueued.count, conversationCount,
@@ -1442,7 +1456,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
                 indexedAt: base
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
         // Drain initial projection
@@ -1453,12 +1467,13 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Record initial embedding count (all v1 embeddings)
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertGreaterThan(initialEmbeddings.count, 0, "Should have initial embeddings.")
 
-        let allDocuments = try store.fetchSearchDocuments(limit: 100)
-        let allChunks = allDocuments.flatMap { doc -> [SearchChunkRecord] in
-            (try? store.fetchSearchChunks(documentID: doc.id)) ?? []
+        let allDocuments = try await store.fetchSearchDocuments(limit: 100)
+        var allChunks: [SearchChunkRecord] = []
+        for document in allDocuments {
+            allChunks.append(contentsOf: try await store.fetchSearchChunks(documentID: document.id))
         }
         XCTAssertGreaterThan(allChunks.count, 0, "Should have chunks across all documents.")
 
@@ -1469,14 +1484,14 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             leaseOwner: "worker-reembed-v2",
             chunkEmbedder: embedderV2
         )
-        try serviceV2.enqueueReembedJob(reason: "test-reembed-pagination", priority: 1)
+        try await serviceV2.enqueueReembedJob(reason: "test-reembed-pagination", priority: 1)
 
         let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
         XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
 
         // Verify all chunks got re-embedded in the new version
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
-        let v2Embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
+        let v2Embeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
         XCTAssertEqual(
             v2Embeddings.count, allChunks.count,
             "All \(allChunks.count) chunks should have v2 embeddings. Found: \(v2Embeddings.count)"
@@ -1509,7 +1524,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Sweep should complete (embedding failure is non-fatal for project jobs, strict=false)
         let report = try await service.runSweep(maxJobs: 20)
@@ -1517,7 +1532,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Verify document was created (lexical artifact)
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document even with embedding failure.")
             return
@@ -1526,20 +1541,20 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertFalse(document.bodyPreview?.isEmpty ?? true, "Document body preview should be populated.")
 
         // Verify chunks were created (lexical artifacts in search_chunks + search_chunks_fts)
-        let chunks = try store.fetchSearchChunks(documentID: document.id)
+        let chunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertFalse(chunks.isEmpty, "Chunks should exist even with embedding failure.")
 
         // Verify FTS entries exist (lexical search should work)
-        let allDocuments = try store.fetchSearchDocuments(limit: 100)
+        let allDocuments = try await store.fetchSearchDocuments(limit: 100)
         XCTAssertEqual(allDocuments.count, 1, "Document should be indexed.")
 
         // Verify NO embeddings were created (embedding failed)
         let versionID = EmbeddingIdentity.versionID(for: failingEmbedder.descriptor)
-        let embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let embeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertEqual(embeddings.count, 0, "No embeddings should exist when embedding provider fails.")
 
         // Verify degradation health status was recorded
-        let healthRecords = try store.fetchRetrievalHealth()
+        let healthRecords = try await store.fetchRetrievalHealth()
         let semanticHealth = healthRecords.first(where: { $0.subsystem == .semantic })
         XCTAssertNotNil(semanticHealth, "Semantic health record should exist.")
         XCTAssertTrue(
@@ -1574,7 +1589,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain initial projection including backfill rebuild
         for _ in 0..<10 {
@@ -1583,7 +1598,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
 
         guard
-            let initialDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let initialDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document after initial projection.")
             return
@@ -1591,7 +1606,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let initialHash = initialDoc.contentHash
 
         // Verify the first job for this conversation completed
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 100)
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 100)
         let convCompletedBefore = completedBefore.filter { $0.sourceID == conversation.id }
         XCTAssertGreaterThanOrEqual(convCompletedBefore.count, 1, "At least one projection for this conversation should have completed.")
         let initialJobSourceVersionID = convCompletedBefore.first?.sourceVersionID ?? ""
@@ -1625,14 +1640,14 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         try store.upsertConversation(updatedRemoteConv)
 
         // Enqueue a new projection for the updated content (different sourceVersionID = different jobID)
-        try store.enqueueConversationProjectionJob(
+        try await store.enqueueConversationProjectionJob(
             conversationID: conversation.id,
             jobType: .reproject,
             now: base.addingTimeInterval(300)
         )
 
         // Verify a new job was enqueued (different from the completed one)
-        let queuedAfterUpdate = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        let queuedAfterUpdate = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
         XCTAssertFalse(queuedAfterUpdate.isEmpty, "A new projection job should be queued after remote update.")
 
         let newJob = queuedAfterUpdate.first(where: { $0.sourceID == conversation.id })
@@ -1651,7 +1666,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(requeueReport.completedJobs, 1, "Re-enqueued job should complete.")
 
         // Verify the document was updated with new content
-        let updatedDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        let updatedDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         XCTAssertNotNil(updatedDoc)
         XCTAssertNotEqual(
             updatedDoc?.contentHash, initialHash,
@@ -1664,7 +1679,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
 
         // Verify both completions exist (no data loss)
-        let allCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 100)
+        let allCompleted = try await store.fetchProjectionJobs(statuses: [.completed], limit: 100)
         let convAllCompleted = allCompleted.filter { $0.sourceID == conversation.id }
         XCTAssertGreaterThanOrEqual(convAllCompleted.count, 2, "Both original and re-enqueued jobs should be completed.")
     }
@@ -1693,7 +1708,7 @@ extension ProjectionPipelineServiceTests {
                 indexedAt: base
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
         // Drain initial projection
@@ -1702,7 +1717,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, conversationCount, "All conversations should be indexed after initial projection.")
 
         // Stale half of them (every other one)
@@ -1737,7 +1752,7 @@ extension ProjectionPipelineServiceTests {
         }
 
         // Drain queue before gap repair
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
 
         // Run gap repair sweep — should detect and reproject ALL stale conversations
         for _ in 0..<10 {
@@ -1745,7 +1760,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         let newCompleted = completedAfter - completedBefore
         XCTAssertEqual(
             newCompleted, staleIDs.count,
@@ -1754,7 +1769,7 @@ extension ProjectionPipelineServiceTests {
 
         // Verify each stale conversation's document hash was updated
         for staleID in staleIDs {
-            let doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
+            let doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
             let conv = try store.fetchConversation(id: staleID)
             XCTAssertNotNil(doc, "Document should exist for stale conversation \(staleID).")
             XCTAssertNotNil(conv, "Conversation should exist for stale conversation \(staleID).")
@@ -1767,7 +1782,7 @@ extension ProjectionPipelineServiceTests {
 
         // Verify non-stale conversations were NOT reprojected
         let nonStaleIDs = Set((0..<conversationCount).filter { $0 % 2 != 0 }.map { "conv-gap-pg-\($0)" })
-        let repairReprojects = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).filter {
+        let repairReprojects = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).filter {
             $0.jobType == .reproject && $0.priority == 3
         }
         let reprojectedNonStaleSourceIDs = repairReprojects.filter { nonStaleIDs.contains($0.sourceID ?? "") }.compactMap { $0.sourceID }
@@ -1796,7 +1811,7 @@ extension ProjectionPipelineServiceTests {
                 indexedAt: base
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
         for _ in 0..<10 {
@@ -1804,7 +1819,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, conversationCount)
 
         // Make first and last conversations stale
@@ -1838,7 +1853,7 @@ extension ProjectionPipelineServiceTests {
             try store.upsertConversation(updatedConv)
         }
 
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
 
         // Run gap repair multiple times — each should produce the same result
         for _ in 0..<10 {
@@ -1846,7 +1861,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         let newCompleted = completedAfter - completedBefore
         XCTAssertEqual(
             newCompleted, staleIDs.count,
@@ -1854,12 +1869,12 @@ extension ProjectionPipelineServiceTests {
         )
 
         // Run gap repair again — should be a complete no-op since all are now current
-        let completedBeforeSecondPass = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedBeforeSecondPass = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         for _ in 0..<5 {
             let report = try await service.runSweep(maxJobs: 100)
             if report.leasedJobs == 0 { break }
         }
-        let completedAfterSecondPass = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedAfterSecondPass = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         XCTAssertEqual(
             completedAfterSecondPass, completedBeforeSecondPass,
             "Second gap repair pass should be a complete no-op (deterministic, no new staleness)."
@@ -1884,9 +1899,9 @@ extension ProjectionPipelineServiceTests {
         try store.upsertConversation(conv2)
         try store.upsertConversation(conv3)
 
-        try store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: conv3.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv3.id, jobType: .project, now: base)
 
         // Drain initial projection
         for _ in 0..<10 {
@@ -1894,12 +1909,12 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, 3, "All three conversations should be indexed.")
 
         // Simulate missed delete events: remove conv2 and conv3 from source
-        try store.deleteConversation(id: conv2.id)
-        try store.deleteConversation(id: conv3.id)
+        try await store.deleteConversation(id: conv2.id)
+        try await store.deleteConversation(id: conv3.id)
 
         // Verify conversations are gone from source
         XCTAssertNil(try store.fetchConversation(id: conv2.id), "conv2 should be deleted from source.")
@@ -1907,10 +1922,10 @@ extension ProjectionPipelineServiceTests {
         XCTAssertNotNil(try store.fetchConversation(id: conv1.id), "conv1 should still exist.")
 
         // But search documents still exist (orphaned)
-        let orphanedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        let orphanedDocs = try await store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
         XCTAssertEqual(orphanedDocs.count, 3, "All three documents still exist before gap repair.")
 
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
 
         // Run gap repair — should detect missing sources and enqueue purge jobs
         for _ in 0..<10 {
@@ -1919,11 +1934,11 @@ extension ProjectionPipelineServiceTests {
         }
 
         // Verify purge jobs were enqueued and completed for the missing conversations
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         let newCompleted = completedAfter - completedBefore
 
         // Should have 2 purge completions (conv2 and conv3)
-        let purgeCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).filter {
+        let purgeCompleted = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).filter {
             $0.jobType == .purge && $0.sourceKind == .conversation
         }
         XCTAssertEqual(
@@ -1940,12 +1955,12 @@ extension ProjectionPipelineServiceTests {
         )
 
         // Verify orphaned documents were purged
-        let remainingDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        let remainingDocs = try await store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
         XCTAssertEqual(remainingDocs.count, 1, "Only conv1 document should remain after purge.")
         XCTAssertEqual(remainingDocs.first?.sourceID, conv1.id, "Remaining document should be conv1.")
 
         // Verify conv1 was NOT affected
-        let conv1Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv1.id).first
+        let conv1Doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv1.id).first
         XCTAssertNotNil(conv1Doc, "conv1 document should still exist.")
         let conv1Record = try store.fetchConversation(id: conv1.id)
         XCTAssertNotNil(conv1Record)
@@ -1972,16 +1987,16 @@ extension ProjectionPipelineServiceTests {
         try store.upsertConversation(convStale)
         try store.upsertConversation(convMissing)
 
-        try store.enqueueConversationProjectionJob(conversationID: convKeep.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: convStale.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: convMissing.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: convKeep.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: convStale.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: convMissing.id, jobType: .project, now: base)
 
         for _ in 0..<10 {
             let report = try await service.runSweep(maxJobs: 50)
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, 3)
 
         // Make convStale stale and convMissing deleted
@@ -2011,9 +2026,9 @@ extension ProjectionPipelineServiceTests {
             sourceType: convStale.sourceType
         )
         try store.upsertConversation(updatedStale)
-        try store.deleteConversation(id: convMissing.id)
+        try await store.deleteConversation(id: convMissing.id)
 
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
 
         // Run gap repair
         for _ in 0..<10 {
@@ -2021,12 +2036,12 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         let newCompleted = completedAfter - completedBefore
         XCTAssertEqual(newCompleted, 2, "One reproject (stale) + one purge (missing) = 2 new completions.")
 
         // Verify stale was reprojected
-        let staleDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convStale.id).first
+        let staleDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convStale.id).first
         let staleRecord = try store.fetchConversation(id: convStale.id)
         XCTAssertNotNil(staleDoc)
         XCTAssertNotNil(staleRecord)
@@ -2037,11 +2052,11 @@ extension ProjectionPipelineServiceTests {
         )
 
         // Verify missing was purged
-        let missingDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convMissing.id).first
+        let missingDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convMissing.id).first
         XCTAssertNil(missingDoc, "Missing conversation's document should be purged.")
 
         // Verify keep was not touched
-        let keepDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convKeep.id).first
+        let keepDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convKeep.id).first
         let keepRecord = try store.fetchConversation(id: convKeep.id)
         XCTAssertNotNil(keepDoc)
         XCTAssertNotNil(keepRecord)
@@ -2102,7 +2117,7 @@ extension ProjectionPipelineServiceTests {
 
     // MARK: - Incremental diff correctly classifies unchanged/rekeyed/added/deleted
 
-    func test_applyChunkDiff_firstProjection_insertsAllChunks() throws {
+    func test_applyChunkDiff_firstProjection_insertsAllChunks() async throws {
         // First projection: no existing chunks → all chunks are added.
         let store = try makeDiscoveryInMemoryStore()
         let documentID = "doc-incr-test-1"
@@ -2126,7 +2141,7 @@ extension ProjectionPipelineServiceTests {
             createdAt: base,
             updatedAt: base
         )
-        try store.upsertSearchDocument(document)
+        try await store.upsertSearchDocument(document)
 
         let chunks = [
             SearchChunkRecord(id: "chunk-1", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-1", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "First chunk text", contentHash: "hash-a", createdAt: base, updatedAt: base),
@@ -2134,7 +2149,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-3", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-1", sourceVersionID: "v1", ordinal: 2, startOffset: 200, endOffset: 300, text: "Third chunk text", contentHash: "hash-c", createdAt: base, updatedAt: base)
         ]
 
-        let result = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
 
         XCTAssertEqual(result.added, 3, "All three chunks should be added on first projection.")
         XCTAssertEqual(result.deleted, 0)
@@ -2143,11 +2158,11 @@ extension ProjectionPipelineServiceTests {
         XCTAssertEqual(result.existingTotal, 0)
         XCTAssertEqual(result.newTotal, 3)
 
-        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        let storedChunks = try await store.fetchSearchChunks(documentID: documentID)
         XCTAssertEqual(storedChunks.count, 3)
     }
 
-    func test_applyChunkDiff_identicalContent_noWrites() throws {
+    func test_applyChunkDiff_identicalContent_noWrites() async throws {
         // When chunks have identical contentHash AND chunkID, diff is a no-op.
         let store = try makeDiscoveryInMemoryStore()
         let documentID = "doc-incr-test-2"
@@ -2170,7 +2185,7 @@ extension ProjectionPipelineServiceTests {
             createdAt: base,
             updatedAt: base
         )
-        try store.upsertSearchDocument(document)
+        try await store.upsertSearchDocument(document)
 
         let chunks = [
             SearchChunkRecord(id: "chunk-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-2", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "Alpha", contentHash: "hash-alpha", createdAt: base, updatedAt: base),
@@ -2178,12 +2193,12 @@ extension ProjectionPipelineServiceTests {
         ]
 
         // First projection — all added
-        let firstResult = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        let firstResult = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
         XCTAssertEqual(firstResult.added, 2)
         XCTAssertFalse(firstResult.isNoOp)
 
         // Second projection with IDENTICAL chunks — should be a complete no-op
-        let secondResult = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        let secondResult = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
         XCTAssertTrue(secondResult.isNoOp, "Identical chunk set should be a complete no-op.")
         XCTAssertEqual(secondResult.unchanged, 2, "Both chunks should be classified as unchanged.")
         XCTAssertEqual(secondResult.writeCount, 0, "No writes should occur for unchanged chunks.")
@@ -2192,11 +2207,11 @@ extension ProjectionPipelineServiceTests {
         XCTAssertEqual(secondResult.rekeyed, 0)
 
         // Verify chunks are still in the store
-        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        let storedChunks = try await store.fetchSearchChunks(documentID: documentID)
         XCTAssertEqual(storedChunks.count, 2)
     }
 
-    func test_applyChunkDiff_rekeyedChunks_reconcilesIDDrift() throws {
+    func test_applyChunkDiff_rekeyedChunks_reconcilesIDDrift() async throws {
         // When contentHash is the same but chunk IDs differ (sourceVersionID change),
         // ID drift must be reconciled per feature requirement: hash-set equality alone does
         // not trigger no-op when per-hash chunk IDs require reconciliation.
@@ -2222,14 +2237,14 @@ extension ProjectionPipelineServiceTests {
             createdAt: base,
             updatedAt: base
         )
-        try store.upsertSearchDocument(document)
+        try await store.upsertSearchDocument(document)
 
         // First projection with v1 chunk IDs
         let v1Chunks = [
             SearchChunkRecord(id: "chunk-v1-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "Same text", contentHash: "hash-same", createdAt: base, updatedAt: base),
             SearchChunkRecord(id: "chunk-v1-b", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Also same", contentHash: "hash-also-same", createdAt: base, updatedAt: base)
         ]
-        _ = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v1Chunks)
+        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v1Chunks)
 
         // Second projection with v2 chunk IDs but SAME content hashes.
         // This simulates metadata-only change where sourceVersionID changed chunk IDs
@@ -2238,7 +2253,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-v2-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v2", ordinal: 0, startOffset: 0, endOffset: 100, text: "Same text", contentHash: "hash-same", createdAt: base, updatedAt: base),
             SearchChunkRecord(id: "chunk-v2-b", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v2", ordinal: 1, startOffset: 100, endOffset: 200, text: "Also same", contentHash: "hash-also-same", createdAt: base, updatedAt: base)
         ]
-        let result = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v2Chunks)
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v2Chunks)
 
         // ID drift reconciliation: new chunks inserted, old chunks deleted per feature requirement.
         // Hash-set equality does not trigger no-op when chunk IDs differ.
@@ -2249,7 +2264,7 @@ extension ProjectionPipelineServiceTests {
         XCTAssertGreaterThan(result.writeCount, 0, "Writes should occur for ID drift reconciliation.")
 
         // Verify v2 chunks are persisted (new chunks inserted, old chunks deleted)
-        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        let storedChunks = try await store.fetchSearchChunks(documentID: documentID)
         XCTAssertEqual(storedChunks.count, 2)
         let storedIDs = Set(storedChunks.map(\.id))
         XCTAssertTrue(storedIDs.contains("chunk-v2-a"), "V2 chunks should be inserted.")
@@ -2258,7 +2273,7 @@ extension ProjectionPipelineServiceTests {
         XCTAssertFalse(storedIDs.contains("chunk-v1-b"), "Old v1 chunks should be deleted.")
     }
 
-    func test_applyChunkDiff_partialEdit_onlyWritesImpactedChunks() throws {
+    func test_applyChunkDiff_partialEdit_onlyWritesImpactedChunks() async throws {
         // Partial edit: one chunk deleted, one changed, one unchanged.
 
         let store = try makeDiscoveryInMemoryStore()
@@ -2282,7 +2297,7 @@ extension ProjectionPipelineServiceTests {
             createdAt: base,
             updatedAt: base
         )
-        try store.upsertSearchDocument(document)
+        try await store.upsertSearchDocument(document)
 
         // Initial: 3 chunks
         let initialChunks = [
@@ -2290,7 +2305,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-mid", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Middle content", contentHash: "hash-mid", createdAt: base, updatedAt: base),
             SearchChunkRecord(id: "chunk-tail", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 2, startOffset: 200, endOffset: 300, text: "Tail content", contentHash: "hash-tail", createdAt: base, updatedAt: base)
         ]
-        _ = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: initialChunks)
+        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: initialChunks)
 
         // Partial edit: head unchanged, middle changed (new content), tail removed
         let editedChunks = [
@@ -2298,7 +2313,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-mid-v2", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 250, text: "Modified middle content", contentHash: "hash-mid-v2", createdAt: base, updatedAt: base)
         ]
 
-        let result = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: editedChunks)
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: editedChunks)
 
         XCTAssertEqual(result.unchanged, 1, "Head chunk should be unchanged.")
         XCTAssertEqual(result.added, 1, "Modified middle chunk should be added (new contentHash).")
@@ -2307,7 +2322,7 @@ extension ProjectionPipelineServiceTests {
         XCTAssertEqual(result.writeCount, 5, "2 deletes (tail + old mid, each DELETE on chunks + FTS) + 1 insert (new mid) = (deleted*2) + added = 4 + 1 = 5.")
 
         // Verify final state
-        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        let storedChunks = try await store.fetchSearchChunks(documentID: documentID)
         XCTAssertEqual(storedChunks.count, 2)
         let storedIDs = Set(storedChunks.map(\.id))
         XCTAssertTrue(storedIDs.contains("chunk-head"))
@@ -2339,7 +2354,7 @@ extension ProjectionPipelineServiceTests {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
             let report = try await service.runSweep(maxJobs: 50)
@@ -2347,13 +2362,13 @@ extension ProjectionPipelineServiceTests {
         }
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document after initial projection.")
             return
         }
 
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertGreaterThan(initialChunks.count, 2, "Should have multiple chunks to test write amplification.")
         let initialChunkIDs = Set(initialChunks.map(\.id))
 
@@ -2394,7 +2409,7 @@ extension ProjectionPipelineServiceTests {
 
         // ID drift reconciliation: chunk IDs may change when sourceVersionID changes.
         // Hash-set equality does not trigger no-op when chunk IDs differ.
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalChunkIDs = Set(finalChunks.map(\.id))
         // IDs may differ after ID drift reconciliation, but content hashes remain identical.
 
@@ -2404,14 +2419,14 @@ extension ProjectionPipelineServiceTests {
 
         // All final chunks should have embeddings (reused via contentHash)
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertEqual(
             Set(finalEmbeddings.map(\.chunkID)), finalChunkIDs,
             "All rekeyed chunks should have embeddings (reused by contentHash)."
         )
 
         // Verify the document was actually updated (content hash changed due to metadata)
-        let updatedDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        let updatedDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         XCTAssertNotNil(updatedDoc)
         XCTAssertEqual(
             updatedDoc?.contentHash,
@@ -2443,7 +2458,7 @@ extension ProjectionPipelineServiceTests {
         let longText = String(repeating: "Line of conversation text that will be chunked. ", count: 80)
         let conversation = makeConversation(id: "conv-incr-partial", fullText: longText, indexedAt: base)
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         for _ in 0..<5 {
             let report = try await service.runSweep(maxJobs: 50)
@@ -2451,13 +2466,13 @@ extension ProjectionPipelineServiceTests {
         }
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         else {
             XCTFail("Expected projected document.")
             return
         }
 
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertGreaterThan(initialChunks.count, 1, "Should have at least 2 chunks for this test.")
         let initialChunkCount = initialChunks.count
 
@@ -2497,7 +2512,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalChunkCount = finalChunks.count
 
         // The minimal-write guarantee: partial edit should NOT double the chunk count.
@@ -2543,14 +2558,14 @@ extension ProjectionPipelineServiceTests {
 
         // All final chunks should have embeddings
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertEqual(
             Set(finalEmbeddings.map(\.chunkID)), Set(finalChunks.map(\.id)),
             "All final chunks should have embeddings."
         )
 
         // Verify document content hash reflects the appended text
-        let updatedDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        let updatedDoc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
         XCTAssertNotNil(updatedDoc)
         XCTAssertNotEqual(
             updatedDoc?.contentHash,
@@ -2589,9 +2604,9 @@ extension ProjectionPipelineServiceTests {
             createdAt: base,
             updatedAt: base
         )
-        _ = try store.upsertSourceArtifact(artifact)
+        _ = try await store.upsertSourceArtifact(artifact)
 
-        try service.enqueueSelectiveReproject(
+        try await service.enqueueSelectiveReproject(
             sourceKind: artifact.sourceKind,
             sourceID: artifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
@@ -2601,17 +2616,17 @@ extension ProjectionPipelineServiceTests {
         _ = try await service.runSweep(maxJobs: 20)
 
         guard
-            let document = try store.fetchSearchDocuments(sourceKind: artifact.sourceKind, sourceID: artifact.id).first
+            let document = try await store.fetchSearchDocuments(sourceKind: artifact.sourceKind, sourceID: artifact.id).first
         else {
             XCTFail("Expected projected artifact document.")
             return
         }
-        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertGreaterThan(initialChunks.count, 1, "Artifact should have multiple chunks.")
         let initialHashes = Set(initialChunks.compactMap(\.contentHash))
 
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertEqual(initialEmbeddings.count, initialChunks.count)
 
         // Update artifact with different contentHash but same text (simulating re-discovery with same body)
@@ -2633,9 +2648,9 @@ extension ProjectionPipelineServiceTests {
             createdAt: base,
             updatedAt: base.addingTimeInterval(10)
         )
-        _ = try store.upsertSourceArtifact(updatedArtifact)
+        _ = try await store.upsertSourceArtifact(updatedArtifact)
 
-        try service.enqueueSelectiveReproject(
+        try await service.enqueueSelectiveReproject(
             sourceKind: updatedArtifact.sourceKind,
             sourceID: updatedArtifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: updatedArtifact.contentHash),
@@ -2644,14 +2659,14 @@ extension ProjectionPipelineServiceTests {
         )
         _ = try await service.runSweep(maxJobs: 20)
 
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalHashes = Set(finalChunks.compactMap(\.contentHash))
 
         // Content hashes should be the same since body text is identical
         XCTAssertEqual(initialHashes, finalHashes, "Content hashes should be identical when artifact body doesn't change.")
 
         // All chunks should have embeddings
-        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertEqual(
             Set(finalEmbeddings.map(\.chunkID)), Set(finalChunks.map(\.id)),
             "All artifact chunks should have embeddings after incremental re-projection."
@@ -2712,12 +2727,12 @@ extension ProjectionPipelineServiceTests {
         XCTAssertEqual(allConversations.count, conversationCount, "All conversations should be stored.")
 
         // Enqueue and process rebuild job
-        try service.enqueueRebuildJob(reason: "test-rebuild-tiebreak", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-rebuild-tiebreak", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
 
         // Verify ALL conversations with identical timestamps got enqueued for reproject
-        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let queuedAfterRebuild = try await store.fetchProjectionJobs(statuses: [.queued], limit: 500)
         let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject }
         let reprojectSourceIDs = Set(reprojectQueued.compactMap { $0.sourceID })
         XCTAssertEqual(
@@ -2783,7 +2798,7 @@ extension ProjectionPipelineServiceTests {
                 sourceType: .providerLog
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
         }
 
         // Drain initial projection
@@ -2793,12 +2808,13 @@ extension ProjectionPipelineServiceTests {
         }
 
         // Verify all documents are indexed (with identical indexedAt)
-        let allDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        let allDocs = try await store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
         XCTAssertEqual(allDocs.count, conversationCount, "All documents should be indexed.")
 
         // Collect all chunk IDs across all documents
-        let allChunksBefore = allDocs.flatMap { doc -> [SearchChunkRecord] in
-            (try? store.fetchSearchChunks(documentID: doc.id)) ?? []
+        var allChunksBefore: [SearchChunkRecord] = []
+        for document in allDocs {
+            allChunksBefore.append(contentsOf: try await store.fetchSearchChunks(documentID: document.id))
         }
         let allChunkIDsBefore = Set(allChunksBefore.map(\.id))
         XCTAssertGreaterThan(allChunkIDsBefore.count, 0, "Should have chunks.")
@@ -2810,14 +2826,14 @@ extension ProjectionPipelineServiceTests {
             leaseOwner: "worker-reembed-tie-v2",
             chunkEmbedder: embedderV2
         )
-        try serviceV2.enqueueReembedJob(reason: "test-reembed-tiebreak", priority: 1)
+        try await serviceV2.enqueueReembedJob(reason: "test-reembed-tiebreak", priority: 1)
 
         let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
         XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
 
         // Verify ALL chunks got re-embedded
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
-        let v2Embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
+        let v2Embeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
         XCTAssertEqual(
             v2Embeddings.count, allChunkIDsBefore.count,
             "All \(allChunkIDsBefore.count) chunks should have v2 embeddings even with identical indexedAt. Found: \(v2Embeddings.count)"
@@ -2869,7 +2885,7 @@ extension ProjectionPipelineServiceTests {
                 sourceType: .providerLog
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
         }
 
         // Drain initial projection
@@ -2878,7 +2894,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, conversationCount, "All conversations should be indexed.")
 
         // Make ALL conversations stale (worst case: every document has a hash mismatch)
@@ -2912,7 +2928,7 @@ extension ProjectionPipelineServiceTests {
             try store.upsertConversation(updatedConv)
         }
 
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
 
         // Run gap repair — with all identical timestamps, pagination must still cover all stale docs
         for _ in 0..<10 {
@@ -2920,7 +2936,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let completedAfter = try await store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
         let newCompleted = completedAfter - completedBefore
 
         // Every stale conversation should have been detected and reprojected
@@ -2931,7 +2947,7 @@ extension ProjectionPipelineServiceTests {
 
         // Verify each document hash was updated
         for staleID in staleIDs {
-            let doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
+            let doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
             let conv = try store.fetchConversation(id: staleID)
             XCTAssertNotNil(doc, "Document should exist for \(staleID).")
             XCTAssertNotNil(conv, "Conversation should exist for \(staleID).")
@@ -3038,12 +3054,12 @@ extension ProjectionPipelineServiceTests {
             try store.upsertConversation(conv)
         }
 
-        try service.enqueueRebuildJob(reason: "test-boundary-rebuild", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-boundary-rebuild", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
 
         // Verify ALL conversations got enqueued for reproject
-        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 5000)
+        let queuedAfterRebuild = try await store.fetchProjectionJobs(statuses: [.queued], limit: 5000)
         let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject && $0.sourceKind == .conversation }
         XCTAssertEqual(
             reprojectQueued.count, conversationCount,
@@ -3082,11 +3098,11 @@ extension ProjectionPipelineServiceTests {
             try store.upsertConversation(conv)
         }
 
-        try service.enqueueRebuildJob(reason: "test-exact-boundary", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-exact-boundary", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1)
 
-        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 500)
         let reprojectIDs = Set(queued.filter { $0.jobType == .reproject }.compactMap { $0.sourceID })
         XCTAssertEqual(
             reprojectIDs.count, conversationCount,
@@ -3114,7 +3130,7 @@ extension ProjectionPipelineServiceTests {
                 indexedAt: base
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
         // Drain initial projection
@@ -3123,7 +3139,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 5000, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 5000, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, conversationCount, "All conversations should be indexed.")
 
         // Stale every 7th conversation (150 stale, spread across pages)
@@ -3157,7 +3173,7 @@ extension ProjectionPipelineServiceTests {
             try store.upsertConversation(updatedConv)
         }
 
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 10000).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 10000).count
 
         // Run gap repair — must paginate through all 1050 documents
         for _ in 0..<20 {
@@ -3166,7 +3182,7 @@ extension ProjectionPipelineServiceTests {
         }
 
         // Count only gap repair reproject completions (priority 3), not initial projection completions
-        let gapRepairReprojects = try store.fetchProjectionJobs(statuses: [.completed], limit: 10000).filter {
+        let gapRepairReprojects = try await store.fetchProjectionJobs(statuses: [.completed], limit: 10000).filter {
             $0.jobType == .reproject && $0.priority == 3
         }
         XCTAssertEqual(
@@ -3176,7 +3192,7 @@ extension ProjectionPipelineServiceTests {
 
         // Verify each stale document hash was updated
         for staleID in staleIDs {
-            let doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
+            let doc = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
             let conv = try store.fetchConversation(id: staleID)
             XCTAssertNotNil(doc, "Document should exist for stale conversation \(staleID).")
             XCTAssertNotNil(conv, "Conversation should exist for stale conversation \(staleID).")
@@ -3209,7 +3225,7 @@ extension ProjectionPipelineServiceTests {
                 indexedAt: base
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
         for _ in 0..<10 {
@@ -3217,7 +3233,7 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let indexedDocs = try store.fetchSearchDocuments(limit: 500, sourceKinds: [.conversation])
+        let indexedDocs = try await store.fetchSearchDocuments(limit: 500, sourceKinds: [.conversation])
         XCTAssertEqual(indexedDocs.count, conversationCount)
 
         // Stale conversations at page boundaries: items 36, 37, 73, 74, 110, 111, etc.
@@ -3252,7 +3268,7 @@ extension ProjectionPipelineServiceTests {
             try store.upsertConversation(updatedConv)
         }
 
-        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 1000).count
+        let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 1000).count
 
         for _ in 0..<10 {
             let report = try await service.runSweep(maxJobs: 100)
@@ -3260,7 +3276,7 @@ extension ProjectionPipelineServiceTests {
         }
 
         // Count only gap repair reproject completions (priority 3)
-        let gapRepairReprojects = try store.fetchProjectionJobs(statuses: [.completed], limit: 1000).filter {
+        let gapRepairReprojects = try await store.fetchProjectionJobs(statuses: [.completed], limit: 1000).filter {
             $0.jobType == .reproject && $0.priority == 3
         }
         XCTAssertEqual(
@@ -3292,7 +3308,7 @@ extension ProjectionPipelineServiceTests {
                 indexedAt: base
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
         // Drain initial projection
@@ -3301,9 +3317,10 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        let allDocuments = try store.fetchSearchDocuments(limit: 500, sourceKinds: [.conversation])
-        let allChunks = allDocuments.flatMap { doc -> [SearchChunkRecord] in
-            (try? store.fetchSearchChunks(documentID: doc.id)) ?? []
+        let allDocuments = try await store.fetchSearchDocuments(limit: 500, sourceKinds: [.conversation])
+        var allChunks: [SearchChunkRecord] = []
+        for document in allDocuments {
+            allChunks.append(contentsOf: try await store.fetchSearchChunks(documentID: document.id))
         }
         XCTAssertGreaterThan(allDocuments.count, 100, "Should have >100 documents for boundary test.")
         XCTAssertGreaterThan(allChunks.count, 100, "Should have >100 chunks for boundary test.")
@@ -3316,13 +3333,13 @@ extension ProjectionPipelineServiceTests {
             chunkEmbedder: embedderV2,
             paginationPageSize: 100
         )
-        try serviceV2.enqueueReembedJob(reason: "test-reembed-boundary", priority: 1)
+        try await serviceV2.enqueueReembedJob(reason: "test-reembed-boundary", priority: 1)
 
         let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
         XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
 
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
-        let v2Embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
+        let v2Embeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
         XCTAssertEqual(
             v2Embeddings.count, allChunks.count,
             "All \(allChunks.count) chunks should have v2 embeddings after paginated re-embed. Found: \(v2Embeddings.count)"
@@ -3416,7 +3433,7 @@ extension ProjectionPipelineServiceTests {
                 indexedAt: base
             )
             try store.upsertConversation(conv)
-            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+            try await store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
         }
 
         for _ in 0..<15 {
@@ -3432,7 +3449,7 @@ extension ProjectionPipelineServiceTests {
         var offset = 0
         var pagesTraversed = 0
         while true {
-            let page = try store.fetchSearchDocuments(
+            let page = try await store.fetchSearchDocuments(
                 limit: pageSize,
                 offset: offset,
                 sourceKinds: [.conversation]
@@ -3507,11 +3524,11 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
+            _ = try await store.upsertSourceArtifact(artifact)
         }
 
         // Verify total count via count query
-        let totalCount = try store.countSourceArtifacts(includeDeleted: true, rootPaths: nil, sourceKinds: kinds)
+        let totalCount = try await store.countSourceArtifacts(includeDeleted: true, rootPaths: nil, sourceKinds: kinds)
         XCTAssertEqual(totalCount, artifactCount, "Should have \(artifactCount) artifacts total.")
 
         // Paginate through all artifacts using the same query as processRebuild
@@ -3519,7 +3536,7 @@ extension ProjectionPipelineServiceTests {
         var offset = 0
         var pagesTraversed = 0
         while true {
-            let page = try store.fetchSourceArtifacts(
+            let page = try await store.fetchSourceArtifacts(
                 includeDeleted: true,
                 rootPaths: nil,
                 sourceKinds: kinds,
@@ -3568,14 +3585,14 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-exact-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
+            _ = try await store.upsertSourceArtifact(artifact)
         }
 
         var collectedIDs: [String] = []
         var offset = 0
         var pagesTraversed = 0
         while true {
-            let page = try store.fetchSourceArtifacts(
+            let page = try await store.fetchSourceArtifacts(
                 includeDeleted: true,
                 rootPaths: nil,
                 sourceKinds: kinds,
@@ -3625,14 +3642,14 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-nondiv-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
+            _ = try await store.upsertSourceArtifact(artifact)
         }
 
         var collectedIDs: [String] = []
         var offset = 0
         var pagesTraversed = 0
         while true {
-            let page = try store.fetchSourceArtifacts(
+            let page = try await store.fetchSourceArtifacts(
                 includeDeleted: true,
                 rootPaths: nil,
                 sourceKinds: kinds,
@@ -3683,7 +3700,7 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-active-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
+            _ = try await store.upsertSourceArtifact(artifact)
         }
 
         // Insert deleted artifacts (must insert as active then mark deleted,
@@ -3698,16 +3715,20 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-deleted-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
-            XCTAssertTrue(try store.markSourceArtifactDeleted(id: artifact.id, deletedAt: base.addingTimeInterval(60)))
+            _ = try await store.upsertSourceArtifact(artifact)
+            let markedDeleted = try await store.markSourceArtifactDeleted(
+                id: artifact.id,
+                deletedAt: base.addingTimeInterval(60)
+            )
+            XCTAssertTrue(markedDeleted)
         }
 
-        try service.enqueueRebuildJob(reason: "test-artifact-boundary-rebuild", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-artifact-boundary-rebuild", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
 
         // Verify ALL artifacts got enqueued
-        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 5000)
+        let queuedAfterRebuild = try await store.fetchProjectionJobs(statuses: [.queued], limit: 5000)
         let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject && $0.sourceKind != .conversation }
         let purgeQueued = queuedAfterRebuild.filter { $0.jobType == .purge }
 
@@ -3761,14 +3782,14 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-exact-rebuild-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
+            _ = try await store.upsertSourceArtifact(artifact)
         }
 
-        try service.enqueueRebuildJob(reason: "test-artifact-exact-boundary", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-artifact-exact-boundary", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1)
 
-        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 500)
         let artifactReprojectIDs = Set(queued.filter { $0.jobType == .reproject && $0.sourceKind != .conversation }.compactMap { $0.sourceID })
         XCTAssertEqual(
             artifactReprojectIDs.count, artifactCount,
@@ -3811,7 +3832,7 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-nondiv-active-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
+            _ = try await store.upsertSourceArtifact(artifact)
         }
 
         for i in 0..<deletedCount {
@@ -3824,15 +3845,19 @@ extension ProjectionPipelineServiceTests {
                 contentHash: "hash-nondiv-deleted-\(i)",
                 base: base
             )
-            _ = try store.upsertSourceArtifact(artifact)
-            XCTAssertTrue(try store.markSourceArtifactDeleted(id: artifact.id, deletedAt: base.addingTimeInterval(60)))
+            _ = try await store.upsertSourceArtifact(artifact)
+            let markedDeleted = try await store.markSourceArtifactDeleted(
+                id: artifact.id,
+                deletedAt: base.addingTimeInterval(60)
+            )
+            XCTAssertTrue(markedDeleted)
         }
 
-        try service.enqueueRebuildJob(reason: "test-artifact-nondiv-rebuild", priority: 1)
+        try await service.enqueueRebuildJob(reason: "test-artifact-nondiv-rebuild", priority: 1)
         let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1)
 
-        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 500)
         let reprojectQueued = queued.filter { $0.jobType == .reproject && $0.sourceKind != .conversation }
         let purgeQueued = queued.filter { $0.jobType == .purge }
 

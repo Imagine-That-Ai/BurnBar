@@ -5,13 +5,13 @@
  */
 
 import { getFirestore } from "firebase-admin/firestore";
+import type { SetOptions, WhereFilterOp } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { DocumentData, SetOptions, WhereFilterOp } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
 import { forEachInPages } from "./rollupPagination.js";
+import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { StreamingPercentileSketch } from "./streamingPercentiles.js";
 import type { MediaFeature, MediaSessionDailyRollupDoc } from "./types.js";
-import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const ROLLUP_SCHEMA_VERSION = 2;
 const ROLLUP_COLLECTION = "ops/media_session_daily_rollups/days";
@@ -19,6 +19,35 @@ const FEATURES: MediaFeature[] = ["fileTransfer", "screenShare", "videoCall"];
 const RTT_ANCHORS = [25, 100, 275, 600];
 const BITS_PER_SECOND_ANCHORS = [200_000, 450_000, 800_000, 1_500_000, 3_000_000, 6_000_000, 12_000_000];
 const FREEZE_COUNT_ANCHORS = Array.from({ length: 51 }, (_value, index) => index);
+
+type MediaSessionRollupDoc = {
+  ref: { path: string };
+  data(): Record<string, unknown>;
+};
+
+interface MediaSessionRollupQuery {
+  where(field: string, op: WhereFilterOp, value: string): MediaSessionRollupQuery;
+  orderBy(field: string): MediaSessionRollupQuery;
+  startAfter(cursor: MediaSessionRollupDoc): MediaSessionRollupQuery;
+  limit(limit: number): MediaSessionRollupQuery;
+  get(): Promise<{
+    readonly empty: boolean;
+    readonly size: number;
+    readonly docs: readonly MediaSessionRollupDoc[];
+  }>;
+}
+
+interface MediaSessionRollupFirestore {
+  collectionGroup(name: string): MediaSessionRollupQuery;
+  doc(path: string): {
+    set(data: MediaSessionDailyRollupDoc, options: SetOptions): Promise<unknown>;
+  };
+}
+
+interface RollupOptions {
+  dateUTC: Date;
+  firestore?: MediaSessionRollupFirestore;
+}
 
 function utcDayWindow(date: Date) {
   const dateId = date.toISOString().slice(0, 10);
@@ -93,29 +122,6 @@ function bucketBitsPerSecond(b: string | undefined): number | undefined {
   }
 }
 
-interface RollupOptions {
-  dateUTC: Date;
-  firestore?: MediaSessionRollupStore;
-}
-
-interface MediaSessionRollupDoc {
-  ref: { path: string };
-  data(): DocumentData;
-}
-
-interface MediaSessionRollupQuery {
-  where(field: string, op: WhereFilterOp, value: string): MediaSessionRollupQuery;
-  orderBy(field: string): MediaSessionRollupQuery;
-  startAfter(cursor: MediaSessionRollupDoc): MediaSessionRollupQuery;
-  limit(limit: number): MediaSessionRollupQuery;
-  get(): Promise<{ readonly empty: boolean; readonly size: number; readonly docs: readonly MediaSessionRollupDoc[] }>;
-}
-
-interface MediaSessionRollupStore {
-  collectionGroup(name: string): MediaSessionRollupQuery;
-  doc(path: string): { set(data: MediaSessionDailyRollupDoc, options: SetOptions): Promise<unknown> };
-}
-
 function buildSketches(anchors: readonly number[]): Record<MediaFeature, StreamingPercentileSketch> {
   return {
     fileTransfer: new StreamingPercentileSketch(anchors),
@@ -125,7 +131,7 @@ function buildSketches(anchors: readonly number[]): Record<MediaFeature, Streami
 }
 
 export async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
-  const firestore: MediaSessionRollupStore = options.firestore ?? getFirestore();
+  const firestore: MediaSessionRollupFirestore = options.firestore ?? getFirestore();
   const window = utcDayWindow(options.dateUTC);
 
   const query = firestore
@@ -134,7 +140,6 @@ export async function rollupMediaSessionsForDay(options: RollupOptions): Promise
     .where("startedAt", "<", window.end.toISOString());
 
   const perFeature = buildEmptyPerFeature();
-
   const rttSketches = buildSketches(RTT_ANCHORS);
   const bpsSketches = buildSketches(BITS_PER_SECOND_ANCHORS);
   const freezeSketches = buildSketches(FREEZE_COUNT_ANCHORS);
@@ -187,7 +192,6 @@ export async function rollupMediaSessionsForDay(options: RollupOptions): Promise
     const bucket = perFeature[feature];
     const tally = successesByFeature[feature];
     bucket.successRate = tally.total > 0 ? tally.ok / tally.total : 0;
-
     bucket.rttMillis = rttSketches[feature].summary();
     bucket.bitsPerSecond = bpsSketches[feature].summary();
     bucket.freezeCount = freezeSketches[feature].summary();

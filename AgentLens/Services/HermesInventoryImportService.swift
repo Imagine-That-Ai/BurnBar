@@ -96,7 +96,7 @@ final class HermesInventoryImportService {
 
             if decision.importLocally {
                 try preflight.check(summary.estimatedTranscriptBytes)
-                try dataStore.insertChunked(result.usages)
+                try await dataStore.insertChunked(result.usages)
                 let report = try await ConversationIndexer.shared.index(result.conversations, in: dataStore)
                 progress = HermesInventoryImportProgress(
                     importedConversationCount: report.changedRecordCount,

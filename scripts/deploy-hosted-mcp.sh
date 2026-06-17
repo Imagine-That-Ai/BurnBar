@@ -73,7 +73,10 @@ npm ci --prefix services/hosted-mcp
 npm --prefix services/hosted-mcp run build
 npm --prefix services/hosted-mcp test
 
-gcloud builds submit services/hosted-mcp --tag "$IMAGE" --project "$GOOGLE_CLOUD_PROJECT"
+gcloud builds submit . \
+  --config services/hosted-mcp/cloudbuild.yaml \
+  --substitutions "_IMAGE=${IMAGE}" \
+  --project "$GOOGLE_CLOUD_PROJECT"
 gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --region "$REGION" \

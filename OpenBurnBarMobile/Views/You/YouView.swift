@@ -152,14 +152,7 @@ struct YouView: View {
         } label: {
             AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {
-                    Image(systemName: "cart.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(MobileTheme.blaze)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(MobileTheme.blaze.opacity(0.16))
-                        )
+                    YouRowIcon(imageName: "SettingsIconStore")
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Store & Top-ups")
@@ -203,15 +196,7 @@ struct YouView: View {
             HStack(spacing: 12) {
                 NavigationLink(value: YouRoute.sync) {
                     HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(syncStore.health.tint.opacity(0.18))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: syncStore.health.systemImageName)
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(syncStore.health.tint)
-                                .symbolEffect(.variableColor, options: .repeating)
-                        }
+                        YouRowIcon(imageName: "SettingsIconCloud")
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Cloud sync")
                                 .font(MobileTheme.Typography.headline)
@@ -258,14 +243,7 @@ struct YouView: View {
         NavigationLink(value: YouRoute.providers) {
             AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {
-                    Image(systemName: "externaldrive.connected.to.line.below")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(MobileTheme.ember)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(MobileTheme.ember.opacity(0.16))
-                        )
+                    YouRowIcon(imageName: "SettingsIconAgent")
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Provider connections")
                             .font(MobileTheme.Typography.headline)
@@ -298,7 +276,8 @@ struct YouView: View {
             icon: "cursorarrow.rays",
             iconTint: .orange,
             title: "Agent Control",
-            subtitle: "Watch, approve, take over, or halt your Mac agent"
+            subtitle: "Watch, approve, take over, or halt your Mac agent",
+            imageName: "SettingsIconSettingsB"
         )
         if tier.satisfies(.pro) {
             NavigationLink(value: YouRoute.computerUse) { chrome }
@@ -321,18 +300,23 @@ struct YouView: View {
         icon: String,
         iconTint: Color,
         title: String,
-        subtitle: String
+        subtitle: String,
+        imageName: String? = nil
     ) -> some View {
         AuroraGlassCard(variant: .standard, cornerRadius: 16) {
             HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(iconTint)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(iconTint.opacity(0.16))
-                    )
+                if let imageName {
+                    YouRowIcon(imageName: imageName)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(iconTint)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(iconTint.opacity(0.16))
+                        )
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(MobileTheme.Typography.headline)
@@ -397,14 +381,7 @@ struct YouView: View {
         NavigationLink(value: YouRoute.settings) {
             AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(MobileTheme.amber)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(MobileTheme.amber.opacity(0.16))
-                        )
+                    YouRowIcon(imageName: "SettingsIconSettingsA")
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Settings")
                             .font(MobileTheme.Typography.headline)
@@ -436,7 +413,8 @@ struct YouView: View {
             icon: "brain.head.profile",
             iconTint: MobileTheme.success,
             title: "Data Vault",
-            subtitle: "Private agent memory · privacy inventory · recovery"
+            subtitle: "Private agent memory · privacy inventory · recovery",
+            imageName: "SettingsIconData"
         )
         if tier.satisfies(.pro) {
             NavigationLink(value: YouRoute.dataVault) { chrome }
@@ -472,6 +450,24 @@ struct YouView: View {
                 .accessibilityIdentifier("you.signIn")
             }
         }
+    }
+}
+
+// MARK: - You Row Icon
+//
+// Renders one of the whimsical full-color SVG icons on the main "You" tab.
+// The asset is scaled to fit a 44×44 rounded plate with a subtle tinted
+// background so it matches the surrounding Aurora glass rows.
+
+struct YouRowIcon: View {
+    let imageName: String
+
+    var body: some View {
+        Image(imageName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 44, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

@@ -23,14 +23,14 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
 
         try harness.dataStore.upsertConversation(lexicalConversation)
         try harness.dataStore.upsertConversation(semanticConversation)
-        _ = try harness.enqueueConversationProjection(conversationID: lexicalConversation.id, jobType: .project)
-        _ = try harness.enqueueConversationProjection(conversationID: semanticConversation.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: lexicalConversation.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: semanticConversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
 
-        let semanticDoc = try XCTUnwrap(
-            try harness.dataStore.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == semanticConversation.id })
-        )
-        let semanticChunk = try XCTUnwrap(try harness.dataStore.fetchSearchChunks(documentID: semanticDoc.id).first)
+        let semanticDocuments = try await harness.dataStore.fetchSearchDocuments(limit: 20)
+        let semanticDoc = try XCTUnwrap(semanticDocuments.first(where: { $0.sourceID == semanticConversation.id }))
+        let semanticChunks = try await harness.dataStore.fetchSearchChunks(documentID: semanticDoc.id)
+        let semanticChunk = try XCTUnwrap(semanticChunks.first)
 
         let semanticProvider = ReplayStubSemanticCandidateProvider(
             responses: [
@@ -72,14 +72,14 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             body: "Workstation bootstrap checklist for new machine setup."
         )
 
-        _ = try harness.dataStore.upsertSourceArtifact(artifact)
-        _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
+        _ = try await harness.dataStore.upsertSourceArtifact(artifact)
+        _ = try await harness.enqueueArtifactProjection(artifact, jobType: .project)
         _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
 
-        let document = try XCTUnwrap(
-            try harness.dataStore.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == artifact.id })
-        )
-        let chunk = try XCTUnwrap(try harness.dataStore.fetchSearchChunks(documentID: document.id).first)
+        let documents = try await harness.dataStore.fetchSearchDocuments(limit: 20)
+        let document = try XCTUnwrap(documents.first(where: { $0.sourceID == artifact.id }))
+        let chunks = try await harness.dataStore.fetchSearchChunks(documentID: document.id)
+        let chunk = try XCTUnwrap(chunks.first)
 
         let semanticProvider = ReplayStubSemanticCandidateProvider(
             responses: [
@@ -120,7 +120,7 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             fullText: "Rollout hardening checklist for lexical fallback coverage."
         )
         try harness.dataStore.upsertConversation(conversation)
-        _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
 
         let semanticProvider = ReplayStubSemanticCandidateProvider()
@@ -139,9 +139,9 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             )
         )
 
-        let lexicalHealth = try harness.retrievalHealthRecord(for: .lexical)
-        let semanticHealth = try harness.retrievalHealthRecord(for: .semantic)
-        let degradedModes = harness
+        let lexicalHealth = try await harness.retrievalHealthRecord(for: .lexical)
+        let semanticHealth = try await harness.retrievalHealthRecord(for: .semantic)
+        let degradedModes = await harness
             .healthSnapshot(indexingEnabled: true, sharedFeaturesAvailable: true)
             .degradedModes
             .map(\.mode.rawValue)
@@ -195,9 +195,9 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
         try harness.dataStore.upsertConversation(convClaude)
         try harness.dataStore.upsertConversation(convCodex)
         try harness.dataStore.upsertConversation(convCLI)
-        _ = try harness.enqueueConversationProjection(conversationID: convClaude.id, jobType: .project)
-        _ = try harness.enqueueConversationProjection(conversationID: convCodex.id, jobType: .project)
-        _ = try harness.enqueueConversationProjection(conversationID: convCLI.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: convClaude.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: convCodex.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: convCLI.id, jobType: .project)
 
         _ = harness.clock.set(base.addingTimeInterval(-3 * 86_400))
         let skillArtifact = harness.makeSkillArtifactFixture(
@@ -215,11 +215,11 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
         )
         _ = harness.clock.set(base)
 
-        _ = try harness.dataStore.upsertSourceArtifact(skillArtifact)
-        _ = try harness.dataStore.upsertSourceArtifact(sharedArtifact)
-        _ = try harness.grantSharedReadAccess(to: sharedArtifact.id)
-        _ = try harness.enqueueArtifactProjection(skillArtifact, jobType: .project)
-        _ = try harness.enqueueArtifactProjection(sharedArtifact, jobType: .project)
+        _ = try await harness.dataStore.upsertSourceArtifact(skillArtifact)
+        _ = try await harness.dataStore.upsertSourceArtifact(sharedArtifact)
+        _ = try await harness.grantSharedReadAccess(to: sharedArtifact.id)
+        _ = try await harness.enqueueArtifactProjection(skillArtifact, jobType: .project)
+        _ = try await harness.enqueueArtifactProjection(sharedArtifact, jobType: .project)
         _ = try await harness.drainProjectionQueue(maxSweeps: 8, maxJobsPerSweep: 64, advanceClockBy: 1)
 
         let retrieval = harness.makeSearchService(semanticEnabled: false)
@@ -333,8 +333,8 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
                 title: "ANN Candidate \(index)",
                 body: body
             )
-            _ = try harness.dataStore.upsertSourceArtifact(artifact)
-            _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
+            _ = try await harness.dataStore.upsertSourceArtifact(artifact)
+            _ = try await harness.enqueueArtifactProjection(artifact, jobType: .project)
         }
         _ = try await harness.drainProjectionQueue(maxSweeps: 12, maxJobsPerSweep: 128, advanceClockBy: 1)
 
@@ -374,8 +374,8 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
         let snapshot = RetrievalANNBaselineGoldenSnapshot(
             scenario: "ann-vs-exact-rerank",
             query: query,
-            annTopCandidates: try summarizeSemantic(annCandidates, limit: 12, dataStore: harness.dataStore),
-            exactTopCandidates: try summarizeSemantic(exactCandidates, limit: 12, dataStore: harness.dataStore)
+            annTopCandidates: try await summarizeSemantic(annCandidates, limit: 12, dataStore: harness.dataStore),
+            exactTopCandidates: try await summarizeSemantic(exactCandidates, limit: 12, dataStore: harness.dataStore)
         )
         try OpenBurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "retrieval-ann-vs-exact-baseline.json")
     }
@@ -397,13 +397,13 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
         _ candidates: [SemanticCandidate],
         limit: Int,
         dataStore: DataStore
-    ) throws -> [SemanticCandidateSnapshot] {
+    ) async throws -> [SemanticCandidateSnapshot] {
         let boundedCandidates = Array(candidates.prefix(limit))
         let chunkIDs = Array(Set(boundedCandidates.map(\.chunkID)))
-        let chunks = try dataStore.fetchSearchChunks(ids: chunkIDs)
+        let chunks = try await dataStore.fetchSearchChunks(ids: chunkIDs)
         let chunkByID = Dictionary(uniqueKeysWithValues: chunks.map { ($0.id, $0) })
         let documentIDs = Array(Set(chunks.map(\.documentID)))
-        let documents = try dataStore.fetchSearchDocuments(ids: documentIDs)
+        let documents = try await dataStore.fetchSearchDocuments(ids: documentIDs)
         let documentByID = Dictionary(uniqueKeysWithValues: documents.map { ($0.id, $0) })
 
         return boundedCandidates.map { candidate in

@@ -41,7 +41,7 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
         defer { state.endSyncing() }
 
         do {
-            let unsynced = try context.dataStore.fetchUnsyncedConversations(limit: 400)
+            let unsynced = try await context.dataStore.fetchUnsyncedConversations(limit: 400)
             guard !unsynced.isEmpty else {
                 state.withLock { $0.lastSyncDate = Date() }
                 return
@@ -103,7 +103,7 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
             }
 
             let ids = unsynced.map(\.id)
-            try context.dataStore.markConversationsSynced(ids: ids)
+            try await context.dataStore.markConversationsSynced(ids: ids)
 
             state.withLock {
                 $0.lastSyncDate = Date()

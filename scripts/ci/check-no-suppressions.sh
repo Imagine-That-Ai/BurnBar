@@ -85,9 +85,10 @@ for raw in doc_lines[begins[0] + 1:ends[0]]:
 # Globs are forbidden in the allowlist — a single broad glob would silently
 # neutralise the gate. Every entry must be an exact, currently-tracked path, so a
 # stale entry (e.g. after a file is deleted) fails closed and forces cleanup.
-tracked = subprocess.run(
+tracked_all = subprocess.run(
     ["git", "ls-files"], capture_output=True, text=True, check=True
 ).stdout.splitlines()
+tracked = [path for path in tracked_all if os.path.exists(path)]
 tracked_set = set(tracked)
 if not tracked:
     fatal("git ls-files returned no tracked files (not a git work tree?)")

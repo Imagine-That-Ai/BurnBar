@@ -4,28 +4,28 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class WorkflowInsightRollupServiceTests: XCTestCase {
-    func test_rollupSnapshot_materializesFreshAndPersistsHealth() throws {
+    func test_rollupSnapshot_materializesFreshAndPersistsHealth() async throws {
         let store = try makeRollupInMemoryStore()
         store.replaceUsages(makeRollupFixtureUsages())
 
-        let snapshot = WorkflowInsightRollupService(dataStore: store).snapshot(refreshIfStale: true)
+        let snapshot = await WorkflowInsightRollupService(dataStore: store).snapshotAsync(refreshIfStale: true)
 
         XCTAssertEqual(snapshot.freshness, .fresh)
         XCTAssertFalse(snapshot.insights.isEmpty)
         XCTAssertNotNil(snapshot.computedAt)
-        let health = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups })
+        let health = try await store.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups })
         XCTAssertEqual(health?.status, .healthy)
         XCTAssertNil(health?.errorCode)
     }
 
-    func test_rollupSnapshot_reportsStale_whenNewUsageArrivesAfterMaterialization() throws {
+    func test_rollupSnapshot_reportsStale_whenNewUsageArrivesAfterMaterialization() async throws {
         let store = try makeRollupInMemoryStore()
         let fixture = makeRollupFixtureUsages()
         store.replaceUsages(fixture)
 
         let now = Date()
         let initialService = WorkflowInsightRollupService(dataStore: store, nowProvider: { now })
-        _ = initialService.snapshot(refreshIfStale: true)
+        _ = await initialService.snapshotAsync(refreshIfStale: true)
 
         let futureUsage = TokenUsage(
             provider: .factory,
@@ -40,24 +40,24 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
         )
         store.replaceUsages(fixture + [futureUsage])
 
-        let staleSnapshot = initialService.snapshot(refreshIfStale: false)
+        let staleSnapshot = await initialService.snapshotAsync(refreshIfStale: false)
         XCTAssertEqual(staleSnapshot.freshness, .stale)
 
-        let refreshed = WorkflowInsightRollupService(
+        let refreshed = await WorkflowInsightRollupService(
             dataStore: store,
             nowProvider: { now.addingTimeInterval(900) }
-        ).snapshot(refreshIfStale: true)
+        ).snapshotAsync(refreshIfStale: true)
         XCTAssertEqual(refreshed.freshness, .fresh)
     }
 
-    func test_rollupSnapshot_reportsRebuilding_whenRebuildJobsArePending() throws {
+    func test_rollupSnapshot_reportsRebuilding_whenRebuildJobsArePending() async throws {
         let store = try makeRollupInMemoryStore()
         store.replaceUsages(makeRollupFixtureUsages())
         let service = WorkflowInsightRollupService(dataStore: store)
-        _ = service.snapshot(refreshIfStale: true)
+        _ = await service.snapshotAsync(refreshIfStale: true)
 
         let now = Date()
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "rollup-rebuild-pending",
                 jobType: .rebuild,
@@ -70,7 +70,7 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
             )
         )
 
-        let snapshot = service.snapshot(refreshIfStale: false)
+        let snapshot = await service.snapshotAsync(refreshIfStale: false)
         XCTAssertEqual(snapshot.freshness, .rebuilding)
         XCTAssertFalse(snapshot.insights.isEmpty)
     }
@@ -84,30 +84,28 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.freshness, .fresh)
         XCTAssertFalse(snapshot.insights.isEmpty)
         XCTAssertNotNil(snapshot.computedAt)
-        let health = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups })
+        let health = try await store.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups })
         XCTAssertEqual(health?.status, .healthy)
         XCTAssertNil(health?.errorCode)
     }
 
-    func test_rollupSnapshot_skipsHealthWrite_whenNothingChanged() throws {
+    func test_rollupSnapshot_skipsHealthWrite_whenNothingChanged() async throws {
         let store = try makeRollupInMemoryStore()
         store.replaceUsages(makeRollupFixtureUsages())
 
         let t0 = Date()
-        _ = WorkflowInsightRollupService(dataStore: store, nowProvider: { t0 }).snapshot(refreshIfStale: true)
-        let firstRow = try XCTUnwrap(
-            store.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups })
-        )
+        _ = await WorkflowInsightRollupService(dataStore: store, nowProvider: { t0 }).snapshotAsync(refreshIfStale: true)
+        let firstHealthRows = try await store.fetchRetrievalHealth()
+        let firstRow = try XCTUnwrap(firstHealthRows.first(where: { $0.subsystem == .insightRollups }))
 
-        let second = WorkflowInsightRollupService(
+        let second = await WorkflowInsightRollupService(
             dataStore: store,
             nowProvider: { t0.addingTimeInterval(60) }
-        ).snapshot(refreshIfStale: true)
+        ).snapshotAsync(refreshIfStale: true)
         XCTAssertEqual(second.freshness, .fresh)
 
-        let secondRow = try XCTUnwrap(
-            store.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups })
-        )
+        let secondHealthRows = try await store.fetchRetrievalHealth()
+        let secondRow = try XCTUnwrap(secondHealthRows.first(where: { $0.subsystem == .insightRollups }))
         XCTAssertEqual(
             secondRow.observedAt,
             firstRow.observedAt,
@@ -127,7 +125,7 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.insights.isEmpty)
     }
 
-    func test_rollupSnapshotQueryCount_isIndependentOfUsageVolume() throws {
+    func test_rollupSnapshotQueryCount_isIndependentOfUsageVolume() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let tracer = OpenBurnBarQueryTracer.shared
@@ -136,15 +134,15 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
 
         // Warm-up materialization absorbs GRDB's one-time schema introspection.
         store.replaceUsages(fixture)
-        _ = WorkflowInsightRollupService(dataStore: store, nowProvider: { now }).snapshot(refreshIfStale: true)
+        _ = await WorkflowInsightRollupService(dataStore: store, nowProvider: { now }).snapshotAsync(refreshIfStale: true)
 
         // Baseline: a stale snapshot re-materializes over a small usage set.
         store.replaceUsages(fixture + makeVolumeUsages(count: 4, after: now.addingTimeInterval(60)))
         tracer.resetLog()
-        _ = WorkflowInsightRollupService(
+        _ = await WorkflowInsightRollupService(
             dataStore: store,
             nowProvider: { now.addingTimeInterval(900) }
-        ).snapshot(refreshIfStale: true)
+        ).snapshotAsync(refreshIfStale: true)
         let baseline = tracer.queryCount
         XCTAssertGreaterThan(baseline, 0, "Query tracer recorded nothing — tracing is not installed")
 
@@ -152,10 +150,10 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
         // the GRDB statement count must not grow with usage volume.
         store.replaceUsages(fixture + makeVolumeUsages(count: 40, after: now.addingTimeInterval(1_000)))
         tracer.resetLog()
-        _ = WorkflowInsightRollupService(
+        _ = await WorkflowInsightRollupService(
             dataStore: store,
             nowProvider: { now.addingTimeInterval(1_800) }
-        ).snapshot(refreshIfStale: true)
+        ).snapshotAsync(refreshIfStale: true)
 
         XCTAssertEqual(
             tracer.queryCount,

@@ -43,7 +43,7 @@ final class UsageConflictResolutionTests: XCTestCase {
             endTime: Date(timeIntervalSince1970: 1_700_000_100),
             provenanceConfidence: .exact
         )
-        try dataStore.insert(localUsage)
+        try await dataStore.insert(localUsage)
 
         let remoteDeviceId = "remote-device"
         let remoteDocPath = "users/test-uid-1/usage/\(remoteDeviceId)_\(UUID().uuidString)"
@@ -71,7 +71,7 @@ final class UsageConflictResolutionTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let allUsage = try dataStore.usageStore.fetchAllUsage()
+        let allUsage = try await dataStore.fetchAllUsage()
         XCTAssertEqual(allUsage.count, 1)
 
         let result = allUsage.first!

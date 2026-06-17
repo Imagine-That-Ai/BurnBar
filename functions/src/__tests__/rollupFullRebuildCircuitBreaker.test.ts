@@ -579,8 +579,8 @@ describe("alertable structured log event keys", () => {
       .map((name) => read(`../${name}`))
       .join("\n");
 
-    expect(scheduled).toContain('event: "rollup.full_rebuild_circuit_open"');
-    expect(scheduled).toContain('event: "rollup.rebuild_failed"');
+    expect(`${scheduled}\n${rollups}`).toContain('event: "rollup.full_rebuild_circuit_open"');
+    expect(`${scheduled}\n${rollups}`).toContain('event: "rollup.rebuild_failed"');
     expect(rollups).toContain('event: "rollup.delta_drain_capped"');
     expect(misc).toContain('event: "rollup.full_rebuild_circuit_open"');
   });

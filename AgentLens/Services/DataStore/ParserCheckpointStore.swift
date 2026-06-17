@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - Checkpoint Record
@@ -46,8 +46,8 @@ final class ParserCheckpointStore: Sendable {
     // MARK: - Read
 
     /// Fetches the current checkpoint for a provider, or nil if no checkpoint exists.
-    func fetchCheckpoint(for provider: AgentProvider) throws -> ParserCheckpointRecord? {
-        try dbQueue.read { db in
+    func fetchCheckpoint(for provider: AgentProvider) async throws -> ParserCheckpointRecord? {
+        try await dbQueue.read { db in
             try ParserCheckpointRecord.fetchOne(db, sql: """
                 SELECT * FROM parser_checkpoints WHERE provider = ?
                 """, arguments: [provider.rawValue])
@@ -55,8 +55,8 @@ final class ParserCheckpointStore: Sendable {
     }
 
     /// Fetches all checkpoints for all providers.
-    func fetchAllCheckpoints() throws -> [ParserCheckpointRecord] {
-        try dbQueue.read { db in
+    func fetchAllCheckpoints() async throws -> [ParserCheckpointRecord] {
+        try await dbQueue.read { db in
             try ParserCheckpointRecord.fetchAll(db, sql: "SELECT * FROM parser_checkpoints")
         }
     }
@@ -71,8 +71,8 @@ final class ParserCheckpointStore: Sendable {
         for provider: AgentProvider,
         checkpointToken: String,
         lastProcessedFilePath: String?
-    ) throws {
-        try dbQueue.write { db in
+    ) async throws {
+        try await dbQueue.write { db in
             let now = Date()
             try db.execute(sql: """
                 INSERT INTO parser_checkpoints (provider, checkpointToken, lastProcessedFilePath, lastProcessedAt, version)
@@ -100,8 +100,8 @@ final class ParserCheckpointStore: Sendable {
     /// This forces a full reprocess on next run.
     ///
     /// VAL-PERSIST-014: Parser cache corruption/reset recovery is safe.
-    func clearCheckpoint(for provider: AgentProvider) throws {
-        try dbQueue.write { db in
+    func clearCheckpoint(for provider: AgentProvider) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 DELETE FROM parser_checkpoints WHERE provider = ?
                 """, arguments: [provider.rawValue])
@@ -109,8 +109,8 @@ final class ParserCheckpointStore: Sendable {
     }
 
     /// Clears all checkpoints (e.g., for a full reset).
-    func clearAllCheckpoints() throws {
-        try dbQueue.write { db in
+    func clearAllCheckpoints() async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM parser_checkpoints")
         }
     }
@@ -165,7 +165,7 @@ final class CheckpointedParserWrapper: Sendable {
     /// Checkpoint is NOT advanced until commitCheckpoint() is called.
     func parseWithCheckpoint() async throws -> CheckpointAwareParseResult {
         // Load existing checkpoint to determine where to resume
-        let existingCheckpoint = try? checkpointStore.fetchCheckpoint(for: parser.provider) // try?-ok(nil = safe full reprocess)
+        let existingCheckpoint = try? await checkpointStore.fetchCheckpoint(for: parser.provider) // try?-ok(nil = safe full reprocess)
 
         // Perform the actual parse
         let result = try await parser.parse()
@@ -203,8 +203,8 @@ final class CheckpointedParserWrapper: Sendable {
     func commitCheckpoint(
         token: String,
         lastProcessedFilePath: String?
-    ) throws {
-        try checkpointStore.advanceCheckpoint(
+    ) async throws {
+        try await checkpointStore.advanceCheckpoint(
             for: parser.provider,
             checkpointToken: token,
             lastProcessedFilePath: lastProcessedFilePath
@@ -213,13 +213,13 @@ final class CheckpointedParserWrapper: Sendable {
 
     /// Clears the checkpoint for this provider, forcing a full reprocess.
     /// Call this when cache corruption is detected.
-    func clearCheckpoint() throws {
-        try checkpointStore.clearCheckpoint(for: parser.provider)
+    func clearCheckpoint() async throws {
+        try await checkpointStore.clearCheckpoint(for: parser.provider)
     }
 
     /// Checks if checkpoint state exists for safe resume.
-    func hasCheckpoint() -> Bool {
-        (try? checkpointStore.fetchCheckpoint(for: parser.provider)) != nil // try?-ok(false = reprocess all)
+    func hasCheckpoint() async -> Bool {
+        (try? await checkpointStore.fetchCheckpoint(for: parser.provider)) != nil // try?-ok(false = reprocess all)
     }
 
     private func makeCheckpointToken(processedFiles: [String]) -> String {
@@ -277,10 +277,15 @@ final class AtomicIngestionTransaction {
     ///
     /// VAL-PERSIST-004: Checkpoints advance only after successful commit.
     /// VAL-CROSS-008: Visibility begins only after successful commit.
-    func commit() throws {
+    func commit() async throws {
         guard !isCommitted, !isRolledBack else { return }
 
-        try dbQueue.write { db in
+        let usages = self.usages
+        let checkpointToken = self.checkpointToken
+        let lastProcessedFilePath = self.lastProcessedFilePath
+        let provider = self.provider
+
+        try await dbQueue.write { db in
             // First, persist usages
             for usage in usages {
                 let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)

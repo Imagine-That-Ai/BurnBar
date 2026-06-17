@@ -11,12 +11,31 @@ import { signCursor, verifyCursor } from "./cursors.js";
 import { requireActiveRemoteMcpClient } from "./entitlements.js";
 import { handleMcpRequest } from "./mcp.js";
 import { redact } from "./redaction.js";
-import { listMcpTools, tools } from "./toolRegistry.js";
+import { callTool, listMcpTools, tools } from "./toolRegistry.js";
 import type {
   HostedMcpFirestore,
   McpTransaction,
   RemoteMcpClientFirestore,
 } from "./firestoreTypes.js";
+
+function fakeHostedFirestore(): HostedMcpFirestore {
+  return {
+    doc: () => ({
+      get: async () => ({ exists: false, data: () => undefined }),
+      set: async () => undefined,
+    }),
+    collection: () => ({
+      limit: () => ({
+        get: async () => ({ docs: [] }),
+      }),
+    }),
+    runTransaction: async (updateFunction) =>
+      updateFunction({
+        get: async () => ({ get: () => undefined }),
+        set: () => undefined,
+      }),
+  };
+}
 
 test("verifies HMAC bearer token claims and rejects wrong audience", () => {
   process.env.MCP_TOKEN_HMAC_SECRET = "unit-secret";
@@ -150,6 +169,7 @@ test("cursor signing rejects tampering and scope mismatch", () => {
 });
 
 test("registry exposes required tool surface and redaction strips raw content", () => {
+  delete process.env.OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS;
   const names = listMcpTools()
     .tools.map((tool) => tool.name)
     .sort();
@@ -157,7 +177,6 @@ test("registry exposes required tool surface and redaction strips raw content", 
     names,
     [
       "burnbar_get_conversation_body",
-      "burnbar_get_code_document",
       "burnbar_get_knowledge_document",
       "burnbar_list_resumable_conversations",
       "burnbar_list_search_facets",
@@ -165,7 +184,6 @@ test("registry exposes required tool surface and redaction strips raw content", 
       "burnbar_recent_usage",
       "burnbar_resume_conversation",
       "burnbar_resolve_capabilities",
-      "burnbar_search_code",
       "burnbar_search_conversations",
       "burnbar_search_knowledge",
     ].sort(),
@@ -188,6 +206,51 @@ test("registry exposes required tool surface and redaction strips raw content", 
     (tool) => tool.name === "burnbar_search_code",
   );
   assert.deepEqual(codeSearchTool?.requiredScopes, ["code:read"]);
+});
+
+test("hosted code tools are hidden and denied unless explicitly enabled", async () => {
+  const previous = process.env.OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS;
+  try {
+    delete process.env.OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS;
+    assert.ok(
+      !listMcpTools().tools.some((tool) => tool.name === "burnbar_search_code"),
+    );
+    const denied = await callTool(
+      {
+        db: fakeHostedFirestore(),
+        claims: {
+          sub: "user-code",
+          aud: MCP_RESOURCE,
+          client_id: "client-code",
+          scopes: ["code:read"],
+          entitlement_family: "burnbar_pro",
+          grant_mode: "local_decrypt_shim",
+          exp: Math.floor(Date.now() / 1000) + 60,
+          jti: "code-jti",
+        },
+      },
+      "burnbar_search_code",
+      {},
+    );
+    assert.equal(denied.isError, true);
+    assert.match(String(denied.content[0]?.text), /disabled/);
+
+    process.env.OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS = "true";
+    assert.ok(
+      listMcpTools().tools.some((tool) => tool.name === "burnbar_search_code"),
+    );
+    assert.ok(
+      listMcpTools().tools.some(
+        (tool) => tool.name === "burnbar_get_code_document",
+      ),
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS;
+    } else {
+      process.env.OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS = previous;
+    }
+  }
 });
 
 test("remote MCP client revocation fails closed", async () => {

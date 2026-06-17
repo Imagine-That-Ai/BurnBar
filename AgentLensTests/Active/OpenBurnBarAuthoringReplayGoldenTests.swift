@@ -29,8 +29,8 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try harness.dataStore.upsertSearchDocument(skillContextDocument)
-        try harness.dataStore.replaceSearchChunks(
+        try await harness.dataStore.upsertSearchDocument(skillContextDocument)
+        try await harness.dataStore.replaceSearchChunks(
             documentID: skillContextDocument.id,
             title: skillContextDocument.title,
             chunks: [
@@ -67,8 +67,8 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try harness.dataStore.upsertSearchDocument(agentContextDocument)
-        try harness.dataStore.replaceSearchChunks(
+        try await harness.dataStore.upsertSearchDocument(agentContextDocument)
+        try await harness.dataStore.replaceSearchChunks(
             documentID: agentContextDocument.id,
             title: agentContextDocument.title,
             chunks: [
@@ -200,8 +200,8 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try harness.dataStore.upsertSearchDocument(contextDocument)
-        try harness.dataStore.replaceSearchChunks(
+        try await harness.dataStore.upsertSearchDocument(contextDocument)
+        try await harness.dataStore.replaceSearchChunks(
             documentID: contextDocument.id,
             title: contextDocument.title,
             chunks: [

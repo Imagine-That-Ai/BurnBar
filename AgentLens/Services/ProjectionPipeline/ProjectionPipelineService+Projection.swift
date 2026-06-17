@@ -12,7 +12,7 @@ extension ProjectionPipelineService {
         switch sourceKind {
         case .conversation:
             guard let conversation = try dataStore.fetchConversation(id: sourceID) else {
-                try dataStore.deleteSearchDocuments(sourceKind: .conversation, sourceID: sourceID)
+                try await dataStore.deleteSearchDocuments(sourceKind: .conversation, sourceID: sourceID)
                 return
             }
             let currentSourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
@@ -22,13 +22,13 @@ extension ProjectionPipelineService {
             try await projectConversation(conversation, sourceVersionID: currentSourceVersionID)
 
         case .skillDoc, .agentDoc, .sharedArtifact:
-            guard let artifact = try dataStore.fetchSourceArtifact(id: sourceID, includeDeleted: true) else {
-                try dataStore.deleteSearchDocuments(sourceKind: sourceKind, sourceID: sourceID)
+            guard let artifact = try await dataStore.fetchSourceArtifact(id: sourceID, includeDeleted: true) else {
+                try await dataStore.deleteSearchDocuments(sourceKind: sourceKind, sourceID: sourceID)
                 return
             }
 
             if artifact.status == .deleted {
-                try dataStore.deleteSearchDocuments(sourceKind: artifact.sourceKind, sourceID: artifact.id)
+                try await dataStore.deleteSearchDocuments(sourceKind: artifact.sourceKind, sourceID: artifact.id)
                 return
             }
 
@@ -58,7 +58,7 @@ extension ProjectionPipelineService {
 
             for conversation in conversations {
                 let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
-                try enqueueSelectiveReproject(
+                try await enqueueSelectiveReproject(
                     sourceKind: .conversation,
                     sourceID: conversation.id,
                     sourceVersionID: sourceVersionID,
@@ -77,7 +77,7 @@ extension ProjectionPipelineService {
         let artifactKinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
         var artifactOffset = 0
         while true {
-            let artifacts = try dataStore.fetchSourceArtifacts(
+            let artifacts = try await dataStore.fetchSourceArtifacts(
                 includeDeleted: true,
                 rootPaths: nil,
                 sourceKinds: artifactKinds,
@@ -88,7 +88,7 @@ extension ProjectionPipelineService {
 
             for artifact in artifacts {
                 if artifact.status == .deleted {
-                    try enqueueSelectiveReproject(
+                    try await enqueueSelectiveReproject(
                         sourceKind: artifact.sourceKind,
                         sourceID: artifact.id,
                         sourceVersionID: ProjectionIdentity.deletedSourceVersionID,
@@ -97,7 +97,7 @@ extension ProjectionPipelineService {
                     )
                     enqueuedPurges += 1
                 } else {
-                    try enqueueSelectiveReproject(
+                    try await enqueueSelectiveReproject(
                         sourceKind: artifact.sourceKind,
                         sourceID: artifact.id,
                         sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
@@ -112,8 +112,8 @@ extension ProjectionPipelineService {
             if artifacts.count < rebuildPageSize { break }
         }
 
-        try enqueueReembedJob(reason: "rebuild", priority: 30)
-        try upsertRebuildHealth(
+        try await enqueueReembedJob(reason: "rebuild", priority: 30)
+        try await upsertRebuildHealth(
             status: .healthy,
             errorCode: nil,
             errorMessage: nil,
@@ -124,15 +124,15 @@ extension ProjectionPipelineService {
     }
 
     internal func processReembed(_ job: ProjectionJobRecord) async throws {
-        let chunks = try chunksForReembed(job: job)
+        let chunks = try await chunksForReembed(job: job)
         let indexedCount = try await indexChunks(
             chunks: chunks,
             strict: true,
             sourceKind: job.sourceKind,
             sourceID: job.sourceID
         )
-        try upsertSemanticProjectionHealth(
-            status: .healthy,
+            try await upsertSemanticProjectionHealth(
+                status: .healthy,
             errorCode: nil,
             errorMessage: nil,
             chunkCount: indexedCount,
@@ -142,9 +142,9 @@ extension ProjectionPipelineService {
         )
     }
 
-    internal func chunksForReembed(job: ProjectionJobRecord) throws -> [SearchChunkRecord] {
+    internal func chunksForReembed(job: ProjectionJobRecord) async throws -> [SearchChunkRecord] {
         if let sourceKind = job.sourceKind, let sourceID = job.sourceID {
-            return try dataStore.fetchSearchChunks(sourceKind: sourceKind, sourceID: sourceID)
+            return try await dataStore.fetchSearchChunks(sourceKind: sourceKind, sourceID: sourceID)
         }
 
         // Paginate through ALL documents to avoid truncation for large corpora.
@@ -152,11 +152,11 @@ extension ProjectionPipelineService {
         var chunks: [SearchChunkRecord] = []
         var offset = 0
         while true {
-            let documents = try dataStore.fetchSearchDocuments(limit: reembedPageSize, offset: offset)
+            let documents = try await dataStore.fetchSearchDocuments(limit: reembedPageSize, offset: offset)
             guard documents.isEmpty == false else { break }
 
             for document in documents {
-                chunks.append(contentsOf: try dataStore.fetchSearchChunks(documentID: document.id))
+                chunks.append(contentsOf: try await dataStore.fetchSearchChunks(documentID: document.id))
             }
 
             offset += documents.count
@@ -174,7 +174,7 @@ extension ProjectionPipelineService {
     ) async throws -> Int {
         guard chunks.isEmpty == false else { return 0 }
         let now = nowProvider()
-        try ensureEmbeddingLineage(now: now)
+        try await ensureEmbeddingLineage(now: now)
 
         do {
             let expectedDimensions = chunkEmbedder.descriptor.dimensions
@@ -200,7 +200,7 @@ extension ProjectionPipelineService {
                         )
                     }
                     let normalized = chunkEmbedder.descriptor.distanceMetric == .cosine ? VectorMath.l2Normalized(vector) : vector
-                    try dataStore.upsertChunkEmbedding(
+                    try await dataStore.upsertChunkEmbedding(
                         ChunkEmbeddingRecord(
                             chunkID: chunk.id,
                             embeddingVersionID: embeddingVersionID,
@@ -218,11 +218,11 @@ extension ProjectionPipelineService {
             }
 
             if indexedCount > 0 {
-                try markVectorIndexSnapshotStale(now: now)
+                try await markVectorIndexSnapshotStale(now: now)
             }
             return indexedCount
         } catch {
-            try upsertSemanticProjectionHealth(
+            try await upsertSemanticProjectionHealth(
                 status: strict ? .failed : .degraded,
                 errorCode: "SEMANTIC_EMBEDDING_INDEXING_FAILED",
                 errorMessage: error.localizedDescription,
@@ -238,9 +238,9 @@ extension ProjectionPipelineService {
         }
     }
 
-    internal func ensureEmbeddingLineage(now: Date) throws {
+    internal func ensureEmbeddingLineage(now: Date) async throws {
         let descriptor = chunkEmbedder.descriptor
-        try dataStore.upsertEmbeddingModel(
+        try await dataStore.upsertEmbeddingModel(
             EmbeddingModelRecord(
                 id: embeddingModelID,
                 provider: descriptor.provider,
@@ -251,7 +251,7 @@ extension ProjectionPipelineService {
                 updatedAt: now
             )
         )
-        try dataStore.upsertEmbeddingVersion(
+        try await dataStore.upsertEmbeddingVersion(
             EmbeddingVersionRecord(
                 id: embeddingVersionID,
                 modelID: embeddingModelID,
@@ -266,13 +266,14 @@ extension ProjectionPipelineService {
         )
     }
 
-    internal func markVectorIndexSnapshotStale(now: Date) throws {
+    internal func markVectorIndexSnapshotStale(now: Date) async throws {
         let snapshotBackend = BurnBarPersistentVectorIndexFactory.defaultBackend()
-        let existing = try dataStore.fetchVectorIndexSnapshot(
+        let existing = try await dataStore.fetchVectorIndexSnapshot(
             embeddingVersionID: embeddingVersionID,
             backendID: snapshotBackend.backendID
         )
-        try dataStore.upsertVectorIndexSnapshot(
+        let vectorCount = try await dataStore.countChunkEmbeddings(embeddingVersionID: embeddingVersionID)
+        try await dataStore.upsertVectorIndexSnapshot(
             VectorIndexSnapshotRecord(
                 embeddingVersionID: embeddingVersionID,
                 backendID: snapshotBackend.backendID,
@@ -280,7 +281,7 @@ extension ProjectionPipelineService {
                 fingerprint: existing?.fingerprint ?? "\(embeddingVersionID)|stale|\(Int(now.timeIntervalSince1970))",
                 dimensions: chunkEmbedder.descriptor.dimensions,
                 distanceMetric: chunkEmbedder.descriptor.distanceMetric,
-                vectorCount: try dataStore.countChunkEmbeddings(embeddingVersionID: embeddingVersionID),
+                vectorCount: vectorCount,
                 storageRelativePath: existing?.storageRelativePath,
                 fileBytes: existing?.fileBytes ?? 0,
                 backendVersion: snapshotBackend.backendVersion,

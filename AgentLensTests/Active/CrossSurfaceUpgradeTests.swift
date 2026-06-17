@@ -40,8 +40,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         return totalCompleted
     }
 
-    private func fetchCanonicalRow(queue: any DatabaseWriter, sessionId: String) throws -> Row? {
-        try queue.read { db in
+    private func fetchCanonicalRow(queue: any DatabaseWriter, sessionId: String) async throws -> Row? {
+        try await queue.read { db in
             try Row.fetchOne(db, sql: """
                 SELECT * FROM token_usage
                 WHERE sessionId = ?
@@ -51,14 +51,14 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Helper: fetch all canonical token_usage rows
-    private func fetchAllCanonicalRows(queue: any DatabaseWriter) throws -> [Row] {
-        try queue.read { db in
+    private func fetchAllCanonicalRows(queue: any DatabaseWriter) async throws -> [Row] {
+        try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM token_usage ORDER BY startTime DESC")
         }
     }
 
-    private func countCanonicalRows(queue: any DatabaseWriter) throws -> Int {
-        try queue.read { db in
+    private func countCanonicalRows(queue: any DatabaseWriter) async throws -> Int {
+        try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage") ?? 0
         }
     }
@@ -109,7 +109,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     /// Inserts a usage row directly and refreshes the DataStore in-memory array.
     private func insertAndRefresh(usage: TokenUsage, store: DataStore) async throws {
-        try store.insert(usage)
+        try await store.insert(usage)
         await store.refresh()
     }
 
@@ -168,7 +168,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         XCTAssertEqual(exactSummary.totalCost, 0.09, accuracy: 0.001, "Reporting must reflect upgraded exact cost")
 
         // Verify canonical row was upgraded
-        let row = try fetchCanonicalRow(queue: store.dbQueue, sessionId: sessionId)
+        let row = try await fetchCanonicalRow(queue: store.actor.dbQueue, sessionId: sessionId)
         XCTAssertNotNil(row)
         XCTAssertEqual(extractInt(row!, column: "inputTokens"), 2000)
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
@@ -196,13 +196,13 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await drainProjectionJobs(service)
 
         // Step 2: Record the projection state
-        let documentsBefore = try store.fetchSearchDocuments(limit: 20)
+        let documentsBefore = try await store.fetchSearchDocuments(limit: 20)
         XCTAssertEqual(documentsBefore.count, 1)
-        let chunksBefore = try store.fetchSearchChunks(documentID: documentsBefore[0].id)
+        let chunksBefore = try await store.fetchSearchChunks(documentID: documentsBefore[0].id)
 
         // Step 3: Insert an estimated usage row, then upgrade to exact
         let sessionId = "session-conv-cross-idx-1"
@@ -244,9 +244,9 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "Usage-only upgrades must not trigger projection rework when conversation content is unchanged")
 
         // Step 5: Verify indexing artifacts are unchanged
-        let documentsAfter = try store.fetchSearchDocuments(limit: 20)
+        let documentsAfter = try await store.fetchSearchDocuments(limit: 20)
         XCTAssertEqual(documentsAfter.count, 1)
-        let chunksAfter = try store.fetchSearchChunks(documentID: documentsAfter[0].id)
+        let chunksAfter = try await store.fetchSearchChunks(documentID: documentsAfter[0].id)
         XCTAssertEqual(chunksAfter.count, chunksBefore.count,
             "Chunk count must not change from usage-only upgrade")
     }
@@ -344,7 +344,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         let initialCompleted = try await drainProjectionJobs(service)
         XCTAssertGreaterThan(initialCompleted, 0, "Initial drain must complete at least one job")
 
@@ -396,13 +396,13 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             indexedAt: base
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
 
         // Drain initial projection
         _ = try await drainProjectionJobs(service)
 
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        let embeddingsAfterFirst = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let embeddingsAfterFirst = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let embeddingCountAfterFirst = embeddingsAfterFirst.count
         XCTAssertGreaterThan(embeddingCountAfterFirst, 0)
 
@@ -410,7 +410,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         let secondReport = try await service.runSweep(maxJobs: 20)
         XCTAssertEqual(secondReport.completedJobs, 0)
 
-        let embeddingsAfterSecond = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let embeddingsAfterSecond = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         XCTAssertEqual(embeddingsAfterSecond.count, embeddingCountAfterFirst,
             "Embedding count must not grow on repeated sweep with unchanged content")
     }
@@ -432,8 +432,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         let conv2 = makeConversation(id: "conv-gap-2", fullText: "Second conversation content.", indexedAt: base)
         try store.upsertConversation(conv1)
         try store.upsertConversation(conv2)
-        try store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
 
         let initialCompleted = try await drainProjectionJobs(service)
         XCTAssertGreaterThanOrEqual(initialCompleted, 2, "Must complete both initial projection jobs")
@@ -469,7 +469,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             indexedAt: base
         )
         try storeA.upsertConversation(conversationA)
-        try storeA.enqueueConversationProjectionJob(conversationID: conversationA.id, jobType: .project, now: base)
+        try await storeA.enqueueConversationProjectionJob(conversationID: conversationA.id, jobType: .project, now: base)
 
         _ = try await drainProjectionJobs(serviceA)
 
@@ -489,7 +489,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             indexedAt: base
         )
         try storeB.upsertConversation(conversationBv1)
-        try storeB.enqueueConversationProjectionJob(conversationID: conversationBv1.id, jobType: .project, now: base)
+        try await storeB.enqueueConversationProjectionJob(conversationID: conversationBv1.id, jobType: .project, now: base)
         _ = try await drainProjectionJobs(serviceB)
 
         // Now update the conversation (simulating missed event) and trigger gap repair.
@@ -528,8 +528,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
         // --- Convergence check ---
         // Both paths should produce the same search document content hash
-        let documentsA = try storeA.fetchSearchDocuments(limit: 20)
-        let documentsB = try storeB.fetchSearchDocuments(limit: 20)
+        let documentsA = try await storeA.fetchSearchDocuments(limit: 20)
+        let documentsB = try await storeB.fetchSearchDocuments(limit: 20)
         XCTAssertEqual(documentsA.count, 1)
         XCTAssertEqual(documentsB.count, 1)
 
@@ -539,8 +539,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "Event-path and reconciliation-path must produce identical content hashes")
 
         // Both paths should produce the same chunk count
-        let chunksA = try storeA.fetchSearchChunks(documentID: documentsA[0].id)
-        let chunksB = try storeB.fetchSearchChunks(documentID: documentsB[0].id)
+        let chunksA = try await storeA.fetchSearchChunks(documentID: documentsA[0].id)
+        let chunksB = try await storeB.fetchSearchChunks(documentID: documentsB[0].id)
         XCTAssertEqual(chunksA.count, chunksB.count,
             "Event-path and reconciliation-path must produce same chunk count")
 
@@ -618,8 +618,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "Cost totals must converge between event-driven and reconciliation paths")
 
         // Canonical rows must have identical confidence after convergence
-        let rowA = try fetchCanonicalRow(queue: storeA.dbQueue, sessionId: "converge-session-1")
-        let rowB = try fetchCanonicalRow(queue: storeB.dbQueue, sessionId: "converge-session-1")
+        let rowA = try await fetchCanonicalRow(queue: storeA.actor.dbQueue, sessionId: "converge-session-1")
+        let rowB = try await fetchCanonicalRow(queue: storeB.actor.dbQueue, sessionId: "converge-session-1")
         XCTAssertEqual(rowA?["provenanceConfidence"] as? String, rowB?["provenanceConfidence"] as? String,
             "Both paths must converge to same provenance confidence")
         XCTAssertEqual(rowA?["provenanceConfidence"] as? String, "exact",
@@ -713,8 +713,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "Multi-session costs must converge between paths")
 
         // Row counts must be identical
-        let countA = try countCanonicalRows(queue: storeA.dbQueue)
-        let countB = try countCanonicalRows(queue: storeB.dbQueue)
+        let countA = try await countCanonicalRows(queue: storeA.actor.dbQueue)
+        let countB = try await countCanonicalRows(queue: storeB.actor.dbQueue)
         XCTAssertEqual(countA, countB,
             "Canonical row counts must converge")
 
@@ -916,7 +916,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         try await insertAndRefresh(usage: exact, store: store)
 
         // Verify canonical row is exact (highest confidence wins)
-        guard let canonicalRow = try fetchCanonicalRow(queue: store.dbQueue, sessionId: "confidence-ordering-test") else {
+        guard let canonicalRow = try await fetchCanonicalRow(queue: store.actor.dbQueue, sessionId: "confidence-ordering-test") else {
             XCTFail("Should have canonical row")
             return
         }
@@ -930,7 +930,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "Canonical row must have exact values")
 
         // Verify only one row exists
-        let allRows = try fetchAllCanonicalRows(queue: store.dbQueue)
+        let allRows = try await fetchAllCanonicalRows(queue: store.actor.dbQueue)
         let sameKeyRows = allRows.filter { $0["sessionId"] as? String == "confidence-ordering-test" }
         XCTAssertEqual(sameKeyRows.count, 1,
             "Exactly one canonical row must exist for the session")
@@ -976,7 +976,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         try await insertAndRefresh(usage: anotherHighEstimate, store: store)
 
         // Verify canonical row has the updated values (equal confidence allows update)
-        guard let canonicalRow = try fetchCanonicalRow(queue: store.dbQueue, sessionId: "non-upgraded-session") else {
+        guard let canonicalRow = try await fetchCanonicalRow(queue: store.actor.dbQueue, sessionId: "non-upgraded-session") else {
             XCTFail("Should have canonical row")
             return
         }

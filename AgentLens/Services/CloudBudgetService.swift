@@ -55,7 +55,7 @@ final class CloudBudgetService {
 
         // Upload rules with no syncedAt
         do {
-            let unsyncedRules = try budgetRulesStore.fetchAllRules(includeDisabled: true)
+            let unsyncedRules = try await budgetRulesStore.fetchAllRules(includeDisabled: true)
                 .filter { $0.syncedAt == nil }
 
             for rule in unsyncedRules {
@@ -67,7 +67,7 @@ final class CloudBudgetService {
                 // Mark as synced locally
                 var synced = rule
                 synced.syncedAt = Date()
-                try budgetRulesStore.upsertRule(synced)
+                try await budgetRulesStore.upsertRule(synced)
             }
         } catch {
             AppLogger.sync.silentFailure( // cov:ignore -- nonfatal-log
@@ -79,7 +79,7 @@ final class CloudBudgetService {
 
         // Upload events with no syncedAt (last 500 max per sync to cap bandwidth)
         do {
-            let unsyncedEvents = try budgetRulesStore.recentEvents(limit: 500)
+            let unsyncedEvents = try await budgetRulesStore.recentEvents(limit: 500)
                 .filter { $0.syncedAt == nil }
 
             for event in unsyncedEvents {
@@ -89,7 +89,7 @@ final class CloudBudgetService {
                 try await docRef.setData(data, merge: true)
 
                 // Mark synced — we update the local row's syncedAt directly via GRDB
-                try budgetRulesStore.markEventSynced(event.id)
+                try await budgetRulesStore.markEventSynced(event.id)
             }
         } catch {
             AppLogger.sync.silentFailure( // cov:ignore -- nonfatal-log
@@ -113,7 +113,7 @@ final class CloudBudgetService {
         let db = Firestore.firestore()
         let localRules: [BudgetRule]
         do {
-            localRules = try budgetRulesStore.fetchAllRules(includeDisabled: true)
+            localRules = try await budgetRulesStore.fetchAllRules(includeDisabled: true)
         } catch {
             AppLogger.sync.error("budget_rules_fetch_failed", metadata: ["error": error.localizedDescription])
             return
@@ -152,11 +152,11 @@ final class CloudBudgetService {
                 if let local = localByID[remoteRule.id] {
                     // Remote wins on conflict if newer
                     if remoteRule.updatedAt > local.updatedAt {
-                        try budgetRulesStore.upsertRule(remoteRule)
+                        try await budgetRulesStore.upsertRule(remoteRule)
                     }
                 } else {
                     // New rule from another seat
-                    try budgetRulesStore.upsertRule(remoteRule)
+                    try await budgetRulesStore.upsertRule(remoteRule)
                 }
             }
         } catch {
@@ -167,7 +167,7 @@ final class CloudBudgetService {
             ) // cov:ignore -- nonfatal-log
         }
 
-        budgetSettings.refresh()
+        await budgetSettings.refresh()
     }
 
     // MARK: - Encoding / Decoding

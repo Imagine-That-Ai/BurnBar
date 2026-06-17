@@ -20,20 +20,16 @@ final class SwitcherDashboardUITests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            try Self.addMigrationv32(to: dbQueue)
-            store = SwitcherProfileStore(dbQueue: dbQueue)
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        try await Self.addMigrationv32(to: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue)
 
-            // Create adapter for launch services
-            let adapter = ProdSwitcherProfileStoreAdapter(store: store)
-            browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
-            cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
-        } catch {
-            XCTFail("Failed to set up test store: \(error)")
-        }
+        // Create adapter for launch services
+        let adapter = ProdSwitcherProfileStoreAdapter(store: store)
+        browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
+        cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
     }
 
     override func tearDown() {
@@ -46,8 +42,8 @@ final class SwitcherDashboardUITests: XCTestCase {
 
     // MARK: - Migration Helper
 
-    private static func addMigrationv32(to dbQueue: DatabaseQueue) throws {
-        try dbQueue.write { db in
+    private static func addMigrationv32(to dbQueue: DatabaseQueue) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -808,10 +804,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify dashboard view renders with accessibility element.
     /// VAL-DASH-008: The view should expose accessibilityValue for announcements.
     @MainActor
-    func test_dashboardQuickSwitchView_rendersWithAccessibility() throws {
+    func test_dashboardQuickSwitchView_rendersWithAccessibility() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -878,10 +874,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify load completion announces correct count.
     /// VAL-DASH-008: Load completion should announce "{count} profile(s) loaded.".
     @MainActor
-    func test_viewLevel_loadAnnouncesCorrectCount() throws {
+    func test_viewLevel_loadAnnouncesCorrectCount() async throws {
         // Create DataStore for view testing (same db for both store and view)
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -935,10 +931,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify empty load announces no profiles message.
     /// VAL-DASH-008: Empty load should announce "No profiles loaded. Open Settings to create profiles.".
     @MainActor
-    func test_viewLevel_emptyLoadAnnouncesNoProfiles() throws {
+    func test_viewLevel_emptyLoadAnnouncesNoProfiles() async throws {
         // Create DataStore for view testing (same db for both store and view)
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -984,10 +980,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify switch success announces "Launch default updated".
     /// VAL-DASH-008: Success transitions should announce "Launch default updated".
     @MainActor
-    func test_viewLevel_switchSuccessAnnounces() throws {
+    func test_viewLevel_switchSuccessAnnounces() async throws {
         // Create DataStore for view testing (same db for both store and view)
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1048,10 +1044,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify switch to same profile announces success.
     /// VAL-DASH-008: Switching to an already-active profile should still announce success.
     @MainActor
-    func test_viewLevel_switchToSameProfileAnnounces() throws {
+    func test_viewLevel_switchToSameProfileAnnounces() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1216,10 +1212,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify launch success announces "{profile} launched successfully".
     /// VAL-DASH-008: Launch success should announce "{profile.displayName} launched successfully".
     @MainActor
-    func test_viewLevel_launchSuccessAnnounces() throws {
+    func test_viewLevel_launchSuccessAnnounces() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1275,7 +1271,7 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify load error announces error message.
     /// VAL-DASH-008: Load error should announce "Error loading profiles: {error}".
     @MainActor
-    func test_viewLevel_loadErrorAnnounces() throws {
+    func test_viewLevel_loadErrorAnnounces() async throws {
         // We need a scenario where loadData() throws.
         // One way is to have a corrupted database, but that's hard to test.
         // Instead, we verify the announcement mechanism is in place by checking
@@ -1292,7 +1288,7 @@ final class SwitcherDashboardUITests: XCTestCase {
 
         // Create DataStore for view testing with invalid path
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1332,10 +1328,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state UI is rendered when load fails.
     /// VAL-DASH-004: Error state should show error icon, message, and two recovery actions.
     @MainActor
-    func test_errorState_rendersWithErrorIcon() throws {
+    func test_errorState_rendersWithErrorIcon() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1361,10 +1357,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state shows "Failed to Load Profiles" title.
     /// VAL-DASH-004: Error state should show descriptive title.
     @MainActor
-    func test_errorState_rendersWithTitle() throws {
+    func test_errorState_rendersWithTitle() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1390,10 +1386,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state shows the error message.
     /// VAL-DASH-004: Error state should display the specific error message.
     @MainActor
-    func test_errorState_rendersErrorMessage() throws {
+    func test_errorState_rendersErrorMessage() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1419,10 +1415,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state has Retry button.
     /// VAL-DASH-004: Error state should have retry action.
     @MainActor
-    func test_errorState_hasRetryButton() throws {
+    func test_errorState_hasRetryButton() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1447,10 +1443,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify Retry button has correct accessibility label.
     /// VAL-DASH-004: Retry button should be accessible and labeled.
     @MainActor
-    func test_errorState_retryButton_hasAccessibilityLabel() throws {
+    func test_errorState_retryButton_hasAccessibilityLabel() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1479,10 +1475,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state has Open Settings button.
     /// VAL-DASH-004: Error state should have open settings action.
     @MainActor
-    func test_errorState_hasOpenSettingsButton() throws {
+    func test_errorState_hasOpenSettingsButton() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1507,10 +1503,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify Open Settings button has correct accessibility label.
     /// VAL-DASH-004: Open Settings button should be accessible and labeled.
     @MainActor
-    func test_errorState_openSettingsButton_hasAccessibilityLabel() throws {
+    func test_errorState_openSettingsButton_hasAccessibilityLabel() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1541,10 +1537,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state is distinct from empty state via direct view inspection.
     /// VAL-DASH-004: Error state should be visually and semantically distinct from empty state.
     @MainActor
-    func test_errorState_viewIsDistinctFromEmptyState_viewInspection() throws {
+    func test_errorState_viewIsDistinctFromEmptyState_viewInspection() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1573,10 +1569,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state has proper accessibility labeling.
     /// VAL-DASH-004: Error state should have accessible label combining error info.
     @MainActor
-    func test_errorState_hasAccessibilityLabel() throws {
+    func test_errorState_hasAccessibilityLabel() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1603,10 +1599,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state view structure is correct.
     /// VAL-DASH-004: Error state should have error icon, title, message, and two buttons.
     @MainActor
-    func test_errorState_hasCorrectStructure() throws {
+    func test_errorState_hasCorrectStructure() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1643,10 +1639,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify retry button triggers loadData.
     /// VAL-DASH-004: Retry button should call loadData() to reload profiles.
     @MainActor
-    func test_errorState_retryButtonTriggersReload() throws {
+    func test_errorState_retryButtonTriggersReload() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1689,10 +1685,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify open settings button triggers callback.
     /// VAL-DASH-004: Open Settings button should call onOpenSettings callback.
     @MainActor
-    func test_errorState_openSettingsButtonTriggersCallback() throws {
+    func test_errorState_openSettingsButtonTriggersCallback() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1728,10 +1724,10 @@ final class SwitcherDashboardUITests: XCTestCase {
     /// Regression test: Verify error state does not show loading or empty state elements.
     /// VAL-DASH-004: Error state should not show loading spinner or empty state content.
     @MainActor
-    func test_errorState_doesNotShowLoadingOrEmptyState() throws {
+    func test_errorState_doesNotShowLoadingOrEmptyState() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1868,19 +1864,15 @@ final class SwitcherDashboardDataSourceTests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            try Self.addMigrationv32(to: dbQueue)
-            dataStore = try DataStore(
-                databaseQueue: dbQueue,
-                runMigrations: false,
-                refreshOnInit: false
-            )
-        } catch {
-            XCTFail("Failed to set up test store: \(error)")
-        }
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        try await Self.addMigrationv32(to: dbQueue)
+        dataStore = try DataStore(
+            databaseQueue: dbQueue,
+            runMigrations: false,
+            refreshOnInit: false
+        )
     }
 
     override func tearDown() {
@@ -1891,8 +1883,8 @@ final class SwitcherDashboardDataSourceTests: XCTestCase {
 
     // MARK: - Migration Helper
 
-    private static func addMigrationv32(to dbQueue: DatabaseQueue) throws {
-        try dbQueue.write { db in
+    private static func addMigrationv32(to dbQueue: DatabaseQueue) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,

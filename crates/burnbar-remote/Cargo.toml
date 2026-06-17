@@ -7,6 +7,7 @@ members = [
     "burnbar-remote-security",
     "burnbar-remote-media",
     "burnbar-remote-network",
+    "burnbar-remote-ffi",
     "burnbar-remote-host",
     "burnbar-remote-client",
     "burnbar-remote-bench",
@@ -31,6 +32,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tokio-stream = "0.1"
 tokio-util = "0.7"
 tracing = "0.1"
+uniffi = { version = "0.28", features = ["cli"] }
 zeroize = "1"
 
 burnbar-remote-core = { path = "burnbar-remote-core" }

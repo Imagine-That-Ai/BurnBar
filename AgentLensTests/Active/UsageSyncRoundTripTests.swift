@@ -51,10 +51,10 @@ final class UsageSyncRoundTripTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_000_000),
             endTime: Date(timeIntervalSince1970: 1_700_000_100)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
 
         // Precondition: one unsynced row
-        let unsyncedBefore = try dataStore.fetchUnsynced()
+        let unsyncedBefore = try await dataStore.fetchUnsynced()
         XCTAssertEqual(unsyncedBefore.count, 1)
 
         await usageSync.sync()
@@ -70,7 +70,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(docData?["deviceId"] as? String, "test-device-1")
 
         // Postcondition: local row is marked synced
-        let unsyncedAfter = try dataStore.fetchUnsynced()
+        let unsyncedAfter = try await dataStore.fetchUnsynced()
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 
@@ -87,7 +87,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_000_000),
             endTime: Date(timeIntervalSince1970: 1_700_000_100)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
 
         await usageSync.sync()
 
@@ -137,7 +137,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_000_000),
             endTime: Date(timeIntervalSince1970: 1_700_000_100)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
 
         await usageSync.sync()
 
@@ -163,16 +163,18 @@ final class UsageSyncRoundTripTests: XCTestCase {
                 startTime: baseTime.addingTimeInterval(TimeInterval(index)),
                 endTime: baseTime.addingTimeInterval(TimeInterval(index + 1))
             )
-            try dataStore.insert(usage)
+            try await dataStore.insert(usage)
         }
 
-        XCTAssertEqual(try dataStore.fetchUnsynced().count, 400)
+        let initialUnsyncedCount = try await dataStore.fetchUnsynced().count
+        XCTAssertEqual(initialUnsyncedCount, 400)
 
         await usageSync.sync()
 
         XCTAssertEqual(fakeGateway.batchCommitCount, 3)
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 805)
-        XCTAssertTrue(try dataStore.fetchUnsynced().isEmpty)
+        let remainingUnsynced = try await dataStore.fetchUnsynced()
+        XCTAssertTrue(remainingUnsynced.isEmpty)
     }
 
     func test_providerAccountUpload_writesOnlyNonSecretLocalAccountMetadata() async throws {
@@ -192,7 +194,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try dataStore.providerAccountStore.upsert(account)
+        try await dataStore.upsertProviderAccount(account)
 
         await providerAccountSync.uploadAccounts()
 
@@ -235,7 +237,8 @@ final class UsageSyncRoundTripTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let account = try XCTUnwrap(dataStore.providerAccountStore.fetch(id: "openai-personal"))
+        let fetchedAccount = try await dataStore.fetchProviderAccount(id: "openai-personal")
+        let account = try XCTUnwrap(fetchedAccount)
         XCTAssertEqual(account.providerID, .openAI)
         XCTAssertEqual(account.label, "Personal")
         XCTAssertEqual(account.identityHint, "alberto@example.com")
@@ -376,7 +379,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         }
 
         // Verify local store contains the remote usage
-        let allUsage = try dataStore.usageStore.fetchAllUsage()
+        let allUsage = try await dataStore.fetchAllUsage()
         let remoteUsages = allUsage.filter { $0.isRemote }
         XCTAssertEqual(remoteUsages.count, 1, "Expected 1 remote usage but found \(remoteUsages.count). All docs: \(allDocs.keys)")
 
@@ -404,13 +407,13 @@ final class UsageSyncRoundTripTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_000_000),
             endTime: Date(timeIntervalSince1970: 1_700_000_100)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
 
         await usageSync.sync()
         await downloadSync.sync()
 
         // Should not create a duplicate of our own data
-        let allUsage = try dataStore.usageStore.fetchAllUsage()
+        let allUsage = try await dataStore.fetchAllUsage()
         XCTAssertEqual(allUsage.count, 1)
         XCTAssertFalse(allUsage[0].isRemote)
     }
@@ -436,11 +439,11 @@ final class UsageSyncRoundTripTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_010_100),
             endTime: Date(timeIntervalSince1970: 1_700_010_120)
         )
-        try dataStore.insert(first)
+        try await dataStore.insert(first)
         await usageSync.sync()
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
 
-        try dataStore.insert(second)
+        try await dataStore.insert(second)
         await usageSync.sync()
         await usageSync.sync()
 
@@ -448,8 +451,10 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(docs.count, 2)
         XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(first.id.uuidString)"])
         XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(second.id.uuidString)"])
-        XCTAssertEqual(try dataStore.usageStore.fetchAllUsage().count, 2)
-        XCTAssertTrue(try dataStore.fetchUnsynced().isEmpty)
+        let localUsageCount = try await dataStore.fetchAllUsage().count
+        let unsyncedAfterAppend = try await dataStore.fetchUnsynced()
+        XCTAssertEqual(localUsageCount, 2)
+        XCTAssertTrue(unsyncedAfterAppend.isEmpty)
     }
 
     func test_firestoreOnlyProviderAccountUpload_mergesAndPreservesExistingDocuments() async throws {
@@ -458,7 +463,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
             "legacyMarker": "preserve-me"
         ], at: "users/test-uid-1/provider_accounts/anthropic-main")
 
-        try dataStore.providerAccountStore.upsert(makeProviderAccount(
+        try await dataStore.upsertProviderAccount(makeProviderAccount(
             id: "anthropic-main",
             providerID: .anthropic,
             label: "Anthropic Main",
@@ -467,7 +472,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         ))
         await providerAccountSync.uploadAccounts()
 
-        try dataStore.providerAccountStore.upsert(makeProviderAccount(
+        try await dataStore.upsertProviderAccount(makeProviderAccount(
             id: "codex-main",
             providerID: .codex,
             label: "Codex Main",
@@ -487,7 +492,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
 
     func test_providerAccountDownload_namespacesRemoteDeviceLocalCollision() async throws {
         let now = Date(timeIntervalSince1970: 1_700_030_000)
-        try dataStore.providerAccountStore.upsert(makeProviderAccount(
+        try await dataStore.upsertProviderAccount(makeProviderAccount(
             id: "shared-local-id",
             providerID: .openAI,
             label: "Local Keychain",
@@ -514,11 +519,12 @@ final class UsageSyncRoundTripTests: XCTestCase {
         await downloadSync.sync()
         await downloadSync.sync()
 
-        let local = try XCTUnwrap(dataStore.providerAccountStore.fetch(id: "shared-local-id"))
+        let fetchedLocal = try await dataStore.fetchProviderAccount(id: "shared-local-id")
+        let local = try XCTUnwrap(fetchedLocal)
         XCTAssertEqual(local.label, "Local Keychain")
         XCTAssertEqual(local.sourceDeviceID, "test-device-1")
 
-        let accounts = try dataStore.providerAccountStore.fetchAll(providerID: .openAI)
+        let accounts = try await dataStore.fetchProviderAccounts(providerID: .openAI)
         let remote = try XCTUnwrap(accounts.first { $0.sourceDeviceID == "remote-device-2" })
         XCTAssertEqual(remote.id, "shared-local-id__remote_remote-device-2")
         XCTAssertEqual(remote.label, "Remote Keychain")
@@ -553,18 +559,21 @@ final class UsageSyncRoundTripTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_040_000),
             endTime: Date(timeIntervalSince1970: 1_700_040_001)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
 
         fakeGateway.nextError = NSError(domain: "UnitTest", code: 1)
         await usageSync.sync()
         fakeGateway.nextError = nil
 
-        XCTAssertEqual(try dataStore.fetchUnsynced().map(\.id), [usage.id])
-        XCTAssertEqual(try dataStore.usageStore.fetchAllUsage().count, 1)
+        let unsyncedAfterFailedUpload = try await dataStore.fetchUnsynced().map(\.id)
+        let localUsageAfterFailedUploadCount = try await dataStore.fetchAllUsage().count
+        XCTAssertEqual(unsyncedAfterFailedUpload, [usage.id])
+        XCTAssertEqual(localUsageAfterFailedUploadCount, 1)
         XCTAssertTrue(fakeGateway.documents(under: "users/test-uid-1/usage").isEmpty)
 
         await usageSync.sync()
-        XCTAssertTrue(try dataStore.fetchUnsynced().isEmpty)
+        let unsyncedAfterRetry = try await dataStore.fetchUnsynced()
+        XCTAssertTrue(unsyncedAfterRetry.isEmpty)
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
     }
 
@@ -678,13 +687,14 @@ final class UsageSyncRoundTripTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_050_000),
             endTime: Date(timeIntervalSince1970: 1_700_050_010)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
         await usageSync.sync()
 
         XCTAssertEqual(mergedMirrorState["/mirror/session-a.jsonl"], existingMirrorRecord)
         XCTAssertEqual(mergedMirrorState["/mirror/session-c.jsonl"], newMirrorRecord)
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
-        XCTAssertEqual(try dataStore.usageStore.fetchAllUsage().count, 1)
+        let localUsageAfterMirrorMergeCount = try await dataStore.fetchAllUsage().count
+        XCTAssertEqual(localUsageAfterMirrorMergeCount, 1)
     }
 
     private func makeProviderAccount(

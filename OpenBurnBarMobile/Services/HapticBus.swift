@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import OpenBurnBarCore
 
 // MARK: - HapticBus
 //
@@ -43,4 +44,23 @@ enum HapticBus {
 
     /// Trend delta crossed a positive threshold (success "ping").
     static func milestone() { Haptics.success() }
+
+    /// Launch logo formation moments. Kept here so shared Core animation code
+    /// can stay platform-neutral while iOS gets a tactile first impression.
+    static func logoFormation(_ event: BurnBarLogoFormationHaptic) {
+        switch event {
+        case .ignition:
+            Haptics.light()
+        case .coalescing:
+            Haptics.selection()
+        case .logoLocked:
+            Haptics.medium()
+        case .glassSettled:
+            Haptics.rigid()
+        case .providerGlyphs:
+            Haptics.success()
+        case .interaction:
+            Haptics.selection()
+        }
+    }
 }

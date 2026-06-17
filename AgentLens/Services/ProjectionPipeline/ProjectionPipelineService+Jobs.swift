@@ -4,12 +4,12 @@ import OpenBurnBarCore
 // MARK: - Job queue management
 
 extension ProjectionPipelineService {
-    nonisolated func enqueueRebuildJob(reason: String = "manual", priority: Int = 1) throws {
+    nonisolated func enqueueRebuildJob(reason: String = "manual", priority: Int = 1) async throws {
         let now = nowProvider()
         let seed = "\(reason)|\(now.timeIntervalSince1970)"
         let id = ProjectionIdentity.rebuildJobID(seed: seed)
         let sourceVersionID = ProjectionIdentity.sourceVersion(contentVersion: ProjectionIdentity.sha256Hex(seed))
-        try dataStore.enqueueProjectionJob(
+        try await dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: id,
                 jobType: .rebuild,
@@ -34,7 +34,7 @@ extension ProjectionPipelineService {
         sourceKind: SearchSourceKind? = nil,
         sourceID: String? = nil,
         priority: Int = 25
-    ) throws {
+    ) async throws {
         if (sourceKind == nil) != (sourceID == nil) {
             throw ProjectionPipelineError.invalidJobPayload("Re-embed jobs must set both sourceKind and sourceID, or neither.")
         }
@@ -49,7 +49,7 @@ extension ProjectionPipelineService {
             sourceID: sourceID
         )
         let payloadJSON = String(data: try JSONEncoder().encode(payload), encoding: .utf8)
-        try dataStore.enqueueProjectionJob(
+        try await dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: ProjectionIdentity.reembedJobID(seed: seed),
                 jobType: .reembed,
@@ -75,9 +75,9 @@ extension ProjectionPipelineService {
         sourceVersionID: String,
         jobType: ProjectionJobType = .reproject,
         priority: Int = 10
-    ) throws {
+    ) async throws {
         let now = nowProvider()
-        try dataStore.enqueueProjectionJob(
+        try await dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: ProjectionIdentity.jobID(
                     jobType: jobType,
@@ -112,10 +112,10 @@ extension ProjectionPipelineService {
         defer { isSweeping = false }
         let sweepStartedAt = OpenBurnBarProjectionPerformanceTimer.now()
 
-        try ensureBackfillSeededIfNeeded()
-        let pendingQueueDepth = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        try await ensureBackfillSeededIfNeeded()
+        let pendingQueueDepth = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
         if pendingQueueDepth <= ProjectionPipelineRuntimeTuning.gapRepairQueueDepthThreshold {
-            try? enqueueGapRepairIfNeeded() // try?-ok(self-heal retried next sweep)
+            try? await enqueueGapRepairIfNeeded() // try?-ok(self-heal retried next sweep)
         }
 
         var report = ProjectionSweepReport()
@@ -124,7 +124,7 @@ extension ProjectionPipelineService {
 
         for _ in 0..<maxJobs {
             let now = nowProvider()
-            guard let leasedJob = try dataStore.leaseNextProjectionJob(
+            guard let leasedJob = try await dataStore.leaseNextProjectionJob(
                 leaseOwner: leaseOwner,
                 leaseDuration: leaseDuration,
                 now: now
@@ -139,8 +139,8 @@ extension ProjectionPipelineService {
 
             do {
                 try await process(leasedJob)
-                try dataStore.markProjectionJobCompleted(id: leasedJob.id, completedAt: nowProvider())
-                try updateSubsystemHealthAfterCompletion(for: leasedJob)
+                try await dataStore.markProjectionJobCompleted(id: leasedJob.id, completedAt: nowProvider())
+                try await updateSubsystemHealthAfterCompletion(for: leasedJob)
                 report.completedJobs += 1
             } catch {
                 let code = ProjectionPipelineError.code(for: error)
@@ -150,7 +150,7 @@ extension ProjectionPipelineService {
 
                 let nextAttempt = leasedJob.attempts + 1
                 if nextAttempt >= leasedJob.maxAttempts {
-                    try dataStore.markProjectionJobCanceled(
+                    try await dataStore.markProjectionJobCanceled(
                         id: leasedJob.id,
                         errorCode: code,
                         errorMessage: message,
@@ -159,7 +159,7 @@ extension ProjectionPipelineService {
                     report.canceledJobs += 1
                 } else {
                     let retryAt = nowProvider().addingTimeInterval(retryDelaySeconds(attempt: nextAttempt))
-                    try dataStore.markProjectionJobFailed(
+                    try await dataStore.markProjectionJobFailed(
                         id: leasedJob.id,
                         errorCode: code,
                         errorMessage: message,
@@ -169,7 +169,7 @@ extension ProjectionPipelineService {
                     report.retriedJobs += 1
                 }
                 do {
-                    try upsertSubsystemFailureHealth(for: leasedJob, errorCode: code, errorMessage: message)
+                    try await upsertSubsystemFailureHealth(for: leasedJob, errorCode: code, errorMessage: message)
                 } catch {
                     lastErrorCode = "PROJECTION_HEALTH_WRITE_FAILED"
                     lastErrorMessage = "Failed to persist projection subsystem failure health: \(error.localizedDescription)"
@@ -179,7 +179,7 @@ extension ProjectionPipelineService {
         }
 
         let sweepDurationMs = OpenBurnBarProjectionPerformanceTimer.elapsedMilliseconds(since: sweepStartedAt)
-        try upsertProjectionHealth(
+        try await upsertProjectionHealth(
             report: report,
             sweepDurationMs: sweepDurationMs,
             lastErrorCode: lastErrorCode,
@@ -188,17 +188,17 @@ extension ProjectionPipelineService {
         return report
     }
 
-    internal func ensureBackfillSeededIfNeeded() throws {
+    internal func ensureBackfillSeededIfNeeded() async throws {
         guard didSeedBackfill == false else { return }
         didSeedBackfill = true
 
-        if try dataStore.fetchSearchDocuments(limit: 1).isEmpty == false {
+        if try await dataStore.fetchSearchDocuments(limit: 1).isEmpty == false {
             return
         }
 
         let hasConversations = (try dataStore.fetchConversations(limit: 1).isEmpty == false)
         let hasArtifacts = (
-            try dataStore.fetchSourceArtifacts(
+            try await dataStore.fetchSourceArtifacts(
                 includeDeleted: false,
                 rootPaths: nil,
                 sourceKinds: [.skillDoc, .agentDoc, .sharedArtifact]
@@ -206,7 +206,7 @@ extension ProjectionPipelineService {
         )
 
         guard hasConversations || hasArtifacts else { return }
-        try enqueueRebuildJob(reason: "initial_backfill", priority: 1)
+        try await enqueueRebuildJob(reason: "initial_backfill", priority: 1)
     }
 
     /// Detects and repairs gaps in the index caused by missed events.
@@ -215,7 +215,7 @@ extension ProjectionPipelineService {
     /// Paginates through the full conversation corpus to avoid truncation.
     /// When a conversation source is missing (deleted without purge), enqueues
     /// purge jobs to clean up stale search artifacts (delete-event miss recovery).
-    internal func enqueueGapRepairIfNeeded() throws {
+    internal func enqueueGapRepairIfNeeded() async throws {
         // Paginate through ALL indexed conversation documents to cover the full corpus.
         // Uses deterministic ordering with stable tie-breaks across pages.
         let repairPageSize = paginationPageSize
@@ -223,7 +223,7 @@ extension ProjectionPipelineService {
         var hasProcessedAnyPage = false
 
         while true {
-            let indexedDocuments = try dataStore.fetchSearchDocuments(
+            let indexedDocuments = try await dataStore.fetchSearchDocuments(
                 limit: repairPageSize,
                 offset: documentOffset,
                 sourceKinds: [.conversation]
@@ -260,7 +260,7 @@ extension ProjectionPipelineService {
 
                     if currentHash != document.contentHash {
                         let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
-                        try enqueueSelectiveReproject(
+                        try await enqueueSelectiveReproject(
                             sourceKind: .conversation,
                             sourceID: sourceID,
                             sourceVersionID: sourceVersionID,
@@ -271,7 +271,7 @@ extension ProjectionPipelineService {
                 } else {
                     // Conversation source is missing (deleted without purge event).
                     // Enqueue purge to clean up stale search artifacts.
-                    try enqueueSelectiveReproject(
+                    try await enqueueSelectiveReproject(
                         sourceKind: .conversation,
                         sourceID: sourceID,
                         sourceVersionID: ProjectionIdentity.deletedSourceVersionID,
@@ -295,7 +295,7 @@ extension ProjectionPipelineService {
             guard let sourceKind = job.sourceKind, let sourceID = job.sourceID else {
                 throw ProjectionPipelineError.invalidJobPayload("Purge job missing source identity.")
             }
-            try dataStore.deleteSearchDocuments(sourceKind: sourceKind, sourceID: sourceID)
+            try await dataStore.deleteSearchDocuments(sourceKind: sourceKind, sourceID: sourceID)
         case .rebuild:
             try await processRebuild()
         case .reembed:

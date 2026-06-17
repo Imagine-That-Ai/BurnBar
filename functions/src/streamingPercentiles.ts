@@ -81,6 +81,7 @@ export class StreamingPercentileSketch {
   }
 
   private percentile(pct: number): number | undefined {
+    if (this.total === 0) return undefined;
     const target = Math.min(this.total, Math.max(1, Math.ceil((pct / 100) * this.total)));
     let seen = 0;
     for (const bucket of this.sortedBuckets()) {

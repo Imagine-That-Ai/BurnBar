@@ -498,8 +498,8 @@ final class ProviderQuotaService {
         )
     }
 
-    func visiblePopoverProviders(dataStore: DataStore) -> [AgentProvider] {
-        let connectedProviderIDs = connectedQuotaProviderIDs(dataStore: dataStore)
+    func visiblePopoverProviders(dataStore: DataStore) async -> [AgentProvider] {
+        let connectedProviderIDs = await connectedQuotaProviderIDs(dataStore: dataStore)
         let providersWithAccountSnapshots = Set(snapshotsByAccountID.values.compactMap { snapshot -> AgentProvider? in
             guard snapshot.hasDisplayableQuotaSignal else { return nil }
             return AgentProvider.fromProviderID(snapshot.providerID)
@@ -512,8 +512,8 @@ final class ProviderQuotaService {
         }
     }
 
-    func hasConnectedQuotaAccount(for provider: AgentProvider, dataStore: DataStore) -> Bool {
-        connectedQuotaProviderIDs(dataStore: dataStore).contains(provider.providerID)
+    func hasConnectedQuotaAccount(for provider: AgentProvider, dataStore: DataStore) async -> Bool {
+        await connectedQuotaProviderIDs(dataStore: dataStore).contains(provider.providerID)
     }
 
     func routingState(for providerID: ProviderID) -> ProviderRoutingStateSnapshot? {
@@ -524,7 +524,7 @@ final class ProviderQuotaService {
     func refreshRoutingState(
         dataStore: DataStore,
         request: ProviderRoutingRequest = ProviderRoutingRequest()
-    ) -> [ProviderID: ProviderRoutingStateSnapshot] {
+    ) async -> [ProviderID: ProviderRoutingStateSnapshot] {
         // A local-store read fault must not be invisible: routing decides
         // which credential/account serves traffic, and a silent `[]` here
         // drops every locally-known account from the candidate set without a
@@ -533,7 +533,7 @@ final class ProviderQuotaService {
         // routing can proceed), but the read failure is now logged.
         let accounts: [ProviderAccountDoc]
         do {
-            accounts = try dataStore.providerAccountStore.fetchAll()
+            accounts = try await dataStore.fetchProviderAccounts()
         } catch {
             AppLogger.dataStore.error(
                 "ProviderQuotaService: refreshRoutingState fetchAll failed",
@@ -616,7 +616,7 @@ final class ProviderQuotaService {
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
         if let lastFetch, Date().timeIntervalSince(lastFetch) < maxAge {
-            refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
+            await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
             return
         }
         await refreshAll(dataStore: dataStore)
@@ -711,8 +711,8 @@ final class ProviderQuotaService {
             batch.accountSnapshots,
             pruningManagedAccountSnapshotsFor: Set(refreshProviders)
         )
-        persistDaemonCredentialSlotAccounts(dataStore: dataStore)
-        refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
+        await persistDaemonCredentialSlotAccounts(dataStore: dataStore)
+        await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
 
         lastFetch = Date()
         persistSnapshots()
@@ -733,8 +733,8 @@ final class ProviderQuotaService {
                 accountSnapshots,
                 pruningManagedAccountSnapshotsFor: [provider]
             )
-            persistDaemonCredentialSlotAccounts(dataStore: dataStore, providers: [provider])
-            refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest(provider: provider))
+            await persistDaemonCredentialSlotAccounts(dataStore: dataStore, providers: [provider])
+            await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest(provider: provider))
             errors.removeValue(forKey: provider)
             lastFetch = Date()
             persistSnapshots()
@@ -876,14 +876,14 @@ final class ProviderQuotaService {
         }
     }
 
-    private func connectedQuotaProviderIDs(dataStore: DataStore) -> Set<ProviderID> {
+    private func connectedQuotaProviderIDs(dataStore: DataStore) async -> Set<ProviderID> {
         if let cache = connectedQuotaProviderIDsCache,
            Date().timeIntervalSince(cache.fetchedAt) < 15 {
             return cache.ids
         }
         let accounts: [ProviderAccountDoc]
         do {
-            accounts = try dataStore.providerAccountStore.fetchAll()
+            accounts = try await dataStore.fetchProviderAccounts()
         } catch {
             // Correctness over silence: this set gates popover visibility and
             // which providers get a quota refresh. A swallowed read fault used
@@ -952,6 +952,7 @@ final class ProviderQuotaService {
         let slot = daemonSlot(forAccount: account)
         let snapshot = accountSnapshot(providerID: account.providerID, accountID: account.id)
         let quotaState = routingQuotaState(account: account, snapshot: snapshot, slot: slot)
+        let utilizationBucket = routingUtilizationBucket(for: snapshot)
         let cooldownUntil = slot?.cooldownUntil
 
         return ProviderRoutingCandidate(
@@ -962,6 +963,8 @@ final class ProviderQuotaService {
             storageScope: account.storageScope,
             modelCompatibility: .unknown,
             quotaState: quotaState,
+            quotaResetsAt: utilizationBucket?.resetsAt ?? slot?.lastQuotaResetsAt,
+            remainingPercent: utilizationBucket?.remainingPercent ?? slot?.lastQuotaRemainingPercent,
             cooldownUntil: cooldownUntil,
             priority: Int(account.sortKey),
             routingEnabled: account.status != .disabled && account.status != .deleted,
@@ -984,6 +987,19 @@ final class ProviderQuotaService {
             }
         }
         return nil
+    }
+
+    private func routingUtilizationBucket(for snapshot: ProviderQuotaSnapshot?) -> ProviderQuotaBucket? {
+        let now = Date()
+        return snapshot?.displayableQuotaBuckets(relativeTo: now).min { lhs, rhs in
+            if let resetOrder = ProviderQuotaUtilizationOrdering.compareQuotaReset(lhs.resetsAt, rhs.resetsAt, now: now) {
+                return resetOrder
+            }
+            if let remainingOrder = ProviderQuotaUtilizationOrdering.compareRemainingPercent(lhs.remainingPercent, rhs.remainingPercent) {
+                return remainingOrder
+            }
+            return lhs.key < rhs.key
+        }
     }
 
     private func routingQuotaState(
@@ -1254,15 +1270,15 @@ final class ProviderQuotaService {
     private func persistDaemonCredentialSlotAccounts(
         dataStore: DataStore,
         providers: Set<AgentProvider>? = nil
-    ) {
+    ) async {
         let accounts = daemonCredentialSlotAccounts(providers: providers)
         let scopedProviderIDs = daemonCredentialSlotProviderIDs(providers: providers)
 
         do {
             for account in accounts {
-                try dataStore.providerAccountStore.upsert(account)
+                try await dataStore.upsertProviderAccount(account)
             }
-            try markRemovedDaemonCredentialSlotAccountsDeleted(
+            try await markRemovedDaemonCredentialSlotAccountsDeleted(
                 dataStore: dataStore,
                 scopedProviderIDs: scopedProviderIDs,
                 activeAccountIDs: Set(accounts.map(\.id))
@@ -1289,13 +1305,13 @@ final class ProviderQuotaService {
         dataStore: DataStore,
         scopedProviderIDs: Set<ProviderID>,
         activeAccountIDs: Set<String>
-    ) throws {
+    ) async throws {
         guard !scopedProviderIDs.isEmpty else { return }
         let now = Date()
         for providerID in scopedProviderIDs {
-            let existingAccounts = try dataStore.providerAccountStore.fetchAll(providerID: providerID)
+            let existingAccounts = try await dataStore.fetchProviderAccounts(providerID: providerID)
             for account in existingAccounts where account.storageScope == .deviceKeychain && !activeAccountIDs.contains(account.id) {
-                try dataStore.providerAccountStore.upsert(
+                try await dataStore.upsertProviderAccount(
                     ProviderAccountDoc(
                         id: account.id,
                         providerID: account.providerID,

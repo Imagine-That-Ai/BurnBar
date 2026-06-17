@@ -42,14 +42,15 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
         let sourceVersionV1 = ProjectionIdentity.conversationSourceVersionID(for: conversation)
         try await seedService.projectConversation(conversation, sourceVersionID: sourceVersionV1)
 
-        guard let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first else {
+        guard let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first else {
             XCTFail("Expected projected document after seeding.")
             return
         }
-        let seededChunks = try store.fetchSearchChunks(documentID: document.id)
+        let seededChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertFalse(seededChunks.isEmpty, "Seeding should produce chunks.")
+        let seededEmbeddingCount = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
         XCTAssertEqual(
-            try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count,
+            seededEmbeddingCount,
             seededChunks.count,
             "Every seeded chunk should have an embedding."
         )
@@ -76,7 +77,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
         // The metadata change rekeys the chunk IDs (sourceVersionID changed), so the seeded
         // chunks — and their embeddings — were cascade-deleted. Any embedding now present on a
         // new chunk ID came from the fresh re-embed recovery, not leftover seed rows.
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalChunkIDs = Set(finalChunks.map(\.id))
         XCTAssertTrue(
             finalChunkIDs.isDisjoint(with: Set(seededChunks.map(\.id))),
@@ -85,14 +86,14 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
 
         // The corruption invariant: despite every copy failing, every CURRENT chunk has an
         // embedding (re-embedded freshly), so none is silently unsearchable.
-        let embeddedChunkIDs = Set(try store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
+        let embeddedChunkIDs = Set(try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
         XCTAssertEqual(
             embeddedChunkIDs, finalChunkIDs,
             "Every chunk must have an embedding after a fully-failed reuse copy (fresh re-embed recovery)."
         )
 
         // The fresh embeddings must be real, decodable vectors of the right dimension.
-        for embedding in try store.fetchChunkEmbeddings(embeddingVersionID: versionID) {
+        for embedding in try await store.fetchChunkEmbeddings(embeddingVersionID: versionID) {
             guard let decoded = VectorBlobCodec.decode(embedding.vectorBlob) else {
                 XCTFail("Recovered embedding should be decodable.")
                 return
@@ -125,11 +126,11 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation)
         )
 
-        guard let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first else {
+        guard let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first else {
             XCTFail("Expected projected document.")
             return
         }
-        let seededChunkCount = try store.fetchSearchChunks(documentID: document.id).count
+        let seededChunkCount = try await store.fetchSearchChunks(documentID: document.id).count
 
         let metadataOnlyChange = withMessageCount(conversation, messageCount: 7)
         try store.upsertConversation(metadataOnlyChange)
@@ -142,9 +143,9 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
         XCTAssertGreaterThan(outcome?.reusedCount ?? 0, 0, "Unchanged text should reuse embeddings.")
         XCTAssertTrue(outcome?.failedChunkIDs.isEmpty ?? false, "No copy should fail on the happy path.")
 
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertEqual(finalChunks.count, seededChunkCount, "Chunk count is stable for metadata-only change.")
-        let embeddedChunkIDs = Set(try store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
+        let embeddedChunkIDs = Set(try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
         XCTAssertEqual(
             embeddedChunkIDs, Set(finalChunks.map(\.id)),
             "Every chunk should have an embedding via reuse on the happy path."
@@ -161,7 +162,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
 
         let body = String(repeating: "Artifact reuse failure recovery body line. ", count: 80)
         let artifact = makeMattersArtifact(id: "artifact-reuse-fail", body: body, contentHash: "artifact-hash-v1", at: base)
-        _ = try store.upsertSourceArtifact(artifact)
+        _ = try await store.upsertSourceArtifact(artifact)
 
         let seedService = ProjectionPipelineService(
             dataStore: store,
@@ -171,16 +172,14 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
         let sourceVersionV1 = ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash)
         try await seedService.projectArtifact(artifact, sourceVersionID: sourceVersionV1)
 
-        guard let document = try store.fetchSearchDocuments(sourceKind: artifact.sourceKind, sourceID: artifact.id).first else {
+        guard let document = try await store.fetchSearchDocuments(sourceKind: artifact.sourceKind, sourceID: artifact.id).first else {
             XCTFail("Expected projected artifact document after seeding.")
             return
         }
-        let seededChunks = try store.fetchSearchChunks(documentID: document.id)
+        let seededChunks = try await store.fetchSearchChunks(documentID: document.id)
         XCTAssertFalse(seededChunks.isEmpty)
-        XCTAssertEqual(
-            try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count,
-            seededChunks.count
-        )
+        let seededEmbeddingCount = try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        XCTAssertEqual(seededEmbeddingCount, seededChunks.count)
 
         // Re-project the SAME body under a NEW contentHash. The body text is unchanged so
         // chunk *content hashes* match (reuse path), but the new sourceVersionID rekeys the
@@ -193,7 +192,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             contentHash: "artifact-hash-v2",
             at: base.addingTimeInterval(60)
         )
-        _ = try store.upsertSourceArtifact(artifactV2)
+        _ = try await store.upsertSourceArtifact(artifactV2)
         let sourceVersionV2 = ProjectionIdentity.artifactSourceVersionID(contentHash: artifactV2.contentHash)
         XCTAssertNotEqual(sourceVersionV1, sourceVersionV2, "New contentHash must rekey chunk IDs.")
 
@@ -209,13 +208,13 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
         XCTAssertEqual(outcome?.reusedCount, 0)
         XCTAssertFalse(outcome?.failedChunkIDs.isEmpty ?? true)
 
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
         let finalChunkIDs = Set(finalChunks.map(\.id))
         XCTAssertTrue(
             finalChunkIDs.isDisjoint(with: Set(seededChunks.map(\.id))),
             "Chunk IDs must have rekeyed so the cascade-deleted-then-failed-copy bug can manifest."
         )
-        let embeddedChunkIDs = Set(try store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
+        let embeddedChunkIDs = Set(try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
         XCTAssertEqual(
             embeddedChunkIDs, finalChunkIDs,
             "Every artifact chunk must have an embedding after a fully-failed reuse copy."
@@ -248,11 +247,11 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
             sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation)
         )
 
-        guard let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first else {
+        guard let document = try await store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first else {
             XCTFail("Expected projected document.")
             return
         }
-        let chunkCount = try store.fetchSearchChunks(documentID: document.id).count
+        let chunkCount = try await store.fetchSearchChunks(documentID: document.id).count
         XCTAssertGreaterThan(chunkCount, 1, "Need multiple chunks to exercise partial failure.")
 
         // Fail exactly the first reuse-copy call; let the remaining copies succeed.
@@ -265,7 +264,7 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
                 if failedOnce.consumeFirst() {
                     throw InjectedReuseWriteFailure()
                 }
-                try store.upsertChunkEmbedding(record)
+                try await store.upsertChunkEmbedding(record)
             }
         )
         let metadataOnlyChange = withMessageCount(conversation, messageCount: 42)
@@ -283,8 +282,8 @@ final class ProjectionPipelineServiceMattersTests: XCTestCase {
         )
 
         // Even with one failed copy, every chunk ends up embedded.
-        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
-        let embeddedChunkIDs = Set(try store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
+        let finalChunks = try await store.fetchSearchChunks(documentID: document.id)
+        let embeddedChunkIDs = Set(try await store.fetchChunkEmbeddings(embeddingVersionID: versionID).map(\.chunkID))
         XCTAssertEqual(
             embeddedChunkIDs, Set(finalChunks.map(\.id)),
             "Every chunk must have an embedding even when a single reuse copy failed."

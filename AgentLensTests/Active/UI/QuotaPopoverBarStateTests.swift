@@ -29,8 +29,8 @@ final class QuotaPopoverBarStateTests: XCTestCase {
         )
     }
 
-    private func connectProvider(_ provider: AgentProvider, in dataStore: DataStore) throws {
-        try dataStore.providerAccountStore.upsert(ProviderAccountDoc(
+    private func connectProvider(_ provider: AgentProvider, in dataStore: DataStore) async throws {
+        try await dataStore.upsertProviderAccount(ProviderAccountDoc(
             id: "acct-\(provider.rawValue)",
             providerID: provider.providerID,
             label: "Test account",
@@ -73,9 +73,9 @@ final class QuotaPopoverBarStateTests: XCTestCase {
         XCTAssertFalse(isBlank(render(bar)), "the no-connected empty state must render")
     }
 
-    func test_allProvidersHiddenBySelectionRendersHiddenEmptyStateAndTapRoutes() throws {
+    func test_allProvidersHiddenBySelectionRendersHiddenEmptyStateAndTapRoutes() async throws {
         let dataStore = try makeDataStore()
-        try connectProvider(.codex, in: dataStore)
+        try await connectProvider(.codex, in: dataStore)
         let settingsManager = makeSettingsManager()
         // Hide every provider via the new Settings selection.
         settingsManager.quotas.visibleProviders = []
@@ -94,9 +94,9 @@ final class QuotaPopoverBarStateTests: XCTestCase {
         XCTAssertEqual(customizeTapped, 0)
     }
 
-    func test_visibleSelectedProviderRendersQuotaRow() throws {
+    func test_visibleSelectedProviderRendersQuotaRow() async throws {
         let dataStore = try makeDataStore()
-        try connectProvider(.codex, in: dataStore)
+        try await connectProvider(.codex, in: dataStore)
         let settingsManager = makeSettingsManager()
         settingsManager.quotas.visibleProviders = Set(AgentProvider.quotaSignalProviders)
 
@@ -109,13 +109,13 @@ final class QuotaPopoverBarStateTests: XCTestCase {
         XCTAssertFalse(isBlank(render(bar)), "a connected + selected provider must render its row")
     }
 
-    func test_selectionFilterDrivesWhichProvidersTheBarShows() throws {
+    func test_selectionFilterDrivesWhichProvidersTheBarShows() async throws {
         // The view derives rows as available ∩ selected; pin that exact set
         // logic through the same inputs the body reads.
         let dataStore = try makeDataStore()
-        try connectProvider(.codex, in: dataStore)
+        try await connectProvider(.codex, in: dataStore)
         let service = makeQuotaService(refreshProviders: [.codex])
-        let available = service.visiblePopoverProviders(dataStore: dataStore)
+        let available = await service.visiblePopoverProviders(dataStore: dataStore)
         XCTAssertEqual(available, [.codex])
 
         let settingsManager = makeSettingsManager()

@@ -23,7 +23,7 @@ final class ProviderAccountSyncService: Sendable {
         let deviceId = gate.account.deviceId
 
         do {
-            let accounts = try context.dataStore.providerAccountStore.fetchAll()
+            let accounts = try await context.dataStore.fetchProviderAccounts()
             guard !accounts.isEmpty else { return }
 
             let batch = context.firestoreGateway.batch()

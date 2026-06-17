@@ -97,11 +97,18 @@ final class MobileAssistantChatReader {
     private(set) var lastRefreshedAt: Date?
 
     private let remote: MobileAssistantChatRemoteSource
+    private let deviceIDProvider: @MainActor () -> String
     private let logger = Logger(subsystem: "com.openburnbar.agentlens", category: "MobileAssistantChatReader")
     private var authListenerHandle: AuthStateDidChangeListenerHandle?
 
-    init(remote: MobileAssistantChatRemoteSource = MobileAssistantChatFirestoreSource()) {
-        self.remote = remote
+    init(
+        remote: MobileAssistantChatRemoteSource? = nil,
+        deviceIDProvider: @escaping @MainActor () -> String = {
+            UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "device_local"
+        }
+    ) {
+        self.deviceIDProvider = deviceIDProvider
+        self.remote = remote ?? MobileAssistantChatFirestoreSource(deviceIDProvider: deviceIDProvider)
         attachAuthListener()
     }
 
@@ -158,9 +165,16 @@ final class MobileAssistantChatReader {
 @MainActor
 final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource {
     private let firestoreProvider: @Sendable () -> Firestore
+    private let deviceIDProvider: @MainActor () -> String
 
-    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
+    init(
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        deviceIDProvider: @escaping @MainActor () -> String = {
+            UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "device_local"
+        }
+    ) {
         self.firestoreProvider = firestoreProvider
+        self.deviceIDProvider = deviceIDProvider
     }
 
     var isAvailable: Bool {
@@ -180,7 +194,7 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
             .getDocuments()
         let key = try await MacCloudVaultKeyAccess.keyForReading(
             uid: uid,
-            deviceId: AccountManager.shared.deviceId,
+            deviceId: deviceIDProvider(),
             firestore: firestoreProvider()
         )
         return snapshot.documents.compactMap { document in

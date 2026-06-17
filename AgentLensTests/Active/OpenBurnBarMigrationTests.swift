@@ -5,7 +5,7 @@ import XCTest
 
 final class OpenBurnBarMigrationTests: XCTestCase {
 
-    func test_filesystemMigration_movesLegacySupportDirectoryAndRenamesDatabase() throws {
+    func test_filesystemMigration_movesLegacySupportDirectoryAndRenamesDatabase() async throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? fileManager.removeItem(at: root) }
@@ -76,7 +76,7 @@ final class OpenBurnBarMigrationTests: XCTestCase {
         )
     }
 
-    func test_keychainStore_readsLegacyServiceAndPromotesValue() throws {
+    func test_keychainStore_readsLegacyServiceAndPromotesValue() async throws {
         let backend = InMemoryKeychainBackend()
         let account = "provider.zai.apiKey"
         let legacyService = "com.agentlens.cursor-connector"
@@ -115,7 +115,7 @@ private final class InMemoryKeychainBackend: KeychainStoreBackend {
 
 @MainActor
 final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
-    func test_legacyV13Database_migratesToSearchSchema_withoutLosingExistingRows() throws {
+    func test_legacyV13Database_migratesToSearchSchema_withoutLosingExistingRows() async throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? fileManager.removeItem(at: root) }
@@ -125,7 +125,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         let queue = try DatabaseQueue(path: databaseURL.path)
         let base = Date(timeIntervalSince1970: 1_742_910_000)
 
-        try seedLegacyV13Database(queue: queue, at: base)
+        try await seedLegacyV13Database(queue: queue, at: base)
 
         let store = try DataStore(
             databaseQueue: queue,
@@ -147,8 +147,9 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             "artifact_permissions",
             "audit_events"
         ]
-        let migratedTables = try queue.read { db in
-            let names = Array(expectedTables).sorted()
+        let names = Array(expectedTables).sorted()
+        let tableNamePlaceholders = sqlPlaceholders(count: names.count)
+        let migratedTables = try await queue.read { db in
             return Set(
                 try String.fetchAll(
                     db,
@@ -156,7 +157,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
                     SELECT name
                     FROM sqlite_master
                     WHERE type = 'table'
-                      AND name IN (\(sqlPlaceholders(count: names.count)))
+                      AND name IN (\(tableNamePlaceholders))
                     """,
                     arguments: StatementArguments(names)
                 )
@@ -168,7 +169,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         XCTAssertEqual(conversation.fullText, "legacy-migration-needle conversation transcript")
         XCTAssertEqual(conversation.sourceType, .providerLog)
 
-        let unsyncedUsage = try store.fetchUnsynced()
+        let unsyncedUsage = try await store.fetchUnsynced()
         XCTAssertEqual(unsyncedUsage.count, 1)
         XCTAssertEqual(unsyncedUsage.first?.sessionId, "legacy-session-1")
 
@@ -190,8 +191,10 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        XCTAssertEqual(try store.upsertSourceArtifact(artifact), .inserted)
-        XCTAssertNotNil(try store.fetchSourceArtifact(id: artifact.id, includeDeleted: false))
+        let upsertResult = try await store.upsertSourceArtifact(artifact)
+        XCTAssertEqual(upsertResult, .inserted)
+        let fetchedArtifact = try await store.fetchSourceArtifact(id: artifact.id, includeDeleted: false)
+        XCTAssertNotNil(fetchedArtifact)
     }
 
     func test_projectionBackfill_seedsRebuildAndProjectsExistingSources() async throws {
@@ -208,15 +211,15 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         )
 
         try harness.dataStore.upsertConversation(conversation)
-        _ = try harness.dataStore.upsertSourceArtifact(skill)
+        _ = try await harness.dataStore.upsertSourceArtifact(skill)
 
-        XCTAssertTrue(try harness.dataStore.fetchSearchDocuments(limit: 10).isEmpty)
-        XCTAssertTrue(
-            try harness.dataStore.fetchProjectionJobs(
-                statuses: [.queued, .failed, .leased, .running],
-                limit: 10
-            ).isEmpty
+        let preBackfillSearchDocuments = try await harness.dataStore.fetchSearchDocuments(limit: 10)
+        XCTAssertTrue(preBackfillSearchDocuments.isEmpty)
+        let preBackfillJobs = try await harness.dataStore.fetchProjectionJobs(
+            statuses: [.queued, .failed, .leased, .running],
+            limit: 10
         )
+        XCTAssertTrue(preBackfillJobs.isEmpty)
 
         let seedSweep = try await harness.runProjectionSweep(maxJobs: 1, leaseOwner: "projection-backfill-seed")
         XCTAssertEqual(seedSweep.completedJobs, 1)
@@ -228,9 +231,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             leaseOwnerPrefix: "projection-backfill-drain"
         )
         XCTAssertGreaterThanOrEqual(drainReport.completedJobs, 2)
-        XCTAssertTrue(
-            try harness.dataStore.fetchProjectionJobs(statuses: [.failed, .canceled], limit: 20).isEmpty
-        )
+        let failedOrCanceledJobs = try await harness.dataStore.fetchProjectionJobs(statuses: [.failed, .canceled], limit: 20)
+        XCTAssertTrue(failedOrCanceledJobs.isEmpty)
 
         let retrieval = harness.makeSearchService(semanticEnabled: false)
         let results = await retrieval.retrieve(
@@ -259,7 +261,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             fullText: "embedding-backfill-needle conversation text"
         )
         try harness.dataStore.upsertConversation(conversation)
-        _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 32,
@@ -267,10 +269,12 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             leaseOwnerPrefix: "embedding-backfill-v1"
         )
 
-        let conversationDocument = try XCTUnwrap(
-            try harness.dataStore.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        let conversationDocuments = try await harness.dataStore.fetchSearchDocuments(
+            sourceKind: .conversation,
+            sourceID: conversation.id
         )
-        let conversationChunks = try harness.dataStore.fetchSearchChunks(documentID: conversationDocument.id)
+        let conversationDocument = try XCTUnwrap(conversationDocuments.first)
+        let conversationChunks = try await harness.dataStore.fetchSearchChunks(documentID: conversationDocument.id)
         XCTAssertFalse(conversationChunks.isEmpty)
 
         _ = harness.clock.advance(seconds: 30)
@@ -291,7 +295,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try harness.dataStore.upsertSearchDocument(legacyDocument)
+        try await harness.dataStore.upsertSearchDocument(legacyDocument)
         let legacyChunk = SearchChunkRecord(
             id: "chunk-legacy-lexical-only",
             documentID: legacyDocument.id,
@@ -306,7 +310,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             createdAt: now,
             updatedAt: now
         )
-        try harness.dataStore.replaceSearchChunks(
+        try await harness.dataStore.replaceSearchChunks(
             documentID: legacyDocument.id,
             title: legacyDocument.title,
             chunks: [legacyChunk]
@@ -322,7 +326,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             nowProvider: { [clock = harness.clock] in clock.now() },
             chunkEmbedder: embedderV2
         )
-        try reembedService.enqueueReembedJob(reason: "embedding-backfill-transition", priority: 1)
+        try await reembedService.enqueueReembedJob(reason: "embedding-backfill-transition", priority: 1)
         let report = try await reembedService.runSweep(maxJobs: 8)
         XCTAssertEqual(report.completedJobs, 1)
 
@@ -330,17 +334,17 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
 
         for chunk in conversationChunks {
-            let embeddings = try harness.dataStore.fetchChunkEmbeddings(chunkID: chunk.id)
+            let embeddings = try await harness.dataStore.fetchChunkEmbeddings(chunkID: chunk.id)
             XCTAssertTrue(embeddings.contains(where: { $0.embeddingVersionID == versionV1ID }))
             XCTAssertTrue(embeddings.contains(where: { $0.embeddingVersionID == versionV2ID }))
         }
 
-        let legacyChunkEmbeddings = try harness.dataStore.fetchChunkEmbeddings(chunkID: legacyChunk.id)
+        let legacyChunkEmbeddings = try await harness.dataStore.fetchChunkEmbeddings(chunkID: legacyChunk.id)
         XCTAssertFalse(legacyChunkEmbeddings.contains(where: { $0.embeddingVersionID == versionV1ID }))
         XCTAssertTrue(legacyChunkEmbeddings.contains(where: { $0.embeddingVersionID == versionV2ID }))
 
         let modelID = EmbeddingIdentity.modelID(for: embedderV2.descriptor)
-        let versions = try harness.dataStore.fetchEmbeddingVersions(modelID: modelID)
+        let versions = try await harness.dataStore.fetchEmbeddingVersions(modelID: modelID)
         XCTAssertEqual(versions.first?.id, versionV2ID)
         XCTAssertEqual(versions.first?.isActive, true)
         XCTAssertTrue(versions.contains(where: { $0.id == versionV1ID }))
@@ -361,8 +365,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
 
         try harness.dataStore.upsertConversation(failingConversation)
         try harness.dataStore.upsertConversation(healthyConversation)
-        _ = try harness.enqueueConversationProjection(conversationID: failingConversation.id, jobType: .project)
-        _ = try harness.enqueueConversationProjection(conversationID: healthyConversation.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: failingConversation.id, jobType: .project)
+        _ = try await harness.enqueueConversationProjection(conversationID: healthyConversation.id, jobType: .project)
         _ = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 64,
@@ -382,16 +386,14 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             chunkEmbedder: failingEmbedder
         )
 
-        try failingService.enqueueRebuildJob(reason: "rebuild-recovery-test", priority: 1)
+        try await failingService.enqueueRebuildJob(reason: "rebuild-recovery-test", priority: 1)
         let rebuildSweep = try await failingService.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildSweep.completedJobs, 1)
 
         let partialFailureSweep = try await failingService.runSweep(maxJobs: 50)
         XCTAssertGreaterThanOrEqual(partialFailureSweep.retriedJobs, 1)
-        XCTAssertTrue(
-            try harness.dataStore.fetchProjectionJobs(statuses: [.failed], limit: 20)
-                .contains(where: { $0.jobType == .reembed })
-        )
+        let failedJobs = try await harness.dataStore.fetchProjectionJobs(statuses: [.failed], limit: 20)
+        XCTAssertTrue(failedJobs.contains(where: { $0.jobType == .reembed }))
 
         _ = harness.clock.advance(seconds: 10)
         let recoveringEmbedder = OpenBurnBarFakeEmbedder(
@@ -406,23 +408,29 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         )
         let recoverySweep = try await recoveringService.runSweep(maxJobs: 50)
         XCTAssertGreaterThanOrEqual(recoverySweep.completedJobs, 1)
-        XCTAssertTrue(
-            try harness.dataStore.fetchProjectionJobs(statuses: [.failed, .canceled], limit: 20).isEmpty
+        let remainingFailedOrCanceledJobs = try await harness.dataStore.fetchProjectionJobs(
+            statuses: [.failed, .canceled],
+            limit: 20
         )
+        XCTAssertTrue(remainingFailedOrCanceledJobs.isEmpty)
 
         var projectedChunkIDs: [String] = []
         for conversationID in [failingConversation.id, healthyConversation.id] {
-            let document = try XCTUnwrap(
-                try harness.dataStore.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversationID).first
+            let documents = try await harness.dataStore.fetchSearchDocuments(
+                sourceKind: .conversation,
+                sourceID: conversationID
             )
-            projectedChunkIDs.append(contentsOf: try harness.dataStore.fetchSearchChunks(documentID: document.id).map(\.id))
+            let document = try XCTUnwrap(documents.first)
+            let chunks = try await harness.dataStore.fetchSearchChunks(documentID: document.id)
+            projectedChunkIDs.append(contentsOf: chunks.map(\.id))
         }
         XCTAssertFalse(projectedChunkIDs.isEmpty)
 
         let versionV2ID = EmbeddingIdentity.versionID(for: recoveringEmbedder.descriptor)
-        let v2Embeddings = try harness.dataStore.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
+        let v2Embeddings = try await harness.dataStore.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
         XCTAssertEqual(Set(v2Embeddings.map(\.chunkID)), Set(projectedChunkIDs))
-        XCTAssertEqual(try harness.retrievalHealthRecord(for: .semantic)?.status, .healthy)
+        let semanticHealth = try await harness.retrievalHealthRecord(for: .semantic)
+        XCTAssertEqual(semanticHealth?.status, .healthy)
     }
 
     func test_sharedReplicaState_controlsSharedRetrievalAndSurvivesPurge() async throws {
@@ -442,8 +450,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             body: "# Shared Artifact\nshared-cloud-compat-needle from replicated state"
         )
 
-        _ = try harness.dataStore.upsertSourceArtifact(sharedArtifact)
-        _ = try harness.enqueueArtifactProjection(sharedArtifact, jobType: .project)
+        _ = try await harness.dataStore.upsertSourceArtifact(sharedArtifact)
+        _ = try await harness.enqueueArtifactProjection(sharedArtifact, jobType: .project)
         _ = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 32,
@@ -462,7 +470,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         XCTAssertFalse(noReplicaMetadataResults.contains(where: { $0.sourceID == sharedArtifact.id }))
 
         let now = harness.clock.now()
-        try harness.dataStore.upsertSharedArtifactSyncState(
+        try await harness.dataStore.upsertSharedArtifactSyncState(
             SharedArtifactSyncStateRecord(
                 sourceArtifactID: sharedArtifact.id,
                 remoteArtifactID: "remote-shared-cloud-artifact",
@@ -486,16 +494,17 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         let replicaReadableResults = await retrieval.retrieve(query)
         XCTAssertTrue(replicaReadableResults.contains(where: { $0.sourceID == sharedArtifact.id }))
 
-        XCTAssertTrue(
-            try harness.dataStore.markSourceArtifactDeleted(
-                id: sharedArtifact.id,
-                deletedAt: now.addingTimeInterval(30)
-            )
+        let markedSharedArtifactDeleted = try await harness.dataStore.markSourceArtifactDeleted(
+            id: sharedArtifact.id,
+            deletedAt: now.addingTimeInterval(30)
         )
-        let deletedArtifact = try XCTUnwrap(
-            try harness.dataStore.fetchSourceArtifact(id: sharedArtifact.id, includeDeleted: true)
+        XCTAssertTrue(markedSharedArtifactDeleted)
+        let fetchedDeletedArtifact = try await harness.dataStore.fetchSourceArtifact(
+            id: sharedArtifact.id,
+            includeDeleted: true
         )
-        _ = try harness.enqueueArtifactProjection(
+        let deletedArtifact = try XCTUnwrap(fetchedDeletedArtifact)
+        _ = try await harness.enqueueArtifactProjection(
             deletedArtifact,
             jobType: .purge,
             priority: 1,
@@ -510,19 +519,19 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
 
         let afterDeleteResults = await retrieval.retrieve(query)
         XCTAssertFalse(afterDeleteResults.contains(where: { $0.sourceID == sharedArtifact.id }))
-        XCTAssertTrue(
-            try harness.dataStore.fetchSearchDocuments(
-                sourceKind: .sharedArtifact,
-                sourceID: sharedArtifact.id
-            ).isEmpty
+        let sharedArtifactDocuments = try await harness.dataStore.fetchSearchDocuments(
+            sourceKind: .sharedArtifact,
+            sourceID: sharedArtifact.id
         )
+        XCTAssertTrue(sharedArtifactDocuments.isEmpty)
 
-        let syncState = try harness.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: sharedArtifact.id)
+        let syncState = try await harness.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: sharedArtifact.id)
         XCTAssertEqual(syncState?.remoteArtifactID, "remote-shared-cloud-artifact")
     }
 
-    private func seedLegacyV13Database(queue: DatabaseQueue, at base: Date) throws {
-        try queue.write { db in
+    nonisolated private func seedLegacyV13Database(queue: DatabaseQueue, at base: Date) async throws {
+        let migrationIdentifiers = legacyMigrationIdentifiers()
+        try await queue.write { db in
             try db.execute(
                 sql: """
                 CREATE TABLE token_usage (
@@ -651,7 +660,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
             )
 
             try db.execute(sql: "CREATE TABLE grdb_migrations(identifier TEXT NOT NULL PRIMARY KEY)")
-            for identifier in legacyMigrationIdentifiers() {
+            for identifier in migrationIdentifiers {
                 try db.execute(
                     sql: "INSERT INTO grdb_migrations(identifier) VALUES (?)",
                     arguments: [identifier]
@@ -726,7 +735,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         }
     }
 
-    private func legacyMigrationIdentifiers() -> [String] {
+    nonisolated private func legacyMigrationIdentifiers() -> [String] {
         [
             "v1_initial",
             "v2_sync",
@@ -744,7 +753,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         ]
     }
 
-    private func sqlPlaceholders(count: Int) -> String {
+    nonisolated private func sqlPlaceholders(count: Int) -> String {
         Array(repeating: "?", count: max(0, count)).joined(separator: ", ")
     }
 }

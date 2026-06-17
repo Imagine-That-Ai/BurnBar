@@ -6,7 +6,7 @@ describe("endpoint authorization matrix", () => {
   it("has actionable authorization fields for every endpoint", () => {
     for (const entry of endpointAuthorizationMatrix) {
       expect(entry.trigger, entry.exportedName).toMatch(
-        /^(callable|http|scheduled|firestore-trigger|provider-webhook)$/u,
+        /^(callable|http|scheduled|firestore-trigger|task-queue|provider-webhook)$/u,
       );
       expect(entry.authMethod.trim(), entry.exportedName).not.toEqual("");
       expect(entry.appCheck, entry.exportedName).toMatch(/^(required|not-applicable|not-required)$/u);
