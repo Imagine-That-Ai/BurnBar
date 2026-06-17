@@ -148,7 +148,7 @@ actor SearchService {
             // reports "unknown"/degraded (see `runBurnBarQuery`'s telemetry, which
             // treats a `nil` count as `.degraded`), and record the failure.
             do {
-                aggregateCount = try dataStore.countOccurrencesInConversationFullText(
+                aggregateCount = try await dataStore.countOccurrencesInConversationFullText(
                     patterns: plan.aggregatePatterns,
                     provider: filters.provider,
                     projectName: filters.projectName,

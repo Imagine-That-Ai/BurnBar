@@ -231,7 +231,7 @@ private final class FaultyDailySpendReader: SummaryDailySpendReading, @unchecked
         return _callCount
     }
 
-    func summarySpendToday(now _: Date) throws -> Double {
+    func summarySpendToday(now _: Date) async throws -> Double {
         lock.lock(); _callCount += 1; lock.unlock()
         throw SummaryWorkerTestError.spendReadFailed
     }
@@ -253,7 +253,7 @@ private final class FixedDailySpendReader: SummaryDailySpendReading, @unchecked 
         return _callCount
     }
 
-    func summarySpendToday(now _: Date) throws -> Double {
+    func summarySpendToday(now _: Date) async throws -> Double {
         lock.lock(); _callCount += 1; lock.unlock()
         return spentToday
     }

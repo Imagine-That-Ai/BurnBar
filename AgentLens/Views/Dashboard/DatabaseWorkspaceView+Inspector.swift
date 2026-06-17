@@ -142,19 +142,10 @@ extension DatabaseWorkspaceView {
                     }
 
                 case .indexedDocument(let id):
-                    if let document = indexedDocumentDetail(id: id) {
-                        let chunks = indexedChunks(documentID: document.id)
-                        let embeddedChunkCount = selectedEmbeddingVersion.flatMap {
-                            do {
-                                return try dataStore.countChunkEmbeddings(
-                                    documentID: document.id,
-                                    embeddingVersionID: $0.id
-                                )
-                            } catch {
-                                AppLogger.dataStore.silentFailure("countChunkEmbeddings", error: error)
-                                return nil
-                            }
-                        }
+                    Group {
+                        if let document = indexedDocumentDetailCache[id] {
+                            let chunks = indexedChunksCache[document.id] ?? []
+                        let embeddedChunkCount: Int? = nil
 
                         inspectorSectionTitle("Index Record")
                         inspectorRow("Document ID", document.id)
@@ -249,6 +240,15 @@ extension DatabaseWorkspaceView {
                                 }
                             }
                         }
+                        } else if let indexedDetailError {
+                            inspectorRow("Error", indexedDetailError)
+                        } else {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                    }
+                    .task(id: id) {
+                        await loadIndexedDocumentDetail(id: id)
                     }
 
                 case .conversation(let id):
@@ -302,13 +302,13 @@ extension DatabaseWorkspaceView {
                             inspectorRow("Revision", syncState.revisionID)
                         }
 
-                        if let permissionCount = try? dataStore.countSharedArtifactPermissions(sourceArtifactID: id),
-                           permissionCount > 0 {
+                        let permissionCount = snapshot.permissions.filter { $0.sourceArtifactID == id }.count
+                        if permissionCount > 0 {
                             inspectorRow("Permissions", "\(permissionCount)")
                         }
 
-                        if let auditCount = try? dataStore.countSharedArtifactAuditEvents(sourceArtifactID: id),
-                           auditCount > 0 {
+                        let auditCount = snapshot.auditEvents.filter { $0.sourceArtifactID == id }.count
+                        if auditCount > 0 {
                             inspectorRow("Audit Events", "\(auditCount)")
                         }
 

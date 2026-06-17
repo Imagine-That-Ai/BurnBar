@@ -36,10 +36,11 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         super.tearDown()
     }
 
-    func testOperatingLayerRepresentsSparseDirectionWhenIndexingIsOff() throws {
+    func testOperatingLayerRepresentsSparseDirectionWhenIndexingIsOff() async throws {
         let store = try makeInMemoryStore()
-        seedApolloScenario(into: store)
+        await seedApolloScenario(into: store)
         let layer = makeLayer(dataStore: store, indexingEnabled: false)
+        await layer.refreshControlPlaneCache()
 
         let snapshot = layer.snapshot
 
@@ -49,20 +50,22 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         XCTAssertEqual(snapshot.freshness.status, .provisional)
     }
 
-    func testApproveMissionAndOverrideDirectionUpdateSharedState() throws {
+    func testApproveMissionAndOverrideDirectionUpdateSharedState() async throws {
         let store = try makeInMemoryStore()
-        seedApolloScenario(into: store)
+        await seedApolloScenario(into: store)
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
 
-        layer.approveMission(note: "Ready to ship.")
+        await layer.approveMission(note: "Ready to ship.")
         var snapshot = layer.snapshot
 
         XCTAssertEqual(snapshot.mission.approval, .approved)
         XCTAssertEqual(layer.actionFeedback?.kind, .missionApproval)
         XCTAssertEqual(layer.actionFeedback?.tone, .success)
-        XCTAssertEqual(try store.countOperatingActionRecords(projectName: "Apollo"), 1)
+        let approvalActionCount = try await store.countOperatingActionRecords(projectName: "Apollo")
+        XCTAssertEqual(approvalActionCount, 1)
 
-        layer.saveDirectionOverride(
+        await layer.saveDirectionOverride(
             mode: .supersedeStatus,
             forcedStatus: .drifting,
             summary: "Pause and reset the current plan.",
@@ -75,15 +78,17 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         XCTAssertEqual(snapshot.direction.summary, "Pause and reset the current plan.")
         XCTAssertEqual(layer.actionFeedback?.kind, .directionOverride)
         XCTAssertEqual(layer.actionFeedback?.tone, .success)
-        XCTAssertEqual(try store.countOperatingActionRecords(projectName: "Apollo"), 2)
+        let overrideActionCount = try await store.countOperatingActionRecords(projectName: "Apollo")
+        XCTAssertEqual(overrideActionCount, 2)
         XCTAssertEqual(snapshot.recentHistory.first?.kind, .directionOverride)
         XCTAssertEqual(snapshot.recentHistory.dropFirst().first?.kind, .missionApproval)
     }
 
-    func testDashboardOperatingSectionRendersSharedSummary() throws {
+    func testDashboardOperatingSectionRendersSharedSummary() async throws {
         let store = try makeInMemoryStore()
-        seedApolloScenario(into: store)
+        await seedApolloScenario(into: store)
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
 
         let text = renderedText(
             OpenBurnBarDashboardOperatingSection(layer: layer),
@@ -103,10 +108,11 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         XCTAssertTrue(bodyDescription.contains("OpenBurnBarControllerWorkbenchPanel"))
     }
 
-    func testCompactHomeCardRendersPendingHighlightsAndDashboardLink() throws {
+    func testCompactHomeCardRendersPendingHighlightsAndDashboardLink() async throws {
         let store = try makeInMemoryStore()
-        seedApolloScenario(into: store)
+        await seedApolloScenario(into: store)
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
 
         let text = renderedText(
             OpenBurnBarCompactOperatingHomeCard(layer: layer, onOpenDashboard: {}),
@@ -123,10 +129,11 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         XCTAssertEqual(snapshot.controllerRuntime.missions.first?.latestTakeoverState, .launched)
     }
 
-    func testHermesOperatingStripRendersSameMissionAndDirectionState() throws {
+    func testHermesOperatingStripRendersSameMissionAndDirectionState() async throws {
         let store = try makeInMemoryStore()
-        seedApolloScenario(into: store)
+        await seedApolloScenario(into: store)
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
 
         let text = renderedText(
             OpenBurnBarHermesOperatingStrip(layer: layer),
@@ -142,8 +149,9 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
 
     func testQuestionAnswerUpdatesControllerRuntimeMirror() async throws {
         let store = try makeInMemoryStore()
-        seedApolloScenario(into: store)
+        await seedApolloScenario(into: store)
         let layer = makeLayer(dataStore: store)
+        await layer.refreshControlPlaneCache()
 
         let question = try XCTUnwrap(layer.snapshot.controllerRuntime.pendingQuestions.first)
         await layer.answerPendingQuestion(id: question.id, answer: "Yes. Keep Apollo aligned around the approval sheet.")
@@ -155,11 +163,13 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         }))
     }
 
-    func testSessionLogDetailPaneRendersPendingQuestionAnswerAffordance() throws {
+    func testSessionLogDetailPaneRendersPendingQuestionAnswerAffordance() async throws {
         let store = try makeInMemoryStore()
-        seedApolloScenario(into: store)
+        await seedApolloScenario(into: store)
         let layer = makeLayer(dataStore: store)
-        let record = try XCTUnwrap(try store.fetchAllSessionLogs().first(where: { $0.sessionId == "apollo-2" }))
+        await layer.refreshControlPlaneCache()
+        let sessionLogs = try await store.fetchAllSessionLogs()
+        let record = try XCTUnwrap(sessionLogs.first(where: { $0.sessionId == "apollo-2" }))
 
         let text = renderedText(
             SessionLogDetailPane(record: record, dataStore: store, operatingLayer: layer),
@@ -240,7 +250,7 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
-    private func seedApolloScenario(into store: DataStore) {
+    private func seedApolloScenario(into store: DataStore) async {
         let now = Date(timeIntervalSince1970: 1_773_114_400)
         let earlier = now.addingTimeInterval(-3_600)
 
@@ -323,7 +333,7 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
             )
         )
 
-        try? store.saveControllerRuntimeMirror(
+        try? await store.saveControllerRuntimeMirror(
             OpenBurnBarControllerRuntimeSnapshot(
                 source: .daemon,
                 updatedAt: now,

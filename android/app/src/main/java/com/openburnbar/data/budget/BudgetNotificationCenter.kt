@@ -22,6 +22,9 @@ class BudgetNotificationCenter(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "burnbar_budget"
         private const val PREFS_NAME = "budget_notification_prefs"
+        private const val BUDGET_WARNING_TITLE = "Budget warning"
+        private const val BUDGET_BLOCK_TITLE = "Budget limit reached"
+        private const val BUDGET_GENERIC_TEXT = "Open BurnBar to review budget status."
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -64,28 +67,27 @@ class BudgetNotificationCenter(private val context: Context) {
 
         sendNotification(
             notificationId = rule.id.hashCode() + 1,
-            title = "Budget warning: ${rule.toModel().displayLabel}",
-            text = "Approaching limit. Spent $${"%.2f".format(used)} of $${"%.2f".format(limit)}.",
+            isBlock = false,
         )
     }
 
     fun emitBlock(rule: BudgetRuleEntity, used: Double, limit: Double) {
         sendNotification(
             notificationId = rule.id.hashCode() + 2,
-            title = "Budget BLOCKED: ${rule.toModel().displayLabel}",
-            text = "Limit exceeded! Spent $${"%.2f".format(used)} of $${"%.2f".format(limit)}.",
+            isBlock = true,
         )
     }
 
-    private fun sendNotification(notificationId: Int, title: String, text: String) {
+    private fun sendNotification(notificationId: Int, isBlock: Boolean) {
         ensureChannel(context)
 
         val intent =
-            Intent(context, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
+            Intent(Intent.ACTION_VIEW).apply {
+                setClass(context, MainActivity::class.java)
                 data = Uri.parse("burnbar://settings/budget")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
+        val title = if (isBlock) BUDGET_BLOCK_TITLE else BUDGET_WARNING_TITLE
 
         val pendingIntent =
             PendingIntent.getActivity(
@@ -98,16 +100,29 @@ class BudgetNotificationCenter(private val context: Context) {
         val builder =
             NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentTitle("Budget alert")
+                .setContentText(BUDGET_GENERIC_TEXT)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
+                .build()
+
+        val privateBuilder =
+            NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(title)
+                .setContentText(BUDGET_GENERIC_TEXT)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(BUDGET_GENERIC_TEXT))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(builder)
 
         val nm = context.notificationManager() ?: return
-        nm.notify(notificationId, builder.build())
+        nm.notify(notificationId, privateBuilder.build())
     }
 }
 

@@ -2,82 +2,84 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    nonisolated func appendOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) throws {
-        try controlPlaneStore.appendOperatingActionRecord(record)
+    func appendOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) async throws {
+        try await actor.controlPlaneStore.appendOperatingActionRecord(record)
     }
 
-    nonisolated func fetchOperatingActionRecords(
+    func fetchOperatingActionRecords(
         projectName: String? = nil,
         actionKinds: [OpenBurnBarActionKind]? = nil,
         limit: Int = 100
-    ) throws -> [OpenBurnBarOperatingActionRecord] {
-        try controlPlaneStore.fetchOperatingActionRecords(
+    ) async throws -> [OpenBurnBarOperatingActionRecord] {
+        try await actor.controlPlaneStore.fetchOperatingActionRecords(
             projectName: projectName,
             actionKinds: actionKinds,
             limit: limit
         )
     }
 
-    nonisolated func countOperatingActionRecords(
+    func countOperatingActionRecords(
         projectName: String? = nil,
         actionKinds: [OpenBurnBarActionKind]? = nil
-    ) throws -> Int {
-        try controlPlaneStore.countOperatingActionRecords(projectName: projectName, actionKinds: actionKinds)
+    ) async throws -> Int {
+        try await actor.controlPlaneStore.countOperatingActionRecords(projectName: projectName, actionKinds: actionKinds)
     }
 
-    nonisolated func saveControllerRuntimeMirror(
+    func saveControllerRuntimeMirror(
         _ snapshot: OpenBurnBarControllerRuntimeSnapshot,
         cacheKey: String = "latest"
-    ) throws {
-        try controlPlaneStore.saveControllerRuntimeMirror(snapshot, cacheKey: cacheKey)
+    ) async throws {
+        try await actor.controlPlaneStore.saveControllerRuntimeMirror(snapshot, cacheKey: cacheKey)
     }
 
-    nonisolated func fetchControllerRuntimeMirror(
+    func fetchControllerRuntimeMirror(
         cacheKey: String = "latest"
-    ) throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        try controlPlaneStore.fetchControllerRuntimeMirror(cacheKey: cacheKey)
+    ) async throws -> OpenBurnBarControllerRuntimeSnapshot? {
+        try await actor.controlPlaneStore.fetchControllerRuntimeMirror(cacheKey: cacheKey)
     }
 
-    nonisolated func localAuthoritySnapshot() throws -> OpenBurnBarLocalAuthoritySnapshot {
-        try controlPlaneStore.localAuthoritySnapshot()
+    func localAuthoritySnapshot() async throws -> OpenBurnBarLocalAuthoritySnapshot {
+        try await actor.controlPlaneStore.localAuthoritySnapshot()
     }
 
-    nonisolated func upsertProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot, updatedAt: Date = Date()) throws {
-        try controlPlaneStore.upsertProjectMemorySnapshot(snapshot, updatedAt: updatedAt)
+    func upsertProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot, updatedAt: Date = Date()) async throws {
+        try await actor.controlPlaneStore.upsertProjectMemorySnapshot(snapshot, updatedAt: updatedAt)
     }
 
-    nonisolated func fetchProjectMemorySnapshot(projectSlug: String) throws -> ProjectMemorySnapshot? {
-        try controlPlaneStore.fetchProjectMemorySnapshot(projectSlug: projectSlug)
+    func fetchProjectMemorySnapshot(projectSlug: String) async throws -> ProjectMemorySnapshot? {
+        try await actor.controlPlaneStore.fetchProjectMemorySnapshot(projectSlug: projectSlug)
     }
 
-    nonisolated func fetchProjectMemorySnapshots(limit: Int = 80) throws -> [ProjectMemorySnapshot] {
-        try controlPlaneStore.fetchProjectMemorySnapshots(limit: limit)
+    func fetchProjectMemorySnapshots(limit: Int = 80) async throws -> [ProjectMemorySnapshot] {
+        try await actor.controlPlaneStore.fetchProjectMemorySnapshots(limit: limit)
     }
 
-    nonisolated func deleteProjectMemorySnapshot(projectSlug: String) throws {
-        try controlPlaneStore.deleteProjectMemorySnapshot(projectSlug: projectSlug)
+    func deleteProjectMemorySnapshot(projectSlug: String) async throws {
+        try await actor.controlPlaneStore.deleteProjectMemorySnapshot(projectSlug: projectSlug)
     }
 
-    nonisolated func mutateControllerRuntimeMirror(
+    func mutateControllerRuntimeMirror(
         cacheKey: String = "latest",
         _ mutate: (inout OpenBurnBarControllerRuntimeSnapshot) -> Void
-    ) throws {
-        try controlPlaneStore.mutateControllerRuntimeMirror(cacheKey: cacheKey, mutate)
+    ) async throws {
+        var snapshot = try await actor.controlPlaneStore.fetchControllerRuntimeMirror(cacheKey: cacheKey) ?? .empty
+        mutate(&snapshot)
+        try await actor.controlPlaneStore.saveControllerRuntimeMirror(snapshot, cacheKey: cacheKey)
     }
 
     @discardableResult
-    nonisolated func answerControllerQuestion(
+    func answerControllerQuestion(
         id: String,
         answer: String,
         selectedOptionID: String? = nil,
         cacheKey: String = "latest",
         answeredAt: Date = Date()
-    ) throws -> Bool {
+    ) async throws -> Bool {
         let trimmedAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedAnswer.isEmpty == false else { return false }
 
         var updated = false
-        try mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
+        try await mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
             guard let index = snapshot.questions.firstIndex(where: { $0.id == id }) else { return }
             let question = snapshot.questions[index]
             guard question.state == .pending else { return }
@@ -129,13 +131,13 @@ extension DataStore {
     }
 
     @discardableResult
-    nonisolated func completeControllerFollowup(
+    func completeControllerFollowup(
         id: String,
         cacheKey: String = "latest",
         completedAt: Date = Date()
-    ) throws -> Bool {
+    ) async throws -> Bool {
         var updated = false
-        try mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
+        try await mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
             guard let index = snapshot.followups.firstIndex(where: { $0.id == id }) else { return }
             let followup = snapshot.followups[index]
             guard followup.state != .done else { return }
@@ -166,14 +168,14 @@ extension DataStore {
     }
 
     @discardableResult
-    nonisolated func snoozeControllerFollowup(
+    func snoozeControllerFollowup(
         id: String,
         until: Date,
         cacheKey: String = "latest",
         updatedAt: Date = Date()
-    ) throws -> Bool {
+    ) async throws -> Bool {
         var updated = false
-        try mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
+        try await mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
             guard let index = snapshot.followups.firstIndex(where: { $0.id == id }) else { return }
             let followup = snapshot.followups[index]
 
@@ -207,16 +209,16 @@ extension DataStore {
     }
 
     @discardableResult
-    nonisolated func scheduleControllerFollowupCalendar(
+    func scheduleControllerFollowupCalendar(
         id: String,
         title: String?,
         start: Date,
         durationMinutes: Int,
         cacheKey: String = "latest",
         updatedAt: Date = Date()
-    ) throws -> Bool {
+    ) async throws -> Bool {
         var updated = false
-        try mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
+        try await mutateControllerRuntimeMirror(cacheKey: cacheKey) { snapshot in
             guard let index = snapshot.followups.firstIndex(where: { $0.id == id }) else { return }
             let followup = snapshot.followups[index]
 

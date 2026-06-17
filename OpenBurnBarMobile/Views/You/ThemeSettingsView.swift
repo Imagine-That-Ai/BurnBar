@@ -18,7 +18,7 @@ struct ThemeSettingsView: View {
                     Text("Aurora").tag(AppSkin.aurora)
                     Text("Editorial").tag(AppSkin.editorial)
                 } label: {
-                    SettingsLabel(icon: "doc.richtext", color: MobileTheme.ember, title: "App Skin")
+                    SettingsLabel(icon: "doc.richtext", color: MobileTheme.ember, title: "App Skin", imageName: "SettingsIconSettingsB")
                 }
                 .pickerStyle(.segmented)
                 .settingsAnchor(SettingsAnchor.appSkin)
@@ -29,7 +29,7 @@ struct ThemeSettingsView: View {
                         Text(palette.rawValue).tag(palette)
                     }
                 } label: {
-                    SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Color Palette")
+                    SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Color Palette", imageName: "SettingsIconSettingsA")
                 }
                 .pickerStyle(.menu)
                 .disabled(appSkin == .editorial)
@@ -40,7 +40,7 @@ struct ThemeSettingsView: View {
                     Text("Light").tag("light")
                     Text("Dark").tag("dark")
                 } label: {
-                    SettingsLabel(icon: "circle.lefthalf.filled", color: MobileTheme.amber, title: "Appearance Mode")
+                    SettingsLabel(icon: "circle.lefthalf.filled", color: MobileTheme.amber, title: "Appearance Mode", imageName: "SettingsIconSettingsA")
                 }
                 .pickerStyle(.segmented)
                 .disabled(appSkin == .editorial)
@@ -215,29 +215,15 @@ private struct LiquidGlassTransparencyControl: View {
         .sensoryFeedback(.selection, trigger: rawTransparency == 0)
     }
 
-    /// A colorful backdrop with crisp detail behind a real glass capsule, so
-    /// the see-through level is obvious at a glance.
+    /// A colorful backdrop behind a real glass capsule, so the see-through
+    /// level is obvious as the slider moves. The detail is rendered as soft,
+    /// blurred orbs rather than hard-edged shapes: at the clearest setting the
+    /// iOS 26 clear-glass lens warps crisp edges into dark chevron artifacts and
+    /// its adaptive dimming grays bright fills, whereas smooth color fields
+    /// refract cleanly — exactly the rich kind of backdrop clear glass is for.
     private var preview: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            MobileTheme.ember.opacity(0.92),
-                            MobileTheme.whimsy.opacity(0.85),
-                            MobileTheme.amber.opacity(0.9)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            HStack(spacing: 18) {
-                ForEach(0..<5, id: \.self) { index in
-                    Circle()
-                        .fill(.white.opacity(0.85))
-                        .frame(width: 10 + CGFloat(index) * 5, height: 10 + CGFloat(index) * 5)
-                }
-            }
+            previewBackdrop
             HStack(spacing: 8) {
                 Image(systemName: "flame.fill")
                     .font(.subheadline)
@@ -250,6 +236,40 @@ private struct LiquidGlassTransparencyControl: View {
         }
         .frame(height: 88)
         .accessibilityHidden(true)
+    }
+
+    private var previewBackdrop: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        MobileTheme.ember.opacity(0.92),
+                        MobileTheme.whimsy.opacity(0.85),
+                        MobileTheme.amber.opacity(0.9)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay {
+                ZStack {
+                    softOrb(.white.opacity(0.40), size: 88, x: -96, y: -14)
+                    softOrb(MobileTheme.amber.opacity(0.55), size: 74, x: 104, y: 16)
+                    softOrb(MobileTheme.whimsy.opacity(0.45), size: 60, x: -34, y: 22)
+                    softOrb(.white.opacity(0.28), size: 52, x: 28, y: 24)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// A single soft color orb. Blur scales with size so edges stay smooth and
+    /// the clear-glass lens has nothing crisp to distort into artifacts.
+    private func softOrb(_ color: Color, size: CGFloat, x: CGFloat, y: CGFloat) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: size, height: size)
+            .blur(radius: size * 0.22)
+            .offset(x: x, y: y)
     }
 
     private var statusText: String {

@@ -28,13 +28,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var lastHandledStatusItemEventTime: TimeInterval = 0
 
     // live wallpaper variables
+    var settingsManager: SettingsManager? {
+        didSet {
+            guard oldValue !== settingsManager else { return }
+            applyWallpaperAppearance()
+            refreshMenuBarIconStyle()
+            observeMenuBarIconStyle()
+            updateWallpaperState()
+            configureWallpaperActivityPolling()
+            syncWallpaperColorDriver()
+        }
+    }
     var dataStore: DataStore? {
         didSet {
             setupWallpaperObservers()
             if let dataStore {
-                let database = dataStore.database
+                let dataStoreActor = dataStore.actor
                 Task.detached(priority: .background) {
-                    await WorkingDirectoryBackfillService().runIfNeeded(database: database)
+                    await dataStoreActor.runWorkingDirectoryBackfillIfNeeded()
                 }
             }
         }
@@ -56,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var wallpaperSpeedObserver: Any?
     private var wallpaperProviderGlyphsObserver: Any?
     private var wallpaperCycleShapesObserver: Any?
+    private var wallpaperSparklesObserver: Any?
     private var wallpaperExcludeBrandShapesObserver: Any?
     private var wallpaperClickCycleObserver: Any?
     private var wallpaperPollTimer: Timer?
@@ -232,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = OpenBurnBarStatusItemBrandMark.image(
-                colorful: SettingsManager.shared.appearance.colorfulMenuBarIcon
+                colorful: settingsManager?.appearance.colorfulMenuBarIcon ?? false
             )
             button.imagePosition = .imageOnly
             button.toolTip = "OpenBurnBar"
@@ -251,18 +263,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     /// Watches `colorfulMenuBarIcon` and swaps the status item image live.
     private func observeMenuBarIconStyle() {
+        guard let settingsManager else { return }
         menuBarIconObservation = withObservationTracking {
-            _ = SettingsManager.shared.appearance.colorfulMenuBarIcon
+            _ = settingsManager.appearance.colorfulMenuBarIcon
             return nil as Any?
         } onChange: { [weak self] in
             Task { @MainActor in
-                guard let self, let button = self.statusItem?.button else { return }
-                button.image = OpenBurnBarStatusItemBrandMark.image(
-                    colorful: SettingsManager.shared.appearance.colorfulMenuBarIcon
-                )
+                guard let self else { return }
+                self.refreshMenuBarIconStyle()
                 self.observeMenuBarIconStyle()
             }
         }
+    }
+
+    private func refreshMenuBarIconStyle() {
+        guard let button = statusItem?.button else { return }
+        button.image = OpenBurnBarStatusItemBrandMark.image(
+            colorful: settingsManager?.appearance.colorfulMenuBarIcon ?? false
+        )
     }
 
     private var updateBadgeObservation: Any?
@@ -537,7 +555,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.sharedWallpaperViewModel.speed = SettingsManager.shared.appearance.desktopWallpaperSpeed
+                guard let self, let settingsManager = self.settingsManager else { return }
+                self.sharedWallpaperViewModel.speed = settingsManager.appearance.desktopWallpaperSpeed
             }
         }
 
@@ -547,7 +566,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.sharedWallpaperViewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
+                guard let self, let settingsManager = self.settingsManager else { return }
+                self.sharedWallpaperViewModel.providerGlyphs = settingsManager.appearance.desktopWallpaperProviderGlyphs
             }
         }
 
@@ -557,7 +577,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.sharedWallpaperViewModel.autoCyclesShapes = SettingsManager.shared.appearance.cycleShapesScreensaver
+                guard let self, let settingsManager = self.settingsManager else { return }
+                self.sharedWallpaperViewModel.autoCyclesShapes = settingsManager.appearance.cycleShapesScreensaver
+            }
+        }
+
+        wallpaperSparklesObserver = NotificationCenter.default.addObserver(
+            forName: .enableSwarmSparklesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let settingsManager = self.settingsManager else { return }
+                self.sharedWallpaperViewModel.enableSwarmSparkles = settingsManager.appearance.enableSwarmSparkles
             }
         }
 
@@ -567,7 +599,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.sharedWallpaperViewModel.allowsDesktopClickCycle = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
+                guard let self, let settingsManager = self.settingsManager else { return }
+                self.sharedWallpaperViewModel.allowsDesktopClickCycle = settingsManager.appearance.clickDesktopToCycleSwarm
             }
         }
 
@@ -577,7 +610,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.sharedWallpaperViewModel.excludeBrandShapesFromSwarm = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
+                guard let self, let settingsManager = self.settingsManager else { return }
+                self.sharedWallpaperViewModel.excludeBrandShapesFromSwarm = settingsManager.appearance.excludeBrandShapesFromSwarm
             }
         }
     }
@@ -589,13 +623,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func handleWallpaperBackgroundChange() {
-        sharedWallpaperViewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
+        guard let settingsManager else { return }
+        sharedWallpaperViewModel.background = settingsManager.appearance.desktopWallpaperBackground
         syncSystemDesktopFallback()
         refreshWallpaperPanels()
     }
 
+    private func applyWallpaperAppearance() {
+        guard let settingsManager else { return }
+        sharedWallpaperViewModel.apply(appearance: settingsManager.appearance)
+    }
+
     private func checkForSystemWallpaperChanges() {
-        guard SettingsManager.shared.appearance.enableDesktopWallpaper else { return }
+        guard settingsManager?.appearance.enableDesktopWallpaper == true else { return }
 
         var didCaptureNewOriginal = false
 
@@ -623,8 +663,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func updateWallpaperState() {
-        let isEnabled = SettingsManager.shared.appearance.enableDesktopWallpaper
-        if isEnabled {
+        guard let settingsManager else { return }
+        if settingsManager.appearance.enableDesktopWallpaper {
             setupWallpaperPanels()
         } else {
             teardownWallpaperPanels(restoreSystemWallpaper: true)
@@ -633,12 +673,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func setupWallpaperPanels() {
         teardownWallpaperPanels(restoreSystemWallpaper: false)
-        sharedWallpaperViewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
-        sharedWallpaperViewModel.speed = SettingsManager.shared.appearance.desktopWallpaperSpeed
-        sharedWallpaperViewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
-        sharedWallpaperViewModel.autoCyclesShapes = SettingsManager.shared.appearance.cycleShapesScreensaver
-        sharedWallpaperViewModel.allowsDesktopClickCycle = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
-        sharedWallpaperViewModel.excludeBrandShapesFromSwarm = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
+        guard let settingsManager else { return }
+        sharedWallpaperViewModel.apply(appearance: settingsManager.appearance)
         syncSystemDesktopFallback()
         let screens = NSScreen.screens
         for screen in screens {
@@ -675,18 +711,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func handleScreenParametersChange() {
-        if SettingsManager.shared.appearance.enableDesktopWallpaper {
+        if settingsManager?.appearance.enableDesktopWallpaper == true {
             setupWallpaperPanels()
         }
     }
 
     private func syncSystemDesktopFallback() {
-        guard SettingsManager.shared.appearance.enableDesktopWallpaper else {
+        guard let settingsManager else { return }
+        guard settingsManager.appearance.enableDesktopWallpaper else {
             restoreOriginalDesktopImages()
             return
         }
 
-        let background = SettingsManager.shared.appearance.desktopWallpaperBackground
+        let background = settingsManager.appearance.desktopWallpaperBackground
         for screen in NSScreen.screens {
             guard let displayID = displayID(for: screen) else { continue }
             captureOriginalDesktopImageIfNeeded(for: screen, displayID: displayID)
@@ -1055,7 +1092,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             wallpaperSpaceChangeObserver = nil
         }
 
-        guard SettingsManager.shared.appearance.enableDesktopWallpaper else { return }
+        guard settingsManager?.appearance.enableDesktopWallpaper == true else { return }
 
         wallpaperSpaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
@@ -1121,6 +1158,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let wallpaperCycleShapesObserver {
             NotificationCenter.default.removeObserver(wallpaperCycleShapesObserver)
             self.wallpaperCycleShapesObserver = nil
+        }
+        if let wallpaperSparklesObserver {
+            NotificationCenter.default.removeObserver(wallpaperSparklesObserver)
+            self.wallpaperSparklesObserver = nil
         }
         if let wallpaperClickCycleObserver {
             NotificationCenter.default.removeObserver(wallpaperClickCycleObserver)
@@ -1452,15 +1493,25 @@ public final class SwarmWallpaperViewModel {
     public var colorDriver: SwarmColorDriver?
     public var isBatteryThrottled: Bool = false
     public var isPaused: Bool = false
-    var background: DesktopWallpaperBackground = SettingsManager.shared.appearance.desktopWallpaperBackground
-    var speed: Double = SettingsManager.shared.appearance.desktopWallpaperSpeed
-    var providerGlyphs: [AgentProvider] = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
-    var autoCyclesShapes: Bool = SettingsManager.shared.appearance.cycleShapesScreensaver
-    var allowsDesktopClickCycle: Bool = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
-    var enableSwarmSparkles: Bool = SettingsManager.shared.appearance.enableSwarmSparkles
-    var excludeBrandShapesFromSwarm: Bool = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
+    var background: DesktopWallpaperBackground = .macOSDesktop
+    var speed: Double = 1.0
+    var providerGlyphs: [AgentProvider] = SwarmProviderGlyphSelection.allProviders
+    var autoCyclesShapes: Bool = true
+    var allowsDesktopClickCycle: Bool = false
+    var enableSwarmSparkles: Bool = true
+    var excludeBrandShapesFromSwarm: Bool = false
 
     public init() {}
+
+    func apply(appearance: AppearanceSettings) {
+        background = appearance.desktopWallpaperBackground
+        speed = appearance.desktopWallpaperSpeed
+        providerGlyphs = appearance.desktopWallpaperProviderGlyphs
+        autoCyclesShapes = appearance.cycleShapesScreensaver
+        allowsDesktopClickCycle = appearance.clickDesktopToCycleSwarm
+        enableSwarmSparkles = appearance.enableSwarmSparkles
+        excludeBrandShapesFromSwarm = appearance.excludeBrandShapesFromSwarm
+    }
 }
 
 /// SwiftUI wrapper for displaying the SwarmCanvasView within the wallpaper panel.
@@ -1502,27 +1553,6 @@ struct SwarmWallpaperView: View {
         .animation(.easeInOut(duration: 0.18), value: speed)
         .animation(.easeInOut(duration: 0.18), value: providerGlyphs)
         .animation(.easeInOut(duration: 0.18), value: autoCyclesShapes)
-        .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperBackgroundDidChange)) { _ in
-            viewModel.background = SettingsManager.shared.appearance.desktopWallpaperBackground
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperSpeedDidChange)) { _ in
-            viewModel.speed = SettingsManager.shared.appearance.desktopWallpaperSpeed
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .desktopWallpaperProviderGlyphsDidChange)) { _ in
-            viewModel.providerGlyphs = SettingsManager.shared.appearance.desktopWallpaperProviderGlyphs
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .cycleShapesScreensaverDidChange)) { _ in
-            viewModel.autoCyclesShapes = SettingsManager.shared.appearance.cycleShapesScreensaver
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .clickDesktopToCycleSwarmDidChange)) { _ in
-            viewModel.allowsDesktopClickCycle = SettingsManager.shared.appearance.clickDesktopToCycleSwarm
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .enableSwarmSparklesDidChange)) { _ in
-            viewModel.enableSwarmSparkles = SettingsManager.shared.appearance.enableSwarmSparkles
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .excludeBrandShapesFromSwarmDidChange)) { _ in
-            viewModel.excludeBrandShapesFromSwarm = SettingsManager.shared.appearance.excludeBrandShapesFromSwarm
-        }
     }
 }
 

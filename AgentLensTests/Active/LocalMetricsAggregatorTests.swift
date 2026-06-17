@@ -27,7 +27,7 @@ final class LocalMetricsAggregatorTests: XCTestCase {
             hydrationLatencyMs: nil, crossEncoderLatencyMs: nil
         )
         let oldJSON = String(data: try JSONEncoder().encode(oldDetails), encoding: .utf8)
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .lexical, status: .healthy,
                 errorCode: nil, errorMessage: nil, detailsJSON: oldJSON,
@@ -45,7 +45,7 @@ final class LocalMetricsAggregatorTests: XCTestCase {
             hydrationLatencyMs: nil, crossEncoderLatencyMs: nil
         )
         let newJSON = String(data: try JSONEncoder().encode(newDetails), encoding: .utf8)
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .lexical, status: .healthy,
                 errorCode: nil, errorMessage: nil, detailsJSON: newJSON,

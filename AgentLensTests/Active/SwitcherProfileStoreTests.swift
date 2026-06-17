@@ -7,14 +7,11 @@ final class SwitcherProfileStoreTests: XCTestCase {
     private var store: SwitcherProfileStore!
     private var dbQueue: DatabaseQueue!
 
-    override func setUp() {
-        do {
-            dbQueue = try DatabaseQueue()
-            try self.addMigrationv32(to: dbQueue)
-            store = SwitcherProfileStore(dbQueue: dbQueue)
-        } catch {
-            XCTFail("Failed to set up test store: \(error)")
-        }
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        try await self.addMigrationv32(to: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue)
     }
 
     override func tearDown() {
@@ -25,8 +22,8 @@ final class SwitcherProfileStoreTests: XCTestCase {
 
     // MARK: - Migration Helper
 
-    private func addMigrationv32(to dbQueue: DatabaseQueue) throws {
-        try dbQueue.write { db in
+    private func addMigrationv32(to dbQueue: DatabaseQueue) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -102,8 +99,8 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(fetched?.browserMetadata?.profileIdentifier, "Default")
     }
 
-    func test_fetchProfile_decodesLegacyBrowserMetadataWithoutServiceIdentities() throws {
-        try dbQueue.write { db in
+    func test_fetchProfile_decodesLegacyBrowserMetadataWithoutServiceIdentities() async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO switcher_profiles (
@@ -136,8 +133,8 @@ final class SwitcherProfileStoreTests: XCTestCase {
     /// defaults would flip a user-disabled profile to enabled (a launch-eligibility
     /// fail-open) and let the discovery re-save path overwrite the stored JSON with
     /// defaults. Regression guard for the mis-tag found in the try?-burn-down review.
-    func test_fetchProfile_corruptBrowserMetadata_failsClosed_skipsRow() throws {
-        try dbQueue.write { db in
+    func test_fetchProfile_corruptBrowserMetadata_failsClosed_skipsRow() async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO switcher_profiles (
@@ -166,8 +163,8 @@ final class SwitcherProfileStoreTests: XCTestCase {
     /// A genuinely-absent metadata blob (NULL column) is NOT corruption: the
     /// profile still loads (with nil metadata), distinguishing absence from a
     /// present-but-malformed value.
-    func test_fetchProfile_absentMetadata_loadsRow() throws {
-        try dbQueue.write { db in
+    func test_fetchProfile_absentMetadata_loadsRow() async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO switcher_profiles (
@@ -182,8 +179,8 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertNil(fetched.browserMetadata)
     }
 
-    func test_fetchProfile_decodesLegacyCLIMetadataWithoutArrayFields() throws {
-        try dbQueue.write { db in
+    func test_fetchProfile_decodesLegacyCLIMetadataWithoutArrayFields() async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO switcher_profiles (
@@ -235,7 +232,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(all[2].id, p2.id)
     }
 
-    func test_moveProfile_reassignsPriorityOrder() throws {
+    func test_moveProfile_reassignsPriorityOrder() async throws {
         let metadata = SwitcherBrowserProfileMetadata(profileIdentifier: "Profile")
         let p1 = try store.create(SwitcherProfileRecord(
             targetKind: .browser, browserType: .chrome, browserMetadata: metadata, sortKey: 1
@@ -247,7 +244,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
             targetKind: .browser, browserType: .chrome, browserMetadata: metadata, sortKey: 3
         ))
 
-        try store.moveProfile(id: p3.id, direction: .up)
+        try await store.moveProfile(id: p3.id, direction: .up)
 
         let reordered = try store.fetchAllProfiles()
         XCTAssertEqual(reordered.map(\.id), [p1.id, p3.id, p2.id])
@@ -324,7 +321,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertNil(created.browserMetadata)
     }
 
-    func test_fetchProfiles_filteredByTargetKind() throws {
+    func test_fetchProfiles_filteredByTargetKind() async throws {
         let browserRecord = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -344,8 +341,8 @@ final class SwitcherProfileStoreTests: XCTestCase {
             sortKey: 3
         ))
 
-        let browserProfiles = try store.fetchProfiles(targetKind: .browser)
-        let cliProfiles = try store.fetchProfiles(targetKind: .cli)
+        let browserProfiles = try await store.fetchProfiles(targetKind: .browser)
+        let cliProfiles = try await store.fetchProfiles(targetKind: .cli)
 
         XCTAssertEqual(browserProfiles.count, 1)
         XCTAssertEqual(browserProfiles.first?.id, browserRecord.id)
@@ -429,7 +426,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertNil(state.activeProfileID)
     }
 
-    func test_validateAndRecoverActiveProfile_staleMarkerCleared() throws {
+    func test_validateAndRecoverActiveProfile_staleMarkerCleared() async throws {
         // Create a profile and set it active
         let profile = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -440,7 +437,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         try store.setActiveProfile(profile.id)
 
         // Delete the profile externally (simulating external deletion)
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_profiles WHERE id = ?", arguments: [profile.id])
         }
 
@@ -501,10 +498,10 @@ final class SwitcherProfileStoreTests: XCTestCase {
 
     // MARK: - Migration Safety Tests
 
-    func test_emptyStore_migrationSucceeds() throws {
+    func test_emptyStore_migrationSucceeds() async throws {
         // Verify the store works on a fresh database
         let freshDb = try DatabaseQueue()
-        try self.addMigrationv32(to: freshDb)
+        try await self.addMigrationv32(to: freshDb)
         let freshStore = SwitcherProfileStore(dbQueue: freshDb)
 
         let state = try freshStore.fetchActiveProfileState()
@@ -561,7 +558,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
 
     // MARK: - Uniqueness Validation Tests
 
-    func test_existsProfileWithNormalizedName_detectsDuplicate() throws {
+    func test_existsProfileWithNormalizedName_detectsDuplicate() async throws {
         let metadata = SwitcherBrowserProfileMetadata(profileIdentifier: "TestProfile")
         _ = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -571,15 +568,15 @@ final class SwitcherProfileStoreTests: XCTestCase {
         ))
 
         // Check with same name (case insensitive)
-        let exists = try store.existsProfileWithNormalizedName("TestProfile")
+        let exists = try await store.existsProfileWithNormalizedName("TestProfile")
         XCTAssertTrue(exists)
 
         // Check with different name
-        let notExists = try store.existsProfileWithNormalizedName("DifferentName")
+        let notExists = try await store.existsProfileWithNormalizedName("DifferentName")
         XCTAssertFalse(notExists)
     }
 
-    func test_existsProfileWithNormalizedName_excludesSelf() throws {
+    func test_existsProfileWithNormalizedName_excludesSelf() async throws {
         let metadata = SwitcherBrowserProfileMetadata(profileIdentifier: "TestProfile")
         let record = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -589,11 +586,11 @@ final class SwitcherProfileStoreTests: XCTestCase {
         ))
 
         // Should return false when excluding self
-        let exists = try store.existsProfileWithNormalizedName("TestProfile", excludingID: record.id)
+        let exists = try await store.existsProfileWithNormalizedName("TestProfile", excludingID: record.id)
         XCTAssertFalse(exists)
 
         // Should return true when not excluding
-        let existsNoExclude = try store.existsProfileWithNormalizedName("TestProfile")
+        let existsNoExclude = try await store.existsProfileWithNormalizedName("TestProfile")
         XCTAssertTrue(existsNoExclude)
     }
 
@@ -702,7 +699,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
 
     /// Regression test: verifies deterministic resolution when legacy code left
     /// multiple rows in switcher_active_profile due to unordered LIMIT 1 reads.
-    func test_fetchActiveProfileState_resolvesDeterministically_withLegacyMultiRow() throws {
+    func test_fetchActiveProfileState_resolvesDeterministically_withLegacyMultiRow() async throws {
         // Create a profile first
         let profile = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -712,7 +709,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         ))
 
         // Simulate legacy state: insert multiple rows directly (like old buggy code did)
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             // Oldest row
             try db.execute(
                 sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
@@ -737,7 +734,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(state.activeProfileID, profile.id)
 
         // Verify only one row remains after cleanup
-        let rowCount = try dbQueue.read { db in
+        let rowCount = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
         XCTAssertEqual(rowCount, 1)
@@ -745,7 +742,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
 
     /// Verifies that repeated relaunch reads are deterministic even when
     /// legacy multi-row state was present initially.
-    func test_fetchActiveProfileState_deterministicRepeatedRelaunchReads() throws {
+    func test_fetchActiveProfileState_deterministicRepeatedRelaunchReads() async throws {
         let profile1 = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -760,7 +757,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         ))
 
         // Simulate legacy state with multiple rows
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_active_profile")
             try db.execute(
                 sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
@@ -779,7 +776,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         }
 
         // Verify only one row remains
-        let rowCount = try dbQueue.read { db in
+        let rowCount = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
         XCTAssertEqual(rowCount, 1)
@@ -787,7 +784,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
 
     /// Verifies cleanup selects correct canonical row when active profile was
     /// the older row and a newer row with different profile exists.
-    func test_fetchActiveProfileState_cleansUpStaleActiveWithNewerRowPresent() throws {
+    func test_fetchActiveProfileState_cleansUpStaleActiveWithNewerRowPresent() async throws {
         let staleProfile = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -802,7 +799,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         ))
 
         // Legacy state: stale profile is active but there's a newer row with different profile
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_active_profile")
             // Stale (older) row - profile1 active
             try db.execute(
@@ -821,14 +818,14 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(state.activeProfileID, currentProfile.id)
 
         // Verify only one row remains
-        let rowCount = try dbQueue.read { db in
+        let rowCount = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
         XCTAssertEqual(rowCount, 1)
     }
 
     /// Verifies that after hydration cleanup, subsequent writes work correctly.
-    func test_fetchActiveProfileState_cleanupPreservesWriteIntegrity() throws {
+    func test_fetchActiveProfileState_cleanupPreservesWriteIntegrity() async throws {
         let profile = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -837,7 +834,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         ))
 
         // Create legacy multi-row state
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
                 arguments: [nil, Date().addingTimeInterval(-100)]
@@ -866,7 +863,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(resetState.activeProfileID, profile.id)
 
         // Verify still exactly one row
-        let rowCount = try dbQueue.read { db in
+        let rowCount = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
         XCTAssertEqual(rowCount, 1)

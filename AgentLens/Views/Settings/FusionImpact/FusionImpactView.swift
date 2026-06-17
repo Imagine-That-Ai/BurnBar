@@ -134,9 +134,9 @@ final class FusionImpactModel {
     private let ledger: FusionImpactLedger
 
     init(dataStore: DataStore) {
-        // `dbQueue` is `nonisolated` on the store; the ledger is an actor that
+        // `dbQueue` is owned by the DataStore actor; the ledger is an actor that
         // does all DB I/O off the main thread, so the view never blocks.
-        self.ledger = FusionImpactLedger(dbQueue: dataStore.dbQueue)
+        self.ledger = FusionImpactLedger(dbQueue: dataStore.actor.dbQueue)
     }
 
     func reload() async {

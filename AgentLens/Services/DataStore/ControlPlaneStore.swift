@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - ControlPlaneStore
@@ -14,8 +14,8 @@ final class ControlPlaneStore: Sendable {
 
     // MARK: - Operating Action History
 
-    func appendOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) throws {
-        try dbQueue.write { db in
+    func appendOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO operating_action_history (
@@ -43,7 +43,7 @@ final class ControlPlaneStore: Sendable {
         projectName: String? = nil,
         actionKinds: [OpenBurnBarActionKind]? = nil,
         limit: Int = 100
-    ) throws -> [OpenBurnBarOperatingActionRecord] {
+    ) async throws -> [OpenBurnBarOperatingActionRecord] {
         if let actionKinds, actionKinds.isEmpty { return [] }
 
         var clauses: [String] = []
@@ -60,8 +60,9 @@ final class ControlPlaneStore: Sendable {
 
         args.append(max(1, limit))
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        let capturedArgs = args
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -70,7 +71,7 @@ final class ControlPlaneStore: Sendable {
                 ORDER BY createdAt DESC, id ASC
                 LIMIT ?
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(capturedArgs)
             )
             return rows.compactMap { row in
                 guard
@@ -100,7 +101,7 @@ final class ControlPlaneStore: Sendable {
     func countOperatingActionRecords(
         projectName: String? = nil,
         actionKinds: [OpenBurnBarActionKind]? = nil
-    ) throws -> Int {
+    ) async throws -> Int {
         if let actionKinds, actionKinds.isEmpty { return 0 }
 
         var clauses: [String] = []
@@ -116,7 +117,8 @@ final class ControlPlaneStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let capturedArgs = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -124,7 +126,7 @@ final class ControlPlaneStore: Sendable {
                 FROM operating_action_history
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(capturedArgs)
             ) ?? 0
         }
     }
@@ -134,7 +136,7 @@ final class ControlPlaneStore: Sendable {
     func saveControllerRuntimeMirror(
         _ snapshot: OpenBurnBarControllerRuntimeSnapshot,
         cacheKey: String = "latest"
-    ) throws {
+    ) async throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(snapshot)
@@ -144,7 +146,7 @@ final class ControlPlaneStore: Sendable {
             ])
         }
 
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO controller_runtime_cache (cacheKey, payloadJSON, updatedAt)
@@ -160,8 +162,8 @@ final class ControlPlaneStore: Sendable {
 
     func fetchControllerRuntimeMirror(
         cacheKey: String = "latest"
-    ) throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        try dbQueue.read { db in
+    ) async throws -> OpenBurnBarControllerRuntimeSnapshot? {
+        try await dbQueue.read { db in
             guard let payloadJSON = try String.fetchOne(
                 db,
                 sql: "SELECT payloadJSON FROM controller_runtime_cache WHERE cacheKey = ?",
@@ -176,8 +178,8 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
-    func hasControllerRuntimeMirror(cacheKey: String = "latest") throws -> Bool {
-        try dbQueue.read { db in
+    func hasControllerRuntimeMirror(cacheKey: String = "latest") async throws -> Bool {
+        try await dbQueue.read { db in
             let key = try String.fetchOne(
                 db,
                 sql: "SELECT cacheKey FROM controller_runtime_cache WHERE cacheKey = ? LIMIT 1",
@@ -187,8 +189,8 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
-    func localAuthoritySnapshot() throws -> OpenBurnBarLocalAuthoritySnapshot {
-        try dbQueue.read { db in
+    func localAuthoritySnapshot() async throws -> OpenBurnBarLocalAuthoritySnapshot {
+        try await dbQueue.read { db in
             let usageRows = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage") ?? 0
             let conversationRows = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations WHERE deletedAt IS NULL") ?? 0
             let sourceArtifactsTableExists = try Int.fetchOne(
@@ -215,7 +217,7 @@ final class ControlPlaneStore: Sendable {
 
     // MARK: - Project Memory Snapshots
 
-    func upsertProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot, updatedAt: Date = Date()) throws {
+    func upsertProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot, updatedAt: Date = Date()) async throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(snapshot)
@@ -225,7 +227,7 @@ final class ControlPlaneStore: Sendable {
             ])
         }
 
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO project_memory_snapshots (
@@ -257,11 +259,11 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
-    func fetchProjectMemorySnapshot(projectSlug: String) throws -> ProjectMemorySnapshot? {
+    func fetchProjectMemorySnapshot(projectSlug: String) async throws -> ProjectMemorySnapshot? {
         let normalized = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.isEmpty == false else { return nil }
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             guard let snapshotJSON = try String.fetchOne(
                 db,
                 sql: """
@@ -281,8 +283,8 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
-    func fetchProjectMemorySnapshots(limit: Int = 80) throws -> [ProjectMemorySnapshot] {
-        try dbQueue.read { db in
+    func fetchProjectMemorySnapshots(limit: Int = 80) async throws -> [ProjectMemorySnapshot] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -310,11 +312,11 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
-    func deleteProjectMemorySnapshot(projectSlug: String) throws {
+    func deleteProjectMemorySnapshot(projectSlug: String) async throws {
         let normalized = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.isEmpty == false else { return }
 
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "DELETE FROM project_memory_snapshots WHERE projectSlug = ?",
                 arguments: [normalized]
@@ -325,9 +327,9 @@ final class ControlPlaneStore: Sendable {
     func mutateControllerRuntimeMirror(
         cacheKey: String = "latest",
         _ mutate: (inout OpenBurnBarControllerRuntimeSnapshot) -> Void
-    ) throws {
-        var snapshot = try fetchControllerRuntimeMirror(cacheKey: cacheKey) ?? .empty
+    ) async throws {
+        var snapshot = try await fetchControllerRuntimeMirror(cacheKey: cacheKey) ?? .empty
         mutate(&snapshot)
-        try saveControllerRuntimeMirror(snapshot, cacheKey: cacheKey)
+        try await saveControllerRuntimeMirror(snapshot, cacheKey: cacheKey)
     }
 }

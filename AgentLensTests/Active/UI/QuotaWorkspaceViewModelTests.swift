@@ -153,7 +153,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(entry.remainingPercentText, "—")
     }
 
-    func test_rebuild_prefersAccountSnapshotOverProviderRollupWhenAccountHasNoSignal() throws {
+    func test_rebuild_prefersAccountSnapshotOverProviderRollupWhenAccountHasNoSignal() async throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
@@ -206,7 +206,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         )
         let viewModel = QuotaWorkspaceViewModel()
 
-        viewModel.rebuild(
+        await viewModel.rebuild(
             quotaService: service,
             dataStore: try makeDataStore(),
             providerSpendByID: [:]
@@ -219,7 +219,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.entries.first?.remainingPercentText, "—")
     }
 
-    func test_rebuild_showsDefaultCLILoginAlongsideIsolatedProfiles() throws {
+    func test_rebuild_showsDefaultCLILoginAlongsideIsolatedProfiles() async throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
@@ -287,7 +287,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         )
         let viewModel = QuotaWorkspaceViewModel()
 
-        viewModel.rebuild(
+        await viewModel.rebuild(
             quotaService: service,
             dataStore: try makeDataStore(),
             providerSpendByID: [:]
@@ -298,7 +298,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(Set(codexEntries.compactMap { $0.snapshot.accountID }), ["current-codex", "profile-reserve"])
     }
 
-    func test_rebuild_keepsPendingAccountVisibleAlongsideDisplayableAccounts() throws {
+    func test_rebuild_keepsPendingAccountVisibleAlongsideDisplayableAccounts() async throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
@@ -360,7 +360,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         )
         let viewModel = QuotaWorkspaceViewModel()
 
-        viewModel.rebuild(
+        await viewModel.rebuild(
             quotaService: service,
             dataStore: try makeDataStore(),
             providerSpendByID: [:]

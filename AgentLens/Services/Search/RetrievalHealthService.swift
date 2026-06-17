@@ -8,7 +8,7 @@ import OpenBurnBarCore
 ///
 /// DB-only I/O — intentionally not `@MainActor` so settings views can call it from
 /// background snapshot builders without blocking UI isolation.
-final class RetrievalHealthService {
+actor RetrievalHealthService {
     private struct ProjectionHealthDetailsPayload: Decodable {
         let queueDepth: Int
         let failedJobs: Int
@@ -28,16 +28,16 @@ final class RetrievalHealthService {
     func snapshot(
         indexingEnabled: Bool,
         sharedFeaturesAvailable: Bool
-    ) -> RetrievalSystemHealthSnapshot {
+    ) async -> RetrievalSystemHealthSnapshot {
         lastSnapshotError = nil
         let observedAt = nowProvider()
 
         let rows: [RetrievalHealthRecord]
         do {
-            rows = try dataStore.fetchRetrievalHealth()
+            rows = try await dataStore.fetchRetrievalHealth()
         } catch {
             lastSnapshotError = error.localizedDescription
-            return failedSnapshot(
+            return await failedSnapshot(
                 error: error,
                 indexingEnabled: indexingEnabled,
                 sharedFeaturesAvailable: sharedFeaturesAvailable,
@@ -49,7 +49,7 @@ final class RetrievalHealthService {
         let parserImport = parserImportState(from: healthBySubsystem[.parserImport])
         let projection = projectionQueueState(from: healthBySubsystem[.projection])
         let semantic = semanticPipelineState(from: healthBySubsystem[.semantic])
-        let rebuildCounts = pendingRebuildCounts()
+        let rebuildCounts = await pendingRebuildCounts()
         let rebuild = rebuildState(
             from: healthBySubsystem[.rebuild],
             pendingRebuildJobs: rebuildCounts.rebuild,
@@ -80,7 +80,7 @@ final class RetrievalHealthService {
         indexingEnabled: Bool,
         sharedFeaturesAvailable: Bool,
         observedAt: Date
-    ) -> RetrievalSystemHealthSnapshot {
+    ) async -> RetrievalSystemHealthSnapshot {
         let failedProjection = ProjectionQueueHealthState(
             status: .failed,
             queueDepth: 0,
@@ -101,7 +101,7 @@ final class RetrievalHealthService {
             errorCode: "RETRIEVAL_HEALTH_FETCH_FAILED",
             errorMessage: error.localizedDescription
         )
-        let rebuildCounts = pendingRebuildCounts()
+        let rebuildCounts = await pendingRebuildCounts()
         let rebuild = RebuildPipelineHealthState(
             status: .failed,
             inProgress: rebuildCounts.rebuild > 0 || rebuildCounts.reembed > 0,
@@ -238,9 +238,9 @@ final class RetrievalHealthService {
         )
     }
 
-    private func pendingRebuildCounts() -> (rebuild: Int, reembed: Int) {
+    private func pendingRebuildCounts() async -> (rebuild: Int, reembed: Int) {
         do {
-            let pending = try dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000)
+            let pending = try await dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000)
             let rebuild = pending.filter { $0.jobType == .rebuild }.count
             let reembed = pending.filter { $0.jobType == .reembed }.count
             return (rebuild, reembed)

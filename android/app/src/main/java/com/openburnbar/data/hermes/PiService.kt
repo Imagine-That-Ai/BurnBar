@@ -125,15 +125,15 @@ class PiService {
 
     fun addDirectConnection(name: String, urlString: String): PiConnectionRecord? {
         val trimmedName = name.trim()
-        val trimmedURL = urlString.trim()
-        if (trimmedName.isEmpty() || trimmedURL.isEmpty()) return null
+        val endpointURL = HermesProtocol.validatedLocalOrPrivateBaseURL(urlString) ?: return null
+        if (trimmedName.isEmpty()) return null
         val record =
             PiConnectionRecord(
                 id = "direct-${UUID.randomUUID()}",
                 displayName = trimmedName,
                 mode = PiConnectionMode.DIRECT_URL.token,
                 status = PiConnectionStatus.PENDING.token,
-                endpointURL = trimmedURL,
+                endpointURL = endpointURL,
                 capabilities = listOf("chat_completions"),
             )
         _connections.value = _connections.value + record

@@ -25,6 +25,7 @@ import type {
 } from "../src/state/panelViewModel";
 import type { OpenBurnBarState } from "../src/types";
 import type { BurnBarWorkspaceCapabilities } from "../src/workspace/types";
+import { buildHostMessageNonceScript } from "../src/views/hostMessageNonce";
 
 // ---------------------------------------------------------------------------
 // Mock implementations for testing
@@ -249,6 +250,12 @@ class MockMessageHandler implements MessageHandler {
 
 describe("WebView Message Protocol", () => {
   describe("Host → Webview Messages", () => {
+    describe("Host Message Nonce", () => {
+      it("should serialize the host nonce into a webview script", () => {
+        expect(buildHostMessageNonceScript("nonce-123")).toBe('globalThis.__OPENBURNBAR_HOST_NONCE__ = "nonce-123";');
+      });
+    });
+
     describe("Snapshot Messages", () => {
       it("should create valid snapshot message", () => {
         const viewModel = createMockPanelViewModel();

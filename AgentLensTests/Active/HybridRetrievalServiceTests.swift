@@ -49,13 +49,13 @@ final class HybridRetrievalServiceTests: XCTestCase {
 
         try store.upsertConversation(lexicalConversation)
         try store.upsertConversation(semanticConversation)
-        try store.enqueueConversationProjectionJob(conversationID: lexicalConversation.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: semanticConversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: lexicalConversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: semanticConversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
         guard
-            let semanticDoc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == semanticConversation.id }),
-            let semanticChunk = try store.fetchSearchChunks(documentID: semanticDoc.id).first
+            let semanticDoc = try await store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == semanticConversation.id }),
+            let semanticChunk = try await store.fetchSearchChunks(documentID: semanticDoc.id).first
         else {
             XCTFail("Expected projected semantic conversation chunk.")
             return
@@ -96,8 +96,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             fileModifiedAt: base
         )
 
-        _ = try store.upsertSourceArtifact(artifact)
-        try projector.enqueueSelectiveReproject(
+        _ = try await store.upsertSourceArtifact(artifact)
+        try await projector.enqueueSelectiveReproject(
             sourceKind: artifact.sourceKind,
             sourceID: artifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
@@ -107,8 +107,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
         _ = try await projector.runSweep(maxJobs: 10)
 
         guard
-            let artifactDoc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == artifact.id }),
-            let artifactChunk = try store.fetchSearchChunks(documentID: artifactDoc.id).first
+            let artifactDoc = try await store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == artifact.id }),
+            let artifactChunk = try await store.fetchSearchChunks(documentID: artifactDoc.id).first
         else {
             XCTFail("Expected projected artifact chunk for semantic rescue.")
             return
@@ -176,9 +176,9 @@ final class HybridRetrievalServiceTests: XCTestCase {
         try store.upsertConversation(convClaude)
         try store.upsertConversation(convCodex)
         try store.upsertConversation(convCLI)
-        try store.enqueueConversationProjectionJob(conversationID: convClaude.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: convCodex.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: convCLI.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: convClaude.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: convCodex.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: convCLI.id, jobType: .project, now: base)
 
         let skillArtifact = makeArtifact(
             id: "artifact-skill-alpha",
@@ -201,14 +201,14 @@ final class HybridRetrievalServiceTests: XCTestCase {
             fileModifiedAt: base.addingTimeInterval(-4 * 86_400)
         )
 
-        _ = try store.upsertSourceArtifact(skillArtifact)
-        _ = try store.upsertSourceArtifact(sharedArtifact)
+        _ = try await store.upsertSourceArtifact(skillArtifact)
+        _ = try await store.upsertSourceArtifact(sharedArtifact)
         let sharedAccess = SharedArtifactAccessContext(
             userID: "user-alpha",
             workspaceID: "workspace-alpha",
             teamID: "team-alpha"
         )
-        _ = try store.upsertSharedArtifactPermission(
+        _ = try await store.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sharedArtifact.id,
                 workspaceID: sharedAccess.workspaceID,
@@ -224,14 +224,14 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try projector.enqueueSelectiveReproject(
+        try await projector.enqueueSelectiveReproject(
             sourceKind: skillArtifact.sourceKind,
             sourceID: skillArtifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: skillArtifact.contentHash),
             jobType: .project,
             priority: 5
         )
-        try projector.enqueueSelectiveReproject(
+        try await projector.enqueueSelectiveReproject(
             sourceKind: sharedArtifact.sourceKind,
             sourceID: sharedArtifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: sharedArtifact.contentHash),
@@ -350,7 +350,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
 
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
         let retrieval = SearchService(dataStore: store, nowProvider: { base })
@@ -381,8 +381,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             contentHash: "hash-shared-rbac",
             fileModifiedAt: base
         )
-        _ = try store.upsertSourceArtifact(sharedArtifact)
-        try projector.enqueueSelectiveReproject(
+        _ = try await store.upsertSourceArtifact(sharedArtifact)
+        try await projector.enqueueSelectiveReproject(
             sourceKind: .sharedArtifact,
             sourceID: sharedArtifact.id,
             sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: sharedArtifact.contentHash),
@@ -410,7 +410,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
         XCTAssertTrue(hiddenResults.isEmpty)
 
-        _ = try store.upsertSharedArtifactPermission(
+        _ = try await store.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sharedArtifact.id,
                 workspaceID: "workspace-a",
@@ -490,8 +490,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
 
         try store.upsertConversation(providerConversation)
         try store.upsertConversation(assistantConversation)
-        try store.enqueueConversationProjectionJob(conversationID: providerConversation.id, jobType: .project, now: base)
-        try store.enqueueConversationProjectionJob(conversationID: assistantConversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: providerConversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: assistantConversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
         let chatSearch = SearchService.makeConversationSearchService(dataStore: store, nowProvider: { base })
@@ -525,13 +525,13 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
 
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
-        let document = try XCTUnwrap(
-            try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id })
-        )
-        let chunk = try XCTUnwrap(try store.fetchSearchChunks(documentID: document.id).first)
+        let documents = try await store.fetchSearchDocuments(limit: 20)
+        let document = try XCTUnwrap(documents.first(where: { $0.sourceID == conversation.id }))
+        let chunks = try await store.fetchSearchChunks(documentID: document.id)
+        let chunk = try XCTUnwrap(chunks.first)
 
         let semanticProvider = StubSemanticCandidateProvider(
             responses: [
@@ -563,13 +563,13 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
 
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
-        let document = try XCTUnwrap(
-            try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id })
-        )
-        let chunk = try XCTUnwrap(try store.fetchSearchChunks(documentID: document.id).first)
+        let documents = try await store.fetchSearchDocuments(limit: 20)
+        let document = try XCTUnwrap(documents.first(where: { $0.sourceID == conversation.id }))
+        let chunks = try await store.fetchSearchChunks(documentID: document.id)
+        let chunk = try XCTUnwrap(chunks.first)
 
         let semanticProvider = StubSemanticCandidateProvider(
             responses: [
@@ -597,7 +597,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
 
         let modelID = EmbeddingIdentity.modelID(for: embedder.descriptor)
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
-        try store.upsertEmbeddingModel(
+        try await store.upsertEmbeddingModel(
             EmbeddingModelRecord(
                 id: modelID,
                 provider: embedder.descriptor.provider,
@@ -608,7 +608,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertEmbeddingVersion(
+        try await store.upsertEmbeddingVersion(
             EmbeddingVersionRecord(
                 id: versionID,
                 modelID: modelID,
@@ -649,7 +649,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 createdAt: base,
                 updatedAt: base
             )
-            try store.upsertSearchDocument(document)
+            try await store.upsertSearchDocument(document)
 
             let chunk = SearchChunkRecord(
                 id: "chunk-ann-\(index)",
@@ -667,10 +667,10 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 createdAt: base,
                 updatedAt: base
             )
-            try store.replaceSearchChunks(documentID: docID, title: title, chunks: [chunk])
+            try await store.replaceSearchChunks(documentID: docID, title: title, chunks: [chunk])
 
             let vector = try await embedder.embedding(for: chunkText)
-            try store.upsertChunkEmbedding(
+            try await store.upsertChunkEmbedding(
                 ChunkEmbeddingRecord(
                     chunkID: chunk.id,
                     embeddingVersionID: versionID,
@@ -732,7 +732,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             sourceType: .providerLog
         )
         try store.upsertConversation(conversation)
-        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
         let semanticProvider = StubSemanticCandidateProvider()
@@ -747,16 +747,16 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
 
         XCTAssertFalse(results.isEmpty)
-        let semanticHealth = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .semantic })
+        let semanticHealth = try await store.fetchRetrievalHealth().first(where: { $0.subsystem == .semantic })
         XCTAssertEqual(semanticHealth?.status, .degraded)
         XCTAssertEqual(semanticHealth?.errorCode, "SEMANTIC_PROVIDER_FALLBACK")
     }
 
-    func test_retrievalHealthService_reportsDegradedModes_forIndexSemanticRebuildAndCloud() throws {
+    func test_retrievalHealthService_reportsDegradedModes_forIndexSemanticRebuildAndCloud() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_750_000)
 
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
                 status: .degraded,
@@ -767,7 +767,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .semantic,
                 status: .degraded,
@@ -778,7 +778,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "rebuild-job-1",
                 jobType: .rebuild,
@@ -795,7 +795,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
 
         let service = RetrievalHealthService(dataStore: store, nowProvider: { base })
-        let snapshot = service.snapshot(indexingEnabled: true, sharedFeaturesAvailable: false)
+        let snapshot = await service.snapshot(indexingEnabled: true, sharedFeaturesAvailable: false)
         let modes = Set(snapshot.degradedModes.map(\.mode))
 
         XCTAssertTrue(modes.contains(.indexStale))
@@ -804,11 +804,11 @@ final class HybridRetrievalServiceTests: XCTestCase {
         XCTAssertTrue(modes.contains(.cloudSharedUnavailable))
     }
 
-    func test_retrievalHealthService_hidesIndexModesWhenIndexingDisabled() throws {
+    func test_retrievalHealthService_hidesIndexModesWhenIndexingDisabled() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_760_000)
 
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
                 status: .degraded,
@@ -819,7 +819,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .semantic,
                 status: .failed,
@@ -830,7 +830,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 updatedAt: base
             )
         )
-        try store.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: "rebuild-job-2",
                 jobType: .rebuild,
@@ -847,7 +847,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
 
         let service = RetrievalHealthService(dataStore: store, nowProvider: { base })
-        let snapshot = service.snapshot(indexingEnabled: false, sharedFeaturesAvailable: true)
+        let snapshot = await service.snapshot(indexingEnabled: false, sharedFeaturesAvailable: true)
         let modes = Set(snapshot.degradedModes.map(\.mode))
 
         XCTAssertFalse(modes.contains(.indexStale))

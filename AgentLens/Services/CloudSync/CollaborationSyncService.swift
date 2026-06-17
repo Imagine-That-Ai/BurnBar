@@ -67,7 +67,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
 
             state.withLock { $0.lastSyncError = message }
             do {
-                try upsertCollaborationHealth(
+                try await upsertCollaborationHealth(
                     status: .degraded,
                     errorCode: errorCode,
                     errorMessage: message,
@@ -97,7 +97,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             let errorCode = report.conflicts > 0 ? "COLLABORATION_DIVERGENCE_DETECTED" : nil
             let errorMessage = report.conflicts > 0 ? "Detected local/cloud divergence for one or more shared artifacts." : nil
 
-            try upsertCollaborationHealth(
+            try await upsertCollaborationHealth(
                 status: status,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
@@ -113,7 +113,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             let syncError = error
             await recordSyncError(syncError)
             do {
-                try upsertCollaborationHealth(
+                try await upsertCollaborationHealth(
                     status: .failed,
                     errorCode: "COLLABORATION_SYNC_FAILED",
                     errorMessage: syncError.localizedDescription,
@@ -142,7 +142,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
     // MARK: - Shared Artifact Sync
 
     func pushLocalSharedArtifacts(scope: SharedArtifactScope, deviceId: String, report: inout SharedArtifactSyncReport) async throws {
-        let localArtifacts = try context.dataStore.fetchSourceArtifacts(
+        let localArtifacts = try await context.dataStore.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.sharedArtifact]
@@ -152,7 +152,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         for artifact in localArtifacts {
             report.localArtifactsEvaluated += 1
 
-            let existingState = try context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
+            let existingState = try await context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
             let remoteArtifactID = resolveRemoteArtifactID(for: artifact, existingState: existingState)
             let remoteRef = collection.document(remoteArtifactID)
             let remoteData = try await remoteRef.getData()
@@ -164,7 +164,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             )
             let now = Date()
             let resolvedConflict = existingState?.syncStatus == .conflicted
-            try ensureOwnerPermissionSnapshot(
+            try await ensureOwnerPermissionSnapshot(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: remoteArtifactID,
                 workspaceID: scope.workspaceID,
@@ -176,7 +176,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
 
             switch decision {
             case .noChange:
-                try context.dataStore.upsertSharedArtifactSyncState(
+                try await context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
@@ -197,7 +197,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     )
                 )
                 if resolvedConflict {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
                         workspaceID: scope.workspaceID,
@@ -270,7 +270,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                             ?? latestRemoteRecord?.revisionID
                             ?? existingState?.revisionID
                             ?? revisionID
-                        try context.dataStore.upsertSharedArtifactSyncState(
+                        try await context.dataStore.upsertSharedArtifactSyncState(
                             SharedArtifactSyncStateRecord(
                                 sourceArtifactID: artifact.id,
                                 remoteArtifactID: remoteArtifactID,
@@ -290,7 +290,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                                 updatedAt: now
                             )
                         )
-                        try recordSharedArtifactAuditEvent(
+                        try await recordSharedArtifactAuditEvent(
                             sourceArtifactID: artifact.id,
                             remoteArtifactID: remoteArtifactID,
                             workspaceID: scope.workspaceID,
@@ -321,7 +321,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     throw error
                 }
 
-                try context.dataStore.upsertSharedArtifactSyncState(
+                try await context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
@@ -342,7 +342,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     )
                 )
                 if isCreate {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
                         workspaceID: scope.workspaceID,
@@ -359,7 +359,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         ],
                         occurredAt: now
                     )
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
                         workspaceID: scope.workspaceID,
@@ -374,7 +374,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         occurredAt: now
                     )
                 } else {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
                         workspaceID: scope.workspaceID,
@@ -393,7 +393,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     )
                 }
                 if resolvedConflict {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
                         workspaceID: scope.workspaceID,
@@ -421,7 +421,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 report.pushed += 1
 
             case .conflict:
-                try context.dataStore.upsertSharedArtifactSyncState(
+                try await context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: artifact.id,
                         remoteArtifactID: remoteArtifactID,
@@ -441,7 +441,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         updatedAt: now
                     )
                 )
-                try recordSharedArtifactAuditEvent(
+                try await recordSharedArtifactAuditEvent(
                     sourceArtifactID: artifact.id,
                     remoteArtifactID: remoteArtifactID,
                     workspaceID: scope.workspaceID,
@@ -482,13 +482,13 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         for document in snapshot.documents {
             report.remoteArtifactsEvaluated += 1
             let remoteRecord = try SharedArtifactCloudCodec.decode(documentID: document.documentID, data: document.data())
-            let existingState = try context.dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteRecord.artifactID)
+            let existingState = try await context.dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteRecord.artifactID)
             let localSourceID = existingState?.sourceArtifactID ?? sourceArtifactID(scope: scope, remoteArtifactID: remoteRecord.artifactID)
-            let existingArtifact = try context.dataStore.fetchSourceArtifact(id: localSourceID, includeDeleted: true)
+            let existingArtifact = try await context.dataStore.fetchSourceArtifact(id: localSourceID, includeDeleted: true)
             let now = Date()
             let resolvedConflict = existingState?.syncStatus == .conflicted
             if existingArtifact != nil {
-                try ensureOwnerPermissionSnapshot(
+                try await ensureOwnerPermissionSnapshot(
                     sourceArtifactID: localSourceID,
                     remoteArtifactID: remoteRecord.artifactID,
                     workspaceID: remoteRecord.workspaceID,
@@ -504,7 +504,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 let baseline = existingState?.localContentHashAtSync
 
                 if let localHash, let baseline, localHash != baseline {
-                    try context.dataStore.upsertSharedArtifactSyncState(
+                    try await context.dataStore.upsertSharedArtifactSyncState(
                         SharedArtifactSyncStateRecord(
                             sourceArtifactID: localSourceID,
                             remoteArtifactID: remoteRecord.artifactID,
@@ -524,7 +524,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                             updatedAt: now
                         )
                     )
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
                         workspaceID: remoteRecord.workspaceID,
@@ -554,12 +554,12 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
 
                 if let existingArtifact, existingArtifact.status != .deleted {
                     let deletedAt = remoteRecord.updatedAt ?? now
-                    if try context.dataStore.markSourceArtifactDeleted(id: existingArtifact.id, deletedAt: deletedAt) {
-                        try enqueueSharedArtifactPurge(sourceArtifactID: existingArtifact.id, now: deletedAt)
+                    if try await context.dataStore.markSourceArtifactDeleted(id: existingArtifact.id, deletedAt: deletedAt) {
+                        try await enqueueSharedArtifactPurge(sourceArtifactID: existingArtifact.id, now: deletedAt)
                     }
                 }
 
-                try context.dataStore.upsertSharedArtifactSyncState(
+                try await context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -579,7 +579,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         updatedAt: now
                     )
                 )
-                try recordSharedArtifactAuditEvent(
+                try await recordSharedArtifactAuditEvent(
                     sourceArtifactID: localSourceID,
                     remoteArtifactID: remoteRecord.artifactID,
                     workspaceID: remoteRecord.workspaceID,
@@ -597,7 +597,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     occurredAt: now
                 )
                 if resolvedConflict {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
                         workspaceID: remoteRecord.workspaceID,
@@ -641,7 +641,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
 
             switch decision {
             case .noChange:
-                try context.dataStore.upsertSharedArtifactSyncState(
+                try await context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -662,7 +662,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     )
                 )
                 if resolvedConflict {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
                         workspaceID: remoteRecord.workspaceID,
@@ -720,9 +720,9 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     updatedAt: now
                 )
 
-                let disposition = try context.dataStore.upsertSourceArtifact(artifact)
-                try enqueueProjectionJobForSharedArtifact(artifact, disposition: disposition, now: now)
-                try ensureOwnerPermissionSnapshot(
+                let disposition = try await context.dataStore.upsertSourceArtifact(artifact)
+                try await enqueueProjectionJobForSharedArtifact(artifact, disposition: disposition, now: now)
+                try await ensureOwnerPermissionSnapshot(
                     sourceArtifactID: localSourceID,
                     remoteArtifactID: remoteRecord.artifactID,
                     workspaceID: remoteRecord.workspaceID,
@@ -732,7 +732,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     occurredAt: now
                 )
 
-                try context.dataStore.upsertSharedArtifactSyncState(
+                try await context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -754,7 +754,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 )
                 let createdFromRemote = existingArtifact == nil || existingArtifact?.status == .deleted
                 if createdFromRemote {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
                         workspaceID: remoteRecord.workspaceID,
@@ -771,7 +771,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         ],
                         occurredAt: now
                     )
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
                         workspaceID: remoteRecord.workspaceID,
@@ -786,7 +786,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         occurredAt: now
                     )
                 } else {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
                         workspaceID: remoteRecord.workspaceID,
@@ -805,7 +805,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                     )
                 }
                 if resolvedConflict {
-                    try recordSharedArtifactAuditEvent(
+                    try await recordSharedArtifactAuditEvent(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
                         workspaceID: remoteRecord.workspaceID,
@@ -841,7 +841,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 report.pulled += 1
 
             case .conflict:
-                try context.dataStore.upsertSharedArtifactSyncState(
+                try await context.dataStore.upsertSharedArtifactSyncState(
                     SharedArtifactSyncStateRecord(
                         sourceArtifactID: localSourceID,
                         remoteArtifactID: remoteRecord.artifactID,
@@ -861,7 +861,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                         updatedAt: now
                     )
                 )
-                try recordSharedArtifactAuditEvent(
+                try await recordSharedArtifactAuditEvent(
                     sourceArtifactID: localSourceID,
                     remoteArtifactID: remoteRecord.artifactID,
                     workspaceID: remoteRecord.workspaceID,
@@ -898,7 +898,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         ownerUserID: String?,
         visibility: SharedArtifactVisibility,
         occurredAt: Date
-    ) throws {
+    ) async throws {
         guard
             let ownerUserID = ownerUserID?.trimmingCharacters(in: .whitespacesAndNewlines),
             ownerUserID.isEmpty == false
@@ -908,7 +908,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
 
         var changedPrincipals: [String] = []
 
-        let ownerDisposition = try context.dataStore.upsertSharedArtifactPermission(
+        let ownerDisposition = try await context.dataStore.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sourceArtifactID,
                 workspaceID: workspaceID,
@@ -927,7 +927,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             changedPrincipals.append("user:\(ownerUserID)")
         }
 
-        let workspaceDisposition = try context.dataStore.upsertSharedArtifactPermission(
+        let workspaceDisposition = try await context.dataStore.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sourceArtifactID,
                 workspaceID: workspaceID,
@@ -946,7 +946,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             changedPrincipals.append("workspace:\(workspaceID)")
         }
 
-        let teamDisposition = try context.dataStore.upsertSharedArtifactPermission(
+        let teamDisposition = try await context.dataStore.upsertSharedArtifactPermission(
             SharedArtifactPermissionRecord(
                 sourceArtifactID: sourceArtifactID,
                 workspaceID: workspaceID,
@@ -966,7 +966,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         }
 
         guard changedPrincipals.isEmpty == false else { return }
-        try recordSharedArtifactAuditEvent(
+        try await recordSharedArtifactAuditEvent(
             sourceArtifactID: sourceArtifactID,
             remoteArtifactID: remoteArtifactID,
             workspaceID: workspaceID,
@@ -1030,11 +1030,11 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         message: String,
         metadata: [String: String],
         occurredAt: Date
-    ) throws {
+    ) async throws {
         var details = metadata
         details["message"] = message
         let detailsJSON = try encodeAuditMetadata(details)
-        try context.dataStore.appendSharedArtifactAuditEvent(
+        try await context.dataStore.appendSharedArtifactAuditEvent(
             SharedArtifactAuditEventRecord(
                 id: "shared-audit-\(UUID().uuidString.lowercased())",
                 sourceArtifactID: sourceArtifactID,
@@ -1061,7 +1061,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         _ artifact: SourceArtifactRecord,
         disposition: SourceArtifactWriteDisposition,
         now: Date
-    ) throws {
+    ) async throws {
         let jobType: ProjectionJobType
         switch disposition {
         case .inserted:
@@ -1080,7 +1080,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             sourceVersionID: sourceVersionID
         )
 
-        try context.dataStore.enqueueProjectionJob(
+        try await context.dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: jobType,
@@ -1098,8 +1098,8 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             )
         )
         if jobType == .reproject,
-           let syncState = try context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id) {
-            try recordSharedArtifactAuditEvent(
+           let syncState = try await context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id) {
+            try await recordSharedArtifactAuditEvent(
                 sourceArtifactID: artifact.id,
                 remoteArtifactID: syncState.remoteArtifactID,
                 workspaceID: syncState.workspaceID,
@@ -1117,7 +1117,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private func enqueueSharedArtifactPurge(sourceArtifactID: String, now: Date) throws {
+    private func enqueueSharedArtifactPurge(sourceArtifactID: String, now: Date) async throws {
         let sourceVersionID = ProjectionIdentity.deletedSourceVersionID
         let jobID = ProjectionIdentity.jobID(
             jobType: .purge,
@@ -1125,7 +1125,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
             sourceID: sourceArtifactID,
             sourceVersionID: sourceVersionID
         )
-        try context.dataStore.enqueueProjectionJob(
+        try await context.dataStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: .purge,
@@ -1142,8 +1142,8 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 updatedAt: now
             )
         )
-        if let syncState = try context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: sourceArtifactID) {
-            try recordSharedArtifactAuditEvent(
+        if let syncState = try await context.dataStore.fetchSharedArtifactSyncState(sourceArtifactID: sourceArtifactID) {
+            try await recordSharedArtifactAuditEvent(
                 sourceArtifactID: sourceArtifactID,
                 remoteArtifactID: syncState.remoteArtifactID,
                 workspaceID: syncState.workspaceID,
@@ -1217,7 +1217,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         errorMessage: String?,
         report: SharedArtifactSyncReport?,
         cloudAvailable: Bool
-    ) throws {
+    ) async throws {
         let details = CollaborationHealthDetails(
             cloudAvailable: cloudAvailable,
             workspaceID: report?.scope.workspaceID,
@@ -1232,7 +1232,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         let detailsJSON = String(data: try JSONEncoder().encode(details), encoding: .utf8)
         let now = Date()
 
-        try context.dataStore.upsertRetrievalHealth(
+        try await context.dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .collaboration,
                 status: status,

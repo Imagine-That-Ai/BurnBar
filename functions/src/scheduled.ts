@@ -18,7 +18,10 @@ import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { processRollupUserRebuild } from "./rollups.js";
-import { enqueueRollupUserRebuildTasks, parseRollupUserRebuildTaskData } from "./rollupTaskQueue.js";
+import {
+  enqueueRollupUserRebuildTasks,
+  parseRollupUserRebuildTaskData,
+} from "./rollupTaskQueue.js";
 import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
 import { runQuotaRefreshSweep } from "./quotaRefreshSweep.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
@@ -30,6 +33,7 @@ import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
+type RollupUserRebuildQueueJob = NonNullable<ReturnType<typeof parseRollupUserRebuildTaskData>>;
 
 /**
  * Scheduled worker: rebuild dirty usage rollups.
@@ -63,7 +67,7 @@ export const rebuildRollups = onSchedule(
       }
 
       // Each doc path: users/{uid}/rollup_jobs/current
-      const jobsByUid = new Map<string, { uid: string; dirtiedAt?: string }>();
+      const jobsByUid = new Map<string, RollupUserRebuildQueueJob>();
       for (const doc of snapshot.docs) {
         const parts = doc.ref.path.split("/");
         const uid = parts[1];

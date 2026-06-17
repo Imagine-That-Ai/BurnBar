@@ -19,6 +19,14 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_semantic_search_conversations` | Local deterministic semantic search over indexed conversation chunks; returns structured `unavailable` when semantic tables or compatible embeddings are absent |
 | `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search; query hashes are derived locally and snippets decrypt locally |
 | `burnbar_cloud_get_conversation_body` | Decrypt the full hosted session body for a cloud search hit |
+| `burnbar_index_project` | **Write** local Project Code Memory index through the daemon write path |
+| `burnbar_search_code` | Search indexed local project code with untrusted snippet wrappers |
+| `burnbar_code_context_pack` | Build token-budgeted context from indexed code |
+| `burnbar_get_symbol` | Resolve symbols with tier evidence (`exact_lsp`, `static_tree_sitter`, `lexical_fallback`) |
+| `burnbar_find_references` | Resolve symbol references with stale-index degradation |
+| `burnbar_call_graph` | Traverse bounded call graph edges |
+| `burnbar_index_status` | Report parser, encryption, semantic, and production-readiness status |
+| `burnbar_memory_doctor` | Diagnose local memory/code schema and readiness |
 | `burnbar_get_conversation` | Full row + fullText for one conversation by ID |
 | `burnbar_chat_messages` | In-app assistant chat_messages tail |
 | `burnbar_record_hermes_usage` | **Write** an idempotent row to the daemon usage ledger |

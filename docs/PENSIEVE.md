@@ -129,6 +129,28 @@ a separate opt-in design that re-evaluates the cloak leakage for code, applies
 the pre-persistence secret scanner to every chunk, and proves hosted responses
 remain sealed-only.
 
+### Code Asset Class (Hosted Sync Gate)
+
+Code is a separate Pensieve asset class, not a subtype of prose memory. Before
+hosted code sync can leave local-only mode, all of these must be true:
+
+- The device seals code chunks and code metadata before upload; the hosted
+  service stores only ciphertext, sealed metadata, vault-keyed HMAC identifiers,
+  byte counts, coarse source kind, and cloaked vectors.
+- The device applies the Project Code Memory secret scanner before sealing.
+  Rejected code never receives a hosted vector or sealed row.
+- The hosted service requires `code:read`, `projectHmac`, and a pinned
+  `embeddingModelVersion` for code search. General knowledge search refuses
+  `sourceKind = code`.
+- Hosted responses are sealed-only. Plaintext code paths, snippets, symbols,
+  content hashes, and raw embeddings must not appear in hosted responses or logs.
+- Forget is hard-delete, not soft-retire: the device must be able to delete the
+  sealed code row and cloaked vector by vault-keyed project/chunk HMAC and
+  surface a receipt.
+
+See [Project Code Memory retention](PROJECT_CODE_MEMORY_RETENTION.md) for the
+local and future hosted forget policy.
+
 ---
 
 ## Security & threat model

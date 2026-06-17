@@ -11,7 +11,8 @@ extension OpenBurnBarOperatingLayer {
             if case .healthy = daemonManager.status {
                 try await daemonManager.syncControllerNotificationConfiguration(from: settingsManager)
                 let snapshot = try await daemonManager.fetchControllerRuntimeSnapshot()
-                try dataStore.saveControllerRuntimeMirror(snapshot)
+                try await dataStore.saveControllerRuntimeMirror(snapshot)
+                rememberControllerRuntimeMirror(snapshot)
             }
             controllerFeedback = nil
         } catch {
@@ -37,16 +38,17 @@ extension OpenBurnBarOperatingLayer {
                     answer: trimmed,
                     selectedOptionID: selectedOptionID
                 ) {
-                    try dataStore.saveControllerRuntimeMirror(snapshot)
+                    try await dataStore.saveControllerRuntimeMirror(snapshot)
                 } else {
-                    try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                    _ = try dataStore.answerControllerQuestion(id: id, answer: trimmed, selectedOptionID: selectedOptionID)
+                    try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                    _ = try await dataStore.answerControllerQuestion(id: id, answer: trimmed, selectedOptionID: selectedOptionID)
                 }
             } else {
-                try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                _ = try dataStore.answerControllerQuestion(id: id, answer: trimmed, selectedOptionID: selectedOptionID)
+                try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                _ = try await dataStore.answerControllerQuestion(id: id, answer: trimmed, selectedOptionID: selectedOptionID)
             }
             controllerFeedback = OpenBurnBarControllerFeedback(tone: .success, message: "Answer recorded in OpenBurnBar’s controller history.")
+            await refreshControlPlaneCache()
             stateRevision += 1
         } catch {
             controllerFeedback = OpenBurnBarControllerFeedback(tone: .error, message: "OpenBurnBar could not record that answer: \(error.localizedDescription)")
@@ -57,16 +59,17 @@ extension OpenBurnBarOperatingLayer {
         do {
             if case .healthy = daemonManager.status {
                 if let snapshot = try await daemonManager.completeControllerFollowup(followupID: id) {
-                    try dataStore.saveControllerRuntimeMirror(snapshot)
+                    try await dataStore.saveControllerRuntimeMirror(snapshot)
                 } else {
-                    try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                    _ = try dataStore.completeControllerFollowup(id: id)
+                    try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                    _ = try await dataStore.completeControllerFollowup(id: id)
                 }
             } else {
-                try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                _ = try dataStore.completeControllerFollowup(id: id)
+                try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                _ = try await dataStore.completeControllerFollowup(id: id)
             }
             controllerFeedback = OpenBurnBarControllerFeedback(tone: .success, message: "Followup completed.")
+            await refreshControlPlaneCache()
             stateRevision += 1
         } catch {
             controllerFeedback = OpenBurnBarControllerFeedback(tone: .error, message: "OpenBurnBar could not complete that followup: \(error.localizedDescription)")
@@ -77,16 +80,17 @@ extension OpenBurnBarOperatingLayer {
         do {
             if case .healthy = daemonManager.status {
                 if let snapshot = try await daemonManager.snoozeControllerFollowup(followupID: id, until: until) {
-                    try dataStore.saveControllerRuntimeMirror(snapshot)
+                    try await dataStore.saveControllerRuntimeMirror(snapshot)
                 } else {
-                    try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                    _ = try dataStore.snoozeControllerFollowup(id: id, until: until)
+                    try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                    _ = try await dataStore.snoozeControllerFollowup(id: id, until: until)
                 }
             } else {
-                try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                _ = try dataStore.snoozeControllerFollowup(id: id, until: until)
+                try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                _ = try await dataStore.snoozeControllerFollowup(id: id, until: until)
             }
             controllerFeedback = OpenBurnBarControllerFeedback(tone: .success, message: "Followup snoozed until \(until.formatted(date: .abbreviated, time: .shortened)).")
+            await refreshControlPlaneCache()
             stateRevision += 1
         } catch {
             controllerFeedback = OpenBurnBarControllerFeedback(tone: .error, message: "OpenBurnBar could not snooze that followup: \(error.localizedDescription)")
@@ -104,10 +108,10 @@ extension OpenBurnBarOperatingLayer {
                     start: start,
                     durationMinutes: duration
                 ) {
-                    try dataStore.saveControllerRuntimeMirror(snapshot)
+                    try await dataStore.saveControllerRuntimeMirror(snapshot)
                 } else {
-                    try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                    _ = try dataStore.scheduleControllerFollowupCalendar(
+                    try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                    _ = try await dataStore.scheduleControllerFollowupCalendar(
                         id: id,
                         title: title,
                         start: start,
@@ -115,8 +119,8 @@ extension OpenBurnBarOperatingLayer {
                     )
                 }
             } else {
-                try dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
-                _ = try dataStore.scheduleControllerFollowupCalendar(
+                try await dataStore.saveControllerRuntimeMirror(self.snapshot.controllerRuntime)
+                _ = try await dataStore.scheduleControllerFollowupCalendar(
                     id: id,
                     title: title,
                     start: start,
@@ -127,6 +131,7 @@ extension OpenBurnBarOperatingLayer {
                 tone: .success,
                 message: "Calendar hold added for \(start.formatted(date: .abbreviated, time: .shortened))."
             )
+            await refreshControlPlaneCache()
             stateRevision += 1
         } catch {
             controllerFeedback = OpenBurnBarControllerFeedback(tone: .error, message: "OpenBurnBar could not add that calendar hold: \(error.localizedDescription)")

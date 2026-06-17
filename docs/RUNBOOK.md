@@ -162,6 +162,82 @@ open -a OpenBurnBar
 
 ---
 
+## Incident 2b: Project Code Memory Operations
+
+### Symptoms
+- Code search returns stale or empty results.
+- `burnbar_memory_doctor` reports `PROJECT_CODE_MEMORY_PRODUCTION_READY=false`.
+- Parser tier falls back to `lexical_fallback`.
+- Local database size grows after many reindexes.
+- Hosted code tools appear unexpectedly in hosted MCP.
+
+### Diagnosis
+
+```bash
+# Local MCP doctor/status
+cd tools/openburnbar-mcp
+./.venv/bin/python server.py --help >/dev/null
+
+# Parser helper smoke
+cargo test --manifest-path ../../crates/project-code-static-parser/Cargo.toml --test jsonl_service
+
+# Storage/compaction proof
+python3 ../../scripts/ci/project-code-memory-load-test.py
+
+# SQLCipher release policy
+bash ../../scripts/ci/verify-project-code-memory-sqlcipher-policy.sh
+```
+
+### Remediation
+
+1. **Reindex a project**
+   - Run `burnbar_index_project` from local MCP, or start daemon-owned watch with
+     `burnbar_watch_project`.
+   - If using the Python helper directly, writes must go through daemon RPC; do
+     not fall back to raw read-write SQLite.
+
+2. **Reset the local code index**
+   - Stop the watcher.
+   - Remove rows for the project from `code_artifacts`, `search_documents`,
+     `search_chunks`, `search_chunks_fts`, `code_symbols`, `code_references`,
+     `code_call_edges`, `pcm_file_manifest`, and `code_index_checkpoints`.
+   - Re-run `burnbar_index_project`.
+
+3. **Compaction**
+   - Reindex first so removed files prune dependent rows.
+   - The daemon runs `PRAGMA incremental_vacuum` only after freelist/page metrics
+     cross the local compaction policy. A fresh small index may have
+     `lastVacuumedAt = null`.
+   - Use the load proof above to verify storage remains within budget.
+
+4. **Parser repair**
+   - Run `tools/openburnbar-mcp/setup.sh`; it rebuilds a missing or stale
+     `project-code-static-parser` release helper and sends a JSONL smoke request.
+   - If the helper is unavailable by design, set
+     `OPENBURNBAR_MCP_ALLOW_LEXICAL_ONLY=true` explicitly.
+
+5. **SQLCipher**
+   - Project Code Memory is not release-ready unless the daemon has a SQLCipher
+     codec (`DAEMON_SQLCIPHER_PRESENT=1` proof lane).
+   - Stock plaintext builds must keep `productionReady=false`.
+
+6. **Disable hosted code**
+   - Ensure `OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS` is unset or not equal to
+     `true`.
+   - Run `bash scripts/ci/verify-hosted-code-memory-policy.sh`.
+   - Hosted code sync stays disabled until the code asset-class threat model and
+     sealed-only proof gates pass.
+
+### Verification
+- `burnbar_search_code` returns wrapped `OPENBURNBAR_UNTRUSTED_CODE_V1` snippets.
+- `burnbar_index_status` reports storage within budget.
+- `burnbar_memory_doctor` reports parser, SQLCipher, hosted-code, and stale-index
+  readiness reasons honestly.
+- Hosted MCP `tools/list` omits code tools unless
+  `OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS=true` is intentionally set.
+
+---
+
 ## Incident 3: Cloud Sync Failure
 
 ### Symptoms

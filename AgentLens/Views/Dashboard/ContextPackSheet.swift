@@ -390,7 +390,7 @@ struct ContextPackSheet: View {
                 // anchorSessionId identifies the selected session, but the pack should include
                 // all eligible sessions from the same project (anchorProject) so that
                 // ranking can produce a project-scoped context pack, not a single-session export.
-                candidates = try dataStore.fetchConversationsForTranscriptScan(
+                candidates = try await dataStore.fetchConversationsForTranscriptScan(
                     provider: nil,
                     projectName: anchorProject,
                     dateRange: dateRange,
@@ -398,7 +398,7 @@ struct ContextPackSheet: View {
                 )
             } else {
                 // Unanchored launch (Dashboard): fetch all eligible sessions within date range
-                candidates = try dataStore.fetchConversationsForTranscriptScan(
+                candidates = try await dataStore.fetchConversationsForTranscriptScan(
                     provider: nil,
                     projectName: anchorProject,
                     dateRange: dateRange,
@@ -501,11 +501,11 @@ struct SessionDetailContextPackRow: View {
     @Bindable var dataStore: DataStore
     var onPresentSheet: (String?, String?) -> Void
 
-    @Environment(SettingsManager.self) private var settingsManager: SettingsManager?
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var isHovered = false
 
     private var isIndexingEnabled: Bool {
-        settingsManager?.conversationIndexingEnabled ?? SettingsManager.shared.conversationIndexingEnabled
+        settingsManager.conversationIndexingEnabled
     }
 
     private var isEnabled: Bool {

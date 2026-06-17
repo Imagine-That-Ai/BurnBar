@@ -6,11 +6,10 @@ import OpenBurnBarCore
 final class ChatSessionControllerAttachmentTests: XCTestCase {
 
     func test_addAttachment_fromImageURL_stagesAttachment() throws {
-        let harness = try OpenBurnBarSearchIntegrationHarness(name: "chat-attach-add")
-        defer { harness.cleanup() }
+        let dataStore = try makeDiscoveryInMemoryStore()
 
         let controller = ChatSessionController(
-            dataStore: harness.dataStore,
+            dataStore: dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
 
@@ -29,11 +28,10 @@ final class ChatSessionControllerAttachmentTests: XCTestCase {
     }
 
     func test_removeAttachment_dropsFromPending() throws {
-        let harness = try OpenBurnBarSearchIntegrationHarness(name: "chat-attach-remove")
-        defer { harness.cleanup() }
+        let dataStore = try makeDiscoveryInMemoryStore()
 
         let controller = ChatSessionController(
-            dataStore: harness.dataStore,
+            dataStore: dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
 
@@ -49,11 +47,10 @@ final class ChatSessionControllerAttachmentTests: XCTestCase {
     }
 
     func test_addAttachment_oversizedFile_setsErrorAndKeepsListEmpty() throws {
-        let harness = try OpenBurnBarSearchIntegrationHarness(name: "chat-attach-oversize")
-        defer { harness.cleanup() }
+        let dataStore = try makeDiscoveryInMemoryStore()
 
         let controller = ChatSessionController(
-            dataStore: harness.dataStore,
+            dataStore: dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
 
@@ -70,20 +67,20 @@ final class ChatSessionControllerAttachmentTests: XCTestCase {
         XCTAssertNotNil(controller.attachmentError)
     }
 
-    func test_openOrCreateChatThread_usesMobileThreadIDAndRestoresMessages() throws {
-        let harness = try OpenBurnBarSearchIntegrationHarness(name: "mobile-chat-continuity")
-        defer { harness.cleanup() }
+    func test_openOrCreateChatThread_usesMobileThreadIDAndRestoresMessages() async throws {
+        let dataStore = try makeDiscoveryInMemoryStore()
 
         let controller = ChatSessionController(
-            dataStore: harness.dataStore,
+            dataStore: dataStore,
             searchService: ControlledChatSessionSearchProvider(responses: [:])
         )
         let mobileThreadID = "mobile-codex-ios_123"
 
-        controller.openOrCreateChatThread(id: mobileThreadID)
+        await controller.openOrCreateChatThreadAsync(id: mobileThreadID)
 
         XCTAssertEqual(controller.activeThreadID, mobileThreadID)
-        XCTAssertTrue(try harness.dataStore.chatThreadExists(id: mobileThreadID))
+        let threadExists = try await dataStore.chatThreadExists(id: mobileThreadID)
+        XCTAssertTrue(threadExists)
 
         let userMessage = ChatMessageRecord(
             id: "u1",
@@ -91,12 +88,12 @@ final class ChatSessionControllerAttachmentTests: XCTestCase {
             content: "Keep this context.",
             timestamp: Date(timeIntervalSince1970: 1_800_000_000)
         )
-        try harness.dataStore.saveChatMessage(userMessage, threadID: mobileThreadID)
+        try await dataStore.saveChatMessage(userMessage, threadID: mobileThreadID)
 
-        controller.startNewChatThread()
+        await controller.startNewChatThreadAsync()
         XCTAssertNotEqual(controller.activeThreadID, mobileThreadID)
 
-        controller.openOrCreateChatThread(id: mobileThreadID)
+        await controller.openOrCreateChatThreadAsync(id: mobileThreadID)
 
         XCTAssertEqual(controller.activeThreadID, mobileThreadID)
         XCTAssertEqual(controller.messages.map(\.content), ["Keep this context."])

@@ -113,7 +113,7 @@ extension ChatSessionController {
         )
 
         do {
-            try dataStore.insert(usage)
+            try await dataStore.insert(usage)
             await dataStore.refresh()
         } catch {
             AppLogger.chat.silentFailure("insert in-app chat usage", error: error)
@@ -125,7 +125,7 @@ extension ChatSessionController {
         queryRun: OpenBurnBarQueryRunResult,
         retrievalResults: [RetrievalResult],
         desiredCount: Int
-    ) -> [ConversationJumpTarget] {
+    ) async -> [ConversationJumpTarget] {
         var targets: [ConversationJumpTarget] = []
 
         let inferredRange = BurnBarSearchTimeWindow.inferredDateRange(
@@ -136,7 +136,7 @@ extension ChatSessionController {
         let exactPatterns = exactJumpPatterns(queryText: queryText, queryRun: queryRun)
 
         if exactPatterns.isEmpty == false {
-            targets = (try? dataStore.findConversationFullTextMatches(
+            targets = (try? await dataStore.findConversationFullTextMatches(
                 patterns: exactPatterns,
                 dateRange: inferredRange,
                 limit: exactMatchScanLimit(for: desiredCount)
@@ -168,7 +168,7 @@ extension ChatSessionController {
         retrievalResults: [RetrievalResult],
         jumpTargets: [ConversationJumpTarget],
         desiredCount: Int
-    ) -> LocalIndexOracleResult {
+    ) async -> LocalIndexOracleResult {
         var lines: [String] = []
         let inferredRange = BurnBarSearchTimeWindow.inferredDateRange(
             from: queryText,
@@ -179,7 +179,7 @@ extension ChatSessionController {
 
         if queryRun.plan.analysisIntent == .providerRanking,
            queryRun.plan.aggregatePatterns.isEmpty == false {
-            let rankedProviders = (try? dataStore.countOccurrencesInConversationFullTextByProvider(
+            let rankedProviders = (try? await dataStore.countOccurrencesInConversationFullTextByProvider(
                 patterns: queryRun.plan.aggregatePatterns,
                 dateRange: inferredRange,
                 conversationSources: [.providerLog]
@@ -194,7 +194,7 @@ extension ChatSessionController {
                 return LocalIndexOracleResult(message: lines.joined(separator: "\n\n"), jumpTargets: [])
             }
 
-            let providerTargets = (try? dataStore.findConversationFullTextMatches(
+            let providerTargets = (try? await dataStore.findConversationFullTextMatches(
                 patterns: queryRun.plan.aggregatePatterns,
                 provider: topProvider.provider,
                 dateRange: inferredRange,
@@ -232,7 +232,7 @@ extension ChatSessionController {
 
         if SearchService.looksLikeSensitiveExactLookup(queryText),
            looksLikeCredentialExposureQuestion(queryText) {
-            let scan = (try? dataStore.scanConversationFullTextForCredentialExposure(
+            let scan = (try? await dataStore.scanConversationFullTextForCredentialExposure(
                 dateRange: inferredRange,
                 limit: exactMatchScanLimit(for: desiredCount)
             )) ?? CredentialExposureScanResult(totalMatches: 0, jumpTargets: [])
@@ -248,7 +248,7 @@ extension ChatSessionController {
                 return LocalIndexOracleResult(message: lines.joined(separator: "\n\n"), jumpTargets: displayTargets)
             }
 
-            let mentionCount = (try? dataStore.countOccurrencesInConversationFullText(
+            let mentionCount = (try? await dataStore.countOccurrencesInConversationFullText(
                 patterns: ["api key", "api_key", "apikey"],
                 dateRange: inferredRange
             )) ?? 0

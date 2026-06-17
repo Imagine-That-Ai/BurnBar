@@ -1,5 +1,5 @@
 import Foundation
-import GRDB
+@preconcurrency import GRDB
 import OpenBurnBarCore
 
 // MARK: - ArtifactStore
@@ -14,7 +14,7 @@ final class ArtifactStore: Sendable {
 
     // MARK: - Source Artifacts
 
-    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) throws -> SourceArtifactWriteDisposition {
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) async throws -> SourceArtifactWriteDisposition {
         guard artifact.sourceKind != .conversation else {
             throw NSError(
                 domain: "DataStore.SourceArtifact",
@@ -23,7 +23,7 @@ final class ArtifactStore: Sendable {
             )
         }
 
-        return try dbQueue.write { db in
+        return try await dbQueue.write { db in
             let existingRow = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM source_artifacts WHERE id = ?",
@@ -157,7 +157,7 @@ final class ArtifactStore: Sendable {
         includeDeleted: Bool,
         rootPaths: [String]?,
         sourceKinds: [SearchSourceKind]
-    ) throws -> [SourceArtifactRecord] {
+    ) async throws -> [SourceArtifactRecord] {
         guard sourceKinds.isEmpty == false else { return [] }
         let normalizedRoots = (rootPaths ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let kindValues = sourceKinds.map(\.rawValue)
@@ -178,7 +178,8 @@ final class ArtifactStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -186,7 +187,7 @@ final class ArtifactStore: Sendable {
                 \(whereSQL)
                 ORDER BY rootPath ASC, relativePath ASC
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             )
             return rows.compactMap(Self.sourceArtifact(from:))
         }
@@ -199,7 +200,7 @@ final class ArtifactStore: Sendable {
         sourceKinds: [SearchSourceKind],
         limit: Int,
         offset: Int
-    ) throws -> [SourceArtifactRecord] {
+    ) async throws -> [SourceArtifactRecord] {
         guard sourceKinds.isEmpty == false else { return [] }
         let normalizedRoots = (rootPaths ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let kindValues = sourceKinds.map(\.rawValue)
@@ -222,7 +223,8 @@ final class ArtifactStore: Sendable {
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
         args.append(limit)
         args.append(offset)
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -231,7 +233,7 @@ final class ArtifactStore: Sendable {
                 ORDER BY rootPath ASC, relativePath ASC, id ASC
                 LIMIT ? OFFSET ?
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             )
             return rows.compactMap(Self.sourceArtifact(from:))
         }
@@ -241,7 +243,7 @@ final class ArtifactStore: Sendable {
         includeDeleted: Bool,
         rootPaths: [String]?,
         sourceKinds: [SearchSourceKind]
-    ) throws -> Int {
+    ) async throws -> Int {
         guard sourceKinds.isEmpty == false else { return 0 }
         let normalizedRoots = (rootPaths ?? [])
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -264,7 +266,8 @@ final class ArtifactStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -272,13 +275,13 @@ final class ArtifactStore: Sendable {
                 FROM source_artifacts
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             ) ?? 0
         }
     }
 
-    func fetchSourceArtifact(id: String, includeDeleted: Bool) throws -> SourceArtifactRecord? {
-        try dbQueue.read { db in
+    func fetchSourceArtifact(id: String, includeDeleted: Bool) async throws -> SourceArtifactRecord? {
+        try await dbQueue.read { db in
             guard
                 let row = try Row.fetchOne(
                     db,
@@ -297,8 +300,8 @@ final class ArtifactStore: Sendable {
     }
 
     @discardableResult
-    func markSourceArtifactDeleted(id: String, deletedAt: Date) throws -> Bool {
-        try dbQueue.write { db in
+    func markSourceArtifactDeleted(id: String, deletedAt: Date) async throws -> Bool {
+        try await dbQueue.write { db in
             guard
                 let row = try Row.fetchOne(db, sql: "SELECT * FROM source_artifacts WHERE id = ?", arguments: [id]),
                 let existing = Self.sourceArtifact(from: row),
@@ -320,8 +323,8 @@ final class ArtifactStore: Sendable {
 
     // MARK: - Shared Artifact Sync State
 
-    func upsertSharedArtifactSyncState(_ state: SharedArtifactSyncStateRecord) throws {
-        try dbQueue.write { db in
+    func upsertSharedArtifactSyncState(_ state: SharedArtifactSyncStateRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO shared_artifact_sync_state (
@@ -368,8 +371,8 @@ final class ArtifactStore: Sendable {
         }
     }
 
-    func fetchSharedArtifactSyncState(sourceArtifactID: String) throws -> SharedArtifactSyncStateRecord? {
-        try dbQueue.read { db in
+    func fetchSharedArtifactSyncState(sourceArtifactID: String) async throws -> SharedArtifactSyncStateRecord? {
+        try await dbQueue.read { db in
             guard let row = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM shared_artifact_sync_state WHERE sourceArtifactID = ?",
@@ -379,8 +382,8 @@ final class ArtifactStore: Sendable {
         }
     }
 
-    func fetchSharedArtifactSyncState(remoteArtifactID: String) throws -> SharedArtifactSyncStateRecord? {
-        try dbQueue.read { db in
+    func fetchSharedArtifactSyncState(remoteArtifactID: String) async throws -> SharedArtifactSyncStateRecord? {
+        try await dbQueue.read { db in
             guard let row = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM shared_artifact_sync_state WHERE remoteArtifactID = ?",
@@ -395,7 +398,7 @@ final class ArtifactStore: Sendable {
         teamID: String?,
         statuses: [SharedArtifactSyncStatus]?,
         limit: Int
-    ) throws -> [SharedArtifactSyncStateRecord] {
+    ) async throws -> [SharedArtifactSyncStateRecord] {
         if let statuses, statuses.isEmpty { return [] }
 
         let normalizedWorkspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -422,7 +425,8 @@ final class ArtifactStore: Sendable {
         args.append(max(1, limit))
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
 
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -431,7 +435,7 @@ final class ArtifactStore: Sendable {
                 ORDER BY updatedAt DESC, sourceArtifactID ASC
                 LIMIT ?
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             )
             return rows.compactMap(Self.sharedArtifactSyncState(from:))
         }
@@ -441,7 +445,7 @@ final class ArtifactStore: Sendable {
         workspaceID: String?,
         teamID: String?,
         statuses: [SharedArtifactSyncStatus]?
-    ) throws -> Int {
+    ) async throws -> Int {
         if let statuses, statuses.isEmpty { return 0 }
 
         let normalizedWorkspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -466,7 +470,8 @@ final class ArtifactStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -474,15 +479,15 @@ final class ArtifactStore: Sendable {
                 FROM shared_artifact_sync_state
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             ) ?? 0
         }
     }
 
     // MARK: - Permissions
 
-    func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) throws -> SharedArtifactPermissionWriteDisposition {
-        try dbQueue.write { db in
+    func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) async throws -> SharedArtifactPermissionWriteDisposition {
+        try await dbQueue.write { db in
             let existingRow = try Row.fetchOne(
                 db,
                 sql: """
@@ -535,8 +540,8 @@ final class ArtifactStore: Sendable {
     func replaceSharedArtifactPermissions(
         sourceArtifactID: String,
         permissions: [SharedArtifactPermissionRecord]
-    ) throws {
-        try dbQueue.write { db in
+    ) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "DELETE FROM artifact_permissions WHERE sourceArtifactID = ?",
                 arguments: [sourceArtifactID]
@@ -578,7 +583,7 @@ final class ArtifactStore: Sendable {
         principalType: SharedArtifactPrincipalType?,
         principalID: String?,
         limit: Int
-    ) throws -> [SharedArtifactPermissionRecord] {
+    ) async throws -> [SharedArtifactPermissionRecord] {
         var clauses: [String] = []
         var args: [any DatabaseValueConvertible] = []
 
@@ -606,7 +611,8 @@ final class ArtifactStore: Sendable {
         args.append(max(1, limit))
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
 
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -615,7 +621,7 @@ final class ArtifactStore: Sendable {
                 ORDER BY updatedAt DESC, sourceArtifactID ASC, principalType ASC, principalID ASC
                 LIMIT ?
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             )
             return rows.compactMap(Self.sharedArtifactPermission(from:))
         }
@@ -627,7 +633,7 @@ final class ArtifactStore: Sendable {
         teamID: String?,
         principalType: SharedArtifactPrincipalType?,
         principalID: String?
-    ) throws -> Int {
+    ) async throws -> Int {
         var clauses: [String] = []
         var args: [any DatabaseValueConvertible] = []
 
@@ -653,7 +659,8 @@ final class ArtifactStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -661,7 +668,7 @@ final class ArtifactStore: Sendable {
                 FROM artifact_permissions
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             ) ?? 0
         }
     }
@@ -669,10 +676,10 @@ final class ArtifactStore: Sendable {
     func fetchReadableSharedArtifactSourceIDs(
         accessContext: SharedArtifactAccessContext,
         limit: Int
-    ) throws -> [String] {
+    ) async throws -> [String] {
         guard limit > 0 else { return [] }
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -727,8 +734,8 @@ final class ArtifactStore: Sendable {
 
     // MARK: - Audit Events
 
-    func appendSharedArtifactAuditEvent(_ event: SharedArtifactAuditEventRecord) throws {
-        try dbQueue.write { db in
+    func appendSharedArtifactAuditEvent(_ event: SharedArtifactAuditEventRecord) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO audit_events (
@@ -760,7 +767,7 @@ final class ArtifactStore: Sendable {
         teamID: String?,
         actions: [SharedArtifactAuditAction]?,
         limit: Int
-    ) throws -> [SharedArtifactAuditEventRecord] {
+    ) async throws -> [SharedArtifactAuditEventRecord] {
         if let actions, actions.isEmpty { return [] }
 
         var clauses: [String] = []
@@ -786,7 +793,8 @@ final class ArtifactStore: Sendable {
         args.append(max(1, limit))
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
 
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -795,7 +803,7 @@ final class ArtifactStore: Sendable {
                 ORDER BY occurredAt DESC, id ASC
                 LIMIT ?
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             )
             return rows.compactMap(Self.sharedArtifactAuditEvent(from:))
         }
@@ -806,7 +814,7 @@ final class ArtifactStore: Sendable {
         workspaceID: String?,
         teamID: String?,
         actions: [SharedArtifactAuditAction]?
-    ) throws -> Int {
+    ) async throws -> Int {
         if let actions, actions.isEmpty { return 0 }
 
         var clauses: [String] = []
@@ -830,7 +838,8 @@ final class ArtifactStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
-        return try dbQueue.read { db in
+        let statementArgs = args
+        return try await dbQueue.read { db in
             try Int.fetchOne(
                 db,
                 sql: """
@@ -838,7 +847,7 @@ final class ArtifactStore: Sendable {
                 FROM audit_events
                 \(whereSQL)
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             ) ?? 0
         }
     }

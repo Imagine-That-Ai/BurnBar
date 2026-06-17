@@ -11,53 +11,88 @@ import GRDB
 /// - VAL-PERSIST-011: Watermark scope is account-aware and collection-safe
 @MainActor
 final class RemoteSyncWatermarkTests: XCTestCase {
+    private struct RemoteSyncWatermarkStoreHarness {
+        let dataStore: DataStore
+
+        func fetchWatermark(
+            accountUid: String,
+            collectionKind: RemoteSyncCollectionKind
+        ) async throws -> RemoteSyncWatermarkRecord? {
+            try await dataStore.fetchRemoteSyncWatermark(accountUid: accountUid, collectionKind: collectionKind)
+        }
+
+        func fetchAllWatermarks(accountUid: String) async throws -> [RemoteSyncWatermarkRecord] {
+            try await dataStore.fetchAllRemoteSyncWatermarks(accountUid: accountUid)
+        }
+
+        func fetchWatermarkOrDefault(
+            accountUid: String,
+            collectionKind: RemoteSyncCollectionKind
+        ) async throws -> Date {
+            try await dataStore.fetchRemoteSyncWatermarkOrDefault(
+                accountUid: accountUid,
+                collectionKind: collectionKind
+            )
+        }
+
+        func clearAllWatermarks(accountUid: String) async throws {
+            try await dataStore.clearAllRemoteSyncWatermarks(accountUid: accountUid)
+        }
+
+        func makeTransaction(
+            accountUid: String,
+            collectionKind: RemoteSyncCollectionKind
+        ) -> AtomicRemoteSyncTransaction {
+            dataStore.makeRemoteSyncTransaction(accountUid: accountUid, collectionKind: collectionKind)
+        }
+    }
+
+    private func makeWatermarkStore(_ dataStore: DataStore) -> RemoteSyncWatermarkStoreHarness {
+        RemoteSyncWatermarkStoreHarness(dataStore: dataStore)
+    }
 
     // MARK: - VAL-PERSIST-010: Watermark advances only after durable success
 
-    func test_watermark_doesNotAdvance_whenTransactionNotCommitted() throws {
+    func test_watermark_doesNotAdvance_whenTransactionNotCommitted() async throws {
         // Given: a watermark store
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "test-account-uid"
         let collectionKind = RemoteSyncCollectionKind.usage
 
         // Create an atomic transaction but DON'T commit it
-        let tx = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
         tx.recordProcessedItem(remoteUpdatedAt: Date())
 
         // Verify: no watermark exists yet (not committed)
-        let watermark = try watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
+        let watermark = try await watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
         XCTAssertNil(watermark, "Watermark must not exist before commit")
     }
 
-    func test_watermark_advances_onlyAfterCommit() throws {
+    func test_watermark_advances_onlyAfterCommit() async throws {
         // Given: a watermark store with no existing watermark
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "test-account-uid-2"
         let collectionKind = RemoteSyncCollectionKind.usage
 
         // When: we create and commit a transaction
-        let tx = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
 
         let processedDate = Date()
         tx.recordProcessedItem(remoteUpdatedAt: processedDate)
-        try tx.commit()
+        try await tx.commit()
 
         // Then: watermark exists and is advanced
-        let watermark = try watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
+        let watermark = try await watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
         XCTAssertNotNil(watermark, "Watermark must exist after commit")
         // Use approximate comparison for dates since there might be small timing differences
         if let watermarkDate = watermark?.lastProcessedRemoteUpdateAt {
@@ -66,105 +101,93 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         XCTAssertEqual(watermark?.version, 1)
     }
 
-    func test_watermark_idempotent_commitAfterNoItems() throws {
+    func test_watermark_idempotent_commitAfterNoItems() async throws {
         // Given: a committed transaction
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "test-account-uid-3"
         let collectionKind = RemoteSyncCollectionKind.conversations
 
-        let tx1 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx1 = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
         tx1.recordProcessedItem(remoteUpdatedAt: Date())
-        try tx1.commit()
+        try await tx1.commit()
 
         // When: we create another transaction with no items and commit
-        let tx2 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx2 = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
         // No items recorded
-        try tx2.commit()
+        try await tx2.commit()
 
         // Then: watermark unchanged (no items to advance)
-        let watermark = try watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
+        let watermark = try await watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
         XCTAssertNotNil(watermark)
         XCTAssertEqual(watermark?.version, 1, "Version must not increment when no items processed")
     }
 
-    func test_watermark_versionIncrements_onSubsequentCommit() throws {
+    func test_watermark_versionIncrements_onSubsequentCommit() async throws {
         // Given: a committed transaction
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "test-account-uid-4"
         let collectionKind = RemoteSyncCollectionKind.usage
 
-        let tx1 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx1 = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
         tx1.recordProcessedItem(remoteUpdatedAt: Date())
-        try tx1.commit()
+        try await tx1.commit()
 
         // When: we commit another transaction
-        let tx2 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx2 = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
         tx2.recordProcessedItem(remoteUpdatedAt: Date())
-        try tx2.commit()
+        try await tx2.commit()
 
         // Then: version incremented
-        let watermark = try watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
+        let watermark = try await watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
         XCTAssertEqual(watermark?.version, 2)
     }
 
     // MARK: - VAL-PERSIST-011: Watermark scope is account-aware and collection-safe
 
-    func test_watermark_perAccountIsolation() throws {
+    func test_watermark_perAccountIsolation() async throws {
         // Given: watermarks for different accounts
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let account1 = "account-1"
         let account2 = "account-2"
         let collectionKind = RemoteSyncCollectionKind.usage
 
         // Create watermarks for account 1
-        let tx1 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx1 = watermarkStore.makeTransaction(
             accountUid: account1,
             collectionKind: collectionKind
         )
         tx1.recordProcessedItem(remoteUpdatedAt: Date())
-        try tx1.commit()
+        try await tx1.commit()
 
         // Create watermarks for account 2
-        let tx2 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx2 = watermarkStore.makeTransaction(
             accountUid: account2,
             collectionKind: collectionKind
         )
         tx2.recordProcessedItem(remoteUpdatedAt: Date())
-        try tx2.commit()
+        try await tx2.commit()
 
         // Then: both watermarks exist independently
-        let watermark1 = try watermarkStore.fetchWatermark(accountUid: account1, collectionKind: collectionKind)
-        let watermark2 = try watermarkStore.fetchWatermark(accountUid: account2, collectionKind: collectionKind)
+        let watermark1 = try await watermarkStore.fetchWatermark(accountUid: account1, collectionKind: collectionKind)
+        let watermark2 = try await watermarkStore.fetchWatermark(accountUid: account2, collectionKind: collectionKind)
 
         XCTAssertNotNil(watermark1)
         XCTAssertNotNil(watermark2)
@@ -172,40 +195,36 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         XCTAssertEqual(watermark2?.accountUid, account2)
     }
 
-    func test_watermark_perCollectionIsolation() throws {
+    func test_watermark_perCollectionIsolation() async throws {
         // Given: watermarks for different collections in the same account
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "shared-account"
         let usageKind = RemoteSyncCollectionKind.usage
         let convKind = RemoteSyncCollectionKind.conversations
 
         // Create watermark for usage
-        let tx1 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx1 = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: usageKind
         )
         let usageDate = Date()
         tx1.recordProcessedItem(remoteUpdatedAt: usageDate)
-        try tx1.commit()
+        try await tx1.commit()
 
         // Create watermark for conversations
-        let tx2 = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx2 = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: convKind
         )
         let convDate = Date()
         tx2.recordProcessedItem(remoteUpdatedAt: convDate)
-        try tx2.commit()
+        try await tx2.commit()
 
         // Then: both watermarks exist independently
-        let usageWatermark = try watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: usageKind)
-        let convWatermark = try watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: convKind)
+        let usageWatermark = try await watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: usageKind)
+        let convWatermark = try await watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: convKind)
 
         XCTAssertNotNil(usageWatermark)
         XCTAssertNotNil(convWatermark)
@@ -218,66 +237,62 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         }
     }
 
-    func test_watermark_fetchAllForAccount() throws {
+    func test_watermark_fetchAllForAccount() async throws {
         // Given: watermarks for multiple collections in one account
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "multi-collection-account"
 
         for kind in RemoteSyncCollectionKind.allCases {
-            let tx = AtomicRemoteSyncTransaction(
-                dbQueue: queue,
-                watermarkStore: watermarkStore,
+            let tx = watermarkStore.makeTransaction(
                 accountUid: accountUid,
                 collectionKind: kind
             )
             tx.recordProcessedItem(remoteUpdatedAt: Date())
-            try tx.commit()
+            try await tx.commit()
         }
 
         // When: we fetch all watermarks for the account
-        let allWatermarks = try watermarkStore.fetchAllWatermarks(accountUid: accountUid)
+        let allWatermarks = try await watermarkStore.fetchAllWatermarks(accountUid: accountUid)
 
         // Then: we get one watermark per collection
         XCTAssertEqual(allWatermarks.count, RemoteSyncCollectionKind.allCases.count)
     }
 
-    func test_watermark_clearForAccount() throws {
+    func test_watermark_clearForAccount() async throws {
         // Given: watermarks for an account
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "account-to-clear"
         let collectionKind = RemoteSyncCollectionKind.usage
 
-        let tx = AtomicRemoteSyncTransaction(
-            dbQueue: queue,
-            watermarkStore: watermarkStore,
+        let tx = watermarkStore.makeTransaction(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
         tx.recordProcessedItem(remoteUpdatedAt: Date())
-        try tx.commit()
+        try await tx.commit()
 
         // When: we clear all watermarks for the account
-        try watermarkStore.clearAllWatermarks(accountUid: accountUid)
+        try await watermarkStore.clearAllWatermarks(accountUid: accountUid)
 
         // Then: no watermarks remain for that account
-        let watermarks = try watermarkStore.fetchAllWatermarks(accountUid: accountUid)
+        let watermarks = try await watermarkStore.fetchAllWatermarks(accountUid: accountUid)
         XCTAssertTrue(watermarks.isEmpty)
     }
 
-    func test_watermark_fetchOrDefault_returnsDefaultWhenNone() throws {
+    func test_watermark_fetchOrDefault_returnsDefaultWhenNone() async throws {
         // Given: no watermark exists
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let watermarkStore = dataStore.remoteSyncWatermarkStore
+        let watermarkStore = makeWatermarkStore(dataStore)
         let accountUid = "fresh-account"
         let collectionKind = RemoteSyncCollectionKind.usage
 
         // When: we fetch with default
-        let result = try watermarkStore.fetchWatermarkOrDefault(
+        let result = try await watermarkStore.fetchWatermarkOrDefault(
             accountUid: accountUid,
             collectionKind: collectionKind
         )
@@ -290,11 +305,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
 
     // MARK: - VAL-TOKEN-012: Remote re-ingest behavior is explicit and tested
 
-    func test_remoteInsert_allowsReinsertOfSameKey() throws {
+    func test_remoteInsert_allowsReinsertOfSameKey() async throws {
         // Given: a remote usage already exists
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let usageStore = dataStore.usageStore
         let sessionId = "remote-reingest-test-1"
         let remoteUsage = TokenUsage(
             provider: .claudeCode,
@@ -314,23 +328,22 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try usageStore.insertRemoteUsage(remoteUsage)
+        try await dataStore.insertRemoteUsage(remoteUsage)
 
         // When: we re-insert the same data
-        try usageStore.insertRemoteUsage(remoteUsage)
+        try await dataStore.insertRemoteUsage(remoteUsage)
 
         // Then: still one row (idempotent - no duplicates)
-        let rows = try queue.read { db -> Int in
+        let rows = try await queue.read { db -> Int in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage WHERE sessionId = ?", arguments: [sessionId]) ?? 0
         }
         XCTAssertEqual(rows, 1, "Re-ingest must not create duplicate rows")
     }
 
-    func test_remoteInsert_updatesWhenCorrected() throws {
+    func test_remoteInsert_updatesWhenCorrected() async throws {
         // Given: a remote usage exists
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let usageStore = dataStore.usageStore
         let sessionId = "remote-correction-test-1"
         let originalUsage = TokenUsage(
             provider: .claudeCode,
@@ -350,7 +363,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try usageStore.insertRemoteUsage(originalUsage)
+        try await dataStore.insertRemoteUsage(originalUsage)
 
         // When: remote provides corrected data for same key
         let correctedUsage = TokenUsage(
@@ -371,10 +384,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try usageStore.insertRemoteUsage(correctedUsage)
+        try await dataStore.insertRemoteUsage(correctedUsage)
 
         // Then: row is updated (correction convergence)
-        let rows = try queue.read { db -> [Row] in
+        let rows = try await queue.read { db -> [Row] in
             try Row.fetchAll(db, sql: "SELECT * FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
         }
         XCTAssertEqual(rows.count, 1, "Should still have one canonical row")
@@ -385,11 +398,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
 
     // MARK: - VAL-PERSIST-009: Remote correction convergence is enforced
 
-    func test_remoteCorrection_updatesExistingLowerConfidenceRow() throws {
+    func test_remoteCorrection_updatesExistingLowerConfidenceRow() async throws {
         // Given: an existing row with lower confidence (e.g., from heuristic) from same device
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let usageStore = dataStore.usageStore
         let sessionId = "convergence-test-1"
         let sharedDeviceId = "shared-device"
         let lowerConfidenceUsage = TokenUsage(
@@ -408,7 +420,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try usageStore.insert(lowerConfidenceUsage)
+        try await dataStore.insert(lowerConfidenceUsage)
 
         // When: remote with exact confidence provides data for the same key and device
         let remoteExactUsage = TokenUsage(
@@ -429,10 +441,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try usageStore.insertRemoteUsage(remoteExactUsage)
+        try await dataStore.insertRemoteUsage(remoteExactUsage)
 
         // Then: row is updated to exact confidence
-        let rows = try queue.read { db -> [Row] in
+        let rows = try await queue.read { db -> [Row] in
             try Row.fetchAll(db, sql: "SELECT * FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
         }
         XCTAssertEqual(rows.count, 1)
@@ -441,11 +453,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         XCTAssertEqual(inputTokens, 2000, "Exact remote should override lower confidence")
     }
 
-    func test_remoteCorrection_doesNotDowngradeExactToEstimate() throws {
+    func test_remoteCorrection_doesNotDowngradeExactToEstimate() async throws {
         // Given: an existing exact row from same device
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let usageStore = dataStore.usageStore
         let sessionId = "no-downgrade-test-1"
         let sharedDeviceId = "shared-device-2"
         let exactLocalUsage = TokenUsage(
@@ -464,7 +475,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try usageStore.insert(exactLocalUsage)
+        try await dataStore.insert(exactLocalUsage)
 
         // When: remote with lower confidence provides data for the same key and device
         let remoteEstimateUsage = TokenUsage(
@@ -485,10 +496,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate, // lower than exact
             estimatorVersion: ""
         )
-        try usageStore.insertRemoteUsage(remoteEstimateUsage)
+        try await dataStore.insertRemoteUsage(remoteEstimateUsage)
 
         // Then: exact local row is preserved (not downgraded)
-        let rows = try queue.read { db -> [Row] in
+        let rows = try await queue.read { db -> [Row] in
             try Row.fetchAll(db, sql: "SELECT * FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
         }
         XCTAssertEqual(rows.count, 1)
@@ -497,11 +508,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         XCTAssertEqual(inputTokens, 5000, "Exact local must not be downgraded by remote estimate")
     }
 
-    func test_remoteCorrection_convergesFromDifferentRemoteDevice() throws {
+    func test_remoteCorrection_convergesFromDifferentRemoteDevice() async throws {
         // Given: remote usage from device A
         let queue = try DatabaseQueue()
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let usageStore = dataStore.usageStore
         let sessionId = "multi-device-correction"
         let deviceAUsage = TokenUsage(
             provider: .claudeCode,
@@ -521,7 +531,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try usageStore.insertRemoteUsage(deviceAUsage)
+        try await dataStore.insertRemoteUsage(deviceAUsage)
 
         // When: remote usage from device B provides corrected data (different sourceDeviceId = different key)
         let deviceBUsage = TokenUsage(
@@ -542,10 +552,10 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try usageStore.insertRemoteUsage(deviceBUsage)
+        try await dataStore.insertRemoteUsage(deviceBUsage)
 
         // Then: both rows exist (different sourceDeviceId = different canonical key)
-        let rows = try queue.read { db -> Int in
+        let rows = try await queue.read { db -> Int in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage WHERE sessionId = ?", arguments: [sessionId]) ?? 0
         }
         XCTAssertEqual(rows, 2, "Different sourceDeviceId creates separate rows")
@@ -553,12 +563,12 @@ final class RemoteSyncWatermarkTests: XCTestCase {
 
     // MARK: - Schema Validation
 
-    func test_migration_v30_createsRemoteSyncWatermarksTable() throws {
+    func test_migration_v30_createsRemoteSyncWatermarksTable() async throws {
         // Given: migrations have run
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
-        let columns = try queue.read { db -> [String] in
+        let columns = try await queue.read { db -> [String] in
             let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(remote_sync_watermarks)")
             return rows.compactMap { $0["name"] as? String }
         }
@@ -571,12 +581,12 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         XCTAssertTrue(columns.contains("version"))
     }
 
-    func test_migration_v30_createsPrimaryKey() throws {
+    func test_migration_v30_createsPrimaryKey() async throws {
         // Given: migrations have run
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
-        let indexes = try queue.read { db -> [Row] in
+        let indexes = try await queue.read { db -> [Row] in
             try Row.fetchAll(db, sql: "PRAGMA index_list(remote_sync_watermarks)")
         }
 

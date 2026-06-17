@@ -15,30 +15,30 @@ final class UsageStore: Sendable {
 
     // MARK: - Insert
 
-    func insert(_ usage: TokenUsage) throws {
-        try dbQueue.write { db in
-            try deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
-            if try shouldSuppressFactoryRoutedMirror(usage, in: db) {
+    func insert(_ usage: TokenUsage) async throws {
+        try await dbQueue.write { db in
+            try self.deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
+            if try self.shouldSuppressFactoryRoutedMirror(usage, in: db) {
                 return
             }
-            try deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
-            try deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
-            try upsertUsage(usage, in: db)
+            try self.deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
+            try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
+            try self.upsertUsage(usage, in: db)
         }
         SearchQueryCache.shared.clear()
     }
 
-    func insert(_ newUsages: [TokenUsage]) throws {
+    func insert(_ newUsages: [TokenUsage]) async throws {
         guard !newUsages.isEmpty else { return }
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             for usage in newUsages {
-                try deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
-                if try shouldSuppressFactoryRoutedMirror(usage, in: db) {
+                try self.deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
+                if try self.shouldSuppressFactoryRoutedMirror(usage, in: db) {
                     continue
                 }
-                try deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
-                try deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
-                try upsertUsage(usage, in: db)
+                try self.deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
+                try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
+                try self.upsertUsage(usage, in: db)
             }
         }
         SearchQueryCache.shared.clear()
@@ -55,20 +55,20 @@ final class UsageStore: Sendable {
     /// `chunkSize` is a balance between transaction overhead and rollback blast
     /// radius. 100 keeps each commit small enough that even a worst-case retry
     /// reprocesses a small batch.
-    func insertChunked(_ newUsages: [TokenUsage], chunkSize: Int = 100) throws {
+    func insertChunked(_ newUsages: [TokenUsage], chunkSize: Int = 100) async throws {
         guard !newUsages.isEmpty else { return }
         var index = 0
         while index < newUsages.count {
             let end = min(index + chunkSize, newUsages.count)
             let chunk = Array(newUsages[index..<end])
-            try insertChunkWithIOErrorRecovery(chunk)
+            try await insertChunkWithIOErrorRecovery(chunk)
             index = end
         }
     }
 
-    private func insertChunkWithIOErrorRecovery(_ chunk: [TokenUsage]) throws {
+    private func insertChunkWithIOErrorRecovery(_ chunk: [TokenUsage]) async throws {
         do {
-            try insert(chunk)
+            try await insert(chunk)
         } catch let dbError as DatabaseError where dbError.resultCode == .SQLITE_IOERR {
             AppLogger.dataStore.error(
                 "INSERT INTO token_usage hit SQLITE_IOERR; attempting WAL checkpoint truncate then retry",
@@ -78,16 +78,16 @@ final class UsageStore: Sendable {
                     "chunkSize": "\(chunk.count)"
                 ]
             )
-            try checkpointTruncate()
-            try insert(chunk)
+            try await checkpointTruncate()
+            try await insert(chunk)
         }
     }
 
     /// Forces SQLite to drain and truncate the WAL/SHM files. Used as a recovery
     /// step when an INSERT fails with `SQLITE_IOERR`, which on macOS is most
     /// commonly an APFS-level issue with the `-wal` / `-shm` sidecar files.
-    func checkpointTruncate() throws {
-        try dbQueue.writeWithoutTransaction { db in
+    func checkpointTruncate() async throws {
+        try await dbQueue.writeWithoutTransaction { db in
             try db.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)")
         }
     }
@@ -213,8 +213,8 @@ final class UsageStore: Sendable {
     ///
     /// Precedence is still respected: higher-confidence data wins over lower-confidence.
     /// Cloud sync data with equal or higher confidence than existing row will update it.
-    func insertRemoteUsage(_ usage: TokenUsage) throws {
-        try dbQueue.write { db in
+    func insertRemoteUsage(_ usage: TokenUsage) async throws {
+        try await dbQueue.write { db in
             let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
             try db.execute(
                 sql: """
@@ -370,22 +370,22 @@ final class UsageStore: Sendable {
 
     // MARK: - Refresh
 
-    func fetchAllUsage() throws -> [TokenUsage] {
-        try fetchRecentUsage(limit: Int.max)
+    func fetchAllUsage() async throws -> [TokenUsage] {
+        try await fetchRecentUsage(limit: Int.max)
     }
 
-    func fetchRecentUsage(limit: Int) throws -> [TokenUsage] {
-        try dbQueue.read { db -> [TokenUsage] in
+    func fetchRecentUsage(limit: Int) async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
             try Self.fetchUsageRows(db: db, dateRange: nil, limit: limit)
         }
     }
 
-    func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) throws -> DashboardUsageSnapshot {
+    func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
         let calendar = Calendar.current
         let now = Date()
         let todayStart = calendar.startOfDay(for: now)
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             var windowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
             for timeRange in TimeRange.allCases {
                 windowSummaries[timeRange] = try Self.fetchWindowSummary(
@@ -442,8 +442,8 @@ final class UsageStore: Sendable {
     /// — one `GROUP BY provider` query, no per-model breakdown, no daily
     /// series. The bridge calls it on its 5s snapshot pump so it has to
     /// stay cheap.
-    func providerRunCostTotals(in dateRange: ClosedRange<Date>?) throws -> [AgentProvider: ProviderRunCostTotals] {
-        try dbQueue.read { db in
+    func providerRunCostTotals(in dateRange: ClosedRange<Date>?) async throws -> [AgentProvider: ProviderRunCostTotals] {
+        try await dbQueue.read { db in
             let predicate = Self.dateRangePredicate(dateRange)
             let rows = try Row.fetchAll(
                 db,
@@ -475,8 +475,8 @@ final class UsageStore: Sendable {
 
     // MARK: - Delete
 
-    func deleteAll() throws {
-        try dbQueue.write { db in
+    func deleteAll() async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM token_usage")
         }
     }
@@ -485,8 +485,8 @@ final class UsageStore: Sendable {
     // Cleanup of prior API-reconciliation rows must be constrained by source semantics
     // (billing_api) in addition to identifier prefix policy, so non-reconciliation rows
     // are never deleted accidentally.
-    func deleteUsage(sessionIDPrefix: String) throws {
-        try dbQueue.write { db in
+    func deleteUsage(sessionIDPrefix: String) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                     DELETE FROM token_usage
@@ -501,8 +501,8 @@ final class UsageStore: Sendable {
 
     // MARK: - Sync
 
-    func fetchUnsynced() throws -> [TokenUsage] {
-        try dbQueue.read { db -> [TokenUsage] in
+    func fetchUnsynced() async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
             let rows = try Row.fetchAll(
                 db,
                 sql: "SELECT * FROM token_usage WHERE syncedAt IS NULL AND isRemote = 0 ORDER BY startTime ASC LIMIT 400"
@@ -511,11 +511,11 @@ final class UsageStore: Sendable {
         }
     }
 
-    func markSynced(ids: [UUID]) throws {
+    func markSynced(ids: [UUID]) async throws {
         guard !ids.isEmpty else { return }
         let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
         let idStrings: [String] = ids.map { $0.uuidString }
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             var args = StatementArguments([Date()])
             args += StatementArguments(idStrings)
             try db.execute(
@@ -530,8 +530,8 @@ final class UsageStore: Sendable {
     /// Aggregates token + cost + timing facets per `(provider:rootSession)` so the encrypted
     /// session-log backup can attach plaintext cockpit facets to each manifest without ever
     /// touching the conversation body. Mirrors `sessionModelMap()` keying so the two maps align.
-    func sessionFacetsMap() throws -> [String: SessionUsageFacets] {
-        try dbQueue.read { db in
+    func sessionFacetsMap() async throws -> [String: SessionUsageFacets] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT provider, sessionId, model,
                     SUM(inputTokens) AS input,
@@ -586,8 +586,8 @@ final class UsageStore: Sendable {
 
     // MARK: - Session Model Lookup
 
-    func sessionModelMap() throws -> [String: String] {
-        try dbQueue.read { db in
+    func sessionModelMap() async throws -> [String: String] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT provider, sessionId, model, SUM(cost) AS totalCost
                 FROM token_usage
@@ -1448,7 +1448,7 @@ final class UsageStore: Sendable {
     /// Cross-seat spend rollup grouped by user, project, credential, or provider.
     /// Reuses the same `token_usage` table that `CloudSyncService` already syncs from
     /// every seat — `sourceDeviceID` / `sourceDeviceName` distinguish per-seat rows.
-    func fetchOrgRollup(groupBy: OrgGroupBy, period: BudgetPeriod) throws -> [OrgRollupRow] {
+    func fetchOrgRollup(groupBy: OrgGroupBy, period: BudgetPeriod) async throws -> [OrgRollupRow] {
         let windowStart = period.windowStart()
         let column: String
         switch groupBy {
@@ -1458,13 +1458,7 @@ final class UsageStore: Sendable {
         case .provider:   column = "provider"
         }
 
-        var clauses: [String] = []
-        var args: [DatabaseValueConvertible] = []
-        if let windowStart {
-            clauses.append("startTime >= ?")
-            args.append(windowStart)
-        }
-        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        let whereSQL = windowStart == nil ? "" : "WHERE startTime >= ?"
 
         let sql = """
             SELECT \(column) AS label,
@@ -1479,8 +1473,13 @@ final class UsageStore: Sendable {
             LIMIT 100
         """
 
-        return try dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+        return try await dbQueue.read { db in
+            let rows: [Row]
+            if let windowStart {
+                rows = try Row.fetchAll(db, sql: sql, arguments: [windowStart])
+            } else {
+                rows = try Row.fetchAll(db, sql: sql)
+            }
             return rows.compactMap { row -> OrgRollupRow? in
                 guard let label = row["label"] as? String else { return nil }
                 let totalCost = (row["totalCost"] as? Double) ?? 0

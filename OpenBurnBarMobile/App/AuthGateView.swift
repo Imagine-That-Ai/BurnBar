@@ -132,7 +132,7 @@ struct AuthGateView: View {
     }
 
     private var guestRootView: some View {
-        mainSignedInView
+        SignInScene(authStore: authStore)
     }
 
     @ViewBuilder

@@ -4,10 +4,9 @@ import Foundation
 ///
 /// The Python Ministry remains the richer selector when it has full provider
 /// quota telemetry. This router is the app-side contract that prevents
-/// Headmaster/Pareto from being a no-op: given the live Mac model-catalog rows
-/// that the app can already fetch for each runtime, it uses model strength and
-/// quota-source preferences to produce concrete `requestedModelID` values
-/// before child missions are written.
+/// Headmaster/Pareto from being a no-op: given the live Mac catalog rows that
+/// the app can already fetch for each runtime, it produces concrete
+/// `requestedModelID` values before child missions are written.
 public enum WandModelRouter {
     public struct Selection: Codable, Equatable, Sendable {
         public let runtime: AssistantRuntimeID

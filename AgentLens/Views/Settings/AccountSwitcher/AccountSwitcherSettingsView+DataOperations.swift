@@ -221,12 +221,12 @@ extension AccountSwitcherSettingsView {
         case .none:
             switch group.browserType {
             case .chrome:
-                let discovery = SwitcherDiscoveryService()
+                let discovery = SwitcherDiscoveryService(accountManagerProvider: { accountManager })
                 if await discovery.addDifferentGoogleAccount(dataStore: dataStore) == nil {
                     error = "BurnBar couldn’t add another Google Chrome account."
                 }
             case .safari:
-                let discovery = SwitcherDiscoveryService()
+                let discovery = SwitcherDiscoveryService(accountManagerProvider: { accountManager })
                 if await discovery.addDifferentAppleAccount(dataStore: dataStore) == nil {
                     error = "BurnBar couldn’t add another Safari / Apple account."
                 }
@@ -577,7 +577,7 @@ extension AccountSwitcherSettingsView {
         case .googleAccount, .appleID:
             Task { @MainActor in
                 error = nil
-                let discovery = SwitcherDiscoveryService()
+                let discovery = SwitcherDiscoveryService(accountManagerProvider: { accountManager })
                 let updated = await discovery.refreshBrowserProfileAuthentication(profile, dataStore: dataStore)
                 if updated != nil {
                     profileForAccountChange = nil
@@ -728,11 +728,13 @@ extension AccountSwitcherSettingsView {
     }
 
     func moveProfile(_ profile: SwitcherProfileRecord, direction: SwitcherProfileStore.MoveDirection) {
-        do {
-            try dataStore.switcherStore.moveProfile(id: profile.id, direction: direction)
-            loadProfiles()
-        } catch {
-            self.error = "Failed to reorder profile: \(error.localizedDescription)"
+        Task { @MainActor in
+            do {
+                try await dataStore.switcherStore.moveProfile(id: profile.id, direction: direction)
+                loadProfiles()
+            } catch {
+                self.error = "Failed to reorder profile: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -804,15 +806,17 @@ extension AccountSwitcherSettingsView {
             orderedProfiles[index] = replacementIterator.next() ?? orderedProfiles[index]
         }
 
-        do {
-            try dataStore.switcherStore.reorderProfiles(idsInOrder: orderedProfiles.map(\.id))
-            withAnimation(DesignSystem.Animation.snappy) {
-                profiles = orderedProfiles
+        Task { @MainActor in
+            do {
+                try await dataStore.switcherStore.reorderProfiles(idsInOrder: orderedProfiles.map(\.id))
+                withAnimation(DesignSystem.Animation.snappy) {
+                    profiles = orderedProfiles
+                }
+                loadProfiles()
+            } catch {
+                self.error = "Failed to reorder \(group.label): \(error.localizedDescription)"
+                loadProfiles()
             }
-            loadProfiles()
-        } catch {
-            self.error = "Failed to reorder \(group.label): \(error.localizedDescription)"
-            loadProfiles()
         }
     }
 
@@ -831,7 +835,13 @@ extension AccountSwitcherSettingsView {
     }
 
     func createProfile() {
-        guard validateForm(excludingID: nil) else { return }
+        Task { @MainActor in
+            await createProfileAsync()
+        }
+    }
+
+    func createProfileAsync() async {
+        guard await validateForm(excludingID: nil) else { return }
         isSaving = true
 
         do {
@@ -854,7 +864,13 @@ extension AccountSwitcherSettingsView {
     }
 
     func saveProfile(_ original: SwitcherProfileRecord) {
-        guard validateForm(excludingID: original.id) else { return }
+        Task { @MainActor in
+            await saveProfileAsync(original)
+        }
+    }
+
+    func saveProfileAsync(_ original: SwitcherProfileRecord) async {
+        guard await validateForm(excludingID: original.id) else { return }
         isSaving = true
 
         do {
@@ -946,7 +962,7 @@ extension AccountSwitcherSettingsView {
 
     /// Validates the form and sets validation/duplicate errors.
     /// Returns true if valid, false otherwise.
-    func validateForm(excludingID: String?) -> Bool {
+    func validateForm(excludingID: String?) async -> Bool {
         editFormValidationError = nil
         editFormDuplicateError = nil
 
@@ -954,7 +970,7 @@ extension AccountSwitcherSettingsView {
         if !editFormName.isEmpty {
             do {
                 // More lenient duplicate check - only check display names
-                if try dataStore.switcherStore.existsProfileWithNormalizedName(editFormName, excludingID: excludingID) {
+                if try await dataStore.switcherStore.existsProfileWithNormalizedName(editFormName, excludingID: excludingID) {
                     editFormDuplicateError = "A profile with this name already exists"
                     return false
                 }

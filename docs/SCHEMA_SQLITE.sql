@@ -118,10 +118,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_chunks_fts USING fts5(
 );
 
 -- ── Local MCP Project Code Memory overlay ───────────────────────────────────
--- Created lazily by tools/openburnbar-mcp/project_code_memory.py.
--- These tables are local-only and project-partitioned; hosted code sync is not
--- enabled by default. Code chunks reuse the search_documents/search_chunks/
--- search_chunks_fts/chunk_embeddings substrate when it exists.
+-- Created by the daemon ProjectCodeMemory store, with Python direct helpers kept
+-- as compatibility/dev harnesses. These tables are local-only and
+-- project-partitioned; hosted code sync is disabled by default until the
+-- code-asset threat model passes. Code chunks reuse search_documents/
+-- search_chunks/search_chunks_fts. chunk_embeddings may contain deterministic
+-- content fingerprints for fixture/dedupe stability, but those fingerprints are
+-- not semantic embeddings and must not affect production code-search ranking.
+-- code_index_checkpoints.storage_byte_count is an estimated Project Code Memory
+-- footprint: source bytes + stored chunk text + an FTS mirror/metadata estimate
+-- + persisted vector blobs. It is not just code_artifacts.byte_count. The
+-- vacuumed_at column records the last threshold-triggered incremental vacuum
+-- after freelist/page metrics crossed the local compaction policy.
 
 CREATE TABLE search_documents (
   id              TEXT NOT NULL PRIMARY KEY,
@@ -247,11 +255,36 @@ CREATE TABLE memory_audit (
   hash        TEXT NOT NULL
 );
 
+CREATE TABLE pcm_projects (
+  project_id           TEXT NOT NULL PRIMARY KEY,
+  identity_version     INTEGER NOT NULL,
+  identity_fingerprint TEXT NOT NULL,
+  project_name         TEXT NOT NULL,
+  primary_path         TEXT NOT NULL,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX pcm_projects_fingerprint_idx ON pcm_projects(identity_fingerprint);
+
+CREATE TABLE pcm_project_aliases (
+  id            TEXT NOT NULL PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES pcm_projects(project_id) ON DELETE CASCADE,
+  alias_path    TEXT NOT NULL,
+  path_hash     TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at  TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX pcm_project_aliases_path_hash_idx ON pcm_project_aliases(path_hash);
+CREATE INDEX pcm_project_aliases_project_idx ON pcm_project_aliases(project_id);
+
 CREATE TABLE code_artifacts (
   id          TEXT NOT NULL PRIMARY KEY,
   project_id  TEXT NOT NULL,
   file_path   TEXT NOT NULL,
   blob_sha    TEXT NOT NULL,
+  content_hash TEXT,
   commit_sha  TEXT,
   lang        TEXT,
   byte_count  INTEGER NOT NULL,
@@ -260,6 +293,25 @@ CREATE TABLE code_artifacts (
 );
 
 CREATE UNIQUE INDEX code_artifacts_project_path_idx ON code_artifacts(project_id, file_path);
+
+CREATE TABLE pcm_file_manifest (
+  id                 TEXT NOT NULL PRIMARY KEY,
+  project_id         TEXT NOT NULL,
+  file_path          TEXT NOT NULL,
+  artifact_id        TEXT,
+  blob_sha           TEXT,
+  content_hash       TEXT,
+  byte_count         INTEGER NOT NULL DEFAULT 0,
+  mtime              REAL NOT NULL DEFAULT 0,
+  lang               TEXT,
+  ignored_reason     TEXT,
+  secret_labels_json TEXT NOT NULL DEFAULT '[]',
+  parser_tier        TEXT,
+  indexed_at         TEXT NOT NULL,
+  last_seen_at       TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX pcm_file_manifest_project_path_idx ON pcm_file_manifest(project_id, file_path);
 
 CREATE TABLE code_symbols (
   id              TEXT NOT NULL PRIMARY KEY,

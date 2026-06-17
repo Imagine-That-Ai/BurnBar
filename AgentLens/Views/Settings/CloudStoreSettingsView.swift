@@ -574,29 +574,33 @@ struct CloudStoreSettingsView: View {
         return "\(minutes)m \(remainder)s"
     }
 
-    private func refreshPendingBackupCounts() {
+    @MainActor
+    private func refreshPendingBackupCounts() async {
         guard let dataStore else {
             pendingBackupSessionLogs = 0
             pendingBackupChatThreads = 0
             return
         }
-        pendingBackupSessionLogs = (try? dataStore.countUnsyncedSessionLogs()) ?? 0
-        pendingBackupChatThreads = (try? dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0
+        pendingBackupSessionLogs = (try? await dataStore.countUnsyncedSessionLogs()) ?? 0
+        pendingBackupChatThreads = (try? await dataStore.fetchChatThreadSummaries(limit: 500).count) ?? 0
     }
 
-    private func refreshBackupUsage() {
+    @MainActor
+    private func refreshBackupUsage() async {
         guard let dataStore else {
             backupUsage = nil
             return
         }
-        backupUsage = try? dataStore.backupUsageSnapshot()
+        backupUsage = try? await dataStore.backupUsageSnapshot()
     }
 
     private func refreshBackupState(startAutomaticCatchUp: Bool = false) {
-        refreshPendingBackupCounts()
-        refreshBackupUsage()
-        if startAutomaticCatchUp {
-            startAutomaticCatchUpIfNeeded()
+        Task { @MainActor in
+            await refreshPendingBackupCounts()
+            await refreshBackupUsage()
+            if startAutomaticCatchUp {
+                startAutomaticCatchUpIfNeeded()
+            }
         }
     }
 
@@ -766,11 +770,6 @@ struct CloudStoreSettingsView: View {
     /// Streams cockpit fills in on the next refresh. Idempotent.
     private func triggerBackup() {
         guard let dataStore, accountManager.isSignedIn, !isBackingUp else { return }
-        refreshBackupUsage()
-        if let blockingReason = backupUsage?.blockingReason {
-            backupNoticeError = blockingReason
-            return
-        }
         isBackingUp = true
         backupNoticeError = nil
         backupProgress = nil
@@ -778,6 +777,12 @@ struct CloudStoreSettingsView: View {
         let am = accountManager
         let ds = dataStore
         Task { @MainActor in
+            backupUsage = try? await ds.backupUsageSnapshot()
+            if let blockingReason = backupUsage?.blockingReason {
+                backupNoticeError = blockingReason
+                isBackingUp = false
+                return
+            }
             let coordinator = CloudSyncCoordinator(
                 dataStore: ds,
                 accountManager: am,

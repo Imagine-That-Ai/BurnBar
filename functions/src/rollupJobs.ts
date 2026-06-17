@@ -8,10 +8,10 @@ import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/fi
 import type { RollupJobDoc, UsageRollupDoc } from "./types.js";
 import { errorMessage, parseRollupJobDoc } from "./guards.js";
 import { getConfig } from "./config.js";
+import { logError } from "./logging.js";
 import { WINDOW_KEYS, stripUndefinedDocument, type WindowKey } from "./rollupCounters.js";
 import { computeUserRollups, computeUserRollupsFromCounters } from "./rollupCompute.js";
 import { drainPendingCounterDeltas } from "./rollupPendingDeltas.js";
-import { logError } from "./logging.js";
 
 /**
  * Reads the rollup job's current `dirtiedAt` marker.

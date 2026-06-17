@@ -4,7 +4,7 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class SourceArtifactStoreTests: XCTestCase {
-    func test_sourceArtifactStore_upsertRoundTrip_andDeleteFlow() throws {
+    func test_sourceArtifactStore_upsertRoundTrip_andDeleteFlow() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_100_000)
 
@@ -27,7 +27,8 @@ final class SourceArtifactStoreTests: XCTestCase {
             updatedAt: base
         )
 
-        XCTAssertEqual(try store.upsertSourceArtifact(initial), .inserted)
+        let insertedResult = try await store.upsertSourceArtifact(initial)
+        XCTAssertEqual(insertedResult, .inserted)
 
         let timestampOnlyUpdate = SourceArtifactRecord(
             id: initial.id,
@@ -47,7 +48,8 @@ final class SourceArtifactStoreTests: XCTestCase {
             createdAt: initial.createdAt,
             updatedAt: base.addingTimeInterval(5)
         )
-        XCTAssertEqual(try store.upsertSourceArtifact(timestampOnlyUpdate), .unchanged)
+        let unchangedResult = try await store.upsertSourceArtifact(timestampOnlyUpdate)
+        XCTAssertEqual(unchangedResult, .unchanged)
 
         let updated = SourceArtifactRecord(
             id: initial.id,
@@ -67,9 +69,10 @@ final class SourceArtifactStoreTests: XCTestCase {
             createdAt: initial.createdAt,
             updatedAt: base.addingTimeInterval(10)
         )
-        XCTAssertEqual(try store.upsertSourceArtifact(updated), .updated)
+        let updatedResult = try await store.upsertSourceArtifact(updated)
+        XCTAssertEqual(updatedResult, .updated)
 
-        let active = try store.fetchSourceArtifacts(
+        let active = try await store.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]
@@ -77,12 +80,15 @@ final class SourceArtifactStoreTests: XCTestCase {
         XCTAssertEqual(active.count, 1)
         XCTAssertEqual(active.first?.contentHash, "hash-v2")
 
-        XCTAssertTrue(try store.markSourceArtifactDeleted(id: initial.id, deletedAt: base.addingTimeInterval(20)))
-        XCTAssertEqual(
-            try store.fetchSourceArtifacts(includeDeleted: false, rootPaths: nil, sourceKinds: [.skillDoc, .agentDoc]).count,
-            0
-        )
-        let allArtifacts = try store.fetchSourceArtifacts(
+        let markedDeleted = try await store.markSourceArtifactDeleted(id: initial.id, deletedAt: base.addingTimeInterval(20))
+        XCTAssertTrue(markedDeleted)
+        let remainingActiveCount = try await store.fetchSourceArtifacts(
+            includeDeleted: false,
+            rootPaths: nil,
+            sourceKinds: [.skillDoc, .agentDoc]
+        ).count
+        XCTAssertEqual(remainingActiveCount, 0)
+        let allArtifacts = try await store.fetchSourceArtifacts(
             includeDeleted: true,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]

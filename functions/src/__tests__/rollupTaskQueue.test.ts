@@ -1,5 +1,6 @@
 import type { protos } from "@google-cloud/tasks";
 import { describe, expect, it, vi } from "vitest";
+import { parseRollupJobDoc } from "../guards.js";
 import {
   buildRollupUserRebuildTask,
   enqueueRollupUserRebuildTasks,
@@ -11,12 +12,16 @@ import {
 import { shouldProcessRollupUserRebuildTask } from "../rollups.js";
 import type { RollupJobDoc } from "../types.js";
 
+type RollupTaskBuildArgs = Parameters<typeof buildRollupUserRebuildTask>[0];
+type CloudTasksClientLike = RollupTaskBuildArgs["client"];
+type RollupTaskQueueConfig = RollupTaskBuildArgs["config"];
+
 vi.mock("../logging.js", async () => {
   const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
   return { ...actual, logInfo: vi.fn(), logWarn: vi.fn() };
 });
 
-const config = {
+const config: RollupTaskQueueConfig = {
   projectId: "burnbar-test",
   location: "us-central1",
   queueId: ROLLUP_USER_REBUILD_TASK_QUEUE_ID,
@@ -24,11 +29,10 @@ const config = {
   serviceAccountEmail: "burnbar-test@appspot.gserviceaccount.com",
 };
 
-function fakeClient(createTask = vi.fn().mockResolvedValue({})) {
+function fakeClient(createTask = vi.fn().mockResolvedValue({})): CloudTasksClientLike & { createTask: typeof createTask } {
   return {
-    queuePath: (project: string, location: string, queue: string) =>
-      `projects/${project}/locations/${location}/queues/${queue}`,
-    taskPath: (project: string, location: string, queue: string, task: string) =>
+    queuePath: (project, location, queue) => `projects/${project}/locations/${location}/queues/${queue}`,
+    taskPath: (project, location, queue, task) =>
       `projects/${project}/locations/${location}/queues/${queue}/tasks/${task}`,
     createTask,
   };
@@ -36,18 +40,20 @@ function fakeClient(createTask = vi.fn().mockResolvedValue({})) {
 
 function bodyJson(task: protos.google.cloud.tasks.v2.ITask): unknown {
   const body = task.httpRequest?.body;
-  expect(body).toBeTruthy();
-  if (body instanceof Uint8Array) {
-    return JSON.parse(Buffer.from(body).toString("utf8"));
+  expect(body).toBeInstanceOf(Uint8Array);
+  if (!(body instanceof Uint8Array)) {
+    throw new Error("Cloud Task body must be bytes");
   }
-  if (typeof body === "string") {
-    return JSON.parse(Buffer.from(body, "base64").toString("utf8"));
-  }
-  throw new Error("unexpected Cloud Tasks body type");
+  return JSON.parse(Buffer.from(body).toString("utf8"));
 }
 
 function job(patch: Partial<RollupJobDoc>): RollupJobDoc {
-  return { dirty: true, ...patch };
+  const parsed = parseRollupJobDoc({ dirty: true, ...patch });
+  expect(parsed).toBeDefined();
+  if (!parsed) {
+    throw new Error("test rollup job fixture must parse");
+  }
+  return parsed;
 }
 
 describe("rollup task queue fan-out", () => {

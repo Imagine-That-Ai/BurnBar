@@ -2,9 +2,6 @@ package com.openburnbar.ui.media
 
 import android.content.Context
 import android.util.Log
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.openburnbar.BurnBarApplication
@@ -21,16 +18,12 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockBackend
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
+import com.openburnbar.security.BiometricCryptoAuth
 import java.time.Instant
 import java.util.UUID
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 internal const val MIRROR_REQUEST_TIMEOUT_MS = 20_000L
@@ -334,45 +327,12 @@ internal fun launchCallMacRequest(
 }
 
 internal suspend fun authenticateForRemoteUnlock(activity: FragmentActivity) {
-    withContext(Dispatchers.Main) {
-        val authenticators =
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        val manager = BiometricManager.from(activity)
-        if (manager.canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
-            error("Device credential is required for Remote Unlock.")
-        }
-        suspendCancellableCoroutine { continuation ->
-            val prompt =
-                BiometricPrompt(
-                    activity,
-                    ContextCompat.getMainExecutor(activity),
-                    object : BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            if (continuation.isActive) continuation.resume(Unit)
-                        }
-
-                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                            if (continuation.isActive) {
-                                continuation.resumeWithException(
-                                    IllegalStateException("Remote Unlock needs device authentication."),
-                                )
-                            }
-                        }
-
-                        override fun onAuthenticationFailed() = Unit
-                    },
-                )
-            val info =
-                BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Trust Remote Unlock")
-                    .setSubtitle("This Android will stay trusted for future locked Mac mirrors.")
-                    .setAllowedAuthenticators(authenticators)
-                    .build()
-            continuation.invokeOnCancellation { prompt.cancelAuthentication() }
-            prompt.authenticate(info)
-        }
-    }
+    BiometricCryptoAuth.requireStrongBiometric(
+        activity = activity,
+        title = "Trust Remote Unlock",
+        subtitle = "This Android will stay trusted for future locked Mac mirrors.",
+        failureMessage = "Remote Unlock needs strong biometric authentication.",
+    )
 }
 
 internal suspend fun ensureRemoteUnlockTrustedDevice(

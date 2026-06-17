@@ -36,9 +36,9 @@ final class BudgetForecastMattersTests: XCTestCase {
 
     /// Builds an in-memory queue whose `token_usage` table exists with exactly the columns
     /// `BudgetForecast.sumCost` reads. Optionally seeds spend rows.
-    private func makeQueueWithLedger(rows: [(cost: Double, startTime: Date)] = []) throws -> DatabaseQueue {
+    private func makeQueueWithLedger(rows: [(cost: Double, startTime: Date)] = []) async throws -> DatabaseQueue {
         let queue = try DatabaseQueue(path: ":memory:")
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: """
                 CREATE TABLE token_usage (
                     id TEXT PRIMARY KEY,
@@ -61,9 +61,9 @@ final class BudgetForecastMattersTests: XCTestCase {
 
     /// Builds an in-memory queue that deliberately LACKS `token_usage`, so any read of the
     /// spend history throws ("no such table: token_usage") — our read-fault stand-in.
-    private func makeQueueWithoutLedger() throws -> DatabaseQueue {
+    private func makeQueueWithoutLedger() async throws -> DatabaseQueue {
         let queue = try DatabaseQueue(path: ":memory:")
-        try queue.write { db in
+        try await queue.write { db in
             try db.execute(sql: "CREATE TABLE placeholder (id TEXT PRIMARY KEY)")
         }
         return queue
@@ -72,7 +72,7 @@ final class BudgetForecastMattersTests: XCTestCase {
     // MARK: - 1. Genuine zero spend stays AVAILABLE (no false alarm)
 
     func test_emptyLedger_producesAvailableUnderBudgetProjection() async throws {
-        let queue = try makeQueueWithLedger() // table exists, no rows
+        let queue = try await makeQueueWithLedger() // table exists, no rows
         let forecast = BudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 100, period: .month)
 
@@ -87,7 +87,7 @@ final class BudgetForecastMattersTests: XCTestCase {
 
     func test_seededLedger_computesRealSpendAndStaysAvailable() async throws {
         let now = Date()
-        let queue = try makeQueueWithLedger(rows: [
+        let queue = try await makeQueueWithLedger(rows: [
             (cost: 30, startTime: now.addingTimeInterval(-3_600)),
             (cost: 12, startTime: now.addingTimeInterval(-7_200))
         ])
@@ -105,7 +105,7 @@ final class BudgetForecastMattersTests: XCTestCase {
     // MARK: - 2. Read fault FAILS CLOSED (the security fix)
 
     func test_readFault_failsClosed_notSilentlyUnderBudget() async throws {
-        let queue = try makeQueueWithoutLedger() // SELECT ... FROM token_usage throws
+        let queue = try await makeQueueWithoutLedger() // SELECT ... FROM token_usage throws
         let forecast = BudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 100, period: .month)
 
@@ -121,7 +121,7 @@ final class BudgetForecastMattersTests: XCTestCase {
     }
 
     func test_readFault_preservesRuleIdentityForUI() async throws {
-        let queue = try makeQueueWithoutLedger()
+        let queue = try await makeQueueWithoutLedger()
         let forecast = BudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 250, period: .week)
 
@@ -133,7 +133,7 @@ final class BudgetForecastMattersTests: XCTestCase {
     }
 
     func test_readFault_acrossPeriods_allFailClosed() async throws {
-        let queue = try makeQueueWithoutLedger()
+        let queue = try await makeQueueWithoutLedger()
         let forecast = BudgetForecast(dbQueue: queue)
 
         for period in BudgetPeriod.allCases {

@@ -52,7 +52,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_000_000),
             endTime: Date(timeIntervalSince1970: 1_700_000_100)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
 
         await usageSync.sync()
 
@@ -87,7 +87,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
             startTime: Date(timeIntervalSince1970: 1_700_000_000),
             endTime: Date(timeIntervalSince1970: 1_700_000_100)
         )
-        try dataStore.insert(usage)
+        try await dataStore.insert(usage)
 
         await usageSync.sync()
 
@@ -136,7 +136,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
             "lastActiveAt": Timestamp(date: remoteTimestamp)
         ], at: "users/test-uid-1/devices/\(remoteDeviceId)")
 
-        let initialWatermark = try dataStore.remoteSyncWatermarkStore.fetchWatermark(
+        let initialWatermark = try await dataStore.fetchRemoteSyncWatermark(
             accountUid: "test-uid-1",
             collectionKind: .usage
         )
@@ -149,7 +149,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let watermarkAfterFailure = try dataStore.remoteSyncWatermarkStore.fetchWatermark(
+        let watermarkAfterFailure = try await dataStore.fetchRemoteSyncWatermark(
             accountUid: "test-uid-1",
             collectionKind: .usage
         )
@@ -159,7 +159,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
         fakeGateway.nextError = nil
         await downloadSync.sync()
 
-        let watermarkAfterSuccess = try dataStore.remoteSyncWatermarkStore.fetchWatermark(
+        let watermarkAfterSuccess = try await dataStore.fetchRemoteSyncWatermark(
             accountUid: "test-uid-1",
             collectionKind: .usage
         )
@@ -194,7 +194,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
                 startTime: Date(timeIntervalSince1970: 1_700_000_000 + TimeInterval(i)),
                 endTime: Date(timeIntervalSince1970: 1_700_000_100 + TimeInterval(i))
             )
-            try dataStore.insert(usage)
+            try await dataStore.insert(usage)
         }
 
         // Sync while offline - nothing should upload
@@ -211,7 +211,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
         XCTAssertEqual(docs.count, 5)
 
         // All local rows should be marked synced
-        let unsynced = try dataStore.fetchUnsynced()
+        let unsynced = try await dataStore.fetchUnsynced()
         XCTAssertTrue(unsynced.isEmpty)
     }
 
@@ -230,7 +230,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
                 startTime: Date(timeIntervalSince1970: 1_700_000_000 + TimeInterval(i)),
                 endTime: Date(timeIntervalSince1970: 1_700_000_100 + TimeInterval(i))
             )
-            try dataStore.insert(usage)
+            try await dataStore.insert(usage)
         }
 
         accountManager.isFirebaseAvailable = true

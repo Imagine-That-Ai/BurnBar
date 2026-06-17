@@ -1,6 +1,8 @@
 import type { Firestore } from "firebase-admin/firestore";
 import type { AccessTokenClaims } from "./auth.js";
 import { requireScope } from "./auth.js";
+import type { HostedMcpFirestore } from "./firestoreTypes.js";
+import { isFullFirestore } from "./firestoreTypes.js";
 import {
   requireActiveBurnBarPro,
   requireActiveRemoteMcpAccess,
@@ -20,6 +22,11 @@ import {
 export type CostClass = "metadata" | "standard" | "body";
 
 export interface ToolContext {
+  db: HostedMcpFirestore;
+  claims: AccessTokenClaims;
+}
+
+interface ToolHandlerContext {
   db: Firestore;
   claims: AccessTokenClaims;
 }
@@ -33,11 +40,25 @@ export interface RegisteredTool {
   /** Optional richer bucket used when the caller is on the Ultra tier. */
   ultraRateLimitBucket?: string;
   inputSchema: Record<string, unknown>;
-  handler(ctx: ToolContext, args: Record<string, unknown>): Promise<unknown>;
+  handler(ctx: ToolHandlerContext, args: Record<string, unknown>): Promise<unknown>;
 }
 
 function schema(properties: Record<string, unknown>, required: string[] = []) {
   return { type: "object", properties, required, additionalProperties: false };
+}
+
+function hostedCodeToolsEnabled() {
+  return process.env.OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS === "true";
+}
+
+function isHostedCodeTool(name: string) {
+  return name === "burnbar_search_code" || name === "burnbar_get_code_document";
+}
+
+function visibleTools() {
+  return tools.filter(
+    (tool) => hostedCodeToolsEnabled() || !isHostedCodeTool(tool.name),
+  );
 }
 
 export const tools: RegisteredTool[] = [
@@ -275,13 +296,13 @@ export const tools: RegisteredTool[] = [
       subscription: await requireActiveBurnBarPro(claims.sub, db),
       hostedMcpAvailable: true,
       decryptMode: claims.grant_mode,
-      supportedTools: tools.map((tool) => tool.name),
+      supportedTools: visibleTools().map((tool) => tool.name),
       maxLimits: {
         searchResults: 50,
         tokenHashes: 10,
         semanticHashes: 12,
         bodyPageChars: 96_000,
-        codeResults: 50,
+        codeResults: hostedCodeToolsEnabled() ? 50 : 0,
       },
       compatibilityNotes:
         "Use openburnbar-mcp-remote for stdio-only clients and local decryption.",
@@ -291,7 +312,7 @@ export const tools: RegisteredTool[] = [
 
 export function listMcpTools() {
   return {
-    tools: tools.map((tool) => ({
+    tools: visibleTools().map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,
@@ -304,6 +325,17 @@ export async function callTool(
   name: string,
   args: Record<string, unknown>,
 ) {
+  if (isHostedCodeTool(name) && !hostedCodeToolsEnabled()) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: "Hosted code memory is disabled until the code asset threat model and sealed-only CI gates pass.",
+        },
+      ],
+      isError: true,
+    };
+  }
   const tool = tools.find((candidate) => candidate.name === name);
   if (!tool) {
     return {
@@ -313,6 +345,10 @@ export async function callTool(
       isError: true,
     };
   }
+  if (!isFullFirestore(ctx.db)) {
+    throw new Error("Tool execution requires a full Firestore client.");
+  }
+  const handlerContext: ToolHandlerContext = { db: ctx.db, claims: ctx.claims };
   for (const scope of tool.requiredScopes) {
     requireScope(ctx.claims, scope);
   }
@@ -329,6 +365,6 @@ export async function callTool(
       ? tool.ultraRateLimitBucket
       : tool.rateLimitBucket;
   await enforceRateLimit(ctx.db, ctx.claims.sub, ctx.claims.client_id, bucket);
-  const result = await tool.handler(ctx, args);
+  const result = await tool.handler(handlerContext, args);
   return { content: [{ type: "text", text: JSON.stringify(result) }] };
 }

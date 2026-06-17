@@ -19,7 +19,7 @@ final class DataStoreTests: XCTestCase {
 
     // MARK: - Rolling Daily Average Tests
 
-    func test_rollingDailyAverage_sevenDays() throws {
+    func test_rollingDailyAverage_sevenDays() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
@@ -45,7 +45,7 @@ final class DataStoreTests: XCTestCase {
         XCTAssertEqual(store.rollingDailyAverage, expected, accuracy: 0.0001)
     }
 
-    func test_rollingDailyAverage_zeroFillsMissingDays() throws {
+    func test_rollingDailyAverage_zeroFillsMissingDays() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
@@ -72,25 +72,25 @@ final class DataStoreTests: XCTestCase {
 
     // MARK: - Mood Band Tests
 
-    func test_moodBand_light() throws {
+    func test_moodBand_light() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 0.5, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .light)
     }
 
-    func test_moodBand_onPace() throws {
+    func test_moodBand_onPace() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 1.0, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .onPace)
     }
 
-    func test_moodBand_heavy() throws {
+    func test_moodBand_heavy() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 2.0, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .heavy)
     }
 
-    func test_moodBand_baseline() throws {
+    func test_moodBand_baseline() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
@@ -109,13 +109,13 @@ final class DataStoreTests: XCTestCase {
         XCTAssertEqual(store.moodBand, .baseline)
     }
 
-    func test_moodBand_quiet() throws {
+    func test_moodBand_quiet() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 0, rollingAvg: 5))
         XCTAssertEqual(store.moodBand, .quiet)
     }
 
-    func test_moodBand_zeroAverage() throws {
+    func test_moodBand_zeroAverage() async throws {
         let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let d0 = cal.startOfDay(for: Date())
@@ -186,10 +186,10 @@ final class DataStoreTests: XCTestCase {
 
     // MARK: - Local Authority Snapshot Tests
 
-    func test_dataStoreLocalAuthoritySnapshot_reportsCountsAndControllerMirrorPresence() throws {
+    func test_dataStoreLocalAuthoritySnapshot_reportsCountsAndControllerMirrorPresence() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        try store.insert(
+        try await store.insert(
             TokenUsage(
                 provider: .factory,
                 sessionId: "authority-1",
@@ -202,9 +202,9 @@ final class DataStoreTests: XCTestCase {
                 endTime: Date()
             )
         )
-        try store.saveControllerRuntimeMirror(OpenBurnBarControllerRuntimeSnapshot.empty)
+        try await store.saveControllerRuntimeMirror(OpenBurnBarControllerRuntimeSnapshot.empty)
 
-        let snapshot = try store.localAuthoritySnapshot()
+        let snapshot = try await store.localAuthoritySnapshot()
 
         XCTAssertEqual(snapshot.usageRowCount, 1)
         XCTAssertEqual(snapshot.conversationRowCount, 0)
@@ -229,7 +229,7 @@ final class DataStoreTests: XCTestCase {
                 endTime: now.addingTimeInterval(-Double(index) + 1)
             )
         }
-        try store.insert(rows)
+        try await store.insert(rows)
 
         await store.refresh()
 
@@ -250,7 +250,7 @@ final class DataStoreTests: XCTestCase {
 
     // MARK: - Project Memory Persistence Tests
 
-    func test_projectMemorySnapshot_roundTripsThroughControlPlaneStore() throws {
+    func test_projectMemorySnapshot_roundTripsThroughControlPlaneStore() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let now = Date()
@@ -301,9 +301,9 @@ final class DataStoreTests: XCTestCase {
             ]
         )
 
-        try store.upsertProjectMemorySnapshot(snapshot)
+        try await store.upsertProjectMemorySnapshot(snapshot)
 
-        let fetched = try store.fetchProjectMemorySnapshot(projectSlug: "apollo")
+        let fetched = try await store.fetchProjectMemorySnapshot(projectSlug: "apollo")
         XCTAssertNotNil(fetched)
         XCTAssertEqual(fetched?.projectSlug, snapshot.projectSlug)
         XCTAssertEqual(fetched?.projectDisplayName, snapshot.projectDisplayName)
@@ -311,7 +311,7 @@ final class DataStoreTests: XCTestCase {
         XCTAssertEqual(fetched?.pages.first?.sections.first?.citations.first?.sourceID, "conv-1")
     }
 
-    func test_projectMemorySnapshot_deleteRemovesSnapshot() throws {
+    func test_projectMemorySnapshot_deleteRemovesSnapshot() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let snapshot = ProjectMemorySnapshot(
@@ -332,11 +332,13 @@ final class DataStoreTests: XCTestCase {
             visuals: []
         )
 
-        try store.upsertProjectMemorySnapshot(snapshot)
-        XCTAssertNotNil(try store.fetchProjectMemorySnapshot(projectSlug: "remove-me"))
+        try await store.upsertProjectMemorySnapshot(snapshot)
+        let savedSnapshot = try await store.fetchProjectMemorySnapshot(projectSlug: "remove-me")
+        XCTAssertNotNil(savedSnapshot)
 
-        try store.deleteProjectMemorySnapshot(projectSlug: "remove-me")
-        XCTAssertNil(try store.fetchProjectMemorySnapshot(projectSlug: "remove-me"))
+        try await store.deleteProjectMemorySnapshot(projectSlug: "remove-me")
+        let deletedSnapshot = try await store.fetchProjectMemorySnapshot(projectSlug: "remove-me")
+        XCTAssertNil(deletedSnapshot)
     }
 
     // MARK: - Helper Methods

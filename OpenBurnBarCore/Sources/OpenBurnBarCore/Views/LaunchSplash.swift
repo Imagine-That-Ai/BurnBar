@@ -13,12 +13,17 @@ import SwiftUI
 /// entirely and the app is shown immediately.
 public struct BurnBarLaunchSplashModifier: ViewModifier {
     private let duration: Double
+    private let onHaptic: (BurnBarLogoFormationHaptic) -> Void
 
     @State private var finished = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(duration: Double) {
+    public init(
+        duration: Double,
+        onHaptic: @escaping (BurnBarLogoFormationHaptic) -> Void = { _ in }
+    ) {
         self.duration = duration
+        self.onHaptic = onHaptic
     }
 
     private var showsSplash: Bool { !finished && !reduceMotion }
@@ -30,7 +35,7 @@ public struct BurnBarLaunchSplashModifier: ViewModifier {
             if showsSplash {
                 ZStack {
                     Color(hex: "07070A").ignoresSafeArea()
-                    BurnBarLogoFormationView()
+                    BurnBarLogoFormationView(onHaptic: onHaptic)
                         .frame(maxWidth: 460, maxHeight: 520)
                         .padding(.horizontal, 24)
                 }
@@ -58,7 +63,10 @@ public extension View {
     /// - Parameter duration: seconds the formation plays before crossfading
     ///   out. The default lets the dots converge, the flame solidify, and the
     ///   glass cube settle before the hand-off.
-    func burnBarLaunchSplash(duration: Double = 4.2) -> some View {
-        modifier(BurnBarLaunchSplashModifier(duration: duration))
+    func burnBarLaunchSplash(
+        duration: Double = 4.2,
+        onHaptic: @escaping (BurnBarLogoFormationHaptic) -> Void = { _ in }
+    ) -> some View {
+        modifier(BurnBarLaunchSplashModifier(duration: duration, onHaptic: onHaptic))
     }
 }

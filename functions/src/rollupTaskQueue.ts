@@ -58,6 +58,10 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
+function errorField(error: unknown, field: "code" | "message"): unknown {
+  return isRecord(error) ? error[field] : undefined;
+}
+
 export function parseRollupUserRebuildTaskData(data: unknown): RollupUserRebuildTaskData | undefined {
   if (!isRecord(data)) return undefined;
   const uid = nonEmptyString(data.uid);
@@ -122,16 +126,21 @@ export function buildRollupUserRebuildTask(args: {
 }
 
 export function isAlreadyExistsError(error: unknown): boolean {
-  const code = isRecord(error) ? error.code : undefined;
+  const code = errorField(error, "code");
   if (code === 6 || code === "6" || code === "ALREADY_EXISTS") return true;
-  const message = error instanceof Error ? error.message : String(error);
+  const message = String(errorField(error, "message") ?? (error instanceof Error ? error.message : error));
   return /\bALREADY_EXISTS\b|\balready exists\b/i.test(message);
 }
 
 async function getCloudTasksClient(): Promise<CloudTasksClientLike> {
   if (!cachedCloudTasksClient) {
     const { CloudTasksClient } = await import("@google-cloud/tasks");
-    cachedCloudTasksClient = new CloudTasksClient();
+    const client = new CloudTasksClient();
+    cachedCloudTasksClient = {
+      queuePath: (project, location, queue) => client.queuePath(project, location, queue),
+      taskPath: (project, location, queue, task) => client.taskPath(project, location, queue, task),
+      createTask: (request) => client.createTask(request),
+    };
   }
   return cachedCloudTasksClient;
 }
@@ -149,7 +158,10 @@ async function resolveCloudFunctionUri(config: RollupTaskQueueConfig): Promise<s
   });
   const cloudfunctions = google.cloudfunctions("v2");
   const name = `projects/${config.projectId}/locations/${config.location}/functions/${config.functionName}`;
-  const response = await cloudfunctions.projects.locations.functions.get({ name, auth });
+  const response = await cloudfunctions.projects.locations.functions.get({
+    auth,
+    name,
+  });
   const uri = response.data.serviceConfig?.uri;
   if (!uri) {
     throw new Error(`Unable to resolve Cloud Functions v2 URI for ${name}`);
@@ -196,7 +208,7 @@ export async function enqueueRollupUserRebuildTasks(
         uid: job.uid,
         dirtiedAt: job.dirtiedAt,
         taskId: request.taskId,
-        error: error instanceof Error ? error.message : String(error),
+        error: String(errorField(error, "message") ?? (error instanceof Error ? error.message : error)),
       });
       throw error;
     }

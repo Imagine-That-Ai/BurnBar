@@ -57,7 +57,8 @@ struct GeneralSettingsView: View {
                         iconTint: DesignSystem.Colors.coral,
                         title: "Appearance",
                         subtitle: "Theme, menu-bar visibility, launch at login",
-                        value: appearanceSummary
+                        value: appearanceSummary,
+                        customIcon: "SettingsIconSettingsA"
                     )
                 }
 

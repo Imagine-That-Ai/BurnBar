@@ -844,6 +844,17 @@ extension SwarmSimulation {
         }
     }
 
+    /// Solid (filled) brand-mark cloud — the full sampled logo, not just its
+    /// silhouette. Surfaces that render the mark large enough to read a fill
+    /// (e.g. the launch hero) want this so the glyph looks like the actual
+    /// logo instead of a hollow outline.
+    static func normalizedGlyphFillPoints(for provider: AgentProvider, maxPoints: Int) -> [SwarmGlyphPoint] {
+        let dense = logoPoints(for: provider, fallback: fallbackLogoPoints(for: provider))
+        return evenlyDownsample(dense, maxCount: maxPoints).map {
+            SwarmGlyphPoint(position: $0.point, brandColor: $0.logoColor)
+        }
+    }
+
     /// Keeps points on the silhouette of a grid-sampled fill cloud: interior
     /// grid points have ~8 same-spacing neighbors, boundary points fewer.
     private static func outlinePoints(from dense: [ShapePoint]) -> [ShapePoint] {

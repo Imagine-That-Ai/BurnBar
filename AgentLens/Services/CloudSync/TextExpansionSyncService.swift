@@ -37,11 +37,8 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
 
     func sync() async {
         let gate = await context.syncGate()
-        let textExpansionCloudSyncEnabled = await MainActor.run {
-            SettingsManager.shared.textExpansion.cloudSyncEnabled
-        }
         guard !gate.syncSuppressed,
-              textExpansionCloudSyncEnabled,
+              gate.settings.textExpansionCloudSyncEnabled,
               let uid = gate.account.uid else { return }
         guard state.beginSyncingIfIdle() else { return }
         defer { state.endSyncing() }
@@ -59,7 +56,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
     }
 
     private func uploadPending(uid: String, vaultKey: Data, deviceId: String) async throws {
-        let snippets = try context.dataStore.fetchUnsyncedTextExpansionSnippets(limit: 200)
+        let snippets = try await context.dataStore.fetchUnsyncedTextExpansionSnippets(limit: 200)
         guard !snippets.isEmpty else { return }
         let collection = context.firestoreGateway
             .collection("users")
@@ -80,12 +77,12 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
             )
         }
         try await batch.commit()
-        try context.dataStore.markTextExpansionSnippetsSynced(ids: snippets.map(\.id))
+        try await context.dataStore.markTextExpansionSnippetsSynced(ids: snippets.map(\.id))
     }
 
     private func downloadRemote(uid: String, vaultKey: Data) async throws {
         let local = Dictionary(
-            uniqueKeysWithValues: (try context.dataStore.fetchTextExpansionSnippets(includeDeleted: true)).map { ($0.id, $0) }
+            uniqueKeysWithValues: (try await context.dataStore.fetchTextExpansionSnippets(includeDeleted: true)).map { ($0.id, $0) }
         )
         let snapshot = try await context.firestoreGateway
             .collection("users")
@@ -102,7 +99,7 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
             if let localSnippet = local[remote.id], localSnippet.updatedAt > remote.updatedAt {
                 continue
             }
-            try context.dataStore.saveRemoteTextExpansionSnippet(remote)
+            try await context.dataStore.saveRemoteTextExpansionSnippet(remote)
         }
     }
 

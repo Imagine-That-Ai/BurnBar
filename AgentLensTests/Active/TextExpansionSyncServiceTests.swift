@@ -55,7 +55,7 @@ final class TextExpansionSyncServiceTests: XCTestCase {
             createdAt: updatedAt.addingTimeInterval(-60),
             updatedAt: updatedAt
         )
-        try dataStore.upsertTextExpansionSnippet(snippet)
+        try await dataStore.upsertTextExpansionSnippet(snippet)
 
         let service = TextExpansionSyncService(
             context: context,
@@ -83,7 +83,7 @@ final class TextExpansionSyncServiceTests: XCTestCase {
         XCTAssertNil(doc["trigger"])
         XCTAssertNil(doc["body"])
 
-        let unsynced = try dataStore.fetchUnsyncedTextExpansionSnippets()
+        let unsynced = try await dataStore.fetchUnsyncedTextExpansionSnippets()
         XCTAssertTrue(unsynced.isEmpty)
     }
 }

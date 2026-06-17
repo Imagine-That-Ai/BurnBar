@@ -20,15 +20,15 @@ final class MultiSourceReconciliationTests: XCTestCase {
     }
 
     /// Helper: fetch all canonical token_usage rows
-    private func fetchAllCanonicalRows(queue: DatabaseQueue) throws -> [Row] {
-        try queue.read { db in
+    private func fetchAllCanonicalRows(queue: DatabaseQueue) async throws -> [Row] {
+        try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM token_usage ORDER BY startTime DESC")
         }
     }
 
     /// Helper: fetch canonical row for a specific session
-    private func fetchCanonicalRow(queue: DatabaseQueue, sessionId: String) throws -> Row? {
-        try queue.read { db in
+    private func fetchCanonicalRow(queue: DatabaseQueue, sessionId: String) async throws -> Row? {
+        try await queue.read { db in
             try Row.fetchOne(db, sql: """
                 SELECT * FROM token_usage
                 WHERE sessionId = ?
@@ -47,7 +47,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that multiple source contributions (provider_log, in_app_chat, cursor_bridge)
     /// are all persisted as separate canonical rows and can be queried together.
     /// This verifies the foundational requirement: all sources must be storable and queryable.
-    func test_multipleSources_allPersistedAsSeparateRows() throws {
+    func test_multipleSources_allPersistedAsSeparateRows() async throws {
         // Given: a database with multiple source contributions
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -72,7 +72,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(providerLogUsage)
+        try await store.insert(providerLogUsage)
 
         // Source 2: in_app_chat entry
         let inAppChatUsage = TokenUsage(
@@ -90,7 +90,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(inAppChatUsage)
+        try await store.insert(inAppChatUsage)
 
         // Source 3: cursor_bridge entry
         let cursorBridgeUsage = TokenUsage(
@@ -108,7 +108,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(cursorBridgeUsage)
+        try await store.insert(cursorBridgeUsage)
 
         // Source 4: daemon entry
         let daemonUsage = TokenUsage(
@@ -126,10 +126,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(daemonUsage)
+        try await store.insert(daemonUsage)
 
         // Verify all four rows are in the database
-        let allRows = try fetchAllCanonicalRows(queue: queue)
+        let allRows = try await fetchAllCanonicalRows(queue: queue)
         XCTAssertEqual(allRows.count, 4, "All four source rows should be persisted separately")
 
         // Verify source identity is preserved
@@ -149,7 +149,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
     /// Tests that when the same session has both estimate and exact data,
     /// the canonical row is promoted to exact (VAL-PERSIST-003).
-    func test_sameSession_estimateThenExact_promotesToExact() throws {
+    func test_sameSession_estimateThenExact_promotesToExact() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -173,10 +173,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try store.insert(lowConfUsage)
+        try await store.insert(lowConfUsage)
 
         // Verify initial state
-        guard let initialRow = try fetchCanonicalRow(queue: queue, sessionId: "same-key-estimate") else {
+        guard let initialRow = try await fetchCanonicalRow(queue: queue, sessionId: "same-key-estimate") else {
             XCTFail("Should have initial row")
             return
         }
@@ -198,10 +198,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(exactUsage)
+        try await store.insert(exactUsage)
 
         // Verify canonical row is now exact (promotion happened)
-        guard let canonicalRow = try fetchCanonicalRow(queue: queue, sessionId: "same-key-estimate") else {
+        guard let canonicalRow = try await fetchCanonicalRow(queue: queue, sessionId: "same-key-estimate") else {
             XCTFail("Should have canonical row")
             return
         }
@@ -213,7 +213,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             "Canonical row should be updated with newer data")
 
         // Verify only one row exists (upserted, not duplicated)
-        let allRows = try fetchAllCanonicalRows(queue: queue)
+        let allRows = try await fetchAllCanonicalRows(queue: queue)
         let sameKeyRows = allRows.filter { $0["sessionId"] as? String == "same-key-estimate" }
         XCTAssertEqual(sameKeyRows.count, 1, "Should have exactly one row after upsert")
     }
@@ -222,7 +222,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
     /// Tests that exact rows are not downgraded when a lower-confidence write attempts
     /// to overwrite them (VAL-PERSIST-002).
-    func test_exactRow_notDowngradedByLowerConfidence() throws {
+    func test_exactRow_notDowngradedByLowerConfidence() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -246,10 +246,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localExactUsage)
+        try await store.insert(localExactUsage)
 
         // Verify exact row is persisted
-        guard let row = try fetchCanonicalRow(queue: queue, sessionId: "exact-local-session") else {
+        guard let row = try await fetchCanonicalRow(queue: queue, sessionId: "exact-local-session") else {
             XCTFail("Should have persisted local exact row")
             return
         }
@@ -273,10 +273,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact, // same confidence - update should happen but NOT downgrade
             estimatorVersion: ""
         )
-        try store.insert(billingAPIUsage)
+        try await store.insert(billingAPIUsage)
 
         // Verify exact row still has exact confidence (not downgraded)
-        guard let updatedRow = try fetchCanonicalRow(queue: queue, sessionId: "exact-local-session") else {
+        guard let updatedRow = try await fetchCanonicalRow(queue: queue, sessionId: "exact-local-session") else {
             XCTFail("Should still have local exact row")
             return
         }
@@ -292,7 +292,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that when billing_api provides exact data for the same session,
     /// the confidence is preserved and values are updated correctly.
     /// Note: Source is preserved when confidence levels are equal (VAL-TOKEN-009).
-    func test_billingAPIExact_overwritesExactSameConfidence() throws {
+    func test_billingAPIExact_overwritesExactSameConfidence() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -316,7 +316,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localExactUsage)
+        try await store.insert(localExactUsage)
 
         // Billing API exact overwrites
         let billingExactUsage = TokenUsage(
@@ -334,10 +334,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(billingExactUsage)
+        try await store.insert(billingExactUsage)
 
         // Verify values are updated but confidence remains exact
-        guard let updatedRow = try fetchCanonicalRow(queue: queue, sessionId: "billing-api-test") else {
+        guard let updatedRow = try await fetchCanonicalRow(queue: queue, sessionId: "billing-api-test") else {
             XCTFail("Should have row")
             return
         }
@@ -351,7 +351,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             "Source should be preserved since confidence levels are equal (not strictly higher)")
 
         // Verify only one row
-        let allRows = try fetchAllCanonicalRows(queue: queue)
+        let allRows = try await fetchAllCanonicalRows(queue: queue)
         let sameKeyRows = allRows.filter { $0["sessionId"] as? String == "billing-api-test" }
         XCTAssertEqual(sameKeyRows.count, 1, "Should have exactly one row after upsert")
     }
@@ -359,7 +359,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     // MARK: - Edge cases
 
     /// Tests that different models are stored as separate rows.
-    func test_differentModels_storedSeparately() throws {
+    func test_differentModels_storedSeparately() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -383,7 +383,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(sonnetUsage)
+        try await store.insert(sonnetUsage)
 
         // Opus usage (same provider, different model)
         let opusUsage = TokenUsage(
@@ -401,10 +401,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(opusUsage)
+        try await store.insert(opusUsage)
 
         // Verify both models are stored separately
-        let allRows = try fetchAllCanonicalRows(queue: queue)
+        let allRows = try await fetchAllCanonicalRows(queue: queue)
         XCTAssertEqual(allRows.count, 2, "Different models should be separate rows")
 
         let sonnetRows = allRows.filter { ($0["model"] as? String) == "claude-4-sonnet" }
@@ -414,7 +414,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     }
 
     /// Tests that when API has less than local baseline, the missing is zero (not negative).
-    func test_apiLessThanLocal_missingIsZero() throws {
+    func test_apiLessThanLocal_missingIsZero() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -438,10 +438,10 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localUsage)
+        try await store.insert(localUsage)
 
         // Verify local is persisted
-        guard let row = try fetchCanonicalRow(queue: queue, sessionId: "overcounted-session") else {
+        guard let row = try await fetchCanonicalRow(queue: queue, sessionId: "overcounted-session") else {
             XCTFail("Should have local row")
             return
         }
@@ -458,7 +458,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
     /// Tests that reconciliation is deterministic: two runs over identical input state
     /// produce identical output.
-    func test_reconciliation_isDeterministic() throws {
+    func test_reconciliation_isDeterministic() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -482,7 +482,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localUsage)
+        try await store.insert(localUsage)
 
         // Simulate API supplemental usage computation (same logic as supplementalUsages)
         let apiRecord = ProviderUsageRecord(
@@ -526,7 +526,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(supplemental1)
+        try await store.insert(supplemental1)
 
         // Second supplemental computation (identical logic)
         let missingInput2 = max(apiRecord.inputTokens - localInput, 0)  // 500
@@ -558,7 +558,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     }
 
     /// Tests that reconciliation is idempotent: rerunning after convergence produces no material changes.
-    func test_reconciliation_isIdempotent_afterConvergence() throws {
+    func test_reconciliation_isIdempotent_afterConvergence() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -584,7 +584,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localUsage)
+        try await store.insert(localUsage)
 
         // Given: API says the same (no missing)
         let apiRecord = ProviderUsageRecord(
@@ -615,7 +615,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that cost-only drift (cost changes without token count changes) is preserved.
     /// This verifies that when API reports same tokens but different cost, the cost correction
     /// is not silently dropped.
-    func test_costOnlyDrift_isPreserved() throws {
+    func test_costOnlyDrift_isPreserved() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -639,7 +639,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localUsage)
+        try await store.insert(localUsage)
 
         // API reports same tokens but higher cost
         let apiRecord = ProviderUsageRecord(
@@ -686,7 +686,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
     /// Tests that deleteUsage only deletes rows that match BOTH the sessionId prefix
     /// AND have usageSource = 'billing_api'. Non-reconciliation rows should be preserved.
-    func test_deleteUsage_isSourceScoped() throws {
+    func test_deleteUsage_isSourceScoped() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -710,7 +710,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(billingAPIReconcileRow)
+        try await store.insert(billingAPIReconcileRow)
 
         // Given: a regular provider_log row with similar prefix pattern (should NOT be deleted)
         let providerLogRow = TokenUsage(
@@ -728,7 +728,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(providerLogRow)
+        try await store.insert(providerLogRow)
 
         // Given: another billing_api row but with different prefix (should NOT be deleted)
         let billingAPINonReconcileRow = TokenUsage(
@@ -746,17 +746,17 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(billingAPINonReconcileRow)
+        try await store.insert(billingAPINonReconcileRow)
 
         // Verify all three rows exist before delete
-        let allBefore = try fetchAllCanonicalRows(queue: queue)
+        let allBefore = try await fetchAllCanonicalRows(queue: queue)
         XCTAssertEqual(allBefore.count, 3, "All three rows should exist before delete")
 
         // When: we delete with reconciliation prefix
-        try store.deleteUsage(sessionIDPrefix: "api-reconcile-")
+        try await store.deleteUsage(sessionIDPrefix: "api-reconcile-")
 
         // Then: only the billing_api row with api-reconcile prefix should be deleted
-        let allAfter = try fetchAllCanonicalRows(queue: queue)
+        let allAfter = try await fetchAllCanonicalRows(queue: queue)
         XCTAssertEqual(allAfter.count, 2, "Two rows should remain after source-scoped delete")
 
         // Verify the provider_log row was preserved (not deleted because usageSource != billing_api)
@@ -776,7 +776,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that reconciliation repairs drift without double counting.
     /// When API reports more than local, the missing is computed as max(0, api - local)
     /// which prevents negative values and double counting.
-    func test_driftRepair_avoidsDoubleCounting() throws {
+    func test_driftRepair_avoidsDoubleCounting() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -800,7 +800,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localUsage)
+        try await store.insert(localUsage)
 
         // API reports less than local (should not cause negative missing)
         let apiRecord = ProviderUsageRecord(
@@ -886,7 +886,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     }
 
     /// Tests that the real supplementalUsages pipeline correctly uses epsilon threshold.
-    func test_computeSupplementalUsages_usesEpsilonThreshold() throws {
+    func test_computeSupplementalUsages_usesEpsilonThreshold() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -910,7 +910,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localUsage)
+        try await store.insert(localUsage)
 
         // Create UsageAggregator with minimal dependencies
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -930,7 +930,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
         )
 
         // When: compute supplemental usages for matching costs
-        let existingUsages = try store.fetchAllUsage()
+        let existingUsages = try await store.fetchAllUsage()
         let supplementals1 = aggregator.computeSupplementalUsages(from: [apiRecordSameCost], existingUsages: existingUsages)
 
         // Then: no supplemental should be created (no delta)
@@ -961,7 +961,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
     /// Tests that reconciliation is idempotent: calling computeSupplementalUsages twice
     /// with the same data produces identical results and no duplicate supplementals.
-    func test_computeSupplementalUsages_isIdempotent() throws {
+    func test_computeSupplementalUsages_isIdempotent() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
@@ -985,7 +985,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(localUsage)
+        try await store.insert(localUsage)
 
         let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let aggregator = UsageAggregator(dataStore: dataStore)
@@ -1002,18 +1002,18 @@ final class MultiSourceReconciliationTests: XCTestCase {
             requestCount: 1
         )
 
-        let existingUsages = try store.fetchAllUsage()
+        let existingUsages = try await store.fetchAllUsage()
 
         // First call
         let supplementals1 = aggregator.computeSupplementalUsages(from: [apiRecord], existingUsages: existingUsages)
 
         // Insert the supplemental
         if let supplemental = supplementals1.first {
-            try store.insert(supplemental)
+            try await store.insert(supplemental)
         }
 
         // Second call with updated existing usages
-        let updatedUsages = try store.fetchAllUsage()
+        let updatedUsages = try await store.fetchAllUsage()
         let supplementals2 = aggregator.computeSupplementalUsages(from: [apiRecord], existingUsages: updatedUsages)
 
         // Should produce same result (but since local now includes supplemental, no more missing)

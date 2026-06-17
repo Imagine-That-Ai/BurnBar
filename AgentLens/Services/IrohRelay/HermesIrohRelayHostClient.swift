@@ -189,7 +189,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         settingsManager: SettingsManager = .shared,
         relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore(),
         pairingKeyStore: IrohPairingKeyStore = IrohPairingKeyStore(),
-        directory: any IrohPairingDirectory = FirestoreIrohPairingDirectory.shared,
+        directory: (any IrohPairingDirectory)? = nil,
         publicKeyPublisher: IrohPairingPublicKeyPublishing = IrohPairingPublicKeyPublisher.shared,
         auditLogger: any IrohTransportAuditLogging = FirestoreIrohAuditLogger.shared,
         inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicy = { uid, connectionID in
@@ -209,7 +209,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         self.settingsManager = settingsManager
         self.relayKeyStore = relayKeyStore
         self.pairingKeyStore = pairingKeyStore
-        self.directory = directory
+        self.directory = directory ?? FirestoreIrohPairingDirectory(
+            deviceIDProvider: { [accountManager] in
+                await MainActor.run { accountManager.deviceId }
+            }
+        )
         self.publicKeyPublisher = publicKeyPublisher
         self.auditLogger = auditLogger
         self.inboundPeerPolicyLoader = inboundPeerPolicyLoader

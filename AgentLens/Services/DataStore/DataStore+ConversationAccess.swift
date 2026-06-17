@@ -2,42 +2,42 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    nonisolated func fetchUnsyncedConversations(limit: Int = 400) throws -> [ConversationRecord] {
-        try conversationStore.fetchUnsyncedConversations(limit: limit)
+    func fetchUnsyncedConversations(limit: Int = 400) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchUnsyncedConversations(limit: limit)
     }
 
-    nonisolated func markConversationsSynced(ids: [String]) throws {
-        try conversationStore.markConversationsSynced(ids: ids)
+    func markConversationsSynced(ids: [String]) async throws {
+        try await actor.conversationStore.markConversationsSynced(ids: ids)
     }
 
     nonisolated func upsertConversation(_ record: ConversationRecord) throws {
-        try conversationStore.upsertConversation(record)
+        try actor.conversationStore.upsertConversation(record)
     }
 
-    nonisolated func fileModifiedAtForConversation(id: String) throws -> Date? {
-        try conversationStore.fileModifiedAtForConversation(id: id)
+    func fileModifiedAtForConversation(id: String) async throws -> Date? {
+        try await actor.conversationStore.fileModifiedAtForConversation(id: id)
     }
 
     nonisolated func fetchConversation(id: String) throws -> ConversationRecord? {
-        try conversationStore.fetchConversation(id: id)
+        try actor.conversationStore.fetchConversation(id: id)
     }
 
     nonisolated func fetchConversations(limit: Int = 500) throws -> [ConversationRecord] {
-        try conversationStore.fetchConversations(limit: limit)
+        try actor.conversationStore.fetchConversations(limit: limit)
     }
 
     /// Paginated conversation fetch using offset-based cursor.
     nonisolated func fetchConversations(limit: Int, offset: Int) throws -> [ConversationRecord] {
-        try conversationStore.fetchConversations(limit: limit, offset: offset)
+        try actor.conversationStore.fetchConversations(limit: limit, offset: offset)
     }
 
     /// Fetches multiple conversations by their IDs.
     /// Used by gap repair to check if indexed content is stale.
     nonisolated func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
-        try conversationStore.fetchConversations(ids: ids)
+        try actor.conversationStore.fetchConversations(ids: ids)
     }
 
-    nonisolated func updateConversationSummary(
+    func updateConversationSummary(
         id: String,
         title: String?,
         summary: String?,
@@ -45,8 +45,8 @@ extension DataStore {
         model: String?,
         updatedAt: Date = Date(),
         runCostUSD: Double = 0
-    ) throws {
-        try conversationStore.updateConversationSummary(
+    ) async throws {
+        try await actor.conversationStore.updateConversationSummary(
             id: id,
             title: title,
             summary: summary,
@@ -57,18 +57,18 @@ extension DataStore {
         )
     }
 
-    nonisolated func markConversationSummaryAttempt(id: String, attemptedAt: Date = Date()) throws {
-        try conversationStore.markConversationSummaryAttempt(id: id, attemptedAt: attemptedAt)
+    func markConversationSummaryAttempt(id: String, attemptedAt: Date = Date()) async throws {
+        try await actor.conversationStore.markConversationSummaryAttempt(id: id, attemptedAt: attemptedAt)
     }
 
-    nonisolated func fetchConversationsNeedingSummary(
+    func fetchConversationsNeedingSummary(
         limit: Int = 80,
         staleAfter: TimeInterval = 30 * 60,
         now: Date = Date(),
         retryCooldown: TimeInterval? = nil,
         indexedAfter: Date? = nil
-    ) throws -> [ConversationRecord] {
-        try conversationStore.fetchConversationsNeedingSummary(
+    ) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchConversationsNeedingSummary(
             limit: limit,
             now: now,
             retryCooldown: retryCooldown ?? staleAfter,
@@ -76,95 +76,95 @@ extension DataStore {
         )
     }
 
-    nonisolated func countConversationsNeedingSummary(
+    func countConversationsNeedingSummary(
         staleAfter: TimeInterval = 30 * 60,
         now: Date = Date(),
         retryCooldown: TimeInterval? = nil,
         indexedAfter: Date? = nil
-    ) throws -> Int {
-        try conversationStore.countConversationsNeedingSummary(
+    ) async throws -> Int {
+        try await actor.conversationStore.countConversationsNeedingSummary(
             now: now,
             retryCooldown: retryCooldown ?? staleAfter,
             indexedAfter: indexedAfter
         )
     }
 
-    nonisolated func summarySpendToday(now: Date = Date()) throws -> Double {
-        try conversationStore.summarySpendToday(now: now)
+    func summarySpendToday(now: Date = Date()) async throws -> Double {
+        try await actor.conversationStore.summarySpendToday(now: now)
     }
 
-    nonisolated func deleteAllIndexedConversations() throws {
-        try conversationStore.deleteAllIndexedConversations()
+    func deleteAllIndexedConversations() async throws {
+        try await actor.conversationStore.deleteAllIndexedConversations()
     }
 
     /// Deletes a single conversation by ID. Used for testing delete-event miss recovery.
-    nonisolated func deleteConversation(id: String) throws {
-        try conversationStore.deleteConversation(id: id)
+    func deleteConversation(id: String) async throws {
+        try await actor.conversationStore.deleteConversation(id: id)
     }
 
     /// Tombstones a conversation so the delete propagates across devices (B-DATA-2).
-    nonisolated func softDeleteConversation(id: String, at date: Date = Date()) throws {
-        try conversationStore.softDeleteConversation(id: id, at: date)
+    func softDeleteConversation(id: String, at date: Date = Date()) async throws {
+        try await actor.conversationStore.softDeleteConversation(id: id, at: date)
     }
 
     /// Local tombstones older than `before`, eligible for retention-window GC.
-    nonisolated func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) throws -> [ConversationRecord] {
-        try conversationStore.fetchExpiredConversationTombstones(before: before, limit: limit)
+    func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchExpiredConversationTombstones(before: before, limit: limit)
     }
 
-    nonisolated func approximateConversationStorageBytes() throws -> Int64 {
-        try conversationStore.approximateConversationStorageBytes()
+    func approximateConversationStorageBytes() async throws -> Int64 {
+        try await actor.conversationStore.approximateConversationStorageBytes()
     }
 
-    nonisolated func backupUsageSnapshot(
+    func backupUsageSnapshot(
         limits: CloudBackupPlanLimits = .standard
-    ) throws -> CloudBackupUsageSnapshot {
-        try conversationStore.backupUsageSnapshot(limits: limits)
+    ) async throws -> CloudBackupUsageSnapshot {
+        try await actor.conversationStore.backupUsageSnapshot(limits: limits)
     }
 
-    nonisolated func saveChatMessage(_ message: ChatMessageRecord) throws {
-        try conversationStore.saveChatMessage(message, threadID: Self.legacyChatThreadID)
+    func saveChatMessage(_ message: ChatMessageRecord) async throws {
+        try await actor.conversationStore.saveChatMessage(message, threadID: Self.legacyChatThreadID)
     }
 
-    nonisolated func saveChatMessage(_ message: ChatMessageRecord, threadID: String) throws {
-        try conversationStore.saveChatMessage(message, threadID: threadID)
+    func saveChatMessage(_ message: ChatMessageRecord, threadID: String) async throws {
+        try await actor.conversationStore.saveChatMessage(message, threadID: threadID)
     }
 
-    nonisolated func createChatThread(id: String = UUID().uuidString, at date: Date = Date()) throws -> String {
-        try conversationStore.createChatThread(id: id, at: date)
+    func createChatThread(id: String = UUID().uuidString, at date: Date = Date()) async throws -> String {
+        try await actor.conversationStore.createChatThread(id: id, at: date)
     }
 
-    nonisolated func chatThreadExists(id: String) throws -> Bool {
-        try conversationStore.chatThreadExists(id: id)
+    func chatThreadExists(id: String) async throws -> Bool {
+        try await actor.conversationStore.chatThreadExists(id: id)
     }
 
-    nonisolated func fetchMostRecentChatThreadID() throws -> String? {
-        try conversationStore.fetchMostRecentChatThreadID()
+    func fetchMostRecentChatThreadID() async throws -> String? {
+        try await actor.conversationStore.fetchMostRecentChatThreadID()
     }
 
-    nonisolated func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) throws -> [ChatThreadSummary] {
-        try conversationStore.fetchChatThreadSummaries(searchQuery: searchQuery, limit: limit)
+    func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) async throws -> [ChatThreadSummary] {
+        try await actor.conversationStore.fetchChatThreadSummaries(searchQuery: searchQuery, limit: limit)
     }
 
     nonisolated func fetchChatMessages() throws -> [ChatMessageRecord] {
-        try conversationStore.fetchChatMessages()
+        try actor.conversationStore.fetchChatMessages()
     }
 
     nonisolated func fetchChatMessages(threadID: String) throws -> [ChatMessageRecord] {
-        try conversationStore.fetchChatMessages(threadID: threadID)
+        try actor.conversationStore.fetchChatMessages(threadID: threadID)
     }
 
-    nonisolated func deleteAllChatMessages() throws {
-        try conversationStore.deleteAllChatMessages()
+    func deleteAllChatMessages() async throws {
+        try await actor.conversationStore.deleteAllChatMessages()
     }
 
-    nonisolated func searchConversationsFTS(
+    func searchConversationsFTS(
         query: String,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil
-    ) throws -> [SearchResult] {
-        try conversationStore.searchConversationsFTS(
+    ) async throws -> [SearchResult] {
+        try await actor.conversationStore.searchConversationsFTS(
             query: query,
             provider: provider,
             projectName: projectName,
@@ -172,46 +172,46 @@ extension DataStore {
         )
     }
 
-    nonisolated func fetchAllSessionLogs(limit: Int = 1000) throws -> [ConversationRecord] {
-        try conversationStore.fetchAllSessionLogs(limit: limit)
+    func fetchAllSessionLogs(limit: Int = 1000) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchAllSessionLogs(limit: limit)
     }
 
-    nonisolated func fetchSessionLogSummaries(limit: Int = 1000) throws -> [ConversationRecord] {
-        try conversationStore.fetchSessionLogSummaries(limit: limit)
+    func fetchSessionLogSummaries(limit: Int = 1000) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchSessionLogSummaries(limit: limit)
     }
 
-    nonisolated func fetchUnsyncedSessionLogs(limit: Int = 100) throws -> [ConversationRecord] {
-        try conversationStore.fetchUnsyncedSessionLogs(limit: limit)
+    func fetchUnsyncedSessionLogs(limit: Int = 100) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchUnsyncedSessionLogs(limit: limit)
     }
 
-    nonisolated func countUnsyncedSessionLogs() throws -> Int {
-        try conversationStore.countUnsyncedSessionLogs()
+    func countUnsyncedSessionLogs() async throws -> Int {
+        try await actor.conversationStore.countUnsyncedSessionLogs()
     }
 
-    nonisolated func markSessionLogsSynced(ids: [String]) throws {
-        try conversationStore.markSessionLogsSynced(ids: ids)
+    func markSessionLogsSynced(ids: [String]) async throws {
+        try await actor.conversationStore.markSessionLogsSynced(ids: ids)
     }
 
     @discardableResult
-    nonisolated func markAllSessionLogsUnsynced() throws -> Int {
-        try conversationStore.markAllSessionLogsUnsynced()
+    func markAllSessionLogsUnsynced() async throws -> Int {
+        try await actor.conversationStore.markAllSessionLogsUnsynced()
     }
 
-    nonisolated func countConversations() throws -> Int {
-        try conversationStore.countConversations()
+    func countConversations() async throws -> Int {
+        try await actor.conversationStore.countConversations()
     }
 
-    nonisolated func insertRemoteConversation(_ record: ConversationRecord) throws {
-        try conversationStore.insertRemoteConversation(record)
+    func insertRemoteConversation(_ record: ConversationRecord) async throws {
+        try await actor.conversationStore.insertRemoteConversation(record)
     }
 
-    nonisolated func updateConversationFullText(id: String, fullText: String) throws {
-        try conversationStore.updateConversationFullText(id: id, fullText: fullText)
+    func updateConversationFullText(id: String, fullText: String) async throws {
+        try await actor.conversationStore.updateConversationFullText(id: id, fullText: fullText)
     }
 
     /// Synthesizes a single `cliAssistant` ConversationRecord from persisted chat messages
     /// and upserts it so the Session Logs center and cloud sync treat it like any other session.
-    nonisolated func upsertCLIConversation(from messages: [ChatMessageRecord]) throws {
+    func upsertCLIConversation(from messages: [ChatMessageRecord]) async throws {
         guard messages.isEmpty == false else { return }
 
         let start = messages.first?.timestamp
@@ -249,19 +249,19 @@ extension DataStore {
             sourceType: .cliAssistant
         )
         try upsertConversation(record)
-        try enqueueConversationProjectionJob(conversationID: record.id, jobType: .reproject)
+        try await enqueueConversationProjectionJob(conversationID: record.id, jobType: .reproject)
     }
 
     /// Fetches conversations suitable for transcript scan / context pack assembly.
     /// Filters by optional provider, project name, date range, and source types.
-    nonisolated func fetchConversationsForTranscriptScan(
+    func fetchConversationsForTranscriptScan(
         provider: AgentProvider?,
         projectName: String?,
         dateRange: ClosedRange<Date>?,
         conversationSources: Set<ConversationSourceType>?,
         limit: Int = 500
-    ) throws -> [ConversationRecord] {
-        try conversationStore.fetchConversationsForTranscriptScan(
+    ) async throws -> [ConversationRecord] {
+        try await actor.conversationStore.fetchConversationsForTranscriptScan(
             provider: provider,
             projectName: projectName,
             dateRange: dateRange,
