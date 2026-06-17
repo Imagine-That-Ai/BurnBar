@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
@@ -313,7 +314,7 @@ extension ProviderQuotaServiceTests {
     /// Writes a Claude statusline snapshot that contains `context_window`
     /// data but NO `rate_limits` key, plus the Claude settings needed for
     /// the bridge to report `.ready`.
-    private func writeContextWindowOnlyFixture(
+    func writeContextWindowOnlyFixture(
         home: URL,
         appPaths: OpenBurnBarAppPaths,
         fiveHourUsedPercent: Int? = nil,
