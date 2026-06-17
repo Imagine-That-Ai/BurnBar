@@ -44,6 +44,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .computerUseApprovalRespond: "daemon.computer_use.approval.respond",
         .computerUsePanicHalt: "daemon.computer_use.panic_halt",
         .computerUseAuditExport: "daemon.computer_use.audit_export",
+        .phoneControlPinProvision: "daemon.phone_control.pin.provision",
         .controllerSummary: "daemon.controller.summary",
         .controllerRuntimeSnapshot: "daemon.controller.runtime_snapshot",
         .controllerProjectsList: "daemon.controller.project.list",
