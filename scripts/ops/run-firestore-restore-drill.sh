@@ -125,7 +125,8 @@ PY
   done
 }
 
-trap cleanup_drill_database EXIT
+cleanup_completed=false
+trap 'if [[ "$cleanup_completed" != "true" ]]; then cleanup_drill_database; fi' EXIT
 
 echo "==> verify production Firestore DR posture"
 FIRESTORE_DR_JSON_ONLY=1 \
@@ -215,6 +216,26 @@ console.log(JSON.stringify({
   pitrRetentionWindowHours: 168,
   cleanupRequested: process.env.FIRESTORE_DRILL_CLEANUP !== "0"
 }, null, 2));
+NODE
+
+cleanup_succeeded=false
+if [[ "$CLEANUP" == "1" ]]; then
+  cleanup_drill_database
+  cleanup_succeeded=true
+fi
+cleanup_completed=true
+
+export summary_path cleanup_succeeded
+node - <<'NODE'
+const fs = require("fs");
+const summaryPath = process.env.summary_path;
+const summary = JSON.parse(fs.readFileSync(summaryPath, "utf8"));
+summary.cleanup = {
+  requested: summary.cleanupRequested === true,
+  databaseDeleted: process.env.cleanup_succeeded === "true",
+  completedAt: new Date().toISOString(),
+};
+fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 NODE
 
 cp "$summary_path" "$latest_path"
