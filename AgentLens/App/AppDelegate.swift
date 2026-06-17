@@ -24,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private(set) var popover: NSPopover?
     private(set) var popoverPrewarmer: PopoverContentPrewarmer?
     private var statusItemLocalMouseMonitor: Any?
-    private var statusItemGlobalMouseMonitor: Any?
     private var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
     private var lastHandledStatusItemEventTime: TimeInterval = 0
 
@@ -427,7 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func installStatusItemMouseFallback() {
-        guard statusItemLocalMouseMonitor == nil, statusItemGlobalMouseMonitor == nil else {
+        guard statusItemLocalMouseMonitor == nil else {
             return
         }
 
@@ -436,21 +435,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.handleStatusItemFallbackMouseEvent(event)
             return event
         }
-        statusItemGlobalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
-            Task { @MainActor in
-                self?.handleStatusItemFallbackMouseEvent(event)
-            }
-        }
     }
 
     private func uninstallStatusItemMouseFallback() {
         if let monitor = statusItemLocalMouseMonitor {
             NSEvent.removeMonitor(monitor)
             statusItemLocalMouseMonitor = nil
-        }
-        if let monitor = statusItemGlobalMouseMonitor {
-            NSEvent.removeMonitor(monitor)
-            statusItemGlobalMouseMonitor = nil
         }
     }
 
