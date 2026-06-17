@@ -77,10 +77,10 @@ extension ConversationStore {
             }
         }
 
-        func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) throws -> [ChatThreadSummary] {
+        func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) async throws -> [ChatThreadSummary] {
             let normalizedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-            return try dbQueue.read { db in
+            return try await dbQueue.read { db in
                 var sql = """
                 SELECT
                     t.id AS threadID,
@@ -195,7 +195,7 @@ extension ConversationStore {
                 let now = Date()
                 try db.execute(
                     sql: "INSERT INTO chat_threads (id, createdAt, updatedAt) VALUES (?, ?, ?)",
-                    arguments: [DataStore.legacyChatThreadID, now, now]
+                    arguments: [OpenBurnBarDatabase.legacyChatThreadID, now, now]
                 )
             }
         }

@@ -17,26 +17,12 @@ import OpenBurnBarCore
 @Observable
 @MainActor
 final class DataStoreCoordinator {
-    nonisolated static let legacyChatThreadID = "openburnbar-chat-legacy"
+    static let legacyChatThreadID = OpenBurnBarDatabase.legacyChatThreadID
     private static let quickHydrationLimit = 5_000
 
     nonisolated let actor: DataStoreActor
 
-    nonisolated var dbQueue: any DatabaseWriter { actor.dbQueue }
-    nonisolated var database: OpenBurnBarDatabase { actor.database }
-    nonisolated var usageStore: UsageStore { actor.usageStore }
-    nonisolated var conversationStore: ConversationStore { actor.conversationStore }
-    nonisolated var searchIndexStore: SearchIndexStore { actor.searchIndexStore }
-    nonisolated var artifactStore: ArtifactStore { actor.artifactStore }
-    nonisolated var projectionStore: ProjectionStore { actor.projectionStore }
-    nonisolated var controlPlaneStore: ControlPlaneStore { actor.controlPlaneStore }
-    nonisolated var deviceStore: DeviceStore { actor.deviceStore }
-    nonisolated var checkpointStore: ParserCheckpointStore { actor.checkpointStore }
-    nonisolated var remoteSyncWatermarkStore: RemoteSyncWatermarkStore { actor.remoteSyncWatermarkStore }
     nonisolated var switcherStore: SwitcherProfileStore { actor.switcherStore }
-    nonisolated var backfillCursorStore: BackfillCursorStore { actor.backfillCursorStore }
-    nonisolated var providerAccountStore: ProviderAccountStore { actor.providerAccountStore }
-    nonisolated var textExpansionSnippetStore: TextExpansionSnippetStore { actor.textExpansionSnippetStore }
 
     /// Presentation-layer view model for dashboard aggregate metrics.
     /// Rebuilt automatically whenever usages change.
@@ -327,26 +313,13 @@ final class DataStoreCoordinator {
         #endif
     }
 
-    /// Post-open WAL mode configuration (idempotent).
-    /// WAL is automatically enabled by GRDB's DatabasePool, but we explicitly
-    /// tune the checkpoint threshold for our workload.
-    private static func configureWALMode(_ dbQueue: any DatabaseWriter) throws {
-        try dbQueue.write { db in
-            try db.execute(sql: "PRAGMA journal_mode = WAL")
-            try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
-        }
-        try dbQueue.writeWithoutTransaction { db in
-            try db.execute(sql: "PRAGMA synchronous = NORMAL")
-        }
-    }
-
     convenience init() throws {
         let appDir = try OpenBurnBarMigration.prepareSupportDirectory()
         let dbPath = appDir.appendingPathComponent(OpenBurnBarIdentity.databaseFileName).path
         // DatabasePool enables concurrent reads (WAL mode) for read-heavy workloads
         // like dashboard aggregation and search queries. Writes remain serialized.
         let pool = try Self.makeDatabasePool(path: dbPath)
-        try Self.configureWALMode(pool)
+        try OpenBurnBarDatabase.configureWALMode(pool)
         try self.init(databaseQueue: pool)
     }
 

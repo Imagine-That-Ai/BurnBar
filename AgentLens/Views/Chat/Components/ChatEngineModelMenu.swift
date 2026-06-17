@@ -167,7 +167,7 @@ struct ChatEngineModelMenu: View {
             return
         }
         do {
-            let response = try await CLIRuntimeModelCatalogDiscovery()
+            let response = try await CLIRuntimeModelCatalogDiscovery(settingsManager: controller.settingsManager)
                 .modelCatalog(for: CLIRuntimeModelCatalogRequest(runtime: runtime.rawValue))
             cliRows[runtime] = response.options
             cliErrors[runtime] = nil

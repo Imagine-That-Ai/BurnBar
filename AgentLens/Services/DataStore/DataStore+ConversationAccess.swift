@@ -143,7 +143,7 @@ extension DataStore {
     }
 
     func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) async throws -> [ChatThreadSummary] {
-        try actor.conversationStore.fetchChatThreadSummaries(searchQuery: searchQuery, limit: limit)
+        try await actor.conversationStore.fetchChatThreadSummaries(searchQuery: searchQuery, limit: limit)
     }
 
     nonisolated func fetchChatMessages() throws -> [ChatMessageRecord] {
