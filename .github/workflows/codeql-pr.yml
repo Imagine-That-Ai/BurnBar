@@ -1,6 +1,9 @@
 name: CodeQL PR (JS+Python)
 
-# Path-filtered PR CodeQL for the script/service languages that analyze quickly.
+# Required PR CodeQL for the script/service languages that analyze quickly.
+# This workflow must not be path-filtered while branch protection requires the
+# Analyze contexts globally: skipped workflows leave required checks missing and
+# make otherwise-green PRs unmergeable.
 # Swift stays in the nightly/push CodeQL workflow because it requires a traced
 # xcodebuild and routinely takes an hour on hosted macOS runners.
 
@@ -8,35 +11,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - ".github/workflows/codeql-pr.yml"
-      - ".github/workflows/codeql.yml"
-      - "apps/console/**/*.js"
-      - "apps/console/**/*.jsx"
-      - "apps/console/**/*.ts"
-      - "apps/console/**/*.tsx"
-      - "extensions/openburnbar/**/*.js"
-      - "extensions/openburnbar/**/*.ts"
-      - "functions/**/*.js"
-      - "functions/**/*.ts"
-      - "packages/**/*.js"
-      - "packages/**/*.ts"
-      - "quota-runner/**/*.js"
-      - "quota-runner/**/*.ts"
-      - "scripts/**/*.py"
-      - "scripts/**/*.js"
-      - "scripts/**/*.mjs"
-      - "scripts/**/*.ts"
-      - "services/**/*.js"
-      - "services/**/*.ts"
-      - "tools/**/*.js"
-      - "tools/**/*.mjs"
-      - "tools/**/*.py"
-      - "tools/**/*.ts"
-      - "website/**/*.js"
-      - "website/**/*.jsx"
-      - "website/**/*.ts"
-      - "website/**/*.tsx"
 
 permissions:
   contents: read
