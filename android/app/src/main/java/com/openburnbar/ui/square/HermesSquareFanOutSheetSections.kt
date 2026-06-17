@@ -48,6 +48,7 @@ internal fun FanOutSheetBody(dispatchableIdentities: List<AgentIdentity>, uiStat
         FanOutRuntimePicker(
             dispatchableIdentities = dispatchableIdentities,
             selected = uiState.selected,
+            maxParallel = uiState.maxParallel,
             onToggleRuntime = uiCallbacks.onToggleRuntime,
         )
         Spacer(modifier = Modifier.height(10.dp))
@@ -65,7 +66,7 @@ internal fun FanOutSheetBody(dispatchableIdentities: List<AgentIdentity>, uiStat
         FanOutDispatchButton(
             dispatching = uiState.dispatching,
             selectedCount = uiState.selected.size,
-            enabled = !uiState.dispatching && uiState.prompt.trim().isNotBlank() && uiState.selected.size >= 2,
+            enabled = !uiState.dispatching && uiState.prompt.trim().isNotBlank() && uiState.selected.isNotEmpty() && uiState.selected.size <= uiState.maxParallel,
             onClick = uiCallbacks.onDispatch,
         )
     }
@@ -93,10 +94,11 @@ internal fun FanOutMissionFields(title: String, prompt: String, onTitleChange: (
 internal fun FanOutRuntimePicker(
     dispatchableIdentities: List<AgentIdentity>,
     selected: List<String>,
+    maxParallel: Int,
     onToggleRuntime: (runtime: String, enabled: Boolean) -> Unit,
 ) {
     Text(
-        "Runtimes (${selected.size}/${dispatchableIdentities.size})",
+        "Runtimes (${selected.size}/${dispatchableIdentities.size}; cap $maxParallel)",
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -110,7 +112,7 @@ internal fun FanOutRuntimePicker(
             FanOutRuntimeRow(
                 identity = identity,
                 isOn = identity.runtimeID?.token?.let { selected.contains(it) } == true,
-                canDisable = selected.size > 2,
+                canDisable = selected.size > 1,
                 onToggle = { runtime, enabled -> onToggleRuntime(runtime, enabled) },
             )
         }

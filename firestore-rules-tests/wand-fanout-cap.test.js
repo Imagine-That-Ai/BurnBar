@@ -1,11 +1,12 @@
 /**
- * Firestore rules tests for The Wand per-tier fan-out cap.
+ * Firestore rules tests for The Wand fan-out cap.
  *
- * validMissionGroup() caps childMissionIDs / runtimeTokens / parallelismLimit
- * at wandFanOutCap(userId): Free 1 / Cloud 3 / Cloud Pro 8 / Ultra 16.
- * Everything else in the mission_group doc is held valid (sealed payload +
- * active vault key) so each assertion exercises ONLY the cap — and proves the
- * get()-budget of the new tier helpers does not break otherwise-valid writes.
+ * The mobile clients dispatch a fan-out as one atomic batch:
+ *   users/{uid}/mission_groups/{groupID}
+ *   users/{uid}/cli_agent_mission_requests/{childID}...
+ *
+ * The rules must cap the parent by tier, make the parent membership immutable,
+ * and require every grouped child to be listed in that parent.
  */
 import {
   initializeTestEnvironment,
@@ -13,123 +14,287 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
-import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { doc, setDoc, updateDoc, writeBatch, Timestamp } from "firebase/firestore";
 
 const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
+const RULES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
 const FIRESTORE_HOST = process.env.FIRESTORE_TEST_HOST || "127.0.0.1";
 const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080", 10);
-const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
 
+const aliceUid = "alice-uid";
 const vaultKeyID = "v1_0123456789abcdef0123456789abcdef";
-const futureExpiry = Timestamp.fromMillis(Date.now() + 86_400_000);
+const GLOBAL_SEALED_PAYLOAD_AAD = "OpenBurnBar-CloudVaultSealedPayload-v2";
 
-const CLOUD_PRODUCT = "com.openburnbar.pro.monthly";
-const PRO_MAX_PRODUCT = "com.openburnbar.proMax.v2.monthly";
-const ULTRA_PRODUCT = "com.openburnbar.ultra.monthly";
+const tierEntitlements = {
+  cloud: {
+    docID: "hosted_quota_sync",
+    productID: "com.openburnbar.hostedQuotaSync.cloud.monthly",
+  },
+  legacyCloud: {
+    docID: "burnbar_pro",
+    productID: "com.openburnbar.pro.monthly",
+  },
+  proMax: {
+    docID: "burnbar_pro_max",
+    productID: "com.openburnbar.proMax.v2.monthly",
+  },
+  ultra: {
+    docID: "burnbar_ultra",
+    productID: "com.openburnbar.ultra.monthly",
+  },
+};
 
-function sealedPayload() {
+function payloadAad(uid, collection, docId) {
+  return `OpenBurnBar-CloudVault-aad-v2|${uid}|${collection}|${docId}|sealedPayload|2|sealedPayload`;
+}
+
+function sealedPayload(aad) {
   return {
     schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
     vaultKeyID,
-    sealedBoxBase64: "QUJD",
-    aad: "OpenBurnBar-CloudVaultSealedPayload-v2",
+    sealedBoxBase64: "U2VhbGVkUGF5bG9hZENpcGhlcnRleHRCb2R5",
+    aad,
   };
 }
 
-function missionGroup(n) {
-  return {
-    id: "group-1",
-    childMissionIDs: Array.from({ length: n }, (_, i) => `child-${i}`),
-    runtimeTokens: Array.from({ length: n }, (_, i) => `rt-${i}`),
-    parallelismLimit: n,
-    mergeStrategy: "pick_one",
-    phase: "queued",
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-    schemaVersion: 1,
-    source: "test",
-    contentSealed: true,
-    sealedSchemaVersion: 2,
-    vaultKeyID,
-    sealedPayload: sealedPayload(),
-  };
-}
-
-console.log("wand fan-out cap rules tests");
-
-const testEnv = await initializeTestEnvironment({
-  projectId: PROJECT_ID,
-  firestore: { rules, host: FIRESTORE_HOST, port: FIRESTORE_PORT },
-});
-
-await testEnv.clearFirestore();
-
-async function seed(uid, entitlements) {
+async function seed(testEnv, uid, tier = "free", entitlementOverride = null) {
+  await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, `users/${uid}/cloud_vault_state/current`), {
       vaultKeyID,
       status: "active",
     });
-    for (const [id, productID] of entitlements) {
-      await setDoc(doc(db, `users/${uid}/entitlements/${id}`), {
+    const entitlement = entitlementOverride ?? tierEntitlements[tier];
+    if (entitlement) {
+      await setDoc(doc(db, `users/${uid}/entitlements/${entitlement.docID}`), {
         active: true,
-        productID,
-        expireAt: futureExpiry,
+        productID: entitlement.productID,
+        expireAt: Timestamp.fromMillis(Date.now() + 86_400_000),
       });
     }
   });
 }
 
-function db(uid) {
-  return testEnv.authenticatedContext(uid).firestore();
+function missionGroup(groupID, childIDs, runtimeTokens = childIDs.map((_, index) => `runtime-${index}`)) {
+  const now = Timestamp.fromMillis(Date.now());
+  return {
+    id: groupID,
+    missionKind: "diligence",
+    childMissionIDs: childIDs,
+    runtimeTokens,
+    parallelismLimit: childIDs.length,
+    mergeStrategy: "pick_one",
+    phase: "queued",
+    createdAt: now,
+    updatedAt: now,
+    schemaVersion: 1,
+    source: "ios",
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID,
+    sealedPayload: sealedPayload(GLOBAL_SEALED_PAYLOAD_AAD),
+  };
 }
 
+function childMission(uid, groupID, childID, siblingIndex, siblingCount, extra = {}) {
+  const now = Timestamp.fromMillis(Date.now());
+  return {
+    id: childID,
+    missionKind: "diligence",
+    requestedRuntime: `runtime-${siblingIndex}`,
+    depth: "standard",
+    approvalMode: "existing_policy",
+    commandsAllowed: false,
+    fileEditsAllowed: false,
+    source: "ios",
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+    schemaVersion: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID,
+    sealedPayload: sealedPayload(payloadAad(uid, "cli_agent_mission_requests", childID)),
+    groupID,
+    siblingIndex,
+    siblingCount,
+    isGroupChild: true,
+    ...extra,
+  };
+}
+
+function singleMission(uid, requestID, extra = {}) {
+  const now = Timestamp.fromMillis(Date.now());
+  return {
+    id: requestID,
+    missionKind: "diligence",
+    requestedRuntime: "codex",
+    depth: "standard",
+    approvalMode: "existing_policy",
+    commandsAllowed: false,
+    fileEditsAllowed: false,
+    source: "ios",
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+    schemaVersion: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID,
+    sealedPayload: sealedPayload(payloadAad(uid, "cli_agent_mission_requests", requestID)),
+    ...extra,
+  };
+}
+
+function childIDsFor(groupID, count) {
+  return Array.from({ length: count }, (_, index) => `${groupID}-child-${index + 1}`);
+}
+
+async function commitFanOut(db, uid, groupID, count, options = {}) {
+  const childIDs = options.childIDs ?? childIDsFor(groupID, count);
+  const parentChildIDs = options.parentChildIDs ?? childIDs;
+  const batch = writeBatch(db);
+  batch.set(doc(db, `users/${uid}/mission_groups/${groupID}`), missionGroup(groupID, parentChildIDs));
+  childIDs.forEach((childID, index) => {
+    batch.set(
+      doc(db, `users/${uid}/cli_agent_mission_requests/${childID}`),
+      childMission(uid, groupID, childID, index, childIDs.length, options.childExtra?.(childID, index) ?? {})
+    );
+  });
+  await batch.commit();
+}
+
+let testEnv;
+let runs = 0;
 let failures = 0;
-async function expectAllow(label, uid, n) {
+
+async function step(name, fn) {
+  runs += 1;
   try {
-    await assertSucceeds(setDoc(doc(db(uid), `users/${uid}/mission_groups/group-1`), missionGroup(n)));
-    console.log(`  PASS ${label}`);
-  } catch (e) {
+    await fn();
+    console.log(`PASS ${name}`);
+  } catch (error) {
     failures += 1;
-    console.error(`  FAIL ${label}: ${e.message}`);
-  }
-}
-async function expectDeny(label, uid, n) {
-  try {
-    await assertFails(setDoc(doc(db(uid), `users/${uid}/mission_groups/group-1`), missionGroup(n)));
-    console.log(`  PASS ${label}`);
-  } catch (e) {
-    failures += 1;
-    console.error(`  FAIL ${label}: ${e.message}`);
+    console.error(`FAIL ${name}`);
+    console.error(error);
   }
 }
 
-// Free (no entitlement) → cap 1.
-await seed("free-u", []);
-await expectAllow("free allows 1", "free-u", 1);
-await expectDeny("free denies 2", "free-u", 2);
+async function main() {
+  testEnv = await initializeTestEnvironment({
+    projectId: PROJECT_ID,
+    firestore: {
+      rules: readFileSync(RULES_PATH, "utf8"),
+      host: FIRESTORE_HOST,
+      port: FIRESTORE_PORT,
+    },
+  });
 
-// Cloud (burnbar_pro) → cap 3.
-await seed("cloud-u", [["burnbar_pro", CLOUD_PRODUCT]]);
-await expectAllow("cloud allows 3", "cloud-u", 3);
-await expectDeny("cloud denies 4", "cloud-u", 4);
+  const aliceDB = testEnv.authenticatedContext(aliceUid).firestore();
 
-// Cloud Pro (burnbar_pro_max) → cap 8.
-await seed("pro-u", [["burnbar_pro_max", PRO_MAX_PRODUCT]]);
-await expectAllow("pro allows 8", "pro-u", 8);
-await expectDeny("pro denies 9", "pro-u", 9);
+  await step("free tier allows the real 1-child batch shape", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "free-allow-1", 1));
+  });
 
-// Ultra (burnbar_ultra) → cap 16.
-await seed("ultra-u", [["burnbar_ultra", ULTRA_PRODUCT]]);
-await expectAllow("ultra allows 16", "ultra-u", 16);
-await expectDeny("ultra denies 17", "ultra-u", 17);
+  await step("free tier denies a 2-child batch", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(commitFanOut(aliceDB, aliceUid, "free-deny-2", 2));
+  });
 
-await testEnv.cleanup();
-if (failures > 0) {
-  console.error(`${failures} wand fan-out cap assertion(s) FAILED`);
-  process.exit(1);
+  await step("cloud tier allows 3 and denies 4", async () => {
+    await seed(testEnv, aliceUid, "cloud");
+    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "cloud-allow-3", 3));
+    await seed(testEnv, aliceUid, "cloud");
+    await assertFails(commitFanOut(aliceDB, aliceUid, "cloud-deny-4", 4));
+  });
+
+  await step("legacy cloud entitlement doc maps only to the Cloud cap", async () => {
+    await seed(testEnv, aliceUid, "legacyCloud");
+    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "legacy-cloud-allow-3", 3));
+    await seed(testEnv, aliceUid, "legacyCloud");
+    await assertFails(commitFanOut(aliceDB, aliceUid, "legacy-cloud-deny-4", 4));
+  });
+
+  await step("cloud pro tier allows 8 and denies 9", async () => {
+    await seed(testEnv, aliceUid, "proMax");
+    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "pro-allow-8", 8));
+    await seed(testEnv, aliceUid, "proMax");
+    await assertFails(commitFanOut(aliceDB, aliceUid, "pro-deny-9", 9));
+  });
+
+  await step("ultra tier allows 16", async () => {
+    await seed(testEnv, aliceUid, "ultra");
+    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "ultra-allow-16", 16));
+  });
+
+  await step("child bypass fails when extra children are not listed in the parent", async () => {
+    await seed(testEnv, aliceUid, "free");
+    const childIDs = childIDsFor("free-bypass", 2);
+    await assertFails(
+      commitFanOut(aliceDB, aliceUid, "free-bypass", 2, {
+        childIDs,
+        parentChildIDs: [childIDs[0]],
+      })
+    );
+  });
+
+  await step("parent membership cannot be mutated after create", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "mutate-parent", 1));
+    await assertFails(
+      updateDoc(doc(aliceDB, `users/${aliceUid}/mission_groups/mutate-parent`), {
+        childMissionIDs: ["mutate-parent-child-1", "mutate-parent-child-2"],
+        runtimeTokens: ["runtime-0", "runtime-1"],
+        parallelismLimit: 2,
+        updatedAt: Timestamp.fromMillis(Date.now()),
+      })
+    );
+  });
+
+  await step("child path id must match the sealed child payload and declared id", async () => {
+    await seed(testEnv, aliceUid, "cloud");
+    await assertFails(
+      commitFanOut(aliceDB, aliceUid, "mismatch-child", 1, {
+        childExtra: () => ({
+          id: "different-child-id",
+        }),
+      })
+    );
+  });
+
+  await step("single mission writes cannot carry spoofed partial group fields", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/spoof-single`),
+        singleMission(aliceUid, "spoof-single", {
+          groupID: "missing-parent",
+        })
+      )
+    );
+  });
+
+  await step("miswritten ultra entitlement doc with a non-ultra product does not grant Ultra", async () => {
+    await seed(testEnv, aliceUid, "free", {
+      docID: "burnbar_ultra",
+      productID: "com.openburnbar.hostedQuotaSync.cloud.monthly",
+    });
+    await assertFails(commitFanOut(aliceDB, aliceUid, "miswritten-ultra", 16));
+  });
+
+  await testEnv.cleanup();
+  console.log(`\n${runs - failures}/${runs} cases passed`);
+  if (failures > 0) process.exit(1);
 }
-console.log("all wand fan-out cap rules tests passed");
+
+main().catch(async (error) => {
+  console.error(error);
+  if (testEnv) await testEnv.cleanup();
+  process.exit(2);
+});

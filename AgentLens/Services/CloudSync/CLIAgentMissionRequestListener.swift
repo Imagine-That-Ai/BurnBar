@@ -4,6 +4,41 @@ import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OSLog
 
+private struct MissionGroupValidationError: LocalizedError {
+    let reason: String
+
+    var errorDescription: String? {
+        "Invalid Wand mission group: \(reason)"
+    }
+}
+
+private enum WandMissionEntitlements {
+    static let premiumProductIDs: Set<String> = [
+        "com.openburnbar.hostedQuotaSync.cloud.monthly",
+        "com.openburnbar.hostedQuotaSync.monthly",
+        "com.openburnbar.pro.monthly",
+        "com.openburnbar.pro.annual",
+        "com.openburnbar.proMax.bundle.monthly",
+        "com.openburnbar.proMax.v2.monthly",
+        "com.openburnbar.proMax.annual",
+        "com.openburnbar.ultra.monthly",
+        "com.openburnbar.ultra.annual",
+        "com.openburnbar.ultra.annual.v2",
+    ]
+
+    static let proMaxProductIDs: Set<String> = [
+        "com.openburnbar.proMax.bundle.monthly",
+        "com.openburnbar.proMax.v2.monthly",
+        "com.openburnbar.proMax.annual",
+    ]
+
+    static let ultraProductIDs: Set<String> = [
+        "com.openburnbar.ultra.monthly",
+        "com.openburnbar.ultra.annual",
+        "com.openburnbar.ultra.annual.v2",
+    ]
+}
+
 @MainActor
 final class CLIAgentMissionRequestListener {
 
@@ -148,6 +183,136 @@ final class CLIAgentMissionRequestListener {
         return merged
     }
 
+    private func validateMissionGroupClaimIfNeeded(
+        data: [String: Any],
+        uid: String,
+        requestID: String
+    ) async throws -> MissionGroupClaimContext? {
+        let groupKeys = ["groupID", "siblingIndex", "siblingCount", "isGroupChild"]
+        guard groupKeys.contains(where: { data[$0] != nil }) else { return nil }
+
+        guard (data["id"] as? String) == requestID else {
+            throw MissionGroupValidationError(reason: "child document id does not match mission id")
+        }
+        guard data["isGroupChild"] as? Bool == true else {
+            throw MissionGroupValidationError(reason: "grouped child missing isGroupChild=true")
+        }
+        guard let groupID = (data["groupID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !groupID.isEmpty,
+              groupID.count <= 512 else {
+            throw MissionGroupValidationError(reason: "missing or invalid groupID")
+        }
+        guard let siblingIndex = integerField(data["siblingIndex"]),
+              let siblingCount = integerField(data["siblingCount"]),
+              siblingCount > 0,
+              siblingCount <= WandFanOut.maxParallel(for: .ultra) else {
+            throw MissionGroupValidationError(reason: "invalid sibling metadata")
+        }
+
+        let groupRef = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("mission_groups").document(groupID)
+        let snapshot = try await groupRef.getDocument()
+        guard let group = snapshot.data() else {
+            throw MissionGroupValidationError(reason: "parent group is missing")
+        }
+        guard (group["id"] as? String) == groupID else {
+            throw MissionGroupValidationError(reason: "parent group id mismatch")
+        }
+        let tierCap = try await resolvedWandFanOutCap(uid: uid)
+        guard let childMissionIDs = group["childMissionIDs"] as? [String],
+              !childMissionIDs.isEmpty,
+              childMissionIDs.count <= tierCap else {
+            throw MissionGroupValidationError(reason: "parent child list is invalid")
+        }
+        guard childMissionIDs.contains(requestID) else {
+            throw MissionGroupValidationError(reason: "child is not declared by parent group")
+        }
+        guard siblingCount == childMissionIDs.count,
+              siblingIndex >= 0,
+              siblingIndex < childMissionIDs.count else {
+            throw MissionGroupValidationError(reason: "child sibling metadata does not match parent")
+        }
+        guard let runtimeTokens = group["runtimeTokens"] as? [String],
+              runtimeTokens.count == childMissionIDs.count else {
+            throw MissionGroupValidationError(reason: "parent runtime list is invalid")
+        }
+        let parallelismLimit = integerField(group["parallelismLimit"]) ?? childMissionIDs.count
+        guard parallelismLimit >= 1,
+              parallelismLimit <= childMissionIDs.count,
+              parallelismLimit <= tierCap else {
+            throw MissionGroupValidationError(reason: "parent parallelism limit is invalid")
+        }
+        return MissionGroupClaimContext(
+            groupID: groupID,
+            siblingIndex: siblingIndex,
+            siblingCount: siblingCount,
+            parallelismLimit: parallelismLimit,
+            tierCap: tierCap
+        )
+    }
+
+    private func resolvedWandFanOutCap(uid: String) async throws -> Int {
+        let entitlements = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("entitlements")
+
+        let ultra = try await entitlements.document("burnbar_ultra").getDocument()
+        if activeEntitlement(ultra, productIDs: WandMissionEntitlements.ultraProductIDs) {
+            return WandFanOut.maxParallel(for: .ultra)
+        }
+
+        let proMax = try await entitlements.document("burnbar_pro_max").getDocument()
+        if activeEntitlement(proMax, productIDs: WandMissionEntitlements.proMaxProductIDs) {
+            return WandFanOut.maxParallel(for: .pro)
+        }
+
+        async let hostedQuota = entitlements.document("hosted_quota_sync").getDocument()
+        async let burnBarPro = entitlements.document("burnbar_pro").getDocument()
+        let cloudCandidates = try await [hostedQuota, burnBarPro, proMax]
+        if cloudCandidates.contains(where: { activeEntitlement($0, productIDs: WandMissionEntitlements.premiumProductIDs) }) {
+            return WandFanOut.maxParallel(for: .cloud)
+        }
+
+        return WandFanOut.maxParallel(for: .none)
+    }
+
+    private func activeEntitlement(_ snapshot: DocumentSnapshot, productIDs: Set<String>) -> Bool {
+        guard snapshot.exists,
+              let data = snapshot.data(),
+              data["active"] as? Bool == true,
+              let productID = data["productID"] as? String,
+              productIDs.contains(productID),
+              let expireAt = entitlementTimestamp(data["expireAt"]) else {
+            return false
+        }
+        return expireAt > Date()
+    }
+
+    private func entitlementTimestamp(_ value: Any?) -> Date? {
+        switch value {
+        case let timestamp as Timestamp:
+            return timestamp.dateValue()
+        case let date as Date:
+            return date
+        default:
+            return nil
+        }
+    }
+
+    private func integerField(_ value: Any?) -> Int? {
+        switch value {
+        case let value as Int:
+            return value
+        case let value as Int64:
+            return Int(value)
+        case let value as NSNumber:
+            return value.intValue
+        default:
+            return nil
+        }
+    }
+
     func sealedStateUpdate(
         uid: String,
         requestID: String,
@@ -231,7 +396,19 @@ final class CLIAgentMissionRequestListener {
             }
             return
         }
-        let data = mergePrivateMissionPayload(privatePayload, into: rawData)
+        var data = mergePrivateMissionPayload(privatePayload, into: rawData)
+        let missionGroupContext: MissionGroupClaimContext?
+        do {
+            missionGroupContext = try await validateMissionGroupClaimIfNeeded(
+                data: data,
+                uid: uid,
+                requestID: document.documentID
+            )
+        } catch {
+            logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
+            await fail(document: document, message: error.localizedDescription)
+            return
+        }
         let title = (data["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? "Insights mission"
         guard let prompt = (data["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -240,8 +417,8 @@ final class CLIAgentMissionRequestListener {
             return
         }
 
-        let requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
-        let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        var requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
+        var requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         let missionKind = (data["missionKind"] as? String) ?? "unknown"
         missionEventSequences[document.documentID] = max(
             data["lastEventSequence"] as? Int ?? 1,
@@ -257,10 +434,32 @@ final class CLIAgentMissionRequestListener {
             return
         }
 
-        let backend = resolveBackend(
+        var backend = resolveBackend(
             requestedRuntime: requestedRuntime,
             missionKind: data["missionKind"] as? String
         )
+        let wandRoutingSelection: CLIAgentMissionWandRoutingSelection?
+        do {
+            wandRoutingSelection = try await resolveWandRoutingIfNeeded(
+                context: missionGroupContext,
+                data: data
+            )
+            if let wandRoutingSelection {
+                requestedRuntime = wandRoutingSelection.requestedRuntime
+                requestedModelID = wandRoutingSelection.modelID
+                data["requestedRuntime"] = requestedRuntime
+                data["requestedModelID"] = requestedModelID
+                backend = resolveBackend(
+                    requestedRuntime: requestedRuntime,
+                    missionKind: data["missionKind"] as? String
+                )
+                logger.info("wand routing selected mission id=\(document.documentID, privacy: .public) model=\(wandRoutingSelection.modelID, privacy: .public) provider=\(wandRoutingSelection.provider ?? "unknown", privacy: .public) source=\(wandRoutingSelection.source ?? "unknown", privacy: .public)")
+            }
+        } catch {
+            logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
+            await fail(document: document, message: error.localizedDescription)
+            return
+        }
         if await shouldPauseForApproval(document: document, data: data, backend: backend) {
             return
         }
@@ -272,8 +471,11 @@ final class CLIAgentMissionRequestListener {
 
         logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
         do {
-            let claimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
+            let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
                 ?? "\(backend.displayName) claimed the mission on this Mac."
+            let claimSummary = wandRoutingSelection.map {
+                "\(baseClaimSummary) \($0.claimSummaryFragment)"
+            } ?? baseClaimSummary
             var claimPayload: [String: Any] = [
                 "status": "accepted",
                 "claimedBy": accountManager.deviceId,

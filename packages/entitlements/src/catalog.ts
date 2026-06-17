@@ -133,7 +133,32 @@ export const FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS = {
     COMPUTER_USE_PRODUCT_IDS.hostedComputerUseSyncMonthly,
     ...FIRESTORE_RULES_PRO_MAX_ULTRA_TAIL,
   ],
+  proMax: [
+    PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
+    APPLE_PRODUCT_IDS.proMaxMonthly,
+    APPLE_PRODUCT_IDS.proMaxAnnual,
+  ],
+  ultra: [
+    APPLE_PRODUCT_IDS.ultraMonthly,
+    GOOGLE_PLAY_PRODUCT_IDS.ultraAnnual,
+    APPLE_PRODUCT_IDS.ultraAnnual,
+  ],
 } as const;
+
+/**
+ * Canonical per-tier Wand fan-out ceiling. Every shipped surface that exposes or
+ * enforces The Wand's parallel worker cap must match this table:
+ * Firestore rules, Functions, Swift, Kotlin, website pricing copy, and Python's
+ * untrusted-env clamp tests.
+ */
+export const WAND_PARALLEL_CAPS = {
+  free: 1,
+  cloud: 3,
+  pro: 8,
+  ultra: 16,
+} as const;
+
+export type WandParallelTier = keyof typeof WAND_PARALLEL_CAPS;
 
 /** Firestore entitlement document IDs (the doc id under `users/{uid}/entitlements/`). */
 export const ENTITLEMENT_DOC_IDS = {

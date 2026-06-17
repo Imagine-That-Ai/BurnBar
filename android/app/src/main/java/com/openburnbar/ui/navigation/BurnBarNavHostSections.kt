@@ -108,7 +108,7 @@ internal fun BurnBarContent(
         burnBarBurnRoute()
         burnBarInsightsRoutes(navController, isCloudMember)
         burnBarStreamsRoute(navController, isCloudMember)
-        burnBarHermesRoutes(navController)
+        burnBarHermesRoutes(navController, currentTier)
         burnBarYouRoute()
         burnBarStoreRoute(navController)
         burnBarControlCenterRoute(navController, priceForTier)
@@ -199,13 +199,13 @@ private fun androidx.navigation.NavGraphBuilder.burnBarStreamsRoute(navControlle
     }
 }
 
-private fun androidx.navigation.NavGraphBuilder.burnBarHermesRoutes(navController: NavHostController) {
-    burnBarHermesSquareRoute(navController)
+private fun androidx.navigation.NavGraphBuilder.burnBarHermesRoutes(navController: NavHostController, currentTier: com.openburnbar.ui.pro.CloudTier) {
+    burnBarHermesSquareRoute(navController, currentTier)
     burnBarAssistantsAgentRoutes(navController)
     burnBarMercuryCallRoute(navController)
 }
 
-private fun androidx.navigation.NavGraphBuilder.burnBarHermesSquareRoute(navController: NavHostController) {
+private fun androidx.navigation.NavGraphBuilder.burnBarHermesSquareRoute(navController: NavHostController, currentTier: com.openburnbar.ui.pro.CloudTier) {
     composable(
         BurnBarTab.HERMES.route,
         deepLinks =
@@ -216,6 +216,7 @@ private fun androidx.navigation.NavGraphBuilder.burnBarHermesSquareRoute(navCont
         ),
     ) {
         HermesSquareSplitLayout(
+            currentTier = currentTier,
             onOpenBrandZone = { uri ->
                 val encoded = java.net.URLEncoder.encode(uri, Charsets.UTF_8.name())
                 navController.navigate("agent/$encoded")

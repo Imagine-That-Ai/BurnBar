@@ -43,18 +43,20 @@ BACKENDS = {"gateway", "direct", "builtin"}
 # Hard ceiling on parallel workers per Wand cast — mirrors the
 # firestore.rules validMissionGroup() cap. The macOS app/daemon passes the
 # user's resolved per-tier cap (Free 1 / Cloud 3 / Cloud Pro 8 / Ultra 16, from
-# WandFanOut.maxParallel) via OPENBURNBAR_WAND_PARALLEL_MAX; absent it we fall
-# back to this ceiling. Always clamped to [1, WAND_PARALLEL_HARD_CEILING].
+# WandFanOut.maxParallel) via OPENBURNBAR_WAND_PARALLEL_MAX. Missing or
+# malformed values are untrusted and fall back to the free tier. Always clamped
+# to [1, WAND_PARALLEL_HARD_CEILING].
 WAND_PARALLEL_HARD_CEILING = 16
+WAND_PARALLEL_DEFAULT = 1
 
 
 def resolved_wand_parallel_max() -> int:
     """Per-tier parallel fan-out ceiling for a Wand cast, from the env the app sets."""
     raw = os.environ.get("OPENBURNBAR_WAND_PARALLEL_MAX", "").strip()
     try:
-        value = int(raw) if raw else WAND_PARALLEL_HARD_CEILING
+        value = int(raw) if raw else WAND_PARALLEL_DEFAULT
     except ValueError:
-        value = WAND_PARALLEL_HARD_CEILING
+        value = WAND_PARALLEL_DEFAULT
     return max(1, min(value, WAND_PARALLEL_HARD_CEILING))
 
 

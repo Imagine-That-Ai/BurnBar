@@ -9,7 +9,7 @@
   "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test lib/*.test.js"
+    "test": "npm run build && node --test lib/*.test.js && node ../../tools/test-wand-cap-parity.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",

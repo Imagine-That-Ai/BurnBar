@@ -316,7 +316,7 @@ class CLIAgentMissionDispatcher(
     private fun validateFanOutDispatch(runtimeTokens: List<String>, trimmedPrompt: String) {
         val validationMessage =
             when {
-                runtimeTokens.size < 2 -> "Fan-out dispatch needs at least 2 runtimes."
+                runtimeTokens.isEmpty() -> "Fan-out dispatch needs at least 1 runtime."
                 trimmedPrompt.isBlank() -> "Mission prompt was empty."
                 else -> null
             }

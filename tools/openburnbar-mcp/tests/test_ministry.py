@@ -205,7 +205,7 @@ def test_wand_sanitizer_falls_back_and_has_one_default_with_headless_floor() -> 
 
 def test_resolved_wand_parallel_max_env_and_clamp(monkeypatch) -> None:
     monkeypatch.delenv("OPENBURNBAR_WAND_PARALLEL_MAX", raising=False)
-    assert ministry.resolved_wand_parallel_max() == 16  # ceiling fallback
+    assert ministry.resolved_wand_parallel_max() == 1  # fail-closed free fallback
     monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "3")
     assert ministry.resolved_wand_parallel_max() == 3  # Cloud cap
     monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "8")
@@ -215,7 +215,7 @@ def test_resolved_wand_parallel_max_env_and_clamp(monkeypatch) -> None:
     monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "0")
     assert ministry.resolved_wand_parallel_max() == 1  # floor
     monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "garbage")
-    assert ministry.resolved_wand_parallel_max() == 16  # invalid → ceiling
+    assert ministry.resolved_wand_parallel_max() == 1  # invalid → fail-closed fallback
 
 
 def test_selector_can_probe_past_first_failure(monkeypatch, tmp_path: Path) -> None:
@@ -333,6 +333,7 @@ def test_multi_selector_preserves_provider_diversity_with_proof(monkeypatch, tmp
         probed.append(arg)
         return {"landsCommit": True, "arg": arg, "autonomy": autonomy, "ttl": ttl}
 
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "2")
     selected = ministry.select_models_for_wand(
         store,
         count=2,
