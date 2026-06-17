@@ -44,19 +44,14 @@ class MediaSessionForegroundService : Service() {
         val launchIntent =
             Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-        val pendingFlag =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                android.app.PendingIntent.FLAG_IMMUTABLE
-            } else {
-                0
+                setPackage(packageName)
             }
         val launchPending =
             android.app.PendingIntent.getActivity(
                 this,
                 0,
                 launchIntent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or pendingFlag,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
             )
 
         val builder =

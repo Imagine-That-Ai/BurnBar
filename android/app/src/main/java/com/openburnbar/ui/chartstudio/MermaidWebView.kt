@@ -41,6 +41,15 @@ fun MermaidCanvas(spec: MermaidSpec, modifier: Modifier = Modifier) {
                     useWideViewPort = true
                     cacheMode = WebSettings.LOAD_DEFAULT
                     domStorageEnabled = true
+                    allowFileAccess = false
+                    allowContentAccess = false
+                    allowFileAccessFromFileURLs = false
+                    allowUniversalAccessFromFileURLs = false
+                    blockNetworkLoads = true
+                    javaScriptCanOpenWindowsAutomatically = false
+                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    safeBrowsingEnabled = true
+                    setSupportMultipleWindows(false)
                 }
                 setBackgroundColor(0x00000000) // transparent so the Aurora gradient bleeds through
                 isVerticalScrollBarEnabled = false
