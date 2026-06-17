@@ -49,8 +49,12 @@ AgentLens/Services/CloudVaultCrypto.swift @Ajnunezg @emilio3435
 AgentLens/Services/DataStore/DatabaseEncryptionService.swift @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift @Ajnunezg @emilio3435
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*Signal*.swift @Ajnunezg @emilio3435
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*HPKE*.swift @Ajnunezg @emilio3435
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift @Ajnunezg @emilio3435
 scripts/ci/ @Ajnunezg @emilio3435
+scripts/ci/verify-security-claims.sh @Ajnunezg @emilio3435
+scripts/ci/check-privacy-invariants.mjs @Ajnunezg @emilio3435
 Vendor/libsignal @Ajnunezg @emilio3435
 Vendor/libsignal/ @Ajnunezg @emilio3435
 Vendor/GRDB-SQLCipher/ @Ajnunezg @emilio3435

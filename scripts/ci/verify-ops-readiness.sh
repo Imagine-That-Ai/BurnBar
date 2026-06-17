@@ -41,6 +41,9 @@ bash -n scripts/ops/discover-gcp-access.sh
 node --check scripts/ops/check-ops-alerts.mjs
 node --check scripts/lib/ops-alerts-gate.mjs
 node --test scripts/lib/ops-alerts-gate.test.mjs
+node --check scripts/ops/run-alert-delivery-drill.mjs
+node --check scripts/lib/alert-delivery-drill.mjs
+node --test scripts/lib/alert-delivery-drill.test.mjs
 
 echo "==> release attestation verifier"
 bash -n scripts/ci/verify-release-attestations.sh

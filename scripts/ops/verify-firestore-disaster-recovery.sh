@@ -121,5 +121,5 @@ if failures:
 PY
 
 if [[ "${FIRESTORE_DR_JSON_ONLY:-0}" != "1" ]]; then
-  echo "PASS: Firestore disaster-recovery posture"
+  echo "PASS: Firestore disaster-recovery posture" >&2
 fi
