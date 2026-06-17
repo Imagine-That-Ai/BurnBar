@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the BurnBar Remote UniFFI bridge for the gen-2 remote-control engine:
+  a Rust `burnbar-remote-ffi` crate, reproducible XCFramework/AAR build scripts,
+  generated Swift/Kotlin bindings, a Swift `BurnBarRemoteEngine` package product,
+  an Android `:burnbar-remote` module, and CI parity checks that rebuild the
+  native artifacts before running focused Swift/Kotlin bridge smokes.
 - Added local MCP Project Code Memory and durable agent-memory tools: project-scoped remember/recall/forget/audit/analytics, local-only code indexing/search/context packs, lexical symbol/reference/call-graph lookups, cached diagnostics, index status, and a memory doctor. Code indexing rejects secret-bearing files before persistence, stamps blob/commit identity, records label-only audit events, and stays local-only by default.
 - Added Project Code Memory storage budgets and daemon-owned watch mode: index status now reports storage bytes, budget, and vacuum metadata, `index --watch` / `burnbar_watch_project` reindex on source or git-ref changes through the daemon write path, and direct local MCP indexing honors the same budget fields.
 - Added the Project Code Memory Phase 4 static parser tier: a stateless Rust Tree-sitter helper for Swift, TypeScript/TSX, and Python emits SHA-gated `static_tree_sitter` symbols with structured tier evidence, while daemon/local MCP fall back to `lexical_fallback` when the helper is unavailable or stale.

@@ -17,9 +17,9 @@ import AppKit
 // constellations, drift *under* the glass, and re-form into a new provider when
 // two collide.
 //
-// Apple Liquid Glass (`glassEffect`) is used when available (iOS 26 / macOS 26)
-// and falls back to a hand-built obsidian-glass cube on older OSes — so the
-// component keeps the app's existing iOS 17 / macOS 14 deployment target.
+// The obsidian-glass cube is intentionally hand-built with materials, sheens,
+// and edge highlights so older CI SDKs can type-check the component while the
+// app keeps its existing iOS 17 / macOS 14 deployment target.
 //
 // `Color(hex:)` comes from `OpenBurnBarCore/ThemePrimitives`.
 
@@ -478,10 +478,6 @@ private struct FormationHero: View {
                             }
                         }
                         .frame(width: width, height: height).blendMode(.plusLighter).allowsHitTesting(false)
-                    }
-
-                    if #available(iOS 26.0, macOS 26.0, *) {
-                        Color.clear.frame(width: width, height: height).glassEffect(.regular, in: CubeSil())
                     }
 
                     ZStack {

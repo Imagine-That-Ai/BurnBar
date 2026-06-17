@@ -1,0 +1,108 @@
+name: BurnBarRemote xcframework
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/burnbar-remote/**"
+      - "scripts/build-burnbar-remote-xcframework.sh"
+      - "scripts/test-burnbar-remote-swift-smoke.sh"
+      - ".github/workflows/burnbar-remote-xcframework.yml"
+      - "OpenBurnBarCore/Package.swift"
+      - "OpenBurnBarCore/Sources/BurnBarRemote/**"
+      - "OpenBurnBarCore/Sources/BurnBarRemoteEngine/**"
+      - "OpenBurnBarCore/Tests/BurnBarRemoteEngineTests/**"
+  pull_request:
+    paths:
+      - "crates/burnbar-remote/**"
+      - "scripts/build-burnbar-remote-xcframework.sh"
+      - "scripts/test-burnbar-remote-swift-smoke.sh"
+      - ".github/workflows/burnbar-remote-xcframework.yml"
+      - "OpenBurnBarCore/Package.swift"
+      - "OpenBurnBarCore/Sources/BurnBarRemote/**"
+      - "OpenBurnBarCore/Sources/BurnBarRemoteEngine/**"
+      - "OpenBurnBarCore/Tests/BurnBarRemoteEngineTests/**"
+  workflow_dispatch:
+
+concurrency:
+  group: burnbar-remote-xcframework-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: recursive
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
+        with:
+          toolchain: "1.94.0"
+          targets: aarch64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/burnbar-remote/target
+            build/burnbar-remote-uniffi-bindgen-swift-helper/target
+          key: burnbar-remote-xcframework-${{ runner.os }}-${{ hashFiles('crates/burnbar-remote/Cargo.toml', 'crates/burnbar-remote/Cargo.lock') }}
+          restore-keys: |
+            burnbar-remote-xcframework-${{ runner.os }}-
+
+      - name: Host-side cargo check
+        run: cargo check -p burnbar-remote-ffi
+        working-directory: crates/burnbar-remote
+
+      - name: Host-side cargo test
+        run: cargo test -p burnbar-remote-ffi
+        working-directory: crates/burnbar-remote
+
+      - name: Build xcframework
+        run: ./scripts/build-burnbar-remote-xcframework.sh
+
+      - name: Verify generated Swift parity
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            OpenBurnBarCore/Sources/BurnBarRemote/Generated \
+            || {
+              echo "::error::Generated BurnBarRemote Swift bindings do not match a clean source rebuild.";
+              exit 1;
+            }
+
+      - name: Smoke-test Swift bridge
+        run: ./scripts/test-burnbar-remote-swift-smoke.sh
+
+      - name: Inspect xcframework
+        run: |
+          set -euo pipefail
+          ls -la Vendor/BurnBarRemote.xcframework
+          find Vendor/BurnBarRemote.xcframework -maxdepth 4 -type f | head -60
+          file Vendor/BurnBarRemote.xcframework/*/burnbar_remoteFFI.framework/burnbar_remoteFFI | head -5 || true
+
+      - name: Upload xcframework artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: BurnBarRemote.xcframework
+          path: Vendor/BurnBarRemote.xcframework
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload generated Swift bindings
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: burnbar-remote-swift-bindings
+          path: OpenBurnBarCore/Sources/BurnBarRemote/Generated
+          if-no-files-found: error
+          retention-days: 14
