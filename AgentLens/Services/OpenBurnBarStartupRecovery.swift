@@ -260,7 +260,7 @@ final class OpenBurnBarRuntimeContext {
             hermesRelayHost = existingRelayHost
         } else {
             let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
-            let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery()
+            let cliModelCatalogDiscovery = CLIRuntimeModelCatalogDiscovery(settingsManager: settingsManager)
             let cliSessionActionDispatcher = CLIAgentSessionActionDaemonDispatcher(daemonManager: daemonManager)
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
