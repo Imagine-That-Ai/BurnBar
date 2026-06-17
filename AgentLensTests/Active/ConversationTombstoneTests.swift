@@ -73,29 +73,33 @@ final class ConversationTombstoneTests: XCTestCase {
         let id = "conv-soft-delete"
         try dataStore.upsertConversation(makeRecord(id: id, fullText: "secret token sk-abcdef0123456789abcdef"))
         // Mark it synced so we can prove the soft-delete re-dirties it for upload.
-        try dataStore.markConversationsSynced(ids: [id])
+        try await dataStore.markConversationsSynced(ids: [id])
 
         XCTAssertNotNil(try dataStore.fetchConversation(id: id))
         XCTAssertEqual(try dataStore.fetchConversations().count, 1)
-        XCTAssertEqual(try dataStore.countConversations(), 1)
+        let liveConversationCount = try await dataStore.countConversations()
+        XCTAssertEqual(liveConversationCount, 1)
 
-        try dataStore.softDeleteConversation(id: id)
+        try await dataStore.softDeleteConversation(id: id)
 
         // Every user-facing read now treats it as absent.
         XCTAssertNil(try dataStore.fetchConversation(id: id), "Soft-deleted conversation must read as absent by id.")
         XCTAssertTrue(try dataStore.fetchConversations().isEmpty, "Soft-deleted conversation must drop out of list reads.")
-        XCTAssertEqual(try dataStore.countConversations(), 0)
-        XCTAssertTrue(try dataStore.fetchSessionLogSummaries().isEmpty)
-        XCTAssertTrue(try dataStore.fetchAllSessionLogs().isEmpty)
+        let visibleConversationCount = try await dataStore.countConversations()
+        let visibleSessionSummaries = try await dataStore.fetchSessionLogSummaries()
+        let visibleSessionLogs = try await dataStore.fetchAllSessionLogs()
+        XCTAssertEqual(visibleConversationCount, 0)
+        XCTAssertTrue(visibleSessionSummaries.isEmpty)
+        XCTAssertTrue(visibleSessionLogs.isEmpty)
         XCTAssertEqual(
             try dataStore.fetchConversations(ids: [id]).count, 0,
             "Batch id fetch must exclude tombstones."
         )
 
         // FTS / full-text scans must not surface the tombstoned body.
-        let ftsHits = try dataStore.searchConversationsFTS(query: "secret")
+        let ftsHits = try await dataStore.searchConversationsFTS(query: "secret")
         XCTAssertFalse(ftsHits.contains { $0.conversation.id == id })
-        let occurrences = try dataStore.countOccurrencesInConversationFullText(patterns: ["sk-abcdef"])
+        let occurrences = try await dataStore.countOccurrencesInConversationFullText(patterns: ["sk-abcdef"])
         XCTAssertEqual(occurrences, 0, "Credential scans must not count tombstoned bodies.")
 
         // The tombstone bumped version and re-dirtied the row for delete propagation.
@@ -112,7 +116,7 @@ final class ConversationTombstoneTests: XCTestCase {
         XCTAssertNil(row?["logSyncedAt"], "Soft-delete must clear the session-log sync flag.")
 
         // The tombstone resurfaces for upload (so the delete reaches other devices).
-        let unsynced = try dataStore.fetchUnsyncedConversations(limit: 400)
+        let unsynced = try await dataStore.fetchUnsyncedConversations(limit: 400)
         XCTAssertEqual(unsynced.count, 1)
         XCTAssertNotNil(unsynced.first?.deletedAt, "Unsynced upload set must carry the tombstone.")
     }
@@ -120,7 +124,7 @@ final class ConversationTombstoneTests: XCTestCase {
     func test_softDelete_payloadEmitsDeletedAtAndVersion() async throws {
         let id = "conv-upload-tombstone"
         try dataStore.upsertConversation(makeRecord(id: id))
-        try dataStore.softDeleteConversation(id: id)
+        try await dataStore.softDeleteConversation(id: id)
 
         let sync = ConversationSyncService(context: context, vaultKeyProvider: TestConversationVaultKeyProvider())
         await sync.sync()
@@ -272,7 +276,7 @@ final class ConversationTombstoneTests: XCTestCase {
 
         // Tombstone it 31 days ago — past the 30-day retention window.
         let deletedAt = Date().addingTimeInterval(-31 * 24 * 60 * 60)
-        try dataStore.softDeleteConversation(id: id, at: deletedAt)
+        try await dataStore.softDeleteConversation(id: id, at: deletedAt)
 
         // Seed the cloud artifacts that GC must purge: manifest, legacy chunks,
         // and the current server-owned cloud-search index rows.
@@ -342,7 +346,7 @@ final class ConversationTombstoneTests: XCTestCase {
         let id = "conv-gc-fresh"
         try dataStore.upsertConversation(makeRecord(id: id))
         // Deleted just now — well inside the retention window.
-        try dataStore.softDeleteConversation(id: id, at: Date())
+        try await dataStore.softDeleteConversation(id: id, at: Date())
 
         let fakeCloudClient = FakeSessionLogEncryptedCloudClient()
         let gc = ConversationTombstoneGCService(context: context, encryptedCloudClient: fakeCloudClient)
