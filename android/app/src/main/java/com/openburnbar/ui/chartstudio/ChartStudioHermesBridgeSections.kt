@@ -2,6 +2,7 @@ package com.openburnbar.ui.chartstudio
 
 import com.openburnbar.data.hermes.HermesConnectionMode
 import com.openburnbar.data.hermes.HermesConnectionRecord
+import com.openburnbar.data.hermes.HermesProtocol
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -103,7 +104,7 @@ private fun ChartStudioHermesBridge.resolveEndpointURL(connection: HermesConnect
                 HermesConnectionMode.LOCAL -> "http://127.0.0.1:8642"
                 else -> null
             }
-    return raw.trimEnd('/').substringBefore("/v1")
+    return HermesProtocol.validatedLocalOrPrivateBaseURL(raw)
 }
 
 private fun parseStreamDelta(payload: String): String? {

@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
@@ -26,28 +25,28 @@ internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<Str
     val openIntent =
         Intent(Intent.ACTION_VIEW, Uri.parse(deepLink), this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .setPackage(packageName)
     val replyIntent =
         Intent(this, AgentReplyNotificationReceiver::class.java).apply {
             action = AgentReplyNotificationReceiver.ACTION_REPLY
+            setPackage(packageName)
             putExtra(AgentReplyNotificationReceiver.EXTRA_EVENT_ID, eventId)
             putExtra(AgentReplyNotificationReceiver.EXTRA_THREAD_ID, threadId)
             putExtra(AgentReplyNotificationReceiver.EXTRA_RUNTIME, runtime)
         }
-    val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_MUTABLE else 0
-    val immutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
     val openPending =
         PendingIntent.getActivity(
             this,
             eventId.hashCode(),
             openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     val replyPending =
         PendingIntent.getBroadcast(
             this,
             eventId.hashCode(),
             replyIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )
     val remoteInput =
         RemoteInput.Builder(AgentReplyNotificationReceiver.KEY_TEXT_REPLY)

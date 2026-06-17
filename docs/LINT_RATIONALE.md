@@ -110,6 +110,89 @@ Vendor/GRDB-SQLCipher/GRDB/ValueObservation/Reducers/Trace.swift | swiftlint-dis
 ```
 <!-- END:suppression-allowlist -->
 
+## Mac/iOS Swift twin-basename allowlist
+
+[`scripts/ci/check-twin-basenames.sh`](../scripts/ci/check-twin-basenames.sh)
+blocks new `.swift` files that share a basename across `AgentLens/` and
+`OpenBurnBarMobile/`. The current twins are allowed only as explicit exact-path
+pairs so new forks cannot slip in behind the existing debt. Asset twins are not
+in scope.
+
+Categories:
+
+- `storage-backend-divergence`: shared domain concept with intentionally different local storage, Firestore, or platform persistence.
+- `platform-ui`: parallel SwiftUI surface with platform-specific layout or navigation.
+- `transport`: shared realtime, attachment, media, relay, or attestation concept with platform-specific runtime wiring.
+
+<!-- BEGIN:twin-basename-allowlist -->
+```text
+# Exact AgentLens path | exact OpenBurnBarMobile path | category
+AgentLens/App/AppDelegate.swift | OpenBurnBarMobile/App/AppDelegate.swift | storage-backend-divergence
+AgentLens/Services/AppCheckAttestationMonitor.swift | OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift | transport
+AgentLens/Services/Chat/HermesAttachmentLoader.swift | OpenBurnBarMobile/Services/HermesAttachmentLoader.swift | transport
+AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | transport
+AgentLens/Services/DataStore/BudgetEnforcement.swift | OpenBurnBarMobile/Models/BudgetEnforcement.swift | storage-backend-divergence
+AgentLens/Services/DataStore/BudgetForecast.swift | OpenBurnBarMobile/Models/BudgetForecast.swift | storage-backend-divergence
+AgentLens/Services/DataStore/BudgetGate.swift | OpenBurnBarMobile/Models/BudgetGate.swift | storage-backend-divergence
+AgentLens/Services/DataStore/BudgetLedger.swift | OpenBurnBarMobile/Models/BudgetLedger.swift | storage-backend-divergence
+AgentLens/Services/DataStore/BudgetNotificationCenter.swift | OpenBurnBarMobile/Services/BudgetNotificationCenter.swift | storage-backend-divergence
+AgentLens/Services/DataStore/BudgetRulesStore.swift | OpenBurnBarMobile/Models/BudgetRulesStore.swift | storage-backend-divergence
+AgentLens/Services/DataStore/BudgetSettings.swift | OpenBurnBarMobile/Models/BudgetSettings.swift | storage-backend-divergence
+AgentLens/Services/IrohRelay/FirestoreIrohPairingDirectory.swift | OpenBurnBarMobile/Services/IrohRelay/FirestoreIrohPairingDirectory.swift | transport
+AgentLens/Services/IrohRelay/IrohRelayKeyStore.swift | OpenBurnBarMobile/Services/IrohRelay/IrohRelayKeyStore.swift | transport
+AgentLens/Services/IrohRelay/IrohTransportAuditLogger.swift | OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift | transport
+AgentLens/Services/Media/IrohBlobKeyStore.swift | OpenBurnBarMobile/Services/Media/IrohBlobKeyStore.swift | transport
+AgentLens/Services/Media/MediaFileTransferServiceFactory.swift | OpenBurnBarMobile/Services/Media/MediaFileTransferServiceFactory.swift | transport
+AgentLens/Services/Media/MercuryPeerSource.swift | OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift | transport
+AgentLens/Services/Settings/Stores/ElderWandSettings.swift | OpenBurnBarMobile/Services/Hermes/ElderWandSettings.swift | platform-ui
+AgentLens/Services/SmartHub/PixelClockSettingsAdapter.swift | OpenBurnBarMobile/Services/PixelClockSettingsAdapter.swift | storage-backend-divergence
+AgentLens/Services/SmartHub/SmartHubDisplaySettingsAdapter.swift | OpenBurnBarMobile/Services/SmartHubDisplaySettingsAdapter.swift | storage-backend-divergence
+AgentLens/Theme/LiquidGlass.swift | OpenBurnBarMobile/Theme/LiquidGlass.swift | platform-ui
+AgentLens/Theme/ProTheme.swift | OpenBurnBarMobile/Theme/ProTheme.swift | platform-ui
+AgentLens/Views/Chat/BudgetBlockedCard.swift | OpenBurnBarMobile/Views/Chat/BudgetBlockedCard.swift | storage-backend-divergence
+AgentLens/Views/Chat/Components/ChatAttachmentTray.swift | OpenBurnBarMobile/Views/ChatAttachmentTray.swift | transport
+AgentLens/Views/Chat/ElderWand/ElderWandAnalysisSection.swift | OpenBurnBarMobile/Views/Hermes/ElderWand/ElderWandAnalysisSection.swift | platform-ui
+AgentLens/Views/Chat/ElderWand/ElderWandConfiguratorModel.swift | OpenBurnBarMobile/Views/Hermes/ElderWand/ElderWandConfiguratorModel.swift | platform-ui
+AgentLens/Views/Chat/ElderWand/ElderWandConfiguratorView.swift | OpenBurnBarMobile/Views/Hermes/ElderWand/ElderWandConfiguratorView.swift | platform-ui
+AgentLens/Views/Chat/ElderWand/ElderWandJudgeSection.swift | OpenBurnBarMobile/Views/Hermes/ElderWand/ElderWandJudgeSection.swift | platform-ui
+AgentLens/Views/Chat/ElderWand/ElderWandPresetSection.swift | OpenBurnBarMobile/Views/Hermes/ElderWand/ElderWandPresetSection.swift | platform-ui
+AgentLens/Views/Components/Pro/CloudBadge.swift | OpenBurnBarMobile/Views/Components/Pro/CloudBadge.swift | platform-ui
+AgentLens/Views/Components/Pro/FoilCTAButton.swift | OpenBurnBarMobile/Views/Components/Pro/FoilCTAButton.swift | platform-ui
+AgentLens/Views/Components/Pro/LockedFeatureVeil.swift | OpenBurnBarMobile/Views/Components/Pro/LockedFeatureVeil.swift | platform-ui
+AgentLens/Views/Components/Pro/MembershipBand.swift | OpenBurnBarMobile/Views/Components/Pro/MembershipBand.swift | platform-ui
+AgentLens/Views/Components/Pro/MercuryCrest.swift | OpenBurnBarMobile/Views/Components/Pro/MercuryCrest.swift | transport
+AgentLens/Views/Components/Pro/MercuryFoilCard.swift | OpenBurnBarMobile/Views/Components/Pro/MercuryFoilCard.swift | transport
+AgentLens/Views/Components/Pro/ProBadgeDot.swift | OpenBurnBarMobile/Views/Components/Pro/ProBadgeDot.swift | platform-ui
+AgentLens/Views/Components/Pro/ProPosterScaffold.swift | OpenBurnBarMobile/Views/Components/Pro/ProPosterScaffold.swift | platform-ui
+AgentLens/Views/Components/ProviderAccount/ProviderAccountChips.swift | OpenBurnBarMobile/Views/Components/ProviderAccountChips.swift | storage-backend-divergence
+AgentLens/Views/Components/ProviderAccount/ProviderRoutingCockpit.swift | OpenBurnBarMobile/Views/Components/ProviderRoutingCockpit.swift | storage-backend-divergence
+AgentLens/Views/Dashboard/Components/ConstellationBackgroundView.swift | OpenBurnBarMobile/Views/Aurora/ConstellationBackgroundView.swift | platform-ui
+AgentLens/Views/Dashboard/Components/EasterEggEventCanvas.swift | OpenBurnBarMobile/Views/Aurora/EasterEgg/EasterEggEventCanvas.swift | platform-ui
+AgentLens/Views/Dashboard/Components/EasterEggOverlay.swift | OpenBurnBarMobile/Views/Aurora/EasterEgg/EasterEggOverlay.swift | platform-ui
+AgentLens/Views/Dashboard/DashboardNavigationModel.swift | OpenBurnBarMobile/Models/DashboardNavigationModel.swift | platform-ui
+AgentLens/Views/Dashboard/DashboardView.swift | OpenBurnBarMobile/Views/DashboardView.swift | platform-ui
+AgentLens/Views/Dashboard/ProviderDashboardView.swift | OpenBurnBarMobile/Views/ProviderDashboardView.swift | platform-ui
+AgentLens/Views/Dashboard/SessionDetailView.swift | OpenBurnBarMobile/Views/SessionDetailView.swift | platform-ui
+AgentLens/Views/Media/PaperclipButton.swift | OpenBurnBarMobile/Views/Media/PaperclipButton.swift | transport
+AgentLens/Views/Onboarding/OnboardingWizardView.swift | OpenBurnBarMobile/Views/Onboarding/OnboardingWizardView.swift | platform-ui
+AgentLens/Views/Popover/InsightCardView.swift | OpenBurnBarMobile/Views/ChartStudio/InsightCardView.swift | platform-ui
+AgentLens/Views/SessionLogs/SessionLogsView.swift | OpenBurnBarMobile/Views/SessionLogsView.swift | platform-ui
+AgentLens/Views/Settings/AccountSettingsView.swift | OpenBurnBarMobile/Views/You/AccountSettingsView.swift | platform-ui
+AgentLens/Views/Settings/BudgetSettingsView.swift | OpenBurnBarMobile/Settings/BudgetSettingsView.swift | storage-backend-divergence
+AgentLens/Views/Settings/FusionImpact/FusionImpactView.swift | OpenBurnBarMobile/Views/Insights/FusionImpactView.swift | platform-ui
+AgentLens/Views/Settings/Search/SettingsAnchorModifiers.swift | OpenBurnBarMobile/Settings/Search/SettingsAnchorModifiers.swift | platform-ui
+AgentLens/Views/Settings/Search/SettingsItem.swift | OpenBurnBarMobile/Settings/Search/SettingsItem.swift | platform-ui
+AgentLens/Views/Settings/Search/SettingsManifest.swift | OpenBurnBarMobile/Settings/Search/SettingsManifest.swift | platform-ui
+AgentLens/Views/Settings/Search/SettingsRouter.swift | OpenBurnBarMobile/Settings/Search/SettingsRouter.swift | platform-ui
+AgentLens/Views/Settings/Search/SettingsSearchEngine.swift | OpenBurnBarMobile/Settings/Search/SettingsSearchEngine.swift | platform-ui
+AgentLens/Views/Settings/Search/SettingsSearchResultsView.swift | OpenBurnBarMobile/Settings/Search/SettingsSearchResultsView.swift | platform-ui
+AgentLens/Views/Settings/SmartDisplays/NestHubSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/NestHubSettingsCard.swift | storage-backend-divergence
+AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/PixelClockSettingsCard.swift | storage-backend-divergence
+AgentLens/Views/Settings/TextExpansionSettingsView.swift | OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift | platform-ui
+AgentLens/Utilities/StringNilIfBlank.swift | OpenBurnBarMobile/Models/StringNilIfBlank.swift | platform-ui
+```
+<!-- END:twin-basename-allowlist -->
+
 ## Allowlist hygiene
 
 - Each entry above is **debt with a deletion plan**, not a permanent exception. When the

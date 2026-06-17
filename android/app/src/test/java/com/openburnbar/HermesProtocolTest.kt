@@ -83,6 +83,20 @@ class HermesProtocolTest {
         assertNotNull(HermesProtocol.validatedBaseURL("https://localhost:8642"))
     }
 
+    @Test
+    fun `validatedLocalOrPrivateBaseURL accepts only local and private direct hosts`() {
+        assertEquals(
+            "https://localhost:8642",
+            HermesProtocol.validatedLocalOrPrivateBaseURL("https://localhost:8642/v1/models"),
+        )
+        assertEquals(
+            "http://192.168.1.42:8642",
+            HermesProtocol.validatedLocalOrPrivateBaseURL("192.168.1.42:8642"),
+        )
+        assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("https://hermes.example.com"))
+        assertNull(HermesProtocol.validatedLocalOrPrivateBaseURL("http://8.8.8.8:8642"))
+    }
+
     // ── isLocalOrPrivateHost ────────────────────────────────────────
 
     @Test

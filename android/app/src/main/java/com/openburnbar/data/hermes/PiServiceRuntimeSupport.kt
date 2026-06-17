@@ -120,7 +120,7 @@ internal class PiServiceRuntimeSupport(
     fun resolvedBaseURL(): String? {
         val configured = selectedConnection().endpointURL?.trim().orEmpty()
         if (configured.isEmpty()) return "http://127.0.0.1:8765"
-        return configured.removeSuffix("/")
+        return HermesProtocol.validatedLocalOrPrivateBaseURL(configured)
     }
 
     private fun mergeModelOptions(primary: List<HermesRuntimeModelOption>, secondary: List<HermesRuntimeModelOption>): List<HermesRuntimeModelOption> {

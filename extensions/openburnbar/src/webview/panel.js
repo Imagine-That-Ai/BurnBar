@@ -196,7 +196,14 @@ function capitalize(str) {
    Message handler (host → webview)
    ---------------------------------------------------------- */
 
+function isTrustedHostMessage(event) {
+  return event.source === window && event.origin === window.location.origin;
+}
+
 window.addEventListener('message', event => {
+  if (!isTrustedHostMessage(event)) {
+    return;
+  }
   const msg = event.data;
   if (!msg || !msg.type) {
     return;
