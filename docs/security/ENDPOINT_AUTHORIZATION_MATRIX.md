@@ -4,7 +4,7 @@ The machine-readable source of truth is `functions/src/security/endpointAuthoriz
 
 Each exported Cloud Function declares:
 
-- trigger type (`callable`, `http`, `firestore-trigger`, `scheduled`, `provider-webhook`)
+- trigger type (`callable`, `http`, `firestore-trigger`, `scheduled`, `provider-webhook`, `task-queue`)
 - authentication method
 - App Check posture
 - tenant source
@@ -14,14 +14,14 @@ Each exported Cloud Function declares:
 
 ## BOLA coverage kinds
 
-| Kind | Purpose |
-|------|---------|
-| `runtime-cross-user` | Vitest exercises cross-tenant denial at the handler trust boundary |
-| `static-high-risk-wiring` | Source guard for `enforceHighRiskOwnerAction` on destructive callables |
-| `firestore-rules` | Client Firestore surface covered by rules tests (requires `clientFirestoreSurface`) |
-| `auth-only` | Callable has no client object ids; unauthenticated rejection is sufficient |
-| `platform-trigger` | Scheduled / Firestore / webhook triggers are not client-callable |
-| `not-applicable-public` | Public health or bootstrap endpoints without tenant objects |
+| Kind                      | Purpose                                                                             |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `runtime-cross-user`      | Vitest exercises cross-tenant denial at the handler trust boundary                  |
+| `static-high-risk-wiring` | Source guard for `enforceHighRiskOwnerAction` on destructive callables              |
+| `firestore-rules`         | Client Firestore surface covered by rules tests (requires `clientFirestoreSurface`) |
+| `auth-only`               | Callable has no client object ids; unauthenticated rejection is sufficient          |
+| `platform-trigger`        | Scheduled / Firestore / webhook triggers are not client-callable                    |
+| `not-applicable-public`   | Public health or bootstrap endpoints without tenant objects                         |
 
 Runtime tests live under `functions/src/__tests__/bola/`. Shared harness: `callableBolaHarness.ts` (includes `expectCallableDenial`, `tier2CallableProof`, `snapshotTenantPaths`, `expectTenantPathsUnchanged`). Regression guard: `callableHarness.bola.test.ts`. CI validators: `bolaCoverage.test.ts`.
 

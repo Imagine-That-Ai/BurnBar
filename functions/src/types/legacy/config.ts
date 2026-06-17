@@ -95,7 +95,7 @@ export interface EnvConfig {
   /** Rate-limit window in seconds for refreshProviderQuota (default 60). */
   refreshRateLimitSeconds: number;
 
-  /** Max batch size for scheduled rollup rebuilds (default 50). */
+  /** Max dirty rollup jobs the scheduler enqueues per tick (default 1000). */
   rollupBatchSize: number;
 
   /** Page size for raw-usage counter repair rebuilds (default 500). */

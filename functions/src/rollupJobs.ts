@@ -298,6 +298,22 @@ type RefreshUserRollupsResult = {
   rebuiltCounters: boolean;
 };
 
+type RollupUserRebuildSkipReason =
+  | "not_dirty"
+  | "stale_dirty_epoch"
+  | "full_rebuild_circuit_open"
+  | "full_rebuild_in_flight";
+
+type RollupUserRebuildProcessResult =
+  | { status: "processed"; uid: string; rebuiltCounters: boolean; keepDirty?: boolean }
+  | {
+      status: "skipped";
+      uid: string;
+      reason: RollupUserRebuildSkipReason;
+      taskDirtiedAt?: string;
+      currentDirtiedAt?: string;
+    };
+
 /** Runs the gated full-rebuild path for {@link refreshUserRollups}. */
 async function refreshViaFullRebuild(
   db: Firestore,
@@ -384,22 +400,6 @@ export async function refreshUserRollups(
   }
   return { rollups, rebuiltCounters };
 }
-
-type RollupUserRebuildSkipReason =
-  | "not_dirty"
-  | "stale_dirty_epoch"
-  | "full_rebuild_circuit_open"
-  | "full_rebuild_in_flight";
-
-type RollupUserRebuildProcessResult =
-  | { status: "processed"; uid: string; rebuiltCounters: boolean; keepDirty?: boolean }
-  | {
-      status: "skipped";
-      uid: string;
-      reason: RollupUserRebuildSkipReason;
-      taskDirtiedAt?: string;
-      currentDirtiedAt?: string;
-    };
 
 export function shouldProcessRollupUserRebuildTask(
   job: RollupJobDoc | undefined,

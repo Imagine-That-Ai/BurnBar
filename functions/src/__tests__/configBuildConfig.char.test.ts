@@ -75,7 +75,7 @@ describe("buildConfig characterization (via getConfig)", () => {
     // Numeric defaults.
     expect(cfg.maxCredentialLength).toBe(8192);
     expect(cfg.refreshRateLimitSeconds).toBe(60);
-    expect(cfg.rollupBatchSize).toBe(50);
+    expect(cfg.rollupBatchSize).toBe(1000);
     expect(cfg.rollupRepairPageSize).toBe(500);
     expect(cfg.rollupMaxConsecutiveFullRebuildFailures).toBe(3);
     expect(cfg.rollupFullRebuildCircuitBreakerMinutes).toBe(60);
@@ -164,7 +164,7 @@ describe("buildConfig characterization (via getConfig)", () => {
 
     expect(cfg.kmsKeyName).toBe("projects/p/locations/l/keyRings/r/cryptoKeys/k");
     expect(cfg.maxCredentialLength).toBe(4096);
-    expect(cfg.rollupBatchSize).toBe(50); // non-finite override falls back to default
+    expect(cfg.rollupBatchSize).toBe(1000); // non-finite override falls back to default
     expect(cfg.stripeBurnBarProPriceID).toBe("price_compat_123");
     // Compatibility fallthrough: cloud monthly inherits the legacy pro price id.
     expect(cfg.stripeBurnBarCloudMonthlyPriceID).toBe("price_compat_123");
