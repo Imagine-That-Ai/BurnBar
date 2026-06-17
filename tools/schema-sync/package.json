@@ -4,16 +4,19 @@
   "version": "1.0.0",
   "description": "Canonical Firestore schema authoring and multi-language emit for OpenBurnBar",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "emit": "node emit/generate.mjs",
     "check": "../schema-sync/check-drift.sh",
     "check:canon": "node check-tsp-canon.mjs"
   },
   "devDependencies": {
-    "@typespec/compiler": "^0.63.0",
-    "@typespec/http": "^0.63.0",
-    "@typespec/rest": "^0.63.0",
-    "@typespec/openapi3": "^0.63.0"
+    "@typespec/compiler": "1.13.0",
+    "@typespec/http": "1.13.0",
+    "@typespec/openapi3": "1.13.0",
+    "@typespec/rest": "0.83.0"
   },
   "license": "AGPL-3.0-only"
 }
