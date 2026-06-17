@@ -16,6 +16,7 @@ import OpenBurnBarCore
 struct MissionFAB: View {
     @Bindable var host: MissionConsoleMacHost
     var onOpenConsole: () -> Void
+    var onCastWand: () -> Void = {}
 
     @State private var isHovering = false
     @State private var appeared = false
@@ -181,6 +182,27 @@ struct MissionFAB: View {
                 .background {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(DesignSystem.Colors.primaryGradient)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onCastWand) {
+                HStack(spacing: 6) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Cast Wand")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.82))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(DesignSystem.Colors.borderSubtle.opacity(0.7), lineWidth: 1)
+                        }
                 }
             }
             .buttonStyle(.plain)

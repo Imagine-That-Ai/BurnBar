@@ -10,6 +10,7 @@ import OpenBurnBarCore
 
 struct FanOutComposerSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
 
     let registry: AgentIdentityRegistry
     let onDispatched: (CLIAgentMissionDispatcher.FanOutDispatchResult) -> Void
@@ -25,9 +26,18 @@ struct FanOutComposerSheet: View {
     @State private var mergeStrategy: MissionGroupMergeStrategy = .pickOne
     @State private var dispatching: Bool = false
     @State private var errorMessage: String?
+    @State private var unlockFeature: GatedFeature?
 
     private var dispatchableAgents: [AgentIdentity] {
         registry.identities.filter { $0.tier == .service && $0.runtimeID != nil }
+    }
+
+    private var currentTier: CloudTier {
+        cloudStore?.cloudTier ?? .none
+    }
+
+    private var maxParallel: Int {
+        WandFanOut.maxParallel(for: currentTier)
     }
 
     private var forecast: MissionGroupDocument.ForecastBand {
@@ -76,15 +86,19 @@ struct FanOutComposerSheet: View {
                         }
                 }
 
-                Section(header: Text("Runtimes (\(selectedRuntimes.count) of \(dispatchableAgents.count))")) {
+                Section(header: Text("Runtimes (\(selectedRuntimes.count) of \(dispatchableAgents.count); cap \(maxParallel))")) {
                     ForEach(dispatchableAgents, id: \.id) { identity in
                         if let runtime = identity.runtimeID {
                             Toggle(isOn: Binding(
                                 get: { selectedRuntimes.contains(runtime.rawValue) },
                                 set: { newValue in
                                     if newValue {
+                                        guard selectedRuntimes.count < maxParallel else {
+                                            unlockFeature = wandUnlockFeature(forParallel: selectedRuntimes.count + 1)
+                                            return
+                                        }
                                         selectedRuntimes.insert(runtime.rawValue)
-                                    } else if selectedRuntimes.count > 2 {
+                                    } else if selectedRuntimes.count > 1 {
                                         selectedRuntimes.remove(runtime.rawValue)
                                     }
                                 }
@@ -175,11 +189,17 @@ struct FanOutComposerSheet: View {
                 }
             }
         }
+        .onAppear { clampSelectionToCurrentCap() }
+        .onChange(of: currentTier) { _, _ in clampSelectionToCurrentCap() }
+        .sheet(item: $unlockFeature) { feature in
+            FeatureUnlockSheet(feature: feature)
+        }
     }
 
     private var canDispatch: Bool {
         !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && selectedRuntimes.count >= 2
+            && selectedRuntimes.count >= 1
+            && selectedRuntimes.count <= maxParallel
     }
 
     private func dispatch() async {
@@ -188,6 +208,10 @@ struct FanOutComposerSheet: View {
         defer { dispatching = false }
         do {
             let runtimes = Array(selectedRuntimes)
+            guard runtimes.count <= maxParallel else {
+                unlockFeature = wandUnlockFeature(forParallel: runtimes.count)
+                return
+            }
             let result = try await CLIAgentMissionDispatcher.shared.dispatchFanOut(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 prompt: prompt,
@@ -198,7 +222,7 @@ struct FanOutComposerSheet: View {
                 approvalMode: approvalMode.rawValue,
                 commandsAllowed: commandsAllowed,
                 fileEditsAllowed: fileEditsAllowed,
-                parallelismLimit: nil,
+                parallelismLimit: runtimes.count,
                 mergeStrategy: mergeStrategy
             )
             onDispatched(result)
@@ -206,5 +230,24 @@ struct FanOutComposerSheet: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func clampSelectionToCurrentCap() {
+        guard selectedRuntimes.count > maxParallel else { return }
+        selectedRuntimes = Set(selectedRuntimes.sorted().prefix(maxParallel))
+    }
+
+    private func wandUnlockFeature(forParallel width: Int) -> GatedFeature {
+        let requiredTier = WandFanOut.minimumTier(forParallel: width)
+        let base = GatedFeature.gatedFeature(.theWand)
+        return GatedFeature(
+            id: base.id,
+            publicName: base.publicName,
+            requiredTier: requiredTier,
+            oneLineBenefit: base.oneLineBenefit,
+            benefitBullets: base.benefitBullets,
+            iconSystemName: base.iconSystemName,
+            crestAssetName: requiredTier.crestAssetName
+        )
     }
 }

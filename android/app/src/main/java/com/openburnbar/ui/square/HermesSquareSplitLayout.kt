@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.ui.pro.CloudTier
 
 // MARK: - Hermes Square Split Layout (Android parity, Hermes Square §6.11)
 //
@@ -40,6 +41,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 
 @Composable
 fun HermesSquareSplitLayout(
+    currentTier: CloudTier = CloudTier.NONE,
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
     onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
@@ -48,6 +50,7 @@ fun HermesSquareSplitLayout(
     val configuration = LocalConfiguration.current
     if (configuration.screenWidthDp < 720) {
         HermesSquareScreen(
+            currentTier = currentTier,
             onOpenLegacyRuntime = onOpenLegacyRuntime,
             onOpenBrandZone = onOpenBrandZone,
             onOpenPairedMac = onOpenPairedMac,
@@ -58,6 +61,7 @@ fun HermesSquareSplitLayout(
     Row(modifier = modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(0.42f).fillMaxHeight()) {
             HermesSquareScreen(
+                currentTier = currentTier,
                 onOpenLegacyRuntime = { rt, threadId ->
                     detail = DetailRoute.RuntimeNative(rt, threadId)
                     onOpenLegacyRuntime(rt, threadId)

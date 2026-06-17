@@ -441,7 +441,7 @@ final class CLIAgentMissionDispatcher {
     ) async throws -> FanOutDispatchResult {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
-        guard runtimeTokens.count >= 2 else { throw DispatchError.tooFewRuntimes }
+        guard runtimeTokens.count >= 1 else { throw DispatchError.tooFewRuntimes }
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else { throw DispatchError.emptyPrompt }
 
@@ -534,7 +534,7 @@ final class CLIAgentMissionDispatcher {
                 approvalMode: approvalMode,
                 commandsAllowed: commandsAllowed,
                 fileEditsAllowed: fileEditsAllowed,
-                requestedModelID: try Self.selectedModelID(forRequestedRuntime: runtimeToken),
+                requestedModelID: nil,
                 sourceSkillID: sourceSkillID,
                 sourceSurface: sourceSurface,
                 deliveryMode: deliveryMode,
@@ -848,8 +848,8 @@ final class CLIAgentMissionDispatcher {
                 return "Sign in before dispatching Mac agent missions."
             case .emptyPrompt:
                 return "Mission prompt was empty."
-            case .tooFewRuntimes:
-                return "Fan-out dispatch needs at least 2 runtimes."
+        case .tooFewRuntimes:
+            return "Fan-out dispatch needs at least 1 runtime."
             }
         }
     }

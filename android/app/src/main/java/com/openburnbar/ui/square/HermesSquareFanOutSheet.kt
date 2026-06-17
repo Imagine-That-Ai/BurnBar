@@ -6,6 +6,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -16,45 +17,71 @@ import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.DispatchException
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
+import com.openburnbar.ui.pro.CloudTier
+import com.openburnbar.ui.pro.FeatureUnlockSheet
+import com.openburnbar.ui.pro.GatedFeature
+import com.openburnbar.ui.pro.GatedFeatureCatalog
+import com.openburnbar.ui.pro.GatedFeatureID
+import com.openburnbar.ui.pro.WandFanOut
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun HermesSquareFanOutSheet(registry: AgentIdentityRegistry, onDispatched: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun HermesSquareFanOutSheet(
+    registry: AgentIdentityRegistry,
+    currentTier: CloudTier = CloudTier.NONE,
+    onDispatched: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("") }
     val selected = remember { mutableStateListOf("claude", "codex", "hermes") }
+    var unlockFeature by remember { mutableStateOf<GatedFeature?>(null) }
     var dispatching by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var commandsAllowed by remember { mutableStateOf(false) }
     var fileEditsAllowed by remember { mutableStateOf(false) }
     val dispatchableIdentities = registry.identities.filter { it.runtimeID != null }
+    val maxParallel = WandFanOut.maxParallel(currentTier)
+
+    LaunchedEffect(maxParallel) {
+        while (selected.size > maxParallel) selected.removeAt(selected.lastIndex)
+    }
 
     FanOutSheetModal(
         sheetState = state,
         onDismiss = onDismiss,
         dispatchableIdentities = dispatchableIdentities,
         uiState =
-        FanOutSheetUiState(
-            title = title,
-            prompt = prompt,
-            selected = selected,
-            commandsAllowed = commandsAllowed,
-            fileEditsAllowed = fileEditsAllowed,
-            dispatching = dispatching,
+            FanOutSheetUiState(
+                title = title,
+                prompt = prompt,
+                selected = selected,
+                maxParallel = maxParallel,
+                commandsAllowed = commandsAllowed,
+                fileEditsAllowed = fileEditsAllowed,
+                dispatching = dispatching,
             errorMessage = errorMessage,
         ),
         uiCallbacks =
-        FanOutSheetUiCallbacks(
-            onTitleChange = { title = it },
-            onPromptChange = { prompt = it },
-            onToggleRuntime = { runtime, enabled ->
-                if (enabled) selected.add(runtime) else selected.remove(runtime)
-            },
-            onCommandsAllowedChange = { commandsAllowed = it },
-            onFileEditsAllowedChange = { fileEditsAllowed = it },
+            FanOutSheetUiCallbacks(
+                onTitleChange = { title = it },
+                onPromptChange = { prompt = it },
+                onToggleRuntime = { runtime, enabled ->
+                    if (enabled) {
+                        if (selected.size >= maxParallel) {
+                            unlockFeature = wandUnlockFeature(selected.size + 1)
+                        } else if (!selected.contains(runtime)) {
+                            selected.add(runtime)
+                        }
+                    } else if (selected.size > 1) {
+                        selected.remove(runtime)
+                    }
+                },
+                onCommandsAllowedChange = { commandsAllowed = it },
+                onFileEditsAllowedChange = { fileEditsAllowed = it },
             onDispatch = {
                 dispatchFanOutMission(
                     scope = scope,
@@ -63,6 +90,7 @@ internal fun HermesSquareFanOutSheet(registry: AgentIdentityRegistry, onDispatch
                         title = title,
                         prompt = prompt,
                         selected = selected.toList(),
+                        maxParallel = maxParallel,
                         commandsAllowed = commandsAllowed,
                         fileEditsAllowed = fileEditsAllowed,
                     ),
@@ -77,6 +105,14 @@ internal fun HermesSquareFanOutSheet(registry: AgentIdentityRegistry, onDispatch
             },
         ),
     )
+    unlockFeature?.let { feature ->
+        FeatureUnlockSheet(
+            feature = feature,
+            show = true,
+            onUnlock = {},
+            onDismiss = { unlockFeature = null },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,7 +134,11 @@ private fun FanOutSheetModal(
 }
 
 internal fun dispatchFanOutMission(scope: kotlinx.coroutines.CoroutineScope, request: FanOutDispatchRequest, callbacks: FanOutDispatchCallbacks) {
-    if (request.prompt.trim().isBlank() || request.selected.size < 2) return
+    if (request.prompt.trim().isBlank() || request.selected.isEmpty()) return
+    if (request.selected.size > request.maxParallel) {
+        callbacks.onError("Your current plan allows ${request.maxParallel} Wand worker${if (request.maxParallel == 1) "" else "s"}.")
+        return
+    }
     callbacks.onDispatching(true)
     callbacks.onError(null)
     scope.launch {
@@ -111,6 +151,7 @@ internal fun dispatchFanOutMission(scope: kotlinx.coroutines.CoroutineScope, req
                     runtimeTokens = request.selected,
                     commandsAllowed = request.commandsAllowed,
                     fileEditsAllowed = request.fileEditsAllowed,
+                    parallelismLimit = request.selected.size,
                 )
             callbacks.onDispatched(result.groupID)
             callbacks.onDismiss()
@@ -122,4 +163,9 @@ internal fun dispatchFanOutMission(scope: kotlinx.coroutines.CoroutineScope, req
             callbacks.onDispatching(false)
         }
     }
+}
+
+private fun wandUnlockFeature(width: Int): GatedFeature {
+    val requiredTier = WandFanOut.minimumTier(width)
+    return GatedFeatureCatalog.feature(GatedFeatureID.THE_WAND).copy(requiredTier = requiredTier)
 }

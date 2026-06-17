@@ -82,7 +82,21 @@ enum class CloudTier(val rank: Int) {
                 NONE, CLOUD -> TierHoloPalette.CLOUD
                 PRO -> TierHoloPalette.PRO
                 ULTRA -> TierHoloPalette.ULTRA
-            }
+    }
+}
+
+/** Per-tier ceiling for one Wand cast. Mirrors OpenBurnBarCore.WandFanOut and firestore.rules. */
+object WandFanOut {
+    fun maxParallel(tier: CloudTier): Int =
+        when (tier) {
+            CloudTier.NONE -> 1
+            CloudTier.CLOUD -> 3
+            CloudTier.PRO -> 8
+            CloudTier.ULTRA -> 16
+        }
+
+    fun minimumTier(width: Int): CloudTier =
+        CloudTier.entries.firstOrNull { maxParallel(it) >= width } ?: CloudTier.ULTRA
 }
 
 /** Stable identifiers for every gated feature (analytics + cross-platform parity). */

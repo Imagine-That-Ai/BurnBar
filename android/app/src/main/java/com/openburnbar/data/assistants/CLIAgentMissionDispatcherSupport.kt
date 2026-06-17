@@ -100,7 +100,7 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
                     targetProject = request.targetProject,
                     depth = request.depth,
                     approvalMode = request.approvalMode,
-                    requestedModelID = request.requestedModelIDsByRuntime[runtimeToken]?.trim()?.takeIf { it.isNotEmpty() },
+                    requestedModelID = null,
                 ),
                 permissions = CLIMissionPayloadPermissions(request.commandsAllowed, request.fileEditsAllowed),
                 metadata = CLIMissionPayloadMetadata(

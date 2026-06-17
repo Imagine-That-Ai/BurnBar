@@ -7,11 +7,13 @@ export {
   PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
   BURNBAR_CLOUD_PRO_PRODUCT_ALIASES,
   FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS,
+  WAND_PARALLEL_CAPS,
   ENTITLEMENT_DOC_IDS,
   DEFAULT_ENTITLEMENT_CATALOG,
   productIDsForFeature,
   type EntitlementCatalog,
   type EntitlementFeature,
+  type WandParallelTier,
 } from "./catalog.js";
 
 export {
