@@ -360,7 +360,11 @@ struct LspSession {
 }
 
 impl LspSession {
-    fn start_with_command(_language: &str, request: &ParseRequest, command: &[String]) -> Option<Self> {
+    fn start_with_command(
+        _language: &str,
+        request: &ParseRequest,
+        command: &[String],
+    ) -> Option<Self> {
         let (executable, args) = command.split_first()?;
         let mut child = Command::new(executable)
             .args(args)
@@ -466,7 +470,8 @@ fn with_lsp_session<T>(
     request: &ParseRequest,
     work: impl FnOnce(&mut LspSession) -> Result<T, String>,
 ) -> Result<T, String> {
-    let command = lsp_command_for(language).ok_or_else(|| "no allowlisted lsp command".to_string())?;
+    let command =
+        lsp_command_for(language).ok_or_else(|| "no allowlisted lsp command".to_string())?;
     let key = lsp_pool_key(language, request.root_path.as_deref(), &command);
     let mut pool = lsp_pool()
         .lock()
@@ -547,10 +552,17 @@ fn validate_lsp_command(
         std::env::var("OPENBURNBAR_CODE_LSP_EXECUTABLE_ALLOWLIST")
             .ok()
             .into_iter()
-            .flat_map(|raw| raw.split(',').map(|part| part.trim().to_string()).collect::<Vec<_>>()),
+            .flat_map(|raw| {
+                raw.split(',')
+                    .map(|part| part.trim().to_string())
+                    .collect::<Vec<_>>()
+            }),
     );
     allowlist.extend(explicit_allowlist);
-    if !allowlist.iter().any(|allowed| executable_name_matches(basename, allowed)) {
+    if !allowlist
+        .iter()
+        .any(|allowed| executable_name_matches(basename, allowed))
+    {
         return None;
     }
     if matches!(basename, "sh" | "bash" | "zsh" | "fish" | "osascript") {
@@ -1255,13 +1267,21 @@ mod tests {
         .is_none());
         assert!(validate_lsp_command(
             "python",
-            vec!["bash".to_string(), "-lc".to_string(), "echo nope".to_string()],
+            vec![
+                "bash".to_string(),
+                "-lc".to_string(),
+                "echo nope".to_string()
+            ],
             vec!["bash".to_string()]
         )
         .is_none());
         assert!(validate_lsp_command(
             "python",
-            vec!["python3".to_string(), "-c".to_string(), "print('nope')".to_string()],
+            vec![
+                "python3".to_string(),
+                "-c".to_string(),
+                "print('nope')".to_string()
+            ],
             Vec::new()
         )
         .is_none());

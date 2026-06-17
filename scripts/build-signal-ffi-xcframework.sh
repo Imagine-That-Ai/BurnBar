@@ -23,6 +23,7 @@ XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfi.xcframework"
 BUILD_DIR="${ROOT_DIR}/build/signal-ffi-xcframework"
 ARCHS_DIR="${BUILD_DIR}/archs"
 HEADERS_DIR="${BUILD_DIR}/Headers"
+EXPORTS_FILE="${BUILD_DIR}/signal_ffi.exports"
 
 PROFILE="${SIGNAL_FFI_BUILD_PROFILE:-release}"
 PROFILE_FLAG=""
@@ -57,7 +58,6 @@ abort() {
 [[ -d "${LIBSIGNAL_DIR}" ]] || abort "missing ${LIBSIGNAL_DIR}; clone libsignal v0.94.4 first"
 [[ -x "/usr/bin/xcodebuild" ]] || abort "xcodebuild is required"
 [[ -x "/usr/bin/lipo" ]] || abort "lipo is required"
-[[ -x "/usr/bin/install_name_tool" ]] || abort "install_name_tool is required"
 
 if [[ -x "${HOME}/.cargo/bin/rustup" ]]; then
   RUSTUP_BIN="${HOME}/.cargo/bin/rustup"
@@ -101,7 +101,9 @@ build_target() {
         ${PROFILE_FLAG} \
         --target "${target}" \
         --features "${features}" \
-        -- --crate-type cdylib
+        -- --crate-type cdylib \
+           -C "link-arg=-Wl,-install_name,@rpath/libsignal_ffi.dylib" \
+           -C "link-arg=-Wl,-exported_symbols_list,${EXPORTS_FILE}"
   )
 }
 
@@ -123,6 +125,87 @@ void OpenBurnBarSignalFfiLinkAnchor(void);
 EOF
 }
 
+stage_exports() {
+  mkdir -p "${BUILD_DIR}"
+  printf '_signal_*\n' > "${EXPORTS_FILE}"
+  log "exporting public Signal FFI symbols only; hiding bundled native deps"
+}
+
+repair_macho_linkedit_alignment() {
+  local dylib="$1"
+  python3 - "${dylib}" <<'PY'
+import struct
+import sys
+
+path = sys.argv[1]
+with open(path, "rb") as handle:
+    data = bytearray(handle.read())
+
+# Xcode 27's linker rejects dylibs whose LINKEDIT string pool is not
+# 8-byte aligned. The Rust-produced libsignal cdylib can land the
+# LC_SYMTAB string table on a 4-byte boundary after export pruning.
+if struct.unpack_from("<I", data, 0)[0] != 0xFEEDFACF:
+    sys.exit(0)
+
+_, _, _, _, ncmds, _, _, _ = struct.unpack_from("<IiiIIIII", data, 0)
+offset = 32
+symtab_offset = None
+linkedit_offset = None
+codesig_offset = None
+string_offset = None
+
+for _ in range(ncmds):
+    command, command_size = struct.unpack_from("<II", data, offset)
+    if command == 0x19:  # LC_SEGMENT_64
+        segment_name = struct.unpack_from("<16s", data, offset + 8)[0].rstrip(b"\0")
+        if segment_name == b"__LINKEDIT":
+            linkedit_offset = offset
+    elif command == 0x2:  # LC_SYMTAB
+        symtab_offset = offset
+        _, _, string_offset, _ = struct.unpack_from("<IIII", data, offset + 8)
+    elif command == 0x1D:  # LC_CODE_SIGNATURE
+        codesig_offset = offset
+    offset += command_size
+
+if symtab_offset is None or string_offset is None:
+    sys.exit(0)
+
+string_padding = (-string_offset) % 8
+insertions = []
+if string_padding:
+    insertions.append((string_offset, string_padding))
+    struct.pack_into("<I", data, symtab_offset + 16, string_offset + string_padding)
+
+if codesig_offset is not None:
+    signature_offset, _ = struct.unpack_from("<II", data, codesig_offset + 8)
+    shifted_signature_offset = signature_offset
+    if string_padding and signature_offset >= string_offset:
+        shifted_signature_offset += string_padding
+    signature_padding = (-shifted_signature_offset) % 16
+    if signature_padding:
+        insertions.append((signature_offset, signature_padding))
+    struct.pack_into(
+        "<I",
+        data,
+        codesig_offset + 8,
+        shifted_signature_offset + signature_padding,
+    )
+
+if linkedit_offset is not None:
+    linkedit_file_offset, linkedit_size = struct.unpack_from("<QQ", data, linkedit_offset + 40)
+    inserted_size = sum(size for where, size in insertions if where >= linkedit_file_offset)
+    if inserted_size:
+        struct.pack_into("<Q", data, linkedit_offset + 48, linkedit_size + inserted_size)
+
+for where, size in sorted(insertions, reverse=True):
+    data[where:where] = b"\0" * size
+
+if insertions:
+    with open(path, "wb") as handle:
+        handle.write(data)
+PY
+}
+
 stage_target() {
   local target="$1"
   local platform_id="$2"
@@ -131,9 +214,11 @@ stage_target() {
   local out_dir="${ARCHS_DIR}/${platform_id}"
   mkdir -p "${out_dir}/Headers"
   cp "${dylib}" "${out_dir}/libsignal_ffi.dylib"
-  /usr/bin/install_name_tool -id "@rpath/libsignal_ffi.dylib" "${out_dir}/libsignal_ffi.dylib"
+  repair_macho_linkedit_alignment "${out_dir}/libsignal_ffi.dylib"
   cp "${HEADERS_DIR}/"* "${out_dir}/Headers/"
 }
+
+stage_exports
 
 if [[ "${SIGNAL_FFI_SKIP_BUILD:-0}" != "1" ]]; then
   for target in "${TARGETS[@]}"; do
@@ -166,7 +251,6 @@ if [[ "${#macos_library_args[@]}" -eq 2 ]]; then
     "${ARCHS_DIR}/macos-arm64/libsignal_ffi.dylib" \
     "${ARCHS_DIR}/macos-x86_64/libsignal_ffi.dylib" \
     -output "${macos_universal_dir}/libsignal_ffi.dylib"
-  /usr/bin/install_name_tool -id "@rpath/libsignal_ffi.dylib" "${macos_universal_dir}/libsignal_ffi.dylib"
   cp "${HEADERS_DIR}/"* "${macos_universal_dir}/Headers/"
   build_xcframework_args+=(-library "${macos_universal_dir}/libsignal_ffi.dylib" -headers "${macos_universal_dir}/Headers")
 elif [[ "${#macos_library_args[@]}" -eq 1 ]]; then
@@ -191,7 +275,6 @@ if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* && " ${TARGETS[*]} " == *
     "${ARCHS_DIR}/ios-arm64-simulator/libsignal_ffi.dylib" \
     "${ARCHS_DIR}/ios-x86_64-simulator/libsignal_ffi.dylib" \
     -output "${local_sim_dir}/libsignal_ffi.dylib"
-  /usr/bin/install_name_tool -id "@rpath/libsignal_ffi.dylib" "${local_sim_dir}/libsignal_ffi.dylib"
   cp "${HEADERS_DIR}/"* "${local_sim_dir}/Headers/"
   build_xcframework_args+=(-library "${local_sim_dir}/libsignal_ffi.dylib" -headers "${local_sim_dir}/Headers")
 else

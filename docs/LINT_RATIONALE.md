@@ -71,8 +71,10 @@ Kinds: `eslint-disable`, `ts-suppress`, `noqa`, `kotlin-suppress`, `detekt`,
 # the named occurrence kind(s); a bare path allows a budget/baseline artifact.
 
 # --- Debt-budget ratchets: deleted at zero; CI fails on increase (docs/TECH_DEBT_METRICS.md) ---
+budgets/datastore-isolation-baseline.json
 budgets/hand-maintained-ts-baseline.json
 budgets/knip-baseline.json
+budgets/singleton-baseline.json
 budgets/swift-file-size-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---

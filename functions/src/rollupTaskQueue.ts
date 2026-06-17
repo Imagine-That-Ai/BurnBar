@@ -12,7 +12,7 @@ import { getConfig } from "./config.js";
 import { logInfo, logWarn } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
-export const ROLLUP_USER_REBUILD_TASK_FUNCTION = "rollupUserRebuild";
+const ROLLUP_USER_REBUILD_TASK_FUNCTION = "rollupUserRebuild";
 
 type RollupUserRebuildTaskData = {
   uid: string;
@@ -56,16 +56,23 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorField(error: unknown, field: "code" | "message"): unknown {
+  return isRecord(error) ? error[field] : undefined;
+}
+
 export function parseRollupUserRebuildTaskData(data: unknown): RollupUserRebuildTaskData | undefined {
-  if (!data || typeof data !== "object") return undefined;
-  const raw = data as Record<string, unknown>;
-  const uid = nonEmptyString(raw.uid);
+  if (!isRecord(data)) return undefined;
+  const uid = nonEmptyString(data.uid);
   if (!uid) return undefined;
-  const dirtiedAt = nonEmptyString(raw.dirtiedAt);
+  const dirtiedAt = nonEmptyString(data.dirtiedAt);
   return dirtiedAt ? { uid, dirtiedAt } : { uid };
 }
 
-export function getRollupTaskQueueConfig(): RollupTaskQueueConfig {
+function getRollupTaskQueueConfig(): RollupTaskQueueConfig {
   const { projectId } = getConfig();
   const location = process.env.ROLLUP_REBUILD_TASK_LOCATION ?? FUNCTIONS_REGION;
   const queueId = process.env.ROLLUP_REBUILD_TASK_QUEUE_ID ?? ROLLUP_USER_REBUILD_TASK_FUNCTION;
@@ -121,21 +128,26 @@ export function buildRollupUserRebuildTask(args: {
 }
 
 export function isAlreadyExistsError(error: unknown): boolean {
-  const code = (error as { code?: unknown } | undefined)?.code;
+  const code = errorField(error, "code");
   if (code === 6 || code === "6" || code === "ALREADY_EXISTS") return true;
-  const message = String((error as { message?: unknown } | undefined)?.message ?? error);
+  const message = String(errorField(error, "message") ?? error);
   return /\bALREADY_EXISTS\b|\balready exists\b/i.test(message);
 }
 
 async function getCloudTasksClient(): Promise<CloudTasksClientLike> {
   if (!cachedCloudTasksClient) {
     const { CloudTasksClient } = await import("@google-cloud/tasks");
-    cachedCloudTasksClient = new CloudTasksClient() as CloudTasksClientLike;
+    const client = new CloudTasksClient();
+    cachedCloudTasksClient = {
+      queuePath: (project, location, queue) => client.queuePath(project, location, queue),
+      taskPath: (project, location, queue, task) => client.taskPath(project, location, queue, task),
+      createTask: (request) => client.createTask(request),
+    };
   }
   return cachedCloudTasksClient;
 }
 
-export async function resolveCloudFunctionUri(config: RollupTaskQueueConfig): Promise<string> {
+async function resolveCloudFunctionUri(config: RollupTaskQueueConfig): Promise<string> {
   if (config.targetUri) return config.targetUri;
 
   const cacheKey = `${config.projectId}/${config.location}/${config.functionName}`;
@@ -146,12 +158,11 @@ export async function resolveCloudFunctionUri(config: RollupTaskQueueConfig): Pr
   const auth = new google.auth.GoogleAuth({
     scopes: ["https://www.googleapis.com/auth/cloud-platform"],
   });
-  const client = await auth.getClient();
   const cloudfunctions = google.cloudfunctions("v2");
   const name = `projects/${config.projectId}/locations/${config.location}/functions/${config.functionName}`;
   const response = await cloudfunctions.projects.locations.functions.get({
+    auth,
     name,
-    auth: client as never,
   });
   const uri = response.data.serviceConfig?.uri;
   if (!uri) {

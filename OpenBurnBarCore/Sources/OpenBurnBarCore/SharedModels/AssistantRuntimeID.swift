@@ -103,7 +103,7 @@ public struct WandPolicy: Codable, Hashable, Sendable {
     public let routedModels: [AssistantRuntimeID: String]
 
     public enum Selector: String, Codable, Hashable, Sendable, CaseIterable {
-        case headmaster
+        case highestCapability = "headmaster"
         case pareto
     }
 

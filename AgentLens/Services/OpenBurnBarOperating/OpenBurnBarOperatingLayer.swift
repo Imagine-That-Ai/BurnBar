@@ -103,7 +103,9 @@ final class OpenBurnBarOperatingLayer {
     }
 
     func refreshControlPlaneCache() async {
+        // try?-ok(best-effort dashboard cache refresh; stale cache is recovered by the next daemon sync)
         cachedOperatingActionRecords = (try? await dataStore.fetchOperatingActionRecords(limit: 200)) ?? []
+        // try?-ok(best-effort dashboard cache refresh; nil mirror is an explicit offline/unknown state)
         cachedControllerRuntimeMirror = (try? await dataStore.fetchControllerRuntimeMirror()) ?? nil
         cachedRetrievalHealth = await RetrievalHealthService(dataStore: dataStore).snapshot(
             indexingEnabled: settingsManager.conversationIndexingEnabled,

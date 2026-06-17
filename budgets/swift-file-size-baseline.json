@@ -1,11 +1,26 @@
 {
   "target": 2000,
-  "total": 1,
+  "total": 4,
   "files": [
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift",
-      "lines": 2284,
-      "justification": "Cohesive single-responsibility SQLite-backed store for Project Code Memory (memory ops, code-index ops, daemon-owned semantic embeddings + hybrid lexical/vector search, schema bootstrap, FSEvents watcher, and SQLite primitives over one raw connection). Baselined to satisfy the file-size gate at its current size; a clean decomposition into +Memory/+Code/+Search/+Schema/+SQLite extensions is a tracked follow-on that requires widening ~15 private helpers (execute/queryRows/auditEvent/db/dbQueue/etc.) to internal so cross-file extensions can reach them. The embedding math/codec/RRF already live in a separate file (BurnBarCodeEmbedding.swift)."
+      "lines": 2261,
+      "justification": "Cohesive SQLite-backed Project Code Memory store carrying memory ops, code-index ops, daemon-owned embeddings, hybrid search, schema bootstrap, FSEvents watcher, and raw SQLite primitives. Existing decomposition debt is tracked separately; lower this baseline as +Memory/+Code/+Search/+Schema extraction lands."
+    },
+    {
+      "path": "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
+      "lines": 2197,
+      "justification": "Database schema and connection bootstrap remain centralized after the accretive data-store hardening merge. Keep as a ratchet baseline while schema/connection helpers are extracted into smaller database extensions."
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderRouter.swift",
+      "lines": 2085,
+      "justification": "Provider routing policy, quota-aware scoring, and explanation assembly are still colocated to preserve route-selection auditability. Lower after routing policy, quota inputs, and explanation rendering are split behind tested seams."
+    },
+    {
+      "path": "AgentLens/App/AgentLensApp.swift",
+      "lines": 2013,
+      "justification": "Mac app composition root remains above target after accretive launch/service wiring. Lower by extracting service registration and startup recovery wiring while keeping dependency injection explicit."
     }
   ]
 }

@@ -18,6 +18,25 @@ import type {
   RemoteMcpClientFirestore,
 } from "./firestoreTypes.js";
 
+function fakeHostedFirestore(): HostedMcpFirestore {
+  return {
+    doc: () => ({
+      get: async () => ({ exists: false, data: () => undefined }),
+      set: async () => undefined,
+    }),
+    collection: () => ({
+      limit: () => ({
+        get: async () => ({ docs: [] }),
+      }),
+    }),
+    runTransaction: async (updateFunction) =>
+      updateFunction({
+        get: async () => ({ get: () => undefined }),
+        set: () => undefined,
+      }),
+  };
+}
+
 test("verifies HMAC bearer token claims and rejects wrong audience", () => {
   process.env.MCP_TOKEN_HMAC_SECRET = "unit-secret";
   const token = mintDevelopmentToken(
@@ -198,7 +217,7 @@ test("hosted code tools are hidden and denied unless explicitly enabled", async 
     );
     const denied = await callTool(
       {
-        db: {} as never,
+        db: fakeHostedFirestore(),
         claims: {
           sub: "user-code",
           aud: MCP_RESOURCE,

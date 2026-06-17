@@ -741,10 +741,11 @@ struct ProviderDashboardView: View {
                 },
                 displayMode: settingsManager.usageDisplayMode,
                 showsAgentBadge: false,
-                footerCaption: "Search paths, models, and session ids for \(provider.displayName). Groups use session start time within the range above."
-            ) {
-                emptySessionsView
-            }
+                footerCaption: "Search paths, models, and session ids for \(provider.displayName). Groups use session start time within the range above.",
+                emptyLedger: {
+                    emptySessionsView
+                }
+            )
             .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
