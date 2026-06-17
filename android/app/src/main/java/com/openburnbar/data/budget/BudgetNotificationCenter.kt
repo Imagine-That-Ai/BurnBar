@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.openburnbar.MainActivity
 import com.openburnbar.data.db.BudgetRuleEntity
+import java.util.Locale
 
 private const val HOURS_PER_DAY = 24
 private const val DAYS_PER_MONTH = 30
@@ -25,6 +26,7 @@ class BudgetNotificationCenter(private val context: Context) {
         private const val BUDGET_WARNING_TITLE = "Budget warning"
         private const val BUDGET_BLOCK_TITLE = "Budget limit reached"
         private const val BUDGET_GENERIC_TEXT = "Open BurnBar to review budget status."
+        private const val BUDGET_FALLBACK_LABEL = "Budget"
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -68,6 +70,7 @@ class BudgetNotificationCenter(private val context: Context) {
         sendNotification(
             notificationId = rule.id.hashCode() + 1,
             isBlock = false,
+            text = budgetStatusText(rule, used, limit, isBlock = false),
         )
     }
 
@@ -75,10 +78,11 @@ class BudgetNotificationCenter(private val context: Context) {
         sendNotification(
             notificationId = rule.id.hashCode() + 2,
             isBlock = true,
+            text = budgetStatusText(rule, used, limit, isBlock = true),
         )
     }
 
-    private fun sendNotification(notificationId: Int, isBlock: Boolean) {
+    private fun sendNotification(notificationId: Int, isBlock: Boolean, text: String) {
         ensureChannel(context)
 
         val intent =
@@ -112,8 +116,8 @@ class BudgetNotificationCenter(private val context: Context) {
             NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setContentTitle(title)
-                .setContentText(BUDGET_GENERIC_TEXT)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(BUDGET_GENERIC_TEXT))
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setContentIntent(pendingIntent)
@@ -124,6 +128,18 @@ class BudgetNotificationCenter(private val context: Context) {
         val nm = context.notificationManager() ?: return
         nm.notify(notificationId, privateBuilder.build())
     }
+
+    private fun budgetStatusText(rule: BudgetRuleEntity, used: Double, limit: Double, isBlock: Boolean): String {
+        val label = rule.label?.takeIf { it.isNotBlank() } ?: BUDGET_FALLBACK_LABEL
+        val usage = "${formatUsd(used)} of ${formatUsd(limit)}"
+        return if (isBlock) {
+            "$label reached $usage for this ${rule.period}."
+        } else {
+            "$label is at $usage for this ${rule.period}."
+        }
+    }
+
+    private fun formatUsd(value: Double): String = String.format(Locale.US, "\$%.2f", value)
 }
 
 private fun Context.notificationManager(): NotificationManager? = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
