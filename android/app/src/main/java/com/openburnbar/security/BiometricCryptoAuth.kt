@@ -8,6 +8,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import java.security.GeneralSecurityException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -22,6 +23,7 @@ object BiometricCryptoAuth {
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "openburnbar_strong_biometric_gate"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
+    private const val AUTH_CHALLENGE_TEXT = "openburnbar-biometric-gate-v1"
 
     suspend fun requireStrongBiometric(activity: FragmentActivity, title: String, subtitle: String, failureMessage: String) {
         withContext(Dispatchers.Main) {
@@ -45,10 +47,16 @@ object BiometricCryptoAuth {
                         object : BiometricPrompt.AuthenticationCallback() {
                             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                                 if (!continuation.isActive) return
-                                if (result.cryptoObject?.cipher == null) {
+                                val authenticatedCipher = result.cryptoObject?.cipher
+                                if (authenticatedCipher == null) {
                                     continuation.resumeWithException(IllegalStateException(failureMessage))
                                 } else {
-                                    continuation.resume(Unit)
+                                    try {
+                                        proveCryptoAuthentication(authenticatedCipher)
+                                        continuation.resume(Unit)
+                                    } catch (_: GeneralSecurityException) {
+                                        continuation.resumeWithException(IllegalStateException(failureMessage))
+                                    }
                                 }
                             }
 
@@ -71,6 +79,10 @@ object BiometricCryptoAuth {
                 prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
             }
         }
+    }
+
+    private fun proveCryptoAuthentication(cipher: Cipher) {
+        cipher.doFinal(AUTH_CHALLENGE_TEXT.toByteArray(Charsets.UTF_8))
     }
 
     private fun authenticatedCipher(): Cipher {

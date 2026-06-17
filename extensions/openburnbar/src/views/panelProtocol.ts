@@ -1,10 +1,12 @@
 import type { OpenBurnBarPanelViewModel } from '../state/panelViewModel';
 
+type HostMessageEnvelope = { hostNonce?: string };
+
 // Host → Webview messages
 export type OpenBurnBarPanelHostMessage =
-  | { type: 'snapshot'; viewModel: OpenBurnBarPanelViewModel }
-  | { type: 'error'; message: string }
-  | { type: 'theme'; kind: 'dark' | 'light' | 'high-contrast' };
+  | ({ type: 'snapshot'; viewModel: OpenBurnBarPanelViewModel } & HostMessageEnvelope)
+  | ({ type: 'error'; message: string } & HostMessageEnvelope)
+  | ({ type: 'theme'; kind: 'dark' | 'light' | 'high-contrast' } & HostMessageEnvelope);
 
 // Webview → Host messages (sidebar panel)
 export type OpenBurnBarPanelWebviewMessage =

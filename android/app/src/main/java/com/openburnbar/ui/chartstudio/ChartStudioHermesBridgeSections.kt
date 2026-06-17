@@ -17,6 +17,8 @@ private val BEARER_TOKEN: String? = null
 
 private val JSON = "application/json; charset=utf-8".toMediaType()
 
+// reason: dynamic localhost/private Hermes endpoints cannot use stable public certificate pins.
+@SuppressWarnings("java/android/missing-certificate-pinning")
 internal fun ChartStudioHermesBridge.streamEvents(
     systemPrompt: String,
     userPrompt: String,

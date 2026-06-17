@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode';
+import { buildHostMessageNonceScript } from './hostMessageNonce';
 
 export function buildPanelHtml(
   webview: vscode.Webview,
@@ -63,6 +64,7 @@ export function buildPanelHtml(
       <footer class="bb-status-line" id="bb-status-line" data-visible="false"></footer>
     </div>
 
+    <script nonce="${nonce}">${buildHostMessageNonceScript(nonce)}</script>
     <script nonce="${nonce}" src="${jsUri}"></script>
   </body>
 </html>`;
