@@ -1,3 +1,5 @@
+root = true
+
 # UniFFI-generated Kotlin bindings — emitted by the UniFFI tool against a foreign
 # ABI surface (naming, wrapping, line length, imports all follow the generator,
 # not Kotlin style). The bindings are never hand-edited, so ktlint scope excludes

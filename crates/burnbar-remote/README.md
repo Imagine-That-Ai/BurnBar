@@ -29,6 +29,24 @@ endpoint identity, authenticated QUIC connections, relay fallback, reliable
 streams, unreliable datagrams, path events, RTT, datagram MTU, and datagram
 send-buffer telemetry.
 
+The cross-platform FFI surface lives in `burnbar-remote-ffi` and is exported
+with UniFFI to both app stacks:
+
+- `./scripts/build-burnbar-remote-xcframework.sh` rebuilds
+  `Vendor/BurnBarRemote.xcframework` and the committed Swift bindings under
+  `OpenBurnBarCore/Sources/BurnBarRemote/Generated/`.
+- `./scripts/build-burnbar-remote-android-aar.sh` rebuilds
+  `Vendor/burnbar-remote.aar` and the committed Kotlin bindings under
+  `android/burnbar-remote/src/main/java/uniffi/burnbar_remote/`.
+- The Swift `BurnBarRemoteEngine` package product and Android
+  `:burnbar-remote` module keep deterministic fallback behavior when the native
+  artifact is absent, and the CI smoke tests require a real native round trip
+  when the artifact is present.
+
+Follow-up: keep `burnbar-remote` and `openburnbar-iroh` on the same Iroh line.
+Both remain intentionally pinned to the release-candidate family until the repo
+can migrate the kept crates to Iroh 1.0 stable in one reviewed pass.
+
 See `docs/architecture/008-remote-control-engine.md` for the architecture,
 feasibility assessment, performance assumptions, and P0 risks.
 

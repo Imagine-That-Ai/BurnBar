@@ -9,6 +9,7 @@ prepare_libsignal_ffi() {
   local xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework"
   local build_script="${libsignal_dir}/swift/build_ffi.sh"
   local cargo_cmd=()
+  local auth_messages_service="${libsignal_dir}/swift/Sources/LibSignalClient/chat/AuthMessagesService.swift"
 
   if [[ -d "${xcframework}" ]]; then
     echo "Using prebuilt OpenBurnBarSignalFfi.xcframework."
@@ -24,6 +25,10 @@ prepare_libsignal_ffi() {
   if [[ ! -x "${build_script}" ]]; then
     echo "Missing ${build_script}; initialize Vendor/libsignal before running Swift tests." >&2
     exit 1
+  fi
+
+  if [[ -f "${auth_messages_service}" ]]; then
+    perl -0pi -e 's/\bextendLifetime\(([^)]+)\)/withExtendedLifetime($1) {}/g' "${auth_messages_service}"
   fi
 
   if command -v rustup >/dev/null 2>&1; then

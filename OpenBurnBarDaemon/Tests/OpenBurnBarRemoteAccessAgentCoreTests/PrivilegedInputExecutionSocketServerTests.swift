@@ -215,7 +215,9 @@ final class PrivilegedInputSocketServerRealValidationTests: XCTestCase {
     func test_defaultValidator_rejectsUnsignedPeerOnLiveSocket() throws {
         // Server constructed with ALL defaults — the production validator.
         // The connecting test process is not first-party signed, so the
-        // handler must never run and the client must see a rejection.
+        // handler must never run. The server validates before reading the
+        // request, so OS scheduling may expose either the explicit rejection
+        // frame or a fail-closed socket disconnect to the client.
         let socketPath = try makeSocketDirectory() + "/input.sock"
         let server = try PrivilegedInputExecutionSocketServer(socketPath: socketPath) { _ in
             XCTFail("handler must never run for an unsigned peer")
@@ -232,8 +234,12 @@ final class PrivilegedInputSocketServerRealValidationTests: XCTestCase {
             request: PrivilegedInputDispatchRequest(operation: "health")
         )
         XCTAssertThrowsError(try client.perform(envelope)) { error in
-            guard case PrivilegedInputXPCClient.ClientError.rejected = error else {
-                return XCTFail("expected rejected, got \(error)")
+            switch error {
+            case PrivilegedInputXPCClient.ClientError.rejected,
+                 PrivilegedInputXPCClient.ClientError.connectionUnavailable:
+                break
+            default:
+                XCTFail("expected rejected or fail-closed disconnect, got \(error)")
             }
         }
     }

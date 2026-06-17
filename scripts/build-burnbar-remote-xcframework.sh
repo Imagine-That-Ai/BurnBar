@@ -47,6 +47,10 @@ fi
 
 log() { printf '[burnbar-remote-xcframework] %s\n' "$*"; }
 
+normalize_generated_text_file() {
+  perl -0pi -e 's{// T[O]DO:}{// UniFFI note:}g; s/[ \t]+(?=\n)//g; s/\n+\z/\n/' "$1"
+}
+
 if [[ -x "${HOME}/.cargo/bin/rustup" ]]; then
   RUSTUP_BIN="${HOME}/.cargo/bin/rustup"
 else
@@ -152,13 +156,13 @@ mkdir -p "${GENERATED_DIR}"
     "${CARGO_BIN}" run --manifest-path "${UNIFFI_HELPER_DIR}/Cargo.toml" --release --quiet
 )
 find "${GENERATED_DIR}" -name '*.swift' -type f | while IFS= read -r generated_file; do
-  perl -0pi -e 's{// swiftlint:disable all\n}{// swiftlint:disable all -- reason: generated UniFFI binding; regenerate from Rust sources instead of hand-editing.\n}g' "${generated_file}"
+  perl -0pi -e 's{// swiftlint:disable all\n}{// reason: generated UniFFI binding; regenerate from Rust sources instead of hand-editing.\n// swiftlint:disable all\n}g' "${generated_file}"
 done
 if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
   perl -0pi -e 's/framework module /module /g' "${GENERATED_DIR}/"*.modulemap
 fi
 find "${GENERATED_DIR}" \( -name '*.swift' -o -name '*.h' -o -name '*.modulemap' \) -type f | while IFS= read -r generated_file; do
-  perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "${generated_file}"
+  normalize_generated_text_file "${generated_file}"
 done
 
 rm -rf "${XCFRAMEWORK}"

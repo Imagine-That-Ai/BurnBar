@@ -1,8 +1,17 @@
 package com.openburnbar.remote
 
+import uniffi.burnbar_remote.burnbarRemoteReadiness
+import uniffi.burnbar_remote.remoteModeRequiresPermission
+import uniffi.burnbar_remote.remoteScaledDimensions
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import uniffi.burnbar_remote.RemoteDimensions as NativeRemoteDimensions
+import uniffi.burnbar_remote.RemotePermission as NativeRemotePermission
+import uniffi.burnbar_remote.RemoteReadiness as NativeRemoteReadiness
+import uniffi.burnbar_remote.RemoteSessionMode as NativeRemoteSessionMode
 
 private const val REMOTE_PROTOCOL_VERSION = "burnbar-remote/v1"
+private const val NATIVE_LIBRARY_PATH_PROPERTY = "burnbar.remote.nativeLibraryPath"
 
 data class BurnBarRemoteReadiness(
     val protocolVersion: String,
@@ -45,31 +54,60 @@ enum class BurnBarRemotePermission {
 object BurnBarRemoteBridge {
     @Volatile private var cachedAvailability: Boolean? = null
 
-    fun readiness(): BurnBarRemoteReadiness = BurnBarRemoteReadiness(
-        protocolVersion = REMOTE_PROTOCOL_VERSION,
-        supportsIrohTransport = true,
-        supportsAdaptiveQuality = true,
-        supportsPermissionGate = true,
-        nativeBridgeAvailable = isNativeAvailable(),
-    )
+    @Volatile private var lastNativeCallFailure: String? = null
+
+    fun readiness(): BurnBarRemoteReadiness {
+        nativeReadinessOrNull()?.let { readiness ->
+            return BurnBarRemoteReadiness(
+                protocolVersion = readiness.protocolVersion,
+                supportsIrohTransport = readiness.supportsIrohTransport,
+                supportsAdaptiveQuality = readiness.supportsAdaptiveQuality,
+                supportsPermissionGate = readiness.supportsPermissionGate,
+                nativeBridgeAvailable = true,
+            )
+        }
+
+        return BurnBarRemoteReadiness(
+            protocolVersion = REMOTE_PROTOCOL_VERSION,
+            supportsIrohTransport = true,
+            supportsAdaptiveQuality = true,
+            supportsPermissionGate = true,
+            nativeBridgeAvailable = false,
+        )
+    }
 
     fun isNativeAvailable(): Boolean {
-        if (isAndroidRuntime() && !BurnBarRemoteNativeContext.ensureLoaded()) {
-            return false
-        }
         cachedAvailability?.let { return it }
-        val ok =
-            try {
-                Class.forName("uniffi.burnbar_remote.BurnBarRemoteQualityController")
-                true
-            } catch (_: Throwable) {
-                false
-            }
+        val ok = nativeReadinessOrNull(updateAvailabilityCache = false) != null
         cachedAvailability = ok
         return ok
     }
 
-    fun scaledDimensions(dimensions: BurnBarRemoteDimensions, numerator: UInt, denominator: UInt): BurnBarRemoteDimensions {
+    fun scaledDimensions(
+        dimensions: BurnBarRemoteDimensions,
+        numerator: UInt,
+        denominator: UInt,
+    ): BurnBarRemoteDimensions =
+        nativeScaledDimensionsOrNull(dimensions, numerator, denominator) ?: fallbackScaledDimensions(
+            dimensions = dimensions,
+            numerator = numerator,
+            denominator = denominator,
+        )
+
+    fun modeRequiresPermission(
+        mode: BurnBarRemoteSessionMode,
+        permission: BurnBarRemotePermission,
+    ): Boolean =
+        nativeModeRequiresPermissionOrNull(mode, permission) ?: fallbackModeRequiresPermission(
+            mode = mode,
+            permission = permission,
+        )
+
+    private fun fallbackScaledDimensions(
+        dimensions: BurnBarRemoteDimensions,
+        numerator: UInt,
+        denominator: UInt,
+    ): BurnBarRemoteDimensions {
         val divisor = denominator.toULong().coerceAtLeast(1u)
         val width =
             ((dimensions.width.toULong() * numerator.toULong()) / divisor)
@@ -84,34 +122,128 @@ object BurnBarRemoteBridge {
         return BurnBarRemoteDimensions(width = width, height = height)
     }
 
-    fun modeRequiresPermission(mode: BurnBarRemoteSessionMode, permission: BurnBarRemotePermission): Boolean = when (mode) {
-        BurnBarRemoteSessionMode.ViewOnly,
-        BurnBarRemoteSessionMode.AgentObserve,
-        -> permission == BurnBarRemotePermission.ViewScreen
+    private fun fallbackModeRequiresPermission(
+        mode: BurnBarRemoteSessionMode,
+        permission: BurnBarRemotePermission,
+    ): Boolean =
+        when (mode) {
+            BurnBarRemoteSessionMode.ViewOnly,
+            BurnBarRemoteSessionMode.AgentObserve,
+            -> permission == BurnBarRemotePermission.ViewScreen
 
-        BurnBarRemoteSessionMode.Control,
-        BurnBarRemoteSessionMode.AgentAssist,
-        -> permission == BurnBarRemotePermission.ViewScreen ||
-            permission == BurnBarRemotePermission.InjectInput
+            BurnBarRemoteSessionMode.Control,
+            BurnBarRemoteSessionMode.AgentAssist,
+            ->
+                permission == BurnBarRemotePermission.ViewScreen ||
+                    permission == BurnBarRemotePermission.InjectInput
+        }
+
+    private fun nativeReadinessOrNull(updateAvailabilityCache: Boolean = true): NativeRemoteReadiness? {
+        if (!BurnBarRemoteNativeContext.ensureLoaded()) {
+            if (updateAvailabilityCache) cachedAvailability = false
+            return null
+        }
+        return try {
+            burnbarRemoteReadiness().also {
+                lastNativeCallFailure = null
+                if (updateAvailabilityCache) cachedAvailability = true
+            }
+        } catch (error: Throwable) {
+            lastNativeCallFailure = "${error::class.java.simpleName}: ${error.message}"
+            if (updateAvailabilityCache) cachedAvailability = false
+            null
+        }
     }
 
-    private fun isAndroidRuntime(): Boolean = System.getProperty("java.runtime.name")?.contains("Android", ignoreCase = true) == true ||
-        System.getProperty("java.vm.vendor")?.contains("Android", ignoreCase = true) == true
+    private fun nativeScaledDimensionsOrNull(
+        dimensions: BurnBarRemoteDimensions,
+        numerator: UInt,
+        denominator: UInt,
+    ): BurnBarRemoteDimensions? {
+        if (!isNativeAvailable()) return null
+        return try {
+            val scaled =
+                remoteScaledDimensions(
+                    dimensions = NativeRemoteDimensions(width = dimensions.width, height = dimensions.height),
+                    numerator = numerator,
+                    denominator = denominator,
+                )
+            BurnBarRemoteDimensions(width = scaled.width, height = scaled.height)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun nativeModeRequiresPermissionOrNull(
+        mode: BurnBarRemoteSessionMode,
+        permission: BurnBarRemotePermission,
+    ): Boolean? {
+        if (!isNativeAvailable()) return null
+        return try {
+            remoteModeRequiresPermission(
+                mode = mode.toNative(),
+                permission = permission.toNative(),
+            )
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    internal fun lastNativeCallFailureForTesting(): String? = lastNativeCallFailure
 }
+
+private fun BurnBarRemoteSessionMode.toNative(): NativeRemoteSessionMode =
+    when (this) {
+        BurnBarRemoteSessionMode.ViewOnly -> NativeRemoteSessionMode.VIEW_ONLY
+        BurnBarRemoteSessionMode.Control -> NativeRemoteSessionMode.CONTROL
+        BurnBarRemoteSessionMode.AgentObserve -> NativeRemoteSessionMode.AGENT_OBSERVE
+        BurnBarRemoteSessionMode.AgentAssist -> NativeRemoteSessionMode.AGENT_ASSIST
+    }
+
+private fun BurnBarRemotePermission.toNative(): NativeRemotePermission =
+    when (this) {
+        BurnBarRemotePermission.ViewScreen -> NativeRemotePermission.VIEW_SCREEN
+        BurnBarRemotePermission.HearAudio -> NativeRemotePermission.HEAR_AUDIO
+        BurnBarRemotePermission.InjectInput -> NativeRemotePermission.INJECT_INPUT
+        BurnBarRemotePermission.ClipboardRead -> NativeRemotePermission.CLIPBOARD_READ
+        BurnBarRemotePermission.ClipboardWrite -> NativeRemotePermission.CLIPBOARD_WRITE
+        BurnBarRemotePermission.TransferFiles -> NativeRemotePermission.TRANSFER_FILES
+        BurnBarRemotePermission.SystemControl -> NativeRemotePermission.SYSTEM_CONTROL
+        BurnBarRemotePermission.ElevateControl -> NativeRemotePermission.ELEVATE_CONTROL
+        BurnBarRemotePermission.AuditExport -> NativeRemotePermission.AUDIT_EXPORT
+    }
 
 object BurnBarRemoteNativeContext {
     private val loaded = AtomicBoolean(false)
 
+    @Volatile private var lastLoadFailure: String? = null
+
     fun ensureLoaded(): Boolean {
         if (loaded.get()) return true
         return try {
-            System.loadLibrary("burnbar_remote")
+            loadNativeLibrary()
             loaded.set(true)
+            lastLoadFailure = null
             true
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            lastLoadFailure = "${error::class.java.simpleName}: ${error.message}"
             false
         }
     }
 
     fun isLoaded(): Boolean = loaded.get()
+
+    internal fun lastLoadFailureForTesting(): String? = lastLoadFailure
+
+    private fun loadNativeLibrary() {
+        val libraryDirectory = System.getProperty(NATIVE_LIBRARY_PATH_PROPERTY)?.takeIf { it.isNotBlank() }
+        if (libraryDirectory == null) {
+            System.loadLibrary("burnbar_remote")
+            return
+        }
+
+        System.setProperty("jna.library.path", libraryDirectory)
+        val library = File(libraryDirectory, System.mapLibraryName("burnbar_remote"))
+        System.load(library.absolutePath)
+    }
 }

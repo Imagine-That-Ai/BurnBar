@@ -11,6 +11,12 @@ let hasIrohXCFramework = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
+let hasSignalFfiXCFramework = FileManager.default.fileExists(
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/OpenBurnBarSignalFfi.xcframework")
+        .standardizedFileURL
+        .path
+)
 let hasBurnBarRemoteXCFramework = FileManager.default.fileExists(
     atPath: packageRoot
         .appendingPathComponent("../Vendor/BurnBarRemote.xcframework")
@@ -76,6 +82,11 @@ let packageProducts: [Product] = [
         name: "BurnBarRemoteFFI",
         targets: ["BurnBarRemoteFFI"]
     )
+] : []) + (hasSignalFfiXCFramework ? [
+    .library(
+        name: "OpenBurnBarSignalFfi",
+        targets: ["OpenBurnBarSignalFfi"]
+    )
 ] : [])
 
 let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
@@ -127,7 +138,14 @@ let burnBarRemoteEngineDependencies: [Target.Dependency] = hasBurnBarRemoteXCFra
 let signalCoreDependencies: [Target.Dependency] = [
     "OpenBurnBarCore",
     .product(name: "LibSignalClient", package: "LibSignalClient")
-]
+] + (hasSignalFfiXCFramework ? ["OpenBurnBarSignalFfi"] : [])
+
+let signalBinaryTargets: [Target] = hasSignalFfiXCFramework ? [
+    .binaryTarget(
+        name: "OpenBurnBarSignalFfi",
+        path: "../Vendor/OpenBurnBarSignalFfi.xcframework"
+    )
+] : []
 
 let swiftTestingDependency: Target.Dependency = .product(name: "Testing", package: "swift-testing")
 
@@ -283,7 +301,7 @@ let firstPartyTargets: [Target] = [
         )
     ]
 
-let allTargets: [Target] = irohBinaryTargets + burnBarRemoteBinaryTargets + firstPartyTargets
+let allTargets: [Target] = irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + firstPartyTargets
 
 let package = Package(
     name: "OpenBurnBarCore",

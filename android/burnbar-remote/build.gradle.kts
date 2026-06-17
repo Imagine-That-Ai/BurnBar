@@ -3,6 +3,8 @@
 // The generated bindings land under src/main/java/uniffi/burnbar_remote/ after
 // scripts/build-burnbar-remote-android-aar.sh runs. Until then the public bridge
 // compiles with deterministic Kotlin fallbacks and reports nativeUnavailable.
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.plugin.serialization")
@@ -37,7 +39,19 @@ dependencies {
     api("net.java.dev.jna:jna:5.19.0@aar")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("net.java.dev.jna:jna:5.19.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+}
+
+tasks.withType<Test>().configureEach {
+    val expectNative = providers.systemProperty("burnbar.remote.expectNative").orElse("false")
+    systemProperty("burnbar.remote.expectNative", expectNative.get())
+    providers.systemProperty("burnbar.remote.nativeLibraryPath").orNull?.let { nativeLibraryPath ->
+        val resolvedNativeLibraryPath = rootProject.file(nativeLibraryPath).absolutePath
+        systemProperty("burnbar.remote.nativeLibraryPath", resolvedNativeLibraryPath)
+        systemProperty("jna.library.path", resolvedNativeLibraryPath)
+        systemProperty("java.library.path", resolvedNativeLibraryPath)
+    }
 }
 
 apply(from = rootProject.file("gradle/ktlint-android-sources.gradle.kts"))

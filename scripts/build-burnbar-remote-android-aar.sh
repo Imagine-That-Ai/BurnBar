@@ -119,11 +119,12 @@ export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
 log "using NDK at ${ANDROID_NDK_HOME}"
 
 ANDROID_16KB_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
+ANDROID_REMAP_RUSTFLAGS="--remap-path-prefix=${ROOT_DIR}=/workspace --remap-path-prefix=${CRATE_DIR}=/workspace/crates/burnbar-remote --remap-path-prefix=${CARGO_HOME:-${HOME}/.cargo}=/cargo"
 android_rustflags() {
   if [[ -n "${RUSTFLAGS:-}" ]]; then
-    printf '%s %s\n' "${RUSTFLAGS}" "${ANDROID_16KB_RUSTFLAGS}"
+    printf '%s %s %s\n' "${RUSTFLAGS}" "${ANDROID_16KB_RUSTFLAGS}" "${ANDROID_REMAP_RUSTFLAGS}"
   else
-    printf '%s\n' "${ANDROID_16KB_RUSTFLAGS}"
+    printf '%s %s\n' "${ANDROID_16KB_RUSTFLAGS}" "${ANDROID_REMAP_RUSTFLAGS}"
   fi
 }
 
