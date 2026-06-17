@@ -1,7 +1,7 @@
 {
-  "loc": 2696,
-  "exportedInterfaces": 255,
-  "fileCount": 300,
-  "generatedAt": "2026-06-15T20:27:32.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/** and security/**). Ratcheted 3226 -> 2702 on 2026-06-14 after Swarm 6 knip unexports + unsafe-cast cleanup. Bumped 2702 -> 2706 on 2026-06-15 to admit the run-09 BOLA coverage types (functions/src/security/bolaCoverageTypes.ts) that landed on main. Ratcheted 2706 -> 2696 on 2026-06-15 after privatizing Fusion search provider payload and agent notification reply/event internals. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
+  "loc": 2688,
+  "exportedInterfaces": 256,
+  "fileCount": 310,
+  "generatedAt": "2026-06-17T10:39:37Z",
+  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/** and security/**). Ratcheted 3226 -> 2702 on 2026-06-14 after Swarm 6 knip unexports + unsafe-cast cleanup. Bumped 2702 -> 2706 on 2026-06-15 to admit the run-09 BOLA coverage types (functions/src/security/bolaCoverageTypes.ts) that landed on main. Ratcheted 2706 -> 2696 on 2026-06-15 after privatizing Fusion search provider payload and agent notification reply/event internals. Ratcheted 2696 -> 2688 on 2026-06-17 after compacting the Mercury media percentile rollup contract while adding schema-v2 sketch payloads. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
 }

@@ -94,7 +94,7 @@ The override is overwritten by the next hourly `evaluateMediaBudget` run if the 
 ## Telemetry
 
 - **Per-event**: `media_budget_level_changed` Firebase Analytics, `ops/media_budget_status/state/current` Firestore doc.
-- **Daily aggregate**: `ops/media_session_daily_rollups/days/{YYYY-MM-DD}` (per-feature p50/p95/p99 RTT, freeze rate, success rate, fallback rate, total minutes, total bytes).
+- **Daily aggregate**: `ops/media_session_daily_rollups/days/{YYYY-MM-DD}` (schema v2 per-feature p50/p95/p99 RTT, bitrate, freeze-count summaries with bounded `sketchBase64` payloads for non-empty summaries, plus success rate, fallback rate, total minutes, total bytes).
 - **Dashboard**: BigQuery export to Looker Studio with a `media-budget-status` board showing daily spend trend, projection, kill-switch state.
 
 ## Rollback

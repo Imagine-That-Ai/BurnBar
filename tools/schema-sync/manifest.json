@@ -289,7 +289,9 @@
         }
       ],
       "tspOnlyModels": [
-        "MediaSessionDailyRollupDoc"
+        "MediaSessionDailyFeatureRollup",
+        "MediaSessionDailyRollupDoc",
+        "MediaSessionPercentileSummary"
       ]
     },
     {
