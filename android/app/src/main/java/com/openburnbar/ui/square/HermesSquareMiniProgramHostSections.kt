@@ -16,6 +16,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 
+// reason: required JavaScript bridge is confined by CSP, iframe sandboxing, and custom URL dispatch.
+@SuppressWarnings(
+    "java/android/websettings-javascript-enabled",
+    "java/android/websettings-allow-content-access",
+    "java/android/webview-addjavascriptinterface",
+)
 @Composable
 internal fun MiniProgramWebView(
     sandboxURL: String,

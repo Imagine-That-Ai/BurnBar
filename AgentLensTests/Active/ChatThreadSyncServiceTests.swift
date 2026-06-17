@@ -29,7 +29,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
     }
 
     func test_syncWithoutChatContentConsentWritesMetadataOnly() async throws {
-        try seedThread()
+        try await seedThread()
 
         await chatThreadSync.sync()
 
@@ -49,7 +49,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
     func test_syncWithChatContentConsentWritesSealedPayloadOnly() async throws {
         settingsManager.chatThreadContentCloudBackupEnabled = true
         settingsManager.chatThreadContentCloudBackupConsentShown = true
-        try seedThread()
+        try await seedThread()
 
         await chatThreadSync.sync()
 
@@ -82,7 +82,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
     func test_syncAfterChatContentConsentRevokedDeletesCloudContentFields() async throws {
         settingsManager.chatThreadContentCloudBackupEnabled = true
         settingsManager.chatThreadContentCloudBackupConsentShown = true
-        try seedThread()
+        try await seedThread()
 
         await chatThreadSync.sync()
 
@@ -117,7 +117,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
     func test_messageFetchFailurePreservesPriorRecordInsteadOfWipingItWithEmptyContent() async throws {
         settingsManager.chatThreadContentCloudBackupEnabled = true
         settingsManager.chatThreadContentCloudBackupConsentShown = true
-        try seedThread()
+        try await seedThread()
 
         // First sync succeeds and writes the real sealed payload.
         await chatThreadSync.sync()
@@ -154,7 +154,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
     func test_messageFetchFailureOnFirstUploadWritesNoSealedRecord() async throws {
         settingsManager.chatThreadContentCloudBackupEnabled = true
         settingsManager.chatThreadContentCloudBackupConsentShown = true
-        try seedThread()
+        try await seedThread()
 
         let failingSync = ChatThreadSyncService(
             context: context,
@@ -175,8 +175,8 @@ final class ChatThreadSyncServiceTests: XCTestCase {
     func test_messageFetchFailureOnOneThreadDoesNotBlockHealthyThreads() async throws {
         settingsManager.chatThreadContentCloudBackupEnabled = true
         settingsManager.chatThreadContentCloudBackupConsentShown = true
-        try seedThread()
-        try seedSecondThread()
+        try await seedThread()
+        try await seedSecondThread()
 
         // Throw only for thread-1; thread-2 reads succeed (delegate to the real store).
         let realStore = try XCTUnwrap(dataStore)
@@ -245,9 +245,9 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         }
     }
 
-    private func seedThread() throws {
-        _ = try dataStore.createChatThread(id: "thread-1", at: Date(timeIntervalSince1970: 1_700_000_000))
-        try dataStore.saveChatMessage(
+    private func seedThread() async throws {
+        _ = try await dataStore.createChatThread(id: "thread-1", at: Date(timeIntervalSince1970: 1_700_000_000))
+        try await dataStore.saveChatMessage(
             ChatMessageRecord(
                 id: "msg-1",
                 role: .user,
@@ -256,7 +256,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
             ),
             threadID: "thread-1"
         )
-        try dataStore.saveChatMessage(
+        try await dataStore.saveChatMessage(
             ChatMessageRecord(
                 id: "msg-2",
                 role: .assistant,
@@ -268,9 +268,9 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         )
     }
 
-    private func seedSecondThread() throws {
-        _ = try dataStore.createChatThread(id: "thread-2", at: Date(timeIntervalSince1970: 1_700_000_100))
-        try dataStore.saveChatMessage(
+    private func seedSecondThread() async throws {
+        _ = try await dataStore.createChatThread(id: "thread-2", at: Date(timeIntervalSince1970: 1_700_000_100))
+        try await dataStore.saveChatMessage(
             ChatMessageRecord(
                 id: "msg-2-1",
                 role: .user,

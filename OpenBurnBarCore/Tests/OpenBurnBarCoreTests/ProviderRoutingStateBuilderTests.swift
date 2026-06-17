@@ -63,7 +63,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         XCTAssertEqual(snapshot?.nextFallback?.accountID, "openai_work")
     }
 
-    func test_build_prefersEarliestWeeklyQuotaResetOverDefaultAccount() {
+    func test_build_prefersEarliestQuotaResetOverDefaultAccount() {
         let work = account(id: "codex_work", providerID: .codex, isDefault: false, sortKey: 10)
         let personal = account(id: "codex_personal", providerID: .codex, isDefault: true, sortKey: 0)
         let soonerReset = now.addingTimeInterval(24 * 60 * 60)
@@ -73,8 +73,8 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
             providerID: .codex,
             accounts: [personal, work],
             snapshots: [
-                healthySnapshot(accountID: "codex_personal", providerID: .codex, weeklyResetsAt: laterReset),
-                healthySnapshot(accountID: "codex_work", providerID: .codex, weeklyResetsAt: soonerReset)
+                healthySnapshot(accountID: "codex_personal", providerID: .codex, quotaResetsAt: laterReset),
+                healthySnapshot(accountID: "codex_work", providerID: .codex, quotaResetsAt: soonerReset)
             ],
             now: now
         )
@@ -84,7 +84,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         XCTAssertEqual(snapshot?.nextFallback?.accountID, "codex_personal")
     }
 
-    func test_build_doesNotTreatGenericRollingDaysBucketAsWeeklyReset() {
+    func test_build_usesEarliestDisplayableQuotaWindowForUtilization() {
         let work = account(id: "codex_work", providerID: .codex, isDefault: false, sortKey: 10)
         let personal = account(id: "codex_personal", providerID: .codex, isDefault: true, sortKey: 0)
         let soonerMonthlyReset = now.addingTimeInterval(24 * 60 * 60)
@@ -124,8 +124,9 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(snapshot?.activeAccount?.accountID, "codex_personal")
-        XCTAssertNil(snapshot?.nextFallback?.quotaResetsAt)
+        XCTAssertEqual(snapshot?.activeAccount?.accountID, "codex_work")
+        XCTAssertEqual(snapshot?.activeAccount?.quotaResetsAt, soonerMonthlyReset)
+        XCTAssertEqual(snapshot?.nextFallback?.accountID, "codex_personal")
     }
 
     func test_build_isDeterministicAcrossEqualSortKeys() {
@@ -461,7 +462,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
     private func healthySnapshot(
         accountID: String,
         providerID: ProviderID = .openAI,
-        weeklyResetsAt: Date? = nil
+        quotaResetsAt: Date? = nil
     ) -> ProviderQuotaSnapshot {
         ProviderQuotaSnapshot(
             id: "snap_\(accountID)",
@@ -476,13 +477,13 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
             confidence: .high,
             buckets: [
                 ProviderQuotaBucket(
-                    name: weeklyResetsAt == nil ? "tokens" : "weekly",
+                    name: quotaResetsAt == nil ? "tokens" : "quota window",
                     used: 100_000,
                     limit: 1_000_000,
                     remaining: 900_000,
-                    window: weeklyResetsAt == nil ? nil : ProviderQuotaWindowKind.weekly.rawValue,
+                    window: quotaResetsAt == nil ? nil : ProviderQuotaWindowKind.weekly.rawValue,
                     meta: ["unit": "tokens"],
-                    resetsAt: weeklyResetsAt
+                    resetsAt: quotaResetsAt
                 )
             ],
             updatedAt: now

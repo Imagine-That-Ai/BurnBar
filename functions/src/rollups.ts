@@ -34,6 +34,8 @@ export {
   RollupRebuildUnavailableError,
   beginFullRebuildAttempt,
   recordRollupRebuildFailure,
+  processRollupUserRebuild,
   refreshUserRollups,
+  shouldProcessRollupUserRebuildTask,
   writeUserRollups,
 } from "./rollupJobs.js";

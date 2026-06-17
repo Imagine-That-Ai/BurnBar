@@ -31,7 +31,7 @@ final class OpenBurnBarDatabaseMattersTests: XCTestCase {
         XCTAssertEqual(json, "[]")
     }
 
-    func test_encodeJSONStringArray_isThrowing_andRoundTripsThroughInsertRemote() throws {
+    func test_encodeJSONStringArray_isThrowing_andRoundTripsThroughInsertRemote() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -63,9 +63,9 @@ final class OpenBurnBarDatabaseMattersTests: XCTestCase {
         )
 
         // The throwing encoder is wired into the remote-insert write path.
-        try store.insertRemoteConversation(record)
+        try await store.insertRemoteConversation(record)
 
-        let storedKeyFiles = try queue.read { db in
+        let storedKeyFiles = try await queue.read { db in
             try String.fetchOne(
                 db,
                 sql: "SELECT keyFiles FROM conversations WHERE id = ?",

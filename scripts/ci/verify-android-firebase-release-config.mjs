@@ -76,8 +76,6 @@ if (base64EnvName) {
 console.log(
   [
     "Firebase Android config verified:",
-    `project=${summary.projectId}`,
-    `app=${summary.appId}`,
     `package=${summary.packageName}`,
     `apiKeys=${summary.apiKeyCount}`,
     `androidOauthCerts=${summary.androidOauthCertificateCount}`,

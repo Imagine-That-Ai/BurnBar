@@ -796,14 +796,29 @@ function handleStartRun() {
    ---------------------------------------------------------- */
 
 function isHostMessageData(msg) {
+  const hostNonce = globalThis.__OPENBURNBAR_HOST_NONCE__;
   return Boolean(
-    msg
+    hostNonce
+    && msg
     && typeof msg === 'object'
+    && msg.hostNonce === hostNonce
     && (msg.type === 'snapshot' || msg.type === 'error' || msg.type === 'restoreSection')
   );
 }
 
+function isTrustedHostMessageEvent(event) {
+  const origin = typeof event.origin === 'string' ? event.origin : '';
+  if (origin === window.location.origin || origin.startsWith('vscode-webview://')) {
+    return true;
+  }
+  return window.location.protocol === 'https:' && origin.startsWith('https://');
+}
+
 window.addEventListener('message', event => {
+  if (!isTrustedHostMessageEvent(event)) {
+    return;
+  }
+
   const msg = event.data;
   if (!isHostMessageData(msg)) {
     return;

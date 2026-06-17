@@ -754,7 +754,9 @@ struct SessionLogsView: View {
                     dataStore: dataStore
                 ) {
                     iconPickerDeviceId = nil
-                    knownDevices = (try? dataStore.fetchDevices()) ?? []
+                    Task { @MainActor in
+                        knownDevices = (try? await dataStore.fetchDevices()) ?? []
+                    }
                 }
             }
         }
@@ -1041,7 +1043,7 @@ struct SessionLogsView: View {
     // MARK: - View Events
 
     private func initializeSessionLogs() async {
-        knownDevices = (try? dataStore.fetchDevices()) ?? []
+        knownDevices = (try? await dataStore.fetchDevices()) ?? []
         await loadLogs()
         applyJumpTargetIfNeeded(jumpTarget)
     }
@@ -1085,12 +1087,14 @@ struct SessionLogsView: View {
     }
 
     private func handleEmbeddingVersionChange() {
-        retrievalSearchService = SearchService.makeConversationSearchService(
-            dataStore: dataStore,
-            settingsManager: settingsManager
-        )
-        refreshRetrievalHealth()
-        Task { await runLocalRetrievalSearchIfNeeded() }
+        Task { @MainActor in
+            retrievalSearchService = await SearchService.makeConversationSearchServiceUsingStoredEmbeddings(
+                dataStore: dataStore,
+                settingsManager: settingsManager
+            )
+            refreshRetrievalHealth()
+            await runLocalRetrievalSearchIfNeeded()
+        }
     }
 
     // MARK: - Export
@@ -1223,10 +1227,12 @@ struct SessionLogsView: View {
             sharedFeaturesAvailable = true
         }
 
-        retrievalHealthSnapshot = retrievalHealthService.snapshot(
-            indexingEnabled: settingsManager.conversationIndexingEnabled,
-            sharedFeaturesAvailable: sharedFeaturesAvailable
-        )
+        Task { @MainActor in
+            retrievalHealthSnapshot = await retrievalHealthService.snapshot(
+                indexingEnabled: settingsManager.conversationIndexingEnabled,
+                sharedFeaturesAvailable: sharedFeaturesAvailable
+            )
+        }
     }
 
     private func runLocalRetrievalSearchIfNeeded() async {
@@ -1311,15 +1317,15 @@ struct SessionLogsView: View {
         isLoading = true
         dataSourceError = nil
         refreshRetrievalHealth()
-        knownDevices = (try? dataStore.fetchDevices()) ?? []
-        sessionModelMap = (try? dataStore.sessionModelMap()) ?? [:]
+        knownDevices = (try? await dataStore.fetchDevices()) ?? []
+        sessionModelMap = (try? await dataStore.sessionModelMap()) ?? [:]
         selectedDetailLog = nil
         do {
             switch dataSource {
             case .local:
                 let messages = try dataStore.fetchChatMessages()
-                if !messages.isEmpty { try dataStore.upsertCLIConversation(from: messages) }
-                allLogs = try dataStore.fetchSessionLogSummaries()
+                if !messages.isEmpty { try await dataStore.upsertCLIConversation(from: messages) }
+                allLogs = try await dataStore.fetchSessionLogSummaries()
 
             case .cloud:
                 if let svc = cloudSyncService {
@@ -1762,8 +1768,10 @@ private struct DeviceIconPicker: View {
                 ForEach(DeviceHardwareIcon.allIcons, id: \.symbol) { item in
                     let isSelected = currentIcon == item.symbol
                     Button {
-                        try? dataStore.updateDeviceIcon(deviceId: deviceId, customIcon: item.symbol)
-                        onDismiss()
+                        Task { @MainActor in
+                            try? await dataStore.updateDeviceIcon(deviceId: deviceId, customIcon: item.symbol)
+                            onDismiss()
+                        }
                     } label: {
                         VStack(spacing: 3) {
                             Image(systemName: item.symbol)
@@ -1792,8 +1800,10 @@ private struct DeviceIconPicker: View {
             }
 
             Button {
-                try? dataStore.updateDeviceIcon(deviceId: deviceId, customIcon: nil)
-                onDismiss()
+                Task { @MainActor in
+                    try? await dataStore.updateDeviceIcon(deviceId: deviceId, customIcon: nil)
+                    onDismiss()
+                }
             } label: {
                 Text("Reset to Auto")
                     .font(DesignSystem.Typography.tiny)

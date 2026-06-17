@@ -24,6 +24,8 @@ import org.json.JSONObject
  * `evaluateJavascript` whenever the source string changes — no full page
  * reload, so the JS state stays alive.
  */
+// reason: bundled Mermaid JavaScript with network, file, content, and universal file access disabled.
+@SuppressWarnings("java/android/websettings-javascript-enabled", "java/android/websettings-allow-content-access")
 @Composable
 fun MermaidCanvas(spec: MermaidSpec, modifier: Modifier = Modifier) {
     val context = LocalContext.current

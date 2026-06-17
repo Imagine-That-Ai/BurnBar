@@ -20,20 +20,16 @@ final class SwitcherPopoverUITests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            try Self.addMigrationv32(to: dbQueue)
-            store = SwitcherProfileStore(dbQueue: dbQueue)
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        try await Self.addMigrationv32(to: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue)
 
-            // Create adapter for launch services
-            let adapter = PopoverTestSwitcherProfileAdapter(store: store)
-            browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
-            cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
-        } catch {
-            XCTFail("Failed to set up test store: \(error)")
-        }
+        // Create adapter for launch services
+        let adapter = PopoverTestSwitcherProfileAdapter(store: store)
+        browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
+        cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
     }
 
     override func tearDown() {
@@ -46,8 +42,8 @@ final class SwitcherPopoverUITests: XCTestCase {
 
     // MARK: - Migration Helper
 
-    private static func addMigrationv32(to dbQueue: DatabaseQueue) throws {
-        try dbQueue.write { db in
+    private static func addMigrationv32(to dbQueue: DatabaseQueue) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 CREATE TABLE switcher_profiles (
                     id TEXT PRIMARY KEY,
@@ -669,10 +665,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify popover view renders with quick switch controls.
     /// VAL-POPOVER-001: View should show profile selector and switch action.
     @MainActor
-    func test_viewLevel_popoverRendersWithQuickSwitchControls() throws {
+    func test_viewLevel_popoverRendersWithQuickSwitchControls() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -692,10 +688,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify popover view renders empty state when no profiles.
     /// VAL-POPOVER-005: Empty state should show "No Profiles" with recovery CTA.
     @MainActor
-    func test_viewLevel_emptyStateRendersWithRecoveryCTA() throws {
+    func test_viewLevel_emptyStateRendersWithRecoveryCTA() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -720,10 +716,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify popover view renders loading state.
     /// VAL-POPOVER-001: Loading state should show progress indicator.
     @MainActor
-    func test_viewLevel_loadingStateRenders() throws {
+    func test_viewLevel_loadingStateRenders() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -746,10 +742,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify active profile indicator renders correctly.
     /// VAL-POPOVER-002: Active profile should show with green indicator and "Active" badge.
     @MainActor
-    func test_viewLevel_activeProfileIndicatorRenders() throws {
+    func test_viewLevel_activeProfileIndicatorRenders() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -789,10 +785,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify error state renders with error icon and message.
     /// VAL-POPOVER-003: Error state should show descriptive error with recovery actions.
     @MainActor
-    func test_viewLevel_errorStateRendersWithErrorIcon() throws {
+    func test_viewLevel_errorStateRendersWithErrorIcon() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -822,10 +818,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify error state shows the specific error message.
     /// VAL-POPOVER-003: Error state should display the specific error message.
     @MainActor
-    func test_viewLevel_errorStateRendersErrorMessage() throws {
+    func test_viewLevel_errorStateRendersErrorMessage() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -851,10 +847,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify error state has Retry button.
     /// VAL-POPOVER-003: Error state should have retry action.
     @MainActor
-    func test_viewLevel_errorStateHasRetryButton() throws {
+    func test_viewLevel_errorStateHasRetryButton() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -879,10 +875,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify error state has Open Settings button.
     /// VAL-POPOVER-003: Error state should have open settings action.
     @MainActor
-    func test_viewLevel_errorStateHasOpenSettingsButton() throws {
+    func test_viewLevel_errorStateHasOpenSettingsButton() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -907,10 +903,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify error state is distinct from empty state.
     /// VAL-POPOVER-003: Error state should be visually and semantically distinct from empty state.
     @MainActor
-    func test_viewLevel_errorStateIsDistinctFromEmptyState() throws {
+    func test_viewLevel_errorStateIsDistinctFromEmptyState() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -941,10 +937,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify profile selector menu is accessible.
     /// VAL-POPOVER-004: Profile selector should have proper accessibility label.
     @MainActor
-    func test_viewLevel_profileSelectorHasAccessibilityLabel() throws {
+    func test_viewLevel_profileSelectorHasAccessibilityLabel() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -966,10 +962,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify settings button exists in empty state.
     /// VAL-POPOVER-004: Settings button should have accessible label.
     @MainActor
-    func test_viewLevel_settingsButtonHasAccessibilityLabel() throws {
+    func test_viewLevel_settingsButtonHasAccessibilityLabel() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -996,10 +992,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify empty state has "Add in Settings" CTA.
     /// VAL-POPOVER-005: Empty state should show explicit recovery action.
     @MainActor
-    func test_viewLevel_emptyStateHasAddInSettingsCTA() throws {
+    func test_viewLevel_emptyStateHasAddInSettingsCTA() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1026,10 +1022,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify launch button is distinct from switch.
     /// VAL-POPOVER-006: Launch action should be clearly labeled differently from switch.
     @MainActor
-    func test_viewLevel_launchButtonIsPresent() throws {
+    func test_viewLevel_launchButtonIsPresent() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1067,10 +1063,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify load completion announces correct count.
     /// VAL-POPOVER-004: Load completion should announce "{count} profile(s) loaded.".
     @MainActor
-    func test_viewLevel_loadAnnouncesCorrectCount() throws {
+    func test_viewLevel_loadAnnouncesCorrectCount() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1124,10 +1120,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify empty load announces no profiles message.
     /// VAL-POPOVER-004: Empty load should announce "No profiles loaded. Open Settings to create profiles.".
     @MainActor
-    func test_viewLevel_emptyLoadAnnouncesNoProfiles() throws {
+    func test_viewLevel_emptyLoadAnnouncesNoProfiles() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1169,10 +1165,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify switch success announces "Launch default updated".
     /// VAL-POPOVER-004: Success transitions should announce "Launch default updated".
     @MainActor
-    func test_viewLevel_switchSuccessAnnounces() throws {
+    func test_viewLevel_switchSuccessAnnounces() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1344,10 +1340,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify launch success announces profile name.
     /// VAL-POPOVER-004: Launch success should announce "{profile.displayName} launched successfully".
     @MainActor
-    func test_viewLevel_launchSuccessAnnounces() throws {
+    func test_viewLevel_launchSuccessAnnounces() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
@@ -1404,10 +1400,10 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Regression test: Verify rapid inputs are coalesced at view level.
     /// VAL-POPOVER-009: Burst clicks should not cause race conditions.
     @MainActor
-    func test_viewLevel_rapidInputsDoNotCrash() throws {
+    func test_viewLevel_rapidInputsDoNotCrash() async throws {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
+        try await Self.addMigrationv32(to: dbQueue)
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,

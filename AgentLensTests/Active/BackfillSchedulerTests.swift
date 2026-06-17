@@ -35,28 +35,67 @@ final class BackfillSchedulerTests: XCTestCase {
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
-    private func makeBackfillCursorStore(_ store: DataStore) -> BackfillCursorStore {
-        store.backfillCursorStore
+    private struct BackfillCursorStoreHarness {
+        let dataStore: DataStore
+
+        func fetchCursor(for provider: AgentProvider) async throws -> BackfillCursorRecord? {
+            try await dataStore.fetchBackfillCursor(for: provider)
+        }
+
+        func fetchAllCursors() async throws -> [BackfillCursorRecord] {
+            try await dataStore.fetchAllBackfillCursors()
+        }
+
+        func advanceCursor(
+            for provider: AgentProvider,
+            newUpperBound: Date,
+            earliestSourceDate: Date? = nil
+        ) async throws {
+            try await dataStore.advanceBackfillCursor(
+                for: provider,
+                newUpperBound: newUpperBound,
+                earliestSourceDate: earliestSourceDate
+            )
+        }
+
+        func resetCursor(for provider: AgentProvider) async throws {
+            try await dataStore.resetBackfillCursor(for: provider)
+        }
+
+        func resetAllCursors() async throws {
+            try await dataStore.resetAllBackfillCursors()
+        }
+
+        func nextBackfillWindow(
+            for provider: AgentProvider,
+            currentDate: Date = Date()
+        ) async throws -> ClosedRange<Date>? {
+            try await dataStore.nextBackfillWindow(for: provider, currentDate: currentDate)
+        }
     }
 
-    private func fetchAllCursors(store: DataStore) throws -> [BackfillCursorRecord] {
-        try makeBackfillCursorStore(store).fetchAllCursors()
+    private func makeBackfillCursorStore(_ store: DataStore) -> BackfillCursorStoreHarness {
+        BackfillCursorStoreHarness(dataStore: store)
     }
 
-    private func fetchCursor(store: DataStore, provider: AgentProvider) throws -> BackfillCursorRecord? {
-        try makeBackfillCursorStore(store).fetchCursor(for: provider)
+    private func fetchAllCursors(store: DataStore) async throws -> [BackfillCursorRecord] {
+        try await makeBackfillCursorStore(store).fetchAllCursors()
+    }
+
+    private func fetchCursor(store: DataStore, provider: AgentProvider) async throws -> BackfillCursorRecord? {
+        try await makeBackfillCursorStore(store).fetchCursor(for: provider)
     }
 
     // MARK: - VAL-PERSIST-006: Backfill run is bounded to 7-day window
 
     /// Tests that nextBackfillWindow returns a window no larger than 7 days.
-    func test_backfillWindow_isBoundedToSevenDays() throws {
+    func test_backfillWindow_isBoundedToSevenDays() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
 
         // When no cursor exists, next window should be 7 days ending at now
-        guard let window = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
+        guard let window = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
             XCTFail("Expected a backfill window")
             return
         }
@@ -72,7 +111,7 @@ final class BackfillSchedulerTests: XCTestCase {
     }
 
     /// Tests that multiple sequential windows don't exceed 7 days each.
-    func test_sequentialWindows_respectSevenDayBound() throws {
+    func test_sequentialWindows_respectSevenDayBound() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
@@ -82,7 +121,7 @@ final class BackfillSchedulerTests: XCTestCase {
         let maxIterations = 10
 
         for _ in 0..<maxIterations {
-            guard let window = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
+            guard let window = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
                 break // Backfill complete
             }
 
@@ -96,7 +135,7 @@ final class BackfillSchedulerTests: XCTestCase {
             )
 
             // Advance cursor to simulate successful backfill
-            try cursorStore.advanceCursor(
+            try await cursorStore.advanceCursor(
                 for: .claudeCode,
                 newUpperBound: window.upperBound
             )
@@ -107,20 +146,20 @@ final class BackfillSchedulerTests: XCTestCase {
     }
 
     /// Tests that window is clamped to current date if 7 days would exceed it.
-    func test_backfillWindow_clampedToCurrentDate() throws {
+    func test_backfillWindow_clampedToCurrentDate() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
         let threeDaysAgo = now.addingTimeInterval(-3 * 24 * 60 * 60)
 
         // When starting fresh with a recent "earliest source", window should be clamped
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .claudeCode,
             newUpperBound: threeDaysAgo,
             earliestSourceDate: now.addingTimeInterval(-10 * 24 * 60 * 60) // 10 days ago
         )
 
-        guard let window = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
+        guard let window = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
             XCTFail("Expected a backfill window")
             return
         }
@@ -145,7 +184,7 @@ final class BackfillSchedulerTests: XCTestCase {
 
     /// Tests that cursor cannot advance to a date before the current cursor.
     /// For backfill semantics, "backward" means going to a MORE NEGATIVE offset (further in past).
-    func test_cursor_cannotAdvanceBackward() throws {
+    func test_cursor_cannotAdvanceBackward() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
@@ -153,13 +192,13 @@ final class BackfillSchedulerTests: XCTestCase {
         let fiveDaysAgo = now.addingTimeInterval(-5 * 24 * 60 * 60)
 
         // First advance: 3 days ago (more recent)
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .claudeCode,
             newUpperBound: threeDaysAgo
         )
 
         // Verify cursor is at 3 days ago (use 1 second tolerance for floating-point Date comparison)
-        guard let cursor = try fetchCursor(store: store, provider: .claudeCode) else {
+        guard let cursor = try await fetchCursor(store: store, provider: .claudeCode) else {
             XCTFail("Expected cursor to exist")
             return
         }
@@ -171,7 +210,7 @@ final class BackfillSchedulerTests: XCTestCase {
 
         // Attempt to advance to 5 days ago (further in past) should fail (backward)
         do {
-            try cursorStore.advanceCursor(
+            try await cursorStore.advanceCursor(
                 for: .claudeCode,
                 newUpperBound: fiveDaysAgo
             )
@@ -189,7 +228,7 @@ final class BackfillSchedulerTests: XCTestCase {
     /// Tests that cursor advances monotonically through sequential backfill runs.
     /// Uses larger stride to avoid windows being clamped to currentDate which would
     /// cause subsequent windows to start at currentDate (violating strict monotonicity).
-    func test_cursor_advancesMonotonically() throws {
+    func test_cursor_advancesMonotonically() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
@@ -199,7 +238,7 @@ final class BackfillSchedulerTests: XCTestCase {
         // Simulate sequential backfill runs with larger stride to avoid clamping
         // Using stride(from: 60, through: 20, by: -10) gives: [60, 50, 40, 30, 20]
         for dayOffset in stride(from: 60, through: 20, by: -10) {
-            guard let window = try cursorStore.nextBackfillWindow(for: .factory, currentDate: now) else {
+            guard let window = try await cursorStore.nextBackfillWindow(for: .factory, currentDate: now) else {
                 break
             }
 
@@ -218,7 +257,7 @@ final class BackfillSchedulerTests: XCTestCase {
             }
 
             // Advance cursor
-            try cursorStore.advanceCursor(
+            try await cursorStore.advanceCursor(
                 for: .factory,
                 newUpperBound: window.upperBound
             )
@@ -227,7 +266,7 @@ final class BackfillSchedulerTests: XCTestCase {
         }
 
         // Verify final cursor position
-        guard let finalCursor = try fetchCursor(store: store, provider: .factory) else {
+        guard let finalCursor = try await fetchCursor(store: store, provider: .factory) else {
             XCTFail("Expected final cursor")
             return
         }
@@ -235,27 +274,27 @@ final class BackfillSchedulerTests: XCTestCase {
     }
 
     /// Tests that resetCursor allows starting fresh from the beginning.
-    func test_cursor_reset_allowsFreshStart() throws {
+    func test_cursor_reset_allowsFreshStart() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
         let tenDaysAgo = now.addingTimeInterval(-10 * 24 * 60 * 60)
 
         // Advance cursor to 10 days ago
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .claudeCode,
             newUpperBound: tenDaysAgo
         )
 
         // Reset cursor
-        try cursorStore.resetCursor(for: .claudeCode)
+        try await cursorStore.resetCursor(for: .claudeCode)
 
         // Verify cursor is gone
-        let cursor = try fetchCursor(store: store, provider: .claudeCode)
+        let cursor = try await fetchCursor(store: store, provider: .claudeCode)
         XCTAssertNil(cursor)
 
         // Now we should be able to get a window starting from scratch
-        guard let window = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
+        guard let window = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
             XCTFail("Expected a backfill window after reset")
             return
         }
@@ -271,32 +310,32 @@ final class BackfillSchedulerTests: XCTestCase {
     }
 
     /// Tests that earliestSourceDate is preserved across advances but can be set on first advance.
-    func test_cursor_earliestSourceDate_preserved() throws {
+    func test_cursor_earliestSourceDate_preserved() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
         let thirtyDaysAgo = now.addingTimeInterval(-30 * 24 * 60 * 60)
 
         // First advance with earliest source date
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .kimi,
             newUpperBound: now.addingTimeInterval(-23 * 24 * 60 * 60),
             earliestSourceDate: thirtyDaysAgo
         )
 
         // Second advance without earliest source date
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .kimi,
             newUpperBound: now.addingTimeInterval(-16 * 24 * 60 * 60)
         )
 
         // Third advance without earliest source date
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .kimi,
             newUpperBound: now.addingTimeInterval(-9 * 24 * 60 * 60)
         )
 
-        guard let cursor = try fetchCursor(store: store, provider: .kimi) else {
+        guard let cursor = try await fetchCursor(store: store, provider: .kimi) else {
             XCTFail("Expected cursor")
             return
         }
@@ -338,10 +377,10 @@ final class BackfillSchedulerTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(liveExactUsage)
+        try await store.insert(liveExactUsage)
 
         // Advance backfill cursor past that date
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .claudeCode,
             newUpperBound: now.addingTimeInterval(-3 * 24 * 60 * 60)
         )
@@ -362,7 +401,7 @@ final class BackfillSchedulerTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(liveExactUsage2)
+        try await store.insert(liveExactUsage2)
 
         await store.refresh()
 
@@ -400,7 +439,7 @@ final class BackfillSchedulerTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(liveExactUsage)
+        try await store.insert(liveExactUsage)
 
         // Now simulate backfill writing a lower-confidence estimate for the same session
         let backfillEstimateUsage = TokenUsage(
@@ -418,7 +457,7 @@ final class BackfillSchedulerTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try store.insert(backfillEstimateUsage)
+        try await store.insert(backfillEstimateUsage)
 
         await store.refresh()
 
@@ -452,10 +491,10 @@ final class BackfillSchedulerTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try store.insert(backfillEstimateUsage)
+        try await store.insert(backfillEstimateUsage)
 
         // Advance cursor past that date
-        try cursorStore.advanceCursor(
+        try await cursorStore.advanceCursor(
             for: .claudeCode,
             newUpperBound: now.addingTimeInterval(-1 * 24 * 60 * 60)
         )
@@ -476,7 +515,7 @@ final class BackfillSchedulerTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(liveExactUsage)
+        try await store.insert(liveExactUsage)
 
         await store.refresh()
 
@@ -488,22 +527,22 @@ final class BackfillSchedulerTests: XCTestCase {
     }
 
     /// Tests that multiple providers maintain independent cursors.
-    func test_cursor_independentPerProvider() throws {
+    func test_cursor_independentPerProvider() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
 
         // Advance cursor for claudeCode
         let claudeCursor = now.addingTimeInterval(-5 * 24 * 60 * 60)
-        try cursorStore.advanceCursor(for: .claudeCode, newUpperBound: claudeCursor)
+        try await cursorStore.advanceCursor(for: .claudeCode, newUpperBound: claudeCursor)
 
         // Advance cursor for factory (different date)
         let factoryCursor = now.addingTimeInterval(-10 * 24 * 60 * 60)
-        try cursorStore.advanceCursor(for: .factory, newUpperBound: factoryCursor)
+        try await cursorStore.advanceCursor(for: .factory, newUpperBound: factoryCursor)
 
         // Verify cursors are independent
-        guard let c1 = try fetchCursor(store: store, provider: .claudeCode),
-              let c2 = try fetchCursor(store: store, provider: .factory) else {
+        guard let c1 = try await fetchCursor(store: store, provider: .claudeCode),
+              let c2 = try await fetchCursor(store: store, provider: .factory) else {
             XCTFail("Expected both cursors")
             return
         }
@@ -524,12 +563,12 @@ final class BackfillSchedulerTests: XCTestCase {
     // MARK: - Window Boundary Edge Cases
 
     /// Tests that first backfill window starts from default position (7 days ago) when no earliest date is known.
-    func test_firstBackfillWindow_startsFromDefault() throws {
+    func test_firstBackfillWindow_startsFromDefault() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
 
-        guard let window = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
+        guard let window = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now) else {
             XCTFail("Expected a backfill window")
             return
         }
@@ -549,17 +588,17 @@ final class BackfillSchedulerTests: XCTestCase {
     // MARK: - Concurrent Safety (Idempotency)
 
     /// Tests that multiple calls to advanceCursor with the same value are idempotent.
-    func test_advanceCursor_isIdempotent() throws {
+    func test_advanceCursor_isIdempotent() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
         let fiveDaysAgo = now.addingTimeInterval(-5 * 24 * 60 * 60)
 
         // Advance twice with same value
-        try cursorStore.advanceCursor(for: .cursor, newUpperBound: fiveDaysAgo)
-        try cursorStore.advanceCursor(for: .cursor, newUpperBound: fiveDaysAgo)
+        try await cursorStore.advanceCursor(for: .cursor, newUpperBound: fiveDaysAgo)
+        try await cursorStore.advanceCursor(for: .cursor, newUpperBound: fiveDaysAgo)
 
-        guard let cursor = try fetchCursor(store: store, provider: .cursor) else {
+        guard let cursor = try await fetchCursor(store: store, provider: .cursor) else {
             XCTFail("Expected cursor")
             return
         }
@@ -597,15 +636,15 @@ final class BackfillSchedulerTests: XCTestCase {
     func test_refreshAll_withSuccessfulPersistence_allowsCursorAdvance() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-        let cursorStore = store.backfillCursorStore
+        let cursorStore = makeBackfillCursorStore(store)
 
         // Set up an initial cursor position using deterministic timestamps
         let now = Date()
         let fiveDaysAgo = now.addingTimeInterval(-5 * 24 * 60 * 60)
-        try cursorStore.advanceCursor(for: .claudeCode, newUpperBound: fiveDaysAgo)
+        try await cursorStore.advanceCursor(for: .claudeCode, newUpperBound: fiveDaysAgo)
 
         // Capture pre-refresh cursor bounds for delta assertion
-        let cursorBefore = try fetchCursor(store: store, provider: .claudeCode)
+        let cursorBefore = try await fetchCursor(store: store, provider: .claudeCode)
         XCTAssertNotNil(cursorBefore, "Cursor should exist before refreshAll()")
         let positionBefore = cursorBefore!.lastProcessedWindowUpperBound!
         let versionBefore = cursorBefore!.version
@@ -632,7 +671,7 @@ final class BackfillSchedulerTests: XCTestCase {
         )
 
         // Verify post-refresh cursor state
-        let finalCursor = try fetchCursor(store: store, provider: .claudeCode)
+        let finalCursor = try await fetchCursor(store: store, provider: .claudeCode)
         XCTAssertNotNil(finalCursor, "Cursor should exist after refreshAll()")
 
         // STRENGTHENED: Assert measurable cursor advancement delta, not mere existence
@@ -700,14 +739,14 @@ final class BackfillSchedulerTests: XCTestCase {
                 XCTFail("Expected writable store to initialize")
                 return
             }
-            let cursorStore = writableStore.backfillCursorStore
+            let cursorStore = makeBackfillCursorStore(writableStore)
 
             // Set up an initial cursor position using deterministic timestamps
             let fiveDaysAgo = now.addingTimeInterval(-5 * 24 * 60 * 60)
-            try cursorStore.advanceCursor(for: .claudeCode, newUpperBound: fiveDaysAgo)
+            try await cursorStore.advanceCursor(for: .claudeCode, newUpperBound: fiveDaysAgo)
 
             // Verify initial cursor state
-            guard let cursorBefore = try fetchCursor(store: writableStore, provider: .claudeCode) else {
+            guard let cursorBefore = try await fetchCursor(store: writableStore, provider: .claudeCode) else {
                 XCTFail("Expected cursor to exist after initial advance")
                 return
             }
@@ -764,7 +803,7 @@ final class BackfillSchedulerTests: XCTestCase {
 
                 // Step 7: Verify cursor was NOT advanced (persistence failure was gated)
                 // The cursor should still be at the EXACT initial position with same version
-                let cursorAfter = try readOnlyStore.backfillCursorStore.fetchCursor(for: .claudeCode)
+                let cursorAfter = try await readOnlyStore.fetchBackfillCursor(for: .claudeCode)
                 XCTAssertNotNil(cursorAfter, "Cursor should still exist")
 
                 // STRENGTHENED: Verify EXACT unchanged position (not just "not advanced")
@@ -805,7 +844,7 @@ final class BackfillSchedulerTests: XCTestCase {
     /// Tests that advanceCursor succeeds for equal timestamps (idempotent) and for forward movement.
     /// This verifies the runtime behavior of the cursor advancement that runScheduledBackfillIfNeeded
     /// would perform after successful persistence.
-    func test_backfillGuard_persistenceSuccess_allowsCursorAdvance() throws {
+    func test_backfillGuard_persistenceSuccess_allowsCursorAdvance() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
@@ -816,17 +855,17 @@ final class BackfillSchedulerTests: XCTestCase {
         let day3Ago = now.addingTimeInterval(-3 * 24 * 60 * 60)
 
         // Initial advance (simulating first successful persistence)
-        try cursorStore.advanceCursor(for: .factory, newUpperBound: day5Ago)
+        try await cursorStore.advanceCursor(for: .factory, newUpperBound: day5Ago)
 
         // Equal timestamp advance (idempotent - simulating retry after successful persistence)
         // Using the SAME day5Ago object reference ensures exact equality
-        try cursorStore.advanceCursor(for: .factory, newUpperBound: day5Ago)
+        try await cursorStore.advanceCursor(for: .factory, newUpperBound: day5Ago)
 
         // Forward advance (simulating next successful persistence cycle)
-        try cursorStore.advanceCursor(for: .factory, newUpperBound: day3Ago)
+        try await cursorStore.advanceCursor(for: .factory, newUpperBound: day3Ago)
 
         // Verify final state
-        guard let cursor = try fetchCursor(store: store, provider: .factory) else {
+        guard let cursor = try await fetchCursor(store: store, provider: .factory) else {
             XCTFail("Expected cursor to exist")
             return
         }
@@ -867,7 +906,7 @@ final class BackfillSchedulerTests: XCTestCase {
     /// 2. Temp directory usage is system-portable via FileManager API
     /// 3. Date references use pure interval math (no locale/timezone coupling)
     /// 4. Production BackfillCursorStore uses no hardcoded paths
-    func test_portability_traceability_proof() throws {
+    func test_portability_traceability_proof() async throws {
         // --- Property 1: In-memory databases used for all non-persistence-failure tests ---
         // makeInMemoryDataStore() creates DatabaseQueue() with no file path argument,
         // ensuring the test DB is fully in-memory and machine-independent.
@@ -875,7 +914,7 @@ final class BackfillSchedulerTests: XCTestCase {
         // Verify the store works correctly (basic smoke test)
         let cursorStore = makeBackfillCursorStore(inMemoryStore)
         let now = Date()
-        _ = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now)
+        _ = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now)
 
         // --- Property 2: Temp directory usage is system-portable ---
         // test_refreshAll_withPersistenceFailure_preventsCursorAdvance uses
@@ -906,7 +945,7 @@ final class BackfillSchedulerTests: XCTestCase {
         // cursor tracking and GRDB database operations (no file path strings).
         let bundle = Bundle(for: type(of: inMemoryStore))
         // Smoke-check: cursor operations work through DataStore without path coupling
-        let claudeWindow = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now)
+        let claudeWindow = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now)
         XCTAssertNotNil(claudeWindow, "BackfillCursorStore window computation must work without filesystem paths")
 
         // --- Property 5: Portable helper method exists and creates pathless DB ---
@@ -914,7 +953,7 @@ final class BackfillSchedulerTests: XCTestCase {
         // that passes basic cursor operations without any file I/O.
         let secondStore = try makeInMemoryDataStore()
         let secondCursorStore = makeBackfillCursorStore(secondStore)
-        let factoryWindow = try secondCursorStore.nextBackfillWindow(for: .factory, currentDate: now)
+        let factoryWindow = try await secondCursorStore.nextBackfillWindow(for: .factory, currentDate: now)
         XCTAssertNotNil(factoryWindow, "Each in-memory store instance must work independently without path coupling")
     }
 }

@@ -6,15 +6,42 @@
 
 import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
 import { forEachInPages } from "./rollupPagination.js";
+import { StreamingPercentileSketch } from "./streamingPercentiles.js";
 import type { MediaFeature, MediaSessionDailyRollupDoc } from "./types.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
-const ROLLUP_SCHEMA_VERSION = 1;
+const ROLLUP_SCHEMA_VERSION = 2;
 const ROLLUP_COLLECTION = "ops/media_session_daily_rollups/days";
 const FEATURES: MediaFeature[] = ["fileTransfer", "screenShare", "videoCall"];
+const RTT_ANCHORS = [25, 100, 275, 600];
+const BITS_PER_SECOND_ANCHORS = [200_000, 450_000, 800_000, 1_500_000, 3_000_000, 6_000_000, 12_000_000];
+const FREEZE_COUNT_ANCHORS = Array.from({ length: 51 }, (_value, index) => index);
+
+type MediaSessionRollupDoc = {
+  ref: { path: string };
+  data(): Record<string, unknown>;
+};
+
+interface MediaSessionRollupQuery {
+  where(field: string, op: ">=" | "<", value: string): MediaSessionRollupQuery;
+  orderBy(field: string): MediaSessionRollupQuery;
+  startAfter(cursor: MediaSessionRollupDoc): MediaSessionRollupQuery;
+  limit(limit: number): MediaSessionRollupQuery;
+  get(): Promise<{
+    readonly empty: boolean;
+    readonly size: number;
+    readonly docs: readonly MediaSessionRollupDoc[];
+  }>;
+}
+
+interface MediaSessionRollupFirestore {
+  collectionGroup(name: string): MediaSessionRollupQuery;
+  doc(path: string): {
+    set(data: MediaSessionDailyRollupDoc, options: { merge: true }): Promise<unknown>;
+  };
+}
 
 function utcDayWindow(date: Date) {
   const dateId = date.toISOString().slice(0, 10);
@@ -53,12 +80,6 @@ function emptyFeatureBucket(): MediaSessionDailyRollupDoc["perFeature"][MediaFea
   };
 }
 
-function percentile(sorted: number[], pct: number): number | undefined {
-  if (sorted.length === 0) return undefined;
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((pct / 100) * sorted.length) - 1));
-  return sorted[index];
-}
-
 function bucketRtt(b: string | undefined): number | undefined {
   switch (b) {
     case "lt_50ms":
@@ -95,13 +116,31 @@ function bucketBitsPerSecond(b: string | undefined): number | undefined {
   }
 }
 
-interface RollupOptions {
-  dateUTC: Date;
-  firestore?: Firestore;
+interface MediaRollupDoc {
+  ref: { path: string };
+  data(): Record<string, unknown>;
 }
 
-async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
-  const firestore = options.firestore ?? getFirestore();
+interface MediaRollupQuery {
+  where(field: string, op: string, value: string): MediaRollupQuery;
+  orderBy(field: string): MediaRollupQuery;
+  startAfter(cursor: MediaRollupDoc): MediaRollupQuery;
+  limit(limit: number): MediaRollupQuery;
+  get(): Promise<{ readonly empty: boolean; readonly size: number; readonly docs: readonly MediaRollupDoc[] }>;
+}
+
+interface MediaRollupFirestore {
+  collectionGroup(name: string): MediaRollupQuery;
+  doc(path: string): { set(data: unknown, options?: unknown): Promise<unknown> };
+}
+
+interface RollupOptions {
+  dateUTC: Date;
+  firestore?: MediaRollupFirestore;
+}
+
+export async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
+  const firestore: MediaSessionRollupFirestore = options.firestore ?? getFirestore();
   const window = utcDayWindow(options.dateUTC);
 
   const query = firestore
@@ -111,9 +150,21 @@ async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaS
 
   const perFeature = buildEmptyPerFeature();
 
-  const rttSamples: Record<MediaFeature, number[]> = { fileTransfer: [], screenShare: [], videoCall: [] };
-  const bpsSamples: Record<MediaFeature, number[]> = { fileTransfer: [], screenShare: [], videoCall: [] };
-  const freezeSamples: Record<MediaFeature, number[]> = { fileTransfer: [], screenShare: [], videoCall: [] };
+  const rttSketches: Record<MediaFeature, StreamingPercentileSketch> = {
+    fileTransfer: new StreamingPercentileSketch(RTT_ANCHORS),
+    screenShare: new StreamingPercentileSketch(RTT_ANCHORS),
+    videoCall: new StreamingPercentileSketch(RTT_ANCHORS),
+  };
+  const bpsSketches: Record<MediaFeature, StreamingPercentileSketch> = {
+    fileTransfer: new StreamingPercentileSketch(BITS_PER_SECOND_ANCHORS),
+    screenShare: new StreamingPercentileSketch(BITS_PER_SECOND_ANCHORS),
+    videoCall: new StreamingPercentileSketch(BITS_PER_SECOND_ANCHORS),
+  };
+  const freezeSketches: Record<MediaFeature, StreamingPercentileSketch> = {
+    fileTransfer: new StreamingPercentileSketch(FREEZE_COUNT_ANCHORS),
+    screenShare: new StreamingPercentileSketch(FREEZE_COUNT_ANCHORS),
+    videoCall: new StreamingPercentileSketch(FREEZE_COUNT_ANCHORS),
+  };
   const successesByFeature: Record<MediaFeature, { ok: number; total: number }> = {
     fileTransfer: { ok: 0, total: 0 },
     screenShare: { ok: 0, total: 0 },
@@ -142,11 +193,11 @@ async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaS
     }
 
     const rtt = bucketRtt(stringField(raw, "p95RoundTripMillisBucket"));
-    if (rtt !== undefined) rttSamples[feature].push(rtt);
+    rttSketches[feature].add(rtt);
     const bps = bucketBitsPerSecond(stringField(raw, "p95BitsPerSecondBucket"));
-    if (bps !== undefined) bpsSamples[feature].push(bps);
+    bpsSketches[feature].add(bps);
     const freezeCount = numberField(raw, "freezeCount");
-    if (typeof freezeCount === "number") freezeSamples[feature].push(freezeCount);
+    freezeSketches[feature].add(freezeCount);
 
     const startedAt = stringField(raw, "startedAt");
     const endedAt = stringField(raw, "endedAt");
@@ -163,29 +214,9 @@ async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaS
     const bucket = perFeature[feature];
     const tally = successesByFeature[feature];
     bucket.successRate = tally.total > 0 ? tally.ok / tally.total : 0;
-
-    const rttSorted = [...rttSamples[feature]].sort((a, b) => a - b);
-    const bpsSorted = [...bpsSamples[feature]].sort((a, b) => a - b);
-    const freezeSorted = [...freezeSamples[feature]].sort((a, b) => a - b);
-
-    bucket.rttMillis = {
-      count: rttSorted.length,
-      p50: percentile(rttSorted, 50),
-      p95: percentile(rttSorted, 95),
-      p99: percentile(rttSorted, 99),
-    };
-    bucket.bitsPerSecond = {
-      count: bpsSorted.length,
-      p50: percentile(bpsSorted, 50),
-      p95: percentile(bpsSorted, 95),
-      p99: percentile(bpsSorted, 99),
-    };
-    bucket.freezeCount = {
-      count: freezeSorted.length,
-      p50: percentile(freezeSorted, 50),
-      p95: percentile(freezeSorted, 95),
-      p99: percentile(freezeSorted, 99),
-    };
+    bucket.rttMillis = rttSketches[feature].summary();
+    bucket.bitsPerSecond = bpsSketches[feature].summary();
+    bucket.freezeCount = freezeSketches[feature].summary();
   }
 
   const rollup: MediaSessionDailyRollupDoc = {

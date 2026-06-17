@@ -67,7 +67,7 @@ enum RefreshBackgroundWork {
         let discovery = pipeline.discover()
         let parsed = try await pipeline.parse(from: discovery)
         let reconciled = await pipeline.reconcile(parsed: parsed)
-        let persisted = pipeline.persist(parsed: parsed)
+        let persisted = await pipeline.persist(parsed: parsed)
 
         result.parserHealth = parsed.parserHealth
         result.errors = parsed.errors
@@ -79,7 +79,7 @@ enum RefreshBackgroundWork {
         result.persistencePhaseDuration = persisted.duration
 
         do {
-            try pipeline.writeParserHealth(parsed: parsed, persist: persisted)
+            try await pipeline.writeParserHealth(parsed: parsed, persist: persisted)
         } catch {
             result.healthWriteError = "Failed to persist parser/import health: \(error.localizedDescription)"
         }
@@ -116,7 +116,7 @@ enum RefreshBackgroundWork {
                 ? .empty
                 : .healthy(sessionCount: parseResult.usages.count)
 
-            try dataStore.insertChunked(parseResult.usages, chunkSize: 500)
+            try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
 
             if settings.conversationIndexingEnabled {
                 do {
@@ -150,7 +150,7 @@ enum RefreshBackgroundWork {
         importedUsageCount: Int,
         persistenceError: String?,
         conversationIndexingEnabled: Bool
-    ) throws {
+    ) async throws {
         let providers = parsers.keys.sorted { $0.rawValue < $1.rawValue }
         let providerStates = providers.map { provider -> ParserImportHealthProviderState in
             let health = parserHealth[provider] ?? .notConfigured
@@ -202,7 +202,7 @@ enum RefreshBackgroundWork {
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
         let now = Date()
-        try dataStore.upsertRetrievalHealth(
+        try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .parserImport,
                 status: status,

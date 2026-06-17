@@ -140,10 +140,10 @@ actor ArtifactDiscoveryService {
     }
 
     @discardableResult
-    func discoverAndIngest() throws -> ArtifactDiscoveryRunReport {
+    func discoverAndIngest() async throws -> ArtifactDiscoveryRunReport {
         guard settingsProvider.artifactDiscoveryEnabled else {
             let report = ArtifactDiscoveryRunReport.disabled
-            try upsertHealth(from: report)
+            try await upsertHealth(from: report)
             return report
         }
 
@@ -169,7 +169,7 @@ actor ArtifactDiscoveryService {
                     path: nil
                 )
             )
-            try upsertHealth(from: report)
+            try await upsertHealth(from: report)
             return report
         }
 
@@ -218,7 +218,8 @@ actor ArtifactDiscoveryService {
             report.scannedRoots += 1
             successfullyScannedRoots.insert(rootPath)
 
-            for case let candidateURL as URL in enumerator {
+            let candidateURLs = enumerator.allObjects.compactMap { $0 as? URL }
+            for candidateURL in candidateURLs {
                 let canonicalCandidatePath = canonicalPath(for: candidateURL)
                 guard isWithinRoot(candidatePath: canonicalCandidatePath, rootPath: rootPath) else {
                     report.issues.append(
@@ -282,22 +283,22 @@ actor ArtifactDiscoveryService {
                     updatedAt: now
                 )
 
-                let disposition = try dataStoreActor.artifactStore.upsertSourceArtifact(artifact)
+                let disposition = try await dataStoreActor.artifactStore.upsertSourceArtifact(artifact)
                 discoveredSourceIDs.insert(artifact.id)
                 report.discoveredArtifacts += 1
 
                 switch disposition {
                 case .inserted:
                     report.insertedArtifacts += 1
-                    try enqueueProjectionJob(for: artifact, jobType: .project, sourceVersionID: artifact.contentHash, now: now)
+                    try await enqueueProjectionJob(for: artifact, jobType: .project, sourceVersionID: artifact.contentHash, now: now)
                     report.queuedJobs += 1
                 case .updated:
                     report.updatedArtifacts += 1
-                    try enqueueProjectionJob(for: artifact, jobType: .reproject, sourceVersionID: artifact.contentHash, now: now)
+                    try await enqueueProjectionJob(for: artifact, jobType: .reproject, sourceVersionID: artifact.contentHash, now: now)
                     report.queuedJobs += 1
                 case .restored:
                     report.restoredArtifacts += 1
-                    try enqueueProjectionJob(for: artifact, jobType: .reproject, sourceVersionID: artifact.contentHash, now: now)
+                    try await enqueueProjectionJob(for: artifact, jobType: .reproject, sourceVersionID: artifact.contentHash, now: now)
                     report.queuedJobs += 1
                 case .unchanged:
                     report.unchangedArtifacts += 1
@@ -305,7 +306,7 @@ actor ArtifactDiscoveryService {
             }
         }
 
-        let existingArtifacts = try dataStoreActor.artifactStore.fetchSourceArtifacts(
+        let existingArtifacts = try await dataStoreActor.artifactStore.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]
@@ -314,9 +315,9 @@ actor ArtifactDiscoveryService {
         for existing in existingArtifacts {
             if registeredRootSet.contains(existing.rootPath) == false {
                 let now = nowProvider()
-                if try dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
+                if try await dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
                     report.deletedArtifacts += 1
-                    try enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
+                    try await enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
                     report.queuedJobs += 1
                 }
                 continue
@@ -326,18 +327,18 @@ actor ArtifactDiscoveryService {
             guard discoveredSourceIDs.contains(existing.id) == false else { continue }
 
             let now = nowProvider()
-            if try dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
+            if try await dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
                 report.deletedArtifacts += 1
-                try enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
+                try await enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
                 report.queuedJobs += 1
             }
         }
 
-        try upsertHealth(from: report)
+        try await upsertHealth(from: report)
         return report
     }
 
-    private func upsertHealth(from report: ArtifactDiscoveryRunReport) throws {
+    private func upsertHealth(from report: ArtifactDiscoveryRunReport) async throws {
         let now = nowProvider()
         let status: RetrievalHealthStatus = report.issues.isEmpty ? .healthy : .degraded
         let errorCode = report.issues.first?.code.rawValue
@@ -346,7 +347,7 @@ actor ArtifactDiscoveryService {
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
 
-        try dataStoreActor.projectionStore.upsertRetrievalHealth(
+        try await dataStoreActor.projectionStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .discovery,
                 status: status,
@@ -364,7 +365,7 @@ actor ArtifactDiscoveryService {
         jobType: ProjectionJobType,
         sourceVersionID: String,
         now: Date
-    ) throws {
+    ) async throws {
         let payload = ArtifactProjectionPayload(
             canonicalPath: artifact.canonicalPath,
             rootPath: artifact.rootPath,
@@ -378,7 +379,7 @@ actor ArtifactDiscoveryService {
         let jobID = projectionJobID(jobType: jobType, sourceID: artifact.id, sourceVersionID: sourceVersionID)
         let priority = (jobType == .purge) ? 2 : 10
 
-        try dataStoreActor.projectionStore.enqueueProjectionJob(
+        try await dataStoreActor.projectionStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: jobType,

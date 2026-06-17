@@ -9,14 +9,16 @@ public final class TextExpansionSnippetStore: Sendable {
         self.dbQueue = dbQueue
     }
 
-    public func upsert(_ snippet: TextExpansionSnippet, markUnsynced: Bool = true) throws {
-        var normalized = snippet
-        normalized.trigger = TextExpansionTrigger.canonicalName(snippet.trigger)
-        guard TextExpansionTrigger.isValid(normalized.trigger) else {
-            throw TextExpansionSnippetStoreError.invalidTrigger(TextExpansionTrigger.validationError(for: normalized.trigger) ?? "Invalid trigger.")
+    public func upsert(_ snippet: TextExpansionSnippet, markUnsynced: Bool = true) async throws {
+        var normalizedSnippet = snippet
+        normalizedSnippet.trigger = TextExpansionTrigger.canonicalName(snippet.trigger)
+        guard TextExpansionTrigger.isValid(normalizedSnippet.trigger) else {
+            throw TextExpansionSnippetStoreError.invalidTrigger(TextExpansionTrigger.validationError(for: normalizedSnippet.trigger) ?? "Invalid trigger.")
         }
-        let scopeJSON = try OpenBurnBarDatabase.encodeJSON(normalized.scope)
-        try dbQueue.write { db in
+        let normalized = normalizedSnippet
+        let snippetToPersist = normalized
+        let scopeJSON = try OpenBurnBarDatabase.encodeJSON(snippetToPersist.scope)
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO text_expansion_snippets (
@@ -38,32 +40,32 @@ public final class TextExpansionSnippetStore: Sendable {
                     sourceDeviceID = excluded.sourceDeviceID
                 """,
                 arguments: [
-                    normalized.id,
-                    normalized.title,
-                    normalized.trigger,
-                    normalized.body,
-                    normalized.mode.rawValue,
-                    normalized.isEnabled ? 1 : 0,
+                    snippetToPersist.id,
+                    snippetToPersist.title,
+                    snippetToPersist.trigger,
+                    snippetToPersist.body,
+                    snippetToPersist.mode.rawValue,
+                    snippetToPersist.isEnabled ? 1 : 0,
                     scopeJSON,
-                    normalized.revision,
-                    normalized.createdAt,
-                    normalized.updatedAt,
-                    normalized.deletedAt,
-                    markUnsynced ? nil : normalized.syncedAt,
-                    normalized.sourceDeviceID
+                    snippetToPersist.revision,
+                    snippetToPersist.createdAt,
+                    snippetToPersist.updatedAt,
+                    snippetToPersist.deletedAt,
+                    markUnsynced ? nil : snippetToPersist.syncedAt,
+                    snippetToPersist.sourceDeviceID
                 ]
             )
         }
     }
 
-    public func saveFromRemote(_ snippet: TextExpansionSnippet, syncedAt: Date = Date()) throws {
+    public func saveFromRemote(_ snippet: TextExpansionSnippet, syncedAt: Date = Date()) async throws {
         var remote = snippet
         remote.syncedAt = syncedAt
-        try upsert(remote, markUnsynced: false)
+        try await upsert(remote, markUnsynced: false)
     }
 
-    public func fetchAll(includeDeleted: Bool = false) throws -> [TextExpansionSnippet] {
-        try dbQueue.read { db in
+    public func fetchAll(includeDeleted: Bool = false) async throws -> [TextExpansionSnippet] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -80,14 +82,14 @@ public final class TextExpansionSnippetStore: Sendable {
         surface: TextExpansionSurface? = nil,
         bundleIdentifier: String? = nil,
         threadID: String? = nil
-    ) throws -> [TextExpansionSnippet] {
-        let snippets = try fetchAll(includeDeleted: false).filter(\.isEnabled)
+    ) async throws -> [TextExpansionSnippet] {
+        let snippets = try await fetchAll(includeDeleted: false).filter(\.isEnabled)
         guard let surface else { return snippets }
         return snippets.filter { $0.scope.allows(surface: surface, bundleIdentifier: bundleIdentifier, threadID: threadID) }
     }
 
-    public func fetchUnsynced(limit: Int = 200) throws -> [TextExpansionSnippet] {
-        try dbQueue.read { db in
+    public func fetchUnsynced(limit: Int = 200) async throws -> [TextExpansionSnippet] {
+        try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -102,9 +104,9 @@ public final class TextExpansionSnippetStore: Sendable {
         }
     }
 
-    public func markSynced(ids: [String], at date: Date = Date()) throws {
+    public func markSynced(ids: [String], at date: Date = Date()) async throws {
         guard !ids.isEmpty else { return }
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             var arguments: [any DatabaseValueConvertible] = [date]
             arguments.append(contentsOf: ids)
             try db.execute(
@@ -118,8 +120,8 @@ public final class TextExpansionSnippetStore: Sendable {
         }
     }
 
-    public func delete(id: String, at date: Date = Date()) throws {
-        try dbQueue.write { db in
+    public func delete(id: String, at date: Date = Date()) async throws {
+        try await dbQueue.write { db in
             try db.execute(
                 sql: """
                 UPDATE text_expansion_snippets
@@ -131,8 +133,8 @@ public final class TextExpansionSnippetStore: Sendable {
         }
     }
 
-    public func count() throws -> Int {
-        try dbQueue.read { db in
+    public func count() async throws -> Int {
+        try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(1) FROM text_expansion_snippets WHERE deletedAt IS NULL") ?? 0
         }
     }

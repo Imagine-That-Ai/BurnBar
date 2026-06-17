@@ -70,7 +70,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
 
         let expired: [ConversationRecord]
         do {
-            expired = try context.dataStore.fetchExpiredConversationTombstones(before: cutoff, limit: 200)
+            expired = try await context.dataStore.fetchExpiredConversationTombstones(before: cutoff, limit: 200)
         } catch {
             await recordSyncError(error)
             return
@@ -84,7 +84,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
         for record in expired {
             do {
                 try await purgeRemoteArtifacts(record: record, uid: uid, localDeviceId: deviceId)
-                try context.dataStore.deleteConversation(id: record.id)
+                try await context.dataStore.deleteConversation(id: record.id)
                 purgedCount += 1
             } catch {
                 // Preserve the local row so the next sweep retries the cloud

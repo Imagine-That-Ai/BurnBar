@@ -125,7 +125,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
 
         do {
-            let backupUsage = try context.dataStore.backupUsageSnapshot(limits: context.backupPlanLimits)
+            let backupUsage = try await context.dataStore.backupUsageSnapshot(limits: context.backupPlanLimits)
             if let blockingReason = backupUsage.blockingReason {
                 throw CloudBackupPreflightError.planLimitExceeded(blockingReason)
             }
@@ -136,12 +136,12 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
 
             let userRef = context.firestoreGateway.collection("users").document(uid)
             let logsRef = userRef.collection("session_logs")
-            let sessionModelMap = (try? context.dataStore.sessionModelMap()) ?? [:] // try?-ok(best-effort metadata read)
-            let sessionFacetsMap = (try? context.dataStore.sessionFacetsMap()) ?? [:] // try?-ok(best-effort metadata read)
+            let sessionModelMap = (try? await context.dataStore.sessionModelMap()) ?? [:] // try?-ok(best-effort metadata read)
+            let sessionFacetsMap = (try? await context.dataStore.sessionFacetsMap()) ?? [:] // try?-ok(best-effort metadata read)
 
             var processedAnyBatch = false
             repeat {
-                let unsynced = try context.dataStore.fetchUnsyncedSessionLogs(limit: 50)
+                let unsynced = try await context.dataStore.fetchUnsyncedSessionLogs(limit: 50)
                 guard !unsynced.isEmpty else {
                     if !processedAnyBatch {
                         state.withLock { $0.lastSyncDate = Date() }
@@ -224,7 +224,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                             operation: { "Writing Firestore metadata (batch \($0))" }
                         )
                         await resolvedArchivedSessionMirror().mirrorArchivedLog(record, cloudLogDocumentID: docId)
-                        try context.dataStore.markSessionLogsSynced(ids: [record.id])
+                        try await context.dataStore.markSessionLogsSynced(ids: [record.id])
                         progress?.recordSessionLogOutcome(
                             label: label,
                             uploaded: false,
@@ -446,7 +446,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         operation: { "Writing Firestore metadata (batch \($0))" }
                     )
                     await resolvedArchivedSessionMirror().mirrorArchivedLog(record, cloudLogDocumentID: docId)
-                    try context.dataStore.markSessionLogsSynced(ids: [record.id])
+                    try await context.dataStore.markSessionLogsSynced(ids: [record.id])
                     progress?.recordSessionLogOutcome(
                         label: label,
                         uploaded: true,
@@ -479,7 +479,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
         guard needsBackfill else { return }
         do {
-            _ = try context.dataStore.markAllSessionLogsUnsynced()
+            _ = try await context.dataStore.markAllSessionLogsUnsynced()
             await MainActor.run {
                 context.settingsManager.conversationFacetBackfillVersion = Self.facetSchemaVersion
             }

@@ -114,6 +114,7 @@ struct ProjectHubView: View {
     let onEditSetup: () -> Void
     let onLaunchReview: (BurnBarControllerReviewCadence) -> Void
     let onRegister: () -> Void
+    @Environment(AccountManager.self) private var accountManager
     @State private var projectMemorySnapshot: ProjectMemorySnapshot?
     @State private var projectMemoryError: String?
     @State private var isRefreshingProjectMemory = false
@@ -314,14 +315,14 @@ struct ProjectHubView: View {
 
         let syncContext = CloudSyncContext(
             dataStore: dataStore,
-            accountManager: AccountManager.shared,
+            accountManager: accountManager,
             settingsManager: settingsManager
         )
         let projectMemorySync = SessionLogSyncService(context: syncContext)
 
         if forceRefresh == false {
             for key in projectMemoryKeys {
-                if let cached = try? dataStore.fetchProjectMemorySnapshot(projectSlug: key) {
+                if let cached = try? await dataStore.fetchProjectMemorySnapshot(projectSlug: key) {
                     projectMemorySnapshot = cached
                     break
                 }
@@ -332,7 +333,7 @@ struct ProjectHubView: View {
             for key in projectMemoryKeys {
                 if let cloudSnapshot = try? await projectMemorySync.fetchCloudProjectMemorySnapshot(projectSlug: key) {
                     projectMemorySnapshot = cloudSnapshot
-                    try? dataStore.upsertProjectMemorySnapshot(cloudSnapshot)
+                    try? await dataStore.upsertProjectMemorySnapshot(cloudSnapshot)
                     break
                 }
             }
@@ -340,7 +341,7 @@ struct ProjectHubView: View {
 
         var conversations: [ConversationRecord] = []
         for key in projectMemoryKeys {
-            if let rows = try? dataStore.fetchConversationsForTranscriptScan(
+            if let rows = try? await dataStore.fetchConversationsForTranscriptScan(
                 provider: nil,
                 projectName: key,
                 dateRange: nil,
@@ -369,7 +370,7 @@ struct ProjectHubView: View {
         projectMemorySnapshot = snapshot
 
         do {
-            try dataStore.upsertProjectMemorySnapshot(snapshot)
+            try await dataStore.upsertProjectMemorySnapshot(snapshot)
             projectMemoryError = nil
         } catch {
             projectMemoryError = "Couldn't persist Project Memory locally: \(error.localizedDescription)"
@@ -919,9 +920,12 @@ struct InlineMissionCard: View {
                         )
 
                     Button {
+                        let note = approvalNote
                         withAnimation(DesignSystem.Animation.standard) {
-                            operatingLayer.approveMission(note: approvalNote)
                             approvalNote = ""
+                        }
+                        Task {
+                            await operatingLayer.approveMission(note: note)
                         }
                     } label: {
                         HStack(spacing: DesignSystem.Spacing.xs) {

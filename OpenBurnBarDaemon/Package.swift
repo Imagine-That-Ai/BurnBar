@@ -59,7 +59,7 @@ let package = Package(
             cSettings: [
                 .define("SQLITE_HAS_CODEC")
             ],
-            linkerSettings: [.unsafeFlags(["-framework", "Network"])]
+            linkerSettings: [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]
         ),
         .executableTarget(
             name: "OpenBurnBarDaemonExecutable",

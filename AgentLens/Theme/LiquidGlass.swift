@@ -68,10 +68,12 @@ enum LiquidGlassTransparency {
     static func frostScrimOpacity(_ t: Double) -> Double { t < 0 ? 0.9 * -t : 0 }
 
     /// A faint ultra-thin scrim that bridges the regular→clear variant jump
-    /// just past center, fading out as `t` approaches +1, so the preference
-    /// feels continuous rather than stepped.
+    /// just past center, fading out as `t` approaches +1 but stopping at a
+    /// small floor so the plate never disappears completely. Keeps the
+    /// preference continuous and the content legible even at 100% clear.
     static func clearBridgeScrimOpacity(_ t: Double) -> Double {
-        usesClearGlass(t) ? 0.14 * (1 - t) : 0
+        guard usesClearGlass(t) else { return 0 }
+        return max(0.06, 0.14 * (1 - t))
     }
 
     /// Opacity of the fallback material plate on macOS 14–15.

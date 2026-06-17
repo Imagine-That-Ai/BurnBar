@@ -76,7 +76,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try dataStore.upsertSourceArtifact(artifact)
+        _ = try await dataStore.upsertSourceArtifact(artifact)
 
         await collaborationSync.sync()
 
@@ -90,7 +90,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         XCTAssertEqual(head["contentHash"] as? String, "hash-runbook-v1")
         XCTAssertEqual(head["body"] as? String, "# Runbook v1")
 
-        let syncState = try dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
+        let syncState = try await dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
         XCTAssertEqual(syncState?.syncStatus, .synced)
         XCTAssertNil(syncState?.lastErrorCode)
     }
@@ -120,7 +120,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
 
         await collaborationSync.sync()
 
-        let localArtifacts = try dataStore.fetchSourceArtifacts(
+        let localArtifacts = try await dataStore.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.sharedArtifact]
@@ -129,7 +129,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         XCTAssertEqual(localArtifacts.first?.title, "Remote Spec")
         XCTAssertEqual(localArtifacts.first?.body, "# Remote body")
 
-        let syncState = try dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteArtifactID)
+        let syncState = try await dataStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteArtifactID)
         XCTAssertEqual(syncState?.syncStatus, .synced)
         XCTAssertEqual(syncState?.remoteContentHash, "hash-remote-body")
     }
@@ -156,7 +156,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             createdAt: base,
             updatedAt: base
         )
-        _ = try dataStore.upsertSourceArtifact(artifact)
+        _ = try await dataStore.upsertSourceArtifact(artifact)
 
         await coordinator.syncCollaborationArtifacts()
 
@@ -181,7 +181,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
     func test_syncStateStore_recordsConflictedState() async throws {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let artifactID = "artifact-conflict-1"
-        _ = try dataStore.upsertSourceArtifact(
+        _ = try await dataStore.upsertSourceArtifact(
             SourceArtifactRecord(
                 id: artifactID,
                 sourceKind: .sharedArtifact,
@@ -220,9 +220,9 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
-        try dataStore.upsertSharedArtifactSyncState(state)
+        try await dataStore.upsertSharedArtifactSyncState(state)
 
-        let fetched = try dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifactID)
+        let fetched = try await dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifactID)
         XCTAssertNotNil(fetched)
         XCTAssertEqual(fetched?.syncStatus, .conflicted)
         XCTAssertEqual(fetched?.lastErrorCode, "SHARED_ARTIFACT_STALE_WRITE")
@@ -232,7 +232,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
     func test_syncStateStore_conflictToResolved() async throws {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let artifactID = "artifact-resolve-1"
-        _ = try dataStore.upsertSourceArtifact(
+        _ = try await dataStore.upsertSourceArtifact(
             SourceArtifactRecord(
                 id: artifactID,
                 sourceKind: .sharedArtifact,
@@ -270,7 +270,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 1_700_000_000),
             updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        try dataStore.upsertSharedArtifactSyncState(conflictedState)
+        try await dataStore.upsertSharedArtifactSyncState(conflictedState)
 
         let resolvedState = SharedArtifactSyncStateRecord(
             sourceArtifactID: artifactID,
@@ -290,9 +290,9 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 1_700_000_000),
             updatedAt: Date(timeIntervalSince1970: 1_700_000_100)
         )
-        try dataStore.upsertSharedArtifactSyncState(resolvedState)
+        try await dataStore.upsertSharedArtifactSyncState(resolvedState)
 
-        let fetched = try dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifactID)
+        let fetched = try await dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifactID)
         XCTAssertEqual(fetched?.syncStatus, .synced)
         XCTAssertNil(fetched?.lastErrorCode)
         XCTAssertEqual(fetched?.revisionID, "rev-2")

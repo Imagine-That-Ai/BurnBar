@@ -43,6 +43,11 @@ const METRICS = [
     description: "Pending-delta drains stopped by the per-invocation page cap (queue backlog)",
     filter: 'jsonPayload.event="rollup.delta_drain_capped"',
   },
+  {
+    name: "openburnbar_alert_delivery_drill",
+    description: "Synthetic alert-delivery drill log events used to prove human notification receipt",
+    filter: 'jsonPayload.event="alert_delivery_drill"',
+  },
 ];
 
 function listMetrics() {

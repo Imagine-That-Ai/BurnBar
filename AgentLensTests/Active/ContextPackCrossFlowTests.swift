@@ -110,48 +110,44 @@ final class ContextPackCrossFlowTests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
-        do {
-            dbQueue = try DatabaseQueue()
-            dataStore = try DataStore(databaseQueue: dbQueue, refreshOnInit: false)
-            // Ensure migrations are applied
-            try dbQueue.write { db in
-                try db.execute(sql: """
-                    CREATE TABLE IF NOT EXISTS conversations (
-                        id TEXT PRIMARY KEY,
-                        provider TEXT NOT NULL,
-                        sessionId TEXT NOT NULL,
-                        projectName TEXT NOT NULL,
-                        startTime DATETIME,
-                        endTime DATETIME,
-                        messageCount INTEGER NOT NULL DEFAULT 0,
-                        userWordCount INTEGER NOT NULL DEFAULT 0,
-                        assistantWordCount INTEGER NOT NULL DEFAULT 0,
-                        keyFiles TEXT,
-                        keyCommands TEXT,
-                        keyTools TEXT,
-                        inferredTaskTitle TEXT NOT NULL DEFAULT '',
-                        lastAssistantMessage TEXT NOT NULL DEFAULT '',
-                        fullText TEXT NOT NULL DEFAULT '',
-                        indexedAt DATETIME NOT NULL,
-                        fileModifiedAt DATETIME,
-                        summary TEXT,
-                        conversationSyncedAt DATETIME,
-                        sourceType TEXT NOT NULL DEFAULT 'provider_log',
-                        logSyncedAt DATETIME,
-                        summaryTitle TEXT,
-                        summaryUpdatedAt DATETIME,
-                        summaryProvider TEXT,
-                        summaryModel TEXT,
-                        sourceDeviceId TEXT,
-                        sourceDeviceName TEXT,
-                        isRemote INTEGER NOT NULL DEFAULT 0
-                    )
-                """)
-            }
-        } catch {
-            XCTFail("Failed to set up test database: \(error)")
+    override func setUp() async throws {
+        try await super.setUp()
+        dbQueue = try DatabaseQueue()
+        dataStore = try DataStore(databaseQueue: dbQueue, refreshOnInit: false)
+        // Ensure migrations are applied
+        try await dbQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    sessionId TEXT NOT NULL,
+                    projectName TEXT NOT NULL,
+                    startTime DATETIME,
+                    endTime DATETIME,
+                    messageCount INTEGER NOT NULL DEFAULT 0,
+                    userWordCount INTEGER NOT NULL DEFAULT 0,
+                    assistantWordCount INTEGER NOT NULL DEFAULT 0,
+                    keyFiles TEXT,
+                    keyCommands TEXT,
+                    keyTools TEXT,
+                    inferredTaskTitle TEXT NOT NULL DEFAULT '',
+                    lastAssistantMessage TEXT NOT NULL DEFAULT '',
+                    fullText TEXT NOT NULL DEFAULT '',
+                    indexedAt DATETIME NOT NULL,
+                    fileModifiedAt DATETIME,
+                    summary TEXT,
+                    conversationSyncedAt DATETIME,
+                    sourceType TEXT NOT NULL DEFAULT 'provider_log',
+                    logSyncedAt DATETIME,
+                    summaryTitle TEXT,
+                    summaryUpdatedAt DATETIME,
+                    summaryProvider TEXT,
+                    summaryModel TEXT,
+                    sourceDeviceId TEXT,
+                    sourceDeviceName TEXT,
+                    isRemote INTEGER NOT NULL DEFAULT 0
+                )
+            """)
         }
     }
 
@@ -171,12 +167,12 @@ final class ContextPackCrossFlowTests: XCTestCase {
         projectName: String,
         daysAgo: Int = 1,
         fullText: String = "Full conversation text for testing."
-    ) throws {
+    ) async throws {
         let startTime = Date().addingTimeInterval(-86400 * Double(daysAgo + 1))
         let endTime = Date().addingTimeInterval(-86400 * Double(daysAgo))
         let indexedAt = Date().addingTimeInterval(-86400 * Double(daysAgo - 1))
 
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: """
                 INSERT INTO conversations (id, provider, sessionId, projectName, startTime, endTime,
                     messageCount, userWordCount, assistantWordCount, keyFiles, keyCommands, keyTools,
@@ -218,8 +214,8 @@ final class ContextPackCrossFlowTests: XCTestCase {
     }
 
     /// Fetches conversations from the database for a given project.
-    private func fetchConversationsForProject(_ projectName: String?) throws -> [ConversationRecord] {
-        try dataStore.fetchConversationsForTranscriptScan(
+    private func fetchConversationsForProject(_ projectName: String?) async throws -> [ConversationRecord] {
+        try await dataStore.fetchConversationsForTranscriptScan(
             provider: nil,
             projectName: projectName,
             dateRange: nil,
@@ -852,7 +848,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
     // MARK: - Cross-Flow Database Integration Tests
 
     /// Tests that conversations can be fetched from the database for cross-flow scenarios.
-    func test_databaseFetchForCrossFlowScenarios() throws {
+    func test_databaseFetchForCrossFlowScenarios() async throws {
         // Insert conversations for cross-flow testing
         let providers: [AgentProvider] = [.claudeCode, .factory]
         let projects = ["ProjectA", "ProjectB"]
@@ -861,7 +857,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
             for project in projects {
                 let sessionId = "\(provider.rawValue)-\(project)-session"
                 let stableId = ConversationRecord.stableId(provider: provider, sessionId: sessionId)
-                try insertConversation(
+                try await insertConversation(
                     id: stableId,
                     provider: provider,
                     sessionId: sessionId,
@@ -871,7 +867,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
         }
 
         // Fetch conversations for a specific project
-        let projectACandidates = try fetchConversationsForProject("ProjectA")
+        let projectACandidates = try await fetchConversationsForProject("ProjectA")
         XCTAssertEqual(projectACandidates.count, 2,
             "Should find 2 conversations for ProjectA (one per provider)")
 
@@ -881,17 +877,17 @@ final class ContextPackCrossFlowTests: XCTestCase {
         }
 
         // Fetch all conversations
-        let allCandidates = try fetchConversationsForProject(nil)
+        let allCandidates = try await fetchConversationsForProject(nil)
         XCTAssertEqual(allCandidates.count, 4,
             "Should find all 4 conversations when project filter is nil")
     }
 
     /// Tests that same-anchor parity works when fetching from database.
-    func test_sameAnchorParityFromDatabase() throws {
+    func test_sameAnchorParityFromDatabase() async throws {
         // Set up database with known conversations
         let session = makeTestSession(provider: .claudeCode, sessionId: "parity-test")
         let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
-        try insertConversation(
+        try await insertConversation(
             id: stableId,
             provider: session.provider,
             sessionId: session.sessionId,

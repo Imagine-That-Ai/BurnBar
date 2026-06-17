@@ -258,7 +258,15 @@ final class ChatSessionController {
 
     var searchTask: Task<Void, Never>?
 
+    var refreshHistoryTask: Task<Void, Never>?
+
+    var retrievalHealthTask: Task<Void, Never>?
+
+    var retrievalHealthRequestID = 0
+
     var textExpansionPreviewTask: Task<Void, Never>?
+
+    var textExpansionLookupTask: Task<Void, Never>?
 
     var suppressedTextExpansionDraft: String?
 
@@ -323,6 +331,15 @@ final class ChatSessionController {
         }
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+    }
+
+    isolated deinit {
+        streamTask?.cancel()
+        searchTask?.cancel()
+        refreshHistoryTask?.cancel()
+        retrievalHealthTask?.cancel()
+        textExpansionPreviewTask?.cancel()
+        textExpansionLookupTask?.cancel()
     }
 
     /// The model currently loaded in Hermes (e.g. "NousResearch/Hermes-3-Llama-3.1-8B").
@@ -722,6 +739,7 @@ final class ChatSessionController {
     }
 
     func handleTextExpansionDraftChange() {
+        textExpansionLookupTask?.cancel()
         guard settingsManager.textExpansion.inAppExpansionEnabled else { return }
         if let suppressedTextExpansionDraft, suppressedTextExpansionDraft == inputText {
             self.suppressedTextExpansionDraft = nil
@@ -732,22 +750,41 @@ final class ChatSessionController {
             cancelTextExpansionPreview()
         }
 
+        let inputSnapshot = inputText
+        let threadSnapshot = activeThreadID
+        textExpansionLookupTask = Task { @MainActor [weak self] in
+            await self?.handleTextExpansionDraftChange(inputSnapshot: inputSnapshot, threadID: threadSnapshot)
+        }
+    }
+
+    private func handleTextExpansionDraftChange(inputSnapshot: String, threadID: String) async {
         let snippets: [TextExpansionSnippet]
         do {
-            snippets = try dataStore.fetchEnabledTextExpansionSnippets(
+            snippets = try await dataStore.fetchEnabledTextExpansionSnippets(
                 surface: .inAppThread,
-                threadID: activeThreadID
+                threadID: threadID
             )
         } catch {
+            guard !Task.isCancelled,
+                  inputText == inputSnapshot,
+                  activeThreadID == threadID else {
+                return
+            }
             textExpansionStatusMessage = "Text expansion unavailable: \(error.localizedDescription)"
             return
         }
 
+        guard !Task.isCancelled,
+              inputText == inputSnapshot,
+              activeThreadID == threadID else {
+            return
+        }
+
         guard let match = TextExpansionMatcher.match(
-            in: inputText,
+            in: inputSnapshot,
             snippets: snippets,
             surface: .inAppThread,
-            threadID: activeThreadID
+            threadID: threadID
         ) else {
             return
         }
@@ -760,7 +797,7 @@ final class ChatSessionController {
             }
             beginTextExpansionPreview(snippet: match.snippet, token: match.token)
         } else {
-            let expanded = TextExpansionMatcher.replacingMatch(in: inputText, match: match)
+            let expanded = TextExpansionMatcher.replacingMatch(in: inputSnapshot, match: match)
             suppressedTextExpansionDraft = expanded
             inputText = expanded
             textExpansionStatusMessage = "Expanded \(match.token)"
@@ -901,11 +938,13 @@ final class ChatSessionController {
     }
 
     func setChatBackend(_ backend: ChatBackendID) {
+        Task { await setChatBackendAsync(backend) }
+    }
+
+    func setChatBackendAsync(_ backend: ChatBackendID) async {
         guard backend != chatBackend else {
-            Task {
-                await probeHermesAvailability()
-                await probeOpenClawAvailability()
-            }
+            await probeHermesAvailability()
+            await probeOpenClawAvailability()
             return
         }
 
@@ -925,7 +964,7 @@ final class ChatSessionController {
         chatBackend = backend
         UserDefaults.standard.set(backend.rawValue, forKey: Self.udChatBackend)
 
-        let nextThread = resolveThreadID(for: backend, createIfMissing: true)
+        let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
         activeThreadID = nextThread
         do {
             messages = try dataStore.fetchChatMessages(threadID: nextThread)
@@ -944,22 +983,24 @@ final class ChatSessionController {
 
         firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
         persistActiveThreadSlot()
-        Task {
-            await Task.yield()
-            refreshHistory()
-            refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
-            ensureChatWorkspaceDirectoryExists()
-            await probeHermesAvailability()
-            await probeOpenClawAvailability()
-        }
+        await Task.yield()
+        refreshHistory()
+        refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+        ensureChatWorkspaceDirectoryExists()
+        await probeHermesAvailability()
+        await probeOpenClawAvailability()
     }
 
     /// When Settings removes the active engine from the enabled list, switch to the first remaining one.
     func syncChatBackendWithEnabledBackends() {
+        Task { await syncChatBackendWithEnabledBackendsAsync() }
+    }
+
+    func syncChatBackendWithEnabledBackendsAsync() async {
         let enabled = settingsManager.enabledChatBackends
         guard !enabled.isEmpty else { return }
         guard enabled.contains(chatBackend) == false else { return }
-        setChatBackend(enabled[0])
+        await setChatBackendAsync(enabled[0])
     }
 
     static func migrateLegacyChatModeIfNeeded() {
@@ -1022,39 +1063,39 @@ final class ChatSessionController {
     }
 
     /// Copies legacy single-thread ID into the Codex slot once so existing users keep their history.
-    func migrateCodexThreadFromLegacyIfNeeded() {
+    func migrateCodexThreadFromLegacyIfNeeded() async {
         let key = Self.threadStorageKey(for: .codex)
         guard UserDefaults.standard.string(forKey: key) == nil else { return }
         if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
-           (try? dataStore.chatThreadExists(id: legacy)) == true {
+           (try? await dataStore.chatThreadExists(id: legacy)) == true {
             UserDefaults.standard.set(legacy, forKey: key)
         }
     }
 
-    func resolveThreadID(for backend: ChatBackendID, createIfMissing: Bool) -> String {
+    func resolveThreadID(for backend: ChatBackendID, createIfMissing: Bool) async -> String {
         let key = Self.threadStorageKey(for: backend)
         if let tid = UserDefaults.standard.string(forKey: key),
-           (try? dataStore.chatThreadExists(id: tid)) == true {
+           (try? await dataStore.chatThreadExists(id: tid)) == true {
             return tid
         }
 
         switch backend {
         case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
-               (try? dataStore.chatThreadExists(id: legacy)) == true {
+               (try? await dataStore.chatThreadExists(id: legacy)) == true {
                 UserDefaults.standard.set(legacy, forKey: key)
                 return legacy
             }
             let hermesTid = UserDefaults.standard.string(forKey: Self.threadStorageKey(for: .hermes))
-            if let mostRecent = try? dataStore.fetchMostRecentChatThreadID(),
+            if let mostRecent = try? await dataStore.fetchMostRecentChatThreadID(),
                mostRecent != hermesTid,
-               (try? dataStore.chatThreadExists(id: mostRecent)) == true {
+               (try? await dataStore.chatThreadExists(id: mostRecent)) == true {
                 UserDefaults.standard.set(mostRecent, forKey: key)
                 return mostRecent
             }
             if createIfMissing {
                 do {
-                    let created = try dataStore.createChatThread()
+                    let created = try await dataStore.createChatThread()
                     UserDefaults.standard.set(created, forKey: key)
                     return created
                 } catch {
@@ -1066,7 +1107,7 @@ final class ChatSessionController {
         case .hermes, .openclaw, .piAgent:
             if createIfMissing {
                 do {
-                    let created = try dataStore.createChatThread()
+                    let created = try await dataStore.createChatThread()
                     UserDefaults.standard.set(created, forKey: key)
                     return created
                 } catch {
@@ -1090,10 +1131,14 @@ final class ChatSessionController {
     }
 
     func loadPersistedMessages() {
-        migrateCodexThreadFromLegacyIfNeeded()
-        syncChatBackendWithEnabledBackends()
+        Task { await loadPersistedMessagesAsync() }
+    }
 
-        let chosenThreadID = resolveThreadID(for: chatBackend, createIfMissing: true)
+    func loadPersistedMessagesAsync() async {
+        await migrateCodexThreadFromLegacyIfNeeded()
+        await syncChatBackendWithEnabledBackendsAsync()
+
+        let chosenThreadID = await resolveThreadID(for: chatBackend, createIfMissing: true)
 
         activeThreadID = chosenThreadID
         persistActiveThreadSlot()
@@ -1134,10 +1179,15 @@ final class ChatSessionController {
     }
 
     func startNewChatThread() {
+        Task { await startNewChatThreadAsync() }
+    }
+
+    func startNewChatThreadAsync() async {
         revokeDesktopControl()
         let newID = UUID().uuidString
+        activeThreadID = newID
         do {
-            activeThreadID = try dataStore.createChatThread(id: newID)
+            _ = try await dataStore.createChatThread(id: newID)
         } catch {
             AppLogger.chat.silentFailure("createChatThread (startNew)", error: error)
             activeThreadID = DataStore.legacyChatThreadID
@@ -1162,6 +1212,22 @@ final class ChatSessionController {
             return
         }
 
+        prepareForOpeningChatThread(threadID)
+        Task { await finishOpenOrCreateChatThread(threadID) }
+    }
+
+    func openOrCreateChatThreadAsync(id rawThreadID: String) async {
+        let threadID = rawThreadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !threadID.isEmpty else {
+            await startNewChatThreadAsync()
+            return
+        }
+
+        prepareForOpeningChatThread(threadID)
+        await finishOpenOrCreateChatThread(threadID)
+    }
+
+    private func prepareForOpeningChatThread(_ threadID: String) {
         streamTask?.cancel()
         cliBridge.cancel()
         streamTask = nil
@@ -1172,17 +1238,21 @@ final class ChatSessionController {
         selectedContext = nil
         conversationJumpTargets = []
         revokeDesktopControl()
+        activeThreadID = threadID
+        persistActiveThreadSlot()
+    }
 
+    private func finishOpenOrCreateChatThread(_ threadID: String) async {
         do {
-            if try !dataStore.chatThreadExists(id: threadID) {
-                _ = try dataStore.createChatThread(id: threadID)
+            let exists = try await dataStore.chatThreadExists(id: threadID)
+            if !exists {
+                _ = try await dataStore.createChatThread(id: threadID)
             }
-            activeThreadID = threadID
-            persistActiveThreadSlot()
+            guard activeThreadID == threadID else { return }
             messages = try dataStore.fetchChatMessages(threadID: threadID)
         } catch {
             AppLogger.chat.silentFailure("openOrCreateChatThread", error: error)
-            startNewChatThread()
+            await startNewChatThreadAsync()
             return
         }
 
@@ -1200,9 +1270,21 @@ final class ChatSessionController {
     }
 
     func refreshHistory() {
+        let query = historyQuery
+        refreshHistoryTask?.cancel()
+        refreshHistoryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await refreshHistory(query: query)
+        }
+    }
+
+    private func refreshHistory(query: String) async {
         do {
-            historyThreads = try dataStore.fetchChatThreadSummaries(searchQuery: historyQuery)
+            let threads = try await dataStore.fetchChatThreadSummaries(searchQuery: query)
+            guard Task.isCancelled == false else { return }
+            historyThreads = threads
         } catch {
+            guard Task.isCancelled == false else { return }
             AppLogger.chat.silentFailure("fetchChatThreadSummaries", error: error)
             historyThreads = []
         }

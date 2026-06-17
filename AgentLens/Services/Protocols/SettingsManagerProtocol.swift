@@ -99,6 +99,9 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     /// Whether chat content backup consent has been shown.
     var chatThreadContentCloudBackupConsentShown: Bool { get set }
 
+    /// Whether text expansion snippets sync to Firestore.
+    var textExpansionCloudSyncEnabled: Bool { get }
+
     // MARK: - CLI Assistant
 
     /// Whether CLI assistant is allowed.
@@ -379,4 +382,8 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
 // `SettingsManager` is `@MainActor @Observable`, so it is already `Sendable` by
 // main-actor isolation — no `@unchecked` escape hatch is needed for the protocol
 // conformance.
-extension SettingsManager: SettingsManagerProtocol {}
+extension SettingsManager: SettingsManagerProtocol {
+    var textExpansionCloudSyncEnabled: Bool {
+        textExpansion.cloudSyncEnabled
+    }
+}

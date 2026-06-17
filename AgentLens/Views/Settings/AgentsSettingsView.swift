@@ -226,7 +226,7 @@ struct AgentsSettingsView: View {
     private func refreshAll() async {
         await daemonManager.refreshHealth()
         await quotaService.refreshIfNeeded(dataStore: dataStore)
-        providerAccounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
+        providerAccounts = (try? await dataStore.fetchProviderAccounts()) ?? []
         switcherProfiles = (try? dataStore.switcherStore.fetchAllProfiles()) ?? []
         let wiring = RoutingClientWiring()
         let connected = RoutingClientWiringTarget.allCases
@@ -479,6 +479,7 @@ struct AgentsCLIsView: View {
                     AccountSwitcherSettingsView(
                         dataStore: dataStore,
                         settingsManager: settingsManager,
+                        accountManager: accountManager,
                         mode: .cliOnly
                     )
                 }
@@ -717,6 +718,7 @@ struct AgentsAdvancedView: View {
                         AccountSwitcherSettingsView(
                             dataStore: dataStore,
                             settingsManager: settingsManager,
+                            accountManager: accountManager,
                             mode: .browserOnly
                         )
                     }
@@ -817,6 +819,7 @@ private struct QuotaDisplaySettingsPanel: View {
     @Bindable var settingsManager: SettingsManager
     @Bindable var quotaService: ProviderQuotaService
     let dataStore: DataStore
+    @State private var connectedProviderIDs: Set<ProviderID> = []
 
     private var orderedProviders: [AgentProvider] {
         settingsManager.quotas.providerOrder.filter(\.isQuotaSignalProvider)
@@ -904,7 +907,7 @@ private struct QuotaDisplaySettingsPanel: View {
                     QuotaPopoverProviderVisibilityRow(
                         provider: provider,
                         isVisible: visibleProviders.contains(provider),
-                        isConnected: quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore),
+                        isConnected: connectedProviderIDs.contains(provider.providerID),
                         onChange: { isVisible in
                             settingsManager.quotas.setProvider(provider, visible: isVisible)
                         }
@@ -920,8 +923,25 @@ private struct QuotaDisplaySettingsPanel: View {
             .overlay(panelStroke)
             .task {
                 await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
+                await refreshConnectedProviderIDs()
+            }
+            .onChange(of: quotaService.isFetching) { _, isFetching in
+                guard !isFetching else { return }
+                Task { await refreshConnectedProviderIDs() }
             }
         }
+    }
+
+    private func refreshConnectedProviderIDs() async {
+        let accounts = (try? await dataStore.fetchProviderAccounts()) ?? []
+        connectedProviderIDs = Set(accounts.compactMap { account in
+            switch account.status {
+            case .connected, .stale, .error:
+                return account.providerID
+            case .disconnected, .disabled, .deleted:
+                return nil
+            }
+        })
     }
 
     private var panelFill: some View {

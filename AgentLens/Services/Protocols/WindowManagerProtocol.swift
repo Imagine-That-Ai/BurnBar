@@ -84,10 +84,12 @@ protocol WindowManagerProtocol: AnyObject {
     /// - Parameters:
     ///   - dataStore: The data store instance.
     ///   - settingsManager: The settings manager.
+    ///   - accountManager: The account manager.
     ///   - onOpenSettings: Closure called when user wants to open settings.
     func openSwitcherOnboardingWizard(
         dataStore: DataStore,
         settingsManager: SettingsManager,
+        accountManager: AccountManager,
         onOpenSettings: @escaping () -> Void
     )
 }

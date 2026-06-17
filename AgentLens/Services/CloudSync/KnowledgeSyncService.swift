@@ -160,6 +160,7 @@ public final class KnowledgeSyncService: Sendable {
     private let callable: KnowledgeSyncCallable
     private let vaultKeyStore: KnowledgeVaultKeyProviding
     private let uidProvider: @Sendable () -> String?
+    private let deviceIDProvider: @Sendable () -> String
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -172,11 +173,15 @@ public final class KnowledgeSyncService: Sendable {
     public init(
         callable: KnowledgeSyncCallable = FirebaseKnowledgeSyncCallable(),
         vaultKeyStore: KnowledgeVaultKeyProviding = CloudVaultKeyStore(),
-        uidProvider: @escaping @Sendable () -> String? = { Auth.auth().currentUser?.uid }
+        uidProvider: @escaping @Sendable () -> String? = { Auth.auth().currentUser?.uid },
+        deviceIDProvider: @escaping @Sendable () -> String = {
+            UserDefaults.standard.string(forKey: "com.openburnbar.deviceId") ?? "device_local"
+        }
     ) {
         self.callable = callable
         self.vaultKeyStore = vaultKeyStore
         self.uidProvider = uidProvider
+        self.deviceIDProvider = deviceIDProvider
     }
 
     /// Ingest a batch of source documents into Pensieve. Registers each source
@@ -197,7 +202,7 @@ public final class KnowledgeSyncService: Sendable {
         let signalContext: PensieveSignalSealContext?
         if Self.signalSealingIsEnabled() {
             do {
-                let context = try await Self.prepareSignalSealContext(uid: uid)
+                let context = try await Self.prepareSignalSealContext(uid: uid, deviceId: deviceIDProvider())
                 vaultKey = context.vaultKey
                 signalContext = context
             } catch {
@@ -393,9 +398,8 @@ public final class KnowledgeSyncService: Sendable {
         DataDomains.domain("pensieve")?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
     }
 
-    private static func prepareSignalSealContext(uid: String) async throws -> PensieveSignalSealContext {
+    private static func prepareSignalSealContext(uid: String, deviceId: String) async throws -> PensieveSignalSealContext {
         let firestore = Firestore.firestore()
-        let deviceId = await MainActor.run { AccountManager.shared.deviceId }
         let resolved = try await MacCloudVaultKeyAccess.keyForWriting(
             uid: uid,
             deviceId: deviceId,

@@ -26,10 +26,6 @@ for (const file of readdirSync(bolaDir).filter((name) => name.endsWith(".bola.te
   if (!source.includes("callableRequest(ALICE_UID")) continue;
   if (!source.includes("bolaCrossUserData")) {
     source = source.replace(
-      /from "\.\/callableBolaHarness\.js";/u,
-      'from "./callableBolaHarness.js";',
-    );
-    source = source.replace(
       /import \{([^}]+)\} from "\.\/callableBolaHarness\.js";/u,
       (match, imports) => {
         const names = imports.split(",").map((part) => part.trim());

@@ -23,13 +23,13 @@ internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<Str
     if (AgentReplyNotificationState.shouldSuppressLocal(runtime, threadId)) return null
 
     val openIntent =
-        Intent(Intent.ACTION_VIEW, Uri.parse(deepLink), this, MainActivity::class.java)
+        Intent(Intent.ACTION_VIEW, Uri.parse(deepLink))
+            .setClass(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .setPackage(packageName)
     val replyIntent =
-        Intent(this, AgentReplyNotificationReceiver::class.java).apply {
+        Intent().apply {
+            setClass(this@buildAgentReplyNotification, AgentReplyNotificationReceiver::class.java)
             action = AgentReplyNotificationReceiver.ACTION_REPLY
-            setPackage(packageName)
             putExtra(AgentReplyNotificationReceiver.EXTRA_EVENT_ID, eventId)
             putExtra(AgentReplyNotificationReceiver.EXTRA_THREAD_ID, threadId)
             putExtra(AgentReplyNotificationReceiver.EXTRA_RUNTIME, runtime)

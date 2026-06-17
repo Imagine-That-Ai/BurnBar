@@ -12,6 +12,25 @@
 
 ---
 
+> **Production-readiness update (2026-06-17):** local Project Code Memory tools
+> exist, but `docs/reviews/PROJECT_CODE_MEMORY_MASTER_REMEDIATION_PLAN_2026-06-17.md`
+> now governs the production-readiness bar. Current daemon/MCP responses must
+> report `PROJECT_CODE_MEMORY_PRODUCTION_READY=false` / `productionReady=false`
+> until the remediation plan's trust, schema, incremental indexing, retrieval
+> quality, SQLCipher, hosted-code threat-model, and proof-gate work is complete.
+> Hosted code search/document tools remain disabled by default.
+>
+> **Hardening landed (2026-06-17):** snippets/context packs are wrapped as
+> untrusted code, fake semantic ranking is disabled for project code, stale
+> indexes degrade explicitly, Python read tools are read-only, hosted code tools
+> are disabled by default, Swift/Python share a checked-in secret-scanner corpus,
+> Git worktrees use Git's exclude-standard semantics for nested ignore,
+> negation, and globstar behavior, manifest-backed delta indexing skips
+> unchanged files and prunes removed files, Git fingerprint-backed Project ID v2
+> preserves identity across moved checkout paths, audit hashes use a unified
+> sequence-bound v2 payload, per-query freshness caches avoid repeated stale
+> candidate file reads, and Swift call graph traversal now honors bounded `depth`.
+
 ## 0. Confidence & how to read this
 
 The underlying *strategy* (extract capabilities, not architecture) is **confirmed correct** at source. Three of the plan's load-bearing claims were independently re-verified true (search substrate exists, sealed/local-decrypt is real, total-memory's symbol tier is a lexical stub). One foundational claim was **refuted** (the 15 tools are not greenfield; the Python MCP has no daemon-RPC client) and is corrected here. The biggest value in this document is **§5 (cross-cutting invariants)** and **§4 (the honest parity matrix)** — they encode the systemic problems the original plan never tested for.

@@ -34,6 +34,7 @@ cd "$android_dir"
 
 ./gradlew \
     :openburnbar-iroh-relay:testDebugUnitTest \
+    :burnbar-remote:testDebugUnitTest \
     :app:testDebugUnitTest \
     --no-daemon \
     --stacktrace

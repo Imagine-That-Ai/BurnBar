@@ -20,6 +20,16 @@ require_pattern() {
   echo "OK ${label}"
 }
 
+reject_pattern() {
+  local label="$1"
+  local pattern="$2"
+  local file="$3"
+  if grep -Eq "$pattern" "$file"; then
+    fail "${label}: unexpected pattern '${pattern}' in ${file}"
+  fi
+  echo "OK ${label}"
+}
+
 echo "==> LB-1 monitoring plane wiring"
 require_pattern "nightly AGPL metadata decoupled" \
   'HEALTH_GATE_REQUIRE_SOURCE_METADATA: "0"' \
@@ -33,9 +43,15 @@ require_pattern "extension npm ci in test matrix" \
 require_pattern "per-lane ops failure dedupe" \
   'lane:\$\{lane\}' \
   .github/actions/ops-failure-issue/action.yml
-require_pattern "nightly privileged-socket red-team" \
+reject_pattern "nightly core excludes privileged-socket red-team" \
   'privileged-socket-redteam-ci\.sh' \
   .github/workflows/nightly-e2e.yml
+require_pattern "sandbox privileged-socket red-team" \
+  'privileged-socket-redteam-ci\.sh' \
+  .github/workflows/nightly-dast-sandbox.yml
+require_pattern "sandbox red-team advisory" \
+  'continue-on-error: true' \
+  .github/workflows/nightly-dast-sandbox.yml
 require_pattern "uptime check definitions" \
   'OPS_UPTIME_CHECKS' \
   functions/scripts/ops-uptime-check-definitions.mjs

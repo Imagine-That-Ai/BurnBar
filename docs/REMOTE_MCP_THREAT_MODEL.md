@@ -36,6 +36,29 @@
 - Firestore rules deny client writes to remote MCP grants, audit events,
   rate-limit counters, and search index manifests.
 
+## Code Asset Class
+
+Hosted code memory is disabled by default and is not covered by the prose-memory
+launch gate. It can only be enabled after the code asset-class review passes.
+
+Required code-specific controls:
+
+- Tool visibility is gated by `OPENBURNBAR_HOSTED_CODE_MEMORY_TOOLS=true`;
+  default hosted deployments hide and deny `burnbar_search_code` and
+  `burnbar_get_code_document`.
+- Code search requires `code:read`, a vault-keyed `projectHmac`, and a pinned
+  `embeddingModelVersion`.
+- General knowledge search refuses `sourceKind = code`; code rows are only
+  reachable through the code tools.
+- Hosted code responses are sealed-only: `sealedCiphertext` and
+  `sealedMetadata` may leave the service, but raw source text, file paths,
+  snippets, symbols, public embeddings, and content hashes must not.
+- Logs may include hashed grant/client metadata and coarse counters only. They
+  must not include source text, raw paths, query text, project names, or code
+  HMAC preimages.
+- Forget must be hard-delete by vault-keyed project/chunk HMAC with a receipt;
+  pending deletes must remain visible in local doctor/status.
+
 ## Abuse Cases
 
 | Case | Control |

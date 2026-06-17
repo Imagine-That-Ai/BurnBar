@@ -10,11 +10,11 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     // MARK: - Schema Migration Tests
 
-    func test_migration_v28_addsProvenanceColumns() throws {
+    func test_migration_v28_addsProvenanceColumns() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
-        let columns = try queue.read { db -> [String] in
+        let columns = try await queue.read { db -> [String] in
             let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(token_usage)")
             return rows.compactMap { $0["name"] as? String }
         }
@@ -29,11 +29,11 @@ final class TokenUsageProvenanceTests: XCTestCase {
     private func insertAndFetchRaw(
         queue: DatabaseQueue,
         usage: TokenUsage
-    ) throws -> Row {
+    ) async throws -> Row {
         let usageStore = UsageStore(dbQueue: queue)
-        try usageStore.insert(usage)
+        try await usageStore.insert(usage)
 
-        return try queue.read { db -> Row in
+        return try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT * FROM token_usage ORDER BY startTime DESC LIMIT 1
                 """)
@@ -41,7 +41,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         }
     }
 
-    func test_insertExactProviderLog_persistsProvenance() throws {
+    func test_insertExactProviderLog_persistsProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
@@ -53,14 +53,14 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceMethod: .providerLog, provenanceConfidence: .exact, estimatorVersion: ""
         )
 
-        let row = try insertAndFetchRaw(queue: queue, usage: usage)
+        let row = try await insertAndFetchRaw(queue: queue, usage: usage)
 
         XCTAssertEqual(row["provenanceMethod"] as? String, "provider_log")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "exact")
         XCTAssertEqual(row["estimatorVersion"] as? String, "")
     }
 
-    func test_insertHeuristicEstimate_persistsProvenance() throws {
+    func test_insertHeuristicEstimate_persistsProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
@@ -73,14 +73,14 @@ final class TokenUsageProvenanceTests: XCTestCase {
             estimatorVersion: "hash-count-ratio-v1"
         )
 
-        let row = try insertAndFetchRaw(queue: queue, usage: usage)
+        let row = try await insertAndFetchRaw(queue: queue, usage: usage)
 
         XCTAssertEqual(row["provenanceMethod"] as? String, "heuristic_estimate")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "low_confidence_estimate")
         XCTAssertEqual(row["estimatorVersion"] as? String, "hash-count-ratio-v1")
     }
 
-    func test_insertBillingAPI_persistsProvenance() throws {
+    func test_insertBillingAPI_persistsProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
@@ -92,14 +92,14 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceMethod: .billingAPI, provenanceConfidence: .exact, estimatorVersion: ""
         )
 
-        let row = try insertAndFetchRaw(queue: queue, usage: usage)
+        let row = try await insertAndFetchRaw(queue: queue, usage: usage)
 
         XCTAssertEqual(row["provenanceMethod"] as? String, "billing_api")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "exact")
         XCTAssertEqual(row["usageSource"] as? String, "billing_api")
     }
 
-    func test_insertDaemonBridge_persistsProvenance() throws {
+    func test_insertDaemonBridge_persistsProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
@@ -110,13 +110,13 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceMethod: .daemonBridge, provenanceConfidence: .exact, estimatorVersion: ""
         )
 
-        let row = try insertAndFetchRaw(queue: queue, usage: usage)
+        let row = try await insertAndFetchRaw(queue: queue, usage: usage)
 
         XCTAssertEqual(row["provenanceMethod"] as? String, "daemon_bridge")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "exact")
     }
 
-    func test_insertConnectorBridge_persistsProvenance() throws {
+    func test_insertConnectorBridge_persistsProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
@@ -128,13 +128,13 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceMethod: .connectorBridge, provenanceConfidence: .exact, estimatorVersion: ""
         )
 
-        let row = try insertAndFetchRaw(queue: queue, usage: usage)
+        let row = try await insertAndFetchRaw(queue: queue, usage: usage)
 
         XCTAssertEqual(row["provenanceMethod"] as? String, "connector_bridge")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "exact")
     }
 
-    func test_insertInAppChat_persistsProvenance() throws {
+    func test_insertInAppChat_persistsProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
@@ -145,7 +145,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceMethod: .inAppChat, provenanceConfidence: .exact, estimatorVersion: ""
         )
 
-        let row = try insertAndFetchRaw(queue: queue, usage: usage)
+        let row = try await insertAndFetchRaw(queue: queue, usage: usage)
 
         XCTAssertEqual(row["provenanceMethod"] as? String, "in_app_chat")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "exact")
@@ -153,7 +153,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     // MARK: - Upsert Preserves Provenance
 
-    func test_upsertPreservesProvenanceOnConflict() throws {
+    func test_upsertPreservesProvenanceOnConflict() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
@@ -168,7 +168,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
             startTime: Date(), endTime: Date(),
             provenanceMethod: .providerLog, provenanceConfidence: .exact, estimatorVersion: ""
         )
-        try usageStore.insert(usage1)
+        try await usageStore.insert(usage1)
 
         // Second insert: lower confidence estimate
         let usage2 = TokenUsage(
@@ -179,14 +179,14 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try usageStore.insert(usage2)
+        try await usageStore.insert(usage2)
 
-        let count = try queue.read { db -> Int in
+        let count = try await queue.read { db -> Int in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage")!
         }
         XCTAssertEqual(count, 1, "Upsert must not create duplicate canonical rows")
 
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM token_usage LIMIT 1")
             return try XCTUnwrap(rows.first)
         }
@@ -199,7 +199,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         XCTAssertEqual(row["estimatorVersion"] as? String, "")
     }
 
-    func test_upsertEqualConfidence_allowsUpdate() throws {
+    func test_upsertEqualConfidence_allowsUpdate() async throws {
         // Test that when confidence levels are equal, updates ARE allowed
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -217,7 +217,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v2"
         )
-        try usageStore.insert(usage1)
+        try await usageStore.insert(usage1)
 
         // Second insert: same confidence, different values
         let usage2 = TokenUsage(
@@ -228,9 +228,9 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v2"
         )
-        try usageStore.insert(usage2)
+        try await usageStore.insert(usage2)
 
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM token_usage LIMIT 1")
             return try XCTUnwrap(rows.first)
         }
@@ -243,7 +243,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     // MARK: - Remote Insert Preserves Provenance
 
-    func test_insertRemoteUsage_preservesProvenance() throws {
+    func test_insertRemoteUsage_preservesProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
@@ -256,9 +256,9 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceMethod: .cloudSync, provenanceConfidence: .exact, estimatorVersion: ""
         )
 
-        try usageStore.insertRemoteUsage(usage)
+        try await usageStore.insertRemoteUsage(usage)
 
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM token_usage LIMIT 1")
             return try XCTUnwrap(rows.first)
         }
@@ -293,7 +293,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     // MARK: - Codable Round-Trip
 
-    func test_provenance_codingRoundTrip() throws {
+    func test_provenance_codingRoundTrip() async throws {
         let usage = TokenUsage(
             provider: .claudeCode, sessionId: "codec-test", projectName: "TestProject",
             model: "claude-4-sonnet", inputTokens: 1000, outputTokens: 500,
@@ -310,7 +310,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         XCTAssertEqual(decoded.estimatorVersion, "v1.0")
     }
 
-    func test_provenance_decodeLegacyJSON_fallsBackToUnknown() throws {
+    func test_provenance_decodeLegacyJSON_fallsBackToUnknown() async throws {
         let legacyJSON = """
         {
             "id": "00000000-0000-0000-0000-000000000001",
@@ -341,7 +341,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     // MARK: - Migration Backfill Correctness
 
-    func test_migrationBackfill_existingRowsGetExactProvenance() throws {
+    func test_migrationBackfill_existingRowsGetExactProvenance() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
@@ -353,12 +353,12 @@ final class TokenUsageProvenanceTests: XCTestCase {
             model: "claude-4-sonnet", inputTokens: 1000, outputTokens: 500,
             costUSD: 0.05, startTime: Date(), endTime: Date()
         )
-        try usageStore.insert(usage)
+        try await usageStore.insert(usage)
 
         // After migration, the v28 backfill should set exact for provider_log source
         // Since we inserted with .unknown provenanceMethod, the WHERE clause
         // `WHERE provenanceMethod = 'unknown'` applies the backfill
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT usageSource, provenanceMethod, provenanceConfidence
                 FROM token_usage LIMIT 1
@@ -430,7 +430,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     // MARK: - VAL-TOKEN-009: Cross-source usage source identity is preserved
 
-    func test_sourceIdentity_preservedOnEqualConfidenceUpsert() throws {
+    func test_sourceIdentity_preservedOnEqualConfidenceUpsert() async throws {
         // Given: a row from provider_log with exact confidence
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -452,7 +452,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try store.insert(providerLogUsage)
+        try await store.insert(providerLogUsage)
 
         // When: a row from billing_api with same confidence tries to upsert (different values)
         let billingAPIUsage = TokenUsage(
@@ -470,10 +470,10 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceConfidence: .exact, // same confidence
             estimatorVersion: ""
         )
-        try store.insert(billingAPIUsage)
+        try await store.insert(billingAPIUsage)
 
         // Then: source identity should be preserved (original provider_log kept)
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT usageSource, inputTokens FROM token_usage
                 WHERE sessionId = ?
@@ -488,7 +488,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         XCTAssertEqual(inputTokens, 2000, "Token values should update on equal-confidence upsert")
     }
 
-    func test_sourceIdentity_updatedOnHigherConfidenceUpsert() throws {
+    func test_sourceIdentity_updatedOnHigherConfidenceUpsert() async throws {
         // Given: a row from provider_log with low confidence
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -510,7 +510,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try store.insert(lowConfUsage)
+        try await store.insert(lowConfUsage)
 
         // When: a row from billing_api with higher confidence tries to upsert
         let highConfUsage = TokenUsage(
@@ -528,10 +528,10 @@ final class TokenUsageProvenanceTests: XCTestCase {
             provenanceConfidence: .exact, // higher confidence
             estimatorVersion: ""
         )
-        try store.insert(highConfUsage)
+        try await store.insert(highConfUsage)
 
         // Then: higher confidence should win including source update
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT usageSource, provenanceConfidence FROM token_usage
                 WHERE sessionId = ?
@@ -545,7 +545,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
             "Confidence should be updated to exact")
     }
 
-    func test_sourceIdentity_preservedAcrossAllSources() throws {
+    func test_sourceIdentity_preservedAcrossAllSources() async throws {
         // Test that source identity is preserved for all source types
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -572,7 +572,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
                 provenanceConfidence: .exact,
                 estimatorVersion: ""
             )
-            try store.insert(firstUsage)
+            try await store.insert(firstUsage)
 
             // Upsert with same confidence but different values
             let secondUsage = TokenUsage(
@@ -590,10 +590,10 @@ final class TokenUsageProvenanceTests: XCTestCase {
                 provenanceConfidence: .exact, // same confidence
                 estimatorVersion: ""
             )
-            try store.insert(secondUsage)
+            try await store.insert(secondUsage)
 
             // Verify source is preserved
-            let row = try queue.read { db -> Row in
+            let row = try await queue.read { db -> Row in
                 let rows = try Row.fetchAll(db, sql: """
                     SELECT usageSource FROM token_usage WHERE sessionId = ?
                     """, arguments: [sessionId])
@@ -607,7 +607,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     // MARK: - VAL-TOKEN-009 / VAL-PERSIST-002: AtomicIngestionTransaction source identity
 
-    func test_atomicIngestionTransaction_sourceIdentity_preservedOnEqualConfidenceUpsert() throws {
+    func test_atomicIngestionTransaction_sourceIdentity_preservedOnEqualConfidenceUpsert() async throws {
         // Given: a row from provider_log with exact confidence via AtomicIngestionTransaction
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -632,7 +632,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         )
 
         // First insert via UsageStore (to establish the row)
-        try store.insert(providerLogUsage)
+        try await store.insert(providerLogUsage)
 
         // Now simulate AtomicIngestionTransaction path with same confidence but different source
         let transaction = AtomicIngestionTransaction(
@@ -662,10 +662,10 @@ final class TokenUsageProvenanceTests: XCTestCase {
             checkpointToken: "checkpoint-1",
             lastProcessedFilePath: nil
         )
-        try transaction.commit()
+        try await transaction.commit()
 
         // Then: source identity should be preserved (original provider_log kept)
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT usageSource, inputTokens FROM token_usage
                 WHERE sessionId = ?
@@ -680,7 +680,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         XCTAssertEqual(inputTokens, 2000, "Token values should update on equal-confidence upsert")
     }
 
-    func test_atomicIngestionTransaction_sourceIdentity_updatedOnHigherConfidenceUpsert() throws {
+    func test_atomicIngestionTransaction_sourceIdentity_updatedOnHigherConfidenceUpsert() async throws {
         // Given: a row from provider_log with low confidence via AtomicIngestionTransaction
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -705,7 +705,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         )
 
         // First insert via UsageStore (to establish the row)
-        try store.insert(lowConfUsage)
+        try await store.insert(lowConfUsage)
 
         // Now simulate AtomicIngestionTransaction path with higher confidence
         let transaction = AtomicIngestionTransaction(
@@ -735,10 +735,10 @@ final class TokenUsageProvenanceTests: XCTestCase {
             checkpointToken: "checkpoint-2",
             lastProcessedFilePath: nil
         )
-        try transaction.commit()
+        try await transaction.commit()
 
         // Then: higher confidence should win including source update
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT usageSource, provenanceConfidence FROM token_usage
                 WHERE sessionId = ?
@@ -752,7 +752,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
             "Confidence should be updated to exact")
     }
 
-    func test_atomicIngestionTransaction_sourceIdentity_notOverwrittenOnLowerConfidence() throws {
+    func test_atomicIngestionTransaction_sourceIdentity_notOverwrittenOnLowerConfidence() async throws {
         // Given: a row from billing_api with exact confidence
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -777,7 +777,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         )
 
         // First insert via UsageStore (to establish the row)
-        try store.insert(exactUsage)
+        try await store.insert(exactUsage)
 
         // Now simulate AtomicIngestionTransaction path with lower confidence
         let transaction = AtomicIngestionTransaction(
@@ -807,10 +807,10 @@ final class TokenUsageProvenanceTests: XCTestCase {
             checkpointToken: "checkpoint-3",
             lastProcessedFilePath: nil
         )
-        try transaction.commit()
+        try await transaction.commit()
 
         // Then: lower confidence should NOT overwrite - source remains billing_api
-        let row = try queue.read { db -> Row in
+        let row = try await queue.read { db -> Row in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT usageSource, inputTokens, provenanceConfidence FROM token_usage
                 WHERE sessionId = ?

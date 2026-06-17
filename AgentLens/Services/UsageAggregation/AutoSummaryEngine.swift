@@ -126,7 +126,7 @@ final class AutoSummaryEngine {
 
         // Get total count without loading full transcript payloads.
         // try?-ok(progress count fallback)
-        summaryProgressTotal = (try? dataStore.countConversationsNeedingSummary(
+        summaryProgressTotal = (try? await dataStore.countConversationsNeedingSummary(
             now: Date(),
             retryCooldown: Self.summaryFailureRetryCooldown,
             indexedAfter: indexedAfter
@@ -143,7 +143,7 @@ final class AutoSummaryEngine {
             if let deadline, Date() >= deadline { break }
 
             // try?-ok(skip cycle on fetch fail)
-            guard var candidates = try? dataStore.fetchConversationsNeedingSummary(
+            guard var candidates = try? await dataStore.fetchConversationsNeedingSummary(
                 limit: batchLimit,
                 now: Date(),
                 retryCooldown: Self.summaryFailureRetryCooldown,

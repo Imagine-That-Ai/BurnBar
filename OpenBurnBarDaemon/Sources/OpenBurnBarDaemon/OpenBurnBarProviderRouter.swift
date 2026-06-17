@@ -88,10 +88,19 @@ public struct BurnBarRouteScoreBreakdown: Hashable, Sendable, Codable {
 public struct BurnBarRankedRoute: Hashable, Sendable {
     public let route: BurnBarProviderRoute
     public let breakdown: BurnBarRouteScoreBreakdown
+    public let quotaResetsAt: Date?
+    public let quotaRemainingPercent: Double?
 
-    public init(route: BurnBarProviderRoute, breakdown: BurnBarRouteScoreBreakdown) {
+    public init(
+        route: BurnBarProviderRoute,
+        breakdown: BurnBarRouteScoreBreakdown,
+        quotaResetsAt: Date? = nil,
+        quotaRemainingPercent: Double? = nil
+    ) {
         self.route = route
         self.breakdown = breakdown
+        self.quotaResetsAt = quotaResetsAt
+        self.quotaRemainingPercent = quotaRemainingPercent
     }
 }
 
@@ -704,12 +713,17 @@ public struct BurnBarProviderRouter: Sendable {
 
             if activeSlots.isEmpty == false {
                 let sortedSlots = activeSlots.sorted { lhs, rhs in
-                    if let quotaOrder = Self.compareQuotaReset(
-                        lhs.slot.lastQuotaResetsAt,
-                        rhs.slot.lastQuotaResetsAt,
+                    let lhsEndpointProfileID = resolvedEndpointProfileID(for: lhs, configuration: configuration)
+                    let rhsEndpointProfileID = resolvedEndpointProfileID(for: rhs, configuration: configuration)
+                    if lhsEndpointProfileID == rhsEndpointProfileID,
+                       let quotaOrder = Self.compareQuotaDrain(
+                        lhsReset: lhs.slot.lastQuotaResetsAt,
+                        lhsRemainingPercent: lhs.slot.lastQuotaRemainingPercent,
+                        rhsReset: rhs.slot.lastQuotaResetsAt,
+                        rhsRemainingPercent: rhs.slot.lastQuotaRemainingPercent,
                         now: now
                     ) {
-                        return quotaOrder
+                        return quotaOrder.ordered
                     }
                     let lhsPreferred = configuration.settings.preferredCredentialSlotID == lhs.slot.slotID ? 0 : 1
                     let rhsPreferred = configuration.settings.preferredCredentialSlotID == rhs.slot.slotID ? 0 : 1
@@ -808,6 +822,28 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         return routes
+    }
+
+    private func resolvedEndpointProfileID(
+        for slot: BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot,
+        configuration: BurnBarResolvedProviderConfiguration
+    ) -> String? {
+        guard let key = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+            providerID: configuration.provider.id,
+            rawSecret: slot.apiKey
+        ) else {
+            return nil
+        }
+        return ProviderRouteEndpointResolver.resolve(
+            providerID: configuration.provider.id,
+            apiKey: key,
+            defaultBaseURL: configuration.settings.baseURL,
+            slot: ProviderRouteEndpointResolver.SlotContext(
+                endpointProfileID: slot.slot.endpointProfileID,
+                region: slot.slot.region,
+                authMethodID: slot.slot.authMethodID
+            )
+        ).endpointProfileID
     }
 
     public func routeKey(providerID: String, slotID: String?) -> String {
@@ -1259,22 +1295,99 @@ public struct BurnBarProviderRouter: Sendable {
         guard let winner = ranking.rankedRoutes.first else {
             return "No eligible route for \(modelName)."
         }
+        let slotLabel = winner.route.credentialSlotLabel ?? "legacy"
+        let utilization = quotaDrainExplanation(for: ranking.rankedRoutes)
         switch ranking.routerMode {
         case .providerFamilyFailover:
-            return "Provider-Family Failover selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName); cross-provider alternatives were not eligible."
+            var parts = [
+                "Provider-Family Failover selected \(winner.route.providerDisplayName) \(slotLabel) for \(modelName)",
+                "cross-provider alternatives were not eligible"
+            ]
+            if let utilization {
+                parts.append(utilization)
+            }
+            return parts.joined(separator: "; ") + "."
         case .sameModelFailover:
             let canonical = ranking.requiredCanonicalModelID ?? "unknown"
-            return "Exact Model Failover selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName); every eligible fallback must serve canonical model \(canonical)."
+            var parts = [
+                "Exact Model Failover selected \(winner.route.providerDisplayName) \(slotLabel) for \(modelName)",
+                "every eligible fallback must serve canonical model \(canonical)"
+            ]
+            if let utilization {
+                parts.append(utilization)
+            }
+            return parts.joined(separator: "; ") + "."
         case .intelligentModelRouter:
             var parts = [
-                "Exact Model Failover selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName)",
+                "Exact Model Failover selected \(winner.route.providerDisplayName) \(slotLabel) for \(modelName)",
                 "signals: capability \(String(format: "%.2f", winner.breakdown.score.capability)), cost \(String(format: "%.2f", winner.breakdown.score.cost)), latency \(String(format: "%.2f", winner.breakdown.score.latency)), trust \(String(format: "%.2f", winner.breakdown.score.trust))"
             ]
+            if let utilization {
+                parts.append(utilization)
+            }
             if let status = ranking.benchmarkStatus {
                 parts.append("benchmark \(status.freshness.rawValue)")
             }
             return parts.joined(separator: "; ") + "."
         }
+    }
+
+    private func quotaDrainExplanation(for rankedRoutes: [BurnBarRankedRoute]) -> String? {
+        guard rankedRoutes.count >= 2 else { return nil }
+        let winner = rankedRoutes[0]
+        let next = rankedRoutes[1]
+        guard sameQuotaDrainPool(winner.route, next.route) else { return nil }
+
+        let now = Date()
+        guard let comparison = Self.compareQuotaDrain(
+            lhsReset: winner.quotaResetsAt,
+            lhsRemainingPercent: winner.quotaRemainingPercent,
+            rhsReset: next.quotaResetsAt,
+            rhsRemainingPercent: next.quotaRemainingPercent,
+            now: now
+        ), comparison.ordered else {
+            return nil
+        }
+
+        let winnerLabel = routeSlotLabel(winner.route)
+        let nextLabel = routeSlotLabel(next.route)
+        switch comparison.factor {
+        case .quotaReset:
+            return "utilization: \(winnerLabel)'s quota window resets in \(resetWindowLabel(winner.quotaResetsAt, now: now)) vs \(resetWindowLabel(next.quotaResetsAt, now: now)) for \(nextLabel); draining before \(nextLabel)"
+        case .remainingPercent:
+            guard let winnerRemaining = ProviderQuotaUtilizationOrdering.normalizedRemainingPercent(winner.quotaRemainingPercent),
+                  let nextRemaining = ProviderQuotaUtilizationOrdering.normalizedRemainingPercent(next.quotaRemainingPercent) else {
+                return nil
+            }
+            return "utilization: \(winnerLabel) has \(percentLabel(winnerRemaining)) remaining vs \(percentLabel(nextRemaining)) for \(nextLabel); consuming higher headroom before it lapses"
+        }
+    }
+
+    private func routeSlotLabel(_ route: BurnBarProviderRoute) -> String {
+        "\(route.providerDisplayName) \(route.credentialSlotLabel ?? "legacy")"
+    }
+
+    private func resetWindowLabel(_ value: Date?, now: Date) -> String {
+        guard let value, value > now else { return "unknown" }
+        return durationLabel(value.timeIntervalSince(now))
+    }
+
+    private func durationLabel(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded()))
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = max(1, Int((Double(seconds) / 60.0).rounded()))
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = max(1, Int((Double(minutes) / 60.0).rounded()))
+        if hours < 48 { return "\(hours)h" }
+        let days = max(1, Int((Double(hours) / 24.0).rounded()))
+        return "\(days)d"
+    }
+
+    private func percentLabel(_ value: Double) -> String {
+        if value.rounded() == value {
+            return "\(Int(value))%"
+        }
+        return String(format: "%.1f%%", value)
     }
 
     private func exactModelBlockedReason(
@@ -1443,23 +1556,31 @@ extension BurnBarProviderRouter {
                 costRange: costRange,
                 preferredProviderID: effectivePreferredProviderID
             )
-            return BurnBarRankedRoute(route: route, breakdown: breakdown)
+            let slotInfo = slotInfoMap[breakdown.routeKey]
+            return BurnBarRankedRoute(
+                route: route,
+                breakdown: breakdown,
+                quotaResetsAt: slotInfo?.lastQuotaResetsAt,
+                quotaRemainingPercent: slotInfo?.lastQuotaRemainingPercent
+            )
         }
 
         let benchmarkIndex = benchmarkSnapshotsByModelAndTask(benchmarkSnapshots)
 
-        // Sort by composite score (desc), then deterministic tie-breaks. Inside
-        // one provider/model pool, drain the slot whose known quota window resets
-        // first before falling back to least-recently-selected rotation.
+        // Inside one provider/model pool, maximize subscription utilization
+        // before composite score: soonest active reset wins, then highest
+        // remaining percent, then the normal score/LRU/deterministic ties.
         let rankingNow = Date()
         rankedRoutes.sort { lhs, rhs in
             if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaReset(
-                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
-                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+               let quotaOrder = Self.compareQuotaDrain(
+                lhsReset: lhs.quotaResetsAt,
+                lhsRemainingPercent: lhs.quotaRemainingPercent,
+                rhsReset: rhs.quotaResetsAt,
+                rhsRemainingPercent: rhs.quotaRemainingPercent,
                 now: rankingNow
                ) {
-                return quotaOrder
+                return quotaOrder.ordered
             }
             let lhsScore = rankedCompositeScore(
                 lhs,
@@ -1483,12 +1604,14 @@ extension BurnBarProviderRouter {
                 return lhsProvider < rhsProvider
             }
             if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaReset(
-                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
-                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+               let quotaOrder = Self.compareQuotaDrain(
+                lhsReset: lhs.quotaResetsAt,
+                lhsRemainingPercent: lhs.quotaRemainingPercent,
+                rhsReset: rhs.quotaResetsAt,
+                rhsRemainingPercent: rhs.quotaRemainingPercent,
                 now: rankingNow
             ) {
-                return quotaOrder
+                return quotaOrder.ordered
             }
             let lhsLastSelected = slotInfoMap[lhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
             let rhsLastSelected = slotInfoMap[rhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
@@ -1564,7 +1687,9 @@ extension BurnBarProviderRouter {
                     slotInfoMap: slotInfoMap,
                     costRange: costRange,
                     preferredProviderID: nil
-                )
+                ),
+                quotaResetsAt: slotInfoMap[routeKey(providerID: route.providerID, slotID: route.credentialSlotID)]?.lastQuotaResetsAt,
+                quotaRemainingPercent: slotInfoMap[routeKey(providerID: route.providerID, slotID: route.credentialSlotID)]?.lastQuotaRemainingPercent
             )
         }
 
@@ -1572,12 +1697,14 @@ extension BurnBarProviderRouter {
         let rankingNow = Date()
         ranked.sort { lhs, rhs in
             if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaReset(
-                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
-                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+               let quotaOrder = Self.compareQuotaDrain(
+                lhsReset: lhs.quotaResetsAt,
+                lhsRemainingPercent: lhs.quotaRemainingPercent,
+                rhsReset: rhs.quotaResetsAt,
+                rhsRemainingPercent: rhs.quotaRemainingPercent,
                 now: rankingNow
                ) {
-                return quotaOrder
+                return quotaOrder.ordered
             }
             let lhsScore = rankedCompositeScore(
                 lhs,
@@ -1598,12 +1725,14 @@ extension BurnBarProviderRouter {
                 return lhs.route.providerID < rhs.route.providerID
             }
             if sameQuotaDrainPool(lhs.route, rhs.route),
-               let quotaOrder = Self.compareQuotaReset(
-                slotInfoMap[lhs.breakdown.routeKey]?.lastQuotaResetsAt,
-                slotInfoMap[rhs.breakdown.routeKey]?.lastQuotaResetsAt,
+               let quotaOrder = Self.compareQuotaDrain(
+                lhsReset: lhs.quotaResetsAt,
+                lhsRemainingPercent: lhs.quotaRemainingPercent,
+                rhsReset: rhs.quotaResetsAt,
+                rhsRemainingPercent: rhs.quotaRemainingPercent,
                 now: rankingNow
             ) {
-                return quotaOrder
+                return quotaOrder.ordered
             }
             return (lhs.route.credentialSlotID ?? "legacy") < (rhs.route.credentialSlotID ?? "legacy")
         }

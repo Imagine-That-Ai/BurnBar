@@ -97,7 +97,7 @@ final class HermesRelayHostService {
                         // kill switch + concurrency) that screen-share / video
                         // sessions consult, instead of only bumping the active
                         // session count.
-                        capabilityGate: MacMediaCapabilityGate.shared,
+                        capabilityGate: MacMediaCapabilityGate.live(settingsManager: settingsManager),
                         // RR-18 — at-rest seal hook. File receive runs from
                         // `uid`/`connectionID` only (there is no live mirror
                         // request carrying a `mediaSealKey` wrap at fetch time),

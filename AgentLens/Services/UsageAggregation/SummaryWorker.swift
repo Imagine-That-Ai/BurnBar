@@ -32,11 +32,11 @@ struct SummarySettingsSnapshot: Sendable {
 /// cloud LLM call bypass the cap. This protocol lets tests inject a fault-injecting fake
 /// through `SummaryWorker.init` without standing up a real database.
 ///
-/// `DataStoreActor` already vends a `nonisolated func summarySpendToday(now:) throws -> Double`,
-/// so it conforms with no behavior change for production.
+/// `DataStoreActor` vends the same read behind its database actor, so production
+/// and tests share the same fail-closed behavior without defaulting faults to zero.
 protocol SummaryDailySpendReading: Sendable {
     /// Returns USD spent on cloud summaries today, or throws on a real read fault.
-    func summarySpendToday(now: Date) throws -> Double
+    func summarySpendToday(now: Date) async throws -> Double
 }
 
 extension DataStoreActor: SummaryDailySpendReading {}
@@ -111,7 +111,7 @@ actor SummaryWorker {
                             estimatedCostUSD: 0
                         )
                         do {
-                            try dataStoreActor.updateConversationSummary(
+                            try await dataStoreActor.updateConversationSummary(
                                 id: conversation.id,
                                 title: result.title,
                                 summary: result.summary,
@@ -152,7 +152,7 @@ actor SummaryWorker {
                     settings: settings
                 ) {
                     do {
-                        try dataStoreActor.updateConversationSummary(
+                        try await dataStoreActor.updateConversationSummary(
                             id: conversation.id,
                             title: result.title,
                             summary: result.summary,
@@ -187,7 +187,7 @@ actor SummaryWorker {
                     settings: settings
                 ) {
                     do {
-                        try dataStoreActor.updateConversationSummary(
+                        try await dataStoreActor.updateConversationSummary(
                             id: conversation.id,
                             title: result.title,
                             summary: result.summary,
@@ -227,7 +227,7 @@ actor SummaryWorker {
                         settings: settings
                     ) {
                         do {
-                            try dataStoreActor.updateConversationSummary(
+                            try await dataStoreActor.updateConversationSummary(
                                 id: conversation.id,
                                 title: result.title,
                                 summary: result.summary,
@@ -263,7 +263,7 @@ actor SummaryWorker {
                     settings: settings
                 ) {
                     do {
-                        try dataStoreActor.updateConversationSummary(
+                        try await dataStoreActor.updateConversationSummary(
                             id: conversation.id,
                             title: result.title,
                             summary: result.summary,
@@ -302,7 +302,7 @@ actor SummaryWorker {
                     settings: settings
                 ) {
                     do {
-                        try dataStoreActor.updateConversationSummary(
+                        try await dataStoreActor.updateConversationSummary(
                             id: conversation.id,
                             title: result.title,
                             summary: result.summary,
@@ -327,7 +327,7 @@ actor SummaryWorker {
         }
 
         do {
-            try dataStoreActor.markConversationSummaryAttempt(id: conversation.id)
+            try await dataStoreActor.markConversationSummaryAttempt(id: conversation.id)
         } catch {
             AppLogger.dataStore.silentFailure("mark_summary_attempt_failed", error: error, context: ["conversationId": conversation.id])
         }
@@ -361,7 +361,7 @@ actor SummaryWorker {
             // which would silently let an unknown amount of spend bypass the cap.
             let spentToday: Double
             do {
-                spentToday = try spendReader.summarySpendToday(now: Date())
+                spentToday = try await spendReader.summarySpendToday(now: Date())
             } catch {
                 AppLogger.dataStore.silentFailure(
                     "summary_spend_read_failed_fail_closed",

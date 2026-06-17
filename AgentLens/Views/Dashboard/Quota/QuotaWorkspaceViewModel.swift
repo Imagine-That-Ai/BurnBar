@@ -158,7 +158,7 @@ final class QuotaWorkspaceViewModel {
         dataStore: DataStore,
         providerSpendByID: [ProviderID: Double],
         cumulativeAcrossAccounts: Bool = false
-    ) {
+    ) async {
         var byID: [String: SubscriptionEntry] = [:]
         let profileIndex = QuotaWorkspaceProfileIndex(
             profiles: (try? dataStore.switcherStore.fetchAllProfiles()) ?? [],
@@ -177,7 +177,7 @@ final class QuotaWorkspaceViewModel {
                 ),
                 profileIndex: profileIndex
             )
-            let isConnected = quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
+            let isConnected = await quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
             let candidateSnapshots = allAccountSnapshots
                 .filter { snapshot in
                     if snapshot.hasDisplayableQuotaSignal { return true }
@@ -220,7 +220,7 @@ final class QuotaWorkspaceViewModel {
 
         let unsortedEntries = Array(byID.values)
         self.entries = Self.sort(unsortedEntries, by: sort, spendByID: providerSpendByID)
-        self.setupSlots = Self.makeSetupSlots(
+        self.setupSlots = await Self.makeSetupSlots(
             quotaService: quotaService,
             dataStore: dataStore,
             takenProviderIDs: Set(entries.map(\.providerID))
@@ -423,11 +423,11 @@ final class QuotaWorkspaceViewModel {
         quotaService: ProviderQuotaService,
         dataStore: DataStore,
         takenProviderIDs: Set<ProviderID>
-    ) -> [SubscriptionSetupSlot] {
+    ) async -> [SubscriptionSetupSlot] {
         var slots: [SubscriptionSetupSlot] = []
         for provider in AgentProvider.quotaSignalProviders {
             if takenProviderIDs.contains(provider.providerID) { continue }
-            let isConnected = quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
+            let isConnected = await quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
             let snapshot = quotaService.snapshot(for: provider)
             slots.append(SubscriptionSetupSlot(
                 id: provider.providerID.rawValue,
