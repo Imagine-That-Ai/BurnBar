@@ -53,16 +53,20 @@ enum OpenBurnBarChatWorkspaceConfigurator {
     }
 
     /// Writes `openburnbar-mcp.config.json` with `BURNBAR_DB_PATH` and a short README for manual MCP setup.
-    static func ensureMCPHints(in workspaceURL: URL, databaseURL: URL) {
+    static func ensureMCPHints(in workspaceURL: URL, databaseURL: URL, wandParallelMax: Int? = nil) {
         try? FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true) // try?-ok(best-effort hint dir)
 
         let dbPath = databaseURL.path
+        var environment: [String: String] = [
+            "BURNBAR_DB_PATH": dbPath
+        ]
+        if let wandParallelMax {
+            environment["OPENBURNBAR_WAND_PARALLEL_MAX"] = String(wandParallelMax)
+        }
         let mcpPayload: [String: Any] = [
             "burnbar_mcp": [
                 "description": "Read-only OpenBurnBar SQLite tools (search sessions, usage) via MCP.",
-                "environment": [
-                    "BURNBAR_DB_PATH": dbPath
-                ],
+                "environment": environment,
                 "setup": [
                     "Install deps: cd tools/openburnbar-mcp && ./setup.sh",
                     "Then register command: python3 tools/openburnbar-mcp/server.py with env BURNBAR_DB_PATH above in Codex or Claude MCP settings."

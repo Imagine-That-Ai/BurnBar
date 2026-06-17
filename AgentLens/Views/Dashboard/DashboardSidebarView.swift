@@ -163,7 +163,7 @@ extension DashboardView {
         }
         .background {
             if settingsManager.useWebsiteBackground {
-                Color.clear.background(.ultraThinMaterial)
+                Color.clear.liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md), fallback: .ultraThinMaterial)
             } else {
                 ZStack {
                     DesignSystem.Colors.surface.opacity(0.92)

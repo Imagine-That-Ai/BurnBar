@@ -147,11 +147,64 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         case .hermes, .pi, .openClaw:
             throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
         }
+        let mergedOptions = await Self.mergingOpenBurnBarProxyRowsIfNeeded(
+            nativeOptions: options,
+            runtime: runtime
+        )
         return CLIRuntimeModelCatalogResponse(
             runtime: runtime.rawValue,
             machineName: Host.current().localizedName,
             generatedAtEpochMillis: Int64(Date().timeIntervalSince1970 * 1000),
-            options: options
+            options: mergedOptions
+        )
+    }
+
+    private static func mergingOpenBurnBarProxyRowsIfNeeded(
+        nativeOptions: [CLIRuntimeModelOption],
+        runtime: AssistantRuntimeID
+    ) async -> [CLIRuntimeModelOption] {
+        guard runtime == .codex || runtime == .claude else { return nativeOptions }
+        let gateway: RoutingClientGateway = await MainActor.run {
+            let settings = SettingsManager.shared.gateway
+            return RoutingClientGateway(
+                host: settings.gatewayHost.isEmpty ? "127.0.0.1" : settings.gatewayHost,
+                port: settings.gatewayPort > 0 ? settings.gatewayPort : 8317,
+                authToken: settings.gatewayAuthToken
+            )
+        }
+        let wiring = RoutingClientWiring()
+        let target: RoutingClientWiringTarget = runtime == .codex ? .codex : .claudeCode
+        let advertisedModels = await wiring.advertisedModels(gateway: gateway)
+        let proxyRows = advertisedModels
+            .filter { $0.isGatewayServedModelCandidate(for: target) }
+            .map { model in
+                Self.openBurnBarProxyOption(model: model, runtime: runtime)
+            }
+        return deduplicated(nativeOptions + proxyRows)
+    }
+
+    private static func openBurnBarProxyOption(
+        model: RoutingClientAdvertisedModel,
+        runtime: AssistantRuntimeID
+    ) -> CLIRuntimeModelOption {
+        let routeModelID = model.id
+        let pickerModelID = runtime == .codex
+            ? "openburnbar/\(routeModelID)"
+            : routeModelID
+        let display = OpenBurnBarModelDisplayName.compose(
+            modelName: model.displayName.isEmpty ? routeModelID : model.displayName,
+            providerName: model.providerName,
+            providerID: model.providerID
+        )
+        return CLIRuntimeModelOption(
+            modelID: pickerModelID,
+            routeModelID: routeModelID,
+            rowID: "openburnbar|\(model.providerID.lowercased())|\(routeModelID.lowercased())|\(runtime.rawValue)",
+            displayName: display,
+            providerID: model.providerID,
+            providerName: "\(model.providerName) via OpenBurnBar API/OAuth",
+            tier: inferredTier(modelID: routeModelID, displayName: model.displayName),
+            source: .openBurnBarProxy
         )
     }
 
@@ -186,10 +239,28 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         var rows: [CLIRuntimeModelOption] = []
         var seen = Set<String>()
         for option in options {
-            guard seen.insert(option.modelID.lowercased()).inserted else { continue }
+            let key = "\(option.source.rawValue)|\(option.providerID.lowercased())|\(option.modelID.lowercased())"
+            guard seen.insert(key).inserted else { continue }
             rows.append(option)
         }
         return rows
+    }
+
+    private static func inferredTier(modelID: String, displayName: String) -> String {
+        let haystack = "\(modelID) \(displayName)".lowercased()
+        if haystack.contains("opus")
+            || haystack.contains("pro")
+            || haystack.contains("max")
+            || haystack.contains("xhigh") {
+            return "flagship"
+        }
+        if haystack.contains("mini")
+            || haystack.contains("nano")
+            || haystack.contains("flash")
+            || haystack.contains("haiku") {
+            return "small"
+        }
+        return "mid"
     }
 
     private func executable(named name: String) async throws -> String {

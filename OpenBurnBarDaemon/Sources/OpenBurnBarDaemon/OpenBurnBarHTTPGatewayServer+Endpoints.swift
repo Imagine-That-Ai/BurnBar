@@ -166,18 +166,22 @@ extension BurnBarHTTPGatewayServer {
             endpoint: "Anthropic Messages",
             routeErrorLogEvent: "gateway_anthropic_route_error",
             routerLoggerCategory: "gateway-router-anthropic",
-            allowDynamicOpenAICompatibleModels: false,
+            allowDynamicOpenAICompatibleModels: true,
             treatsRouterErrorAsNoEligibleRoute: false,
             finalRejectUsesRankingCanonicalModelID: true,
             decodeRequest: { data in
                 let request = try JSONDecoder().decode(AnthropicMessagesRequest.self, from: data)
                 return GatewayDecodedModelRequest(model: request.model, wantsStream: request.stream == true)
             },
-            selectFormatFamilies: { advertised, _, clientModelID in
-                guard advertised[.anthropic]?.isEmpty == false else {
-                    return .reject(failureMessage: "No eligible Anthropic-family route for \(clientModelID).")
+            selectFormatFamilies: { advertised, requestedModel, clientModelID in
+                let families = self.preferredGatewayFormatFamilies(
+                    for: requestedModel.modelID,
+                    advertised: advertised
+                )
+                guard !families.isEmpty else {
+                    return .reject(failureMessage: "No eligible route for \(clientModelID) on /v1/messages.")
                 }
-                return .families([.anthropic])
+                return .families(families)
             },
             filterRankedRoutes: { routes, requestedModel in
                 routes.filter {
@@ -186,10 +190,10 @@ extension BurnBarHTTPGatewayServer {
                 }
             },
             emptyRankedRoutesRejection: { clientModelID in
-                let detail = "no eligible Anthropic-family route for \(clientModelID). "
-                    + "Add an Anthropic Console API key or an Anthropic Pro/Team plan to serve /v1/messages."
+                let detail = "No eligible route for \(clientModelID). "
+                    + "Add or enable an advertised OpenBurnBar provider that can serve /v1/messages."
                 return (
-                    failureMessage: "No eligible Anthropic-family route for \(clientModelID).",
+                    failureMessage: "No eligible route for \(clientModelID).",
                     response: self.jsonResponse(status: 503, body: self.errorBody(detail))
                 )
             },
@@ -201,6 +205,12 @@ extension BurnBarHTTPGatewayServer {
                 // skipped for these routes. Otherwise the client wire
                 // format (Anthropic messages) matches the upstream route
                 // family, so chunks relay unchanged.
+                guard context.formatFamily == .anthropic else {
+                    // OpenAI-compatible routes are translated back to
+                    // Anthropic SSE on the buffered path. That keeps
+                    // failover/accounting intact before any bytes leave.
+                    return nil
+                }
                 let useInteractiveClaude = self.interactiveClaudeExecutor != nil
                     && ClaudeInteractiveSessionExecutor.isEligible(route: context.route)
                 guard context.wantsStream, !useInteractiveClaude else { return nil }
@@ -213,17 +223,10 @@ extension BurnBarHTTPGatewayServer {
                 }
             },
             proxyBuffered: { context in
-                if let interactiveClaudeExecutor = self.interactiveClaudeExecutor,
-                   ClaudeInteractiveSessionExecutor.isEligible(route: context.route) {
-                    return try await interactiveClaudeExecutor.proxyMessages(
-                        body: context.bodyData,
-                        route: context.route,
-                        variant: context.variant
-                    )
-                }
-                return try await self.anthropicExecutor.proxyMessages(
+                return try await self.proxyMessages(
                     body: context.bodyData,
                     route: context.route,
+                    formatFamily: context.formatFamily,
                     variant: context.variant
                 )
             },

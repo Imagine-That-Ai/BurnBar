@@ -309,6 +309,19 @@ extension BurnBarHTTPGatewayServer {
                         return outcome
                     }
                 }
+                if let rejection = descriptor.emptyRankedRoutesRejection {
+                    let (failureMessage, response) = rejection(modelID)
+                    await recordProxyRouteLogEntry(
+                        context: logContext,
+                        requestedCanonicalModelID: nil,
+                        route: nil,
+                        finalStatus: .rejected,
+                        httpStatus: 503,
+                        attempts: routeLogAttempts.attempts,
+                        failureMessage: failureMessage
+                    )
+                    return .buffered(response)
+                }
                 await recordProxyRouteLogEntry(
                     context: logContext,
                     requestedCanonicalModelID: nil,

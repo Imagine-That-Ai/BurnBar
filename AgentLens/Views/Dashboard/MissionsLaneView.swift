@@ -650,13 +650,13 @@ private struct MissionGateCard: View {
             stateStripe
             cardBody
         }
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
         .background {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.55))
-                )
+                .fill(DesignSystem.Colors.surface.opacity(0.55))
                 .overlay(
                     RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                         .fill(
@@ -982,8 +982,17 @@ private struct NewMissionSheet: View {
     @State private var title: String = ""
     @State private var summary: String = ""
     @State private var recommendation: BurnBarMissionRecommendation = .proceed
+    @State private var wandMode: WandCastMode?
     @State private var isSubmitting = false
     @State private var errorMessage: String?
+
+    private var currentTier: CloudTier {
+        MacCloudEntitlementStore.shared.cloudTier
+    }
+
+    private var maxParallel: Int {
+        WandFanOut.maxParallel(for: currentTier)
+    }
 
     private var registeredProjects: [String] {
         daemonManager.controllerProjects.map(\.projectSlug).sorted()
@@ -1005,6 +1014,7 @@ private struct NewMissionSheet: View {
                     projectField
                     titleField
                     summaryField
+                    wandModeField
                     recommendationField
 
                     if let errorMessage {
@@ -1156,6 +1166,89 @@ private struct NewMissionSheet: View {
         }
     }
 
+    private var wandModeField: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: 6) {
+                Image(systemName: "wand.and.rays")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                Text("WAND MODE")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.6)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Spacer(minLength: 0)
+                Text("\(maxParallel) parallel agent\(maxParallel == 1 ? "" : "s") max")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(DesignSystem.Colors.amber.opacity(0.08)))
+                    .overlay(Capsule().stroke(DesignSystem.Colors.amber.opacity(0.2), lineWidth: 0.5))
+            }
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                wandModeChip(
+                    mode: nil,
+                    title: "Manual",
+                    icon: "hand.tap",
+                    subtitle: "You pick models"
+                )
+                wandModeChip(
+                    mode: .highestCapability,
+                    title: "Headmaster's",
+                    icon: "crown.fill",
+                    subtitle: "Best model wins"
+                )
+                wandModeChip(
+                    mode: .pareto,
+                    title: "Pareto",
+                    icon: "scalemass.fill",
+                    subtitle: "Best value/queue"
+                )
+            }
+        }
+    }
+
+    private func wandModeChip(mode: WandCastMode?, title: String, icon: String, subtitle: String) -> some View {
+        let isSelected = wandMode == mode
+        return Button {
+            wandMode = mode
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isSelected ? .white : DesignSystem.Colors.textSecondary)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isSelected ? .white : DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(isSelected ? .white.opacity(0.7) : DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
+                    .fill(
+                        isSelected
+                            ? DesignSystem.Colors.amber
+                            : DesignSystem.Colors.surfaceElevated.opacity(0.6)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
+                    .stroke(
+                        isSelected ? Color.clear : DesignSystem.Colors.borderSubtle,
+                        lineWidth: 0.6
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private var recommendationField: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             fieldLabel("Recommendation", required: false)
@@ -1275,7 +1368,8 @@ private struct NewMissionSheet: View {
                     projectSlug: projectSlug,
                     title: title,
                     summary: summary,
-                    recommendation: recommendation
+                    recommendation: recommendation,
+                    wandMode: wandMode?.rawValue
                 )
                 await operatingLayer.refreshControllerRuntime()
                 await MainActor.run {

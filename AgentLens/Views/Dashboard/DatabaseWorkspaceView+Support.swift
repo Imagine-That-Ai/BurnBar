@@ -95,13 +95,13 @@ struct WideBand<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(DesignSystem.Spacing.lg)
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.45))
-            }
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.45))
         }
         .clipShape(.rect(cornerRadius: DesignSystem.Radius.md))
         .overlay(

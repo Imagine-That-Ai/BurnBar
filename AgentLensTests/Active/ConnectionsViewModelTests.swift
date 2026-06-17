@@ -375,6 +375,32 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.proxyModels.map(\.providerID), ["provider-a", "provider-b"])
     }
 
+    func test_refreshProxyModelCatalog_preservesEndpointMetadataForClaudeCompatibleRows() async throws {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                [
+                    self.makeProxyAdvertisedModel(
+                        modelID: "glm-5.2",
+                        displayName: "GLM 5.2",
+                        providerID: "zai",
+                        providerName: "Z.ai",
+                        formatFamily: "openai_compat",
+                        servedEndpoints: ["/v1/messages", "/v1/responses"]
+                    )
+                ]
+            }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+
+        let model = try XCTUnwrap(viewModel.proxyModels.first)
+        XCTAssertEqual(model.modelID, "glm-5.2")
+        XCTAssertEqual(model.formatFamily, "openai_compat")
+        XCTAssertTrue(model.servedEndpoints.contains("/v1/messages"))
+        XCTAssertTrue(model.servedEndpoints.contains("/v1/responses"))
+    }
+
     func test_disconnect_unwiresButLeavesGatewayEnabled() async {
         await viewModel.connect(target: .claudeCode, settings: settings)
         XCTAssertTrue(settings.gatewayEnabled)
@@ -456,9 +482,90 @@ final class ConnectionsViewModelTests: XCTestCase {
         }
     }
 
+    func test_refreshWiringState_marksCodexStaleWhenCachedCatalogNoLongerMatchesLiveCatalog() async throws {
+        settings.gatewayEnabled = true
+        settings.gatewayHost = "127.0.0.1"
+        settings.gatewayPort = 8317
+        settings.gatewayAuthToken = ""
+
+        let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        let wiring = RoutingClientWiring(home: tempHome)
+        let installedModel = RoutingClientAdvertisedModel(
+            id: "glm-5.1",
+            displayName: "GLM 5.1",
+            providerID: "zai",
+            providerName: "Z.ai",
+            servedEndpoints: ["/v1/responses"],
+            routeEligible: true
+        )
+        _ = try wiring.wire(target: .codex, gateway: gateway, advertisedModels: [installedModel])
+
+        viewModel = ConnectionsViewModel(wiringFactory: { RoutingClientWiring(home: self.tempHome) })
+        viewModel.proxyModels = [
+            makeProxyAdvertisedModel(
+                modelID: "glm-5.2",
+                displayName: "GLM 5.2",
+                providerID: "zai",
+                providerName: "Z.ai",
+                servedEndpoints: ["/v1/responses"]
+            )
+        ]
+
+        await viewModel.refreshWiringState(settings: settings)
+
+        if case .degraded(let message) = viewModel.state(for: .codex) {
+            XCTAssertTrue(message.contains("Codex's BurnBar model catalog is stale"))
+            XCTAssertTrue(message.contains("Sync models"))
+        } else {
+            XCTFail("Expected Codex row to show stale/degraded, got \(viewModel.state(for: .codex))")
+        }
+    }
+
+    func test_refreshWiringState_marksClaudeStaleWhenCachedCatalogNoLongerMatchesLiveCatalog() async throws {
+        settings.gatewayEnabled = true
+        settings.gatewayHost = "127.0.0.1"
+        settings.gatewayPort = 8317
+        settings.gatewayAuthToken = ""
+
+        let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        let wiring = RoutingClientWiring(home: tempHome)
+        let installedModel = RoutingClientAdvertisedModel(
+            id: "glm-5.1",
+            displayName: "GLM 5.1",
+            providerID: "zai",
+            providerName: "Z.ai",
+            formatFamily: "openai_compat",
+            servedEndpoints: ["/v1/messages"],
+            routeEligible: true
+        )
+        _ = try wiring.wire(target: .claudeCode, gateway: gateway, advertisedModels: [installedModel])
+
+        viewModel = ConnectionsViewModel(wiringFactory: { RoutingClientWiring(home: self.tempHome) })
+        viewModel.proxyModels = [
+            makeProxyAdvertisedModel(
+                modelID: "glm-5.2",
+                displayName: "GLM 5.2",
+                providerID: "zai",
+                providerName: "Z.ai",
+                formatFamily: "openai_compat",
+                servedEndpoints: ["/v1/messages", "/v1/responses"]
+            )
+        ]
+
+        await viewModel.refreshWiringState(settings: settings)
+
+        if case .degraded(let message) = viewModel.state(for: .claudeCode) {
+            XCTAssertTrue(message.contains("Claude Code's BurnBar discovery catalog is stale"))
+            XCTAssertTrue(message.contains("Sync models"))
+            XCTAssertTrue(message.contains("restart Claude Code"))
+        } else {
+            XCTFail("Expected Claude Code row to show stale/degraded, got \(viewModel.state(for: .claudeCode))")
+        }
+    }
+
     // MARK: - Route-ready truth
 
-    func test_routeReadiness_requiresRouteReadyAnthropicDaemonCredentialForClaude() {
+    func test_routeReadiness_requiresRouteReadyGatewayCredentialForClaude() {
         XCTAssertFalse(
             ConnectionsRouteReadiness.hasRouteReadyProvider(for: .claudeCode, configurations: []),
             "A local Claude Code login alone is not a BurnBar proxy route."
@@ -490,9 +597,23 @@ final class ConnectionsViewModelTests: XCTestCase {
             ),
             "Claude must not show route-ready when the Anthropic slot has no usable credential."
         )
+
+        XCTAssertTrue(
+            ConnectionsRouteReadiness.hasRouteReadyProvider(
+                for: .claudeCode,
+                configurations: [
+                    makeProviderConfiguration(
+                        providerID: "minimax",
+                        formatDisplayName: "MiniMax",
+                        slotStatus: .ready
+                    )
+                ]
+            ),
+            "Claude Code can use OpenAI-compatible OpenBurnBar providers through the /v1/messages bridge."
+        )
     }
 
-    func test_routeReadiness_mapsOpenAICompatibleCLIsToOpenAIShapeProvidersOnly() {
+    func test_routeReadiness_mapsGatewayCLIsToBridgeCapableProviders() {
         let minimax = makeProviderConfiguration(
             providerID: "minimax",
             formatDisplayName: "MiniMax",
@@ -503,7 +624,15 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertTrue(ConnectionsRouteReadiness.hasRouteReadyProvider(for: .opencode, configurations: [minimax]))
         XCTAssertTrue(ConnectionsRouteReadiness.hasRouteReadyProvider(for: .forge, configurations: [minimax]))
         XCTAssertTrue(ConnectionsRouteReadiness.hasRouteReadyProvider(for: .droid, configurations: [minimax]))
-        XCTAssertFalse(ConnectionsRouteReadiness.hasRouteReadyProvider(for: .claudeCode, configurations: [minimax]))
+        XCTAssertTrue(ConnectionsRouteReadiness.hasRouteReadyProvider(for: .claudeCode, configurations: [minimax]))
+
+        let anthropic = makeProviderConfiguration(
+            providerID: "anthropic",
+            formatDisplayName: "Anthropic",
+            slotStatus: .ready
+        )
+        XCTAssertTrue(ConnectionsRouteReadiness.hasRouteReadyProvider(for: .codex, configurations: [anthropic]))
+        XCTAssertTrue(ConnectionsRouteReadiness.hasRouteReadyProvider(for: .droid, configurations: [anthropic]))
     }
 
     func test_providerRouteReadyCredentialSlotsIgnoreEnabledProviderWithNoUsableCredential() {
@@ -620,6 +749,33 @@ final class ConnectionsViewModelTests: XCTestCase {
         )
     }
 
+    private func makeProxyAdvertisedModel(
+        modelID: String,
+        displayName: String,
+        providerID: String,
+        providerName: String,
+        formatFamily: String = "openai_compat",
+        servedEndpoints: [String] = ["/v1/chat/completions", "/v1/responses"],
+        routeEligible: Bool = true
+    ) -> ProxyAdvertisedModel {
+        ProxyAdvertisedModel(
+            modelID: modelID,
+            displayName: displayName,
+            providerID: providerID,
+            providerName: providerName,
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "\(providerID)#default",
+            sourceKind: "upstream_models_endpoint",
+            formatFamily: formatFamily,
+            servedEndpoints: servedEndpoints,
+            quotaState: "healthy",
+            routeEligible: routeEligible,
+            capabilities: [formatFamily, "routing"],
+            lastError: nil
+        )
+    }
+
     private func makeRouteLogEntry(
         clientModelSlug: String,
         upstreamModelSlug: String,
@@ -721,6 +877,330 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertEqual(alias?.baseModelID, "claude-sonnet-4-6")
         XCTAssertTrue(alias?.isUserModelAlias ?? false)
         XCTAssertTrue(alias?.hidesBaseModel ?? false)
+    }
+
+    // MARK: - Routed client model summary
+
+    func test_modelSummary_returnsNilForNonSyncTargets() {
+        XCTAssertNil(viewModel.modelSummary(for: .opencode))
+        XCTAssertNil(viewModel.modelSummary(for: .forge))
+        XCTAssertNil(viewModel.modelSummary(for: .grok))
+        XCTAssertNil(viewModel.modelSummary(for: .antigravity))
+        XCTAssertNil(viewModel.modelSummary(for: .cursorAgent))
+    }
+
+    func test_modelSummary_countsOpenBurnBarModelsByTargetEndpoint() async {
+        viewModel.proxyModels = [
+            makeProxyAdvertisedModel(
+                modelID: "glm-5.2",
+                displayName: "GLM 5.2",
+                providerID: "zai",
+                providerName: "Z.ai",
+                servedEndpoints: ["/v1/messages", "/v1/responses"]
+            ),
+            makeProxyAdvertisedModel(
+                modelID: "deepseek-chat",
+                displayName: "DeepSeek Chat",
+                providerID: "deepseek",
+                providerName: "DeepSeek",
+                servedEndpoints: ["/v1/chat/completions"]
+            ),
+            makeProxyAdvertisedModel(
+                modelID: "minimax-m2",
+                displayName: "MiniMax M2",
+                providerID: "minimax",
+                providerName: "MiniMax",
+                servedEndpoints: ["/v1/chat/completions", "/v1/responses"]
+            )
+        ]
+
+        // Claude Code: only /v1/messages models count
+        let claudeSummary = viewModel.modelSummary(for: .claudeCode)
+        XCTAssertNotNil(claudeSummary)
+        XCTAssertEqual(claudeSummary?.openburnbarModelCount, 1)
+        XCTAssertTrue(claudeSummary?.hasNativeModels ?? false)
+        XCTAssertEqual(claudeSummary?.countLabel, "1 OpenBurnBar + native models")
+        XCTAssertEqual(claudeSummary?.nativeBadgeText, "Native + OpenBurnBar")
+
+        // Codex: /v1/responses models count (glm-5.2 + minimax-m2)
+        let codexSummary = viewModel.modelSummary(for: .codex)
+        XCTAssertNotNil(codexSummary)
+        XCTAssertEqual(codexSummary?.openburnbarModelCount, 2)
+        XCTAssertTrue(codexSummary?.hasNativeModels ?? false)
+        XCTAssertEqual(codexSummary?.countLabel, "2 OpenBurnBar + native models")
+
+        // Droid: /v1/chat/completions OR /v1/responses models count
+        // (deepseek-chat + minimax-m2 via chat, glm-5.2 + minimax-m2 via responses)
+        let droidSummary = viewModel.modelSummary(for: .droid)
+        XCTAssertNotNil(droidSummary)
+        XCTAssertEqual(droidSummary?.openburnbarModelCount, 3)
+        XCTAssertFalse(droidSummary?.hasNativeModels ?? true)
+        XCTAssertEqual(droidSummary?.countLabel, "3 OpenBurnBar models")
+        XCTAssertNil(droidSummary?.nativeBadgeText)
+    }
+
+    func test_modelSummary_returnsZeroWhenNoModelsAvailable() {
+        viewModel.proxyModels = []
+
+        let summary = viewModel.modelSummary(for: .droid)
+        XCTAssertNotNil(summary)
+        XCTAssertEqual(summary?.openburnbarModelCount, 0)
+        XCTAssertNil(summary?.countLabel)
+        XCTAssertNil(summary?.nativeBadgeText)
+    }
+
+    func test_modelSummary_excludesNonRouteEligibleModels() async {
+        viewModel.proxyModels = [
+            ProxyAdvertisedModel(
+                modelID: "inactive-model",
+                displayName: "Inactive Model",
+                providerID: "minimax",
+                providerName: "MiniMax",
+                accountID: "default",
+                accountLabel: "Default",
+                sourceID: "minimax#default",
+                sourceKind: "provider_account",
+                servedEndpoints: ["/v1/chat/completions"],
+                quotaState: "disabled",
+                routeEligible: false,
+                capabilities: [],
+                lastError: nil
+            ),
+            makeProxyAdvertisedModel(
+                modelID: "active-model",
+                displayName: "Active Model",
+                providerID: "minimax",
+                providerName: "MiniMax",
+                servedEndpoints: ["/v1/chat/completions"]
+            )
+        ]
+
+        let droidSummary = viewModel.modelSummary(for: .droid)
+        XCTAssertEqual(droidSummary?.openburnbarModelCount, 1)
+    }
+
+    // MARK: - RoutingClientWiringTarget probe endpoint info
+
+    func test_probeEndpointLabel_returnsCorrectPathPerTarget() {
+        XCTAssertEqual(RoutingClientWiringTarget.claudeCode.probeEndpointLabel, "POST /v1/messages")
+        XCTAssertEqual(RoutingClientWiringTarget.codex.probeEndpointLabel, "POST /v1/responses")
+        XCTAssertEqual(RoutingClientWiringTarget.droid.probeEndpointLabel, "POST /v1/chat/completions")
+        XCTAssertNil(RoutingClientWiringTarget.antigravity.probeEndpointLabel)
+        XCTAssertNil(RoutingClientWiringTarget.cursorAgent.probeEndpointLabel)
+    }
+
+    func test_supportsModelSync_flagsDroidCodexClaudeOnly() {
+        XCTAssertTrue(RoutingClientWiringTarget.droid.supportsModelSync)
+        XCTAssertTrue(RoutingClientWiringTarget.codex.supportsModelSync)
+        XCTAssertTrue(RoutingClientWiringTarget.claudeCode.supportsModelSync)
+        XCTAssertFalse(RoutingClientWiringTarget.opencode.supportsModelSync)
+        XCTAssertFalse(RoutingClientWiringTarget.forge.supportsModelSync)
+        XCTAssertFalse(RoutingClientWiringTarget.grok.supportsModelSync)
+        XCTAssertFalse(RoutingClientWiringTarget.antigravity.supportsModelSync)
+        XCTAssertFalse(RoutingClientWiringTarget.cursorAgent.supportsModelSync)
+    }
+
+    func test_endpointDescription_returnsReadableEndpointLabel() {
+        XCTAssertTrue(RoutingClientWiringTarget.claudeCode.endpointDescription.contains("/v1/messages"))
+        XCTAssertTrue(RoutingClientWiringTarget.codex.endpointDescription.contains("/v1/responses"))
+        XCTAssertTrue(RoutingClientWiringTarget.droid.endpointDescription.contains("/v1/chat/completions"))
+        XCTAssertTrue(RoutingClientWiringTarget.antigravity.endpointDescription.contains("Profile-scoped"))
+    }
+
+    func test_gatewayServes_respectsEndpointShape() {
+        let chatOnlyModel = ProxyAdvertisedModel(
+            modelID: "chat-model",
+            displayName: "Chat Model",
+            providerID: "minimax",
+            providerName: "MiniMax",
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "minimax#default",
+            sourceKind: "provider_account",
+            servedEndpoints: ["/v1/chat/completions"],
+            quotaState: "healthy",
+            routeEligible: true,
+            capabilities: [],
+            lastError: nil
+        )
+
+        let messagesModel = ProxyAdvertisedModel(
+            modelID: "messages-model",
+            displayName: "Messages Model",
+            providerID: "anthropic",
+            providerName: "Anthropic",
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "anthropic#default",
+            sourceKind: "provider_account",
+            formatFamily: "anthropic",
+            servedEndpoints: ["/v1/messages"],
+            quotaState: "healthy",
+            routeEligible: true,
+            capabilities: [],
+            lastError: nil
+        )
+
+        XCTAssertTrue(RoutingClientWiringTarget.droid.gatewayServes(model: chatOnlyModel))
+        XCTAssertFalse(RoutingClientWiringTarget.claudeCode.gatewayServes(model: chatOnlyModel))
+        XCTAssertTrue(RoutingClientWiringTarget.claudeCode.gatewayServes(model: messagesModel))
+        XCTAssertFalse(RoutingClientWiringTarget.codex.gatewayServes(model: messagesModel))
+    }
+
+    func test_gatewayServes_emptyEndpointsTreatsGatewayClientsAsBridgeCompatible() {
+        // Older gateway catalogs did not include servedEndpoints. The UI must
+        // mirror the wiring service and count those legacy rows for gateway-
+        // shaped clients because the daemon can bridge them at request time.
+        let anthropicNoEndpoints = ProxyAdvertisedModel(
+            modelID: "claude-empty",
+            displayName: "Claude Empty",
+            providerID: "anthropic",
+            providerName: "Anthropic",
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "anthropic#default",
+            sourceKind: "provider_account",
+            formatFamily: "anthropic",
+            servedEndpoints: [],
+            quotaState: "healthy",
+            routeEligible: true,
+            capabilities: [],
+            lastError: nil
+        )
+
+        let openaiNoEndpoints = ProxyAdvertisedModel(
+            modelID: "gpt-empty",
+            displayName: "GPT Empty",
+            providerID: "openai",
+            providerName: "OpenAI",
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "openai#default",
+            sourceKind: "provider_account",
+            formatFamily: "openai_compat",
+            servedEndpoints: [],
+            quotaState: "healthy",
+            routeEligible: true,
+            capabilities: [],
+            lastError: nil
+        )
+
+        XCTAssertTrue(RoutingClientWiringTarget.claudeCode.gatewayServes(model: anthropicNoEndpoints),
+                      "Claude Code should serve empty-endpoint anthropic models")
+        XCTAssertTrue(RoutingClientWiringTarget.claudeCode.gatewayServes(model: openaiNoEndpoints),
+                      "Claude Code should serve legacy empty-endpoint openai_compat models through the messages bridge")
+        XCTAssertTrue(RoutingClientWiringTarget.codex.gatewayServes(model: openaiNoEndpoints),
+                      "Codex should serve empty-endpoint openai_compat models")
+        XCTAssertTrue(RoutingClientWiringTarget.droid.gatewayServes(model: openaiNoEndpoints),
+                      "Droid should serve empty-endpoint openai_compat models")
+        XCTAssertFalse(RoutingClientWiringTarget.antigravity.gatewayServes(model: openaiNoEndpoints),
+                       "Profile-scoped clients should not count legacy gateway rows")
+        XCTAssertFalse(RoutingClientWiringTarget.cursorAgent.gatewayServes(model: openaiNoEndpoints),
+                       "Profile-scoped clients should not count legacy gateway rows")
+    }
+
+    func test_gatewayServes_excludesNonAdvertisedAndNonRouteEligible() {
+        let nonAdvertised = ProxyAdvertisedModel(
+            modelID: "hidden-model",
+            displayName: "Hidden Model",
+            providerID: "minimax",
+            providerName: "MiniMax",
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "minimax#default",
+            sourceKind: "provider_account",
+            servedEndpoints: ["/v1/chat/completions"],
+            quotaState: "healthy",
+            advertisementEnabled: false,
+            advertised: false,
+            routeEligible: true,
+            capabilities: [],
+            lastError: nil
+        )
+
+        let nonRouteEligible = ProxyAdvertisedModel(
+            modelID: "disabled-model",
+            displayName: "Disabled Model",
+            providerID: "minimax",
+            providerName: "MiniMax",
+            accountID: "default",
+            accountLabel: "Default",
+            sourceID: "minimax#default",
+            sourceKind: "provider_account",
+            servedEndpoints: ["/v1/chat/completions"],
+            quotaState: "disabled",
+            advertised: true,
+            routeEligible: false,
+            capabilities: [],
+            lastError: nil
+        )
+
+        XCTAssertFalse(RoutingClientWiringTarget.droid.gatewayServes(model: nonAdvertised),
+                       "Non-advertised models must not be counted")
+        XCTAssertFalse(RoutingClientWiringTarget.droid.gatewayServes(model: nonRouteEligible),
+                       "Non-route-eligible models must not be counted")
+    }
+
+    func test_modelSummary_hasNativeModelsFlagsCodexAndClaudeOnly() {
+        // Droid has no native model catalog — BurnBar is its only model source.
+        let droidSummary = viewModel.modelSummary(for: .droid)
+        XCTAssertNotNil(droidSummary)
+        XCTAssertFalse(droidSummary?.hasNativeModels ?? true)
+
+        // Codex and Claude Code have native GPT/Claude rows that BurnBar preserves.
+        let codexSummary = viewModel.modelSummary(for: .codex)
+        XCTAssertTrue(codexSummary?.hasNativeModels ?? false)
+
+        let claudeSummary = viewModel.modelSummary(for: .claudeCode)
+        XCTAssertTrue(claudeSummary?.hasNativeModels ?? false)
+    }
+
+    func test_modelSummary_countLabelEdgeCases() {
+        // Zero models: label is nil.
+        let empty = RoutedClientModelSummary(openburnbarModelCount: 0, hasNativeModels: true)
+        XCTAssertNil(empty.countLabel)
+        XCTAssertNotNil(empty.nativeBadgeText)
+
+        // One model, no native: "1 OpenBurnBar model" (singular).
+        let oneNoNative = RoutedClientModelSummary(openburnbarModelCount: 1, hasNativeModels: false)
+        XCTAssertEqual(oneNoNative.countLabel, "1 OpenBurnBar model")
+        XCTAssertNil(oneNoNative.nativeBadgeText)
+
+        // Multiple models, with native: "N OpenBurnBar + native models".
+        let multiWithNative = RoutedClientModelSummary(openburnbarModelCount: 5, hasNativeModels: true)
+        XCTAssertEqual(multiWithNative.countLabel, "5 OpenBurnBar + native models")
+        XCTAssertEqual(multiWithNative.nativeBadgeText, "Native + OpenBurnBar")
+    }
+
+    // MARK: - Routed client model summary metadata strip labels
+
+    func test_modelSummary_openburnbarCountLabelNilWhenZero() {
+        let summary = RoutedClientModelSummary(openburnbarModelCount: 0, hasNativeModels: false)
+        XCTAssertNil(summary.openburnbarCountLabel)
+    }
+
+    func test_modelSummary_openburnbarCountLabelShowsCount() {
+        let summary = RoutedClientModelSummary(openburnbarModelCount: 3, hasNativeModels: false)
+        XCTAssertEqual(summary.openburnbarCountLabel, "3 via OpenBurnBar")
+    }
+
+    func test_modelSummary_nativeCountLabelReflectsFlag() {
+        let withNative = RoutedClientModelSummary(openburnbarModelCount: 1, hasNativeModels: true)
+        XCTAssertEqual(withNative.nativeCountLabel, "native catalog")
+
+        let withoutNative = RoutedClientModelSummary(openburnbarModelCount: 1, hasNativeModels: false)
+        XCTAssertNil(withoutNative.nativeCountLabel)
+    }
+
+    // MARK: - Endpoint badge label
+
+    func test_endpointBadgeLabel_returnsCompactShapePerTarget() {
+        XCTAssertEqual(RoutingClientWiringTarget.claudeCode.endpointBadgeLabel, "Messages")
+        XCTAssertEqual(RoutingClientWiringTarget.codex.endpointBadgeLabel, "Responses")
+        XCTAssertEqual(RoutingClientWiringTarget.droid.endpointBadgeLabel, "Chat Completions")
+        XCTAssertEqual(RoutingClientWiringTarget.forge.endpointBadgeLabel, "Chat Completions")
+        XCTAssertEqual(RoutingClientWiringTarget.antigravity.endpointBadgeLabel, "Profile-scoped")
+        XCTAssertEqual(RoutingClientWiringTarget.cursorAgent.endpointBadgeLabel, "Profile-scoped")
     }
 }
 

@@ -18,13 +18,12 @@ enum ConnectionsRouteReadiness {
         for target: RoutingClientWiringTarget,
         configurations: [OpenBurnBarDaemonProviderConfiguration]
     ) -> Bool {
-        let expectedFormat: BurnBarProviderFormatFamily = target == .claudeCode
-            ? .anthropic
-            : .openaiCompat
+        let supportedFormats = gatewayFormatFamiliesServing(target)
+        guard !supportedFormats.isEmpty else { return false }
 
         return configurations.contains { configuration in
             guard isRouteReady(configuration),
-                  formatFamily(forProviderID: configuration.providerID) == expectedFormat else {
+                  supportedFormats.contains(formatFamily(forProviderID: configuration.providerID)) else {
                 return false
             }
             return true
@@ -38,7 +37,23 @@ enum ConnectionsRouteReadiness {
             && configuration.hasRoutingCapability
             && configuration.credentialSlots.contains { slot in
                 slot.canAttemptRoute()
-            }
+        }
+    }
+
+    /// The local gateway owns the endpoint bridge. A route-ready Anthropic
+    /// provider can serve OpenAI-shaped clients, and a route-ready
+    /// OpenAI-compatible provider can serve Claude Code's `/v1/messages` through
+    /// the Messages bridge. This predicate is intentionally about endpoint
+    /// reachability, not native upstream protocol family.
+    private static func gatewayFormatFamiliesServing(
+        _ target: RoutingClientWiringTarget
+    ) -> Set<BurnBarProviderFormatFamily> {
+        switch target {
+        case .claudeCode, .codex, .opencode, .forge, .droid, .grok:
+            return [.anthropic, .openaiCompat]
+        case .antigravity, .cursorAgent:
+            return []
+        }
     }
 
     private static func formatFamily(forProviderID providerID: String) -> BurnBarProviderFormatFamily {
@@ -665,12 +680,28 @@ struct VibeProxyMigrationCard: View {
 // here and the dedicated Settings → Agents → Models page can share them.
 // See `ProxyModelCatalogPanel.swift`.
 
-/// One row per CLI in the Apps section. The button is **smart** — it auto-
-/// enables the gateway and runs wire + probe in one click.
+/// One row per CLI in the Apps section, designed as a "routing cockpit
+/// instrument" with three visual zones.
+///
+/// **Zone 1 (left) - Identity:** A pulsing status dot colored by lifecycle
+/// state, the provider logo, client name, and an endpoint-shape badge
+/// (Responses, Messages, Chat Completions).
+///
+/// **Zone 2 (center) - Status cluster:** Badges for connection state, freshness,
+/// and source identity. A monospace metadata strip surfaces model counts and
+/// probe endpoint as instrument readouts.
+///
+/// **Zone 3 (right) - Action:** The next obvious primary action (Connect + Sync,
+/// Sync models, Retry probe, Disconnect) with a more-options menu.
+///
+/// The smart button auto-enables the gateway and runs wire + probe in one
+/// click. Busy states animate the status indicator. Stale-to-current and
+/// degraded-to-healthy transitions use a gentle spring.
 struct AppConnectRow: View {
     let target: RoutingClientWiringTarget
     let state: AppConnectState
     let isDisabled: Bool
+    let modelSummary: RoutedClientModelSummary?
     let onConnect: () -> Void
     let onTest: () -> Void
     let onSyncModels: () -> Void
@@ -693,28 +724,331 @@ struct AppConnectRow: View {
         }
     }
 
+    @State private var isHovering = false
+
     var body: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            statusDot
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    if let provider {
-                        ProviderLogoView(provider: provider, size: 18, useFallbackColor: true)
+        HStack(alignment: .top, spacing: 0) {
+            // Left accent bar — a 3pt vertical strip that tints with the
+            // connection state so the row reads at a glance even in
+            // peripheral vision. Invisible when disconnected so the row
+            // stays calm and inviting.
+            leftAccentBar
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                statusIndicator
+                    .padding(.top, 4)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    identityRow
+                    badgeRow
+                    metadataStrip
+                    if let detail = detailLine {
+                        Text(detail)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(isDegraded ? DesignSystem.Colors.warning : DesignSystem.Colors.textMuted)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(target.displayName)
-                        .font(DesignSystem.Typography.body)
-                        .fontWeight(.medium)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                 }
-                if let statusText {
-                    Text(statusText)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(statusTint)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: DesignSystem.Spacing.sm)
+                trailingColumn
+            }
+            .padding(DesignSystem.Spacing.md)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowBackground)
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(rowBorder)
+        .opacity(isDisabled ? 0.62 : 1)
+        .animation(DesignSystem.Animation.gentle, value: state)
+        .onHover { isHovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    // MARK: - Left accent bar
+
+    /// A subtle 3pt vertical accent strip on the left edge of the row. It
+    /// glows with the connection state color so the row's health is readable
+    /// in peripheral vision. Fades to transparent when disconnected so the
+    /// row stays calm and inviting rather than alarming.
+    private var leftAccentBar: some View {
+        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        accentBarColor.opacity(accentBarOpacity),
+                        accentBarColor.opacity(accentBarOpacity * 0.4)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: 3)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .padding(.leading, DesignSystem.Spacing.xs)
+            .animation(DesignSystem.Animation.gentle, value: state)
+    }
+
+    private var accentBarColor: Color {
+        switch state {
+        case .connected: return DesignSystem.Colors.success
+        case .degraded: return DesignSystem.Colors.warning
+        case .error: return DesignSystem.Colors.error
+        case .connecting, .syncingModels, .probing: return DesignSystem.Colors.amber
+        case .notConnected, .unknown: return DesignSystem.Colors.textMuted
+        }
+    }
+
+    private var accentBarOpacity: Double {
+        switch state {
+        case .connected: return 0.7
+        case .degraded, .error: return 0.6
+        case .connecting, .syncingModels, .probing: return 0.5
+        case .notConnected, .unknown: return 0.0
+        }
+    }
+
+    // MARK: - Zone 1: Identity
+
+    /// Pulsing status indicator with a subtle outer glow ring that animates
+    /// during busy and connected states so the row feels alive. Connected
+    /// rows get a gentle breathing ring; busy rows get a faster pulse;
+    /// disconnected rows are a calm flat dot.
+    private var statusIndicator: some View {
+        ZStack {
+            // Outer glow ring — visible when connected or busy
+            if isConnected || isBusy {
+                Circle()
+                    .fill(statusTint.opacity(isBusy ? 0.25 : 0.15))
+                    .frame(width: 16, height: 16)
+                    .scaleEffect(isBusy ? 1.0 : 0.85)
+                    .opacity(isBusy ? 0.8 : 0.5)
+                    .animation(
+                        isBusy
+                            ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+                            : .easeInOut(duration: 2.0).repeatForever(autoreverses: true),
+                        value: isBusy ? isBusy : isConnected
+                    )
+            }
+            // Inner dot
+            Circle()
+                .fill(statusTint)
+                .frame(width: 8, height: 8)
+                .overlay(
+                    Circle()
+                        .strokeBorder(statusTint.opacity(0.3), lineWidth: 1)
+                        .frame(width: 11, height: 11)
+                        .opacity(isConnected ? 0.6 : 0)
+                )
+        }
+        .frame(width: 16, height: 16)
+    }
+
+    private var identityRow: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            if let provider {
+                ProviderLogoView(provider: provider, size: 18, useFallbackColor: true)
+            }
+            Text(target.displayName)
+                .font(DesignSystem.Typography.body)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+            endpointBadge
+        }
+    }
+
+    /// Compact endpoint-shape badge communicating the wire format and trust
+    /// path (Responses, Messages, Chat Completions). Reads as an instrument
+    /// label, not decorative chrome.
+    private var endpointBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: endpointIcon)
+                .font(.system(size: 8, weight: .semibold))
+            Text(target.endpointBadgeLabel)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.medium)
+        }
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.55))
+        .clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(DesignSystem.Colors.border.opacity(0.35), lineWidth: 0.4))
+    }
+
+    private var endpointIcon: String {
+        switch target {
+        case .claudeCode: return "bubble.left.and.bubble.right.fill"
+        case .codex: return "bolt.horizontal.fill"
+        case .opencode, .forge, .droid, .grok: return "terminal.fill"
+        case .antigravity, .cursorAgent: return "person.crop.circle.badge.questionmark"
+        }
+    }
+
+    // MARK: - Zone 2: Status cluster
+
+    @ViewBuilder
+    private var badgeRow: some View {
+        if badges.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(badges, id: \.id) { badge in
+                    RoutedClientStateBadge(
+                        badge: badge,
+                        isPrimary: badge.id != "native" && badge.id != "probe-endpoint"
+                    )
                 }
             }
-            Spacer()
+        }
+    }
+
+    /// Monospace metadata strip with model counts and probe endpoint rendered
+    /// as quiet instrument readouts beneath the badges. Items are separated by
+    /// subtle dot dividers so they read as distinct instruments, not a blur.
+    @ViewBuilder
+    private var metadataStrip: some View {
+        let items = metadataItems
+        if !items.isEmpty {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    if index > 0 {
+                        Text("\u{00B7}")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.5))
+                    }
+                    HStack(spacing: 3) {
+                        if let icon = item.icon {
+                            Image(systemName: icon)
+                                .font(.system(size: 8, weight: .semibold))
+                        }
+                        Text(item.text)
+                            .font(DesignSystem.Typography.monoTiny)
+                    }
+                    .foregroundStyle(item.tint)
+                }
+            }
+            .padding(.top, 1)
+        }
+    }
+
+    private struct MetadataItem {
+        let text: String
+        let icon: String?
+        let tint: Color
+    }
+
+    private var metadataItems: [MetadataItem] {
+        var items: [MetadataItem] = []
+        if let count = modelSummary?.openburnbarCountLabel {
+            items.append(MetadataItem(
+                text: count,
+                icon: "cylinder.split.1x2.fill",
+                tint: DesignSystem.Colors.textSecondary
+            ))
+        }
+        if let native = modelSummary?.nativeCountLabel {
+            items.append(MetadataItem(
+                text: native,
+                icon: "shippingbox.fill",
+                tint: DesignSystem.Colors.textSecondary
+            ))
+        }
+        if let endpoint = target.probeEndpointLabel {
+            items.append(MetadataItem(
+                text: endpoint,
+                icon: "network",
+                tint: DesignSystem.Colors.textMuted
+            ))
+        }
+        return items
+    }
+
+    private var badges: [RoutedClientBadge] {
+        var result: [RoutedClientBadge] = []
+        if isDisabled {
+            result.append(.init(
+                id: "no-route",
+                label: "No route-ready account",
+                systemImage: "exclamationmark.triangle.fill",
+                tint: DesignSystem.Colors.warning
+            ))
+            return result
+        }
+        if let native = modelSummary?.nativeBadgeText {
+            result.append(.init(
+                id: "native",
+                label: native,
+                systemImage: "square.stack.3d.up.fill",
+                tint: DesignSystem.Colors.whimsy
+            ))
+        }
+        switch state {
+        case .connected:
+            if let summary = modelSummary, summary.openburnbarModelCount > 0 {
+                result.append(.init(
+                    id: "current",
+                    label: "Current",
+                    systemImage: "checkmark.seal.fill",
+                    tint: DesignSystem.Colors.success
+                ))
+            } else if target.supportsModelSync {
+                result.append(.init(
+                    id: "sync-available",
+                    label: "Sync available",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tint: DesignSystem.Colors.amber
+                ))
+            } else {
+                result.append(.init(
+                    id: "connected",
+                    label: "Connected",
+                    systemImage: "checkmark.circle.fill",
+                    tint: DesignSystem.Colors.success
+                ))
+            }
+        case .notConnected, .unknown:
+            result.append(.init(
+                id: "disconnected",
+                label: "Disconnected",
+                systemImage: "circle.slash",
+                tint: DesignSystem.Colors.textMuted
+            ))
+        case .connecting, .probing, .syncingModels:
+            // Busy states show a pulsing indicator in Zone 1, not a badge.
+            break
+        case .degraded(let message):
+            if Self.isCatalogStaleMessage(message) {
+                result.append(.init(
+                    id: "stale",
+                    label: "Stale catalog",
+                    systemImage: "clock.badge.exclamationmark",
+                    tint: DesignSystem.Colors.warning
+                ))
+            } else {
+                result.append(.init(
+                    id: "probe-failed",
+                    label: "Probe failed",
+                    systemImage: "xmark.octagon.fill",
+                    tint: DesignSystem.Colors.error
+                ))
+            }
+        case .error:
+            result.append(.init(
+                id: "error",
+                label: "Error",
+                systemImage: "xmark.octagon.fill",
+                tint: DesignSystem.Colors.error
+            ))
+        }
+        return result
+    }
+
+    // MARK: - Zone 3: Trailing column
+
+    @ViewBuilder
+    private var trailingColumn: some View {
+        VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
             if let provider {
                 ProviderQuotaChip(provider: provider)
             }
@@ -724,28 +1058,20 @@ struct AppConnectRow: View {
                     Button("Test connection", action: onTest)
                     Button("Show shell snippet", action: onShowSnippet)
                     Button("Reveal config file", action: onRevealFile)
+                        .help(configPath)
                     Divider()
                     Button("Disconnect", role: .destructive, action: onDisconnect)
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(isHovering ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
+                        .animation(DesignSystem.Animation.hover, value: isHovering)
                 }
                 .menuStyle(.borderlessButton)
-                .frame(width: 26)
+                .frame(width: 24)
+                .help("More options for \(target.displayName)")
             }
         }
-        .padding(DesignSystem.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.3))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
-        )
-        .opacity(isDisabled ? 0.6 : 1)
     }
 
     // MARK: - State machine surface
@@ -754,6 +1080,10 @@ struct AppConnectRow: View {
         if case .connected = state { return true }
         if case .degraded = state { return true }
         return false
+    }
+
+    private var isBusy: Bool {
+        state.isBusy
     }
 
     private var statusTint: Color {
@@ -769,45 +1099,39 @@ struct AppConnectRow: View {
         }
     }
 
-    private var statusDot: some View {
-        Circle()
-            .fill(statusTint)
-            .frame(width: 8, height: 8)
-    }
-
-    private var statusText: String? {
+    private var detailLine: String? {
+        if isDisabled {
+            return missingRouteText
+        }
         switch state {
         case .connected:
-            if target == .droid {
-                return isDisabled ? missingRouteText : "Droid models synced from BurnBar's live catalog"
+            if modelSummary?.openburnbarModelCount == nil, !target.supportsModelSync {
+                return "Connected via local gateway"
             }
-            return isDisabled ? missingRouteText : "Connected via local gateway"
-        case .syncingModels: return "Syncing models…"
-        case .connecting: return "Connecting…"
-        case .probing: return "Testing…"
+            return nil
+        case .syncingModels: return "Syncing models from BurnBar's live catalog…"
+        case .connecting: return "Connecting to local gateway…"
+        case .probing: return "Testing gateway endpoint…"
         case .degraded(let message):
-            if isDisabled {
-                return "\(missingRouteText) \(message)"
-            }
-            return "Configured via local gateway, but the route test needs attention. \(message)"
+            return message
         case .error(let message): return message
-        case .notConnected: return isDisabled
-            ? missingRouteText
-            : nil
-        case .unknown: return nil
+        case .notConnected:
+            return target.endpointDescription
+        case .unknown:
+            return target.endpointDescription
         }
     }
 
     private var missingRouteText: String {
         switch target {
         case .claudeCode:
-            return "No route-ready Anthropic account is enabled. Add an Anthropic Console API key or Claude OAuth credential before using Claude Code."
+            return "No route-ready OpenBurnBar model is enabled for /v1/messages. Add or enable a provider account first."
         case .codex, .opencode, .forge, .droid, .cursorAgent:
-            return "No route-ready OpenAI-compatible account is enabled. Add or enable a provider account before using \(target.displayName)."
+            return "No route-ready OpenBurnBar account is enabled for this gateway endpoint. Add or enable a provider account first."
         case .antigravity:
-            return "No route-ready Google Antigravity profile is enabled. Add or enable an Antigravity account before using \(target.displayName)."
+            return "No route-ready Antigravity profile is enabled. Add or enable an Antigravity account first."
         case .grok:
-            return "No route-ready xAI account is enabled. Add or enable an xAI API key before using \(target.displayName)."
+            return "No route-ready xAI account is enabled. Add or enable an xAI API key first."
         }
     }
 
@@ -816,47 +1140,185 @@ struct AppConnectRow: View {
         switch state {
         case .notConnected, .unknown:
             Button(action: onConnect) {
-                Text(target == .droid ? "Connect + Sync" : "Connect")
+                Label(target.supportsModelSync ? "Connect + Sync" : "Connect",
+                      systemImage: target.supportsModelSync ? "bolt.horizontal.circle.fill" : "powerplug.fill")
+                    .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
+            .controlSize(.small)
             .disabled(isDisabled)
         case .connecting, .syncingModels:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text(state == .syncingModels ? "Syncing…" : "Connecting…")
-                    .font(DesignSystem.Typography.caption)
+                    .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
         case .probing:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text("Testing…")
-                    .font(DesignSystem.Typography.caption)
+                    .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
         case .connected:
-            Button(action: target == .droid ? onSyncModels : onTest) {
-                Text(target == .droid ? "Sync models" : "Test")
+            if target.supportsModelSync {
+                Button(action: onSyncModels) {
+                    Label("Sync models", systemImage: "arrow.triangle.2.circlepath")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isDisabled)
+            } else {
+                Button(action: onTest) {
+                    Label("Test", systemImage: "stethoscope")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isDisabled)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .disabled(isDisabled)
-        case .degraded:
-            Button(action: onRepair) {
-                Text("Repair")
+        case .degraded(let message):
+            if Self.isCatalogStaleMessage(message), target.supportsModelSync {
+                Button(action: onSyncModels) {
+                    Label("Sync models", systemImage: "arrow.triangle.2.circlepath")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.warning)
+                .controlSize(.small)
+            } else {
+                Button(action: onRepair) {
+                    Label("Retry probe", systemImage: "arrow.clockwise.circle.fill")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.warning)
+                .controlSize(.small)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(DesignSystem.Colors.warning)
-            .controlSize(.regular)
         case .error:
             Button(action: onConnect) {
-                Text("Try again")
+                Label("Retry", systemImage: "arrow.clockwise.circle.fill")
+                    .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.borderedProminent)
             .tint(DesignSystem.Colors.error)
-            .controlSize(.regular)
+            .controlSize(.small)
         }
+    }
+
+    // MARK: - Visuals
+
+    private var rowBackground: some View {
+        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .fill(
+                isDegraded
+                    ? AnyShapeStyle(DesignSystem.Colors.warning.opacity(0.06))
+                    : isError
+                        ? AnyShapeStyle(DesignSystem.Colors.error.opacity(0.04))
+                        : isHovering && !isDisabled
+                            ? AnyShapeStyle(DesignSystem.Colors.surfaceElevated.opacity(0.5))
+                            : AnyShapeStyle(DesignSystem.Colors.surfaceElevated.opacity(0.3))
+            )
+            .animation(DesignSystem.Animation.hover, value: isHovering)
+    }
+
+    private var rowBorder: some View {
+        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .stroke(
+                isDegraded
+                    ? DesignSystem.Colors.warning.opacity(0.38)
+                    : isError
+                        ? DesignSystem.Colors.error.opacity(0.3)
+                        : DesignSystem.Colors.border.opacity(0.4),
+                lineWidth: 0.5
+            )
+    }
+
+    private var isDegraded: Bool {
+        if case .degraded = state { return true }
+        return false
+    }
+
+    private var isError: Bool {
+        if case .error = state { return true }
+        return false
+    }
+
+    // MARK: - Accessibility
+
+    private var accessibilityLabel: String {
+        var parts: [String] = [target.displayName]
+        if let provider {
+            parts.append("provider \(provider.displayName)")
+        }
+        parts.append(target.endpointBadgeLabel)
+        switch state {
+        case .connected: parts.append("connected")
+        case .connecting: parts.append("connecting")
+        case .syncingModels: parts.append("syncing models")
+        case .probing: parts.append("testing")
+        case .degraded(let message):
+            parts.append(Self.isCatalogStaleMessage(message) ? "stale catalog, needs sync" : "probe failed, needs retry")
+        case .error(let message): parts.append("error: \(message)")
+        case .notConnected: parts.append("disconnected")
+        case .unknown: parts.append("unknown state")
+        }
+        if isDisabled { parts.append("no route-ready account") }
+        if let count = modelSummary?.countLabel { parts.append(count) }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func isCatalogStaleMessage(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("model list is stale")
+            || normalized.contains("model catalog is stale")
+            || normalized.contains("discovery catalog is stale")
+    }
+}
+
+// MARK: - Routed Client Badge
+
+struct RoutedClientBadge: Identifiable, Hashable {
+    let id: String
+    let label: String
+    let systemImage: String
+    let tint: Color
+}
+
+/// Reusable capsule badge for routed-client state and freshness signals.
+/// Shared across Droid, Codex, and Claude Code rows so the three clients
+/// read as one coherent system with equal visual weight.
+///
+/// Badges use a two-tier visual hierarchy:
+///   - **Primary** (state badges): stronger tint background, full-opacity text
+///   - **Secondary** (info badges): lighter background, slightly muted text
+struct RoutedClientStateBadge: View {
+    let badge: RoutedClientBadge
+    var isPrimary: Bool = true
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: badge.systemImage)
+                .font(.system(size: 9, weight: .semibold))
+            Text(badge.label)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(isPrimary ? badge.tint : badge.tint.opacity(0.75))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            badge.tint.opacity(isPrimary ? 0.12 : 0.08)
+        )
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(badge.tint.opacity(isPrimary ? 0.15 : 0.08), lineWidth: 0.4)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(badge.label)
     }
 }
 

@@ -195,12 +195,14 @@ struct OpenBurnBarActionButton: View {
     private var backgroundShape: some View {
         ZStack {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(.ultraThinMaterial)
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .fill((enabled ? DesignSystem.Colors.surfaceElevated : DesignSystem.Colors.surface).opacity(emphasized ? 0.7 : 0.45))
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(enabled ? DesignSystem.Colors.blaze.opacity(0.25) : DesignSystem.Colors.border.opacity(0.25), lineWidth: 0.6)
         }
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
     }
 }
 

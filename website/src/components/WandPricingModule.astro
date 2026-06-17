@@ -1,0 +1,794 @@
+---
+/**
+ * WandPricingModule — the flagship Wand launch module for the pricing page.
+ *
+ * Visual metaphor: "Cast → Route → Work lands."
+ *
+ * Shows:
+ *  • The tier cap ladder as a visual rail: Free 1 → Cloud 3 → Pro 8 → Ultra 16
+ *  • Headmaster's Wand vs Pareto Wand side-by-side comparison
+ *  • Provider-token honesty (BurnBar does not pay model tokens)
+ *  • Upgrade persuasion without a generic paywall feel
+ *
+ * All copy and cap values derive from SITE.pricing so the module can never
+ * drift from the source of truth in site.ts.
+ */
+import { SITE } from "@data/site";
+
+const tiers = SITE.pricing.tiers;
+const free = tiers.find((t) => t.id === "free")!;
+const cloud = tiers.find((t) => t.id === "cloud")!;
+const cloudPro = tiers.find((t) => t.id === "cloud_pro")!;
+const ultra = tiers.find((t) => t.id === "ultra")!;
+
+const ladder = [
+  { tier: free, cap: free.allowance.wandParallelMax, accent: "neutral" },
+  { tier: cloud, cap: cloud.allowance.wandParallelMax, accent: "fire" },
+  { tier: cloudPro, cap: cloudPro.allowance.wandParallelMax, accent: "teal" },
+  { tier: ultra, cap: ultra.allowance.wandParallelMax, accent: "gold" }
+];
+
+const wandModes = [
+  {
+    id: "headmaster",
+    name: "Headmaster's Wand",
+    tagline: "Highest capability",
+    description:
+      "Reaches for the strongest models your providers offer. Burns more quota per cast, but gives each worker the deepest reasoning available.",
+    icon: "crown",
+    best: "for your hardest problem"
+  },
+  {
+    id: "pareto",
+    name: "Pareto Wand",
+    tagline: "Best quality per quota",
+    description:
+      "Balances model strength against provider cost signals so you get more landed work for your spend. The routing picks each agent's model for you.",
+    icon: "scale",
+    best: "for everyday parallel work"
+  }
+];
+---
+
+<section class="wand-module" aria-labelledby="wand-module-h">
+  <div class="container container--wide wand-module__inner">
+    <header class="wand-module__head">
+      <span class="eyebrow eyebrow--ember">The Wand</span>
+      <h2 id="wand-module-h" class="wand-module__title">
+        Cast once. Workers branch, route, and land.
+      </h2>
+      <p class="wand-module__lead">
+        The Wand sends one job to a team of agents at once. Each worker runs in its own branch,
+        routed to a fitting model across the providers you connect. More parallel workers means more
+        model diversity and faster convergence.
+      </p>
+    </header>
+
+    <!-- ── Cast → Route → Work lands rail ── -->
+    <div
+      class="wand-rail"
+      role="img"
+      aria-label="Cast one task, route to parallel worker lanes, converge into landed results"
+    >
+      <div class="wand-rail__origin">
+        <span class="wand-rail__label mono">Cast</span>
+        <div class="wand-rail__node wand-rail__node--origin">
+          <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+            <path
+              d="M8 32L28 8M28 8L18 8M28 8L28 18"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"></path>
+            <circle cx="10" cy="32" r="3" fill="currentColor"></circle>
+          </svg>
+          <div class="wand-rail__spark" aria-hidden="true"></div>
+        </div>
+        <span class="wand-rail__sub mono">one task</span>
+      </div>
+
+      <div class="wand-rail__track" aria-hidden="true">
+        <svg class="wand-rail__lines" viewBox="0 0 200 120" preserveAspectRatio="none">
+          <path
+            d="M0 60 Q50 60 50 20 L180 20"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="none"
+            opacity="0.5"
+            class="wand-rail__path"></path>
+          <path
+            d="M0 60 L180 60"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="none"
+            opacity="0.5"
+            class="wand-rail__path"></path>
+          <path
+            d="M0 60 Q50 60 50 100 L180 100"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="none"
+            opacity="0.5"
+            class="wand-rail__path"></path>
+        </svg>
+      </div>
+
+      <div class="wand-rail__lanes">
+        <div class="wand-rail__lane">
+          <div class="wand-rail__node wand-rail__node--worker" data-status="landed">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="wand-rail__check">
+              <path
+                d="M5 10L9 14L15 6"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <span class="wand-rail__sub mono">landed</span>
+        </div>
+        <div class="wand-rail__lane">
+          <div class="wand-rail__node wand-rail__node--worker" data-status="running">
+            <div class="wand-rail__pulse-ring" aria-hidden="true"></div>
+          </div>
+          <span class="wand-rail__sub mono">running</span>
+        </div>
+        <div class="wand-rail__lane">
+          <div class="wand-rail__node wand-rail__node--worker" data-status="no-op"></div>
+          <span class="wand-rail__sub mono">no work</span>
+        </div>
+      </div>
+
+      <div class="wand-rail__track" aria-hidden="true">
+        <svg class="wand-rail__lines" viewBox="0 0 200 120" preserveAspectRatio="none">
+          <path
+            d="M20 20 Q100 20 180 60"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="none"
+            opacity="0.5"
+            class="wand-rail__path wand-rail__path--converge"></path>
+          <path
+            d="M20 60 L180 60"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="none"
+            opacity="0.5"
+            class="wand-rail__path wand-rail__path--converge"></path>
+          <path
+            d="M20 100 Q100 100 180 60"
+            stroke="currentColor"
+            stroke-width="1.5"
+            fill="none"
+            opacity="0.5"
+            class="wand-rail__path wand-rail__path--converge"></path>
+        </svg>
+      </div>
+
+      <div class="wand-rail__dest">
+        <span class="wand-rail__label mono">Work lands</span>
+        <div class="wand-rail__node wand-rail__node--dest">
+          <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+            <path
+              d="M8 20L16 28L32 12"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"></path>
+          </svg>
+          <div class="wand-rail__spark wand-rail__spark--dest" aria-hidden="true"></div>
+        </div>
+        <span class="wand-rail__sub mono">1 of 3 landed</span>
+      </div>
+    </div>
+
+    <!-- ── Tier cap ladder ── -->
+    <div class="wand-ladder" role="table" aria-label="The Wand parallel worker cap by tier">
+      <div class="wand-ladder__row wand-ladder__row--head">
+        <span class="wand-ladder__cell wand-ladder__cell--head mono">Tier</span>
+        <span class="wand-ladder__cell wand-ladder__cell--head mono">Parallel workers per cast</span
+        >
+        <span class="wand-ladder__cell wand-ladder__cell--head mono">Visual</span>
+      </div>
+      {
+        ladder.map(({ tier, cap, accent }) => (
+          <div class="wand-ladder__row" data-accent={accent}>
+            <span class="wand-ladder__cell wand-ladder__cell--tier">
+              <span class="wand-ladder__tier-name">{tier.shortName}</span>
+              <span class="wand-ladder__tier-price mono">
+                {tier.priceMonthlyUSD === "0" ? "Free" : `$${tier.priceMonthlyUSD}/mo`}
+              </span>
+            </span>
+            <span class="wand-ladder__cell wand-ladder__cell--cap mono">{cap}</span>
+            <span class="wand-ladder__cell wand-ladder__cell--viz">
+              <span class="wand-ladder__dots" aria-hidden="true">
+                {Array.from({ length: cap }, () => (
+                  <span class="wand-ladder__dot" />
+                ))}
+              </span>
+            </span>
+          </div>
+        ))
+      }
+    </div>
+    <p class="wand-ladder__note">
+      Each worker runs on the provider subscriptions and keys you already have. BurnBar orchestrates
+      the routing; model tokens still come from your own providers.
+    </p>
+
+    <!-- ── Wand mode comparison ── -->
+    <div class="wand-modes">
+      <h3 class="wand-modes__h">Choose a Wand</h3>
+      <div class="wand-modes__grid">
+        {
+          wandModes.map((mode) => (
+            <article class="wand-mode" data-mode={mode.id}>
+              <div class="wand-mode__icon-wrap">
+                {mode.icon === "crown" ? (
+                  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true" class="wand-mode__icon">
+                    <path
+                      d="M8 36L12 16L20 26L24 14L28 26L36 16L40 36H8Z"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M8 40H40"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                    <circle cx="24" cy="10" r="2.5" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true" class="wand-mode__icon">
+                    <path
+                      d="M24 6V14M24 34V42M14 24H6M42 24H34M16 16L11 11M37 37L32 32M32 16L37 11M11 37L16 32"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                    <circle cx="24" cy="24" r="7" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                )}
+              </div>
+              <span class="wand-mode__tagline mono">{mode.tagline}</span>
+              <h4 class="wand-mode__name">{mode.name}</h4>
+              <p class="wand-mode__desc">{mode.description}</p>
+              <span class="wand-mode__best mono">Best {mode.best}</span>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+
+    <!-- ── Upgrade persuasion ── -->
+    <div class="wand-cta">
+      <div class="wand-cta__inner">
+        <div class="wand-cta__copy">
+          <h3 class="wand-cta__h">Go wider with Cloud Pro</h3>
+          <p class="wand-cta__p">
+            Free opens 1 agent. Cloud can cast 3 agents at once. Cloud Pro opens 8; Ultra opens 16.
+            More parallel attempts means more model diversity and faster convergence. Your model
+            tokens still come from your connected providers.
+          </p>
+        </div>
+        <div class="wand-cta__actions">
+          <a class="btn btn--ember" href="/pricing#plans">
+            Compare plans
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="btn btn--ghost" href="/download">Download for macOS</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .wand-module {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(80% 50% at 50% 0%, rgba(250, 107, 6, 0.04), transparent 70%), var(--ink-void);
+  }
+  .wand-module__inner {
+    display: grid;
+    gap: var(--s-8);
+  }
+  .wand-module__head {
+    text-align: center;
+    max-width: 48rem;
+    margin: 0 auto;
+    display: grid;
+    gap: var(--s-3);
+    justify-items: center;
+  }
+  .wand-module__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 540;
+    letter-spacing: -0.02em;
+    color: var(--text-bright);
+    max-width: 22ch;
+  }
+  .wand-module__lead {
+    color: var(--text-mute);
+    font-size: 1.02rem;
+    line-height: 1.55;
+    max-width: 46ch;
+  }
+
+  /* ── Cast → Route → Work lands rail ── */
+  .wand-rail {
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr auto;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-5) var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      radial-gradient(60% 100% at 50% 50%, rgba(250, 107, 6, 0.03), transparent 70%),
+      rgba(10, 10, 15, 0.4);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+  }
+  .wand-rail__origin,
+  .wand-rail__dest {
+    display: grid;
+    gap: var(--s-1);
+    justify-items: center;
+    text-align: center;
+  }
+  .wand-rail__label {
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .wand-rail__sub {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+  }
+  .wand-rail__node {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid var(--ink-line);
+    color: var(--core-amber);
+    background: rgba(10, 10, 15, 0.6);
+    position: relative;
+  }
+  .wand-rail__node svg {
+    width: 24px;
+    height: 24px;
+  }
+  .wand-rail__node--origin {
+    color: var(--core-amber);
+    border-color: color-mix(in oklab, var(--core-amber) 35%, var(--ink-line));
+    box-shadow: 0 0 20px -4px rgba(253, 196, 44, 0.3);
+  }
+  .wand-rail__node--dest {
+    color: var(--status-exact);
+    border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));
+    box-shadow: 0 0 20px -4px rgba(60, 214, 192, 0.3);
+  }
+  /* spark glow on origin and dest nodes */
+  .wand-rail__spark {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(253, 196, 44, 0.15), transparent 60%);
+    animation: sparkGlow 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+  .wand-rail__spark--dest {
+    background: radial-gradient(circle, rgba(60, 214, 192, 0.15), transparent 60%);
+  }
+  @keyframes sparkGlow {
+    0%,
+    100% {
+      opacity: 0.6;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.15);
+    }
+  }
+
+  /* animated flow along routing paths */
+  .wand-rail__path {
+    stroke-dasharray: 4 6;
+    animation: flowDash 2.5s linear infinite;
+  }
+  .wand-rail__path--converge {
+    animation-delay: 0.4s;
+  }
+  @keyframes flowDash {
+    to {
+      stroke-dashoffset: -20;
+    }
+  }
+  .wand-rail__track {
+    height: 80px;
+    color: var(--core-fire);
+    overflow: visible;
+  }
+  .wand-rail__lines {
+    width: 100%;
+    height: 100%;
+  }
+  .wand-rail__lanes {
+    display: grid;
+    gap: var(--s-3);
+    padding-inline: var(--s-2);
+  }
+  .wand-rail__lane {
+    display: grid;
+    gap: var(--s-1);
+    justify-items: center;
+    text-align: center;
+  }
+  .wand-rail__node--worker {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid;
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  .wand-rail__node--worker[data-status="landed"] {
+    border-color: var(--status-exact);
+    background: color-mix(in oklab, var(--status-exact) 18%, transparent);
+    box-shadow: 0 0 12px -2px rgba(60, 214, 192, 0.4);
+  }
+  .wand-rail__check {
+    width: 16px;
+    height: 16px;
+    color: var(--status-exact);
+  }
+  .wand-rail__node--worker[data-status="running"] {
+    border-color: var(--core-amber);
+    background: color-mix(in oklab, var(--core-amber) 14%, transparent);
+  }
+  .wand-rail__pulse-ring {
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 2px solid var(--core-amber);
+    animation: pulseRing 1.8s ease-out infinite;
+    pointer-events: none;
+  }
+  @keyframes pulseRing {
+    0% {
+      opacity: 0.7;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.6);
+    }
+  }
+  .wand-rail__node--worker[data-status="no-op"] {
+    border-color: var(--text-dim);
+    border-style: dashed;
+    background: transparent;
+    opacity: 0.5;
+  }
+  @media (max-width: 760px) {
+    .wand-rail {
+      grid-template-columns: 1fr;
+      gap: var(--s-3);
+    }
+    .wand-rail__track {
+      display: none;
+    }
+    .wand-rail__origin,
+    .wand-rail__lanes,
+    .wand-rail__dest {
+      display: flex;
+      align-items: center;
+      gap: var(--s-3);
+      justify-content: center;
+    }
+    .wand-rail__lane {
+      display: inline-grid;
+      grid-template-columns: auto auto;
+      gap: var(--s-2);
+    }
+  }
+
+  /* ── Tier cap ladder ── */
+  .wand-ladder {
+    display: grid;
+    gap: 1px;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    overflow: hidden;
+    background: var(--ink-line);
+  }
+  .wand-ladder__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 2fr;
+    align-items: center;
+    gap: var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    background: rgba(10, 10, 15, 0.6);
+  }
+  .wand-ladder__row--head {
+    background: rgba(8, 8, 12, 0.8);
+  }
+  .wand-ladder__cell--head {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .wand-ladder__cell--tier {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .wand-ladder__tier-name {
+    color: var(--text-bright);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .wand-ladder__tier-price {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+  .wand-ladder__cell--cap {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    text-align: center;
+  }
+  .wand-ladder__row[data-accent="fire"] .wand-ladder__cell--cap {
+    color: var(--core-fire);
+  }
+  .wand-ladder__row[data-accent="teal"] .wand-ladder__cell--cap {
+    color: var(--status-exact);
+  }
+  .wand-ladder__row[data-accent="gold"] .wand-ladder__cell--cap {
+    color: var(--core-amber);
+  }
+  .wand-ladder__dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+  .wand-ladder__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--core-fire);
+    opacity: 0.8;
+    animation: dotShimmer 4s ease-in-out infinite;
+  }
+  .wand-ladder__dot:nth-child(2n) {
+    animation-delay: 0.5s;
+  }
+  .wand-ladder__dot:nth-child(3n) {
+    animation-delay: 1s;
+  }
+  @keyframes dotShimmer {
+    0%,
+    100% {
+      opacity: 0.5;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+  }
+  .wand-ladder__row[data-accent="neutral"] .wand-ladder__dot {
+    background: var(--text-mute);
+    opacity: 0.5;
+    animation: none;
+  }
+  .wand-ladder__row[data-accent="teal"] .wand-ladder__dot {
+    background: var(--status-exact);
+  }
+  .wand-ladder__row[data-accent="gold"] .wand-ladder__dot {
+    background: var(--core-amber);
+  }
+  .wand-ladder__note {
+    font-size: 0.88rem;
+    color: var(--text-mute);
+    line-height: 1.5;
+    max-width: 52ch;
+  }
+  @media (max-width: 600px) {
+    .wand-ladder__row {
+      grid-template-columns: 1fr 1fr;
+    }
+    .wand-ladder__cell--viz {
+      grid-column: 1 / -1;
+    }
+  }
+
+  /* ── Wand mode comparison ── */
+  .wand-modes {
+    display: grid;
+    gap: var(--s-4);
+  }
+  .wand-modes__h {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
+  }
+  .wand-modes__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--s-4);
+  }
+  .wand-mode {
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--r-4);
+    background: rgba(10, 10, 15, 0.55);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    display: grid;
+    gap: var(--s-2);
+    justify-items: start;
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow var(--dur-base) var(--ease);
+  }
+  .wand-mode:hover,
+  .wand-mode:focus-within {
+    transform: translateY(-4px);
+    border-color: color-mix(in oklab, var(--core-fire) 28%, var(--ink-line));
+    box-shadow: 0 20px 50px -16px rgba(250, 107, 6, 0.2);
+  }
+  .wand-mode[data-mode="pareto"]:hover,
+  .wand-mode[data-mode="pareto"]:focus-within {
+    border-color: color-mix(in oklab, var(--status-exact) 24%, var(--ink-line));
+    box-shadow: 0 20px 50px -16px rgba(60, 214, 192, 0.18);
+  }
+  .wand-mode__icon-wrap {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-2);
+    border: 1px solid color-mix(in oklab, var(--core-amber) 30%, var(--ink-line));
+    background: color-mix(in oklab, var(--core-amber) 8%, transparent);
+    transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .wand-mode:hover .wand-mode__icon-wrap,
+  .wand-mode:focus-within .wand-mode__icon-wrap {
+    transform: scale(1.1) rotate(-3deg);
+  }
+  .wand-mode[data-mode="pareto"] .wand-mode__icon-wrap {
+    border-color: color-mix(in oklab, var(--status-exact) 28%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-exact) 7%, transparent);
+  }
+  .wand-mode__icon {
+    width: 24px;
+    height: 24px;
+    color: var(--core-amber);
+  }
+  .wand-mode[data-mode="pareto"] .wand-mode__icon {
+    color: var(--status-exact);
+  }
+  .wand-mode__tagline {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .wand-mode__name {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
+  }
+  .wand-mode__desc {
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: var(--text-mute);
+  }
+  .wand-mode__best {
+    font-size: 0.78rem;
+    color: var(--core-fire);
+    padding: 3px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--core-fire) 25%, var(--ink-line));
+    background: color-mix(in oklab, var(--core-fire) 6%, transparent);
+  }
+  .wand-mode[data-mode="pareto"] .wand-mode__best {
+    color: var(--status-exact);
+    border-color: color-mix(in oklab, var(--status-exact) 25%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-exact) 6%, transparent);
+  }
+  @media (max-width: 680px) {
+    .wand-modes__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ── Upgrade CTA ── */
+  .wand-cta {
+    border: 1px solid color-mix(in oklab, var(--core-fire) 22%, var(--ink-line));
+    border-radius: var(--r-4);
+    background:
+      radial-gradient(60% 80% at 80% 50%, rgba(250, 107, 6, 0.06), transparent 70%),
+      rgba(20, 12, 10, 0.6);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    overflow: hidden;
+  }
+  .wand-cta__inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: var(--s-5);
+    padding: var(--s-6);
+  }
+  .wand-cta__h {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
+    margin-bottom: var(--s-2);
+  }
+  .wand-cta__p {
+    color: var(--text-mute);
+    font-size: 0.95rem;
+    line-height: 1.55;
+    max-width: 52ch;
+  }
+  .wand-cta__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    white-space: nowrap;
+  }
+  @media (max-width: 760px) {
+    .wand-cta__inner {
+      grid-template-columns: 1fr;
+    }
+    .wand-cta__actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wand-rail__node--worker[data-status="running"],
+    .wand-rail__spark,
+    .wand-rail__path,
+    .wand-rail__pulse-ring,
+    .wand-ladder__dot,
+    .wand-mode,
+    .wand-mode__icon-wrap {
+      animation: none !important;
+      transition: none !important;
+    }
+    .wand-mode:hover,
+    .wand-mode:focus-within {
+      transform: none !important;
+    }
+  }
+</style>

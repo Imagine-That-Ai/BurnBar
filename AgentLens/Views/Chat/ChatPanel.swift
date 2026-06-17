@@ -273,11 +273,10 @@ struct ChatPanel: View {
             .background {
                 ZStack {
                     Capsule(style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    Capsule(style: .continuous)
                         .fill(DesignSystem.Colors.surface.opacity(0.55))
                 }
             }
+            .liquidGlassInteractive(in: Capsule(style: .continuous), fallback: .ultraThinMaterial)
             .clipShape(Capsule(style: .continuous))
             .overlay(
                 Capsule(style: .continuous)
@@ -330,8 +329,6 @@ struct ChatPanel: View {
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(DesignSystem.Colors.surface.opacity(0.4))
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(
@@ -347,6 +344,7 @@ struct ChatPanel: View {
                     )
             }
         }
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous), fallback: .ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)

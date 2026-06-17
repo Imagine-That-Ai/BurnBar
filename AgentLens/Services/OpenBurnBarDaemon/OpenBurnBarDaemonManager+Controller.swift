@@ -105,7 +105,8 @@ extension OpenBurnBarDaemonManager {
         title: String,
         summary: String,
         createdBy: String,
-        recommendation: BurnBarMissionRecommendation
+        recommendation: BurnBarMissionRecommendation,
+        metadata: BurnBarMetadata = [:]
     ) async throws -> BurnBarMissionMutationResponse {
         guard case .healthy = status else {
             throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before creating missions.")
@@ -117,7 +118,8 @@ extension OpenBurnBarDaemonManager {
             title: title,
             summary: summary,
             createdBy: createdBy,
-            recommendation: recommendation
+            recommendation: recommendation,
+            metadata: metadata
         )
         return try await daemonRPC {
             try OpenBurnBarDaemonSocketClient.missionCreate(request, at: socketURL)

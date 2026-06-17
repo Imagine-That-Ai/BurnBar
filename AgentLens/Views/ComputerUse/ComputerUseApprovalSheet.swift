@@ -109,7 +109,10 @@ public struct ComputerUseApprovalSheet: View {
         }
         .padding(20)
         .frame(width: 360)
-        .background(.regularMaterial)
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: 10),
+            fallback: .regularMaterial
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(LinearGradient(

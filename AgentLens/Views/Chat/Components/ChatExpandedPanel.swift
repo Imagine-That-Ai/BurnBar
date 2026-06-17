@@ -60,12 +60,12 @@ struct ChatExpandedPanel: View {
         .frame(width: controller.panelWidth, height: controller.panelHeight)
         .background {
             ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous).fill(.ultraThinMaterial)
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.4))
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(LinearGradient(colors: [DesignSystem.Colors.whimsy.opacity(0.06), Color.clear, DesignSystem.Colors.ember.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing))
             }
         }
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous), fallback: .ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)

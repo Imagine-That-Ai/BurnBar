@@ -155,6 +155,11 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let cloudRoute = try await harness.router.route(modelName: "deepseek-v4-flash:cloud", preferredProviderID: "ollama")
         XCTAssertEqual(cloudRoute.providerID, "ollama")
         XCTAssertEqual(cloudRoute.resolvedModelID, "deepseek-v4-flash")
+
+        let unlistedCloudRoute = try await harness.router.route(modelName: "glm-5.2:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(unlistedCloudRoute.providerID, "ollama")
+        XCTAssertEqual(unlistedCloudRoute.resolvedModelID, "glm-5.2")
+        XCTAssertEqual(unlistedCloudRoute.modelCapabilityClassID, "glm-5.2")
     }
 
     func testRouterRoutesLocalOllamaModelWithoutCredential() async throws {

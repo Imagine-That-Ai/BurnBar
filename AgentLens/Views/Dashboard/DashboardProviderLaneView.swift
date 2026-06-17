@@ -166,13 +166,13 @@ extension DashboardView {
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.45))
-            }
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.45))
         }
         .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
         .overlay(

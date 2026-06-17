@@ -51,6 +51,7 @@ import SwiftUI
 /// only ever add opacity, which is the direction the flag asks for.
 enum LiquidGlassTransparency {
     static let storageKey = "liquidGlassTransparency"
+    static let contentSurfacesEnabledKey = "liquidGlassContentSurfacesEnabled"
     static let range: ClosedRange<Double> = -1.0 ... 1.0
 
     /// Resolve the raw stored value against the accessibility state.
@@ -77,6 +78,17 @@ enum LiquidGlassTransparency {
     static func fallbackPlateOpacity(_ t: Double) -> Double {
         t > 0 ? 1 - 0.78 * t : 1
     }
+
+    /// Whether content-surface glass is enabled. Defaults to true on macOS 26+,
+    /// false on earlier systems. When false, `liquidGlassSurface` and
+    /// `liquidGlassInteractive` render their fallback material exclusively.
+    static func contentSurfacesEnabled() -> Bool {
+        let raw = UserDefaults.standard.object(forKey: contentSurfacesEnabledKey) as? Bool
+        if let raw { return raw }
+        // Default: on for macOS 26+, off for earlier.
+        if #available(macOS 26, *) { return true }
+        return false
+    }
 }
 
 /// The frost/bridge scrim layered between the plate (glass or material) and
@@ -98,11 +110,12 @@ private struct LiquidGlassSurfaceModifier<S: Shape>: ViewModifier {
     let fallback: Material
 
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
         let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: reduceTransparency)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, *), contentSurfacesEnabled {
             content
                 .background { liquidGlassScrim(for: t, in: shape) }
                 .glassEffect(LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular, in: shape)
@@ -120,11 +133,12 @@ private struct LiquidGlassInteractiveModifier<S: Shape>: ViewModifier {
     let fallback: Material
 
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
         let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: reduceTransparency)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, *), contentSurfacesEnabled {
             let base: Glass = LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular
             let glass = (tint.map { base.tint($0) } ?? base).interactive()
             content
@@ -207,13 +221,19 @@ private struct LiquidGlassEffectModifier<S: Shape>: ViewModifier {
     let shape: S
 
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
+    @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
         let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: reduceTransparency)
-        content
-            .background { liquidGlassScrim(for: t, in: shape) }
-            .glassEffect(style.resolvedGlass(at: t), in: shape)
+        if contentSurfacesEnabled {
+            content
+                .background { liquidGlassScrim(for: t, in: shape) }
+                .glassEffect(style.resolvedGlass(at: t), in: shape)
+        } else {
+            content
+                .background(.ultraThinMaterial, in: shape)
+        }
     }
 }
 

@@ -911,10 +911,18 @@ public struct BurnBarLiveModelCatalog: Sendable {
     private static func ollamaCloudRouteModelID(_ rawID: String) -> String {
         let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercased = trimmed.lowercased()
-        guard !trimmed.isEmpty,
-              !lowercased.hasSuffix(":cloud"),
-              !lowercased.hasSuffix("-cloud") else {
+        guard !trimmed.isEmpty else {
             return trimmed
+        }
+        if lowercased.hasSuffix(":cloud") {
+            let base = String(trimmed.dropLast(":cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return base.isEmpty ? trimmed : "\(base):cloud"
+        }
+        if lowercased.hasSuffix("-cloud") {
+            let base = String(trimmed.dropLast("-cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return base.isEmpty ? trimmed : "\(base):cloud"
         }
         return "\(trimmed):cloud"
     }

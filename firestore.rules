@@ -464,8 +464,13 @@ service cloud.firestore {
     // top-down so an Ultra user (who may hold only the burnbar_ultra doc) is
     // never undercounted. Entitlement docs are cached per-evaluation; missing
     // entitlement docs intentionally fall back to the Free cap of 1.
-    // NOTE: verify with `firebase emulators:exec` rules tests (get-budget +
-    // tier mapping) before merge — an Xcode build does not cover this.
+    // VERIFIED by firestore-rules-tests/wand-fanout-cap.test.js (emulator): each
+    // tier allows AT its cap and denies OVER it, and the helper get-budget does
+    // not break otherwise-valid mission_group writes.
+    // DEPLOY ORDER (launch gate): the Free cap of 1 is below the in-app fan-out
+    // floor (FanOutComposerSheet enforces >= 2), so deploying this cap BEFORE the
+    // in-app Wand gate would deny every existing free-tier fan-out write. Ship the
+    // rules cap and the UI gate together, never the rules cap alone.
     function burnBarUltraEntitlementPath(userId) {
       return /databases/$(database)/documents/users/$(userId)/entitlements/burnbar_ultra;
     }
@@ -1395,6 +1400,89 @@ service cloud.firestore {
         && request.resource.data.ownerUserID == request.auth.uid
         && request.resource.data.workspaceID == workspaceId
         && request.resource.data.teamID == teamId;
+    }
+
+    function validSharedArtifactSealedMetadata(collection, artifactId, docId) {
+      return request.resource.data.keys().hasOnly([
+        "artifactID",
+        "workspaceID",
+        "teamID",
+        "ownerUserID",
+        "visibility",
+        "revisionID",
+        "baseRevisionID",
+        "isDeleted",
+        "updatedByUserID",
+        "updatedByDeviceID",
+        "resolvedConflictRevisionID",
+        "updatedAt",
+        "contentSealed",
+        "sealedSchemaVersion",
+        "vaultKeyID",
+        "sealedPayload"
+      ])
+        && request.resource.data.artifactID == artifactId
+        && (
+          (collection == "artifacts" && request.resource.data.artifactID == docId)
+          || (collection == "artifact_versions" && request.resource.data.revisionID == docId)
+        )
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 2
+        // Per-field type/size/enum validators. The key allowlist above stops
+        // RENAMED cleartext fields, but without these an allowed metadata string
+        // (e.g. `updatedByDeviceID`) could still carry private content up to the
+        // ~1 MiB document cap — defeating the zero-plaintext promise via an
+        // honest-looking field. Bound every metadata string to 256 bytes (the
+        // codebase `createdByDeviceId` convention) so metadata cannot be a content
+        // exfil channel; constrain the enums/bools/timestamps to their real shapes.
+        && request.resource.data.artifactID is string
+        && request.resource.data.artifactID.size() <= 256
+        && request.resource.data.revisionID is string
+        && request.resource.data.revisionID.size() <= 256
+        && request.resource.data.visibility in ["personal", "shared", "workspace", "team"]
+        && request.resource.data.isDeleted is bool
+        && validVaultKeyID(request.resource.data.vaultKeyID)
+        && (!("baseRevisionID" in request.resource.data)
+            || (request.resource.data.baseRevisionID is string && request.resource.data.baseRevisionID.size() <= 256))
+        && (!("updatedByUserID" in request.resource.data)
+            || (request.resource.data.updatedByUserID is string && request.resource.data.updatedByUserID.size() <= 256))
+        && (!("updatedByDeviceID" in request.resource.data)
+            || (request.resource.data.updatedByDeviceID is string && request.resource.data.updatedByDeviceID.size() <= 256))
+        && (!("resolvedConflictRevisionID" in request.resource.data)
+            || (request.resource.data.resolvedConflictRevisionID is string && request.resource.data.resolvedConflictRevisionID.size() <= 256))
+        && (!("updatedAt" in request.resource.data)
+            || request.resource.data.updatedAt is timestamp);
+    }
+
+    // Shared/team artifacts seal private content in a path-bound payload.
+    // Keep an exact top-level key allowlist so renamed cleartext fields cannot
+    // bypass the body/title/relativePath/contentHash denylist.
+    function sharedArtifactSealedOwnerWrite(workspaceId, teamId, collection, docId) {
+      return sharedArtifactOwnerWrite(workspaceId, teamId)
+        && validSharedArtifactSealedMetadata(collection, docId, docId)
+        && forbidsSealedPlaintextContentFields()
+        && !request.resource.data.keys().hasAny(["relativePath", "contentHash"])
+        && validPathBoundSealedPayloadForUser(
+             request.auth.uid,
+             request.resource.data.vaultKeyID,
+             request.resource.data.sealedPayload,
+             collection,
+             docId
+           );
+    }
+
+    function sharedArtifactVersionSealedOwnerWrite(workspaceId, teamId, artifactId, revisionId) {
+      return sharedArtifactOwnerWrite(workspaceId, teamId)
+        && validSharedArtifactSealedMetadata("artifact_versions", artifactId, revisionId)
+        && forbidsSealedPlaintextContentFields()
+        && !request.resource.data.keys().hasAny(["relativePath", "contentHash"])
+        && validPathBoundSealedPayloadForUser(
+             request.auth.uid,
+             request.resource.data.vaultKeyID,
+             request.resource.data.sealedPayload,
+             "artifact_versions",
+             revisionId
+           );
     }
 
     // --- Server-only private provider credential references ---
@@ -2503,6 +2591,25 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // V-41: CloudVault rotation generation is monotonic non-decreasing at the
+    // rules layer — defense-in-depth behind the server-only rotateCloudVaultKey
+    // callable (which enforces strict generation = current + 1). Client writes to
+    // cloud_vault_state/current keep the SAME vaultKeyID (pinned in the match
+    // below), so they must never roll vaultGeneration BACKWARD, and — once a
+    // generation has been recorded — must never DROP the field to launder a lower
+    // value back in on a later write. A legacy doc that never carried a generation
+    // may adopt one at any in-range value (first-set); from then on it can only
+    // climb. Re-uses get() on the already-read `current` doc (no extra billed read).
+    function vaultGenerationMonotonic(userId) {
+      return !exists(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current)
+        || !("vaultGeneration" in get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data)
+        || (
+             "vaultGeneration" in request.resource.data
+             && request.resource.data.vaultGeneration is int
+             && request.resource.data.vaultGeneration >= get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.vaultGeneration
+           );
+    }
+
     match /users/{userId}/cloud_vault_state/{stateId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
@@ -2539,7 +2646,8 @@ service cloud.firestore {
 	        && (!("rotatedAt" in request.resource.data) || request.resource.data.rotatedAt is timestamp)
 	        && request.resource.data.schemaVersion in [1, 2]
         && (!exists(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current)
-          || get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.vaultKeyID == request.resource.data.vaultKeyID);
+          || get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.vaultKeyID == request.resource.data.vaultKeyID)
+        && vaultGenerationMonotonic(userId);
       allow delete: if false;
     }
 
@@ -4402,16 +4510,16 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
-    // --- Shared artifacts (unchanged) ---
+    // --- Shared artifacts (E2EE-sealed; see sharedArtifactSealedOwnerWrite) ---
 
     match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
       allow read: if sharedArtifactOwnerRead(workspaceId);
-      allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
+      allow create, update: if sharedArtifactSealedOwnerWrite(workspaceId, teamId, "artifacts", artifactId);
       allow delete: if sharedArtifactOwnerRead(workspaceId);
 
       match /versions/{revisionId} {
         allow read: if sharedArtifactOwnerRead(workspaceId);
-        allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
+        allow create, update: if sharedArtifactVersionSealedOwnerWrite(workspaceId, teamId, artifactId, revisionId);
         allow delete: if sharedArtifactOwnerRead(workspaceId);
       }
     }

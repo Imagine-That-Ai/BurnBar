@@ -28,10 +28,10 @@ struct ChatSearchResultsList: View {
                         .padding(DesignSystem.Spacing.sm)
                         .background {
                             ZStack {
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous).fill(.thinMaterial)
                                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.3))
                             }
                         }
+                        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous), fallback: .thinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)

@@ -49,6 +49,14 @@ final class RoutedClientWiringSentry {
         var monitoredEvents: DispatchSource.FileSystemEvent = [
             .write, .extend, .rename, .delete, .attrib, .link
         ]
+        /// Production keeps file watchers armed so atomic external rewrites are
+        /// repaired quickly. Tests can disable watchers and drive explicit
+        /// sweeps without racing DispatchSource callbacks.
+        var fileSystemWatchersEnabled = true
+        /// Production runs a sweep on lifecycle edges so enrolled clients are
+        /// repaired without waiting for the periodic safety net. Tests can
+        /// disable this and call `sweepNow()` for deterministic assertions.
+        var lifecycleSweepsEnabled = true
     }
 
     // MARK: - State
@@ -56,7 +64,6 @@ final class RoutedClientWiringSentry {
     private let configuration: Configuration
     private let wiringFactory: () -> RoutingClientWiring
     private let advertisedModelsProvider: @MainActor @Sendable (
-        _ wiring: RoutingClientWiring,
         _ gateway: RoutingClientGateway,
         _ target: RoutingClientWiringTarget
     ) async -> [RoutingClientAdvertisedModel]
@@ -87,11 +94,10 @@ final class RoutedClientWiringSentry {
         configuration: Configuration = Configuration(),
         wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() },
         advertisedModelsProvider: @escaping @MainActor @Sendable (
-            _ wiring: RoutingClientWiring,
             _ gateway: RoutingClientGateway,
             _ target: RoutingClientWiringTarget
-        ) async -> [RoutingClientAdvertisedModel] = { wiring, gateway, _ in
-            await wiring.advertisedModels(gateway: gateway)
+        ) async -> [RoutingClientAdvertisedModel] = { gateway, _ in
+            await RoutingClientWiring().advertisedModels(gateway: gateway)
         },
         logger: AppLogger = AppLogger(category: "RoutedClientWiringSentry"),
         queue: DispatchQueue = DispatchQueue(
@@ -130,8 +136,12 @@ final class RoutedClientWiringSentry {
             "enrolled": settingsManager.routedClientWiring.enrolledTargets.sorted().joined(separator: ",")
         ])
         installEnrollmentObserver()
-        rebuildWatchers()
-        triggerInitialSweep()
+        if configuration.fileSystemWatchersEnabled {
+            rebuildWatchers()
+        }
+        if configuration.lifecycleSweepsEnabled {
+            triggerInitialSweep()
+        }
         startPeriodicSweep()
     }
 
@@ -164,8 +174,12 @@ final class RoutedClientWiringSentry {
     /// covers the production path automatically.
     func enrollmentDidChange() {
         guard isStarted else { return }
-        rebuildWatchers()
-        triggerInitialSweep()
+        if configuration.fileSystemWatchersEnabled {
+            rebuildWatchers()
+        }
+        if configuration.lifecycleSweepsEnabled {
+            triggerInitialSweep()
+        }
     }
 
     private func installEnrollmentObserver() {
@@ -342,7 +356,11 @@ final class RoutedClientWiringSentry {
         let wiring = wiringFactory()
         let advertisedModels: [RoutingClientAdvertisedModel]
         if Self.targetRequiresAdvertisedModels(target) {
-            advertisedModels = await advertisedModelsProvider(wiring, gateway, target)
+            advertisedModels = await advertisedModelsProvider(gateway, target)
+            guard !advertisedModels.isEmpty else {
+                logger.debug("repair_skipped_empty_model_catalog", metadata: ["target": target.rawValue])
+                return
+            }
         } else {
             advertisedModels = []
         }
@@ -384,9 +402,9 @@ final class RoutedClientWiringSentry {
 
     private static func targetRequiresAdvertisedModels(_ target: RoutingClientWiringTarget) -> Bool {
         switch target {
-        case .claudeCode, .forge, .antigravity:
+        case .forge, .antigravity:
             return false
-        case .codex, .opencode, .droid, .grok, .cursorAgent:
+        case .claudeCode, .codex, .opencode, .droid, .grok, .cursorAgent:
             return true
         }
     }

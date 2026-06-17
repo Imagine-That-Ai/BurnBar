@@ -196,7 +196,8 @@ extension OpenBurnBarOperatingLayer {
         projectSlug: String,
         title: String,
         summary: String,
-        recommendation: BurnBarMissionRecommendation
+        recommendation: BurnBarMissionRecommendation,
+        wandMode: String? = nil
     ) async throws -> String {
         let trimmedProjectSlug = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -233,12 +234,17 @@ extension OpenBurnBarOperatingLayer {
         }
 
         do {
+            var metadata: BurnBarMetadata = [:]
+            if let wandMode {
+                metadata["wand_mode"] = .string(wandMode)
+            }
             let response = try await daemonManager.createMission(
                 projectSlug: trimmedProjectSlug,
                 title: trimmedTitle,
                 summary: trimmedSummary,
                 createdBy: "operator",
-                recommendation: recommendation
+                recommendation: recommendation,
+                metadata: metadata
             )
 
             stateRevision += 1

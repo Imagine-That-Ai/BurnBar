@@ -365,7 +365,7 @@ extension BurnBarHTTPGatewayServer {
         private static func servedEndpoints(for formatFamily: BurnBarProviderFormatFamily) -> [String] {
             switch formatFamily {
             case .openaiCompat:
-                return ["/v1/models", "/v1/chat/completions", "/v1/responses"]
+                return ["/v1/models", "/v1/messages", "/v1/chat/completions", "/v1/responses"]
             case .anthropic:
                 return ["/v1/models", "/v1/messages", "/v1/chat/completions", "/v1/responses"]
             }

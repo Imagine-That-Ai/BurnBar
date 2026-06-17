@@ -22,3 +22,9 @@ export {
 } from "./predicate.js";
 
 export { EntitlementCache, type EntitlementCacheOptions } from "./cache.js";
+
+export {
+  WAND_FAN_OUT_CAPS,
+  wandMaxParallelForTier,
+  type WandTierCap,
+} from "./wandFanOut.js";

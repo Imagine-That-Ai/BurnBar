@@ -198,6 +198,37 @@ extension BurnBarHTTPGatewayServer {
         }
     }
 
+    func proxyMessages(
+        body: Data,
+        route: BurnBarProviderRoute,
+        formatFamily: BurnBarProviderFormatFamily,
+        variant: BurnBarModelVariant?
+    ) async throws -> BurnBarProviderProxyResponse {
+        switch formatFamily {
+        case .openaiCompat:
+            if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+                let (chatBody, streamRequested) = try BurnBarOpenAICompatibleProviderExecutor
+                    .chatCompletionsBodyFromAnthropicMessagesRequest(body, modelID: route.resolvedModelID)
+                let chatResponse = try await factoryExecutor.proxyChatCompletions(
+                    body: chatBody,
+                    route: route,
+                    variant: variant
+                )
+                return try BurnBarOpenAICompatibleProviderExecutor.anthropicMessagesProxyResponse(
+                    from: chatResponse,
+                    modelID: route.resolvedModelID,
+                    streamRequested: streamRequested
+                )
+            }
+            return try await providerExecutor.proxyMessages(body: body, route: route, variant: variant)
+        case .anthropic:
+            if let interactiveClaudeExecutor, ClaudeInteractiveSessionExecutor.isEligible(route: route) {
+                return try await interactiveClaudeExecutor.proxyMessages(body: body, route: route, variant: variant)
+            }
+            return try await anthropicExecutor.proxyMessages(body: body, route: route, variant: variant)
+        }
+    }
+
     /// Decide whether a route failure should trigger trying the next account.
     ///
     /// Narrowed (A2) to genuine capacity/quota/credential exhaustion. We only

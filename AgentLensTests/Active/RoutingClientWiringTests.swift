@@ -22,6 +22,7 @@ final class RoutingClientWiringTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        RoutingProbeURLProtocol.reset()
         if let tempHome {
             try? FileManager.default.removeItem(at: tempHome)
         }
@@ -62,7 +63,11 @@ final class RoutingClientWiringTests: XCTestCase {
     func test_wireClaudeCode_writesEnvBlock_andMarker() throws {
         let wiring = makeWiring()
         let gateway = exampleGateway(token: "test-token-CLAUDE")
-        let change = try wiring.wire(target: .claudeCode, gateway: gateway)
+        let change = try wiring.wire(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
 
         XCTAssertEqual(change.target, .claudeCode)
         XCTAssertEqual(change.configURL, tempHome.appendingPathComponent(".claude/settings.json"))
@@ -72,6 +77,10 @@ final class RoutingClientWiringTests: XCTestCase {
         let env = try XCTUnwrap(root["env"] as? [String: Any])
         XCTAssertEqual(env["ANTHROPIC_BASE_URL"] as? String, "http://127.0.0.1:8317")
         XCTAssertEqual(env["ANTHROPIC_AUTH_TOKEN"] as? String, "test-token-CLAUDE")
+        XCTAssertEqual(env["CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"] as? String, "1")
+        XCTAssertEqual(env["ANTHROPIC_CUSTOM_HEADERS"] as? String, "X-OpenBurnBar-Client: claude-code")
+        XCTAssertEqual(env["OPENBURNBAR_MODEL_CATALOG_IDS"] as? String, "glm-5,minimax-m2.7,claude-sonnet-4-6")
+        XCTAssertNotNil(env["OPENBURNBAR_MODEL_CATALOG_FINGERPRINT"] as? String)
         XCTAssertEqual(env["OPENBURNBAR_WIRED"] as? String, "1")
     }
 
@@ -83,12 +92,19 @@ final class RoutingClientWiringTests: XCTestCase {
         )
         let existing: [String: Any] = [
             "theme": "dark",
-            "env": ["EXISTING_VAR": "leave_me_alone"]
+            "env": [
+                "EXISTING_VAR": "leave_me_alone",
+                "ANTHROPIC_CUSTOM_HEADERS": "X-Team-Trace: keep\nX-OpenBurnBar-Client: stale"
+            ]
         ]
         try writeJSONObject(existing, to: url)
 
         let wiring = makeWiring()
-        let change = try wiring.wire(target: .claudeCode, gateway: exampleGateway(token: "tok"))
+        let change = try wiring.wire(
+            target: .claudeCode,
+            gateway: exampleGateway(token: "tok"),
+            advertisedModels: liveGatewayModels()
+        )
 
         XCTAssertNotNil(change.backupURL, "existing file should produce a backup")
         let backupURL = try XCTUnwrap(change.backupURL)
@@ -101,6 +117,10 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(env["EXISTING_VAR"] as? String, "leave_me_alone")
         XCTAssertEqual(env["ANTHROPIC_BASE_URL"] as? String, "http://127.0.0.1:8317")
         XCTAssertEqual(env["ANTHROPIC_AUTH_TOKEN"] as? String, "tok")
+        XCTAssertEqual(
+            env["ANTHROPIC_CUSTOM_HEADERS"] as? String,
+            "X-Team-Trace: keep\nX-OpenBurnBar-Client: claude-code"
+        )
     }
 
     func test_wireClaudeCode_tolerates_jsonWithComments() throws {
@@ -153,6 +173,9 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(env["EXISTING_VAR"] as? String, "leave_me_alone")
         XCTAssertNil(env["ANTHROPIC_BASE_URL"])
         XCTAssertNil(env["ANTHROPIC_AUTH_TOKEN"])
+        XCTAssertNil(env["CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"])
+        XCTAssertNil(env["OPENBURNBAR_MODEL_CATALOG_IDS"])
+        XCTAssertNil(env["OPENBURNBAR_MODEL_CATALOG_FINGERPRINT"])
         XCTAssertNil(env["OPENBURNBAR_WIRED"])
         XCTAssertFalse(wiring.isWired(target: .claudeCode))
     }
@@ -182,12 +205,22 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(text.contains("# openburnbar:routing — start"))
         XCTAssertTrue(text.contains("# openburnbar:routing — end"))
         XCTAssertTrue(text.contains("[model_providers.openburnbar]"))
-        XCTAssertTrue(text.contains("[profiles.openburnbar]"))
         XCTAssertTrue(text.contains("base_url = \"http://127.0.0.1:8317/v1\""))
         XCTAssertTrue(text.contains("env_key = \"OPENBURNBAR_GATEWAY_TOKEN\""))
         XCTAssertTrue(text.contains("wire_api = \"responses\""))
         XCTAssertFalse(text.contains("wire_api = \"chat\""))
-        XCTAssertTrue(text.contains("model_provider = \"openburnbar\""))
+        XCTAssertFalse(text.contains("[profiles.openburnbar]"))
+
+        let profileURL = tempHome.appendingPathComponent(".codex/openburnbar.config.toml")
+        let profileText = try String(contentsOf: profileURL, encoding: .utf8)
+        XCTAssertTrue(profileText.contains("model_provider = \"openburnbar\""))
+        XCTAssertTrue(profileText.contains("model = \"openburnbar/gateway-default\""))
+        XCTAssertTrue(profileText.contains("model_catalog_json = \"\(tempHome.path)/.codex/openburnbar-model-catalog.json\""))
+
+        let catalog = try loadJSONObject(at: tempHome.appendingPathComponent(".codex/openburnbar-model-catalog.json"))
+        let models = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.5" })
+        XCTAssertFalse(models.contains { ($0["slug"] as? String)?.hasPrefix("openburnbar/") == true })
     }
 
     func test_wireCodex_setsProfileModelFromLiveCatalogWhenAvailable() throws {
@@ -198,8 +231,19 @@ final class RoutingClientWiringTests: XCTestCase {
             advertisedModels: liveGatewayModels()
         )
 
-        let text = try String(contentsOf: change.configURL, encoding: .utf8)
-        XCTAssertTrue(text.contains("model = \"glm-5\""))
+        let text = try String(
+            contentsOf: tempHome.appendingPathComponent(".codex/openburnbar.config.toml"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(text.contains("model = \"openburnbar/glm-5\""))
+
+        let catalog = try loadJSONObject(at: tempHome.appendingPathComponent(".codex/openburnbar-model-catalog.json"))
+        let models = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "gpt-5.5" })
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "openburnbar/glm-5" })
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "openburnbar/minimax-m2.7" })
+        XCTAssertTrue(models.contains { $0["slug"] as? String == "openburnbar/claude-sonnet-4-6" })
+        XCTAssertEqual(change.configURL, tempHome.appendingPathComponent(".codex/config.toml"))
     }
 
     func test_wireCodex_preservesPriorUserTOML() throws {
@@ -277,7 +321,8 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertFalse(text.contains("factory-vibeproxy"))
         XCTAssertFalse(text.contains("[profiles.vibeproxy]"))
         XCTAssertTrue(text.contains("[model_providers.openburnbar]"))
-        XCTAssertTrue(text.contains("[profiles.openburnbar]"))
+        XCTAssertFalse(text.contains("[profiles.openburnbar]"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tempHome.appendingPathComponent(".codex/openburnbar.config.toml").path))
     }
 
     func test_unwireCodex_stripsBlock_keepsUserContent() throws {
@@ -300,6 +345,8 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertFalse(text.contains("openburnbar:routing"))
         XCTAssertFalse(text.contains("[model_providers.openburnbar]"))
         XCTAssertTrue(text.contains("[profiles.work]"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tempHome.appendingPathComponent(".codex/openburnbar.config.toml").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tempHome.appendingPathComponent(".codex/openburnbar-model-catalog.json").path))
     }
 
     func test_unwireCodex_deletesFile_whenEverythingOpenBurnBarOwned() throws {
@@ -675,6 +722,175 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(status, .current(modelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"]))
     }
 
+    func test_codexModelSyncStatusCurrentAfterWire() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "codex-token")
+        _ = try wiring.wire(
+            target: .codex,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        let status = wiring.modelSyncStatus(
+            target: .codex,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        XCTAssertEqual(status, .current(modelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"]))
+    }
+
+    func test_codexModelSyncStatusStaleWhenLiveCatalogChanges() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "codex-token")
+        _ = try wiring.wire(
+            target: .codex,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        let status = wiring.modelSyncStatus(
+            target: .codex,
+            gateway: gateway,
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "glm-5.2",
+                    displayName: "GLM-5.2",
+                    providerID: "zai",
+                    providerName: "Z.AI",
+                    servedEndpoints: ["/v1/responses", "/v1/chat/completions", "/v1/messages"],
+                    routeEligible: true
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            status,
+            .stale(installedModelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"], expectedModelIDs: ["glm-5.2"])
+        )
+    }
+
+    func test_claudeCodeModelSyncStatusCurrentAfterWire() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "claude-token")
+        _ = try wiring.wire(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        let status = wiring.modelSyncStatus(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        XCTAssertEqual(status, .current(modelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"]))
+    }
+
+    func test_claudeCodeModelSyncStatusStaleWhenLiveCatalogChanges() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "claude-token")
+        _ = try wiring.wire(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        let status = wiring.modelSyncStatus(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "claude-opus-4-8",
+                    displayName: "Claude Opus 4.8",
+                    providerID: "anthropic",
+                    providerName: "Anthropic",
+                    formatFamily: "anthropic",
+                    servedEndpoints: ["/v1/messages"],
+                    capabilities: ["anthropic"],
+                    routeEligible: true
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            status,
+            .stale(installedModelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"], expectedModelIDs: ["claude-opus-4-8"])
+        )
+    }
+
+    func test_claudeCodeTreatsLegacyEndpointlessProxyRowsAsBridgeCompatible() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "claude-token")
+        let legacyOpenAICompatibleRow = RoutingClientAdvertisedModel(
+            id: "glm-5.2",
+            displayName: "GLM-5.2",
+            providerID: "zai",
+            providerName: "Z.ai",
+            formatFamily: "openai_compat",
+            servedEndpoints: [],
+            routeEligible: true
+        )
+
+        _ = try wiring.wire(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: [legacyOpenAICompatibleRow]
+        )
+
+        let status = wiring.modelSyncStatus(
+            target: .claudeCode,
+            gateway: gateway,
+            advertisedModels: [legacyOpenAICompatibleRow]
+        )
+
+        XCTAssertEqual(status, .current(modelIDs: ["glm-5.2"]))
+    }
+
+    func test_probeCodexUsesResponsesWithOpenBurnBarModelAlias() async throws {
+        let session = makeProbeSession { request in
+            XCTAssertEqual(request.url?.path, "/v1/responses")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer probe-token")
+            let body = try Self.jsonBody(from: request)
+            XCTAssertEqual(body["model"] as? String, "openburnbar/glm-5")
+            XCTAssertEqual(body["input"] as? String, "ping")
+            XCTAssertEqual(body["max_output_tokens"] as? Int, 1)
+            return Data(#"{"id":"resp_test","output_text":"ok"}"#.utf8)
+        }
+
+        let result = await makeWiring().probe(
+            target: .codex,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: liveGatewayModels(),
+            session: session
+        )
+
+        XCTAssertEqual(result, .ok(modelID: "openburnbar/glm-5"))
+    }
+
+    func test_probeClaudeCodeUsesMessagesWithLiveGatewayModel() async throws {
+        let session = makeProbeSession { request in
+            XCTAssertEqual(request.url?.path, "/v1/messages")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer probe-token")
+            let body = try Self.jsonBody(from: request)
+            XCTAssertEqual(body["model"] as? String, "glm-5")
+            XCTAssertEqual(body["max_tokens"] as? Int, 1)
+            let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+            XCTAssertEqual(messages.first?["content"] as? String, "ping")
+            return Data(#"{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}]}"#.utf8)
+        }
+
+        let result = await makeWiring().probe(
+            target: .claudeCode,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: liveGatewayModels(),
+            session: session
+        )
+
+        XCTAssertEqual(result, .ok(modelID: "glm-5"))
+    }
+
     // Regression test: when the gateway auth token rotates after the last wire
     // (e.g. a new token is generated on daemon restart), the stored API key in
     // Droid's JSON config files no longer authenticates → every request gets a
@@ -890,6 +1106,13 @@ final class RoutingClientWiringTests: XCTestCase {
             gateway: exampleGateway(token: "droid-token"),
             advertisedModels: [
                 RoutingClientAdvertisedModel(
+                    id: "glm-5.2:cloud",
+                    displayName: "GLM 5.2",
+                    providerID: "ollama",
+                    providerName: "Ollama Cloud",
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
                     id: "kimi-k2.6:cloud",
                     displayName: "Kimi K2.6",
                     providerID: "ollama",
@@ -908,16 +1131,36 @@ final class RoutingClientWiringTests: XCTestCase {
 
         let settingsRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
         let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
-        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["kimi-k2.6:cloud", "deepseek-v4-pro:cloud"])
-        XCTAssertEqual(settingsModels.map { $0["id"] as? String }, ["custom:OpenBurnBar-kimi-k2.6-cloud-0", "custom:OpenBurnBar-deepseek-v4-pro-cloud-1"])
-        XCTAssertEqual(settingsModels.map { $0["displayName"] as? String }, ["OBB Kimi K2.6 Ollama Cloud", "OBB DeepSeek V4 Pro Ollama Cloud"])
-        XCTAssertEqual(settingsModels.map { $0["provider"] as? String }, ["generic-chat-completion-api", "generic-chat-completion-api"])
+        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["glm-5.2:cloud", "kimi-k2.6:cloud", "deepseek-v4-pro:cloud"])
+        XCTAssertEqual(settingsModels.map { $0["id"] as? String }, [
+            "custom:OpenBurnBar-glm-5.2-cloud-0",
+            "custom:OpenBurnBar-kimi-k2.6-cloud-1",
+            "custom:OpenBurnBar-deepseek-v4-pro-cloud-2"
+        ])
+        XCTAssertEqual(settingsModels.map { $0["displayName"] as? String }, [
+            "OBB GLM 5.2 Ollama Cloud",
+            "OBB Kimi K2.6 Ollama Cloud",
+            "OBB DeepSeek V4 Pro Ollama Cloud"
+        ])
+        XCTAssertEqual(settingsModels.map { $0["provider"] as? String }, [
+            "generic-chat-completion-api",
+            "generic-chat-completion-api",
+            "generic-chat-completion-api"
+        ])
 
         let configRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/config.json"))
         let configModels = try XCTUnwrap(configRoot["custom_models"] as? [[String: Any]])
-        XCTAssertEqual(configModels.map { $0["model"] as? String }, ["kimi-k2.6:cloud", "deepseek-v4-pro:cloud"])
-        XCTAssertEqual(configModels.map { $0["model_display_name"] as? String }, ["OBB Kimi K2.6 Ollama Cloud", "OBB DeepSeek V4 Pro Ollama Cloud"])
-        XCTAssertEqual(configModels.map { $0["base_url"] as? String }, ["http://127.0.0.1:8317/v1", "http://127.0.0.1:8317/v1"])
+        XCTAssertEqual(configModels.map { $0["model"] as? String }, ["glm-5.2:cloud", "kimi-k2.6:cloud", "deepseek-v4-pro:cloud"])
+        XCTAssertEqual(configModels.map { $0["model_display_name"] as? String }, [
+            "OBB GLM 5.2 Ollama Cloud",
+            "OBB Kimi K2.6 Ollama Cloud",
+            "OBB DeepSeek V4 Pro Ollama Cloud"
+        ])
+        XCTAssertEqual(configModels.map { $0["base_url"] as? String }, [
+            "http://127.0.0.1:8317/v1",
+            "http://127.0.0.1:8317/v1",
+            "http://127.0.0.1:8317/v1"
+        ])
     }
 
     func test_wireDroid_labelsSameModelByRouteSource() throws {
@@ -1167,6 +1410,36 @@ final class RoutingClientWiringTests: XCTestCase {
         )
     }
 
+    private func makeProbeSession(
+        handler: @escaping @Sendable (URLRequest) throws -> Data
+    ) -> URLSession {
+        RoutingProbeURLProtocol.handler = handler
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RoutingProbeURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private static func jsonBody(from request: URLRequest) throws -> [String: Any] {
+        let data = request.httpBody ?? data(from: request.httpBodyStream)
+        return try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+    }
+
+    private static func data(from stream: InputStream?) -> Data {
+        guard let stream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+
     private func exampleGateway(token: String) -> RoutingClientGateway {
         RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: token)
     }
@@ -1192,6 +1465,9 @@ final class RoutingClientWiringTests: XCTestCase {
                 displayName: "Claude Sonnet 4.6",
                 providerID: "anthropic",
                 providerName: "Anthropic",
+                formatFamily: "anthropic",
+                servedEndpoints: ["/v1/messages", "/v1/chat/completions", "/v1/responses"],
+                capabilities: ["anthropic"],
                 routeEligible: true
             ),
             RoutingClientAdvertisedModel(
@@ -1218,4 +1494,43 @@ final class RoutingClientWiringTests: XCTestCase {
         )
         try data.write(to: url, options: [.atomic])
     }
+}
+
+private final class RoutingProbeURLProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> Data)?
+
+    static func reset() {
+        handler = nil
+    }
+
+    override static func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "127.0.0.1"
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.handler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        do {
+            let body = try handler(request)
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: body)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

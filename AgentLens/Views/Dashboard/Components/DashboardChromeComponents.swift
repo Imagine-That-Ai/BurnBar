@@ -559,13 +559,13 @@ struct SessionPreviewRow: View {
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
-            }
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
         }
         .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay(
