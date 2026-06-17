@@ -4,6 +4,38 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+run_extension_host_tests() {
+  local attempts="${OPENBURNBAR_EXTENSION_HOST_ATTEMPTS:-3}"
+  local attempt
+
+  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+    local log_file
+    log_file="$(mktemp)"
+    set +e
+    npm --prefix "$repo_root/extensions/openburnbar" run test:extension-host 2>&1 | tee "$log_file"
+    local status="${PIPESTATUS[0]}"
+    set -e
+
+    if [[ "$status" -eq 0 ]]; then
+      rm -f "$log_file"
+      return 0
+    fi
+
+    if [[ "$attempt" -ge "$attempts" ]] ||
+      ! grep -Eq 'ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|ETIMEDOUT|aborted|socket hang up' "$log_file"; then
+      rm -f "$log_file"
+      return "$status"
+    fi
+
+    rm -f "$log_file"
+    local delay=$((attempt * 5))
+    echo "Extension-host VS Code download hit a transient network error; retrying in ${delay}s (${attempt}/${attempts})." >&2
+    sleep "$delay"
+  done
+
+  return 1
+}
+
 # Emit VAL-CROSS-010 mission-authoring parity evidence from unit tests
 # The unit tests in projections.test.ts and extension.test.ts contain VAL-CROSS-010
 # assertion-tagged test cases that prove extension-authored mission state parity.
@@ -39,5 +71,5 @@ echo "VAL-EXT-009: Question answer (answerPendingQuestion → daemon.question.an
 # Run extension-host integration tests
 echo "VAL-CROSS-010: Running extension-host integration tests"
 echo "VAL-CROSS-015: Running extension-host real workspace integration tests"
-npm --prefix "$repo_root/extensions/openburnbar" run test:extension-host
+run_extension_host_tests
 echo "VAL-CROSS-015: Extension-host integration exercised live workspace command bridge"
