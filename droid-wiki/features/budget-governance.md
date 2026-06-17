@@ -7,6 +7,9 @@ Per-user spend caps with automated enforcement. Prevents runaway costs from long
 ## Directory layout
 
 ```
+OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/
+└── BudgetNotificationCenter.swift     # Shared local notifications for budget warnings and blocks
+
 AgentLens/Services/DataStore/
 ├── BudgetGate.swift                     # Entry point — evaluates whether an action is allowed (~154 lines)
 ├── BudgetEnforcement.swift            # Enforcement logic: computes current spend against cap layers
@@ -14,7 +17,6 @@ AgentLens/Services/DataStore/
 ├── BudgetForecast.swift               # Projects end-of-period spend given current trajectory
 ├── BudgetRulesStore.swift             # Reads and writes cap configuration (per-user overrides, remote config values)
 ├── BudgetSettings.swift               # User-visible settings model for cap values
-├── BudgetNotificationCenter.swift     # Fires local notifications when soft cap is approached
 ├── CloudBudgetService.swift           # Syncs budget state with Firestore for cross-device visibility
 └── ComputerUseBudgetStatusStore.swift   # Real-time status for the Computer Use panel
 
@@ -139,7 +141,7 @@ A second function, `functions/src/mediaBudget.ts`, applies analogous enforcement
 
 - **Add a new cap layer** — extend `BudgetRule` window/scope types and add evaluation logic in `BudgetGate`.
 - **Change default thresholds** — edit `BudgetSettings.swift` defaults and `functions/src/computerUseBudget.ts` constants.
-- **Add a new notification type** — extend `BudgetNotificationCenter.swift`.
+- **Add a new notification type** — extend `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/BudgetNotificationCenter.swift`.
 - **Modify cloud function logic** — edit `functions/src/computerUseBudget.ts` and run `npm test --prefix functions`.
 - **Add per-project budgets** — extend `BudgetRulesStore` project-scope rules and UI in `BudgetSettingsView.swift`.
 

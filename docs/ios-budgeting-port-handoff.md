@@ -41,7 +41,7 @@
 Port the enterprise budgeting, forecasting, and hard spending limits feature from macOS (`AgentLens/`) to iOS (`OpenBurnBarMobile/`). The shared data models already live in [`OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/BudgetRule.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/BudgetRule.swift), so iOS gets every type for free. The port needs:
 
 1. **Database schema** — `budget_rules` + `budget_events` tables (GRDB migration matching macOS v42)
-2. **6 data stores** — `BudgetRulesStore`, `BudgetSettings`, `BudgetLedger`, `BudgetGate`, `BudgetForecast`, `BudgetNotificationCenter`
+2. **5 data stores + shared notification helper** — `BudgetRulesStore`, `BudgetSettings`, `BudgetLedger`, `BudgetGate`, `BudgetForecast`, plus `BudgetNotificationCenter` from `OpenBurnBarCore`
 3. **Wiring singleton** — `BudgetEnforcement` (process-wide entry point)
 4. **SwiftUI views** — adapted for compact-width mobile navigation (`NavigationStack`, sheets, `Tab`-based routing)
 5. **Firestore sync** — extend `FirestoreRepository` / add `CloudBudgetService` for cross-device rule persistence
@@ -320,14 +320,14 @@ actor BudgetForecast {
 
 ### 2F. BudgetNotificationCenter
 
-**macOS source**: [`AgentLens/Services/DataStore/BudgetNotificationCenter.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Services/DataStore/BudgetNotificationCenter.swift) (71 lines)
-**iOS target**: `OpenBurnBarMobile/Services/BudgetNotificationCenter.swift`
+**Shared source**: [`OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/BudgetNotificationCenter.swift`](file:///Users/albertonunez/Documents/Developer/BurnBar/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/BudgetNotificationCenter.swift)
+**iOS target**: Provided by the existing `OpenBurnBarCore` dependency.
 
 `UNUserNotificationCenter`-based notifications. Debounces 80% warnings to one per `(rule, period)`. 100% blocks always fire.
 
 ```swift
 @MainActor
-final class BudgetNotificationCenter {
+public final class BudgetNotificationCenter {
     func requestAuthorizationIfNeeded() { ... }
     func emitWarning(rule:used:limit:periodStart:) { ... }
     func emitBlock(rule:used:limit:) { ... }
@@ -335,7 +335,7 @@ final class BudgetNotificationCenter {
 }
 ```
 
-**Port strategy**: Copy verbatim — `UNUserNotificationCenter` is the same API on iOS and macOS. The only change is that iOS requires explicit authorization before first use. Call `requestAuthorizationIfNeeded()` during app startup wiring.
+**Port strategy**: No per-platform copy. Use the shared `OpenBurnBarCore` implementation; `UNUserNotificationCenter` is the same API on iOS and macOS. iOS still requires explicit authorization before first use. Call `requestAuthorizationIfNeeded()` during app startup wiring.
 
 **iOS notification specifics** (see section 6 for full details):
 - Request `.alert, .sound, .badge` authorization
@@ -847,7 +847,7 @@ No tests exist for `BudgetGate`, `BudgetLedger`, `BudgetEnforcement`, `BudgetFor
 | Ledger (SQL actor) | [`BudgetLedger.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Services/DataStore/BudgetLedger.swift) | `Models/BudgetLedger.swift` | Copy verbatim |
 | Gate (decision engine) | [`BudgetGate.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Services/DataStore/BudgetGate.swift) | `Models/BudgetGate.swift` | Copy verbatim |
 | Forecast (projections) | [`BudgetForecast.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Services/DataStore/BudgetForecast.swift) | `Models/BudgetForecast.swift` | Copy verbatim |
-| Notifications | [`BudgetNotificationCenter.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Services/DataStore/BudgetNotificationCenter.swift) | `Services/BudgetNotificationCenter.swift` | Same UNUserNotification API |
+| Notifications | [`BudgetNotificationCenter.swift`](file:///Users/albertonunez/Documents/Developer/BurnBar/OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/BudgetNotificationCenter.swift) | Provided by `OpenBurnBarCore` | Same UNUserNotification API |
 | Enforcement entry | [`BudgetEnforcement.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Services/DataStore/BudgetEnforcement.swift) | `Models/BudgetEnforcement.swift` | Wire into app startup |
 | Settings view | [`BudgetSettingsView.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Views/Settings/BudgetSettingsView.swift) | `Settings/BudgetSettingsView.swift` | `.insetGrouped`, remove `SettingsDeepLinkScrollContainer` |
 | Error card | [`BudgetBlockedCard.swift`](file:///Users/albertonunez/Documents/Windsurf/BurnBar/AgentLens/Views/Chat/BudgetBlockedCard.swift) | `Views/Chat/BudgetBlockedCard.swift` | Replace `DesignSystem` → `AuroraDesign`, remove hover |

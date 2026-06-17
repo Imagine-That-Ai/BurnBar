@@ -344,7 +344,7 @@ fun orgRollupByUser(windowStart: Long, limit: Int): List<OrgRollupRow>
 
 ### 8. Notifications
 
-Android uses `NotificationCompat` from AndroidX. Mirror `BudgetNotificationCenter`:
+Android uses `NotificationCompat` from AndroidX. Mirror the shared Swift `BudgetNotificationCenter` behavior:
 
 ```kotlin
 class BudgetNotificationCenter(private val context: Context) {
@@ -385,7 +385,7 @@ Extend the existing `CloudSyncService` (or `FirestoreRepository`) pattern:
 | Project lane | `AgentLens/.../DashboardProjectSpendLaneView.swift` | Same pattern |
 | Budget chip | `AgentLens/.../BurnRailBudgetChip.swift` | Compact pill in Pulse header |
 | Cloud sync | `AgentLens/.../CloudBudgetService.swift` | Extend `FirestoreRepository` |
-| Notifications | `AgentLens/.../BudgetNotificationCenter.swift` | Android `NotificationCompat` |
+| Notifications | `OpenBurnBarCore/.../BudgetNotificationCenter.swift` | Android `NotificationCompat` |
 | Enforcement entry | `AgentLens/.../BudgetEnforcement.swift` | Singleton wired into app startup |
 | Context builder | `AgentLens/.../ContextBuilder.swift` (lines ~200, ~331) | Add budget section to Hermes system prompt |
 | MCP tools | `tools/openburnbar-mcp/server.py` | No port needed — reads SQLite directly |
