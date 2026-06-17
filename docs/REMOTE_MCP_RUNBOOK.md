@@ -10,6 +10,23 @@ npm --prefix services/hosted-mcp test
 
 ## Deploy
 
+Normal production deploys run through GitHub Actions:
+
+1. Create or choose a `v*` release tag.
+2. Run **Deploy Cloud Run Services** (`.github/workflows/deploy-cloud-run.yml`)
+   from that tag, or let the tag push trigger it.
+
+The workflow builds and tests `services/hosted-mcp`, performs a Docker build
+smoke from the repository-root context, authenticates to Google Cloud with
+OIDC workload identity federation, verifies the deploy service account has the
+required Cloud Run/Cloud Build/Secret Manager IAM, captures the currently
+serving revision, deploys `openburnbar-hosted-mcp`, reads the service back, and
+auto-rolls back with `scripts/ops/rollback-revision.sh` if deploy or readback
+fails. It also preserves the live `OPENBURNBAR_STORAGE_BUCKET` instead of
+hard-coding it.
+
+Use this local path only for operator break-glass deploys or manual rehearsal:
+
 ```bash
 export GOOGLE_CLOUD_PROJECT=burnbar
 firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET # legacy transition only
@@ -29,9 +46,10 @@ Hermes realtime relay (separate sidecar): [`scripts/deploy-hermes-relay.sh`](../
 
 The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, gates on
 `/healthz` (override with `MCP_HEALTH_PATH=/readyz` when checking branded DNS), and
-sets the resource audience to `https://mcp.burnbar.ai/mcp`. HMAC signing is a
-legacy transition path; Ed25519 signing is the production target so the resource
-server can verify with a public key and refuse shared-secret tokens by default.
+sets the resource audience to `https://mcp.burnbar.ai/mcp` and issuer to
+`https://mcp.burnbar.ai`. HMAC signing is a legacy transition path; Ed25519
+signing is the production target so the resource server can verify with a
+public key and refuse shared-secret tokens by default.
 
 ## Domain Mapping
 
@@ -305,11 +323,19 @@ Still required before launch:
 ## Rollback
 
 ```bash
-gcloud run revisions list --service openburnbar-hosted-mcp --region us-central1
-gcloud run services update-traffic openburnbar-hosted-mcp \
+scripts/ops/rollback-revision.sh openburnbar-hosted-mcp \
   --region us-central1 \
-  --to-revisions REVISION=100
+  --project burnbar
+
+scripts/ops/rollback-revision.sh openburnbar-hosted-mcp REVISION \
+  --region us-central1 \
+  --project burnbar \
+  --yes
 ```
+
+The deploy workflow captures the previous ready revision before shifting
+traffic and runs the explicit-revision command automatically if the deploy or
+post-deploy readback fails.
 
 If auth or privacy behavior is suspect, revoke the Cloud Run service account's
 Firestore/Storage permissions before debugging.
