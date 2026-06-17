@@ -307,7 +307,7 @@ jobs:
           echo "aab_path=$(pwd)/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
 
       - name: Upload Android release bundle artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: app-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
@@ -867,35 +867,35 @@ jobs:
           cat "$METADATA_FILE"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.dmg.outputs.dmg_name }}
           path: ${{ steps.dmg.outputs.dmg_path }}
           if-no-files-found: error
 
       - name: Upload ZIP artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.zip.outputs.zip_name }}
           path: ${{ steps.zip.outputs.zip_path }}
           if-no-files-found: error
 
       - name: Upload appcast artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: appcast-v${{ steps.version.outputs.version }}
           path: ${{ steps.update-feeds.outputs.appcast_path }}
           if-no-files-found: error
 
       - name: Upload latest macOS metadata artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: latest-macos-v${{ steps.version.outputs.version }}
           path: ${{ steps.update-feeds.outputs.latest_path }}
           if-no-files-found: error
 
       - name: Upload checksums artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: checksums-v${{ steps.version.outputs.version }}
           path: ${{ steps.checksums.outputs.checksums_path }}
@@ -903,21 +903,21 @@ jobs:
 
       - name: Upload checksum signature artifact
         if: steps.sign-checksums.outputs.sig_path != ''
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: checksums-v${{ steps.version.outputs.version }}-signature
           path: ${{ steps.sign-checksums.outputs.sig_path }}
           if-no-files-found: error
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: sbom-v${{ steps.version.outputs.version }}
           path: ${{ steps.sbom.outputs.sbom_path }}
           if-no-files-found: error
 
       - name: Upload corresponding source artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: OpenBurnBar-${{ steps.version.outputs.version }}-corresponding-source
           path: |
@@ -926,21 +926,21 @@ jobs:
           if-no-files-found: error
 
       - name: Upload VEX artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: vex-v${{ steps.version.outputs.version }}
           path: ${{ steps.vex.outputs.vex_path }}
           if-no-files-found: error
 
       - name: Upload NOTICES artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: notices-v${{ steps.version.outputs.version }}
           path: ${{ steps.notices.outputs.notices_path }}
           if-no-files-found: error
 
       - name: Upload release metadata artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: release-metadata-v${{ steps.version.outputs.version }}
           path: ${{ steps.metadata.outputs.metadata_path }}

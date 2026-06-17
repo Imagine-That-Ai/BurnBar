@@ -99,7 +99,7 @@ jobs:
 
       - name: Upload verification summary
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ops-plane-verify-${{ github.run_id }}
           path: |

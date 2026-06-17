@@ -234,7 +234,7 @@ jobs:
           ./scripts/diff-coverage-android.sh origin/main
 
       - name: Upload Android APK
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: android-apk-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
@@ -367,7 +367,7 @@ jobs:
 
       - name: Upload package coverage artifacts
         if: always() && github.event_name == 'pull_request' && !env.ACT
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: package-coverage-data
           path: |
@@ -534,7 +534,7 @@ jobs:
 
       - name: Upload coverage artifacts
         if: always() && !env.ACT
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: coverage-data
           path: |

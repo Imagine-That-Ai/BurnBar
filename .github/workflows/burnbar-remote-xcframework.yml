@@ -88,7 +88,7 @@ jobs:
           file Vendor/BurnBarRemote.xcframework/*/burnbar_remoteFFI.framework/burnbar_remoteFFI | head -5 || true
 
       - name: Upload xcframework artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: BurnBarRemote.xcframework
           path: Vendor/BurnBarRemote.xcframework
@@ -96,7 +96,7 @@ jobs:
           retention-days: 14
 
       - name: Upload generated Swift bindings
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: burnbar-remote-swift-bindings
           path: OpenBurnBarCore/Sources/BurnBarRemote/Generated
