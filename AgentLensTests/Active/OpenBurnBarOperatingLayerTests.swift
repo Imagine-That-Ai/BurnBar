@@ -279,7 +279,7 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
             )
         ])
 
-        try? store.upsertConversation(
+        try? await store.upsertConversation(
             ConversationRecord(
                 id: "Factory:apollo-1",
                 provider: .factory,
@@ -306,7 +306,7 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
             )
         )
 
-        try? store.upsertConversation(
+        try? await store.upsertConversation(
             ConversationRecord(
                 id: "Codex:apollo-2",
                 provider: .codex,

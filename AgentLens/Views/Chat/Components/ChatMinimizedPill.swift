@@ -29,6 +29,7 @@ struct ChatMinimizedPill: View {
                         .lineLimit(1).truncationMode(.tail).frame(maxWidth: 160)
                 }
                 Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 9, weight: .bold)).foregroundStyle(DesignSystem.Colors.textMuted)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, DesignSystem.Spacing.md).padding(.vertical, DesignSystem.Spacing.sm)
             .background {
@@ -52,6 +53,8 @@ struct ChatMinimizedPill: View {
             .shadow(color: Color.black.opacity(0.15), radius: 12, y: 6)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Expand chat")
+        .accessibilityHint(controller.isStreaming ? "Assistant is responding" : "")
         .highPriorityGesture(
             DragGesture(minimumDistance: 6)
                 .onChanged { g in

@@ -14,8 +14,14 @@ struct LocalMetricsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 200)
+                    VStack(spacing: DesignSystem.Spacing.sm) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading metrics…")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 200)
                 } else if let snapshot, !snapshot.isEmpty {
                     windowSection(snapshot)
                     Divider()

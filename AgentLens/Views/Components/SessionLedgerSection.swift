@@ -170,7 +170,7 @@ struct SessionLedgerSection<EmptyLedger: View>: View {
     private var ledgerSearchField: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
+                .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
             TextField("Search path, model, session…", text: $searchText)
@@ -183,7 +183,7 @@ struct SessionLedgerSection<EmptyLedger: View>: View {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
+                        .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
                 .buttonStyle(.plain)
@@ -201,25 +201,17 @@ struct SessionLedgerSection<EmptyLedger: View>: View {
     }
 
     private var ledgerEmptyFilter: some View {
-        VStack(spacing: DesignSystem.Spacing.sm) {
-            Text("No matches")
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-
+        ContentUnavailableView {
+            Label("No matches", systemImage: "magnifyingglass")
+        } description: {
             Text("Try another path fragment, model name, or session id.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-
+        } actions: {
             Button("Clear search") {
                 searchText = ""
             }
-            .font(DesignSystem.Typography.caption)
             .foregroundStyle(theme.primaryColor)
-            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignSystem.Spacing.xl)
     }
 
     private var ledgerGroupedList: some View {
@@ -320,6 +312,7 @@ private struct SessionLedgerEntryRow: View {
     }
 
     var body: some View {
+        Button(action: onTap) {
         GlassCard(interactive: true) {
             HStack(spacing: DesignSystem.Spacing.md) {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
@@ -379,6 +372,8 @@ private struct SessionLedgerEntryRow: View {
                         .stroke(cacheEfficient ? DesignSystem.Colors.success : Color.clear, lineWidth: 1.5)
                 )
             }
-        .onTapGesture(perform: onTap)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(usage.projectName), \(usage.model)")
     }
 }

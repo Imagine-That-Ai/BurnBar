@@ -109,8 +109,11 @@ struct ChatInputRow: View {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 26))
                             .foregroundStyle(chatBackend == .hermes ? AnyShapeStyle(DesignSystem.Colors.mercuryGradient) : AnyShapeStyle(DesignSystem.Colors.primaryGradient))
+                            .opacity(sendDisabled ? 0.4 : 1)
+                            .animation(DesignSystem.Animation.snappy, value: sendDisabled)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Send message")
                     .disabled(sendDisabled)
                 }
             }

@@ -7,7 +7,7 @@ final class InsightBriefStartupTests: XCTestCase {
 
     func test_fetchSessionLogSummaries_omitsTranscriptBodies() async throws {
         let store = try makeInMemoryStore()
-        try store.upsertConversation(
+        try await store.upsertConversation(
             makeConversation(
                 id: "Factory:brief-summary",
                 title: "Auth refactor",
@@ -24,10 +24,10 @@ final class InsightBriefStartupTests: XCTestCase {
         XCTAssertEqual(summaries[0].fullText, "")
     }
 
-    func test_build_usesConversationSummaryMetadataForBrief() throws {
+    func test_build_usesConversationSummaryMetadataForBrief() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try store.upsertConversation(
+        try await store.upsertConversation(
             makeConversation(
                 id: "Factory:latest",
                 sessionId: "session-latest",
@@ -53,7 +53,7 @@ final class InsightBriefStartupTests: XCTestCase {
             )
         ])
 
-        let snapshot = InsightBriefSnapshot.build(from: store, refreshRollups: false)
+        let snapshot = await InsightBriefSnapshot.buildAsync(from: store, refreshRollups: false)
 
         XCTAssertEqual(snapshot.whereLeftOff, "Ship the auth patch after QA.")
         XCTAssertEqual(snapshot.whereLeftOffProject, "OpenBurnBar")

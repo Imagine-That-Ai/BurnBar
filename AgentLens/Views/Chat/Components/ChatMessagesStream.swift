@@ -28,10 +28,12 @@ struct ChatMessagesStream: View {
                 centeredResults
             } else if !controller.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       controller.searchResults.isEmpty, !controller.isSearching {
-                Text("No matches")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ContentUnavailableView {
+                    Label("No matches", systemImage: "magnifyingglass")
+                } description: {
+                    Text("No indexed sessions matched your search. Try a different phrase or enable indexing in Settings.")
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 streamScroll
             }

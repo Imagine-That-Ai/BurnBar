@@ -767,7 +767,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                 endTime: now.addingTimeInterval(-1_200)
             )
         ])
-        try store.upsertConversation(
+        try await store.upsertConversation(
             ConversationRecord(
                 id: "conversation-apollo",
                 provider: .zai,

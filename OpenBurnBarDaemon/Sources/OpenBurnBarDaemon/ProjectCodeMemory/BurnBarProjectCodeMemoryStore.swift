@@ -1,5 +1,6 @@
 import CoreServices
 import CryptoKit
+import CoreServices
 import Darwin
 import Foundation
 import OpenBurnBarCore
@@ -56,6 +57,28 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let blobSHA: String
     }
 
+    private struct ProjectIdentity {
+        let projectID: String
+        let canonicalPath: String
+        let pathHash: String
+        let fingerprint: String
+    }
+
+    private struct CodeSearchEvaluation {
+        let hits: [BurnBarProjectCodeSearchHit]
+        let staleCandidateCount: Int
+        let totalCandidateCount: Int
+        let degradation: BurnBarProjectCodeDegradation?
+    }
+
+    private struct CodeContextSelection {
+        let text: String
+        let contentKind: String
+        let confidenceTier: String
+        let symbolName: String?
+        let contentHash: String?
+    }
+
     // AUDIT(@unchecked Sendable): DispatchSourceTimer callback owns mutable watcher state on its serial queue.
     // sendable-allowlist: foundation-sdk-shim
     private final class ProjectWatcher: @unchecked Sendable {
@@ -65,6 +88,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let maxFileBytes: Int
         let storageBudgetBytes: Int
         let timer: DispatchSourceTimer
+        let pollIntervalSeconds: TimeInterval
+        var fseventStream: FSEventStreamRef?
         var lastSignature: String
         /// Event-driven change source (sub-second responsiveness). The timer above is
         /// the reliability backstop for volumes/conditions where FSEvents can miss.
@@ -78,6 +103,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             maxFileBytes: Int,
             storageBudgetBytes: Int,
             timer: DispatchSourceTimer,
+            pollIntervalSeconds: TimeInterval,
             lastSignature: String
         ) {
             self.projectID = projectID
@@ -86,10 +112,20 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             self.maxFileBytes = maxFileBytes
             self.storageBudgetBytes = storageBudgetBytes
             self.timer = timer
+            self.pollIntervalSeconds = pollIntervalSeconds
             self.lastSignature = lastSignature
         }
 
+        func nudge() {
+            timer.schedule(deadline: .now() + 0.05, repeating: pollIntervalSeconds)
+        }
+
         deinit {
+            if let fseventStream {
+                FSEventStreamStop(fseventStream)
+                FSEventStreamInvalidate(fseventStream)
+                FSEventStreamRelease(fseventStream)
+            }
             timer.cancel()
             teardownEventStream()
         }
@@ -124,11 +160,11 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     private static let codeProvider = "local-code"
     static let ignoredDirectories: Set<String> = [
         ".git", ".build", ".swiftpm", ".deriveddata", "DerivedData", "node_modules",
-        "build", "dist", ".next", ".gradle", ".idea", ".codex", ".claude"
+        "build", "dist", ".next", ".gradle", ".idea", ".vscode", ".serena",
+        ".codex", ".claude", ".venv", "target", "Vendor"
     ]
     static let indexedExtensions: Set<String> = [
-        "swift", "kt", "kts", "java", "ts", "tsx", "js", "jsx", "py", "rs", "go",
-        "m", "mm", "h", "hpp", "c", "cc", "cpp", "json", "md", "yml", "yaml"
+        "swift", "ts", "tsx", "py"
     ]
     private static let defaultProjectStorageBudgetBytes = 512 * 1_024 * 1_024
     private static let maximumProjectStorageBudgetBytes = 10 * 1_024 * 1_024 * 1_024
@@ -190,7 +226,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard body.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyText }
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let labels = Self.secretLabels(in: body)
         if labels.isEmpty == false {
             let hash = try databaseSync {
@@ -259,7 +295,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyQuery }
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let limit = max(1, min(request.limit, 100))
         let scope = request.scope.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let tokens = Self.searchTokens(in: query)
@@ -328,7 +364,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func forget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let memoryID = request.memoryID.trimmingCharacters(in: .whitespacesAndNewlines)
         return try databaseSync {
             let rows = try queryRows(
@@ -382,7 +418,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func auditTrail(_ request: BurnBarProjectMemoryAuditTrailRequest) throws -> BurnBarProjectMemoryAuditTrailResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let limit = max(1, min(request.limit, 200))
         let events = try databaseSync {
             try queryRows(
@@ -415,7 +451,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func memoryAnalytics(_ request: BurnBarProjectMemoryAnalyticsRequest) throws -> BurnBarProjectMemoryAnalyticsResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         return try databaseSync {
             BurnBarProjectMemoryAnalyticsResponse(
                 traceID: traceID,
@@ -431,7 +467,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func indexProject(_ request: BurnBarProjectCodeIndexProjectRequest) throws -> BurnBarProjectCodeIndexProjectResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let maxFiles = max(1, min(request.maxFiles, 25_000))
         let maxFileBytes = max(1_024, min(request.maxFileBytes, 10_000_000))
         let storageBudgetBytes = Self.normalizedStorageBudgetBytes(request.storageBudgetBytes)
@@ -447,19 +483,19 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         return try databaseSync {
             try execute("BEGIN IMMEDIATE", [])
             do {
-                let docRows = try queryRows(
+                let existingRows = try queryRows(
                     """
-                    SELECT d.id FROM search_documents d
-                    JOIN code_artifacts a ON a.id = d.sourceID
-                    WHERE d.sourceKind = ? AND a.project_id = ?
+                    SELECT id, file_path
+                    FROM code_artifacts
+                    WHERE project_id = ?
                     """,
-                    [.text(Self.codeSourceKind), .text(projectID)]
+                    [.text(projectID)]
                 )
-                for docID in docRows.map({ $0.string(0) }) {
-                    try execute("DELETE FROM search_chunks_fts WHERE documentID = ?", [.text(docID)])
-                    try execute("DELETE FROM search_chunks WHERE documentID = ?", [.text(docID)])
-                    try execute("DELETE FROM search_documents WHERE id = ?", [.text(docID)])
+                var existingArtifactByPath: [String: String] = [:]
+                for row in existingRows {
+                    existingArtifactByPath[row.string(1)] = row.string(0)
                 }
+
                 try execute("DELETE FROM code_call_edges WHERE project_id = ?", [.text(projectID)])
                 try execute("DELETE FROM code_references WHERE project_id = ?", [.text(projectID)])
                 try execute("DELETE FROM code_symbols WHERE project_id = ?", [.text(projectID)])
@@ -479,14 +515,106 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 for ranked in rankedFiles {
                     let fileURL = ranked.url
                     guard let relativePath = Self.relativePath(fileURL, root: root) else { continue }
+                    let artifactID = "code_" + String(Self.sha256Hex("\(projectID):\(relativePath)").prefix(32))
                     let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
                     let fileSize = (attributes?[.size] as? NSNumber)?.intValue ?? 0
-                    guard fileSize <= maxFileBytes else { continue }
-                    guard let data = try? Data(contentsOf: fileURL), let text = String(data: data, encoding: .utf8) else { continue }
-                    let artifactID = "code_" + String(Self.sha256Hex("\(projectID):\(relativePath)").prefix(32))
-                    guard storageByteCount + data.count <= storageBudgetBytes else {
+                    let mtime = (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+                    guard fileSize <= maxFileBytes else {
+                        try upsertFileManifest(
+                            projectID: projectID,
+                            filePath: relativePath,
+                            artifactID: nil,
+                            blobSHA: nil,
+                            contentHash: nil,
+                            byteCount: fileSize,
+                            mtime: mtime,
+                            lang: Self.language(for: fileURL),
+                            ignoredReason: "max_file_bytes",
+                            secretLabels: [],
+                            parserTier: nil,
+                            now: now
+                        )
+                        continue
+                    }
+                    guard let data = try? Data(contentsOf: fileURL), let text = String(data: data, encoding: .utf8) else {
+                        try upsertFileManifest(
+                            projectID: projectID,
+                            filePath: relativePath,
+                            artifactID: nil,
+                            blobSHA: nil,
+                            contentHash: nil,
+                            byteCount: fileSize,
+                            mtime: mtime,
+                            lang: Self.language(for: fileURL),
+                            ignoredReason: "unreadable_or_non_utf8",
+                            secretLabels: [],
+                            parserTier: nil,
+                            now: now
+                        )
+                        continue
+                    }
+                    let blobSHA = Self.gitBlobSHA(data)
+                    let contentHash = Self.sha256Hex(data)
+                    let lang = Self.language(for: fileURL)
+                    let labels = Self.secretLabels(in: text)
+                    if labels.isEmpty == false {
+                        rejectedFiles.append(BurnBarProjectCodeRejectedFile(filePath: relativePath, labels: labels))
+                        try upsertFileManifest(
+                            projectID: projectID,
+                            filePath: relativePath,
+                            artifactID: nil,
+                            blobSHA: blobSHA,
+                            contentHash: contentHash,
+                            byteCount: data.count,
+                            mtime: mtime,
+                            lang: lang,
+                            ignoredReason: "secret_rejected",
+                            secretLabels: labels,
+                            parserTier: nil,
+                            now: now
+                        )
+                        _ = try auditEvent(action: "code.secret_rejected", domain: "code", projectID: projectID, subjectID: artifactID, labels: labels)
+                        continue
+                    }
+                    let symbols = Self.extractSymbols(
+                        text: text,
+                        lang: lang,
+                        relativePath: relativePath,
+                        rootPath: root.path,
+                        projectID: projectID,
+                        artifactID: artifactID,
+                        blobSHA: blobSHA
+                    )
+                    let chunks: [CodeChunk]
+                    if let lang, ["swift", "typescript", "tsx", "python"].contains(lang) {
+                        chunks = Self.astAwareChunks(text: text, symbols: symbols)
+                    } else {
+                        chunks = Self.chunk(text: text)
+                    }
+                    let candidateStorageByteCount = Self.estimatedCodeStorageByteCount(
+                        sourceBytes: data.count,
+                        chunks: chunks,
+                        filePath: relativePath,
+                        projectID: projectID,
+                        provider: Self.codeProvider
+                    )
+                    guard storageByteCount + candidateStorageByteCount <= storageBudgetBytes else {
                         rejectedFiles.append(
                             BurnBarProjectCodeRejectedFile(filePath: relativePath, labels: ["Storage budget cap reached"])
+                        )
+                        try upsertFileManifest(
+                            projectID: projectID,
+                            filePath: relativePath,
+                            artifactID: nil,
+                            blobSHA: nil,
+                            contentHash: nil,
+                            byteCount: data.count,
+                            mtime: mtime,
+                            lang: lang,
+                            ignoredReason: "storage_budget",
+                            secretLabels: ["Storage budget cap reached"],
+                            parserTier: nil,
+                            now: now
                         )
                         _ = try auditEvent(
                             action: "code.storage_rejected",
@@ -497,30 +625,71 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         )
                         continue
                     }
-                    let blobSHA = Self.gitBlobSHA(data)
-                    let labels = Self.secretLabels(in: text)
-                    if labels.isEmpty == false {
-                        rejectedFiles.append(BurnBarProjectCodeRejectedFile(filePath: relativePath, labels: labels))
-                        _ = try auditEvent(action: "code.secret_rejected", domain: "code", projectID: projectID, subjectID: artifactID, labels: labels)
+                    let existingArtifact = try queryRows(
+                        """
+                        SELECT blob_sha, content_hash, byte_count
+                        FROM code_artifacts
+                        WHERE id = ?
+                        LIMIT 1
+                        """,
+                        [.text(artifactID)]
+                    ).first
+                    if existingArtifact?.string(0) == blobSHA,
+                       (existingArtifact?.optionalString(1) ?? contentHash) == contentHash {
+                        artifactsForReferences.append(IndexedArtifact(id: artifactID, filePath: relativePath, blobSHA: blobSHA))
+                        seenArtifactIDs.insert(artifactID)
+                        indexedFiles += 1
+                        storageByteCount += candidateStorageByteCount
+                        chunkCount += try fetchInt("SELECT COUNT(*) FROM search_chunks WHERE sourceID = ?", [.text(artifactID)])
+                        symbolCount += try fetchInt("SELECT COUNT(*) FROM code_symbols WHERE artifact_id = ?", [.text(artifactID)])
+                        try upsertFileManifest(
+                            projectID: projectID,
+                            filePath: relativePath,
+                            artifactID: artifactID,
+                            blobSHA: blobSHA,
+                            contentHash: contentHash,
+                            byteCount: data.count,
+                            mtime: mtime,
+                            lang: lang,
+                            ignoredReason: nil,
+                            secretLabels: [],
+                            parserTier: nil,
+                            now: now
+                        )
                         continue
                     }
-                    let lang = Self.language(for: fileURL)
-                    let mtime = (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+
+                    try deleteCodeArtifact(artifactID: artifactID)
                     try execute(
                         """
                         INSERT INTO code_artifacts
-                            (id, project_id, file_path, blob_sha, commit_sha, lang, byte_count, mtime, indexed_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (id, project_id, file_path, blob_sha, content_hash, commit_sha, lang, byte_count, mtime, indexed_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         [
-                            .text(artifactID), .text(projectID), .text(relativePath), .text(blobSHA),
+                            .text(artifactID), .text(projectID), .text(relativePath), .text(blobSHA), .text(contentHash),
                             commitSHA.map(SQLiteBind.text) ?? .null, lang.map(SQLiteBind.text) ?? .null,
                             .int(data.count), .double(mtime), .text(now)
                         ]
                     )
+                    try upsertFileManifest(
+                        projectID: projectID,
+                        filePath: relativePath,
+                        artifactID: artifactID,
+                        blobSHA: blobSHA,
+                        contentHash: contentHash,
+                        byteCount: data.count,
+                        mtime: mtime,
+                        lang: lang,
+                        ignoredReason: nil,
+                        secretLabels: [],
+                        parserTier: nil,
+                        now: now
+                    )
                     artifactsForReferences.append(IndexedArtifact(id: artifactID, filePath: relativePath, blobSHA: blobSHA))
+                    seenArtifactIDs.insert(artifactID)
                     indexedFiles += 1
-                    storageByteCount += data.count
+                    storageByteCount += candidateStorageByteCount
 
                     let documentID = "doc_" + String(Self.sha256Hex("\(projectID):\(relativePath):\(blobSHA)").prefix(32))
                     try insertSearchDocument(
@@ -533,7 +702,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         contentHash: blobSHA,
                         now: now
                     )
-                    let chunks = Self.chunk(text: text, maxCharacters: 4_000)
                     for (ordinal, chunk) in chunks.enumerated() {
                         let chunkID = "chunk_" + String(Self.sha256Hex("\(documentID):\(ordinal):\(chunk.contentHash)").prefix(32))
                         try insertSearchChunk(
@@ -551,12 +719,37 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         )
                         chunkCount += 1
                     }
-                    for symbol in Self.extractSymbols(text: text, lang: lang, relativePath: relativePath, rootPath: root.path, projectID: projectID, artifactID: artifactID, blobSHA: blobSHA) {
+                    for symbol in symbols {
                         try insertSymbol(symbol, indexedAt: now)
                         symbolCount += 1
                     }
+                    try produceCodeDiagnostics(
+                        projectID: projectID,
+                        filePath: relativePath,
+                        lang: lang,
+                        text: text,
+                        blobSHA: blobSHA,
+                        now: now
+                    )
                 }
+                for artifactID in existingArtifactByPath.values where seenArtifactIDs.contains(artifactID) == false {
+                    try deleteCodeArtifact(artifactID: artifactID)
+                }
+                try execute(
+                    """
+                    DELETE FROM pcm_file_manifest
+                    WHERE project_id = ?
+                      AND artifact_id IS NOT NULL
+                      AND artifact_id NOT IN (SELECT id FROM code_artifacts WHERE project_id = ?)
+                    """,
+                    [.text(projectID), .text(projectID)]
+                )
                 try buildReferences(projectID: projectID, root: root, artifacts: artifactsForReferences, indexedAt: now)
+                let previousVacuumedAt = try queryRows(
+                    "SELECT vacuumed_at FROM code_index_checkpoints WHERE project_id = ? LIMIT 1",
+                    [.text(projectID)]
+                ).first?.optionalString(0)
+                let compactionDecision = try sqliteCompactionDecision()
                 try execute(
                     """
                     INSERT INTO code_index_checkpoints
@@ -576,7 +769,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     [
                         .text(projectID), .text(root.path), commitSHA.map(SQLiteBind.text) ?? .null,
                         .text(now), .int(indexedFiles), .int(chunkCount), .int(rejectedFiles.count),
-                        .int(storageByteCount), .int(storageBudgetBytes), .text(now)
+                        .int(storageByteCount), .int(storageBudgetBytes), previousVacuumedAt.map(SQLiteBind.text) ?? .null
                     ]
                 )
                 let auditHash = try auditEvent(
@@ -587,7 +780,26 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     labels: ["indexed:\(indexedFiles)", "rejected:\(rejectedFiles.count)"]
                 )
                 try execute("COMMIT", [])
-                try? runIncrementalVacuum()
+                if compactionDecision.shouldCompact {
+                    do {
+                        try runIncrementalVacuum(maxPages: compactionDecision.freelistCount)
+                        try execute(
+                            "UPDATE code_index_checkpoints SET vacuumed_at = ? WHERE project_id = ?",
+                            [.text(now), .text(projectID)]
+                        )
+                    } catch {
+                        logger.warning(
+                            "project_code_memory_compaction_failed",
+                            metadata: [
+                                "project_id": projectID,
+                                "freelist_pages": String(compactionDecision.freelistCount),
+                                "page_count": String(compactionDecision.pageCount),
+                                "reclaimable_bytes": String(compactionDecision.reclaimableBytes),
+                                "error": error.localizedDescription
+                            ]
+                        )
+                    }
+                }
                 return BurnBarProjectCodeIndexProjectResponse(
                     traceID: traceID,
                     projectID: projectID,
@@ -609,7 +821,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func watchProject(_ request: BurnBarProjectCodeWatchProjectRequest) throws -> BurnBarProjectCodeWatchProjectResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let maxFiles = max(1, min(request.maxFiles, 25_000))
         let maxFileBytes = max(1_024, min(request.maxFileBytes, 10_000_000))
         let storageBudgetBytes = Self.normalizedStorageBudgetBytes(request.storageBudgetBytes)
@@ -634,6 +846,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             maxFileBytes: maxFileBytes,
             storageBudgetBytes: storageBudgetBytes,
             timer: timer,
+            pollIntervalSeconds: interval,
             lastSignature: signature
         )
         // Backstop poll: reliably catches anything FSEvents coalesces or misses.
@@ -744,24 +957,61 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func searchCode(_ request: BurnBarProjectCodeSearchRequest) throws -> BurnBarProjectCodeSearchResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
-        let hits = try codeSearchHits(query: request.query, root: root, projectID: projectID, limit: request.limit)
-        return BurnBarProjectCodeSearchResponse(traceID: traceID, projectID: projectID, hits: hits)
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let evaluated = try codeSearchHits(query: request.query, root: root, projectID: projectID, limit: request.limit)
+        if evaluated.degradation != nil {
+            logger.warning(
+                "project_code_memory_stale_degraded",
+                metadata: [
+                    "project_id": projectID,
+                    "stale_candidates": String(evaluated.staleCandidateCount),
+                    "total_candidates": String(evaluated.totalCandidateCount)
+                ]
+            )
+        }
+        return BurnBarProjectCodeSearchResponse(
+            traceID: traceID,
+            projectID: projectID,
+            hits: evaluated.hits,
+            status: evaluated.degradation == nil ? "ok" : "degraded",
+            semanticAvailable: false,
+            degradation: evaluated.degradation,
+            trustSignal: BurnBarProjectCodeTrustSignal(
+                untrustedContentWrapped: true,
+                sourceTool: "daemon.code.search",
+                wrappedCount: evaluated.hits.count
+            )
+        )
     }
 
     func contextPack(_ request: BurnBarProjectCodeContextPackRequest) throws -> BurnBarProjectCodeContextPackResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
-        let hits = try codeSearchHits(query: request.query, root: root, projectID: projectID, limit: request.limit)
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let evaluated = try codeSearchHits(query: request.query, root: root, projectID: projectID, limit: request.limit)
+        let hits = evaluated.hits
         let maxBytes = max(1_000, min(request.maxBytes, 250_000))
         var output = ""
         var truncated = false
         try databaseSync {
             for hit in hits {
-                let rows = try queryRows("SELECT text FROM search_chunks WHERE id = ? LIMIT 1", [.text(hit.chunkID)])
-                guard let text = rows.first?.string(0) else { continue }
-                let block = "## \(hit.filePath)\n\(text)\n\n"
+                let selection = try contextSelection(for: hit, root: root, projectID: projectID)
+                let wrapped = Self.wrapUntrustedCode(
+                    selection.text,
+                    sourceTool: "daemon.code.context_pack",
+                    projectID: projectID,
+                    filePath: hit.filePath,
+                    chunkID: hit.chunkID,
+                    blobSHA: hit.blobSHA,
+                    contentHash: selection.contentHash ?? hit.contentHash
+                )
+                let symbolSuffix = selection.symbolName.map { " symbol=\"\($0)\"" } ?? ""
+                let block = """
+                <file path="\(hit.filePath)" tier="\(selection.confidenceTier)" contentKind="\(selection.contentKind)"\(symbolSuffix)>
+                \(wrapped)
+                </file>
+
+                """
                 if output.utf8.count + block.utf8.count > maxBytes {
                     truncated = true
                     break
@@ -774,16 +1024,24 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             projectID: projectID,
             context: output,
             hits: hits,
-            truncated: truncated
+            truncated: truncated,
+            status: evaluated.degradation == nil ? "ok" : "degraded",
+            semanticAvailable: false,
+            degradation: evaluated.degradation,
+            trustSignal: BurnBarProjectCodeTrustSignal(
+                untrustedContentWrapped: true,
+                sourceTool: "daemon.code.context_pack",
+                wrappedCount: hits.count
+            )
         )
     }
 
     func getSymbol(_ request: BurnBarProjectCodeSymbolRequest) throws -> BurnBarProjectCodeSymbolResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
-        let symbols = try databaseSync {
-            try querySymbols(
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let (symbols, degradation) = try databaseSync {
+            let rows = try querySymbols(
                 """
                 SELECT s.id, s.artifact_id, a.file_path, s.name, s.kind, s.range_json, s.confidence_tier,
                        s.blob_sha, s.tier_evidence_json
@@ -794,16 +1052,33 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 LIMIT ?
                 """,
                 [.text(projectID), .text(request.name), .text("%\(request.name)%"), .text(request.name), .int(max(1, min(request.limit, 100)))]
-            ).filter { Self.isCurrentBlob(root: root, filePath: $0.filePath, blobSHA: $0.blobSHA) }
-             .map(Self.publicSymbol)
+            )
+            var staleCount = 0
+            let current = rows.compactMap { row -> BurnBarProjectCodeSymbol? in
+                guard Self.isCurrentBlob(root: root, filePath: row.filePath, blobSHA: row.blobSHA) else {
+                    staleCount += 1
+                    return nil
+                }
+                return Self.publicSymbol(row)
+            }
+            return (
+                current,
+                try staleDegradation(projectID: projectID, staleCandidateCount: staleCount, totalCandidateCount: rows.count)
+            )
         }
-        return BurnBarProjectCodeSymbolResponse(traceID: traceID, projectID: projectID, symbols: symbols)
+        return BurnBarProjectCodeSymbolResponse(
+            traceID: traceID,
+            projectID: projectID,
+            symbols: symbols,
+            status: degradation == nil ? "ok" : "degraded",
+            degradation: degradation
+        )
     }
 
     func findReferences(_ request: BurnBarProjectCodeSymbolRequest) throws -> BurnBarProjectCodeReferencesResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let exactReferences = try self.exactLSPReferences(
             symbolName: request.name,
             root: root,
@@ -813,8 +1088,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         if exactReferences.isEmpty == false {
             return BurnBarProjectCodeReferencesResponse(traceID: traceID, projectID: projectID, references: exactReferences)
         }
-        let references: [BurnBarProjectCodeReference] = try databaseSync {
-            try queryRows(
+        let (references, degradation): ([BurnBarProjectCodeReference], BurnBarProjectCodeDegradation?) = try databaseSync {
+            let rows = try queryRows(
                 """
                 SELECT r.id, a.file_path, target.id, target.artifact_id, target_art.file_path,
                        target.name, target.kind, target.range_json, target.confidence_tier,
@@ -829,9 +1104,12 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 LIMIT ?
                 """,
                 [.text(projectID), .text(request.name), .int(max(1, min(request.limit, 200)))]
-            ).compactMap { row in
+            )
+            var staleCount = 0
+            let current = rows.compactMap { row -> BurnBarProjectCodeReference? in
                 guard Self.isCurrentBlob(root: root, filePath: row.string(1), blobSHA: row.string(11)),
                       Self.isCurrentBlob(root: root, filePath: row.string(4), blobSHA: row.string(12)) else {
+                    staleCount += 1
                     return nil
                 }
                 return BurnBarProjectCodeReference(
@@ -850,16 +1128,33 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     confidenceTier: row.string(10)
                 )
             }
+            return (
+                current,
+                try staleDegradation(projectID: projectID, staleCandidateCount: staleCount, totalCandidateCount: rows.count)
+            )
         }
-        return BurnBarProjectCodeReferencesResponse(traceID: traceID, projectID: projectID, references: references)
+        return BurnBarProjectCodeReferencesResponse(
+            traceID: traceID,
+            projectID: projectID,
+            references: references,
+            status: degradation == nil ? "ok" : "degraded",
+            degradation: degradation
+        )
     }
 
     func callGraph(_ request: BurnBarProjectCodeSymbolRequest) throws -> BurnBarProjectCodeCallGraphResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
-        let edges: [BurnBarProjectCodeCallEdge] = try databaseSync {
-            try queryRows(
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let (edges, degradation): ([BurnBarProjectCodeCallEdge], BurnBarProjectCodeDegradation?) = try databaseSync {
+            struct CandidateEdge {
+                let edge: BurnBarProjectCodeCallEdge
+                let callerName: String
+                let calleeName: String
+                let stale: Bool
+            }
+
+            let rows = try queryRows(
                 """
                 SELECT e.id,
                        caller.id, caller.name, caller.kind, caller_art.file_path, caller.range_json, caller.confidence_tier, caller.blob_sha, caller.tier_evidence_json,
@@ -870,47 +1165,98 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 JOIN code_symbols callee ON callee.id = e.callee_symbol_id
                 JOIN code_artifacts caller_art ON caller_art.id = caller.artifact_id
                 JOIN code_artifacts callee_art ON callee_art.id = callee.artifact_id
-                WHERE e.project_id = ? AND (caller.name = ? OR callee.name = ?)
-                ORDER BY caller_art.file_path ASC
+                WHERE e.project_id = ?
+                ORDER BY caller.name ASC, callee.name ASC, caller_art.file_path ASC
                 LIMIT ?
                 """,
-                [.text(projectID), .text(request.name), .text(request.name), .int(max(1, min(request.limit, 200)))]
-            ).compactMap { row in
-                guard Self.isCurrentBlob(root: root, filePath: row.string(4), blobSHA: row.string(7)),
-                      Self.isCurrentBlob(root: root, filePath: row.string(12), blobSHA: row.string(15)) else {
-                    return nil
-                }
-                return BurnBarProjectCodeCallEdge(
-                    edgeID: row.string(0),
-                    caller: BurnBarProjectCodeSymbol(
-                        symbolID: row.string(1),
-                        name: row.string(2),
-                        kind: row.string(3),
-                        filePath: row.string(4),
-                        range: Self.decodeRange(row.string(5)),
-                        confidenceTier: row.string(6),
-                        tierEvidence: Self.decodeTierEvidence(row.optionalString(8))
+                [.text(projectID), .int(1_000)]
+            )
+            var staleCount = 0
+            var totalCandidateCount = 0
+            let candidates = rows.map { row -> CandidateEdge in
+                let isCurrent = Self.isCurrentBlob(root: root, filePath: row.string(4), blobSHA: row.string(7))
+                    && Self.isCurrentBlob(root: root, filePath: row.string(12), blobSHA: row.string(15))
+                return CandidateEdge(
+                    edge: BurnBarProjectCodeCallEdge(
+                        edgeID: row.string(0),
+                        caller: BurnBarProjectCodeSymbol(
+                            symbolID: row.string(1),
+                            name: row.string(2),
+                            kind: row.string(3),
+                            filePath: row.string(4),
+                            range: Self.decodeRange(row.string(5)),
+                            confidenceTier: row.string(6),
+                            tierEvidence: Self.decodeTierEvidence(row.optionalString(8))
+                        ),
+                        callee: BurnBarProjectCodeSymbol(
+                            symbolID: row.string(9),
+                            name: row.string(10),
+                            kind: row.string(11),
+                            filePath: row.string(12),
+                            range: Self.decodeRange(row.string(13)),
+                            confidenceTier: row.string(14),
+                            tierEvidence: Self.decodeTierEvidence(row.optionalString(16))
+                        ),
+                        confidenceTier: row.string(17)
                     ),
-                    callee: BurnBarProjectCodeSymbol(
-                        symbolID: row.string(9),
-                        name: row.string(10),
-                        kind: row.string(11),
-                        filePath: row.string(12),
-                        range: Self.decodeRange(row.string(13)),
-                        confidenceTier: row.string(14),
-                        tierEvidence: Self.decodeTierEvidence(row.optionalString(16))
-                    ),
-                    confidenceTier: row.string(17)
+                    callerName: row.string(2),
+                    calleeName: row.string(10),
+                    stale: isCurrent == false
                 )
             }
+            let byCaller = Dictionary(grouping: candidates, by: \.callerName)
+            let effectiveDepth = max(1, min(request.depth, 3))
+            let edgeLimit = max(1, min(request.limit, 200))
+            var selected: [BurnBarProjectCodeCallEdge] = []
+            var seenEdgeIDs = Set<String>()
+            var visitedSymbols = Set([request.name])
+
+            func addCandidates(_ edges: [CandidateEdge]) -> [String] {
+                var discovered: [String] = []
+                for candidate in edges {
+                    totalCandidateCount += 1
+                    if candidate.stale {
+                        staleCount += 1
+                        continue
+                    }
+                    guard seenEdgeIDs.insert(candidate.edge.edgeID).inserted else { continue }
+                    selected.append(candidate.edge)
+                    for symbolName in [candidate.callerName, candidate.calleeName] where visitedSymbols.insert(symbolName).inserted {
+                        discovered.append(symbolName)
+                    }
+                    if selected.count >= edgeLimit {
+                        break
+                    }
+                }
+                return discovered
+            }
+
+            var frontier = addCandidates(candidates.filter { $0.callerName == request.name || $0.calleeName == request.name })
+            if effectiveDepth > 1 {
+                for _ in 2...effectiveDepth {
+                    guard selected.count < edgeLimit, frontier.isEmpty == false else { break }
+                    let hopCandidates = frontier.flatMap { byCaller[$0] ?? [] }
+                    frontier = addCandidates(hopCandidates)
+                }
+            }
+            return (
+                Array(selected.prefix(edgeLimit)),
+                try staleDegradation(projectID: projectID, staleCandidateCount: staleCount, totalCandidateCount: totalCandidateCount)
+            )
         }
-        return BurnBarProjectCodeCallGraphResponse(traceID: traceID, projectID: projectID, edges: edges)
+        return BurnBarProjectCodeCallGraphResponse(
+            traceID: traceID,
+            projectID: projectID,
+            edges: edges,
+            status: degradation == nil ? "ok" : "degraded",
+            degradation: degradation
+        )
     }
 
     func diagnostics(_ request: BurnBarProjectCodeDiagnosticsRequest) throws -> BurnBarProjectCodeDiagnosticsResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let diagnostics = try databaseSync {
             var sql = "SELECT file_path, tool, payload_json, cached_at FROM code_diagnostics_cache WHERE project_id = ?"
             var binds: [SQLiteBind] = [.text(projectID)]
@@ -934,7 +1280,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func indexStatus(_ request: BurnBarProjectCodeIndexStatusRequest) throws -> BurnBarProjectCodeIndexStatusResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         return try databaseSync {
             let checkpoint = try queryRows(
                 """
@@ -946,12 +1292,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 """,
                 [.text(projectID)]
             ).first
-            let storageByteCount: Int
-            if let checkpoint {
-                storageByteCount = Int(checkpoint.int64(6))
-            } else {
-                storageByteCount = try projectStorageByteCount(projectID: projectID)
-            }
+            let storageByteCount = try projectStorageByteCount(projectID: projectID)
             let storedBudgetBytes = checkpoint.map { Int($0.int64(7)) } ?? 0
             let storageBudgetBytes = storedBudgetBytes > 0 ? storedBudgetBytes : Self.defaultProjectStorageBudgetBytes
             return BurnBarProjectCodeIndexStatusResponse(
@@ -970,7 +1311,13 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 storageByteCount: storageByteCount,
                 storageBudgetBytes: storageBudgetBytes,
                 storageWithinBudget: storageByteCount <= storageBudgetBytes,
-                lastVacuumedAt: checkpoint?.optionalString(8)
+                lastVacuumedAt: checkpoint?.optionalString(8),
+                productionReady: false,
+                productionReadinessReasons: projectCodeMemoryProductionReadinessReasons(),
+                parserAvailable: Self.staticParserExecutablePath() != nil,
+                databaseEncrypted: BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: databasePath),
+                hostedCodeToolsEnabled: false,
+                semanticAvailable: false
             )
         }
     }
@@ -1020,7 +1367,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func explore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)
-        let projectID = Self.projectID(for: root)
+        let projectID = try resolveProjectIdentity(root: root).projectID
         let hasCheckpoint = try databaseSync {
             try fetchInt("SELECT COUNT(*) FROM code_index_checkpoints WHERE project_id = ?", [.text(projectID)]) > 0
         }
@@ -1043,6 +1390,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 BurnBarProjectCodeExploreFile(filePath: $0.string(0), lang: $0.optionalString(1), symbolCount: Int($0.int64(2)))
             }
         }
+        let repoMap = try databaseSync {
+            try projectRepoMap(projectID: projectID, topFiles: files)
+        }
         if let query = request.query?.trimmingCharacters(in: .whitespacesAndNewlines), query.isEmpty == false {
             let pack = try contextPack(
                 BurnBarProjectCodeContextPackRequest(
@@ -1056,12 +1406,13 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 traceID: traceID,
                 projectID: projectID,
                 files: files,
+                repoMap: repoMap,
                 context: pack.context,
                 hits: pack.hits,
                 truncated: pack.truncated
             )
         }
-        return BurnBarProjectCodeExploreResponse(traceID: traceID, projectID: projectID, files: files)
+        return BurnBarProjectCodeExploreResponse(traceID: traceID, projectID: projectID, files: files, repoMap: repoMap)
     }
 
     private enum SQLiteBind {
@@ -1077,6 +1428,17 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let startOffset: Int
         let endOffset: Int
         let contentHash: String
+    }
+
+    struct SQLiteCompactionDecision {
+        let shouldCompact: Bool
+        let pageCount: Int
+        let freelistCount: Int
+        let pageSize: Int
+
+        var reclaimableBytes: Int {
+            freelistCount * pageSize
+        }
     }
 
     struct ExtractedSymbol {
@@ -1172,6 +1534,11 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     }
 
     private func bootstrapSchema() throws {
+        // Compatibility bridge only. The canonical app schema owner is the GRDB
+        // migrator (`v50_project_code_memory_schema` and successors). Keep this
+        // bootstrap for daemon-only fixtures and self-healing older installs, but
+        // land new Project Code Memory tables/columns in the canonical migrator
+        // before mirroring them here.
         try execute("PRAGMA journal_mode = WAL", [])
         try execute("PRAGMA foreign_keys = ON", [])
         try execute("PRAGMA auto_vacuum = INCREMENTAL", [])
@@ -1234,6 +1601,19 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         )
         try execute(
             """
+            CREATE TABLE IF NOT EXISTS chunk_embeddings (
+                chunkID TEXT NOT NULL,
+                embeddingVersionID TEXT NOT NULL,
+                vectorBlob BLOB NOT NULL,
+                createdAt TEXT NOT NULL,
+                updatedAt TEXT NOT NULL,
+                PRIMARY KEY (chunkID, embeddingVersionID)
+            )
+            """,
+            []
+        )
+        try execute(
+            """
             CREATE TABLE IF NOT EXISTS agent_memories (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
@@ -1279,11 +1659,43 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         try execute("CREATE INDEX IF NOT EXISTS memory_audit_project_idx ON memory_audit(project_id, seq)", [])
         try execute(
             """
+            CREATE TABLE IF NOT EXISTS pcm_projects (
+                project_id TEXT PRIMARY KEY,
+                identity_version INTEGER NOT NULL,
+                identity_fingerprint TEXT NOT NULL,
+                project_name TEXT NOT NULL,
+                primary_path TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            []
+        )
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS pcm_projects_fingerprint_idx ON pcm_projects(identity_fingerprint)", [])
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS pcm_project_aliases (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                alias_path TEXT NOT NULL,
+                path_hash TEXT NOT NULL,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES pcm_projects(project_id) ON DELETE CASCADE
+            )
+            """,
+            []
+        )
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS pcm_project_aliases_path_hash_idx ON pcm_project_aliases(path_hash)", [])
+        try execute("CREATE INDEX IF NOT EXISTS pcm_project_aliases_project_idx ON pcm_project_aliases(project_id)", [])
+        try execute(
+            """
             CREATE TABLE IF NOT EXISTS code_artifacts (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 blob_sha TEXT NOT NULL,
+                content_hash TEXT,
                 commit_sha TEXT,
                 lang TEXT,
                 byte_count INTEGER NOT NULL,
@@ -1293,7 +1705,30 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             """,
             []
         )
+        try ensureColumn(table: "code_artifacts", column: "content_hash", definition: "TEXT")
         try execute("CREATE UNIQUE INDEX IF NOT EXISTS code_artifacts_project_path_idx ON code_artifacts(project_id, file_path)", [])
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS pcm_file_manifest (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                artifact_id TEXT,
+                blob_sha TEXT,
+                content_hash TEXT,
+                byte_count INTEGER NOT NULL DEFAULT 0,
+                mtime REAL NOT NULL DEFAULT 0,
+                lang TEXT,
+                ignored_reason TEXT,
+                secret_labels_json TEXT NOT NULL DEFAULT '[]',
+                parser_tier TEXT,
+                indexed_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL
+            )
+            """,
+            []
+        )
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS pcm_file_manifest_project_path_idx ON pcm_file_manifest(project_id, file_path)", [])
         try execute(
             """
             CREATE TABLE IF NOT EXISTS code_symbols (
@@ -1650,6 +2085,99 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
 
+    private func resolveProjectIdentity(root: URL) throws -> ProjectIdentity {
+        let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
+        let canonicalPath = canonicalRoot.path
+        let pathHash = Self.sha256Hex(canonicalPath)
+        let legacyProjectID = Self.legacyProjectID(for: canonicalRoot)
+        let fingerprint = Self.projectIdentityFingerprint(root: canonicalRoot)
+        let preferredProjectID = Self.projectID(forFingerprint: fingerprint, fallbackProjectID: legacyProjectID)
+        let now = Self.isoNow()
+
+        return try databaseSync {
+            let existingForFingerprint = try queryRows(
+                "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
+                [.text(fingerprint)]
+            ).first?.string(0)
+            let existingForAlias = try queryRows(
+                "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
+                [.text(pathHash)]
+            ).first?.string(0)
+            let projectID: String
+            if let existingForFingerprint {
+                projectID = existingForFingerprint
+            } else if let existingForAlias {
+                projectID = existingForAlias
+            } else if try hasProjectRows(projectID: legacyProjectID) {
+                projectID = legacyProjectID
+            } else {
+                projectID = preferredProjectID
+            }
+
+            try execute(
+                """
+                INSERT OR IGNORE INTO pcm_projects
+                    (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [.text(projectID), .int(2), .text(fingerprint), .text(canonicalRoot.lastPathComponent), .text(canonicalPath), .text(now), .text(now)]
+            )
+            try execute(
+                """
+                UPDATE pcm_projects
+                SET identity_version = 2,
+                    identity_fingerprint = ?,
+                    project_name = ?,
+                    primary_path = ?,
+                    updated_at = ?
+                WHERE project_id = ?
+                """,
+                [.text(fingerprint), .text(canonicalRoot.lastPathComponent), .text(canonicalPath), .text(now), .text(projectID)]
+            )
+            let aliasID = "alias_" + String(Self.sha256Hex(pathHash).prefix(32))
+            try execute(
+                """
+                INSERT INTO pcm_project_aliases
+                    (id, project_id, alias_path, path_hash, first_seen_at, last_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path_hash) DO UPDATE SET
+                    project_id = excluded.project_id,
+                    alias_path = excluded.alias_path,
+                    last_seen_at = excluded.last_seen_at
+                """,
+                [.text(aliasID), .text(projectID), .text(canonicalPath), .text(pathHash), .text(now), .text(now)]
+            )
+            try execute(
+                "UPDATE code_index_checkpoints SET project_root = ? WHERE project_id = ?",
+                [.text(canonicalPath), .text(projectID)]
+            )
+            return ProjectIdentity(
+                projectID: projectID,
+                canonicalPath: canonicalPath,
+                pathHash: pathHash,
+                fingerprint: fingerprint
+            )
+        }
+    }
+
+    private func hasProjectRows(projectID: String) throws -> Bool {
+        let tables = [
+            "agent_memories",
+            "code_artifacts",
+            "code_index_checkpoints",
+            "code_symbols",
+            "code_references",
+            "code_call_edges",
+            "code_diagnostics_cache",
+            "memory_audit"
+        ]
+        for table in tables {
+            let count = try fetchInt("SELECT COUNT(*) FROM \(table) WHERE project_id = ?", [.text(projectID)])
+            if count > 0 { return true }
+        }
+        return false
+    }
+
     private func projectRoot(_ projectPath: String?) throws -> URL {
         let rawPath = projectPath?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
             ?? FileManager.default.currentDirectoryPath
@@ -1670,19 +2198,22 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     ) throws -> String {
         let previous = try queryRows("SELECT seq, hash FROM memory_audit ORDER BY seq DESC LIMIT 1", []).first
         let prevHash = previous?.optionalString(1)
+        let nextSequence = previous.map { Int($0.int64(0)) + 1 } ?? 1
         let ts = Self.isoNow()
-        let labelsJSON = try encodeJSONString(labels)
-        let payload = [
-            previous.map { String($0.int64(0) + 1) } ?? "1",
-            ts,
-            "daemon",
-            action,
-            domain,
-            projectID ?? "",
-            subjectID ?? "",
-            labelsJSON,
-            prevHash ?? ""
-        ].joined(separator: "|")
+        let normalizedLabels = Array(Set(labels)).sorted()
+        let labelsJSON = try encodeJSONString(normalizedLabels)
+        let payload = try Self.jsonData([
+            "schema": "openburnbar.memory_audit.v2",
+            "seq": nextSequence,
+            "ts": ts,
+            "actor": "daemon",
+            "action": action,
+            "domain": domain,
+            "projectID": projectID.map { $0 as Any } ?? NSNull(),
+            "subjectID": subjectID.map { $0 as Any } ?? NSNull(),
+            "labels": normalizedLabels,
+            "prevHash": prevHash ?? ""
+        ])
         let hash = Self.sha256Hex(payload)
         try execute(
             """
@@ -1770,6 +2301,174 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
     }
 
+    private func deleteCodeArtifact(artifactID: String) throws {
+        var docIDs = Set(try queryRows(
+            "SELECT id FROM search_documents WHERE sourceKind = ? AND sourceID = ?",
+            [.text(Self.codeSourceKind), .text(artifactID)]
+        ).map { $0.string(0) })
+        for row in try queryRows(
+            "SELECT DISTINCT documentID FROM search_chunks WHERE sourceKind = ? AND sourceID = ?",
+            [.text(Self.codeSourceKind), .text(artifactID)]
+        ) {
+            docIDs.insert(row.string(0))
+        }
+        for docID in docIDs {
+            let chunkIDs = try queryRows("SELECT id FROM search_chunks WHERE documentID = ?", [.text(docID)])
+                .map { $0.string(0) }
+            for chunkID in chunkIDs {
+                try execute("DELETE FROM chunk_embeddings WHERE chunkID = ?", [.text(chunkID)])
+            }
+            try execute("DELETE FROM search_chunks_fts WHERE documentID = ?", [.text(docID)])
+            try execute("DELETE FROM search_chunks WHERE documentID = ?", [.text(docID)])
+            try execute("DELETE FROM search_documents WHERE id = ?", [.text(docID)])
+        }
+        try execute(
+            """
+            DELETE FROM code_call_edges
+            WHERE caller_symbol_id IN (SELECT id FROM code_symbols WHERE artifact_id = ?)
+               OR callee_symbol_id IN (SELECT id FROM code_symbols WHERE artifact_id = ?)
+            """,
+            [.text(artifactID), .text(artifactID)]
+        )
+        try execute(
+            """
+            DELETE FROM code_references
+            WHERE from_artifact_id = ?
+               OR to_symbol_id IN (SELECT id FROM code_symbols WHERE artifact_id = ?)
+            """,
+            [.text(artifactID), .text(artifactID)]
+        )
+        try execute("DELETE FROM code_symbols WHERE artifact_id = ?", [.text(artifactID)])
+        try execute(
+            "DELETE FROM code_diagnostics_cache WHERE blob_sha IN (SELECT blob_sha FROM code_artifacts WHERE id = ?)",
+            [.text(artifactID)]
+        )
+        try execute("DELETE FROM code_artifacts WHERE id = ?", [.text(artifactID)])
+    }
+
+    private func produceCodeDiagnostics(
+        projectID: String,
+        filePath: String,
+        lang: String?,
+        text: String,
+        blobSHA: String,
+        now: String
+    ) throws {
+        guard lang == "python" else { return }
+        let script = """
+        import json
+        import sys
+        source = sys.stdin.read()
+        diagnostics = []
+        try:
+            compile(source, sys.argv[1], "exec")
+        except SyntaxError as error:
+            diagnostics.append({
+                "severity": "error",
+                "message": error.msg,
+                "line": error.lineno,
+                "column": error.offset,
+                "endLine": error.end_lineno,
+                "endColumn": error.end_offset,
+            })
+        print(json.dumps({
+            "schema": "openburnbar.project_code_diagnostics.v1",
+            "producer": "python.compile",
+            "diagnostics": diagnostics,
+        }, sort_keys=True, separators=(",", ":")))
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", "-c", script, filePath]
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = Pipe()
+        let payload = Data(text.utf8)
+        guard Self.runHelperProcess(process, input: input, payload: payload),
+              process.terminationStatus == 0,
+              let outputData = Optional(output.fileHandleForReading.readDataToEndOfFile()),
+              outputData.count <= Self.codeHelperMaxOutputBytes(),
+              let firstLine = String(data: outputData, encoding: .utf8)?
+                .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
+                .first
+        else {
+            return
+        }
+        let diagnosticID = "diag_" + String(Self.sha256Hex("\(projectID):\(filePath):python.compile").prefix(32))
+        try execute(
+            """
+            INSERT INTO code_diagnostics_cache
+                (id, project_id, file_path, tool, payload_json, blob_sha, cached_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                blob_sha = excluded.blob_sha,
+                cached_at = excluded.cached_at
+            """,
+            [
+                .text(diagnosticID),
+                .text(projectID),
+                .text(filePath),
+                .text("python.compile"),
+                .text(String(firstLine)),
+                .text(blobSHA),
+                .text(now)
+            ]
+        )
+    }
+
+    private func upsertFileManifest(
+        projectID: String,
+        filePath: String,
+        artifactID: String?,
+        blobSHA: String?,
+        contentHash: String?,
+        byteCount: Int,
+        mtime: Double,
+        lang: String?,
+        ignoredReason: String?,
+        secretLabels: [String],
+        parserTier: String?,
+        now: String
+    ) throws {
+        let id = "manifest_" + String(Self.sha256Hex("\(projectID):\(filePath)").prefix(32))
+        let labelsJSON = try encodeJSONString(secretLabels.sorted())
+        try execute(
+            """
+            INSERT INTO pcm_file_manifest
+                (id, project_id, file_path, artifact_id, blob_sha, content_hash, byte_count, mtime,
+                 lang, ignored_reason, secret_labels_json, parser_tier, indexed_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id, file_path) DO UPDATE SET
+                artifact_id = excluded.artifact_id,
+                blob_sha = excluded.blob_sha,
+                content_hash = excluded.content_hash,
+                byte_count = excluded.byte_count,
+                mtime = excluded.mtime,
+                lang = excluded.lang,
+                ignored_reason = excluded.ignored_reason,
+                secret_labels_json = excluded.secret_labels_json,
+                parser_tier = excluded.parser_tier,
+                indexed_at = excluded.indexed_at,
+                last_seen_at = excluded.last_seen_at
+            """,
+            [
+                .text(id), .text(projectID), .text(filePath),
+                artifactID.map(SQLiteBind.text) ?? .null,
+                blobSHA.map(SQLiteBind.text) ?? .null,
+                contentHash.map(SQLiteBind.text) ?? .null,
+                .int(byteCount), .double(mtime),
+                lang.map(SQLiteBind.text) ?? .null,
+                ignoredReason.map(SQLiteBind.text) ?? .null,
+                .text(labelsJSON),
+                parserTier.map(SQLiteBind.text) ?? .null,
+                .text(now), .text(now)
+            ]
+        )
+    }
+
     private func insertSymbol(_ symbol: ExtractedSymbol, indexedAt: String) throws {
         let rangeJSON = try encodeJSONString(symbol.range)
         try execute(
@@ -1806,8 +2505,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let fileSymbols = (symbolsByArtifact[artifact.id] ?? []).sorted { $0.range.startLine < $1.range.startLine }
             let lines = text.components(separatedBy: .newlines)
             for (lineIndex, line) in lines.enumerated() {
+                let scanLine = Self.referenceScanLine(line)
                 let caller = fileSymbols.last(where: { $0.range.startLine <= lineIndex + 1 })
-                for token in Self.identifierTokens(in: line) {
+                for token in Self.identifierTokens(in: scanLine) {
                     guard let targets = symbolsByName[token] else { continue }
                     for target in targets {
                         if target.artifactID == artifact.id, target.range.startLine == lineIndex + 1 { continue }
@@ -1824,7 +2524,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                                 .text(try encodeJSONString(range)), .text(artifact.blobSHA), .text("lexical_fallback"), .text(indexedAt)
                             ]
                         )
-                        if let caller, line.contains("\(target.name)("), caller.id != target.id {
+                        if let caller, Self.lineContainsCall(to: target.name, in: scanLine), caller.id != target.id {
                             let edgeID = "edge_" + String(Self.sha256Hex("\(projectID):\(caller.id):\(target.id)").prefix(32))
                             try execute(
                                 """
@@ -1893,17 +2593,12 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = Pipe()
-        do {
-            try process.run()
-            input.fileHandleForWriting.write(payload)
-            input.fileHandleForWriting.write(Data("\n".utf8))
-            try? input.fileHandleForWriting.close()
-            process.waitUntilExit()
-        } catch {
+        guard Self.runHelperProcess(process, input: input, payload: payload) else {
             return []
         }
         guard process.terminationStatus == 0 else { return [] }
         let outputData = output.fileHandleForReading.readDataToEndOfFile()
+        guard outputData.count <= Self.codeHelperMaxOutputBytes() else { return [] }
         guard let line = String(data: outputData, encoding: .utf8)?
             .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
             .first,
@@ -1935,7 +2630,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
     }
 
-    private func codeSearchHits(query: String, root: URL, projectID: String, limit: Int) throws -> [BurnBarProjectCodeSearchHit] {
+    private func codeSearchHits(query: String, root: URL, projectID: String, limit: Int) throws -> CodeSearchEvaluation {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyQuery }
         let capped = max(1, min(limit, 100))
@@ -2072,6 +2767,135 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         return String(text.prefix(240))
     }
 
+    private func contextSelection(
+        for hit: BurnBarProjectCodeSearchHit,
+        root: URL,
+        projectID: String
+    ) throws -> CodeContextSelection {
+        let rows = try queryRows(
+            """
+            SELECT c.text, c.startOffset, c.endOffset, c.sourceID, a.file_path, a.blob_sha, c.contentHash
+            FROM search_chunks c
+            JOIN search_documents d ON d.id = c.documentID
+            JOIN code_artifacts a ON a.id = d.sourceID
+            WHERE c.id = ?
+            LIMIT 1
+            """,
+            [.text(hit.chunkID)]
+        )
+        guard let row = rows.first else {
+            return CodeContextSelection(
+                text: "",
+                contentKind: "chunk",
+                confidenceTier: "lexical_fallback",
+                symbolName: nil,
+                contentHash: hit.contentHash
+            )
+        }
+        let chunkText = row.string(0)
+        let chunkStart = Int(row.int64(1))
+        let chunkEnd = Int(row.int64(2))
+        let artifactID = row.string(3)
+        let filePath = row.string(4)
+        let blobSHA = row.string(5)
+        let fallbackHash = row.optionalString(6) ?? Self.sha256Hex(chunkText)
+        let fileURL = root.appendingPathComponent(filePath, isDirectory: false)
+        guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            return CodeContextSelection(
+                text: chunkText,
+                contentKind: "chunk",
+                confidenceTier: "lexical_fallback",
+                symbolName: nil,
+                contentHash: fallbackHash
+            )
+        }
+        let symbolRows = try queryRows(
+            """
+            SELECT name, kind, range_json, confidence_tier
+            FROM code_symbols
+            WHERE project_id = ? AND artifact_id = ? AND blob_sha = ?
+            """,
+            [.text(projectID), .text(artifactID), .text(blobSHA)]
+        )
+        var best: (start: Int, end: Int, name: String, confidenceTier: String)?
+        for symbol in symbolRows {
+            let range = Self.decodeRange(symbol.string(2))
+            guard let offsets = Self.rangeOffsets(for: range, in: text),
+                  offsets.start < chunkEnd,
+                  offsets.end > chunkStart else { continue }
+            let length = offsets.end - offsets.start
+            guard length > 0, length <= 16_000 else { continue }
+            if best == nil || length < ((best?.end ?? 0) - (best?.start ?? 0)) {
+                best = (offsets.start, offsets.end, symbol.string(0), symbol.string(3))
+            }
+        }
+        guard let best else {
+            return CodeContextSelection(
+                text: chunkText,
+                contentKind: "chunk",
+                confidenceTier: "lexical_fallback",
+                symbolName: nil,
+                contentHash: fallbackHash
+            )
+        }
+        let startIndex = text.index(text.startIndex, offsetBy: best.start)
+        let endIndex = text.index(text.startIndex, offsetBy: best.end)
+        let symbolText = String(text[startIndex..<endIndex])
+        return CodeContextSelection(
+            text: symbolText,
+            contentKind: "complete_symbol",
+            confidenceTier: best.confidenceTier,
+            symbolName: best.name,
+            contentHash: Self.sha256Hex(symbolText)
+        )
+    }
+
+    private func staleDegradation(
+        projectID: String,
+        staleCandidateCount: Int,
+        totalCandidateCount: Int
+    ) throws -> BurnBarProjectCodeDegradation? {
+        guard totalCandidateCount > 0, staleCandidateCount * 2 >= totalCandidateCount else { return nil }
+        return BurnBarProjectCodeDegradation(
+            code: "STALE_INDEX",
+            message: "At least half of the candidate rows point at files whose current blob no longer matches the indexed blob.",
+            staleCandidateCount: staleCandidateCount,
+            totalCandidateCount: totalCandidateCount,
+            indexAgeSeconds: try indexAgeSeconds(projectID: projectID),
+            reindexHint: "Run burnbar_index_project for this project before relying on code-memory results."
+        )
+    }
+
+    private func indexAgeSeconds(projectID: String) throws -> Double? {
+        guard let indexedAt = try queryRows(
+            "SELECT indexed_at FROM code_index_checkpoints WHERE project_id = ? LIMIT 1",
+            [.text(projectID)]
+        ).first?.optionalString(0) else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        guard let date = formatter.date(from: indexedAt) else { return nil }
+        return max(0, Date().timeIntervalSince(date))
+    }
+
+    private func projectCodeMemoryProductionReadinessReasons() -> [String] {
+        var reasons = [
+            "PROJECT_CODE_MEMORY_PRODUCTION_READY=false",
+            "real local embeddings are not configured; semanticAvailable=false",
+            "hosted code sync remains disabled unless an explicit code asset-class flag is enabled"
+        ]
+        if Self.staticParserExecutablePath() == nil {
+            reasons.append("static parser helper is unavailable")
+        }
+        if BurnBarDaemonDatabaseCipher.isCipherAvailable() == false {
+            reasons.append("SQLCipher codec not linked; Project Code Memory release readiness is blocked")
+        }
+        if BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: databasePath) == false {
+            reasons.append("database file is not encrypted for this daemon handle")
+        }
+        return reasons
+    }
+
     private func recallLikeFallback(
         query: String,
         projectID: String,
@@ -2124,7 +2948,69 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     }
 
     private func projectStorageByteCount(projectID: String) throws -> Int {
-        try fetchInt("SELECT COALESCE(SUM(byte_count), 0) FROM code_artifacts WHERE project_id = ?", [.text(projectID)])
+        let sourceBytes = try fetchInt(
+            "SELECT COALESCE(SUM(byte_count), 0) FROM code_artifacts WHERE project_id = ?",
+            [.text(projectID)]
+        )
+        let chunkTextBytes = try fetchInt(
+            """
+            SELECT COALESCE(SUM(length(CAST(c.text AS BLOB))), 0)
+            FROM search_chunks c
+            JOIN code_artifacts a ON a.id = c.sourceID
+            WHERE c.sourceKind = ? AND a.project_id = ?
+            """,
+            [.text(Self.codeSourceKind), .text(projectID)]
+        )
+        let ftsMetadataBytes = projectID.utf8.count + Self.codeProvider.utf8.count
+        let ftsMirrorBytes = try fetchInt(
+            """
+            SELECT COALESCE(SUM(
+                length(CAST(c.text AS BLOB))
+                + length(CAST(COALESCE(c.sectionPath, '') AS BLOB))
+                + ?
+            ), 0)
+            FROM search_chunks c
+            JOIN code_artifacts a ON a.id = c.sourceID
+            WHERE c.sourceKind = ? AND a.project_id = ?
+            """,
+            [.int(ftsMetadataBytes), .text(Self.codeSourceKind), .text(projectID)]
+        )
+        let vectorBytes = try fetchInt(
+            """
+            SELECT COALESCE(SUM(length(e.vectorBlob)), 0)
+            FROM chunk_embeddings e
+            JOIN search_chunks c ON c.id = e.chunkID
+            JOIN code_artifacts a ON a.id = c.sourceID
+            WHERE c.sourceKind = ? AND a.project_id = ?
+            """,
+            [.text(Self.codeSourceKind), .text(projectID)]
+        )
+        return sourceBytes + chunkTextBytes + ftsMirrorBytes + vectorBytes
+    }
+
+    private func projectRepoMap(projectID: String, topFiles: [BurnBarProjectCodeExploreFile]) throws -> BurnBarProjectCodeRepoMap {
+        let languages = try queryRows(
+            """
+            SELECT COALESCE(lang, 'unknown') AS lang, COUNT(*) AS file_count, COALESCE(SUM(byte_count), 0) AS byte_count
+            FROM code_artifacts
+            WHERE project_id = ?
+            GROUP BY COALESCE(lang, 'unknown')
+            ORDER BY file_count DESC, lang ASC
+            """,
+            [.text(projectID)]
+        ).map {
+            BurnBarProjectCodeRepoLanguage(
+                lang: $0.string(0),
+                fileCount: Int($0.int64(1)),
+                byteCount: Int($0.int64(2))
+            )
+        }
+        return BurnBarProjectCodeRepoMap(
+            artifactCount: try fetchInt("SELECT COUNT(*) FROM code_artifacts WHERE project_id = ?", [.text(projectID)]),
+            symbolCount: try fetchInt("SELECT COUNT(*) FROM code_symbols WHERE project_id = ?", [.text(projectID)]),
+            languages: languages,
+            topFiles: topFiles
+        )
     }
 
     private func querySymbols(_ sql: String, _ binds: [SQLiteBind]) throws -> [SQLiteSymbolRow] {
@@ -2150,8 +3036,25 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         try execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition)", [])
     }
 
-    private func runIncrementalVacuum() throws {
-        try execute("PRAGMA incremental_vacuum(256)", [])
+    private func sqliteCompactionDecision() throws -> SQLiteCompactionDecision {
+        let pageCount = try fetchInt("PRAGMA page_count", [])
+        let freelistCount = try fetchInt("PRAGMA freelist_count", [])
+        let pageSize = try fetchInt("PRAGMA page_size", [])
+        return SQLiteCompactionDecision(
+            shouldCompact: Self.shouldCompactSQLite(
+                freelistCount: freelistCount,
+                pageCount: pageCount,
+                pageSize: pageSize
+            ),
+            pageCount: pageCount,
+            freelistCount: freelistCount,
+            pageSize: pageSize
+        )
+    }
+
+    private func runIncrementalVacuum(maxPages: Int) throws {
+        let pages = max(1, min(maxPages, 1_024))
+        try execute("PRAGMA incremental_vacuum(\(pages))", [])
     }
 
     private func execute(_ sql: String, _ binds: [SQLiteBind]) throws {
@@ -2251,8 +3154,54 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         return try? JSONDecoder().decode(BurnBarProjectCodeTierEvidence.self, from: Data(json.utf8))
     }
 
-    private static func projectID(for root: URL) -> String {
-        "proj_" + String(sha256Hex(root.path).prefix(16))
+    private static func legacyProjectID(for root: URL) -> String {
+        let canonical = root.resolvingSymlinksInPath().standardizedFileURL.path
+        return "proj_" + String(sha256Hex(canonical).prefix(32))
+    }
+
+    private static func projectID(forFingerprint fingerprint: String, fallbackProjectID: String) -> String {
+        guard fingerprint.hasPrefix("path:") == false else { return fallbackProjectID }
+        return "proj_" + String(sha256Hex("v2:\(fingerprint)").prefix(32))
+    }
+
+    private static func projectIdentityFingerprint(root: URL) -> String {
+        let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
+        let canonicalPath = canonicalRoot.path
+        guard gitOutput(root: canonicalRoot, arguments: ["rev-parse", "--is-inside-work-tree"]) == "true" else {
+            return "path:\(canonicalPath)"
+        }
+
+        var stableParts: [String] = []
+        if let origin = gitOutput(root: canonicalRoot, arguments: ["config", "--get", "remote.origin.url"]) {
+            stableParts.append("origin:\(origin)")
+        } else if let remotes = gitOutput(root: canonicalRoot, arguments: ["remote", "-v"]), remotes.isEmpty == false {
+            stableParts.append("remotes:\(sha256Hex(remotes))")
+        }
+        if let rootCommit = gitOutput(root: canonicalRoot, arguments: ["rev-list", "--max-parents=0", "HEAD"])?
+            .components(separatedBy: .newlines)
+            .first?
+            .nonEmpty {
+            stableParts.append("root:\(rootCommit)")
+        }
+
+        guard stableParts.isEmpty == false else { return "path:\(canonicalPath)" }
+        return "git:" + stableParts.sorted().joined(separator: "|")
+    }
+
+    static func gitOutput(root: URL, arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git", "-C", root.path] + arguments
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = Pipe()
+        guard runHelperProcess(process, input: input, payload: Data()) else { return nil }
+        guard process.terminationStatus == 0 else { return nil }
+        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
     }
 
     private static func normalizedStorageBudgetBytes(_ requested: Int?) -> Int {

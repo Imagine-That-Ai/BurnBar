@@ -37,7 +37,8 @@ struct QuotaFilterRail: View {
                         Image(systemName: mode.systemImage)
                             .font(.system(size: 10, weight: .semibold))
                         Text(mode.label)
-                            .font(.system(size: 11, weight: active ? .semibold : .medium, design: .rounded))
+                            .font(DesignSystem.Typography.tiny)
+                            .fontWeight(active ? .semibold : .medium)
                     }
                     .foregroundStyle(
                         active
@@ -45,7 +46,7 @@ struct QuotaFilterRail: View {
                             : DesignSystem.Colors.textSecondary.opacity(0.85)
                     )
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4.5)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
                     .background(
                         Capsule(style: .continuous)
                             .fill(active
@@ -88,7 +89,7 @@ struct QuotaFilterRail: View {
                 Image(systemName: sort.systemImage)
                     .font(.system(size: 10, weight: .semibold))
                 Text("Sort · \(sort.label)")
-                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .font(DesignSystem.Typography.tiny)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold))
                     .opacity(0.7)
@@ -116,7 +117,7 @@ struct QuotaFilterRail: View {
                 Image(systemName: showInactive ? "eye" : "eye.slash")
                     .font(.system(size: 10, weight: .semibold))
                 Text("Inactive plans")
-                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .font(DesignSystem.Typography.tiny)
             }
             .foregroundStyle(
                 showInactive

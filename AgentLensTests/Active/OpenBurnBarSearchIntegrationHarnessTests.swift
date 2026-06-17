@@ -459,7 +459,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             id: "conv-agg-hello",
             fullText: "hello hello world"
         )
-        try harness.dataStore.upsertConversation(conversation)
+        try await harness.dataStore.upsertConversation(conversation)
 
         let retrieval = harness.makeSearchService(semanticEnabled: false)
         let run = await retrieval.runBurnBarQuery(

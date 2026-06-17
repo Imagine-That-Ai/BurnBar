@@ -116,6 +116,7 @@ struct AccountDestinationPickerSheet: View {
                 hoveredDestination = hovering ? destination : nil
             }
         }
+        .animation(DesignSystem.Animation.hover, value: isHovered)
     }
 
     @ViewBuilder

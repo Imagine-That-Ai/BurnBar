@@ -119,9 +119,9 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: Date(),
             fileModifiedAt: past
         )
-        try store.upsertConversation(rec)
+        try await store.upsertConversation(rec)
         try await ConversationIndexer.shared.index([rec], in: store)
-        let row = try store.fetchConversation(id: rec.id)
+        let row = try await store.fetchConversation(id: rec.id)
         XCTAssertNotNil(row)
     }
 
@@ -134,7 +134,7 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: indexedAt,
             fileModifiedAt: mtime
         )
-        try store.upsertConversation(stored)
+        try await store.upsertConversation(stored)
 
         let incoming = makeFactoryConversationRecord(
             id: stored.id,
@@ -143,7 +143,7 @@ final class ConversationParsingTests: XCTestCase {
         )
         try await ConversationIndexer.shared.index([incoming], in: store)
 
-        guard let row = try store.fetchConversation(id: stored.id) else {
+        guard let row = try await store.fetchConversation(id: stored.id) else {
             XCTFail("Expected existing conversation row.")
             return
         }
@@ -158,7 +158,7 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: indexedAt,
             fileModifiedAt: nil
         )
-        try store.upsertConversation(stored)
+        try await store.upsertConversation(stored)
 
         let incoming = makeFactoryConversationRecord(
             id: stored.id,
@@ -167,7 +167,7 @@ final class ConversationParsingTests: XCTestCase {
         )
         try await ConversationIndexer.shared.index([incoming], in: store)
 
-        guard let row = try store.fetchConversation(id: stored.id) else {
+        guard let row = try await store.fetchConversation(id: stored.id) else {
             XCTFail("Expected existing conversation row.")
             return
         }
@@ -182,7 +182,7 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: base,
             fileModifiedAt: base
         )
-        try store.upsertConversation(record)
+        try await store.upsertConversation(record)
 
         let beforeAttempt = try await store.fetchConversationsNeedingSummary(
             limit: 10,
@@ -226,7 +226,7 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: base.addingTimeInterval(30),
             fileModifiedAt: base.addingTimeInterval(30)
         )
-        try store.upsertConversation(updated)
+        try await store.upsertConversation(updated)
 
         let pending = try await store.fetchConversationsNeedingSummary(
             limit: 10,

@@ -29,8 +29,13 @@ struct InsightsWorkspaceView: View {
             if let environment {
                 content(environment: environment)
             } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    ProgressView()
+                    Text("Preparing Insights…")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task {

@@ -121,19 +121,79 @@ struct ArtifactDiscoveryRules: Sendable {
     ]
 }
 
+protocol ArtifactDiscoveryDataStoring: Sendable {
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) async throws -> SourceArtifactWriteDisposition
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind]
+    ) async throws -> [SourceArtifactRecord]
+    func markSourceArtifactDeleted(id: String, deletedAt: Date) async throws -> Bool
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws
+}
+
+struct DataStoreArtifactDiscoveryStore: ArtifactDiscoveryDataStoring {
+    private let dataStore: DataStore
+
+    init(dataStore: DataStore) {
+        self.dataStore = dataStore
+    }
+
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) async throws -> SourceArtifactWriteDisposition {
+        try await dataStore.upsertSourceArtifact(artifact)
+    }
+
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind]
+    ) async throws -> [SourceArtifactRecord] {
+        try await dataStore.fetchSourceArtifacts(
+            includeDeleted: includeDeleted,
+            rootPaths: rootPaths,
+            sourceKinds: sourceKinds
+        )
+    }
+
+    func markSourceArtifactDeleted(id: String, deletedAt: Date) async throws -> Bool {
+        try await dataStore.markSourceArtifactDeleted(id: id, deletedAt: deletedAt)
+    }
+
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws {
+        try await dataStore.upsertRetrievalHealth(health)
+    }
+
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {
+        try await dataStore.enqueueProjectionJob(job)
+    }
+}
+
 actor ArtifactDiscoveryService {
-    private let dataStoreActor: DataStoreActor
+    private let store: any ArtifactDiscoveryDataStoring
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let fileManager: FileManager
     private let nowProvider: @Sendable () -> Date
 
     init(
-        dataStoreActor: DataStoreActor,
+        dataStore: DataStore,
         settingsProvider: any ArtifactDiscoverySettingsProviding,
         fileManager: FileManager = .default,
         nowProvider: @escaping @Sendable () -> Date = Date.init
     ) {
-        self.dataStoreActor = dataStoreActor
+        self.store = DataStoreArtifactDiscoveryStore(dataStore: dataStore)
+        self.settingsProvider = settingsProvider
+        self.fileManager = fileManager
+        self.nowProvider = nowProvider
+    }
+
+    init(
+        store: any ArtifactDiscoveryDataStoring,
+        settingsProvider: any ArtifactDiscoverySettingsProviding,
+        fileManager: FileManager = .default,
+        nowProvider: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.store = store
         self.settingsProvider = settingsProvider
         self.fileManager = fileManager
         self.nowProvider = nowProvider

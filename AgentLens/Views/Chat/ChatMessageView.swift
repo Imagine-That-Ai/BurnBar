@@ -431,12 +431,18 @@ private struct ChatLimitedProseTextView: View {
 
             if presentation.isLimited {
                 Button {
-                    isExpanded = true
+                    withAnimation(DesignSystem.Animation.gentle) {
+                        isExpanded = true
+                    }
                 } label: {
-                    Text("Show full message (\(presentation.hiddenCharacterCount.formatted()) more characters)")
-                        .font(DesignSystem.Typography.tiny)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(isUser ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.hermesAureate)
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.down")
+                            .font(DesignSystem.Typography.tiny)
+                        Text("Show full message (\(presentation.hiddenCharacterCount.formatted()) more characters)")
+                    }
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(isUser ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.hermesAureate)
                 }
                 .buttonStyle(.plain)
                 .help("Render the full stored chat message")

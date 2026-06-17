@@ -149,7 +149,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         )
 
         // Fetch conversation from DB
-        let conversation = try dataStore.fetchConversation(id: stableId)
+        let conversation = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNotNil(conversation, "Conversation should exist in database")
 
         // Case 1: Indexing disabled - row should be disabled
@@ -237,7 +237,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             sessionId: session.sessionId,
             projectName: session.projectName
         )
-        let conversation = try dataStore.fetchConversation(id: stableId)
+        let conversation = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNotNil(conversation)
 
         var presentedAnchor: (id: String?, project: String?) = (nil, nil)
@@ -272,7 +272,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         )
 
         // Fetch conversation
-        let conversation = try dataStore.fetchConversation(id: stableId)
+        let conversation = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNotNil(conversation)
 
         // Configure settings
@@ -323,7 +323,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
                 projectName: session.projectName
             )
 
-            let conversation = try dataStore.fetchConversation(id: expectedStableId)
+            let conversation = try await dataStore.fetchConversation(id: expectedStableId)
             XCTAssertNotNil(conversation, "[\(provider.rawValue)] Should fetch conversation")
 
             // Configure settings
@@ -364,7 +364,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         )
 
         // Verify we can fetch the conversation
-        let conversation = try dataStore.fetchConversation(id: stableId)
+        let conversation = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNotNil(conversation)
         XCTAssertEqual(conversation?.projectName, projectName)
 
@@ -391,7 +391,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Opening Session Detail for unresolved conversations remains crash-free
     /// and layout-stable while hiding Context Pack row.
-    func test_nilConversationDoesNotCrashAndHidesRow() throws {
+    func test_nilConversationDoesNotCrashAndHidesRow() async throws {
         // Disable indexing
         configureSettings(indexingEnabled: false)
 
@@ -400,7 +400,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let stableId = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
 
         // Verify no conversation exists
-        let fetched = try dataStore.fetchConversation(id: stableId)
+        let fetched = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNil(fetched, "No conversation should exist for this session")
 
         // Instantiate SessionDetailView with nil conversation
@@ -438,7 +438,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             projectName: projectA
         )
 
-        let conversationA = try dataStore.fetchConversation(id: stableIdA)
+        let conversationA = try await dataStore.fetchConversation(id: stableIdA)
         XCTAssertNotNil(conversationA)
 
         // Session B - use claudeCode provider with ProjectB
@@ -453,7 +453,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             projectName: projectB
         )
 
-        let conversationB = try dataStore.fetchConversation(id: stableIdB)
+        let conversationB = try await dataStore.fetchConversation(id: stableIdB)
         XCTAssertNotNil(conversationB)
 
         // Configure settings
@@ -514,7 +514,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             projectName: session.projectName
         )
 
-        let conversation = try dataStore.fetchConversation(id: stableId)
+        let conversation = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNotNil(conversation)
 
         // Verify stable ID computation is unchanged
@@ -559,7 +559,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             )
 
             // Verify each is reachable
-            let fetched = try dataStore.fetchConversation(id: stableId)
+            let fetched = try await dataStore.fetchConversation(id: stableId)
             XCTAssertNotNil(fetched, "[\(provider.rawValue)] Conversation should be reachable")
 
             // Configure settings
@@ -610,7 +610,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         configureSettings(indexingEnabled: true)
 
         // Fetch first conversation
-        let fetched1 = try dataStore.fetchConversation(id: stableId1)
+        let fetched1 = try await dataStore.fetchConversation(id: stableId1)
         XCTAssertEqual(fetched1?.sessionId, "session-1")
         XCTAssertEqual(fetched1?.projectName, "Project1")
 
@@ -631,12 +631,12 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         XCTAssertEqual(anchor1.1, "Project1")
 
         // Fetch second conversation
-        let fetched2 = try dataStore.fetchConversation(id: stableId2)
+        let fetched2 = try await dataStore.fetchConversation(id: stableId2)
         XCTAssertEqual(fetched2?.sessionId, "session-2")
         XCTAssertEqual(fetched2?.projectName, "Project2")
 
         // Verify first session is unchanged
-        let stillFirst = try dataStore.fetchConversation(id: stableId1)
+        let stillFirst = try await dataStore.fetchConversation(id: stableId1)
         XCTAssertEqual(stillFirst?.sessionId, "session-1")
 
         // Create row for session2 - should not have stale state from session1

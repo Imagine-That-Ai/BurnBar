@@ -1150,7 +1150,7 @@ final class SearchServiceTests: XCTestCase {
                 indexedAt: base.addingTimeInterval(Double(i)),
                 sourceType: .providerLog
             )
-            try store.upsertConversation(conv)
+            try await store.upsertConversation(conv)
         }
 
         let service = SearchService(dataStore: store, nowProvider: { base })
@@ -1180,8 +1180,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(older)
-        try store.upsertConversation(newer)
+        try await store.upsertConversation(older)
+        try await store.upsertConversation(newer)
 
         let service = SearchService(dataStore: store, nowProvider: { base })
 
@@ -1237,8 +1237,8 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(convA)
-        try store.upsertConversation(convB)
+        try await store.upsertConversation(convA)
+        try await store.upsertConversation(convB)
 
         let service = SearchService(dataStore: store, nowProvider: { base })
         let latest = await service.latestConversation()
@@ -2128,7 +2128,7 @@ final class SearchServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conv)
+        try await store.upsertConversation(conv)
 
         let service = SearchService(dataStore: store, nowProvider: { base })
         let result = await service.runBurnBarQuery(

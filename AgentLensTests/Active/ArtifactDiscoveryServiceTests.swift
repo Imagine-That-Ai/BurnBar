@@ -25,7 +25,7 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
             artifactDiscoveryEnabled: true,
             artifactDiscoveryRegisteredRoots: [approvedRoot.path]
         )
-        let service = ArtifactDiscoveryService(dataStoreActor: store.actor, settingsProvider: settings, fileManager: fileManager)
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings, fileManager: fileManager)
         let report = try await service.discoverAndIngest()
 
         XCTAssertEqual(report.discoveredArtifacts, 2)
@@ -65,7 +65,7 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
             artifactDiscoveryEnabled: true,
             artifactDiscoveryRegisteredRoots: [root.path]
         )
-        let service = ArtifactDiscoveryService(dataStoreActor: store.actor, settingsProvider: settings, fileManager: fileManager)
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings, fileManager: fileManager)
 
         _ = try await service.discoverAndIngest()
         try fileManager.removeItem(at: agentsURL)

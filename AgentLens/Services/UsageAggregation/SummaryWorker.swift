@@ -39,7 +39,60 @@ protocol SummaryDailySpendReading: Sendable {
     func summarySpendToday(now: Date) async throws -> Double
 }
 
-extension DataStoreActor: SummaryDailySpendReading {}
+/// Narrow persistence seam for summary writes.
+///
+/// `SummaryWorker` runs off the main actor and should not know about the full
+/// `DataStoreActor` surface. This keeps the worker coupled only to the summary
+/// operations it needs while still allowing tests to inject faulting spend reads.
+protocol SummaryPersistenceStore: SummaryDailySpendReading {
+    func updateConversationSummary(
+        id: String,
+        title: String?,
+        summary: String?,
+        provider: String?,
+        model: String?,
+        updatedAt: Date,
+        runCostUSD: Double
+    ) async throws
+
+    func markConversationSummaryAttempt(id: String, attemptedAt: Date) async throws
+}
+
+struct DataStoreSummaryPersistenceStore: SummaryPersistenceStore {
+    private let actor: DataStoreActor
+
+    init(dataStore: DataStore) {
+        self.actor = dataStore.actor
+    }
+
+    func updateConversationSummary(
+        id: String,
+        title: String?,
+        summary: String?,
+        provider: String?,
+        model: String?,
+        updatedAt: Date,
+        runCostUSD: Double
+    ) async throws {
+        try await actor.conversationStore.updateConversationSummary(
+            id: id,
+            title: title,
+            summary: summary,
+            provider: provider,
+            model: model,
+            updatedAt: updatedAt,
+            runCostUSD: runCostUSD
+        )
+    }
+
+    func markConversationSummaryAttempt(id: String, attemptedAt: Date) async throws {
+        try await actor.conversationStore.markConversationSummaryAttempt(id: id, attemptedAt: attemptedAt)
+    }
+
+    func summarySpendToday(now: Date) async throws -> Double {
+        try await actor.conversationStore.summarySpendToday(now: now)
+    }
+}
 
 // MARK: - Summary Worker
 
@@ -48,27 +101,27 @@ extension DataStoreActor: SummaryDailySpendReading {}
 /// `AutoSummaryEngine` stays `@MainActor @Observable` for UI state, but delegates
 /// every heavy operation (network I/O + DB writes) to this actor.
 actor SummaryWorker {
-    let dataStoreActor: DataStoreActor
+    private let summaryStore: any SummaryPersistenceStore
     let llmClient: SummaryLLMClient
     let keyResolver: SummaryAPIKeyResolver
 
     /// Source of today's cloud summary spend used for the daily cost cap.
-    /// Defaults to `dataStoreActor`; tests inject a fault-injecting fake here.
+    /// Defaults to `summaryStore`; tests inject a fault-injecting fake here.
     private let spendReader: any SummaryDailySpendReading
 
     private var localSummaryEndpointCooldownUntil: Date?
     private var mlxSummaryEndpointCooldownUntil: Date?
 
     init(
-        dataStoreActor: DataStoreActor,
+        summaryStore: any SummaryPersistenceStore,
         llmClient: SummaryLLMClient,
         keyResolver: SummaryAPIKeyResolver,
         spendReader: (any SummaryDailySpendReading)? = nil
     ) {
-        self.dataStoreActor = dataStoreActor
+        self.summaryStore = summaryStore
         self.llmClient = llmClient
         self.keyResolver = keyResolver
-        self.spendReader = spendReader ?? dataStoreActor
+        self.spendReader = spendReader ?? summaryStore
     }
 
     // MARK: - Summarize & Store
@@ -332,6 +385,30 @@ actor SummaryWorker {
             AppLogger.dataStore.silentFailure("mark_summary_attempt_failed", error: error, context: ["conversationId": conversation.id])
         }
         return nil
+    }
+
+    private func persist(_ result: AutoSummaryResult, for conversation: ConversationRecord) async {
+        do {
+            try await summaryStore.updateConversationSummary(
+                id: conversation.id,
+                title: result.title,
+                summary: result.summary,
+                provider: result.provider.rawValue,
+                model: result.model,
+                updatedAt: Date(),
+                runCostUSD: result.estimatedCostUSD
+            )
+        } catch {
+            AppLogger.dataStore.silentFailure(
+                "summary_worker_update_failed",
+                error: error,
+                context: [
+                    "conversationId": conversation.id,
+                    "provider": result.provider.rawValue,
+                    "model": result.model
+                ]
+            )
+        }
     }
 
     // MARK: - OpenAI-Compatible Provider Wrapper

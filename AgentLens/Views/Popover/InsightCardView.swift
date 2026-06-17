@@ -10,6 +10,8 @@ struct InsightCardView: View {
     @State private var manualIndex: Int?
     /// Cancellation token for the auto-resume dispatch.
     @State private var resumeWorkItem: DispatchWorkItem?
+    /// Hovered carousel chevron slot (-1 left, 1 right) for the hover tint.
+    @State private var hoveredChevron: Int? = nil
 
     init(
         insights: [Insight],
@@ -116,11 +118,13 @@ struct InsightCardView: View {
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(hoveredChevron == -1 ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
                             .frame(width: 16, height: 16)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .onHover { hoveredChevron = $0 ? -1 : nil }
+                    .animation(DesignSystem.Animation.hover, value: hoveredChevron)
 
                     HStack(spacing: 3) {
                         ForEach(0..<insights.count, id: \.self) { i in
@@ -135,11 +139,13 @@ struct InsightCardView: View {
                     } label: {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(hoveredChevron == 1 ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
                             .frame(width: 16, height: 16)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .onHover { hoveredChevron = $0 ? 1 : nil }
+                    .animation(DesignSystem.Animation.hover, value: hoveredChevron)
                 }
             }
         }

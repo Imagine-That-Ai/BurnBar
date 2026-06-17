@@ -20,6 +20,19 @@ struct MiniSparkline: View {
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(color)
+
+                AreaMark(
+                    x: .value("Day", index),
+                    y: .value("Cost", value)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [color.opacity(0.22), color.opacity(0.0)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
             if let last = points.last {
                 PointMark(x: .value("Day", last.0), y: .value("Cost", last.1))

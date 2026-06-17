@@ -187,7 +187,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
                 if threadID == "thread-1" {
                     throw ChatMessageFetchTestError.simulatedReadFault
                 }
-                return try realStore.fetchChatMessages(threadID: threadID)
+                return try await realStore.fetchChatMessages(threadID: threadID)
             }
         )
         await selectiveSync.sync()

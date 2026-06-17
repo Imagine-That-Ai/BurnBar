@@ -165,7 +165,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         }
         XCTAssertEqual(migratedTables, expectedTables)
 
-        let conversation = try XCTUnwrap(try store.fetchConversation(id: "legacy-conversation-1"))
+        let fetchedConversation = try await store.fetchConversation(id: "legacy-conversation-1")
+        let conversation = try XCTUnwrap(fetchedConversation)
         XCTAssertEqual(conversation.fullText, "legacy-migration-needle conversation transcript")
         XCTAssertEqual(conversation.sourceType, .providerLog)
 

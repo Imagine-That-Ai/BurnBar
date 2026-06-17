@@ -81,6 +81,7 @@ class MercuryFcmService : FirebaseMessagingService() {
             Intent().apply {
                 setClass(this@MercuryFcmService, IncomingCallActivity::class.java)
                 action = IncomingCallActivity.ACTION_ACCEPT
+                setPackage(packageName)
                 putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
                 putExtra(IncomingCallActivity.EXTRA_CALLER_NAME, callerName)
                 putExtra(IncomingCallActivity.EXTRA_CALLER_INITIAL, callerInitial)
@@ -90,6 +91,7 @@ class MercuryFcmService : FirebaseMessagingService() {
             Intent().apply {
                 setClass(this@MercuryFcmService, IncomingCallActivity::class.java)
                 action = IncomingCallActivity.ACTION_DECLINE
+                setPackage(packageName)
                 putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }

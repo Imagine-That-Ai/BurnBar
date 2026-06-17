@@ -967,7 +967,7 @@ final class ChatSessionController {
         let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
         activeThreadID = nextThread
         do {
-            messages = try dataStore.fetchChatMessages(threadID: nextThread)
+            messages = try await dataStore.fetchChatMessages(threadID: nextThread)
         } catch {
             AppLogger.chat.silentFailure("fetchChatMessages (switchBackend)", error: error)
             messages = []
@@ -1147,7 +1147,7 @@ final class ChatSessionController {
         // assistant reply and any streaming transcript pieces haven't been persisted yet.
         if !isStreaming {
             do {
-                messages = try dataStore.fetchChatMessages(threadID: chosenThreadID)
+                messages = try await dataStore.fetchChatMessages(threadID: chosenThreadID)
             } catch {
                 AppLogger.chat.silentFailure("fetchChatMessages (loadPersisted)", error: error)
                 messages = []

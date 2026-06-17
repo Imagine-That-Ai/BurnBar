@@ -214,7 +214,7 @@ struct DrainTargetSwitcher: View {
         .background(rowBackground(isDrain: isDrain))
         .overlay(rowBorder(isDrain: isDrain))
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-        .opacity(isDrain ? 1 : (isHovering ? 0.9 : 0.6))
+        .opacity(isDrain ? 1 : (isHovering ? 1.0 : 0.78))
         .scaleEffect(isHovering && !isDrain ? 1.01 : 1)
         .animation(DesignSystem.Animation.gentle, value: isHovering)
         .onHover { hovering in hoveredID = hovering ? account.id : (hoveredID == account.id ? nil : hoveredID) }

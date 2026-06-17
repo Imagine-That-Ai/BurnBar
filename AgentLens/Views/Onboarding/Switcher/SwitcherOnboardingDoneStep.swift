@@ -36,14 +36,15 @@ struct SwitcherOnboardingDoneStep: View {
                 .foregroundStyle(DesignSystem.Colors.success)
                 .scaleEffect(checkmarkScale)
                 .opacity(checkmarkOpacity)
+                .accessibilityHidden(true)
 
             VStack(spacing: DesignSystem.Spacing.sm) {
                 Text("You\u{2019}re switched in")
-                    .font(DesignSystem.Typography.headline)
+                    .font(DesignSystem.Typography.title)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                Text("\(addedCount) account\(addedCount == 1 ? "" : "s") ready across \(providerSummaries.count) provider\(providerSummaries.count == 1 ? "" : "s")")
                 Text("\(addedCount) account\(addedCount == 1 ? "" : "s") ready across \(providerSummaries.count) provider\(providerSummaries.count == 1 ? "" : "s"). BurnBar can now keep provider reserves ready instead of making you reconnect from scratch.")
+                    .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .multilineTextAlignment(.center)
             }

@@ -368,7 +368,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             fullText: "Stable content for re-index test.",
             indexedAt: base
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
 
         // Re-index the same content — should be skipped
         let report1 = try await ConversationIndexer.shared.index([conversation], in: store)
@@ -519,7 +519,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             summaryModel: nil,
             sourceType: conversationBv1.sourceType
         )
-        try storeB.upsertConversation(conversationBv2)
+        try await storeB.upsertConversation(conversationBv2)
 
         // Gap repair should detect the stale hash and enqueue reproject
         let reconcileReport = try await drainProjectionJobs(serviceB)
@@ -545,8 +545,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "Event-path and reconciliation-path must produce same chunk count")
 
         // Full text in the conversation record must match
-        let finalConversationsA = try storeA.fetchConversations(ids: ["conv-converge"])
-        let finalConversationsB = try storeB.fetchConversations(ids: ["conv-converge"])
+        let finalConversationsA = try await storeA.fetchConversations(ids: ["conv-converge"])
+        let finalConversationsB = try await storeB.fetchConversations(ids: ["conv-converge"])
         XCTAssertEqual(finalConversationsA.first?.fullText, finalConversationsB.first?.fullText,
             "Conversation fullText must converge between event and reconciliation paths")
     }

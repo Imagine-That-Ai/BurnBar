@@ -1,5 +1,4 @@
 import XCTest
-import GRDB
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
@@ -27,8 +26,6 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     private func makeContext() throws -> ProviderQuotaAdapterContext {
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
-        let dbQueue = try DatabaseQueue()
-        let dataStoreActor = try DataStoreActor(databaseQueue: dbQueue)
         let session = URLSession(configuration: .ephemeral)
 
         return ProviderQuotaAdapterContext(
@@ -39,7 +36,6 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
                 AntigravityQuotaAdapter.referenceDateEnvironmentKey: String(format: "%.0f", Self.referenceEpochMs)
             ],
             homeDirectoryURL: tempDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: store,
             bridgeManager: ClaudeQuotaBridgeManager(appPaths: appPaths, homeDirectoryURL: tempDirectoryURL, fileManager: fileManager, snapshotStore: store),
             miniMaxMode: .tokenPlan,

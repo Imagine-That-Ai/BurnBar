@@ -307,11 +307,7 @@ struct DatabaseWorkspaceView: View {
     }
 
     func conversationDetail(id: String) -> ConversationRecord? {
-        do {
-            return try dataStore.fetchConversation(id: id)
-        } catch {
-            return nil
-        }
+        conversationDetailCache[id]
     }
 
     func sourceArtifactDetail(id: String) -> SourceArtifactRecord? {

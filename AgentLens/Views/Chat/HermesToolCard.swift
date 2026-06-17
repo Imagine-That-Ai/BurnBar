@@ -15,6 +15,29 @@ struct HermesToolCard: View {
     private let shape = ChatBubbleStyle.toolShape()
 
     var body: some View {
+        Button {
+            guard !isRunning else { return }
+            isExpanded.toggle()
+        } label: {
+            cardContent
+        }
+        .buttonStyle(.plain)
+        .contentShape(shape)
+        .accessibilityLabel(toolName)
+        .accessibilityHint(isExpanded ? "Collapse tool detail" : "Show tool detail")
+        .onChange(of: isRunning) { _, newRunning in
+            if !newRunning {
+                pulse = false
+                withAnimation(DesignSystem.Animation.gentle) {
+                    isExpanded = false
+                }
+            }
+        }
+        .animation(DesignSystem.Animation.gentle, value: isExpanded)
+        .animation(DesignSystem.Animation.snappy, value: isRunning)
+    }
+
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Header — always visible
             HStack(spacing: 6) {
@@ -40,7 +63,7 @@ struct HermesToolCard: View {
 
             // Running status
             if isRunning {
-                Text("Running...")
+                Text("Running\u{2026}")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
@@ -81,23 +104,6 @@ struct HermesToolCard: View {
         )
         .mercuryShimmer(active: isRunning)
         .shadow(color: DesignSystem.Colors.hermesMercury.opacity(0.1), radius: 6, y: 2)
-        .contentShape(shape)
-        .onTapGesture {
-            guard !isRunning else { return }
-            withAnimation(DesignSystem.Animation.gentle) {
-                isExpanded.toggle()
-            }
-        }
-        .onChange(of: isRunning) { _, newRunning in
-            if !newRunning {
-                pulse = false
-                withAnimation(DesignSystem.Animation.gentle) {
-                    isExpanded = false
-                }
-            }
-        }
-        .animation(DesignSystem.Animation.gentle, value: isExpanded)
-        .animation(DesignSystem.Animation.snappy, value: isRunning)
     }
 
     // MARK: - Shimmer Dot

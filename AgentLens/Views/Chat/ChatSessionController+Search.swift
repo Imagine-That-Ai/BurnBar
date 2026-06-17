@@ -12,6 +12,10 @@ import AppKit
 extension ChatSessionController {
 
     func openHistoryThread(_ threadID: String) {
+        Task { await openHistoryThreadAsync(threadID) }
+    }
+
+    func openHistoryThreadAsync(_ threadID: String) async {
         guard threadID != activeThreadID else { return }
 
         streamTask?.cancel()
@@ -27,7 +31,7 @@ extension ChatSessionController {
         activeThreadID = threadID
         persistActiveThreadSlot()
         do {
-            messages = try dataStore.fetchChatMessages(threadID: threadID)
+            messages = try await dataStore.fetchChatMessages(threadID: threadID)
         } catch {
             AppLogger.chat.silentFailure("fetchChatMessages (openHistory)", error: error)
             messages = []

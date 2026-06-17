@@ -6,11 +6,11 @@ extension OpenBurnBarDaemonManager {
     private static let controllerActivitySnapshotFreshness: TimeInterval = 60
     private static let controllerActivityConversationLimit = 80
 
-    func exportControllerActivitySnapshot() {
+    func exportControllerActivitySnapshot() async {
         guard let dataStore else { return }
 
         do {
-            let snapshot = try makeControllerActivitySnapshot(from: dataStore)
+            let snapshot = try await makeControllerActivitySnapshot(from: dataStore)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             let data = try encoder.encode(snapshot)
@@ -24,20 +24,20 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
-    func exportControllerActivitySnapshotIfStale() {
+    func exportControllerActivitySnapshotIfStale() async {
         // try?-ok(stale-check falls through to regenerate)
         if let attributes = try? dependencies.fileManager.attributesOfItem(atPath: paths.controllerActivitySnapshotURL.path),
            let modifiedAt = attributes[.modificationDate] as? Date,
            Date().timeIntervalSince(modifiedAt) < Self.controllerActivitySnapshotFreshness {
             return
         }
-        exportControllerActivitySnapshot()
+        await exportControllerActivitySnapshot()
     }
 
     func makeControllerActivitySnapshot(
         from dataStore: DataStore
-    ) throws -> BurnBarControllerActivitySnapshot {
-        let conversations = try dataStore.fetchConversations(limit: Self.controllerActivityConversationLimit)
+    ) async throws -> BurnBarControllerActivitySnapshot {
+        let conversations = try await dataStore.fetchConversations(limit: Self.controllerActivityConversationLimit)
         let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date().addingTimeInterval(-7 * 24 * 60 * 60)
         let recentUsages = dataStore.usages(in: start...Date())
 

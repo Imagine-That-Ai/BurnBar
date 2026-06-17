@@ -7,10 +7,10 @@ import OpenBurnBarCore
 @MainActor
 final class OpenBurnBarOperatingComposerTests: XCTestCase {
     @MainActor
-    func testMissionUsesIncompleteHintInsteadOfBlockedKeywordMatching() throws {
+    func testMissionUsesIncompleteHintInsteadOfBlockedKeywordMatching() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -20,7 +20,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [1.8, 1.4]
         )
 
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(snapshot.mission.state, .partial)
         XCTAssertNotEqual(snapshot.mission.state, .blocked)
@@ -28,10 +28,10 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     }
 
     @MainActor
-    func testMissionMarksCompletedWhenSummarizedWorkCoolsOff() throws {
+    func testMissionMarksCompletedWhenSummarizedWorkCoolsOff() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: [
@@ -47,7 +47,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [2.2, 1.1]
         )
 
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(snapshot.mission.state, .completed)
         XCTAssertTrue(snapshot.mission.recommendationSummary.contains("Ship the approval sheet"))
@@ -55,10 +55,10 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     }
 
     @MainActor
-    func testDirectionReturnsNotEnoughSignalBelowFiveProjectConversations() throws {
+    func testDirectionReturnsNotEnoughSignalBelowFiveProjectConversations() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 3, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_800) },
@@ -67,7 +67,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             latestSummaryTitle: "Tighten approval sheet",
             usageCosts: [1.2]
         )
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Zephyr",
             conversationDates: [
@@ -83,7 +83,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [0.2]
         )
 
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(snapshot.direction.status, .notEnoughSignal)
         XCTAssertEqual(snapshot.direction.availability, .sparse)
@@ -92,10 +92,10 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     }
 
     @MainActor
-    func testDirectionMarksAlignedWhenRecentSignalStaysFocused() throws {
+    func testDirectionMarksAlignedWhenRecentSignalStaysFocused() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_400) },
@@ -105,17 +105,17 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [2.4, 1.8, 1.1]
         )
 
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(snapshot.direction.status, .aligned)
         XCTAssertTrue(snapshot.direction.summary.contains("Ship approval sheet"))
     }
 
     @MainActor
-    func testDirectionMarksDriftingWhenOpenWorkHasGoneCold() throws {
+    func testDirectionMarksDriftingWhenOpenWorkHasGoneCold() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: [
@@ -131,17 +131,17 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [0.4]
         )
 
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(snapshot.direction.status, .drifting)
     }
 
     @MainActor
-    func testSecondaryProjectNeedsRecentCompetingBurnBeforeDirectionBecomesAmbiguous() throws {
+    func testSecondaryProjectNeedsRecentCompetingBurnBeforeDirectionBecomesAmbiguous() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_400) },
@@ -150,7 +150,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             latestSummaryTitle: "Ship approval sheet",
             usageCosts: [2.4, 1.8, 1.1]
         )
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Zephyr",
             conversationDates: [
@@ -165,11 +165,11 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [0.2]
         )
 
-        var snapshot = makeLayer(dataStore: store).snapshot
+        var snapshot = await makeSnapshot(dataStore: store)
         XCTAssertNil(snapshot.secondaryProjectName)
         XCTAssertNotEqual(snapshot.direction.status, .ambiguous)
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Zephyr",
             conversationDates: [
@@ -185,7 +185,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [2.4, 2.1]
         )
 
-        snapshot = makeLayer(dataStore: store).snapshot
+        snapshot = await makeSnapshot(dataStore: store)
         XCTAssertEqual(snapshot.secondaryProjectName, "Zephyr")
         XCTAssertEqual(snapshot.direction.status, .ambiguous)
         XCTAssertTrue(snapshot.direction.summary.contains("Zephyr"))
@@ -195,7 +195,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     func testMissionBlocksOnProjectionFailure() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -213,7 +213,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             )
         )
 
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(snapshot.mission.state, .blocked)
         XCTAssertEqual(snapshot.mission.recommendationSummary, "Projection sweep failed for Apollo.")
@@ -223,7 +223,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     func testDirectionOverrideWinsEvenWhenSignalIsSparse() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 3, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_800) },
@@ -252,7 +252,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     func testMissionFingerprintStaysStableAcrossReindexTimestampChurn() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -262,7 +262,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             usageCosts: [2.0, 1.6]
         )
 
-        let initialLayer = makeLayer(dataStore: store)
+        let initialLayer = await makeHydratedLayer(dataStore: store)
         let initialMissionID = initialLayer.snapshot.mission.missionID
         await initialLayer.approveMission(note: "Carry this forward.")
 
@@ -290,9 +290,9 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             summaryProvider: "openrouter",
             summaryModel: "gpt-5"
         )
-        try store.upsertConversation(updatedConversation)
+        try await store.upsertConversation(updatedConversation)
 
-        let refreshedSnapshot = makeLayer(dataStore: store).snapshot
+        let refreshedSnapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(refreshedSnapshot.mission.missionID, initialMissionID)
         XCTAssertEqual(refreshedSnapshot.mission.approval, .approved)
@@ -310,6 +310,19 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
         )
     }
 
+    @MainActor
+    private func makeHydratedLayer(dataStore: DataStore) async -> OpenBurnBarOperatingLayer {
+        let layer = makeLayer(dataStore: dataStore)
+        await layer.refreshControlPlaneCache()
+        return layer
+    }
+
+    @MainActor
+    private func makeSnapshot(dataStore: DataStore) async -> OpenBurnBarOperatingSnapshot {
+        let layer = await makeHydratedLayer(dataStore: dataStore)
+        return layer.snapshot
+    }
+
     private func makeInMemoryStore() throws -> DataStore {
         let queue = try DatabaseQueue(path: ":memory:")
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -324,7 +337,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
         latestSummaryTitle: String?,
         usageCosts: [Double],
         latestKeyFiles: [String] = []
-    ) throws {
+    ) async throws {
         let sortedDates = conversationDates.sorted()
         for (index, date) in sortedDates.enumerated() {
             let isLatest = index == sortedDates.count - 1
@@ -332,7 +345,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
             let summaryTitle = isLatest ? latestSummaryTitle : "\(project) checkpoint \(index)"
             let summary = isLatest ? latestSummary : "\(project) checkpoint \(index) is summarized."
             let message = isLatest ? latestMessage : "\(project) checkpoint \(index) is still on track."
-            try store.upsertConversation(
+            try await store.upsertConversation(
                 ConversationRecord(
                     id: "\(AgentProvider.codex.rawValue):\(sessionID)",
                     provider: .codex,
@@ -392,10 +405,10 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-001 Evidence: Approve action is disabled when no mission is resolved
     @MainActor
-    func testVAL_APP_001_ApproveActionIsDisabledWhenNoMissionExists() throws {
+    func testVAL_APP_001_ApproveActionIsDisabledWhenNoMissionExists() async throws {
         let store = try makeInMemoryStore()
         // No conversations seeded - no mission will be resolved
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         let approvalAction = snapshot.availableActions.first(where: { $0.kind == .missionApproval })
@@ -410,7 +423,7 @@ extension OpenBurnBarOperatingComposerTests {
     func testVAL_APP_001_ApproveActionIsDisabledWhenMissionAlreadyApproved() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -420,7 +433,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         // First approve the mission
         await layer.approveMission(note: "Initial approval.")
 
@@ -434,10 +447,10 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-001 Evidence: Approve action is enabled only when mission is pending approval
     @MainActor
-    func testVAL_APP_001_ApproveActionIsEnabledWhenMissionIsPendingApproval() throws {
+    func testVAL_APP_001_ApproveActionIsEnabledWhenMissionIsPendingApproval() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -447,7 +460,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         let approvalAction = snapshot.availableActions.first(where: { $0.kind == .missionApproval })
@@ -463,7 +476,7 @@ extension OpenBurnBarOperatingComposerTests {
     func testVAL_APP_002_ApprovalSuccessFeedbackIsDeterministic() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -507,7 +520,7 @@ extension OpenBurnBarOperatingComposerTests {
     func testVAL_APP_003_DirectionOverrideRejectsMissingSummary() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -538,7 +551,7 @@ extension OpenBurnBarOperatingComposerTests {
     func testVAL_APP_003_DirectionOverrideRejectsMissingRationale() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -569,7 +582,7 @@ extension OpenBurnBarOperatingComposerTests {
     func testVAL_APP_003_DirectionOverrideRejectsSupersedeStatusWithoutForcedStatus() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -601,7 +614,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_009_MissionAuthoringRejectsEmptyProjectSlug() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -628,7 +641,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_009_MissionAuthoringRejectsEmptyTitle() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -654,7 +667,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_009_MissionAuthoringRejectsEmptySummary() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -680,7 +693,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_009_MissionAuthoringProvidesFeedbackOnValidInput() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -709,12 +722,12 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-007 Evidence: Projects board ordering is deterministic by attention then cost with tie-break slug
     @MainActor
-    func testVAL_APP_007_ProjectsBoardOrderingIsDeterministic() throws {
+    func testVAL_APP_007_ProjectsBoardOrderingIsDeterministic() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
         // Seed two projects with same cost but different attention needs
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Zeta",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -723,7 +736,7 @@ extension OpenBurnBarOperatingComposerTests {
             latestSummaryTitle: "Zeta checkpoint",
             usageCosts: [1.5]
         )
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Alpha",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -734,7 +747,7 @@ extension OpenBurnBarOperatingComposerTests {
         )
 
         // Create operating layer and get snapshot
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // Verify projects are sorted deterministically
@@ -750,11 +763,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-007 Evidence: Empty state copy appears when no projects exist
     @MainActor
-    func testVAL_APP_007_ProjectsBoardEmptyStateIsShown() throws {
+    func testVAL_APP_007_ProjectsBoardEmptyStateIsShown() async throws {
         let store = try makeInMemoryStore()
         // No projects seeded
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // When no project is focused, mission should be missing/empty
@@ -764,12 +777,12 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-007 Evidence: Projects with needsAttention sort before those without
     @MainActor
-    func testVAL_APP_007_ProjectsWithAttentionSortFirst() throws {
+    func testVAL_APP_007_ProjectsWithAttentionSortFirst() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
         // Seed project without attention needs
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Quiet",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -779,7 +792,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // The mission's approval state should reflect whether attention is needed
@@ -793,11 +806,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-008 Evidence: Controller runtime snapshot contains pending questions and missions
     @MainActor
-    func testVAL_APP_008_ControllerRuntimeContainsPendingItems() throws {
+    func testVAL_APP_008_ControllerRuntimeContainsPendingItems() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -807,7 +820,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // Controller runtime should contain missions
@@ -831,11 +844,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-008 Evidence: Session detail supports in-context answer actions via availableActions
     @MainActor
-    func testVAL_APP_008_AvailableActionsSupportInContextAnswers() throws {
+    func testVAL_APP_008_AvailableActionsSupportInContextAnswers() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -845,7 +858,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // availableActions should be present for mission approval
@@ -859,11 +872,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-010 Evidence: Mission record contains fields for ownership display
     @MainActor
-    func testVAL_APP_010_MissionRecordContainsOwnershipFields() throws {
+    func testVAL_APP_010_MissionRecordContainsOwnershipFields() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -873,7 +886,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // Verify mission record has all required fields for board display
@@ -903,11 +916,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-APP-010 Evidence: Mission board shows deterministic state transitions
     @MainActor
-    func testVAL_APP_010_MissionBoardStateTransitionsAreDeterministic() throws {
+    func testVAL_APP_010_MissionBoardStateTransitionsAreDeterministic() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -917,7 +930,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         // First snapshot
         let snapshot1 = layer.snapshot
@@ -936,7 +949,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_004_EmptyAnswerFailsValidation() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         // Attempt to answer with empty string
         layer.clearControllerFeedback()
@@ -953,7 +966,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_004_WhitespaceOnlyAnswerFailsValidation() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         // Attempt to answer with whitespace-only string
         layer.clearControllerFeedback()
@@ -968,7 +981,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_004_ValidFreeTextAnswerProceeds() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         // Valid answer should not set error feedback immediately
         // (it may fail due to no daemon, but not due to validation)
@@ -985,7 +998,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testVAL_APP_004_SuggestedOptionAnswerProceeds() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         // When a suggested option is selected, the answer text from that option must be provided.
         // Production guard (OpenBurnBarOperatingLayer+ControllerActions.swift:28) rejects empty
@@ -1204,7 +1217,7 @@ extension OpenBurnBarOperatingComposerTests {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -1296,7 +1309,7 @@ extension OpenBurnBarOperatingComposerTests {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -1705,11 +1718,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-002 Evidence: Question ordering is deterministic by priority and createdAt
     @MainActor
-    func testVAL_BRIEF_002_QuestionOrderingIsDeterministic() throws {
+    func testVAL_BRIEF_002_QuestionOrderingIsDeterministic() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -1719,7 +1732,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         // First snapshot
         let snapshot1 = layer.snapshot
@@ -1741,11 +1754,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-002 Evidence: Quick-answer options are surfaced via suggestedOptions on questions with deterministic ordering
     @MainActor
-    func testVAL_BRIEF_002_QuickAnswerOptionsSurfacedWithDeterministicOrdering() throws {
+    func testVAL_BRIEF_002_QuickAnswerOptionsSurfacedWithDeterministicOrdering() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -1755,7 +1768,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot1 = layer.snapshot
 
         // Questions may have suggested options for quick-answer
@@ -1791,11 +1804,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-001 Evidence: Mission brief model includes identity/lifecycle/approval/burn and closure detail fields
     @MainActor
-    func testVAL_BRIEF_001_MissionBriefIncludesRequiredClosureFields() throws {
+    func testVAL_BRIEF_001_MissionBriefIncludesRequiredClosureFields() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
@@ -1810,7 +1823,7 @@ extension OpenBurnBarOperatingComposerTests {
             ]
         )
 
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
         let mission = snapshot.mission
 
         XCTAssertFalse(mission.missionID.isEmpty, "VAL-BRIEF-001: Mission identity must be present")
@@ -1836,7 +1849,7 @@ extension OpenBurnBarOperatingComposerTests {
         // Running
         do {
             let store = try makeInMemoryStore()
-            try seedProject(
+            try await seedProject(
                 store: store,
                 project: "Apollo",
                 conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_500) },
@@ -1845,7 +1858,7 @@ extension OpenBurnBarOperatingComposerTests {
                 latestSummaryTitle: "Running checkpoint",
                 usageCosts: [1.2]
             )
-            let layer = makeLayer(dataStore: store)
+            let layer = await makeHydratedLayer(dataStore: store)
             XCTAssertEqual(layer.snapshot.mission.state, .running)
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Approve mission to keep active execution moving.")
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Running recommendation must be deterministic")
@@ -1854,7 +1867,7 @@ extension OpenBurnBarOperatingComposerTests {
         // Blocked
         do {
             let store = try makeInMemoryStore()
-            try seedProject(
+            try await seedProject(
                 store: store,
                 project: "Apollo",
                 conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_500) },
@@ -1871,7 +1884,7 @@ extension OpenBurnBarOperatingComposerTests {
                     errorMessage: "Projection queue failed."
                 )
             )
-            let layer = makeLayer(dataStore: store)
+            let layer = await makeHydratedLayer(dataStore: store)
             XCTAssertEqual(layer.snapshot.mission.state, .blocked)
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Resolve blocking issues, then approve mission to retry.")
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Blocked recommendation must be deterministic")
@@ -1880,7 +1893,7 @@ extension OpenBurnBarOperatingComposerTests {
         // Partial
         do {
             let store = try makeInMemoryStore()
-            try seedProject(
+            try await seedProject(
                 store: store,
                 project: "Apollo",
                 conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_100) },
@@ -1889,7 +1902,7 @@ extension OpenBurnBarOperatingComposerTests {
                 latestSummaryTitle: "Partial checkpoint",
                 usageCosts: [1.4]
             )
-            let layer = makeLayer(dataStore: store)
+            let layer = await makeHydratedLayer(dataStore: store)
             XCTAssertEqual(layer.snapshot.mission.state, .partial)
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Approve mission and close remaining work before rerun.")
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Partial recommendation must be deterministic")
@@ -1898,7 +1911,7 @@ extension OpenBurnBarOperatingComposerTests {
         // Completed
         do {
             let store = try makeInMemoryStore()
-            try seedProject(
+            try await seedProject(
                 store: store,
                 project: "Apollo",
                 conversationDates: [
@@ -1913,7 +1926,7 @@ extension OpenBurnBarOperatingComposerTests {
                 latestSummaryTitle: "Completed checkpoint",
                 usageCosts: [1.1]
             )
-            let layer = makeLayer(dataStore: store)
+            let layer = await makeHydratedLayer(dataStore: store)
             XCTAssertEqual(layer.snapshot.mission.state, .completed)
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Approve mission closure or request one final follow-up.")
             XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Completed recommendation must be deterministic")
@@ -1977,9 +1990,9 @@ extension OpenBurnBarOperatingComposerTests {
     // MARK: VAL-BRIEF-006: Compact home remains actionable pre-scan
 
     /// VAL-BRIEF-006 Evidence: Pre-scan compact state keeps safe placeholder metrics and an actionable create-mission CTA.
-    func testVAL_BRIEF_006_PreScanCompactHomeKeepsActionableCreateMissionAndSafePlaceholderMetrics() throws {
+    func testVAL_BRIEF_006_PreScanCompactHomeKeepsActionableCreateMissionAndSafePlaceholderMetrics() async throws {
         let store = try makeInMemoryStore()
-        let snapshot = makeLayer(dataStore: store).snapshot
+        let snapshot = await makeSnapshot(dataStore: store)
 
         XCTAssertEqual(snapshot.mission.availability, .missing)
         XCTAssertEqual(snapshot.mission.sessionCount, 0)
@@ -2094,7 +2107,7 @@ extension OpenBurnBarOperatingComposerTests {
         // Empty
         do {
             let store = try makeInMemoryStore()
-            let mission = makeLayer(dataStore: store).snapshot.mission
+            let mission = await makeSnapshot(dataStore: store).mission
             XCTAssertEqual(mission.availability, .missing, "VAL-APP-006: Empty state should use missing availability")
             XCTAssertTrue(mission.title.contains("No active mission"), "VAL-APP-006: Empty state copy must be explicit")
             XCTAssertTrue(mission.changedFilesSummary.contains("No changed files"), "VAL-APP-006: Empty state changed-files copy must be explicit")
@@ -2103,7 +2116,7 @@ extension OpenBurnBarOperatingComposerTests {
         // Sparse
         do {
             let store = try makeInMemoryStore()
-            try seedProject(
+            try await seedProject(
                 store: store,
                 project: "Apollo",
                 conversationDates: [now.addingTimeInterval(-20 * 60)],
@@ -2112,7 +2125,7 @@ extension OpenBurnBarOperatingComposerTests {
                 latestSummaryTitle: "Initial checkpoint",
                 usageCosts: [0.4]
             )
-            let mission = makeLayer(dataStore: store).snapshot.mission
+            let mission = await makeSnapshot(dataStore: store).mission
             XCTAssertEqual(mission.availability, .sparse, "VAL-APP-006: Sparse mission should use sparse availability")
             XCTAssertTrue(mission.subtitle.contains("sparse"), "VAL-APP-006: Sparse state copy must be explicit")
         }
@@ -2120,7 +2133,7 @@ extension OpenBurnBarOperatingComposerTests {
         // Blocked
         do {
             let store = try makeInMemoryStore()
-            try seedProject(
+            try await seedProject(
                 store: store,
                 project: "Apollo",
                 conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_800) },
@@ -2137,7 +2150,7 @@ extension OpenBurnBarOperatingComposerTests {
                     errorMessage: "Projection queue failed for Apollo."
                 )
             )
-            let mission = makeLayer(dataStore: store).snapshot.mission
+            let mission = await makeSnapshot(dataStore: store).mission
             XCTAssertEqual(mission.state, .blocked, "VAL-APP-006: Blocked state should be explicit")
             XCTAssertTrue(mission.risksSummary.contains("Projection queue failed"), "VAL-APP-006: Blocked risk copy must expose the blocking reason")
         }
@@ -2149,7 +2162,7 @@ extension OpenBurnBarOperatingComposerTests {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_800) },
@@ -2167,7 +2180,7 @@ extension OpenBurnBarOperatingComposerTests {
             )
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let blockedMission = layer.snapshot.mission
         XCTAssertEqual(blockedMission.state, .blocked, "VAL-APP-006: Preconditions should start blocked")
 
@@ -2179,7 +2192,7 @@ extension OpenBurnBarOperatingComposerTests {
                 updatedAt: now.addingTimeInterval(120)
             )
         )
-        layer.stateRevision += 1
+        await layer.refreshControlPlaneCache()
 
         let recoveredMission = layer.snapshot.mission
         XCTAssertNotEqual(recoveredMission.state, .blocked, "VAL-APP-006: Mission state should clear blocked after health recovery")
@@ -2190,11 +2203,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-005 Evidence: Controller runtime exposes source field
     @MainActor
-    func testVAL_BRIEF_005_ControllerRuntimeExposesSource() throws {
+    func testVAL_BRIEF_005_ControllerRuntimeExposesSource() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -2204,7 +2217,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // Controller runtime source should be one of the defined cases
@@ -2218,12 +2231,12 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-005 Evidence: Degraded modes are surfaced in freshness summary
     @MainActor
-    func testVAL_BRIEF_005_DegradedModesAreSurfacedInFreshness() throws {
+    func testVAL_BRIEF_005_DegradedModesAreSurfacedInFreshness() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
         // Seed project with indexing disabled (creates degraded mode)
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -2233,7 +2246,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // Freshness should reflect degraded state when appropriate
@@ -2245,11 +2258,11 @@ extension OpenBurnBarOperatingComposerTests {
 
     /// VAL-BRIEF-005 Evidence: Controller summary reflects source and runtime health
     @MainActor
-    func testVAL_BRIEF_005_ControllerSummaryReflectsRuntimeHealth() throws {
+    func testVAL_BRIEF_005_ControllerSummaryReflectsRuntimeHealth() async throws {
         let store = try makeInMemoryStore()
         let now = Date()
 
-        try seedProject(
+        try await seedProject(
             store: store,
             project: "Apollo",
             conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
@@ -2259,7 +2272,7 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
         let snapshot = layer.snapshot
 
         // Controller summary should have meaningful content
@@ -2562,7 +2575,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testMissionAuthoringValidationFailsWithEmptyProjectSlug() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -2587,7 +2600,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testMissionAuthoringValidationFailsWithWhitespaceProjectSlug() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -2608,7 +2621,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testMissionAuthoringValidationFailsWithEmptyTitle() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -2632,7 +2645,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testMissionAuthoringValidationFailsWithEmptySummary() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -2656,7 +2669,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testMissionAuthoringValidationFailsWithWhitespaceSummary() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         do {
             _ = try await layer.createMission(
@@ -2677,7 +2690,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testMissionAuthoringValidationAcceptsAllRecommendationKinds() async throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        let layer = await makeHydratedLayer(dataStore: store)
 
         // Test that all recommendation kinds are accepted by validation (they don't cause validation failure)
         // The daemon call would fail since there's no real daemon, but validation should pass

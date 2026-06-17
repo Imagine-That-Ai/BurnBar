@@ -499,6 +499,7 @@ struct SessionDetailContextPackRow: View {
     let session: TokenUsage
     let conversation: ConversationRecord?
     @Bindable var dataStore: DataStore
+    var settingsManager: SettingsManager = .shared
     var onPresentSheet: (String?, String?) -> Void
 
     @Environment(SettingsManager.self) private var settingsManager

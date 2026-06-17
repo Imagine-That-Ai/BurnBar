@@ -23,6 +23,7 @@ struct OnboardingCompleteView: View {
                 .foregroundStyle(DesignSystem.Colors.success)
                 .scaleEffect(checkmarkScale)
                 .opacity(checkmarkOpacity)
+                .accessibilityHidden(true)
 
             VStack(spacing: DesignSystem.Spacing.sm) {
                 if sessionCount > 0 {
@@ -75,6 +76,7 @@ struct OnboardingCompleteView: View {
                         .padding(.vertical, DesignSystem.Spacing.sm)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.ember)
 
                 Button("Stay in menu bar") {
                     onDismiss()

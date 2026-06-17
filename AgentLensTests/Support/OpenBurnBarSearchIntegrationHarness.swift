@@ -161,7 +161,7 @@ final class OpenBurnBarSearchIntegrationHarness {
             artifactDiscoveryAdditionalKnownPatterns: additionalKnownPatterns
         )
         let service = ArtifactDiscoveryService(
-            dataStoreActor: dataStore.actor,
+            dataStore: dataStore,
             settingsProvider: settings,
             fileManager: fileManager,
             nowProvider: { [clock] in clock.now() }

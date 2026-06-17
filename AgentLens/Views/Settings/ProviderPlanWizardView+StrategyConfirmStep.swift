@@ -104,7 +104,7 @@ extension ProviderPlanWizardView {
         } label: {
             HStack(spacing: DesignSystem.Spacing.md) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                         .fill(LinearGradient(
                             colors: isSelected
                                 ? [primary, primary.opacity(0.6)]

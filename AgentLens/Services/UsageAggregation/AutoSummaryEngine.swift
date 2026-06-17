@@ -65,7 +65,7 @@ final class AutoSummaryEngine {
         self.llmClient = llmClient
         self.keyResolver = SummaryAPIKeyResolver(providerAPIKeyStore: providerAPIKeyStore)
         self.worker = SummaryWorker(
-            dataStoreActor: dataStore.actor,
+            summaryStore: DataStoreSummaryPersistenceStore(dataStore: dataStore),
             llmClient: llmClient,
             keyResolver: self.keyResolver
         )

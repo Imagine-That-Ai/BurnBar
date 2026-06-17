@@ -96,6 +96,8 @@ struct InsightsCanvasGridView: View {
         .shadow(radius: isDragged ? 12 : 0, y: isDragged ? 6 : 0)
         .zIndex(isDragged ? 10 : 0)
         .onTapGesture { onSelectWidget(widget.id) }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onSelectWidget(widget.id) }
         .gesture(
             DragGesture(minimumDistance: 8)
                 .onChanged { gesture in

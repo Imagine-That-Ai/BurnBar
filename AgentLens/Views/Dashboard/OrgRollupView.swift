@@ -103,18 +103,20 @@ struct OrgRollupView: View {
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.label)
-                        .font(.body.weight(.semibold))
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
                         .lineLimit(1)
                     Text("\(row.deviceCount) \(row.deviceCount == 1 ? "device" : "devices") · \(row.sessionCount) sessions")
-                        .font(.caption)
+                        .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("$\(String(format: "%.2f", row.totalCost))")
-                        .font(.system(.body, design: .monospaced).weight(.semibold))
+                        .font(DesignSystem.Typography.monoSmall)
+                        .fontWeight(.semibold)
                     Text("\(String(format: "%.0f", row.totalTokens)) tokens")
-                        .font(.caption2.monospaced())
+                        .font(DesignSystem.Typography.monoTiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
             }
@@ -173,10 +175,10 @@ enum OrgGroupBy: String, CaseIterable, Identifiable {
 
     var tint: Color {
         switch self {
-        case .user: return .purple
-        case .project: return .green
-        case .credential: return .orange
-        case .provider: return .blue
+        case .user: return DesignSystem.Colors.whimsy
+        case .project: return DesignSystem.Colors.success
+        case .credential: return DesignSystem.Colors.amber
+        case .provider: return DesignSystem.Colors.blaze
         }
     }
 }

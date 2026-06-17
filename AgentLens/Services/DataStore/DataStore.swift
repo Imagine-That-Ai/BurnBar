@@ -115,3 +115,21 @@ actor DataStoreActor {
 // deprecation noise.
 
 typealias DataStore = DataStoreCoordinator
+
+extension DataStore {
+    func fetchSwitcherProfiles() throws -> [SwitcherProfileRecord] {
+        try switcherStore.fetchAllProfiles()
+    }
+
+    func countSwitcherProfiles() throws -> Int {
+        try fetchSwitcherProfiles().count
+    }
+
+    func setActiveSwitcherProfile(_ profileID: String?) throws {
+        try switcherStore.setActiveProfile(profileID)
+    }
+
+    func fetchSwitcherProfilesForQuota() throws -> [SwitcherProfileRecord] {
+        try fetchSwitcherProfiles()
+    }
+}

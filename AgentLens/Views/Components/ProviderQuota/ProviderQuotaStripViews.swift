@@ -123,6 +123,7 @@ struct QuotaDualWindowStrip: View {
                             .fill(gradient)
                             .frame(width: fillWidth)
                             .shadow(color: fill.opacity(0.3), radius: 4, y: 0)
+                            .animation(DesignSystem.Animation.gentle, value: fraction)
                     }
 
                     // Pace tick — where the fill edge SHOULD be if usage
@@ -270,7 +271,7 @@ struct QuotaSourceBadge: View {
             .font(DesignSystem.Typography.tiny)
             .foregroundStyle(foreground)
             .padding(.horizontal, DesignSystem.Spacing.sm)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5)
             .background(foreground.opacity(0.08))
             .overlay(
                 Capsule()

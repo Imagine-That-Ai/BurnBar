@@ -26,6 +26,7 @@ struct SwitcherOnboardingWelcomeStep: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 44, weight: .medium, design: .rounded))
                         .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                        .accessibilityHidden(true)
                 }
 
                 VStack(spacing: DesignSystem.Spacing.sm) {
@@ -152,6 +153,9 @@ struct SwitcherOnboardingWelcomeStep: View {
         .padding(.vertical, DesignSystem.Spacing.sm)
         .padding(.horizontal, DesignSystem.Spacing.md)
         .contentShape(Rectangle())
+        .help("Drag to reorder setup order")
+        .accessibilityLabel(Text(provider.label))
+        .accessibilityHint(Text("Drag to reorder"))
     }
 
     private func featureRow(icon: String, text: String) -> some View {

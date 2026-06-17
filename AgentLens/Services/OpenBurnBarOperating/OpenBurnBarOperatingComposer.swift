@@ -28,21 +28,22 @@ enum OpenBurnBarOperatingComposer {
         )
         let retrievalHealth = cachedRetrievalHealth
 
-        let recentConversations = searchService
-            .recentConversations(limit: 120)
+        let recentProviderConversations = recentConversations
             .filter { $0.sourceType == .providerLog }
         let focus = selectProjectFocus(
-            conversations: recentConversations,
+            conversations: recentProviderConversations,
             usages: dataStore.usages
         )
 
-        let projectConversations = filterByPrimaryProject(recentConversations, focus.primaryProject) { $0.projectName }
+        let projectConversations = filterByPrimaryProject(recentProviderConversations, focus.primaryProject) { $0.projectName }
         let decisions = decisionState(from: actionRecords)
         let history = historyEntries(
             from: actionRecords,
             focusProject: focus.primaryProject
         )
-        let latestConversation = searchService.latestConversation(in: projectConversations)
+        let latestConversation = projectConversations.max {
+            (latestConversationActivityDate($0) ?? .distantPast) < (latestConversationActivityDate($1) ?? .distantPast)
+        }
         let projectUsages = filterByPrimaryProject(dataStore.usages, focus.primaryProject) { $0.projectName }
         let recentProjectUsages = projectUsages.filter { $0.startTime >= Date().addingTimeInterval(-7 * 24 * 60 * 60) }
         let activeUsages = recentProjectUsages.isEmpty ? projectUsages : recentProjectUsages

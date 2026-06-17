@@ -59,7 +59,7 @@ final class ConversationTombstoneTests: XCTestCase {
         XCTAssertLessThan(tombstoneIndex, orphanRepairIndex)
 
         // Fresh rows default to version 1 with a null tombstone.
-        try dataStore.upsertConversation(makeRecord(id: "conv-version-default"))
+        try await dataStore.upsertConversation(makeRecord(id: "conv-version-default"))
         let row = try await queue.read { db in
             try Row.fetchOne(db, sql: "SELECT deletedAt, version FROM conversations WHERE id = ?", arguments: ["conv-version-default"])
         }
@@ -71,7 +71,7 @@ final class ConversationTombstoneTests: XCTestCase {
 
     func test_softDelete_excludesConversationFromReads_bumpsVersion_andClearsSyncFlags() async throws {
         let id = "conv-soft-delete"
-        try dataStore.upsertConversation(makeRecord(id: id, fullText: "secret token sk-abcdef0123456789abcdef"))
+        try await dataStore.upsertConversation(makeRecord(id: id, fullText: "secret token sk-abcdef0123456789abcdef"))
         // Mark it synced so we can prove the soft-delete re-dirties it for upload.
         try await dataStore.markConversationsSynced(ids: [id])
 
@@ -189,7 +189,8 @@ final class ConversationTombstoneTests: XCTestCase {
 
         let downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
         await downloadSync.sync()
-        XCTAssertNotNil(try dataStore.fetchConversation(id: localId), "Live remote conversation should land locally.")
+        let liveRemoteConversation = try await dataStore.fetchConversation(id: localId)
+        XCTAssertNotNil(liveRemoteConversation, "Live remote conversation should land locally.")
 
         // Device A deletes it: the doc now carries a tombstone with a newer version.
         var tombstoned = basePayload
@@ -201,7 +202,8 @@ final class ConversationTombstoneTests: XCTestCase {
         await downloadSync.sync()
 
         // The local copy is now tombstoned: invisible to reads, present on disk.
-        XCTAssertNil(try dataStore.fetchConversation(id: localId), "Remote tombstone must soft-delete the local copy.")
+        let tombstonedRemoteConversation = try await dataStore.fetchConversation(id: localId)
+        XCTAssertNil(tombstonedRemoteConversation, "Remote tombstone must soft-delete the local copy.")
         let row = try await queue.read { db in
             try Row.fetchOne(db, sql: "SELECT deletedAt, version FROM conversations WHERE id = ?", arguments: [localId])
         }
@@ -260,7 +262,8 @@ final class ConversationTombstoneTests: XCTestCase {
 
         await DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider).sync()
 
-        XCTAssertNil(try dataStore.fetchConversation(id: localId), "A remote conversation that arrives already-deleted must not be visible.")
+        let alreadyDeletedRemoteConversation = try await dataStore.fetchConversation(id: localId)
+        XCTAssertNil(alreadyDeletedRemoteConversation, "A remote conversation that arrives already-deleted must not be visible.")
         let row = try await queue.read { db in
             try Row.fetchOne(db, sql: "SELECT deletedAt, version FROM conversations WHERE id = ?", arguments: [localId])
         }
@@ -272,7 +275,7 @@ final class ConversationTombstoneTests: XCTestCase {
 
     func test_gc_purgesCloudArtifactsAndLocalRow_afterRetentionWindow() async throws {
         let id = "conv-gc-target"
-        try dataStore.upsertConversation(makeRecord(id: id))
+        try await dataStore.upsertConversation(makeRecord(id: id))
 
         // Tombstone it 31 days ago — past the 30-day retention window.
         let deletedAt = Date().addingTimeInterval(-31 * 24 * 60 * 60)
@@ -344,7 +347,7 @@ final class ConversationTombstoneTests: XCTestCase {
 
     func test_gc_leavesFreshTombstonesUntouched_beforeRetentionWindow() async throws {
         let id = "conv-gc-fresh"
-        try dataStore.upsertConversation(makeRecord(id: id))
+        try await dataStore.upsertConversation(makeRecord(id: id))
         // Deleted just now — well inside the retention window.
         try await dataStore.softDeleteConversation(id: id, at: Date())
 

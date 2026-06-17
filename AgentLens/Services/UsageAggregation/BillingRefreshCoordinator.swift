@@ -34,9 +34,9 @@ enum BillingRefreshCoordinator {
     /// Each step that can fail appends to `Result.errors` without aborting
     /// the remaining steps.
     nonisolated static func reconcile(
-        dataStoreActor: DataStoreActor,
         usageAPIService: ProviderUsageAPIService?,
         allParsedUsages: [TokenUsage],
+        fetchCanonicalUsage: () async throws -> [TokenUsage],
         persistAndReload: ([TokenUsage]) async throws -> [TokenUsage],
         deleteAndReload: (String) async throws -> [TokenUsage],
         recordDriftEvent: (BillingDriftEvent) -> Void = { _ in }

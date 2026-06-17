@@ -120,6 +120,23 @@ const REQUIRED_BRANCH_CHECKS = [
   "Analyze (javascript-typescript)",
   "Analyze (python)",
 ];
+const REQUIRED_BRANCH_CHECKS = [
+  "Fast Feedback Gate",
+  "guard",
+  "BurnBar AGPL product posture",
+  "Secret Detection (gitleaks)",
+  "Dependency Review (CVE check)",
+  "npm Audit (Node package locks)",
+  "Remote Installer Policy",
+  "Vendored Agent Provenance",
+  "Signal Activation Parity (fail-closed default)",
+  "Browser Target Policy (SSRF / DNS-rebinding)",
+  "OSV Scanner (open source vulnerabilities)",
+  "Hosted MCP Security Smoke",
+  "Hosted MCP Isolation Proofs (local, deterministic)",
+  "Firestore Security Rules Tests",
+];
+const REQUIRED_MAIN_GATE_CHECK = "openburnbar-pr";
 const REQUIRED_GITHUB_SECURITY_SETTINGS = [
   "dependabot_security_updates",
   "secret_scanning",

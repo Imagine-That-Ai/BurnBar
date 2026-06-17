@@ -189,15 +189,15 @@ struct SettingsToggle: View {
             HStack(spacing: DesignSystem.Spacing.md) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 14))
+                        .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                         .frame(width: 20)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
 
                     if let subtitle {
                         Text(subtitle)

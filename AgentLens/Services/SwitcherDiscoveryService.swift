@@ -102,7 +102,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         // Fetch existing profiles for duplicate detection
         let existingProfiles: [SwitcherProfileRecord]
         do {
-            existingProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            existingProfiles = try dataStore.fetchSwitcherProfiles()
         } catch {
             scanErrors.append("Failed to load existing profiles: \(error.localizedDescription)")
             existingProfiles = []
@@ -703,7 +703,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         // the failure instead of guessing the user has no existing profiles.
         let allProfiles: [SwitcherProfileRecord]
         do {
-            allProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            allProfiles = try dataStore.fetchSwitcherProfiles()
         } catch {
             AppLogger.dataStore.error(
                 "switcher_existing_profiles_read_failed",
@@ -1115,7 +1115,7 @@ final class SwitcherDiscoveryService: ObservableObject {
     private func activateIfFirstProfile(_ savedID: String, dataStore: DataStore) {
         let existingCount: Int
         do {
-            existingCount = try dataStore.switcherStore.fetchAllProfiles().count
+            existingCount = try dataStore.countSwitcherProfiles()
         } catch {
             AppLogger.dataStore.error(
                 "switcher_active_profile_count_read_failed",
@@ -1127,7 +1127,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         guard existingCount <= 1 else { return }
 
         do {
-            try dataStore.switcherStore.setActiveProfile(savedID)
+            try dataStore.setActiveSwitcherProfile(savedID)
         } catch {
             AppLogger.dataStore.error(
                 "switcher_set_active_profile_failed",

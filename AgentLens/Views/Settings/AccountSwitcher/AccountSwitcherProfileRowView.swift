@@ -109,7 +109,7 @@ struct ProfileRowView: View {
 
                         if profile.isDisabled {
                             Text("Paused")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(DesignSystem.Typography.tiny).fontWeight(.semibold)
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -119,7 +119,7 @@ struct ProfileRowView: View {
 
                         if isConnected {
                             Text("Logged in")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(DesignSystem.Typography.tiny).fontWeight(.semibold)
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -245,9 +245,19 @@ struct ProfileRowView: View {
                     .accessibilityLabel("Delete \(profile.displayName)")
                 }
                 .opacity(isHovered || isConnected || profile.isDisabled ? 1 : 0.55)
+                .animation(DesignSystem.Animation.hover, value: isHovered)
             }
             .padding(.vertical, DesignSystem.Spacing.sm)
             .padding(.horizontal, DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(isActive ? DesignSystem.Colors.success.opacity(0.06) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .strokeBorder(isActive ? DesignSystem.Colors.success.opacity(0.35) : Color.clear, lineWidth: 1)
+            )
+            .animation(DesignSystem.Animation.gentle, value: isActive)
         }
         .onHover { hovering in
             withAnimation(DesignSystem.Animation.snappy) { isHovered = hovering }

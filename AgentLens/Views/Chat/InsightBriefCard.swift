@@ -141,6 +141,8 @@ struct InsightBriefCard: View {
     let accent: Color
     let action: () -> Void
 
+    @State private var hovered = false
+
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
@@ -167,13 +169,16 @@ struct InsightBriefCard: View {
             .padding(DesignSystem.Spacing.md)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.9))
+                    .fill(hovered ? DesignSystem.Colors.surfaceElevated : DesignSystem.Colors.surface.opacity(0.9))
                     .overlay(
                         RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .stroke(accent.opacity(0.25), lineWidth: 0.5)
+                            .stroke(accent.opacity(hovered ? 0.45 : 0.25), lineWidth: 0.5)
                     )
             )
         }
         .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityHint("Opens this insight")
+        .animation(DesignSystem.Animation.hover, value: hovered)
     }
 }

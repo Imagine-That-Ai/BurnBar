@@ -54,7 +54,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
             fullText: "Full text here",
             fileModifiedAt: nil
         )
-        try dataStore.upsertConversation(record)
+        try await dataStore.upsertConversation(record)
 
         let unsyncedBefore = try await dataStore.fetchUnsyncedConversations(limit: 400)
         XCTAssertEqual(unsyncedBefore.count, 1)
@@ -175,7 +175,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let conversations = try dataStore.fetchConversations()
+        let conversations = try await dataStore.fetchConversations()
         let remoteConversations = conversations.filter { $0.isRemote }
         XCTAssertEqual(remoteConversations.count, 1)
 
@@ -196,7 +196,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
     func test_conversationRoundTrip_downloadDoesNotOverwriteLocal() async throws {
         let now = Date()
         // Insert a local conversation
-        try dataStore.upsertConversation(ConversationRecord(
+        try await dataStore.upsertConversation(ConversationRecord(
             id: "conv-1",
             provider: .factory,
             sessionId: "local-session",
@@ -266,7 +266,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let conversations = try dataStore.fetchConversations()
+        let conversations = try await dataStore.fetchConversations()
         // Should have both local and remote (remote gets stableId "remote-device-2:conv-1")
         XCTAssertEqual(conversations.count, 2)
 

@@ -109,12 +109,12 @@ struct CastleGreatHallView: View {
                 }
             }
         }
-        .padding(18)
+        .padding(DesignSystem.Spacing.lg)
         .background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.68))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                         .stroke(DesignSystem.Colors.borderSubtle.opacity(0.7), lineWidth: 1)
                 )
         }
@@ -142,7 +142,7 @@ struct CastleGreatHallView: View {
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Text(subheadline)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(2)
             }
@@ -283,6 +283,33 @@ struct CastleGreatHallView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DesignSystem.Colors.surfaceElevated.opacity(0.52)))
+        .accessibilityLabel("Loading Wand worker status")
+    }
+
+    @ViewBuilder
+    private var retryBar: some View {
+        if let onRetry {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                    .accessibilityHidden(true)
+                Text("All workers failed. Retry the cast to try again.")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer(minLength: 0)
+                Button("Retry") {
+                    onRetry()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(DesignSystem.Colors.amber)
+                .accessibilityLabel("Retry Wand cast")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DesignSystem.Colors.amber.opacity(0.08)))
+        }
     }
 
     private var loadingState: some View {
@@ -389,9 +416,10 @@ private struct CastleMetricPill: View {
                 .font(.system(size: 11, weight: .semibold))
                 .accessibilityHidden(true)
             Text("\(value)")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .font(DesignSystem.Typography.monoSmall)
             Text(label)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
                 .lineLimit(1)
         }
         .foregroundStyle(tint)
@@ -431,7 +459,7 @@ private struct CastleWorkerTile: View {
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
                     Text(worker.modelArg ?? "model pending")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(DesignSystem.Typography.monoTiny)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -446,7 +474,7 @@ private struct CastleWorkerTile: View {
                 Spacer(minLength: 0)
                 if let head = worker.headSHA?.prefix(7), worker.landsCommit {
                     Text(String(head))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(DesignSystem.Typography.monoTiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
             }

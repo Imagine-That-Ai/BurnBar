@@ -895,7 +895,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
         )
 
         // Fetch from database
-        let fetched = try dataStore.fetchConversation(id: stableId)
+        let fetched = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNotNil(fetched, "Should fetch the conversation we just inserted")
         XCTAssertEqual(fetched?.projectName, "ParityProject")
 

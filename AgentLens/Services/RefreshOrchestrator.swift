@@ -115,11 +115,12 @@ actor RefreshOrchestrator {
         let postPersistencePhaseStartedAt = Date()
 
         // 1. Billing reconciliation (nonisolated, runs off main thread via its own DB work)
-        let actor = dataStore.actor
         let billingResult = await BillingRefreshCoordinator.reconcile(
-            dataStoreActor: actor,
             usageAPIService: usageAPIService,
             allParsedUsages: allUsages,
+            fetchCanonicalUsage: { @Sendable [dataStore] in
+                try await dataStore.fetchAllUsage()
+            },
             // `@Sendable` makes these closures nonisolated, so `reconcile`
             // (itself `nonisolated`) runs the blocking GRDB work on the
             // cooperative pool — off this actor and off the main actor (SE-0338)

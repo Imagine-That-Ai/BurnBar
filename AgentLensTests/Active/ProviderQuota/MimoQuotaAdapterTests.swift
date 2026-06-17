@@ -1,5 +1,4 @@
 import XCTest
-import GRDB
 import Security
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
@@ -157,8 +156,6 @@ final class MimoQuotaAdapterTests: XCTestCase {
     ) throws -> ProviderQuotaAdapterContext {
         let appPaths = OpenBurnBarAppPaths.live()
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
-        let dbQueue = try DatabaseQueue()
-        let dataStoreActor = try DataStoreActor(databaseQueue: dbQueue)
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MimoMockURLProtocol.self]
@@ -170,7 +167,6 @@ final class MimoQuotaAdapterTests: XCTestCase {
             session: session,
             environment: [:],
             homeDirectoryURL: tempDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: ClaudeQuotaBridgeManager(
                 appPaths: appPaths,

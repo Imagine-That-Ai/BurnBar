@@ -53,7 +53,7 @@ extension ProjectionPipelineService {
         let rebuildPageSize = paginationPageSize
         var conversationOffset = 0
         while true {
-            let conversations = try dataStore.fetchConversations(limit: rebuildPageSize, offset: conversationOffset)
+            let conversations = try await dataStore.fetchConversations(limit: rebuildPageSize, offset: conversationOffset)
             guard conversations.isEmpty == false else { break }
 
             for conversation in conversations {

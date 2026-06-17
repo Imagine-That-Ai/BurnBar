@@ -447,7 +447,7 @@ final class OpenBurnBarDaemonManager {
             return
         }
 
-        exportControllerActivitySnapshotIfStale()
+        await exportControllerActivitySnapshotIfStale()
         status = .checking
         let socketURL = paths.socketURL
         let requestHealth = dependencies.requestHealth
