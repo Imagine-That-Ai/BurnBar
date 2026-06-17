@@ -33,9 +33,9 @@ require_pattern "extension npm ci in test matrix" \
 require_pattern "per-lane ops failure dedupe" \
   'lane:\$\{lane\}' \
   .github/actions/ops-failure-issue/action.yml
-require_pattern "nightly privileged-socket red-team" \
+require_pattern "sandbox privileged-socket red-team" \
   'privileged-socket-redteam-ci\.sh' \
-  .github/workflows/nightly-e2e.yml
+  .github/workflows/nightly-dast-sandbox.yml
 require_pattern "uptime check definitions" \
   'OPS_UPTIME_CHECKS' \
   functions/scripts/ops-uptime-check-definitions.mjs

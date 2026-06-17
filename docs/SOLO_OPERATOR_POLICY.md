@@ -20,8 +20,14 @@ is never acceptable.
   change.
 - Full-confidence lanes (`openburnbar-pr-harness.yml`, `nightly-e2e.yml`, and
   full CodeQL) run after merge, nightly, or by manual dispatch. They are not
-  daily PR blockers, but a red nightly older than 24 hours is active repair
-  work, not background noise.
+  daily PR blockers, but a red paged nightly older than 24 hours is active
+  repair work, not background noise. `nightly-e2e.yml` is the paged core lane:
+  production health, full nightly tests, and the commercial launch gate.
+- `nightly-dast-sandbox.yml` is an advisory sandbox for hosted-runner-hostile
+  DAST and privileged live-socket red-team jobs. It records failures through
+  the separate `lane:nightly-sandbox` issue key and can never keep
+  `lane:nightly-e2e` red. The blocking peer-auth controls remain the PR-unit
+  suites until a self-hosted privileged macOS runner is armed.
 - Live governance proof is not a screenshot or memory. Run
   `bash scripts/ops/verify-github-governance.sh` before any release or
   commercial launch gate; it reads GitHub's branch-protection and environment
@@ -71,12 +77,17 @@ Require one of, in order of preference:
 ## Standing rituals (institutional, not heroic)
 
 - **Monday red-run triage**: every scheduled workflow's latest run is
-  reviewed; any lane red >7 days becomes paged work (a P0 issue with an
-  owner), not background noise. Close-on-green automation keeps failure
-  issues honest — never close one by hand without a green run or a fix.
+  reviewed; any paged lane red >7 days becomes P0 work with an owner, not
+  background noise. Advisory sandbox failures stay under the advisory-lane
+  budget below unless they become release-blocking. Close-on-green automation
+  keeps failure issues honest — never close one by hand without a green run or
+  a fix.
 - **Advisory-lane budget**: a quality lane may be advisory for at most 30
   days, then it enforces (ratchet baselines are the house pattern) or it is
-  deleted. A lane that asserts nothing is removed rather than left green.
+  deleted. `nightly-dast-sandbox.yml` counts against this budget; the intended
+  enforcement path is a self-hosted privileged macOS runner for the live socket
+  red-team and reachable DAST targets for ZAP. A lane that asserts nothing is
+  removed rather than left green.
 - **Quarterly restore drill**: roll back functions + hosting + one Cloud Run
   service from a machine that is not the primary operator's laptop, following
   only the runbooks (`docs/RELEASE_ROLLBACK.md`,
