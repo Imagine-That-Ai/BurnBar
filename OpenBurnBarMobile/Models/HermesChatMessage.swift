@@ -408,5 +408,4 @@ struct HermesToolCall: Identifiable, Equatable {
     }
 }
 
-// `nilIfBlank` lives in Models/StringNilIfBlank.swift (shared across the
-// mobile target).
+// `nilIfBlank` lives in OpenBurnBarCore so Mac and mobile keep identical trim-or-nil behavior.
