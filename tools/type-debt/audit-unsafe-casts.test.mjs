@@ -71,14 +71,15 @@ test("scanner excludes generated and vendor paths from the budget", async () => 
   const repo = await fixtureRepo({
     "Generated/Generated.swift": "let cast = value as! Widget\n",
     "Vendor/ThirdParty.swift": "let cast = value as! Widget\n",
+    "android/app/src/main/assets/mermaid/mermaid.min.js": "const typed = value as Thing;\n",
+    "android/app/src/main/java/HandWritten.kt": "val unsafe = value as Widget\n",
     "node_modules/pkg/index.ts": "const typed = value as Thing\n",
-    "src/HandWritten.swift": "let cast = value as! Widget\n",
   });
 
   const report = await auditUnsafeCasts({ repoRoot: repo });
 
   assert.equal(report.total, 1);
-  assert.equal(report.violations[0].path, "src/HandWritten.swift");
+  assert.equal(report.violations[0].path, "android/app/src/main/java/HandWritten.kt");
 });
 
 async function fixtureRepo(files) {

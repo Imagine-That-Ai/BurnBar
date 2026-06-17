@@ -85,6 +85,7 @@ class BudgetNotificationCenter(private val context: Context) {
                 action = Intent.ACTION_VIEW
                 data = Uri.parse("burnbar://settings/budget")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                setPackage(context.packageName)
             }
 
         val pendingIntent =
@@ -98,6 +99,17 @@ class BudgetNotificationCenter(private val context: Context) {
         val builder =
             NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle("Budget alert")
+                .setContentText("Open BurnBar to review budget status.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build()
+
+        val privateBuilder =
+            NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -105,9 +117,11 @@ class BudgetNotificationCenter(private val context: Context) {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(builder)
 
         val nm = context.notificationManager() ?: return
-        nm.notify(notificationId, builder.build())
+        nm.notify(notificationId, privateBuilder.build())
     }
 }
 
