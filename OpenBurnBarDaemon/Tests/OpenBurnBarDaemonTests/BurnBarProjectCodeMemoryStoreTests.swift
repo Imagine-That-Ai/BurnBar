@@ -542,7 +542,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         try write("func diagSymbol() {}\n", to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Diag.swift"))
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
         _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
-        _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "Operator diagnostics fixture memory.", projectPath: fixture.project.path))
+        let remembered = try store.remember(BurnBarProjectMemoryRememberRequest(text: "Operator diagnostics fixture memory.", projectPath: fixture.project.path))
 
         let ops = try store.opsDiagnostics(BurnBarProjectCodeOpsDiagnosticsRequest())
         XCTAssertEqual(ops.schemaVersion, BurnBarProjectCodeMemoryStore.schemaVersion)
@@ -554,6 +554,18 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(ops.projects.count, 1)
         XCTAssertGreaterThanOrEqual(ops.projects[0].artifactCount, 1)
         XCTAssertEqual(ops.pendingCloudForgetCount, 0)
+
+        // After forgetting a memory, the per-project pendingForgetCount must reflect
+        // the real event count (not a hardcoded zero from the old dead-label query).
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(
+                memoryID: remembered.memoryID,
+                projectPath: fixture.project.path,
+                requireCloudDelete: false
+            )
+        )
+        let opsAfterForget = try store.opsDiagnostics(BurnBarProjectCodeOpsDiagnosticsRequest())
+        XCTAssertGreaterThanOrEqual(opsAfterForget.projects[0].pendingForgetCount, 1)
     }
 
     func testOperatorDiagnosticsRequireOperatorCapability() {

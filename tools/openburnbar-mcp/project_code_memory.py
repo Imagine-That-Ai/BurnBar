@@ -1487,7 +1487,11 @@ def static_tree_sitter_symbols(
                         "parser": evidence.get("parser") or "tree-sitter",
                         "language": evidence.get("language") or response.get("language") or lang,
                         "blobSHA": evidence.get("blobSha") or response.get("blobSha") or blob_sha,
-                        "shaMatch": bool(evidence.get("shaMatch", True)),
+                        # Default False: a tier is only claimed when earned. A missing
+                        # shaMatch key (malformed helper response, future parser variant)
+                        # must never silently elevate to "verified" — only an explicit
+                        # True from the helper counts.
+                        "shaMatch": bool(evidence.get("shaMatch", False)),
                         "lspResponded": bool(evidence.get("lspResponded", False)),
                         "details": {
                             "helper": "project-code-static-parser",
@@ -1669,7 +1673,7 @@ def exact_lsp_references_for_symbol(
                     "parser": evidence.get("parser") or "lsp",
                     "language": evidence.get("language") or lang,
                     "blobSHA": evidence.get("blobSha") or blob_sha,
-                    "shaMatch": bool(evidence.get("shaMatch", True)),
+                    "shaMatch": bool(evidence.get("shaMatch", False)),
                     "lspResponded": bool(evidence.get("lspResponded", True)),
                     "details": {"helper": "project-code-static-parser", "operation": "textDocument/references"},
                 },
@@ -2412,7 +2416,7 @@ def index_status(conn: sqlite3.Connection, project_path: str | None) -> dict[str
     if "memory_audit" in table_names(conn):
         pending_forgets = int(
             conn.execute(
-                "SELECT COUNT(*) FROM memory_audit WHERE project_id = ? AND labels_json LIKE '%cloud hard delete pending%'",
+                "SELECT COUNT(*) FROM memory_audit WHERE project_id = ? AND action = 'memory.forget'",
                 (project_id,),
             ).fetchone()[0]
         )

@@ -966,7 +966,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 callEdgeCount: try fetchInt("SELECT COUNT(*) FROM code_call_edges WHERE project_id = ?", [.text(projectID)]),
                 rejectedCount: checkpoint.map { Int($0.int64(4)) } ?? 0,
                 lastCommitSHA: checkpoint?.optionalString(5),
-                pendingForgetCount: try fetchInt("SELECT COUNT(*) FROM memory_audit WHERE project_id = ? AND labels_json LIKE '%cloud hard delete pending%'", [.text(projectID)]),
+                pendingForgetCount: try fetchInt("SELECT COUNT(*) FROM memory_audit WHERE project_id = ? AND action = 'memory.forget'", [.text(projectID)]),
                 storageByteCount: storageByteCount,
                 storageBudgetBytes: storageBudgetBytes,
                 storageWithinBudget: storageByteCount <= storageBudgetBytes,
@@ -997,7 +997,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     referenceCount: try fetchInt("SELECT COUNT(*) FROM code_references WHERE project_id = ?", [.text(projectID)]),
                     storageByteCount: Int(row.int64(3)),
                     storageBudgetBytes: storedBudget > 0 ? storedBudget : Self.defaultProjectStorageBudgetBytes,
-                    pendingForgetCount: try fetchInt("SELECT COUNT(*) FROM memory_audit WHERE project_id = ? AND labels_json LIKE '%cloud hard delete pending%'", [.text(projectID)]),
+                    pendingForgetCount: try fetchInt("SELECT COUNT(*) FROM memory_audit WHERE project_id = ? AND action = 'memory.forget'", [.text(projectID)]),
                     indexedAt: row.optionalString(2)
                 )
             }
@@ -1011,7 +1011,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 totalSymbolCount: try fetchInt("SELECT COUNT(*) FROM code_symbols", []),
                 totalStorageByteCount: try fetchInt("SELECT COALESCE(SUM(byte_count), 0) FROM code_artifacts", []),
                 agentMemoryCount: try fetchInt("SELECT COUNT(*) FROM agent_memories", []),
-                pendingCloudForgetCount: try fetchInt("SELECT COUNT(*) FROM memory_audit WHERE labels_json LIKE '%cloud hard delete pending%'", []),
+                pendingCloudForgetCount: 0,
                 projects: projects
             )
         }
