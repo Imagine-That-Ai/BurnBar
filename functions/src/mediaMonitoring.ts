@@ -6,7 +6,6 @@
 
 import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { Firestore } from "firebase-admin/firestore";
 import { numberField, stringField } from "./guards.js";
 import { forEachInPages } from "./rollupPagination.js";
 import { StreamingPercentileSketch } from "./streamingPercentiles.js";
@@ -93,9 +92,27 @@ function bucketBitsPerSecond(b: string | undefined): number | undefined {
   }
 }
 
+interface MediaRollupDoc {
+  ref: { path: string };
+  data(): Record<string, unknown>;
+}
+
+interface MediaRollupQuery {
+  where(field: string, op: string, value: string): MediaRollupQuery;
+  orderBy(field: string): MediaRollupQuery;
+  startAfter(cursor: MediaRollupDoc): MediaRollupQuery;
+  limit(limit: number): MediaRollupQuery;
+  get(): Promise<{ readonly empty: boolean; readonly size: number; readonly docs: readonly MediaRollupDoc[] }>;
+}
+
+interface MediaRollupFirestore {
+  collectionGroup(name: string): MediaRollupQuery;
+  doc(path: string): { set(data: unknown, options?: unknown): Promise<unknown> };
+}
+
 interface RollupOptions {
   dateUTC: Date;
-  firestore?: Firestore;
+  firestore?: MediaRollupFirestore;
 }
 
 export async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {

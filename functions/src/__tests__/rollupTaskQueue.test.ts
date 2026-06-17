@@ -7,6 +7,7 @@ import {
   parseRollupUserRebuildTaskData,
   rollupUserRebuildTaskId,
 } from "../rollupTaskQueue.js";
+import { parseRollupJobDoc } from "../guards.js";
 import { shouldProcessRollupUserRebuildTask } from "../rollups.js";
 import type { RollupJobDoc } from "../types.js";
 
@@ -40,12 +41,20 @@ function fakeClient(
 
 function bodyJson(task: protos.google.cloud.tasks.v2.ITask): unknown {
   const body = task.httpRequest?.body;
-  expect(body).toBeTruthy();
-  return JSON.parse(Buffer.from(body as Uint8Array).toString("utf8"));
+  expect(body).toBeInstanceOf(Uint8Array);
+  if (!(body instanceof Uint8Array)) {
+    throw new Error("Cloud Task body must be bytes");
+  }
+  return JSON.parse(Buffer.from(body).toString("utf8"));
 }
 
 function job(patch: Partial<RollupJobDoc>): RollupJobDoc {
-  return { dirty: true, ...patch } as RollupJobDoc;
+  const parsed = parseRollupJobDoc({ dirty: true, ...patch });
+  expect(parsed).toBeDefined();
+  if (!parsed) {
+    throw new Error("test rollup job fixture must parse");
+  }
+  return parsed;
 }
 
 describe("rollup task queue fan-out", () => {

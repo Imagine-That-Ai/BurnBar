@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { rollupMediaSessionsForDay } from "../mediaMonitoring.js";
 
-type RuntimePercentileSummary = { sketchBase64?: string };
-
 type FakeMediaDoc = {
   path: string;
   data: Record<string, unknown>;
@@ -133,7 +131,7 @@ describe("rollupMediaSessionsForDay", () => {
 
     const rollup = await rollupMediaSessionsForDay({
       dateUTC: new Date("2026-06-17T12:00:00.000Z"),
-      firestore: firestore as never,
+      firestore,
     });
 
     expect(rollup).toMatchObject({
@@ -154,7 +152,7 @@ describe("rollupMediaSessionsForDay", () => {
       bitsPerSecond: { count: 2, p50: 1_500_000, p95: 12_000_000, p99: 12_000_000 },
       freezeCount: { count: 2, p50: 2, p95: 9, p99: 9 },
     });
-    expect((rollup.perFeature.fileTransfer.rttMillis as RuntimePercentileSummary).sketchBase64).toBeTruthy();
+    expect("sketchBase64" in rollup.perFeature.fileTransfer.rttMillis).toBe(true);
     expect(rollup.perFeature.screenShare.rttMillis).toMatchObject({ count: 1, p50: 100, p95: 100, p99: 100 });
     expect(rollup.perFeature.videoCall.rttMillis).toEqual({ count: 0 });
     expect(firestore.set).toHaveBeenCalledWith(

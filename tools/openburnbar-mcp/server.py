@@ -119,6 +119,7 @@ def _local_mcp_rate_limit(tool: str, family: str) -> str | None:
 def _reset_local_mcp_rate_limiter_for_tests() -> None:
     LOCAL_MCP_RATE_LIMIT_BUCKETS.clear()
 
+
 DETERMINISTIC_EMBEDDING_PROVIDER = "openburnbar"
 DETERMINISTIC_EMBEDDING_MODEL = "deterministic-fake-embedding"
 DETERMINISTIC_EMBEDDING_DIMENSIONS = 96

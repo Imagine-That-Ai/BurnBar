@@ -341,21 +341,22 @@ struct ModelDashboardView: View {
                 },
                 displayMode: settingsManager.usageDisplayMode,
                 showsAgentBadge: true,
-                footerCaption: "Search paths, models, and session ids for \(displayName). Groups use session start time within the range above."
-            ) {
-                VStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 32))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                footerCaption: "Search paths, models, and session ids for \(displayName). Groups use session start time within the range above.",
+                emptyLedger: {
+                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 32))
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
-                    Text("No sessions found for this model in the selected time range.")
-                        .font(UnifiedDesignSystem.Typography.body)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                        .multilineTextAlignment(.center)
+                        Text("No sessions found for this model in the selected time range.")
+                            .font(UnifiedDesignSystem.Typography.body)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, UnifiedDesignSystem.Spacing.xxl)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, UnifiedDesignSystem.Spacing.xxl)
-            }
+            )
             .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }

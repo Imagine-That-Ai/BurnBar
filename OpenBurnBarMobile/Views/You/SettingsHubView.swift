@@ -461,10 +461,24 @@ struct SettingsLabel: View {
     let icon: String
     let color: Color
     let title: String
-    var logoProviders: [AgentProvider] = []
+    var logoProviders: [AgentProvider]
     /// Optional custom asset image name. When set, it overrides the SF Symbol
     /// and renders as the original colorful SVG inside the same rounded plate.
-    var imageName: String? = nil
+    var imageName: String?
+
+    init(
+        icon: String,
+        color: Color,
+        title: String,
+        logoProviders: [AgentProvider] = [],
+        imageName: String? = nil
+    ) {
+        self.icon = icon
+        self.color = color
+        self.title = title
+        self.logoProviders = logoProviders
+        self.imageName = imageName
+    }
 
     var body: some View {
         if logoProviders.isEmpty {

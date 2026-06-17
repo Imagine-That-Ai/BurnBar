@@ -157,6 +157,9 @@ done
 if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
   perl -0pi -e 's/framework module /module /g' "${GENERATED_DIR}/"*.modulemap
 fi
+find "${GENERATED_DIR}" \( -name '*.swift' -o -name '*.h' -o -name '*.modulemap' \) -type f | while IFS= read -r generated_file; do
+  perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "${generated_file}"
+done
 
 rm -rf "${XCFRAMEWORK}"
 
