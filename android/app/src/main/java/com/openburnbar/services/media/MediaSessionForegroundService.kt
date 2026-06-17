@@ -42,9 +42,9 @@ class MediaSessionForegroundService : Service() {
 
     private fun buildCallStyleNotification(): Notification {
         val launchIntent =
-            Intent(this, MainActivity::class.java).apply {
+            Intent().apply {
+                setClass(this@MediaSessionForegroundService, MainActivity::class.java)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                setPackage(packageName)
             }
         val launchPending =
             android.app.PendingIntent.getActivity(

@@ -114,10 +114,10 @@ class MenuBarService : Service() {
                 PendingIntent.getActivity(
                     context,
                     0,
-                    Intent(context, MainActivity::class.java).apply {
+                    Intent(Intent.ACTION_VIEW).apply {
+                        setClass(context, MainActivity::class.java)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                         data = android.net.Uri.parse(tapUri)
-                        setPackage(context.packageName)
                     },
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
