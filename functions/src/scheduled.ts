@@ -91,6 +91,7 @@ export const rollupUserRebuild = onTaskDispatched(
       maxAttempts: 5,
       minBackoffSeconds: 60,
       maxBackoffSeconds: 600,
+      maxRetrySeconds: 3600,
     },
     rateLimits: {
       maxConcurrentDispatches: 10,

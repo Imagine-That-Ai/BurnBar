@@ -1,13 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
 import type { protos } from "@google-cloud/tasks";
+import { describe, expect, it, vi } from "vitest";
+import { parseRollupJobDoc } from "../guards.js";
 import {
   buildRollupUserRebuildTask,
   enqueueRollupUserRebuildTasks,
   isAlreadyExistsError,
   parseRollupUserRebuildTaskData,
+  ROLLUP_USER_REBUILD_TASK_QUEUE_ID,
   rollupUserRebuildTaskId,
 } from "../rollupTaskQueue.js";
-import { parseRollupJobDoc } from "../guards.js";
 import { shouldProcessRollupUserRebuildTask } from "../rollups.js";
 import type { RollupJobDoc } from "../types.js";
 
@@ -23,14 +24,12 @@ vi.mock("../logging.js", async () => {
 const config: RollupTaskQueueConfig = {
   projectId: "burnbar-test",
   location: "us-central1",
-  queueId: "rollupUserRebuild",
+  queueId: ROLLUP_USER_REBUILD_TASK_QUEUE_ID,
   functionName: "rollupUserRebuild",
   serviceAccountEmail: "burnbar-test@appspot.gserviceaccount.com",
 };
 
-function fakeClient(
-  createTask = vi.fn().mockResolvedValue({}),
-): CloudTasksClientLike & { createTask: typeof createTask } {
+function fakeClient(createTask = vi.fn().mockResolvedValue({})): CloudTasksClientLike & { createTask: typeof createTask } {
   return {
     queuePath: (project, location, queue) => `projects/${project}/locations/${location}/queues/${queue}`,
     taskPath: (project, location, queue, task) =>
@@ -67,7 +66,7 @@ describe("rollup task queue fan-out", () => {
       job: { uid: "user-1", dirtiedAt: "2026-06-17T01:02:03.000Z" },
     });
 
-    expect(result.parent).toBe("projects/burnbar-test/locations/us-central1/queues/rollupUserRebuild");
+    expect(result.parent).toBe("projects/burnbar-test/locations/us-central1/queues/rollup-user-rebuilds");
     expect(result.task.name).toContain(
       `/tasks/${rollupUserRebuildTaskId({ uid: "user-1", dirtiedAt: "2026-06-17T01:02:03.000Z" })}`,
     );

@@ -9,10 +9,12 @@
 import { createHash } from "node:crypto";
 import type { protos } from "@google-cloud/tasks";
 import { getConfig } from "./config.js";
+import { isRecord } from "./guards.js";
 import { logInfo, logWarn } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const ROLLUP_USER_REBUILD_TASK_FUNCTION = "rollupUserRebuild";
+export const ROLLUP_USER_REBUILD_TASK_QUEUE_ID = "rollup-user-rebuilds";
 
 type RollupUserRebuildTaskData = {
   uid: string;
@@ -56,10 +58,6 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function errorField(error: unknown, field: "code" | "message"): unknown {
   return isRecord(error) ? error[field] : undefined;
 }
@@ -75,7 +73,7 @@ export function parseRollupUserRebuildTaskData(data: unknown): RollupUserRebuild
 function getRollupTaskQueueConfig(): RollupTaskQueueConfig {
   const { projectId } = getConfig();
   const location = process.env.ROLLUP_REBUILD_TASK_LOCATION ?? FUNCTIONS_REGION;
-  const queueId = process.env.ROLLUP_REBUILD_TASK_QUEUE_ID ?? ROLLUP_USER_REBUILD_TASK_FUNCTION;
+  const queueId = process.env.ROLLUP_REBUILD_TASK_QUEUE_ID ?? ROLLUP_USER_REBUILD_TASK_QUEUE_ID;
   const functionName = process.env.ROLLUP_REBUILD_TASK_FUNCTION_NAME ?? ROLLUP_USER_REBUILD_TASK_FUNCTION;
   return {
     projectId,
@@ -130,7 +128,7 @@ export function buildRollupUserRebuildTask(args: {
 export function isAlreadyExistsError(error: unknown): boolean {
   const code = errorField(error, "code");
   if (code === 6 || code === "6" || code === "ALREADY_EXISTS") return true;
-  const message = String(errorField(error, "message") ?? error);
+  const message = String(errorField(error, "message") ?? (error instanceof Error ? error.message : error));
   return /\bALREADY_EXISTS\b|\balready exists\b/i.test(message);
 }
 
@@ -210,7 +208,7 @@ export async function enqueueRollupUserRebuildTasks(
         uid: job.uid,
         dirtiedAt: job.dirtiedAt,
         taskId: request.taskId,
-        error: String(error),
+        error: String(errorField(error, "message") ?? (error instanceof Error ? error.message : error)),
       });
       throw error;
     }

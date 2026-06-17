@@ -177,15 +177,18 @@ export function createInMemoryFirestore(seed: StoredDoc[] = []): InMemoryFiresto
       throw new Error("collectionGroup is not used by the hosted MCP request path");
     },
     async runTransaction<T>(fn: (tx: McpTransaction) => Promise<T>): Promise<T> {
+      const writes: Promise<unknown>[] = [];
       const tx = {
         async get(ref: { get(): Promise<{ get(field: string): unknown }> }) {
           return ref.get();
         },
         set(ref: { set(value: unknown, options?: unknown): Promise<unknown> }, data: unknown, options?: unknown) {
-          void ref.set(data, options);
+          writes.push(ref.set(data, options));
         },
       };
-      return fn(tx);
+      const result = await fn(tx);
+      await Promise.all(writes);
+      return result;
     },
     __docs() {
       return [...docs.entries()].map(([path, data]) => ({ path, data }));
