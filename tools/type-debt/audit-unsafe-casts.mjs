@@ -18,6 +18,7 @@ const EXCLUDED_PREFIXES = [
   ".swiftpm/",
   "Vendor/",
   "artifacts/",
+  "android/app/src/main/assets/mermaid/",
   "functions/src/types/generated/",
   "OpenBurnBarMobile/Resources/Mermaid/",
   "tools/type-debt/fixtures/",
