@@ -14,7 +14,7 @@ if [[ -z "$REPO" ]]; then
 fi
 
 BRANCH="${OPENBURNBAR_GOVERNANCE_BRANCH:-main}"
-DEFAULT_REQUIRED_CHECKS=$'Fast Feedback Gate\nguard\nBurnBar AGPL product posture\nSecret Detection (gitleaks)\nDependency Review (CVE check)\nnpm Audit (Node package locks)\nRemote Installer Policy\nVendored Agent Provenance\nSignal Activation Parity (fail-closed default)\nBrowser Target Policy (SSRF / DNS-rebinding)\nOSV Scanner (open source vulnerabilities)\nHosted MCP Security Smoke\nHosted MCP Isolation Proofs (local, deterministic)\nFirestore Security Rules Tests'
+DEFAULT_REQUIRED_CHECKS=$'Fast Feedback Gate\nguard\nBurnBar AGPL product posture\nSecret Detection (gitleaks)\nDependency Review (CVE check)\nnpm Audit (Node package locks)\nRemote Installer Policy\nVendored Agent Provenance\nSignal Activation Parity (fail-closed default)\nBrowser Target Policy (SSRF / DNS-rebinding)\nOSV Scanner (open source vulnerabilities)\nHosted MCP Security Smoke\nHosted MCP Isolation Proofs (local, deterministic)\nFirestore Security Rules Tests\nAndroid ktlint\nAnalyze (javascript-typescript)\nAnalyze (python)'
 REQUIRED_CHECKS="${OPENBURNBAR_REQUIRED_BRANCH_CHECKS:-$DEFAULT_REQUIRED_CHECKS}"
 REQUIRED_ENVIRONMENTS="${OPENBURNBAR_REQUIRED_ENVIRONMENTS:-release,production}"
 export BRANCH REQUIRED_CHECKS REQUIRED_ENVIRONMENTS
@@ -122,6 +122,8 @@ const summary = {
   latestPushApprovalRequired: protection.required_pull_request_reviews?.require_last_push_approval === true,
   bypassAllowanceCount: bypassCount,
   reviewBypassUsers: bypassUsers,
+  reviewBypassTeams: bypassTeams.map((team) => team.slug || team.name).filter(Boolean),
+  reviewBypassApps: bypassApps.map((app) => app.slug || app.name).filter(Boolean),
   requiredChecksPresent: requiredChecks.filter((check) => contexts.has(check)),
   requiredChecksMissing: requiredChecks.filter((check) => !contexts.has(check)),
   environments: requiredEnvironments.map((name) => {
