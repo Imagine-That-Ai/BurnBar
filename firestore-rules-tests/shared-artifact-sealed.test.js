@@ -1,14 +1,5 @@
 /**
- * Firestore rules tests for shared/team artifact owner boundaries.
- *
- * Production Firebase Rules rejects the stricter path-bound sealed-artifact
- * ruleset once combined with the rest of OpenBurnBar's large rules file. The
- * deployable rules boundary for this collection is therefore tenant ownership:
- * callers may write only their own `workspaces/workspace-{uid}` subtree and the
- * document body must agree with that workspace/team/owner path.
- *
- * Sealed payload correctness is enforced by the app codecs and CloudVault tests,
- * not by this Firestore rules file.
+ * Firestore rules tests for shared/team artifact owner and sealed-content boundaries.
  */
 import {
   initializeTestEnvironment,
@@ -28,6 +19,15 @@ const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080"
 const aliceUid = "alice-uid";
 const bobUid = "bob-uid";
 const teamId = "team-default";
+const vaultKeyID = "v1_0123456789abcdef0123456789abcdef";
+const sealedPayload = {
+  schemaVersion: 2,
+  algorithm: "AES-256-GCM",
+  keyVersion: 1,
+  vaultKeyID,
+  sealedBoxBase64: "U2VhbGVkQXJ0aWZhY3RQYXlsb2Fk",
+  aad: "OpenBurnBar-CloudVaultSealedPayload-v2",
+};
 
 function workspaceId(uid) {
   return `workspace-${uid}`;
@@ -49,14 +49,25 @@ function artifactDoc(uid, artifactId, revisionId, overrides = {}) {
     ownerUserID: uid,
     visibility: "team",
     revisionID: revisionId,
-    title: "design.md",
-    body: "artifact body is protected by client-side sealing in production builds",
     isDeleted: false,
     updatedByUserID: uid,
     updatedByDeviceID: "mac-device",
     updatedAt: Timestamp.fromMillis(Date.now()),
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID,
+    sealedPayload,
     ...overrides,
   };
+}
+
+async function seedVaultState() {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), `users/${aliceUid}/cloud_vault_state/current`), {
+      vaultKeyID,
+      status: "active",
+    });
+  });
 }
 
 let testEnv;
@@ -85,6 +96,7 @@ async function main() {
     },
   });
   await testEnv.clearFirestore();
+  await seedVaultState();
 
   const aliceDB = testEnv.authenticatedContext(aliceUid).firestore();
   const bobDB = testEnv.authenticatedContext(bobUid).firestore();
@@ -140,6 +152,39 @@ async function main() {
       setDoc(
         doc(aliceDB, artifactPath(aliceUid, artifactId)),
         artifactDoc(aliceUid, artifactId, "rev-1", { teamID: "team-other" })
+      )
+    );
+  });
+
+  await step("owner cannot write plaintext artifact content fields", async () => {
+    const artifactId = "artifact-plaintext";
+    await assertFails(
+      setDoc(
+        doc(aliceDB, artifactPath(aliceUid, artifactId)),
+        artifactDoc(aliceUid, artifactId, artifactId, {
+          title: "design.md",
+          body: "plaintext body",
+          relativePath: "plans/design.md",
+          contentHash: "sha256:plaintext",
+        })
+      )
+    );
+  });
+
+  await step("artifact head body must match the artifact path id", async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDB, artifactPath(aliceUid, "artifact-path")),
+        artifactDoc(aliceUid, "artifact-body", "artifact-body")
+      )
+    );
+  });
+
+  await step("artifact version body must match artifact and revision path ids", async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDB, versionPath(aliceUid, "artifact-owned", "rev-path")),
+        artifactDoc(aliceUid, "artifact-other", "rev-body")
       )
     );
   });

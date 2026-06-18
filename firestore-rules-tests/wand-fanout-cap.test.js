@@ -5,10 +5,8 @@
  *   users/{uid}/mission_groups/{groupID}
  *   users/{uid}/cli_agent_mission_requests/{childID}...
  *
- * The rules cap fan-out by tier and keep CloudVault payloads path-bound.
- * Stricter request-ID, parent-child membership, and parent immutability checks
- * were intentionally kept out of Firestore rules because the production
- * evaluator rejected that shape when combined with the rest of the large ruleset.
+ * The rules cap fan-out by tier, keep CloudVault payloads path-bound, and reject
+ * malformed parent/request shapes before the Mac listener sees them.
  */
 import {
   initializeTestEnvironment,
@@ -230,6 +228,51 @@ async function main() {
   await step("free tier denies a 2-child batch", async () => {
     await seed(testEnv, aliceUid, "free");
     await assertFails(commitFanOut(aliceDB, aliceUid, "free-deny-2", 2));
+  });
+
+  await step("mission request body id must match the document path", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/path-id`),
+        singleMission(aliceUid, "body-id")
+      )
+    );
+  });
+
+  await step("mission group must contain at least one child", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(doc(aliceDB, `users/${aliceUid}/mission_groups/empty-group`), missionGroup("empty-group", []))
+    );
+  });
+
+  await step("mission group runtime tokens must match child count", async () => {
+    await seed(testEnv, aliceUid, "cloud");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/mission_groups/runtime-mismatch`),
+        missionGroup("runtime-mismatch", ["child-1", "child-2"], ["runtime-1"])
+      )
+    );
+  });
+
+  await step("mission group body id must match the document path", async () => {
+    await seed(testEnv, aliceUid, "free");
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/mission_groups/path-group`),
+        missionGroup("body-group", ["body-group-child-1"])
+      )
+    );
+  });
+
+  await step("mission group dispatch fields are immutable after create", async () => {
+    await seed(testEnv, aliceUid, "free");
+    const groupID = "immutable-group";
+    const groupRef = doc(aliceDB, `users/${aliceUid}/mission_groups/${groupID}`);
+    await assertSucceeds(setDoc(groupRef, missionGroup(groupID, [`${groupID}-child-1`])));
+    await assertFails(setDoc(groupRef, missionGroup(groupID, [`${groupID}-child-2`])));
   });
 
   await step("cloud tier allows 3 and denies 4", async () => {
