@@ -383,11 +383,14 @@ jobs:
 
       - name: Build signed Android release bundle
         env:
-          OPENBURNBAR_ANDROID_KEYSTORE_PATH: .secrets/android/upload-keystore.jks
           OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD }}
           OPENBURNBAR_ANDROID_KEY_ALIAS: ${{ secrets.OPENBURNBAR_ANDROID_KEY_ALIAS }}
           OPENBURNBAR_ANDROID_KEY_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEY_PASSWORD }}
         run: |
+          if [[ -z "${OPENBURNBAR_ANDROID_KEYSTORE_PATH:-}" || ! -f "$OPENBURNBAR_ANDROID_KEYSTORE_PATH" ]]; then
+            echo "::error::Android release keystore was not injected at OPENBURNBAR_ANDROID_KEYSTORE_PATH."
+            exit 1
+          fi
           cd android
           ./gradlew :app:bundleRelease --no-daemon
           echo "aab_path=$(pwd)/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
