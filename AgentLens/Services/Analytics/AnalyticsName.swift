@@ -15,7 +15,13 @@ enum AnalyticsName {
     static func isValidPropertyKey(_ s: String) -> Bool { matches(s, propertyPattern) }
 
     private static func matches(_ s: String, _ pattern: String) -> Bool {
-        guard let re = try? NSRegularExpression(pattern: pattern) else { return false }
+        let re: NSRegularExpression
+        do {
+            re = try NSRegularExpression(pattern: pattern)
+        } catch {
+            assertionFailure("Invalid analytics taxonomy regex: \(pattern)")
+            return false
+        }
         return re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
     }
 }
