@@ -652,10 +652,9 @@ private struct MissionGateCard: View {
             stateStripe
             cardBody
         }
-        .liquidGlassSurface(
-            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous),
-            fallback: .ultraThinMaterial
-        )
+        // Tint must ride on top of the glass so the mission state color reads.
+        // .background (the colored wash) applies first, then .liquidGlassSurface
+        // sits behind the tint, matching the chat-bubble idiom.
         .background {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.55))
@@ -674,6 +673,10 @@ private struct MissionGateCard: View {
                         )
                 )
         }
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)

@@ -100,6 +100,26 @@ final class SessionLedgerSupportTests: XCTestCase {
         // Most recent bucket first
         XCTAssertEqual(groups[0].sessions.first?.sessionId, "new")
     }
+
+    func test_entryRow_preservesButtonSemanticsForKeyboardActivation() throws {
+        let testURL = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testURL
+            .deletingLastPathComponent() // UI
+            .deletingLastPathComponent() // Active
+            .deletingLastPathComponent() // AgentLensTests
+            .deletingLastPathComponent()
+        let sourceURL = repositoryRoot.appendingPathComponent("AgentLens/Views/Components/SessionLedgerSection.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        let rowStart = try XCTUnwrap(source.range(of: "private struct SessionLedgerEntryRow"))
+        let rowEnd = try XCTUnwrap(source.range(of: "private struct SessionLedgerEntryButtonStyle"))
+        let rowSource = String(source[rowStart.lowerBound..<rowEnd.lowerBound])
+
+        XCTAssertTrue(rowSource.contains("Button(action: onTap)"))
+        XCTAssertTrue(rowSource.contains("GlassCard(interactive: false)"))
+        XCTAssertFalse(rowSource.contains(".onTapGesture(perform: onTap)"))
+        XCTAssertFalse(rowSource.contains("GlassCard(interactive: true)"))
+    }
 }
 
 // MARK: - SessionLedgerBucket

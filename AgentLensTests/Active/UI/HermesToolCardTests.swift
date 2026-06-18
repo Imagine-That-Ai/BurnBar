@@ -22,13 +22,13 @@ final class HermesToolCardTests: XCTestCase {
     func test_runningState_showsRunningText() throws {
         let view = HermesToolCard(toolName: "Read", detail: "file.swift", isRunning: true)
         let sut = try view.inspect()
-        XCTAssertNoThrow(try sut.find(text: "Running..."))
+        XCTAssertNoThrow(try sut.find(text: "Running\u{2026}"))
     }
 
     func test_notRunning_hidesRunningText() throws {
         let view = HermesToolCard(toolName: "Read", detail: nil, isRunning: false)
         let sut = try view.inspect()
-        XCTAssertThrowsError(try sut.find(text: "Running..."))
+        XCTAssertThrowsError(try sut.find(text: "Running\u{2026}"))
     }
 
     func test_capabilityIcon_forFileTools() throws {
