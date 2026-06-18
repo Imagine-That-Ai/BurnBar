@@ -126,6 +126,9 @@ jobs:
       - name: Scan publishable tree for secrets
         run: ./scripts/security/scan-publishable-tree.sh
 
+      - name: BurnBar source provenance preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
+
       - name: Validate release hold bypass reason
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '' }}
         env:

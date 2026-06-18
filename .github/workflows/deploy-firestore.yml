@@ -16,6 +16,7 @@ on:
       - ".firebaserc"
       - ".github/workflows/deploy-firestore.yml"
       - "scripts/ci/check-firestore-deploy-drift.mjs"
+      - "scripts/ci/deploy-firebase-rules-releases.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
   schedule:
     - cron: "15 11 * * 1"
@@ -86,9 +87,10 @@ jobs:
           # deploy step (diligence 2026-06-11 LB-3 residual).
           npm ci --prefix functions
           npm --prefix functions exec -- firebase deploy \
-            --only firestore:indexes,firestore:rules,storage \
+            --only firestore:indexes \
             --project "$FIREBASE_PROJECT" \
             --non-interactive
+          node scripts/ci/deploy-firebase-rules-releases.mjs "$FIREBASE_PROJECT"
 
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
