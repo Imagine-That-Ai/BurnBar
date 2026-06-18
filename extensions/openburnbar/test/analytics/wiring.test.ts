@@ -100,10 +100,14 @@ describe('analytics wiring (index.ts graph)', () => {
 
     // session start carries the right flags, screen.viewed carries a bounded surface.
     const start = transport.events.find((e) => e.name === EVENT.appSessionStarted);
-    expect(start!.props).toMatchObject({ is_first_launch: true, cold_start: true });
+    expect(start).toBeDefined();
+    if (!start) throw new Error('missing session start analytics event');
+    expect(start.props).toMatchObject({ is_first_launch: true, cold_start: true });
     const view = transport.events.find((e) => e.name === EVENT.screenViewed);
-    expect(view!.props.surface).toBe(SURFACE.app);
-    expect(view!.props.is_first_view).toBe(true);
+    expect(view).toBeDefined();
+    if (!view) throw new Error('missing screen viewed analytics event');
+    expect(view.props.surface).toBe(SURFACE.app);
+    expect(view.props.is_first_view).toBe(true);
   });
 
   it('boot after grant (relaunch) resumes WITHOUT a second grant', () => {
@@ -122,7 +126,9 @@ describe('analytics wiring (index.ts graph)', () => {
     expect(transport2.startCalls).toBe(1); // resumed
     // session start on relaunch is not a first launch.
     const start = transport2.events.find((e) => e.name === EVENT.appSessionStarted);
-    expect(start!.props.is_first_launch).toBe(false);
+    expect(start).toBeDefined();
+    if (!start) throw new Error('missing relaunch session start analytics event');
+    expect(start.props.is_first_launch).toBe(false);
   });
 
   it('boot is idempotent: the session spine fires at most once per process', () => {

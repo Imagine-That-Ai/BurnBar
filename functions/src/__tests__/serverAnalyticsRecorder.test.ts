@@ -66,6 +66,23 @@ const granted = () => new ConsentSignal("granted");
 const declined = () => new ConsentSignal("declined");
 const unset = () => new ConsentSignal(undefined);
 
+function fetchRecorder(
+  respond: (url: string, init: RequestInit) => Promise<Response> = () =>
+    Promise.resolve(new Response(null, { status: 200 })),
+): {
+  calls: Array<[url: string, init: RequestInit]>;
+  fetchImpl(url: string, init: RequestInit): Promise<Response>;
+} {
+  const calls: Array<[url: string, init: RequestInit]> = [];
+  return {
+    calls,
+    fetchImpl(url: string, init: RequestInit): Promise<Response> {
+      calls.push([url, init]);
+      return respond(url, init);
+    },
+  };
+}
+
 describe("ServerAnalytics — pre-consent darkness (PROVABLE)", () => {
   let transport: FakeTransport;
   let analytics: ServerAnalytics;
@@ -179,8 +196,8 @@ describe("ServerAnalytics — after grant", () => {
 
 describe("AmplitudeHttpTransport — real transport is dark until started, never throws", () => {
   it("track() before start() makes ZERO fetch calls", async () => {
-    const fetchSpy = vi.fn();
-    const t = new AmplitudeHttpTransport("US", fetchSpy as never);
+    const fetchSpy = fetchRecorder();
+    const t = new AmplitudeHttpTransport("US", fetchSpy.fetchImpl);
     await t.track({
       name: "subscription.entitlement.granted",
       category: "conversion_auth",
@@ -189,13 +206,13 @@ describe("AmplitudeHttpTransport — real transport is dark until started, never
       insertId: "x",
       timeMs: 1,
     });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy.calls).toHaveLength(0);
     expect(t.isStarted).toBe(false);
   });
 
   it("after start() it POSTs the V2 batch with api_key, insert_id, device_id, event_category, and NO ip/geo", async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
-    const t = new AmplitudeHttpTransport("US", fetchSpy as never);
+    const fetchSpy = fetchRecorder();
+    const t = new AmplitudeHttpTransport("US", fetchSpy.fetchImpl);
     t.start(KEY);
     await t.track({
       name: "subscription.entitlement.granted",
@@ -206,10 +223,11 @@ describe("AmplitudeHttpTransport — real transport is dark until started, never
       insertId: "evt-77",
       timeMs: 1_700_000_000_000,
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0];
+    expect(fetchSpy.calls).toHaveLength(1);
+    const [url, init] = fetchSpy.calls[0];
     expect(url).toBe("https://api2.amplitude.com/2/httpapi");
-    const body = JSON.parse((init as RequestInit).body as string);
+    if (!init || typeof init.body !== "string") throw new Error("missing analytics request body");
+    const body = JSON.parse(init.body);
     expect(body.api_key).toBe(KEY);
     expect(body.events).toHaveLength(1);
     const ev = body.events[0];
@@ -227,18 +245,18 @@ describe("AmplitudeHttpTransport — real transport is dark until started, never
   });
 
   it("a non-2xx response is swallowed (analytics never fails the conversion path)", async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
-    const t = new AmplitudeHttpTransport("EU", fetchSpy as never);
+    const fetchSpy = fetchRecorder(() => Promise.resolve(new Response(null, { status: 500 })));
+    const t = new AmplitudeHttpTransport("EU", fetchSpy.fetchImpl);
     t.start(KEY);
     await expect(
       t.track({ name: "error.handled", category: "error", props: {}, deviceId: DEVICE, insertId: "x", timeMs: 1 }),
     ).resolves.toBeUndefined();
-    expect(fetchSpy.mock.calls[0][0]).toBe("https://api.eu.amplitude.com/2/httpapi");
+    expect(fetchSpy.calls[0][0]).toBe("https://api.eu.amplitude.com/2/httpapi");
   });
 
   it("a thrown fetch is swallowed too", async () => {
-    const fetchSpy = vi.fn().mockRejectedValue(new Error("network down"));
-    const t = new AmplitudeHttpTransport("US", fetchSpy as never);
+    const fetchSpy = fetchRecorder(() => Promise.reject(new Error("network down")));
+    const t = new AmplitudeHttpTransport("US", fetchSpy.fetchImpl);
     t.start(KEY);
     await expect(
       t.track({ name: "error.handled", category: "error", props: {}, deviceId: DEVICE, insertId: "x", timeMs: 1 }),

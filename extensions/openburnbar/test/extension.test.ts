@@ -499,7 +499,7 @@ describe('activateBurnBarExtension', () => {
 
     const context = createExtensionContextMock();
     await activateBurnBarExtension(context, {
-      analytics: analytics as never,
+      analytics,
       controllerDependencies: {
         client: {
           health: vi.fn().mockResolvedValue({

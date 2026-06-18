@@ -5,11 +5,10 @@ import {
   COMMAND_ID,
   SURFACE,
   OUTCOME,
-  eventCategory,
-  type AnalyticsEventName
+  eventCategory
 } from '../../src/analytics/events';
 
-const ALL_EVENTS = Object.values(EVENT) as AnalyticsEventName[];
+const ALL_EVENTS = Object.values(EVENT);
 
 /**
  * Governance gates ported from docs/analytics/event-taxonomy.md § Governance.

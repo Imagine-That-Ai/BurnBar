@@ -151,8 +151,9 @@ describe('analytics consent contract (VS Code extension)', () => {
 
       const cmd = env.transport.events.find((e) => e.name === EVENT.vscodeCommandInvoked);
       expect(cmd).toBeDefined();
-      expect(cmd!.category).toBe('primary_action');
-      expect(cmd!.props).toMatchObject({
+      if (!cmd) throw new Error('missing command analytics event');
+      expect(cmd.category).toBe('primary_action');
+      expect(cmd.props).toMatchObject({
         platform: 'vscode',
         app_version: '9.9.9',
         surface: 'app',

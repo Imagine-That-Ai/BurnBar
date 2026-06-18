@@ -64,7 +64,7 @@ export function boundedAnalyticsDeviceId(raw: unknown): string {
 }
 
 /** Stable Amplitude account identity: SHA-256(Firebase uid), never the raw uid. */
-export function analyticsUserIdForUid(uid: string): string {
+function analyticsUserIdForUid(uid: string): string {
   return createHash("sha256").update(uid, "utf8").digest("hex");
 }
 
@@ -87,7 +87,10 @@ const KNOWN_FAMILIES = new Set<EntitlementFamily>([
 
 /** Collapse an arbitrary entitlement id to the bounded family enum (never a raw id). */
 export function entitlementFamilyOf(entitlementID: string): EntitlementFamily {
-  return KNOWN_FAMILIES.has(entitlementID as EntitlementFamily) ? (entitlementID as EntitlementFamily) : "other";
+  for (const family of KNOWN_FAMILIES) {
+    if (family === entitlementID) return family;
+  }
+  return "other";
 }
 
 interface SubscriptionGrantParams {

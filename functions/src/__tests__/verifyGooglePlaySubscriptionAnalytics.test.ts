@@ -134,8 +134,25 @@ function req(data: Record<string, unknown>) {
   return { auth: { uid: UID }, data, rawRequest: { headers: {} } };
 }
 
+interface RunnableCallable<TRes> {
+  run(request: unknown): Promise<TRes>;
+}
+
+function hasCallableRun<TRes>(candidate: unknown): candidate is RunnableCallable<TRes> {
+  if (candidate === null) return false;
+  if (typeof candidate !== "object" && typeof candidate !== "function") return false;
+  return Reflect.get(candidate, "run") instanceof Function;
+}
+
+function runnableCallable<TRes>(candidate: unknown): RunnableCallable<TRes> {
+  if (!hasCallableRun<TRes>(candidate)) {
+    throw new Error("callable target is missing run()");
+  }
+  return { run: (request: unknown) => candidate.run(request) };
+}
+
 function invoke<TRes = unknown>(data: Record<string, unknown>): Promise<TRes> {
-  const runnable = verifyGooglePlayBurnBarProSubscription as unknown as { run: (r: unknown) => Promise<TRes> };
+  const runnable = runnableCallable<TRes>(verifyGooglePlayBurnBarProSubscription);
   return runnable.run(req(data));
 }
 

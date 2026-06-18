@@ -33,6 +33,17 @@ import { COMMAND_ID, OUTCOME, SURFACE } from './analytics';
 
 const BURNBAR_CLIENT_ID_KEY = 'openburnbar.clientId';
 
+export type OpenBurnBarAnalytics = Pick<
+  OpenBurnBarAnalyticsService,
+  | 'trackCommand'
+  | 'trackRunAction'
+  | 'trackHandledError'
+  | 'trackPanelAction'
+  | 'trackScreenView'
+  | 'trackDaemonConnection'
+  | 'revoke'
+>;
+
 export interface OpenBurnBarActivationDependencies {
   controllerDependencies?: OpenBurnBarControllerDependencies;
   controllerOptions?: Partial<OpenBurnBarControllerOptions>;
@@ -42,7 +53,7 @@ export interface OpenBurnBarActivationDependencies {
   extensionKind?: vscode.ExtensionKind;
   remoteName?: string;
   /** Consent-gated analytics. Omitted in unit tests (instrumentation no-ops). */
-  analytics?: OpenBurnBarAnalyticsService;
+  analytics?: OpenBurnBarAnalytics;
 }
 
 /** Minimal host surface required for extension activation (tests + production). */
@@ -831,7 +842,7 @@ async function handleApprovalResponse(
   controller: OpenBurnBarExtensionController,
   item: OpenBurnBarRunTreeItem | undefined,
   decision: 'approve' | 'reject',
-  analytics?: OpenBurnBarAnalyticsService
+  analytics?: OpenBurnBarAnalytics
 ): Promise<void> {
   const run = resolveDaemonRun(controller, item);
   if (!run) {

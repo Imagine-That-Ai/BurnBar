@@ -29,11 +29,19 @@ export type {
 export type { AnalyticsProps } from './recorder';
 export type { ConsentState } from './consent';
 // NOTE: `./buckets` is the canonical anti-fingerprinting helper (parity-tested
-// in test/analytics/buckets.test.ts). It is re-exported here as the platform's
-// public bucketing API for future instrumentation that needs to send a bucketed
-// numeric. No current extension event carries a raw numeric — every property is
-// a bounded enum or boolean — so nothing imports it yet; that is intentional.
-export * as buckets from './buckets';
+// in test/analytics/buckets.test.ts). These helpers are re-exported here as the
+// platform's public bucketing API for future instrumentation that needs to send
+// a bucketed numeric. No current extension event carries a raw numeric — every
+// property is a bounded enum or boolean — so nothing imports them yet; that is
+// intentional.
+export {
+  bucketAmountUSD,
+  bucketCount,
+  bucketDurationMs,
+  bucketDurationSeconds,
+  bucketPercent,
+  bucketSizeBytes
+} from './buckets';
 
 export interface AnalyticsHost {
   /** Cross-session persistence for the tri-state consent (VS Code globalState). */

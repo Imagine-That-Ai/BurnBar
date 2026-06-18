@@ -180,8 +180,10 @@ class AnalyticsTaxonomyTest {
         // The type has exactly two shapes; a raw number cannot be expressed.
         val s: AnalyticsValue = "21-100".av()
         val b: AnalyticsValue = true.av()
-        assertEquals("21-100", (s as AnalyticsValue.Str).value)
-        assertEquals(true, (b as AnalyticsValue.Bool).value)
+        val stringValue = s as? AnalyticsValue.Str
+        val boolValue = b as? AnalyticsValue.Bool
+        assertEquals("21-100", stringValue?.value)
+        assertEquals(true, boolValue?.value)
         // anyValue yields only String/Boolean — never a Number.
         assertTrue(s.anyValue is String)
         assertTrue(b.anyValue is Boolean)
@@ -191,7 +193,8 @@ class AnalyticsTaxonomyTest {
     fun bucketHelpersAreTheOnlyPathFromNumberToValue() {
         // A count must be bucketed to a string label before it can become a value.
         val bucketed: AnalyticsValue = AnalyticsBuckets.count(42).av()
-        assertEquals("21-100", (bucketed as AnalyticsValue.Str).value)
+        val bucketedString = bucketed as? AnalyticsValue.Str
+        assertEquals("21-100", bucketedString?.value)
         assertNotNull(bucketed.anyValue as? String)
     }
 }
