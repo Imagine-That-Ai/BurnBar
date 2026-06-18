@@ -529,7 +529,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
             local_idx=$((${#backoff_seconds[@]} - 1))
         fi
         wait_for=${backoff_seconds[$local_idx]}
-        echo ">>> Mobile retry attempt $test_attempt of $max_test_attempts. Sleeping ${wait_for}s."
+        echo ">>> Mobile retry attempt $test_attempt of $max_test_attempts after retryable XCTest/SwiftPM infrastructure failure. Sleeping ${wait_for}s."
         sleep "$wait_for"
         if (( test_attempt % 2 == 1 )); then
             cleanup_derived_data "$derived_data_dir"
@@ -586,6 +586,13 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if is_known_hang "$xcodebuild_log" && [ "$test_attempt" -lt "$max_test_attempts" ]; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "hang_retry" "$attempt_duration" "$attempt_xcresult"
         echo ">>> Known XCTest hang detected on mobile attempt $test_attempt; retrying."
+        test_attempt=$((test_attempt + 1))
+        continue
+    fi
+
+    if is_swiftpm_dependency_resolution_transient "$xcodebuild_log" && [ "$test_attempt" -lt "$max_test_attempts" ]; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "swiftpm_dependency_retry" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Transient SwiftPM dependency resolution failure detected on mobile attempt $test_attempt; retrying."
         test_attempt=$((test_attempt + 1))
         continue
     fi

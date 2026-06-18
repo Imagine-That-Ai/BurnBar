@@ -129,6 +129,17 @@ openburnbar_app_test_has_runner_restart() {
     grep -Fq "Restarting after unexpected exit, crash, or test timeout" "$log_path"
 }
 
+is_swiftpm_dependency_resolution_transient() {
+    local log_path="$1"
+
+    if openburnbar_app_test_has_concrete_xctest_failure "$log_path"; then
+        return 1
+    fi
+
+    grep -Eq "Could not resolve package dependencies|failed downloading .* which is required by binary target|Failed to clone repository|fatal: unable to access" "$log_path" || return 1
+    grep -Eiq "downloadError\\(\"The request timed out\\.\"\\)|Failed to connect to .* port 443|Couldn'?t connect to server|Connection (reset|timed out)|network connection was lost|TLS handshake timeout|HTTP (502|503|504)|Bad Gateway|Service Unavailable|Gateway Timeout" "$log_path"
+}
+
 openburnbar_app_test_has_concrete_failure_after_final_selected_start() {
     local log_path="$1"
 

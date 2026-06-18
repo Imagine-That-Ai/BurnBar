@@ -168,6 +168,27 @@ unknown_failure_log="$(write_fixture unknown-failure <<'LOG'
 LOG
 )"
 
+swiftpm_dependency_timeout_log="$(write_fixture swiftpm-dependency-timeout <<'LOG'
+failed downloading https://github.com/sqlcipher/SQLCipher.swift/releases/download/4.16.0/SQLCipher.xcframework.zip which is required by binary target SQLCipher: downloadError("The request timed out.")
+failed downloading https://dl.google.com/firebase/ios/swiftpm/11.15.0/FirebaseAnalytics.zip which is required by binary target FirebaseAnalytics: downloadError("The request timed out.")
+xcodebuild: error: Could not resolve package dependencies:
+  failed downloading https://dl.google.com/firebase/ios/bin/grpc/1.69.1/rc0/grpc.zip which is required by binary target grpc: downloadError("The request timed out.")
+LOG
+)"
+
+swiftpm_clone_timeout_log="$(write_fixture swiftpm-clone-timeout <<'LOG'
+skipping cache due to an error: Failed to clone repository https://github.com/google/GoogleSignIn-iOS:
+    fatal: unable to access https://github.com/google/GoogleSignIn-iOS/: Failed to connect to github.com port 443 after 25176 ms: Could not connect to server
+LOG
+)"
+
+swiftpm_timeout_with_xctest_failure_log="$(write_fixture swiftpm-timeout-with-xctest-failure <<'LOG'
+Executed 1 test, with 1 failure (0 unexpected) in 0.123 (0.124) seconds
+failed downloading https://dl.google.com/firebase/ios/swiftpm/11.15.0/FirebaseAnalytics.zip which is required by binary target FirebaseAnalytics: downloadError("The request timed out.")
+xcodebuild: error: Could not resolve package dependencies:
+LOG
+)"
+
 assert_true "green XCTest summary plus trailing Xcode failure is accepted" is_xcode_false_negative_pass "$false_negative_log"
 assert_false "concrete XCTest failure is not accepted as a false-negative pass" is_xcode_false_negative_pass "$concrete_failure_log"
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
@@ -180,5 +201,9 @@ assert_false "runner crash with concrete XCTest failure is not hidden as infrast
 assert_true "test-host timeout relaunch with stale failing footer is retryable" is_known_hang "$timeout_restart_log"
 assert_false "test-host timeout relaunch with assertion failure is not hidden" is_known_hang "$timeout_restart_with_assertion_log"
 assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_log"
+assert_true "SwiftPM binary artifact download timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_dependency_timeout_log"
+assert_true "SwiftPM package clone network timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_clone_timeout_log"
+assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_dependency_resolution_transient "$swiftpm_timeout_with_xctest_failure_log"
+assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
 
 echo "OpenBurnBar app-test classifier fixtures passed."

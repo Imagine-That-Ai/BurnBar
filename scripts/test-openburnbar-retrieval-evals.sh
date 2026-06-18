@@ -215,7 +215,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
             backoff_index=$((${#backoff_seconds[@]} - 1))
         fi
         wait_for=${backoff_seconds[$backoff_index]}
-        echo ">>> Retrieval-eval retry $test_attempt of $max_test_attempts after known XCTest hang. Sleeping ${wait_for}s."
+        echo ">>> Retrieval-eval retry $test_attempt of $max_test_attempts after retryable XCTest/SwiftPM infrastructure failure. Sleeping ${wait_for}s."
         sleep "$wait_for"
 
         if (( test_attempt % 2 == 1 )); then
@@ -261,6 +261,13 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if is_known_hang "$xcodebuild_log"; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "hang_retry" "$attempt_duration" "$attempt_xcresult"
         echo ">>> Detected known XCTest startup hang on retrieval-eval attempt $test_attempt (exit $last_test_exit_code)."
+        test_attempt=$((test_attempt + 1))
+        continue
+    fi
+
+    if is_swiftpm_dependency_resolution_transient "$xcodebuild_log"; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "swiftpm_dependency_retry" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Detected transient SwiftPM dependency resolution failure on retrieval-eval attempt $test_attempt (exit $last_test_exit_code)."
         test_attempt=$((test_attempt + 1))
         continue
     fi
