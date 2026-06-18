@@ -14,6 +14,8 @@ import {
   EscrowError,
 } from "@/lib/escrow";
 import { registerBrowserEscrowDevice } from "@/lib/api";
+import { useAnalytics } from "@/lib/analytics/AnalyticsProvider";
+import { EVENT } from "@/lib/analytics";
 
 type Step = "idle" | "registering" | "pending" | "unwrapping" | "ready" | "error";
 
@@ -40,6 +42,7 @@ export function EscrowFlow({
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
   const [escrowDeviceId, setEscrowDeviceId] = useState<string | null>(null);
+  const { track } = useAnalytics();
 
   const register = useCallback(async () => {
     setStep("registering");
@@ -50,11 +53,14 @@ export function EscrowFlow({
       const res = await registerBrowserEscrowDevice(jwk);
       setEscrowDeviceId(res.escrowDeviceId);
       setStep("pending");
+      // Outcome only — the escrow device id is NEVER sent.
+      track(EVENT.escrowDeviceRegistered, { outcome: "success" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not register this browser.");
       setStep("error");
+      track(EVENT.escrowDeviceRegistered, { outcome: "failure" });
     }
-  }, []);
+  }, [track]);
 
   const poll = useCallback(async () => {
     if (!escrowDeviceId) return;
@@ -71,12 +77,20 @@ export function EscrowFlow({
       const vaultKey = await importVaultKey(rawVaultKey);
       onVaultKeyReady?.(vaultKey, rawVaultKey);
       setStep("ready");
+      // The browser earned decrypt capability — a trust conversion. No key/id sent.
+      track(EVENT.escrowDeviceTrusted, {
+        prf_supported: webAuthnPrfSupported(),
+      });
     } catch (err) {
       if (err instanceof EscrowError) setError(err.message);
       else setError(err instanceof Error ? err.message : "Could not unwrap the vault key.");
       setStep("error");
+      // Bounded failure stage — EscrowError vs generic. Never the message text.
+      track(EVENT.escrowDeviceFailed, {
+        error_stage: err instanceof EscrowError ? "unwrap" : "other",
+      });
     }
-  }, [escrowDeviceId, fetchWrappedKey, onVaultKeyReady]);
+  }, [escrowDeviceId, fetchWrappedKey, onVaultKeyReady, track]);
 
   return (
     <Card>

@@ -14,6 +14,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { revokeAllAccess, type RevokeAllAccessResponse } from "@/lib/api";
+import { useAnalytics } from "@/lib/analytics/AnalyticsProvider";
+import { EVENT } from "@/lib/analytics";
+import { bucketCount } from "@/lib/analytics/buckets";
 
 /**
  * PANIC — revokeAllAccess. Aggregates the per-surface revoke callables. "Sync"
@@ -25,14 +28,25 @@ export function PanicButton() {
   const [busy, setBusy] = useState<"sync" | "all" | null>(null);
   const [result, setResult] = useState<RevokeAllAccessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { track } = useAnalytics();
 
   const run = async (scope: "sync" | "all") => {
     setBusy(scope);
     setError(null);
     try {
-      setResult(await revokeAllAccess(scope));
+      const res = await revokeAllAccess(scope);
+      setResult(res);
+      const total =
+        res.revoked.mcpClients + res.revoked.devices + res.revoked.escrowDevices + res.revoked.providers;
+      // Bounded scope + outcome + a bucketed total — never raw per-surface counts.
+      track(EVENT.accountAccessRevoked, {
+        scope,
+        outcome: "success",
+        revoked_count_bucket: bucketCount(total),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Revoke failed.");
+      track(EVENT.accountAccessRevoked, { scope, outcome: "failure" });
     } finally {
       setBusy(null);
     }

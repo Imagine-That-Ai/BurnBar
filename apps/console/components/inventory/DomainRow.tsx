@@ -10,6 +10,8 @@ import { DeleteDomainDialog } from "./DeleteDomainDialog";
 import { exportUserData } from "@/lib/api";
 import { retentionLabel, type DataDomain } from "@/lib/domains";
 import { formatBytes, formatCount } from "@/lib/utils";
+import { useAnalytics } from "@/lib/analytics/AnalyticsProvider";
+import { EVENT } from "@/lib/analytics";
 
 function FacetList({ items, empty }: { items: string[]; empty: string }) {
   if (items.length === 0) return <p className="text-xs italic text-content-dim">{empty}</p>;
@@ -46,6 +48,7 @@ export function DomainRow({
   const [side, setSide] = useState<FlipSide>("yours");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const { track } = useAnalytics();
 
   const canExport = domain.actions.includes("export");
   const canDelete = domain.actions.includes("delete");
@@ -63,8 +66,17 @@ export function DomainRow({
       a.download = `burnbar-${domain.id}-export.json`;
       a.click();
       URL.revokeObjectURL(url);
+      // Bounded enum (encryption_tier) + outcome only — never the domain contents.
+      track(EVENT.inventoryDomainExported, {
+        encryption_tier: domain.encryptionTier,
+        outcome: "success",
+      });
     } catch (err) {
       setExportError(err instanceof Error ? err.message : "Export failed.");
+      track(EVENT.inventoryDomainExported, {
+        encryption_tier: domain.encryptionTier,
+        outcome: "failure",
+      });
     } finally {
       setExporting(false);
     }
