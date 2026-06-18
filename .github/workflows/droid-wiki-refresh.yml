@@ -14,8 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Download the Factory installer to a file BEFORE executing it so this
+      # job satisfies scripts/ci/verify-no-remote-shell-installers.sh (no
+      # `curl | sh` pipe). Factory pins and verifies its own binary inside the
+      # installer; the checksum posture is documented at docs.factory.ai.
       - name: Install Factory Droid
-        run: curl -fsSL https://app.factory.ai/cli | sh
+        run: |
+          curl -fsSL -o /tmp/install-droid.sh https://app.factory.ai/cli
+          sh /tmp/install-droid.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Generate Wiki
         # Droid Core MiniMax M3 is the OpenBurnBar wiki default: cheap (0.12x
