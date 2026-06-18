@@ -971,7 +971,7 @@ struct OpenBurnBarApp: App {
             Task { @MainActor in
                 var properties: [String: AnalyticsValue] = [
                     "feature": .string(feature.rawValue),
-                    "outcome": .string(outcome.rawValue),
+                    "outcome": .string(outcome.rawValue)
                 ]
                 if let durationMs {
                     properties["duration_ms_bucket"] = .string(AnalyticsBuckets.durationMs(durationMs))

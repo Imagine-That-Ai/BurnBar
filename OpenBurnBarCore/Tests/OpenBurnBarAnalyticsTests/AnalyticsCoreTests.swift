@@ -187,8 +187,14 @@ final class AnalyticsValueTests: XCTestCase {
     func test_onlyStringAndBoolCases_exist() {
         let s: AnalyticsValue = "x"
         let b: AnalyticsValue = true
-        switch s { case .string: break; case .bool: XCTFail() }
-        switch b { case .bool: break; case .string: XCTFail() }
+        switch s {
+        case .string: break
+        case .bool: XCTFail("string analytics value should not be a bool")
+        }
+        switch b {
+        case .bool: break
+        case .string: XCTFail("bool analytics value should not be a string")
+        }
         XCTAssertEqual(s.anyValue as? String, "x")
         XCTAssertEqual(b.anyValue as? Bool, true)
     }

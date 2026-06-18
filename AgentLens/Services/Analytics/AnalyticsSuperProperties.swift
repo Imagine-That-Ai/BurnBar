@@ -17,7 +17,7 @@ struct AnalyticsSuperProperties {
             "app_build": .string(appBuild),
             "locale": .string(locale),
             "session_id": .string(sessionId),
-            "consent_version": .string(consentVersion),
+            "consent_version": .string(consentVersion)
         ]
     }
 

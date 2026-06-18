@@ -74,8 +74,9 @@ final class AnalyticsConsentStoreTests: XCTestCase {
         let key = AnalyticsConsentStore.key
         // Nothing written → reader must report dark.
         XCTAssertNil(defaults.string(forKey: key))
-        XCTAssertFalse(
-            defaults.string(forKey: key) == AnalyticsConsent.granted.rawValue,
+        XCTAssertNotEqual(
+            defaults.string(forKey: key),
+            AnalyticsConsent.granted.rawValue,
             "An extension reading an unset shared suite must stay dark"
         )
     }
