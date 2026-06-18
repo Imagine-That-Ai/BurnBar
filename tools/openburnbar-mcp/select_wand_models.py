@@ -9,9 +9,7 @@ ministry.select_models_for_wand(). The ranking logic stays in ministry.py.
 from __future__ import annotations
 
 import argparse
-import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -52,12 +50,39 @@ def _selection_for_index(selected: list[dict[str, Any]], index: int) -> dict[str
     return selected[index % len(selected)]
 
 
+def _safe_public_string(value: Any, *, max_length: int = 160) -> str | None:
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    lowered = trimmed.lower()
+    sensitive_markers = (
+        "api_key",
+        "apikey",
+        "authorization",
+        "bearer ",
+        "password",
+        "secret",
+        "token",
+        "ghp_",
+        "sk-",
+    )
+    if any(marker in lowered for marker in sensitive_markers):
+        return None
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/@+- ()[]{}#,")
+    cleaned = "".join(character for character in trimmed[:max_length] if character in allowed).strip()
+    return cleaned or None
+
+
 def _public_candidate(candidate: dict[str, Any] | None) -> dict[str, Any] | None:
     if not candidate:
         return None
     public_fields = ("arg", "model", "displayName", "provider", "source")
     return {
-        field: candidate[field] for field in public_fields if isinstance(candidate.get(field), str) and candidate[field]
+        field: public_value
+        for field in public_fields
+        if (public_value := _safe_public_string(candidate.get(field))) is not None
     }
 
 
@@ -66,12 +91,66 @@ def _public_payload(payload: dict[str, Any], sibling_index: int) -> dict[str, An
     selected_candidates = selected if isinstance(selected, list) else []
     selected_for_index = _selection_for_index(selected_candidates, sibling_index)
     return {
-        "status": payload.get("status") if isinstance(payload.get("status"), str) else "ok",
+        "status": _safe_public_string(payload.get("status"), max_length=32) or "ok",
         "selectedCount": len(selected_candidates),
-        "requestedCount": payload.get("requestedCount"),
-        "reason": payload.get("reason") if isinstance(payload.get("reason"), str) else None,
+        "requestedCount": int(payload.get("requestedCount"))
+        if isinstance(payload.get("requestedCount"), int)
+        else None,
+        "reason": _safe_public_string(payload.get("reason"), max_length=120),
         "selectedForIndex": _public_candidate(selected_for_index),
     }
+
+
+def _json_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _json_string_or_null(value: str | None) -> str:
+    return "null" if value is None else _json_string(value)
+
+
+def _json_int_or_null(value: int | None) -> str:
+    return "null" if value is None else str(value)
+
+
+def _public_candidate_json(candidate: dict[str, Any] | None) -> str:
+    if not candidate:
+        return "null"
+    parts: list[str] = []
+    for field in ("arg", "model", "displayName", "provider", "source"):
+        value = _safe_public_string(candidate.get(field))
+        if value is not None:
+            parts.append(f"{_json_string(field)}:{_json_string(value)}")
+    return "{" + ",".join(parts) + "}"
+
+
+def _public_payload_json(payload: dict[str, Any]) -> str:
+    status = _safe_public_string(payload.get("status"), max_length=32) or "ok"
+    selected_count = payload.get("selectedCount") if isinstance(payload.get("selectedCount"), int) else 0
+    requested_count = payload.get("requestedCount") if isinstance(payload.get("requestedCount"), int) else None
+    reason = _safe_public_string(payload.get("reason"), max_length=120)
+    selected_for_index = payload.get("selectedForIndex")
+    candidate = selected_for_index if isinstance(selected_for_index, dict) else None
+    return (
+        "{"
+        f'"reason":{_json_string_or_null(reason)},'
+        f'"requestedCount":{_json_int_or_null(requested_count)},'
+        f'"selectedCount":{selected_count},'
+        f'"selectedForIndex":{_public_candidate_json(candidate)},'
+        f'"status":{_json_string(status)}'
+        "}"
+    )
+
+
+def _unavailable_payload_json(reason: str) -> str:
+    safe_reason = _safe_public_string(reason, max_length=80) or "Error"
+    return f'{{"code":"MINISTRY_SELECT_MANY_FAILED","reason":{_json_string(safe_reason)},"status":"unavailable"}}'
+
+
+def _emit_cli_json(encoded: str) -> None:
+    # This stdout channel is the Swift app's machine-readable CLI protocol.
+    # Callers must pass only JSON produced by the public builders above.
+    os.write(1, (encoded + "\n").encode("utf-8"))
 
 
 def main() -> int:
@@ -97,20 +176,10 @@ def main() -> int:
             max_probes=max(1, min(args.max_probes, 12)),
             probe_ttl=max(0, args.probe_ttl),
         )
-        sys.stdout.write(json.dumps(_public_payload(payload, args.sibling_index), sort_keys=True) + "\n")
+        _emit_cli_json(_public_payload_json(_public_payload(payload, args.sibling_index)))
         return 0
     except Exception as exc:  # pragma: no cover - defensive CLI boundary
-        sys.stdout.write(
-            json.dumps(
-                {
-                    "status": "unavailable",
-                    "code": "MINISTRY_SELECT_MANY_FAILED",
-                    "reason": type(exc).__name__,
-                },
-                sort_keys=True,
-            )
-            + "\n",
-        )
+        _emit_cli_json(_unavailable_payload_json(type(exc).__name__))
         return 1
 
 

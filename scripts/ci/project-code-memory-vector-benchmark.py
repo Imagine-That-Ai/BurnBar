@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 import sqlite3
 import statistics
 import sys
@@ -25,9 +24,9 @@ def percentile(values: list[float], pct: float) -> float:
     return ordered[index]
 
 
-def semantic_gate_report(status: dict[str, object] | None) -> dict[str, object]:
+def semantic_gate_report(status: dict[str, object] | None) -> tuple[str, bool | None]:
     if status is None:
-        return {"semanticAvailable": None, "fallbackCategory": "missing"}
+        return ("missing", None)
     fallback = str(status.get("semanticFallbackReason") or "")
     if "fingerprints" in fallback:
         fallback_category = "deterministic-fingerprints"
@@ -35,10 +34,51 @@ def semantic_gate_report(status: dict[str, object] | None) -> dict[str, object]:
         fallback_category = "provider-not-configured"
     else:
         fallback_category = "other"
-    return {
-        "semanticAvailable": bool(status.get("semanticAvailable")),
-        "fallbackCategory": fallback_category,
-    }
+    return (fallback_category, bool(status.get("semanticAvailable")))
+
+
+def json_bool_or_null(value: bool | None) -> str:
+    if value is None:
+        return "null"
+    return "true" if value else "false"
+
+
+def emit_report(
+    *,
+    indexed_files: int,
+    chunk_count: int,
+    storage_byte_count: int,
+    index_seconds: float,
+    latency_p50_ms: float,
+    latency_p95_ms: float,
+    latency_p99_ms: float,
+    latency_max_ms: float,
+    semantic_available: bool | None,
+    fallback_category: str,
+) -> None:
+    sys.stdout.write(
+        "{\n"
+        '  "denseRetrievalGate": {\n'
+        f'    "fallbackCategory": "{fallback_category}",\n'
+        f'    "semanticAvailable": {json_bool_or_null(semantic_available)}\n'
+        "  },\n"
+        '  "fixture": {\n'
+        '    "files": 120,\n'
+        f'    "chunks": {chunk_count},\n'
+        f'    "indexedFiles": {indexed_files},\n'
+        f'    "storageByteCount": {storage_byte_count}\n'
+        "  },\n"
+        f'  "indexSeconds": {index_seconds:.6f},\n'
+        '  "searchLatencyMs": {\n'
+        f'    "max": {latency_max_ms:.6f},\n'
+        f'    "p50": {latency_p50_ms:.6f},\n'
+        f'    "p95": {latency_p95_ms:.6f},\n'
+        f'    "p99": {latency_p99_ms:.6f}\n'
+        "  },\n"
+        '  "status": "ok",\n'
+        '  "vectorBackend": "disabled-no-real-current-embeddings"\n'
+        "}\n"
+    )
 
 
 def main() -> int:
@@ -78,25 +118,19 @@ def caller_{index:03}():
                     "embeddingVersion": result["embeddingVersion"],
                     "semanticFallbackReason": result["semanticFallbackReason"],
                 }
-        report = {
-            "status": "ok",
-            "fixture": {
-                "files": 120,
-                "indexedFiles": indexed["indexedFiles"],
-                "chunks": indexed["chunkCount"],
-                "storageByteCount": indexed["storageByteCount"],
-            },
-            "indexSeconds": index_seconds,
-            "searchLatencyMs": {
-                "p50": statistics.median(latencies_ms),
-                "p95": percentile(latencies_ms, 95),
-                "p99": percentile(latencies_ms, 99),
-                "max": max(latencies_ms),
-            },
-            "denseRetrievalGate": semantic_gate_report(semantic_status),
-            "vectorBackend": "disabled-no-real-current-embeddings",
-        }
-        sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
+            fallback_category, semantic_available = semantic_gate_report(semantic_status)
+            emit_report(
+                indexed_files=int(indexed["indexedFiles"]),
+                chunk_count=int(indexed["chunkCount"]),
+                storage_byte_count=int(indexed["storageByteCount"]),
+                index_seconds=float(index_seconds),
+                latency_p50_ms=float(statistics.median(latencies_ms)),
+                latency_p95_ms=float(percentile(latencies_ms, 95)),
+                latency_p99_ms=float(percentile(latencies_ms, 99)),
+                latency_max_ms=float(max(latencies_ms)),
+                semantic_available=semantic_available,
+                fallback_category=fallback_category,
+            )
         if indexed["indexedFiles"] != 120:
             return 1
         if semantic_status is None or semantic_status["semanticAvailable"] is not False:

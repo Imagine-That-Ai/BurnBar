@@ -9,7 +9,6 @@ This is intentionally outside the default fast unit suite.
 from __future__ import annotations
 
 import os
-import json
 import shutil
 import sqlite3
 import sys
@@ -30,6 +29,14 @@ FILE_COUNT = int(os.environ.get("OPENBURNBAR_CODE_MEMORY_LOAD_FILES", "100"))
 SYMBOLS_PER_FILE = int(os.environ.get("OPENBURNBAR_CODE_MEMORY_LOAD_SYMBOLS_PER_FILE", "1000"))
 MIN_SYMBOLS = int(os.environ.get("OPENBURNBAR_CODE_MEMORY_LOAD_MIN_SYMBOLS", "100000"))
 QUERY_LATENCY_SECONDS = float(os.environ.get("OPENBURNBAR_CODE_MEMORY_LOAD_QUERY_LATENCY_SECONDS", "2.0"))
+ALLOWED_FAILURE_CODES = {
+    "indexed-files",
+    "symbol-count",
+    "storage-budget",
+    "query-empty",
+    "query-latency",
+    "non-code-row-drift",
+}
 
 
 def write_repo(repo: Path) -> None:
@@ -64,6 +71,38 @@ def seed_non_code_row(conn: sqlite3.Connection) -> None:
             ts,
             ts,
         ),
+    )
+
+
+def emit_summary(
+    *,
+    failed: bool,
+    indexed_files: int,
+    symbol_count: int,
+    storage_byte_count: int,
+    storage_budget_bytes: int,
+    index_seconds: float,
+    query_seconds: float,
+    non_code_rows_before: int,
+    non_code_rows_after: int,
+    failure_codes: list[str],
+) -> None:
+    safe_codes = [code for code in failure_codes if code in ALLOWED_FAILURE_CODES]
+    codes_json = "[" + ",".join(f'"{code}"' for code in safe_codes) + "]"
+    sys.stdout.write(
+        "{"
+        f'"failureCodes":{codes_json},'
+        f'"failureCount":{len(safe_codes)},'
+        f'"indexSeconds":{index_seconds:.3f},'
+        f'"indexedFiles":{indexed_files},'
+        f'"nonCodeRowsAfter":{non_code_rows_after},'
+        f'"nonCodeRowsBefore":{non_code_rows_before},'
+        f'"querySeconds":{query_seconds:.6f},'
+        f'"result":"{"failed" if failed else "passed"}",'
+        f'"storageBudgetBytes":{storage_budget_bytes},'
+        f'"storageByteCount":{storage_byte_count},'
+        f'"symbolCount":{symbol_count}'
+        "}\n"
     )
 
 
@@ -123,20 +162,18 @@ def main() -> int:
             failures.append(f"nonCodeRows changed from {before_non_code} to {after_non_code}")
             failure_codes.append("non-code-row-drift")
 
-        summary = {
-            "result": "failed" if failures else "passed",
-            "indexedFiles": result["indexedFiles"],
-            "symbolCount": symbol_count,
-            "storageByteCount": storage_status["storageByteCount"],
-            "storageBudgetBytes": storage_status["storageBudgetBytes"],
-            "indexSeconds": round(index_seconds, 3),
-            "querySeconds": round(query_seconds, 6),
-            "nonCodeRowsBefore": before_non_code,
-            "nonCodeRowsAfter": after_non_code,
-            "failureCount": len(failures),
-            "failureCodes": failure_codes,
-        }
-        sys.stdout.write(json.dumps(summary, sort_keys=True) + "\n")
+        emit_summary(
+            failed=bool(failures),
+            indexed_files=int(result["indexedFiles"]),
+            symbol_count=int(symbol_count),
+            storage_byte_count=int(storage_status["storageByteCount"]),
+            storage_budget_bytes=int(storage_status["storageBudgetBytes"]),
+            index_seconds=float(index_seconds),
+            query_seconds=float(query_seconds),
+            non_code_rows_before=int(before_non_code),
+            non_code_rows_after=int(after_non_code),
+            failure_codes=failure_codes,
+        )
         return 1 if failures else 0
     finally:
         shutil.rmtree(temp, ignore_errors=True)
