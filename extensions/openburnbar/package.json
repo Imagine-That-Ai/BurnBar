@@ -62,7 +62,8 @@
     "onCommand:openburnbar.rejectRun",
     "onCommand:openburnbar.private.workspace.rpc",
     "onCommand:openburnbar.openWorkspace",
-    "onCommand:openburnbar.openConversationSearch"
+    "onCommand:openburnbar.openConversationSearch",
+    "onCommand:openburnbar.manageAnalytics"
   ],
   "contributes": {
     "viewsContainers": {
@@ -138,6 +139,10 @@
       {
         "command": "openburnbar.openConversationSearch",
         "title": "OpenBurnBar: Search Conversations"
+      },
+      {
+        "command": "openburnbar.manageAnalytics",
+        "title": "OpenBurnBar: Manage Usage Analytics"
       }
     ],
     "menus": {
@@ -216,6 +221,15 @@
           ],
           "default": "smart",
           "description": "Controls what OpenBurnBar shows in the sidebar status line."
+        },
+        "openburnbar.analytics.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Opt in to privacy-preserving, anonymous usage analytics (Amplitude) to help improve OpenBurnBar. Off by default. No personal data, prompts, code, file paths, or message content is ever sent — only feature usage, outcomes, and bucketed counts. Also requires VS Code telemetry (`#telemetry.telemetryLevel#`) to be enabled; analytics stay off if either is disabled.",
+          "tags": [
+            "telemetry",
+            "usesOnlineServices"
+          ]
         }
       }
     }
@@ -262,6 +276,7 @@
     "vitest": "4.1.8"
   },
   "dependencies": {
+    "@amplitude/analytics-node": "1.5.60",
     "@sentry/node": "10.58.0",
     "globals": "17.6.0"
   },

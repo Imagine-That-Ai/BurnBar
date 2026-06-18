@@ -28,6 +28,8 @@ import { OpenBurnBarWorkspacePanel } from './views/workspacePanel';
 import { activateOpenBurnBarWorkspaceCompanion } from './workspace/companion';
 import { OpenBurnBarWorkspaceRpcClient } from './workspace/rpc';
 import { initSentry, flushSentry } from './telemetry/sentry';
+import { OpenBurnBarAnalyticsService } from './analytics/service';
+import { COMMAND_ID, OUTCOME, SURFACE } from './analytics';
 
 const BURNBAR_CLIENT_ID_KEY = 'openburnbar.clientId';
 
@@ -39,6 +41,8 @@ export interface OpenBurnBarActivationDependencies {
   clearIntervalFn?: typeof clearInterval;
   extensionKind?: vscode.ExtensionKind;
   remoteName?: string;
+  /** Consent-gated analytics. Omitted in unit tests (instrumentation no-ops). */
+  analytics?: OpenBurnBarAnalyticsService;
 }
 
 /** Minimal host surface required for extension activation (tests + production). */
@@ -53,7 +57,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const pkg = context.extension.packageJSON as { version?: string };
   const isDev = context.extensionMode === vscode.ExtensionMode.Development;
   await initSentry(pkg.version ?? '0.0.0', isDev ? 'development' : 'production');
-  await activateBurnBarExtension(context);
+
+  // Opt-in, consent-gated analytics (fans out ALONGSIDE Sentry; reuses VS Code's
+  // telemetry switch). Initialize fires the lifecycle spine ONLY if already
+  // consented; the SDK stays dark otherwise. Initialization never throws.
+  let analytics: OpenBurnBarAnalyticsService | undefined;
+  try {
+    analytics = OpenBurnBarAnalyticsService.initialize(context);
+    void analytics.maybePromptForConsent(context);
+  } catch {
+    analytics = undefined; // analytics must never break activation
+  }
+
+  await activateBurnBarExtension(context, { analytics });
 }
 
 // Deactivation handled via dispose() on controllers and subscriptions
@@ -67,6 +83,7 @@ export async function activateBurnBarExtension(
 ): Promise<OpenBurnBarExtensionController | undefined> {
   const extensionKind = dependencies.extensionKind ?? context.extension.extensionKind;
   const remoteName = dependencies.remoteName ?? vscode.env.remoteName;
+  const analytics = dependencies.analytics; // undefined in unit tests → no-op
   const shouldActivateWorkspaceCompanion = extensionKind === vscode.ExtensionKind.Workspace || !remoteName;
   const workspaceClient = dependencies.controllerDependencies?.workspaceClient ?? new OpenBurnBarWorkspaceRpcClient();
   const daemonClient = dependencies.controllerDependencies?.client ?? new OpenBurnBarDaemonClient();
@@ -144,20 +161,33 @@ export async function activateBurnBarExtension(
 
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.reconnect', async () => {
-      await controller.reconnect();
+      analytics?.trackCommand(COMMAND_ID.reconnect);
+      try {
+        await controller.reconnect();
+        analytics?.trackDaemonConnection(OUTCOME.success);
+      } catch (error) {
+        analytics?.trackDaemonConnection(OUTCOME.failure);
+        throw error;
+      }
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.refresh', async () => {
+      analytics?.trackCommand(COMMAND_ID.refresh);
       await controller.refresh();
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.repairDaemon', async () => {
+      analytics?.trackCommand(COMMAND_ID.repairDaemon);
       try {
         const result = await controller.repairDaemon();
+        analytics?.trackRunAction('repair_daemon', OUTCOME.success);
         await vscode.window.showInformationMessage(result.message);
       } catch (error) {
+        // error_category is a bounded literal — never the caught message/stack.
+        analytics?.trackHandledError('daemon_repair_failed', SURFACE.panel);
+        analytics?.trackRunAction('repair_daemon', OUTCOME.failure);
         await vscode.window.showWarningMessage(
           error instanceof Error ? error.message : 'OpenBurnBar daemon repair failed.'
         );
@@ -166,6 +196,7 @@ export async function activateBurnBarExtension(
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.startRun', async () => {
+      analytics?.trackCommand(COMMAND_ID.startRun);
       const model = await promptForRunModel(controller);
       if (!model) {
         return;
@@ -195,8 +226,11 @@ export async function activateBurnBarExtension(
           modelID: model.id,
           metadata: inferredMetadata
         });
+        analytics?.trackRunAction('start', OUTCOME.success);
         await vscode.window.showInformationMessage(`Started OpenBurnBar run ${result.runID}.`);
       } catch (error) {
+        analytics?.trackRunAction('start', OUTCOME.failure);
+        analytics?.trackHandledError('run_start_failed', SURFACE.panel);
         await vscode.window.showWarningMessage(
           error instanceof Error ? error.message : 'OpenBurnBar could not start the run.'
         );
@@ -205,6 +239,7 @@ export async function activateBurnBarExtension(
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.cancelRun', async (item?: OpenBurnBarRunTreeItem) => {
+      analytics?.trackCommand(COMMAND_ID.cancelRun);
       const run = resolveDaemonRun(controller, item);
       if (!run) {
         await vscode.window.showWarningMessage('Select a daemon-backed OpenBurnBar run to cancel.');
@@ -217,13 +252,17 @@ export async function activateBurnBarExtension(
         'Cancel Run'
       );
       if (confirmation !== 'Cancel Run') {
+        analytics?.trackRunAction('cancel', OUTCOME.cancelled);
         return;
       }
 
       try {
         await controller.cancelRun(run.id);
+        analytics?.trackRunAction('cancel', OUTCOME.success);
         await vscode.window.showInformationMessage(`Cancelled OpenBurnBar run ${run.id}.`);
       } catch (error) {
+        analytics?.trackRunAction('cancel', OUTCOME.failure);
+        analytics?.trackHandledError('run_cancel_failed', SURFACE.panel);
         await vscode.window.showWarningMessage(
           error instanceof Error ? error.message : 'OpenBurnBar could not cancel the run.'
         );
@@ -232,6 +271,7 @@ export async function activateBurnBarExtension(
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.retryRun', async (item?: OpenBurnBarRunTreeItem) => {
+      analytics?.trackCommand(COMMAND_ID.retryRun);
       const run = resolveDaemonRun(controller, item);
       if (!run) {
         await vscode.window.showWarningMessage('Select a daemon-backed OpenBurnBar run to retry.');
@@ -240,8 +280,11 @@ export async function activateBurnBarExtension(
 
       try {
         await controller.retryRun(run.id);
+        analytics?.trackRunAction('retry', OUTCOME.success);
         await vscode.window.showInformationMessage(`Retried OpenBurnBar run ${run.id}.`);
       } catch (error) {
+        analytics?.trackRunAction('retry', OUTCOME.failure);
+        analytics?.trackHandledError('run_retry_failed', SURFACE.panel);
         await vscode.window.showWarningMessage(
           error instanceof Error ? error.message : 'OpenBurnBar could not retry the run.'
         );
@@ -250,25 +293,36 @@ export async function activateBurnBarExtension(
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.approveRun', async (item?: OpenBurnBarRunTreeItem) => {
-      await handleApprovalResponse(controller, item, 'approve');
+      analytics?.trackCommand(COMMAND_ID.approveRun);
+      await handleApprovalResponse(controller, item, 'approve', analytics);
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.rejectRun', async (item?: OpenBurnBarRunTreeItem) => {
-      await handleApprovalResponse(controller, item, 'reject');
+      analytics?.trackCommand(COMMAND_ID.rejectRun);
+      await handleApprovalResponse(controller, item, 'reject', analytics);
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.openWorkspace', () => {
+      analytics?.trackCommand(COMMAND_ID.openWorkspace);
+      analytics?.trackScreenView(SURFACE.workspacePanel);
       OpenBurnBarWorkspacePanel.open(controller, context.extensionUri);
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('openburnbar.openConversationSearch', async () => {
+      analytics?.trackCommand(COMMAND_ID.openConversationSearch);
       await openBurnBarAppOrWarn(
         'search',
         'Could not open OpenBurnBar for conversation search. Install the OpenBurnBar app, then try again.'
       );
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('openburnbar.manageAnalytics', async () => {
+      // Open the OpenBurnBar settings filtered to the analytics opt-in toggle.
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'openburnbar.analytics.enabled');
     })
   );
 
@@ -776,7 +830,8 @@ async function promptForRunModel(
 async function handleApprovalResponse(
   controller: OpenBurnBarExtensionController,
   item: OpenBurnBarRunTreeItem | undefined,
-  decision: 'approve' | 'reject'
+  decision: 'approve' | 'reject',
+  analytics?: OpenBurnBarAnalyticsService
 ): Promise<void> {
   const run = resolveDaemonRun(controller, item);
   if (!run) {
@@ -796,14 +851,18 @@ async function handleApprovalResponse(
     );
 
     if (confirmation !== (decision === 'approve' ? 'Approve' : 'Reject')) {
+      analytics?.trackRunAction(decision, OUTCOME.cancelled);
       return;
     }
 
     await controller.respondToApproval(run.id, decision);
+    analytics?.trackRunAction(decision, OUTCOME.success);
     await vscode.window.showInformationMessage(
       `${decision === 'approve' ? 'Approved' : 'Rejected'} OpenBurnBar run ${run.id}.`
     );
   } catch (error) {
+    analytics?.trackRunAction(decision, OUTCOME.failure);
+    analytics?.trackHandledError('run_approval_failed', SURFACE.panel);
     await vscode.window.showWarningMessage(
       error instanceof Error ? error.message : `OpenBurnBar could not ${decision} the approval request.`
     );
