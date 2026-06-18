@@ -127,11 +127,11 @@ jobs:
         run: ./scripts/security/scan-publishable-tree.sh
 
       - name: BurnBar product release preflight
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '') }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && trim(inputs.release_hold_bypass_reason) != '') }}
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 
       - name: Record owner-approved release hold bypass
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_hold_bypass_reason != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && trim(inputs.release_hold_bypass_reason) != '' }}
         env:
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
           VERSION: ${{ steps.version.outputs.version }}
