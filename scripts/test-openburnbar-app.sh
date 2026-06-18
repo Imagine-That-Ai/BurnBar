@@ -365,7 +365,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         # covers both classes of hang we've observed: the "stale runner state"
         # variant (cleared by a fresh derived data dir) and the "macOS XCTest
         # IPC race" variant (cleared by a longer cooldown alone).
-        echo ">>> Retry attempt $test_attempt of $max_test_attempts after known XCTest hang. Sleeping ${wait_for}s."
+        echo ">>> Retry attempt $test_attempt of $max_test_attempts after retryable XCTest/SwiftPM infrastructure failure. Sleeping ${wait_for}s."
         sleep "$wait_for"
         if (( test_attempt % 2 == 1 )); then
             echo ">>> Refreshing derived data for attempt $test_attempt."
@@ -412,6 +412,13 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if is_known_hang "$xcodebuild_log"; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "hang_retry" "$attempt_duration" "$attempt_xcresult"
         echo ">>> Detected known XCTest startup hang on attempt $test_attempt (exit $last_test_exit_code)."
+        test_attempt=$((test_attempt + 1))
+        continue
+    fi
+
+    if is_swiftpm_dependency_resolution_transient "$xcodebuild_log"; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "swiftpm_dependency_retry" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Detected transient SwiftPM dependency resolution failure on attempt $test_attempt (exit $last_test_exit_code)."
         test_attempt=$((test_attempt + 1))
         continue
     fi
