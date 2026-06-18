@@ -34,6 +34,8 @@ Use the right lane: fast lane for mechanical/narrow work; structured large lane 
 
 The factory handles review, small fix loops, CI waiting, re-review, merge, close, and named blockers. Every selected PR should end as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`.
 
+When agents react to each other, leave a `Cross-agent receipt` in the PR. Keep it scannable: saw, reaction, status, next owner. Include review/comment/thread ids and commit SHAs when available so Alberto can manage the team from GitHub.
+
 Do **not** dump known-broken work into the factory. Do **not** open vague mega-PRs and expect automation to discover the intent. Big PRs must be coherent, well-mapped, and validated enough for an independent reviewer to reason about them. If cheap local checks fail, fix them before PR unless the failure is environmental and documented in the PR body. Do **not** treat Cursor Approval Agent output as approval evidence. Cursor/Bugbot/Cloud Agent may implement scoped fixes; Codex is the independent reviewer and approval gate; GitHub branch protection is the mechanical merge gate.
 
 ---

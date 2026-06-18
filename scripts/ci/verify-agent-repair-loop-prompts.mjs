@@ -20,6 +20,9 @@ const workflowExpectations = [
       "pushed after this workflow trigger, refresh the",
       "head, diff, reviews, and checks before deciding what remains",
       "Cursor Approval Agent output",
+      "Cross-agent receipt",
+      "saw, reaction, status, next owner",
+      "review/comment/thread ids and commit SHAs",
     ],
   },
   {
@@ -35,6 +38,9 @@ const workflowExpectations = [
       "head, diff, reviews, and checks before deciding what remains",
       "compact loop ledger",
       "Cursor Approval Agent output",
+      "Cross-agent receipt",
+      "saw, reaction, status, next owner",
+      "review/comment/thread ids and commit SHAs",
     ],
   },
 ];
