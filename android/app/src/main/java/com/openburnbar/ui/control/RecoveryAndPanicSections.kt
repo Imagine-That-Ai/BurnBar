@@ -177,13 +177,7 @@ private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: () -> Unit) {
 }
 
 @Composable
-private fun RecoveryKeyDialog(
-    title: String,
-    confirmLabel: String,
-    busy: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
+private fun RecoveryKeyDialog(title: String, confirmLabel: String, busy: Boolean, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var recoveryKey by remember { mutableStateOf("") }
     val trimmed = recoveryKey.trim()
 

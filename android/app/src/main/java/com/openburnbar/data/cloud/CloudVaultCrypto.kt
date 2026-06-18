@@ -973,10 +973,11 @@ object CloudVaultCrypto {
 
     fun recoveryVerificationHash(recoveryKey: String): String = sha256Hex(deriveRecoveryWrappingKey(recoveryKey))
 
-    private fun normalizedRecoveryKey(recoveryKey: String): String =
-        recoveryKey
+    private fun normalizedRecoveryKey(recoveryKey: String): String {
+        return recoveryKey
             .uppercase()
             .filter { it.isLetterOrDigit() }
+    }
 
     /**
      * Wrap a 32-byte vault key to a recipient's P-256 escrow public key — the exact inverse of
