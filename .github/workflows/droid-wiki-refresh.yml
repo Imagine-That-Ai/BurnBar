@@ -12,22 +12,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      # Download the Factory installer to a file BEFORE executing it so this
-      # job satisfies scripts/ci/verify-no-remote-shell-installers.sh (no
-      # `curl | sh` pipe). Factory pins and verifies its own binary inside the
-      # installer; the checksum posture is documented at docs.factory.ai.
-      - name: Install Factory Droid
+      - name: Install Factory Droid from pinned npm release
         run: |
-          curl -fsSL -o /tmp/install-droid.sh https://app.factory.ai/cli
-          sh /tmp/install-droid.sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          droid_version="0.150.1"
+
+          declare -A expected_integrity=(
+            ["droid"]="sha512-4m+nw3ePKHXNeysTWZdNUtbX1oXH/M/JQGaJVEZF7edscLSBvqcK4AiQBTolV97dmSKoH9/eKNNptXy1gBwXyw=="
+            ["@factory/cli-linux-x64"]="sha512-JqaJB/4JgM0/Ln0xnOUU3FqCiNc+NZAkBE+B61D1wtrt0ZL9mXGY/7QO61hU4xfz1p6R8hrpn0cvmrMREWcBYA=="
+            ["@factory/cli-linux-x64-baseline"]="sha512-BFImbx2ZQ7HlbVsDFI0YFIvCmFLj2SkmC4u4/+d7DslurYzUxGS+SZFSBpKExZqbc/kc8dOBfeH0cMpsUVGUdg=="
+          )
+
+          for package_name in "${!expected_integrity[@]}"; do
+            actual="$(npm view "${package_name}@${droid_version}" dist.integrity)"
+            if [[ "$actual" != "${expected_integrity[$package_name]}" ]]; then
+              echo "Integrity drift for ${package_name}@${droid_version}" >&2
+              echo "expected: ${expected_integrity[$package_name]}" >&2
+              echo "actual:   ${actual}" >&2
+              exit 1
+            fi
+          done
+
+          npm install --global "droid@${droid_version}"
+          droid --version | grep -F "${droid_version}"
 
       - name: Generate Wiki
         # Droid Core MiniMax M3 is the OpenBurnBar wiki default: cheap (0.12x
         # multiplier) and fast for read-only codebase analysis + doc synthesis.
-        # --auto high is the Factory-canonical autonomy level for CI runs.
-        run: droid exec --auto high --model minimax-m3 "/wiki"
+        # Droid exec defaults to read-only/spec-mode. Do not pass --auto here:
+        # this push-to-main workflow exposes FACTORY_API_KEY to the process.
+        run: droid exec --model minimax-m3 "/wiki"
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
