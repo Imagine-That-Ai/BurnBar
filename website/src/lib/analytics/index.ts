@@ -34,8 +34,8 @@ export const analytics = new Analytics({
   superProperties: () => ({
     platform: "web",
     app_version: APP_VERSION,
-    surface: typeof location !== "undefined" ? surfaceForPath(location.pathname) : "other",
-  }),
+    surface: typeof location !== "undefined" ? surfaceForPath(location.pathname) : "other"
+  })
 });
 
 export { EVENT };
@@ -58,7 +58,7 @@ const SURFACE_BY_PATH: Record<string, string> = {
   "/router": "router",
   "/control": "control",
   "/floo": "floo",
-  "/link": "link",
+  "/link": "link"
 };
 
 export function surfaceForPath(pathname: string): string {
@@ -128,6 +128,6 @@ export function installDelegatedTracking(): void {
       }
       analytics.track(name as AnalyticsEventName, props);
     },
-    { capture: true },
+    { capture: true }
   );
 }

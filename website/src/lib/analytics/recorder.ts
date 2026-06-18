@@ -50,7 +50,7 @@ export class Analytics {
     this.ensureStarted();
     this.opts.transport.track(event, eventCategory(event), {
       ...this.opts.superProperties(),
-      ...props,
+      ...props
     });
   }
 

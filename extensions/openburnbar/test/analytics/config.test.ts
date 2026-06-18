@@ -15,7 +15,7 @@ describe('Amplitude key resolution (pre-consent dark by construction)', () => {
   });
 
   it('falls back to the env var when set (developer-from-source path)', () => {
-    const key = resolveAmplitudeApiKey({ BURNBAR_EXTENSION_AMPLITUDE_API_KEY: 'env-injected-key-1234' });
+    const key = resolveAmplitudeApiKey({ BURNBAR_EXTENSION_AMPLITUDE_API_KEY: 'env-injected-key-1234' }); // gitleaks:allow (fake test value, not a real key)
     expect(key).toBe('env-injected-key-1234');
   });
 

@@ -130,6 +130,9 @@ Categories:
 ```text
 # Exact AgentLens path | exact OpenBurnBarMobile path | category
 AgentLens/App/AppDelegate.swift | OpenBurnBarMobile/App/AppDelegate.swift | storage-backend-divergence
+AgentLens/Services/Analytics/AmplitudeTransport.swift | OpenBurnBarMobile/Services/Analytics/AmplitudeTransport.swift | transport
+AgentLens/Services/Analytics/AnalyticsConfig.swift | OpenBurnBarMobile/Services/Analytics/AnalyticsConfig.swift | transport
+AgentLens/Services/Analytics/AnalyticsShared.swift | OpenBurnBarMobile/Services/Analytics/AnalyticsShared.swift | platform-ui
 AgentLens/Services/AppCheckAttestationMonitor.swift | OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift | transport
 AgentLens/Services/Chat/HermesAttachmentLoader.swift | OpenBurnBarMobile/Services/HermesAttachmentLoader.swift | transport
 AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | transport

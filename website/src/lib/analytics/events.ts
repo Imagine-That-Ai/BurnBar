@@ -21,7 +21,7 @@ export const EVENT = {
   downloadCtaClicked: "download.cta.clicked",
   pricingPlanViewed: "pricing.plan.viewed",
   pricingCtaClicked: "pricing.cta.clicked",
-  navExternalClicked: "nav.external.clicked",
+  navExternalClicked: "nav.external.clicked"
 } as const;
 
 export type AnalyticsEventName = (typeof EVENT)[keyof typeof EVENT];
@@ -36,20 +36,20 @@ export type AnalyticsCategory =
 const LIFECYCLE = new Set<string>([
   EVENT.appSessionStarted,
   EVENT.authSignedOut,
-  EVENT.consentAnalyticsGranted,
+  EVENT.consentAnalyticsGranted
 ]);
 
 const SCREEN_VIEW = new Set<string>([
   EVENT.screenViewed,
   EVENT.navRouteChanged,
-  EVENT.pricingPlanViewed,
+  EVENT.pricingPlanViewed
 ]);
 
 const CONVERSION_AUTH = new Set<string>([
   EVENT.authSignInCompleted,
   EVENT.authSignUpCompleted,
   EVENT.downloadCtaClicked,
-  EVENT.pricingCtaClicked,
+  EVENT.pricingCtaClicked
 ]);
 
 const ERROR = new Set<string>([EVENT.errorHandled]);

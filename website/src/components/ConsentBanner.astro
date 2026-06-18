@@ -7,19 +7,34 @@
 // is included once from BaseLayout.
 ---
 
-<aside id="analytics-consent" class="analytics-consent" role="dialog" aria-modal="false" aria-label="Usage analytics consent" hidden>
+<aside
+  id="analytics-consent"
+  class="analytics-consent"
+  role="dialog"
+  aria-modal="false"
+  aria-label="Usage analytics consent"
+  hidden
+>
   <div class="analytics-consent__body">
     <p class="analytics-consent__text">
       <strong>Privacy-first, opt-in analytics.</strong>
-      We'd like to measure feature usage with privacy-preserving analytics (Amplitude) to improve
-      BurnBar. No personal data, no message content, no tracking until you choose to opt in. See our
+      We'd like to measure feature usage with privacy-preserving analytics (Amplitude) to improve BurnBar.
+      No personal data, no message content, no tracking until you choose to opt in. See our
       <a href="/privacy">Privacy Policy</a>.
     </p>
     <div class="analytics-consent__actions">
-      <button type="button" class="analytics-consent__btn analytics-consent__btn--ghost" data-consent-decline>
+      <button
+        type="button"
+        class="analytics-consent__btn analytics-consent__btn--ghost"
+        data-consent-decline
+      >
         Not now
       </button>
-      <button type="button" class="analytics-consent__btn analytics-consent__btn--primary" data-consent-accept>
+      <button
+        type="button"
+        class="analytics-consent__btn analytics-consent__btn--primary"
+        data-consent-accept
+      >
         Enable analytics
       </button>
     </div>
@@ -79,7 +94,9 @@
     border-radius: 9px;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: background-color 120ms ease, border-color 120ms ease;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
   }
   .analytics-consent__btn--ghost {
     background: transparent;
@@ -109,7 +126,7 @@
     grantConsent,
     declineConsent,
     boot,
-    installDelegatedTracking,
+    installDelegatedTracking
   } from "../lib/analytics";
 
   const banner = document.getElementById("analytics-consent");
@@ -140,6 +157,6 @@
     el.addEventListener("click", (event) => {
       event.preventDefault();
       show();
-    }),
+    })
   );
 </script>

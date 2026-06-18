@@ -1,10 +1,10 @@
 package com.openburnbar.analytics
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * Governance: enforces the taxonomy's structural invariants on the Android

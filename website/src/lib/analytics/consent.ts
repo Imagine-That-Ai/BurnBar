@@ -19,7 +19,7 @@ export const CONSENT_STORAGE_KEY = "burnbar-analytics-consent";
 export class ConsentStore {
   constructor(
     private readonly storage: ConsentStorage,
-    private readonly key: string = CONSENT_STORAGE_KEY,
+    private readonly key: string = CONSENT_STORAGE_KEY
   ) {}
 
   get state(): ConsentState {

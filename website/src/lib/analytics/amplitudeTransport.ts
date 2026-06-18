@@ -47,7 +47,7 @@ export class AmplitudeTransport implements AnalyticsTransport {
           serverZone: this.serverZone,
           instanceName: "openburnbar",
           identityStorage: "localStorage", // anonymous device id, no cookies
-          optOut: false,
+          optOut: false
         });
         this.amp = amp;
         if (!this.optedOut) this.flush(amp);
