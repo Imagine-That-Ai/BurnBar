@@ -87,8 +87,11 @@ final class GatewaySettings {
     /// Generates a 256-bit URL-safe bearer token from the OS CSPRNG. The format
     /// matches `rotateDaemonSocketAuthToken()` so both runtime secrets read the
     /// same way and survive a `ps auxww` redaction audit identically.
-    static func generateAuthToken() -> String {
-        OpenBurnBarSecureToken.randomBase64URLOrPreconditionFailure()
+    ///
+    /// Throws on CSPRNG failure so callers can fail closed instead of crashing
+    /// the host process or launching an unauthenticated gateway.
+    static func generateAuthToken() throws -> String {
+        try OpenBurnBarSecureToken.randomBase64URL()
     }
 
     /// Ensures the gateway has a bearer token to enforce before the daemon is
@@ -100,6 +103,8 @@ final class GatewaySettings {
     /// fresh token is generated and persisted to the keychain so every gateway
     /// launch is authenticated by default. An existing token is preserved so
     /// configured clients (CLI bridges, connectors) keep working across restarts.
+    /// If secure randomness fails, returns nil so the gateway does not launch
+    /// without authentication.
     @discardableResult
     func ensureAuthTokenForLaunch() -> String? {
         let trimmed = gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -109,7 +114,12 @@ final class GatewaySettings {
         guard !allowUnauthenticatedLoopback else {
             return nil
         }
-        let generated = Self.generateAuthToken()
+        let generated: String
+        do {
+            generated = try Self.generateAuthToken()
+        } catch {
+            return nil
+        }
         gatewayAuthToken = generated
         return generated
     }
