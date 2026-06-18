@@ -129,10 +129,12 @@ struct QuotaCommandCenter: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                         .rotationEffect(.degrees(quotaService.isFetching ? 360 : 0))
+                        // Spin only while fetching; on stop snap to 0 with no
+                        // animation so the icon doesn't visibly reverse-spin back.
                         .animation(
                             quotaService.isFetching
                                 ? .linear(duration: 1.0).repeatForever(autoreverses: false)
-                                : .default,
+                                : nil,
                             value: quotaService.isFetching
                         )
                 }

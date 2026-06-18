@@ -14,13 +14,9 @@ struct MiniSparkline: View {
     var body: some View {
         Chart {
             ForEach(points, id: \.0) { index, value in
-                LineMark(
-                    x: .value("Day", index),
-                    y: .value("Cost", value)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(color)
-
+                // Area fill is declared first so it draws under the line.
+                // Swift Charts paints in declaration order, so the crisp line
+                // and the end-point cap must come last to sit on top.
                 AreaMark(
                     x: .value("Day", index),
                     y: .value("Cost", value)
@@ -33,6 +29,13 @@ struct MiniSparkline: View {
                         endPoint: .bottom
                     )
                 )
+
+                LineMark(
+                    x: .value("Day", index),
+                    y: .value("Cost", value)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(color)
             }
             if let last = points.last {
                 PointMark(x: .value("Day", last.0), y: .value("Cost", last.1))
