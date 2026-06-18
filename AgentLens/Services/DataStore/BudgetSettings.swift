@@ -62,7 +62,7 @@ final class BudgetSettings {
     // MARK: - Writes (UI / Hermes / MCP entry points)
 
     @discardableResult
-    func upsertRule(_ rule: BudgetRule, source: String = "settings_ui") async -> BudgetRule {
+    func upsertRule(_ rule: BudgetRule, source: String = "settings_ui", suppressAnalytics: Bool = false) async -> BudgetRule {
         var stamped = rule
         stamped.updatedAt = Date()
         stamped.syncedAt = nil
@@ -79,12 +79,14 @@ final class BudgetSettings {
                 limitAtEvent: stamped.amountUSD,
                 detailJSON: encodeDetail(["label": stamped.displayLabel, "period": stamped.period.rawValue])
             ))
-            Analytics.shared.track(.budgetRuleChanged, [
-                "action": kind == .ruleUpdated ? "updated" : "created",
-                "rule_scope": .string(stamped.scope.rawValue),
-                "period": .string(stamped.period.rawValue),
-                "amount_usd_bucket": .string(AnalyticsBuckets.amountUSD(stamped.amountUSD))
-            ])
+            if !suppressAnalytics {
+                Analytics.shared.track(.budgetRuleChanged, [
+                    "action": kind == .ruleUpdated ? "updated" : "created",
+                    "rule_scope": .string(stamped.scope.rawValue),
+                    "period": .string(stamped.period.rawValue),
+                    "amount_usd_bucket": .string(AnalyticsBuckets.amountUSD(stamped.amountUSD))
+                ])
+            }
             await refresh()
         } catch {
             AppLogger.dataStore.silentFailure( // cov:ignore -- nonfatal-log
@@ -124,7 +126,7 @@ final class BudgetSettings {
     func pauseRule(id: String, until resumeAt: Date, source: String = "settings_ui") async {
         guard var rule = rules.first(where: { $0.id == id }) else { return }
         rule.pausedUntil = resumeAt
-        await upsertRule(rule, source: source)
+        await upsertRule(rule, source: source, suppressAnalytics: true)
         try? await store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
             ruleID: id,
             kind: .pause,
@@ -145,7 +147,7 @@ final class BudgetSettings {
     func resumeRule(id: String, source: String = "settings_ui") async {
         guard var rule = rules.first(where: { $0.id == id }) else { return }
         rule.pausedUntil = nil
-        await upsertRule(rule, source: source)
+        await upsertRule(rule, source: source, suppressAnalytics: true)
         try? await store.recordEvent(BudgetEvent( // try?-ok(best-effort audit event)
             ruleID: id,
             kind: .resume,

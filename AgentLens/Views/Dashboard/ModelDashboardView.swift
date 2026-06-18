@@ -390,6 +390,7 @@ struct ModelDashboardView: View {
             return
         }
         if let onOpenSessionLog {
+            Analytics.shared.track(.dashboardSessionOpened, ["surface": "dashboard_model"])
             onOpenSessionLog(target)
         } else {
             Analytics.shared.track(.dashboardSessionOpened, ["surface": "dashboard_model"])

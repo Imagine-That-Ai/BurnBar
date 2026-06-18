@@ -79,6 +79,9 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                 .document(uid)
                 .collection("chat_threads")
 
+            var syncedThreadCount = 0
+            var skippedThreadCount = 0
+
             let includeContent = gate.settings.chatThreadContentCloudBackupEnabled
             let resolvedKey = includeContent
                 ? try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
@@ -109,6 +112,7 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                                 "errorClass": "\(String(describing: type(of: error)))"
                             ]
                         )
+                        skippedThreadCount += 1
                         continue
                     }
                 } else {
@@ -192,27 +196,31 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                     data["signalEnvelope"] = FieldValue.delete()
                 }
                 batch.setData(data, forDocument: docRef, merge: true)
+                syncedThreadCount += 1
                 progress?.recordChatThreadProcessed(label: label)
             }
 
-            progress?.setCurrentRecord(label: "Chat threads", operation: "Committing Firestore batch")
-            try await withCloudSyncRetry(
-                policy: context.retryPolicy,
-                circuitBreaker: context.circuitBreaker,
-                domain: "chatThread"
-            ) {
-                try await batch.commit()
+            if syncedThreadCount > 0 {
+                progress?.setCurrentRecord(label: "Chat threads", operation: "Committing Firestore batch")
+                try await withCloudSyncRetry(
+                    policy: context.retryPolicy,
+                    circuitBreaker: context.circuitBreaker,
+                    domain: "chatThread"
+                ) {
+                    try await batch.commit()
+                }
             }
             state.withLock {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
             }
             let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
-            let itemCountBucket = AnalyticsBuckets.count(threads.count)
+            let itemCountBucket = AnalyticsBuckets.count(syncedThreadCount)
+            let outcome = skippedThreadCount > 0 ? "degraded" : "success"
             Task { @MainActor in
                 Analytics.shared.track(.cloudsyncCompleted, [
                     "domain": "chat_threads",
-                    "outcome": "success",
+                    "outcome": .string(outcome),
                     "duration_ms_bucket": .string(durationBucket),
                     "item_count_bucket": .string(itemCountBucket)
                 ])
@@ -220,6 +228,13 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
         } catch {
             progress?.fail(error.localizedDescription)
             state.withLock { $0.lastSyncError = error.localizedDescription }
+            let errorType = String(describing: type(of: error))
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncFailed, [
+                    "domain": "chat_threads",
+                    "error_type": .string(errorType)
+                ])
+            }
         }
     }
 

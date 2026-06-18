@@ -311,11 +311,11 @@ struct DashboardView: View {
             .presentationBackground(Material.ultraThinMaterial)
         }
         .onAppear {
-            // First-run analytics opt-in: show once when undecided, deferring to
-            // any other first-run consent already presenting.
-            if !AnalyticsConsentStore.shared.hasDecided
-                && !showIndexingConsent && !showCLIConsentSheet && !showSessionLogCloudConsent {
-                showAnalyticsConsent = true
+            presentAnalyticsConsentIfNeeded()
+        }
+        .onChange(of: showIndexingConsent) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                presentAnalyticsConsentIfNeeded()
             }
         }
         .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
@@ -503,6 +503,14 @@ struct DashboardView: View {
     }
 
     // MARK: - View helpers
+
+    private func presentAnalyticsConsentIfNeeded() {
+        guard !AnalyticsConsentStore.shared.hasDecided,
+              !showIndexingConsent,
+              !showCLIConsentSheet,
+              !showSessionLogCloudConsent else { return }
+        showAnalyticsConsent = true
+    }
 
     private func autoExpandTimeRangeIfNeeded() {
         guard !didAutoExpandEmptyTimeRange else { return }
