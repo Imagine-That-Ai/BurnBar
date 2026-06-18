@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  EVENT,
-  COMMAND_ID,
-  SURFACE,
-  OUTCOME,
-  eventCategory
-} from '../../src/analytics/events';
+import { EVENT, COMMAND_ID, SURFACE, OUTCOME, eventCategory } from '../../src/analytics/events';
 
 const ALL_EVENTS = Object.values(EVENT);
 
@@ -180,12 +174,15 @@ describe('PII / raw-number static sweep of the analytics module', () => {
     for (const file of files) {
       const text = readFileSync(join(analyticsDir, file), 'utf8');
       for (const banned of BANNED_PROP_KEYS) {
+        // `api_key` is the mandatory Amplitude HTTP V2 *envelope* field that the
+        // transport puts on the request body (our own key, sent over TLS to
+        // Amplitude) — it is NEVER an event-property key. Allow it there and only
+        // there; ban it (and every other listed key) in every other file.
+        if (banned === 'api_key' && file === 'amplitudeTransport.ts') continue;
         // Match an object-literal key like `prompt:` or `'file_path':` — not the
         // word inside a comment/string explaining what we DON'T send.
         const asKey = new RegExp(`['"\`]?\\b${banned}\\b['"\`]?\\s*:`, 'g');
         const hits = text.match(asKey) ?? [];
-        // Allow it only inside the config module's key-resolution (api key seam)
-        // where `api_key`-style words never appear as event props anyway.
         expect(hits.length, `${file} uses banned property key "${banned}:"`).toBe(0);
       }
     }

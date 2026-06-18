@@ -276,7 +276,6 @@
     "vitest": "4.1.8"
   },
   "dependencies": {
-    "@amplitude/analytics-node": "1.5.60",
     "@sentry/node": "10.58.0",
     "globals": "17.6.0"
   },

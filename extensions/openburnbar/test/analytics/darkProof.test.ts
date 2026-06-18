@@ -1,84 +1,82 @@
-import { createRequire } from 'node:module';
+import { describe, expect, it } from 'vitest';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { AmplitudeTransport, type FetchLike } from '../../src/analytics/amplitudeTransport';
 
 /**
- * THE load-bearing proof of pre-consent darkness, against the REAL transport
- * (not a fake). Mirrors the macOS guarantee "an un-consented session never
- * builds the client" and the website's "zero Amplitude bytes pre-consent".
+ * THE load-bearing proof of pre-consent darkness, against the REAL transport (not
+ * a fake). Mirrors the macOS guarantee "an un-consented session never builds the
+ * client" and the website's "zero Amplitude bytes pre-consent".
  *
- * The transport's only path to the SDK is a dynamic `import('@amplitude/analytics-node')`
- * inside `start()`. So:
- *   1. Importing the transport module loads ZERO Amplitude code.
- *   2. Constructing the transport loads ZERO Amplitude code.
- *   3. `track()` before `start()` loads ZERO Amplitude code (events queue, no SDK).
- *   4. Only `start()` — which the recorder calls solely after the consent+key gate
- *      passes — pulls the SDK in.
- *
- * We detect "the SDK is loaded" two ways: the module appears in the CJS
- * `require.cache`, and a fresh `require.resolve`'d module id is present. The build
- * target is commonjs (tsconfig `module: commonjs`), so Amplitude resolves through
- * the CJS cache.
+ * The transport is a direct HTTP V2 client, so its ONLY egress is a `fetch` POST
+ * inside send(), reached only from track() AFTER start(). start() is called by the
+ * recorder solely after the consent + key gate passes. We therefore prove darkness
+ * at the strongest possible boundary — the NETWORK: not one request fires until
+ * start(key) + track(), and stop() (revoke) goes silent again.
  */
 
-const require = createRequire(import.meta.url);
-
-function amplitudeResolvedId(): string {
-  return require.resolve('@amplitude/analytics-node');
+function spyFetch(): { fetchImpl: FetchLike; calls: { url: string; body: string }[] } {
+  const calls: { url: string; body: string }[] = [];
+  const fetchImpl: FetchLike = async (url, init) => {
+    calls.push({ url, body: init.body });
+    return { ok: true, status: 200 };
+  };
+  return { fetchImpl, calls };
 }
 
-function isAmplitudeLoaded(): boolean {
-  const id = amplitudeResolvedId();
-  // Direct cache hit, or any cached module whose path is inside the package.
-  if (require.cache[id]) return true;
-  return Object.keys(require.cache).some((p) => p.includes(`${'@amplitude'}/analytics-node`));
-}
-
-describe('pre-consent darkness — real AmplitudeTransport never loads the SDK early', () => {
-  afterEach(() => {
-    // Drop any Amplitude modules a `start()` test loaded, so each case is clean.
-    for (const p of Object.keys(require.cache)) {
-      if (p.includes('@amplitude')) delete require.cache[p];
-    }
+describe('pre-consent darkness — real AmplitudeTransport makes zero network calls until started', () => {
+  it('constructing the transport makes no network call', () => {
+    const { fetchImpl, calls } = spyFetch();
+    new AmplitudeTransport('device-uuid', 'US', fetchImpl);
+    expect(calls).toHaveLength(0);
   });
 
-  it('the package is NOT loaded merely by importing the transport module', async () => {
-    expect(isAmplitudeLoaded()).toBe(false);
-    await import('../../src/analytics/amplitudeTransport');
-    expect(isAmplitudeLoaded()).toBe(false);
-  });
-
-  it('constructing the transport and tracking BEFORE start loads no SDK', async () => {
-    const { AmplitudeTransport } = await import('../../src/analytics/amplitudeTransport');
-    const t = new AmplitudeTransport('device-uuid', 'US');
-    // track() before start() must queue, not load the SDK.
+  it('track() BEFORE start() is dark — no network call, not started', () => {
+    const { fetchImpl, calls } = spyFetch();
+    const t = new AmplitudeTransport('device-uuid', 'US', fetchImpl);
     t.track('vscode.command.invoked', 'primary_action', { command_id: 'refresh' });
     expect(t.isStarted).toBe(false);
-    expect(isAmplitudeLoaded()).toBe(false);
+    expect(calls).toHaveLength(0);
   });
 
-  it('start() with an EMPTY key stays dark (no load, no started state)', async () => {
-    const { AmplitudeTransport } = await import('../../src/analytics/amplitudeTransport');
-    const t = new AmplitudeTransport('device-uuid', 'US');
+  it('start() with an EMPTY key stays dark (no request, not started)', () => {
+    const { fetchImpl, calls } = spyFetch();
+    const t = new AmplitudeTransport('device-uuid', 'US', fetchImpl);
     t.start('');
+    t.track('vscode.command.invoked', 'primary_action', {});
     expect(t.isStarted).toBe(false);
-    expect(isAmplitudeLoaded()).toBe(false);
+    expect(calls).toHaveLength(0);
   });
 
-  it('start() WITH a key is the only thing that loads the SDK', async () => {
-    const { AmplitudeTransport } = await import('../../src/analytics/amplitudeTransport');
-    const t = new AmplitudeTransport('device-uuid', 'US');
-    expect(isAmplitudeLoaded()).toBe(false);
+  it('only start(key) + track() POSTs — to the V2 endpoint, anonymous, no user_id', () => {
+    const { fetchImpl, calls } = spyFetch();
+    const t = new AmplitudeTransport('device-uuid', 'US', fetchImpl);
 
     t.start('a-real-looking-key-abcdef0123');
-    // The dynamic import resolves on a microtask; await it.
-    await new Promise((r) => setTimeout(r, 50));
-
     expect(t.isStarted).toBe(true);
-    expect(isAmplitudeLoaded()).toBe(true);
+    expect(calls).toHaveLength(0); // start() alone sends nothing
 
-    // Tear down: stop() drops the client; the recorder calls this on revoke.
+    t.track('vscode.command.invoked', 'primary_action', { command_id: 'refresh' });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('https://api2.amplitude.com/2/httpapi');
+
+    const payload = JSON.parse(calls[0].body);
+    expect(payload.api_key).toBe('a-real-looking-key-abcdef0123');
+    expect(payload.events[0].device_id).toBe('device-uuid');
+    expect(payload.events[0]).not.toHaveProperty('user_id');
+    expect(payload.events[0].event_properties.event_category).toBe('primary_action');
+
+    // Revoke: stop() goes dark; a subsequent track sends nothing.
     t.stop();
     expect(t.isStarted).toBe(false);
+    t.track('vscode.command.invoked', 'primary_action', {});
+    expect(calls).toHaveLength(1); // unchanged
+  });
+
+  it('the EU server zone targets the EU endpoint', () => {
+    const { fetchImpl, calls } = spyFetch();
+    const t = new AmplitudeTransport('device-uuid', 'EU', fetchImpl);
+    t.start('a-real-looking-key-eu-0123');
+    t.track('vscode.command.invoked', 'primary_action', {});
+    expect(calls[0].url).toBe('https://api.eu.amplitude.com/2/httpapi');
   });
 });

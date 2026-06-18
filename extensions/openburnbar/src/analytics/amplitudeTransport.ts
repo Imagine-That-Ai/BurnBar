@@ -1,40 +1,62 @@
+import { randomUUID } from 'node:crypto';
+
 import type { AnalyticsTransport, AnalyticsProps } from './recorder';
 import type { AmplitudeServerZone } from './config';
 
-type AmplitudeNodeModule = typeof import('@amplitude/analytics-node');
-type NodeClient = ReturnType<AmplitudeNodeModule['createInstance']>;
+/** Amplitude HTTP V2 endpoints (US / EU data residency). */
+const AMPLITUDE_HTTP_V2_US = 'https://api2.amplitude.com/2/httpapi';
+const AMPLITUDE_HTTP_V2_EU = 'https://api.eu.amplitude.com/2/httpapi';
+
+/** The minimal request/response shapes the transport needs — structural, so the
+ *  module pulls in neither the DOM lib nor a fetch polyfill, and tests inject a
+ *  fake without mocking a global. */
+export interface AmplitudeFetchInit {
+  method: string;
+  headers: Record<string, string>;
+  body: string;
+}
+export interface AmplitudeFetchResponse {
+  readonly ok: boolean;
+  readonly status: number;
+}
+export type FetchLike = (url: string, init: AmplitudeFetchInit) => Promise<AmplitudeFetchResponse>;
+
+/** Default transport: the Node 20+ global `fetch` (VS Code 1.95 ships Node 20).
+ *  Reached through `globalThis` so no DOM lib types leak into this Node module. */
+const globalFetch: FetchLike = (url, init) => (globalThis as unknown as { fetch: FetchLike }).fetch(url, init);
 
 /**
- * Production transport backed by the Amplitude Node SDK, mirroring
- * AgentLens/Services/Analytics/AmplitudeTransport.swift and
- * website/src/lib/analytics/amplitudeTransport.ts. The SDK is **dynamically
- * imported on start()** — which the recorder calls only after consent — so a
- * pre-consent extension host loads zero Amplitude code and makes zero network
- * calls.
+ * Production transport: a tiny DIRECT Amplitude HTTP V2 client — the same
+ * dependency-free approach as the backend (`functions/src/analytics/amplitudeTransport.ts`),
+ * and the analogue of AgentLens/Services/Analytics/AmplitudeTransport.swift and
+ * website/src/lib/analytics/amplitudeTransport.ts.
  *
- * The Node SDK is server-side: it has NO autocapture, NO default tracking, NO
- * remote-config fetch, and NO device/geo fingerprinting (those are browser-only
- * concerns), so nothing can fire off-taxonomy or bypass the gate by construction.
- * IP is stripped server-side; identity is an anonymous random per-install UUID
- * passed explicitly as `device_id` on EVERY event (the Node client has no
- * `setDeviceId`), never a hostname or hardware id, and `user_id` is pinned
- * `undefined` (the extension has no authenticated sign-in). With no key it never
- * loads.
+ * Why NOT `@amplitude/analytics-node`? The extension ships as a `tsc`-built VSIX
+ * with `node_modules/**` excluded (.vscodeignore), so a dynamically-imported SDK
+ * would not be present at runtime and analytics would silently never start. The
+ * V2 API is a single authenticated POST — zero dependencies to package — and has
+ * no autocapture / default-tracking / remote-config, so nothing can fire
+ * off-taxonomy or bypass the gate.
  *
- * We use `createInstance()` (an ISOLATED client), never the package-level
- * singleton, so this transport owns the only Amplitude state in the process and
- * `stop()` can fully tear it down by dropping the reference.
+ * DARK by construction: it POSTs only after `start()` (which the recorder calls
+ * solely once the consent + key gate passes), tracking before start is dropped,
+ * `stop()` (revoke) goes silent immediately, identity is an anonymous random
+ * per-install `device_id` attached to every event (never a hostname/hardware id),
+ * `user_id` is never set (the extension has no sign-in), and NO `ip` is sent (no
+ * server-side IP/geo). With no key it never starts (the recorder's key gate).
  */
 export class AmplitudeTransport implements AnalyticsTransport {
-  private amp: NodeClient | null = null;
+  private apiKey = '';
   private started = false;
-  private optedOut = false;
-  private queue: { name: string; category: string; props: AnalyticsProps }[] = [];
+  private readonly endpoint: string;
 
   constructor(
     private readonly deviceId: string,
-    private readonly serverZone: AmplitudeServerZone = 'US'
-  ) {}
+    serverZone: AmplitudeServerZone = 'US',
+    private readonly fetchImpl: FetchLike = globalFetch
+  ) {
+    this.endpoint = serverZone === 'EU' ? AMPLITUDE_HTTP_V2_EU : AMPLITUDE_HTTP_V2_US;
+  }
 
   get isStarted(): boolean {
     return this.started;
@@ -42,70 +64,54 @@ export class AmplitudeTransport implements AnalyticsTransport {
 
   start(apiKey: string): void {
     if (this.started || apiKey.length === 0) return;
+    this.apiKey = apiKey;
     this.started = true;
-    this.optedOut = false;
-
-    // Re-grant after a prior revoke: the module is already loaded — just
-    // re-enable and flush, never re-init.
-    if (this.amp) {
-      this.amp.setOptOut(false);
-      this.flush(this.amp);
-      return;
-    }
-
-    import('@amplitude/analytics-node')
-      .then((mod) => {
-        const client = mod.createInstance();
-        // init returns AmplitudeReturn<void> ({ promise }); we don't await it —
-        // the SDK queues until ready. No autocapture/defaultTracking/remoteConfig
-        // options exist on the Node SDK (nothing to disable; dark by default).
-        client.init(apiKey, {
-          instanceName: 'openburnbar-extension',
-          serverZone: this.serverZone,
-          optOut: false,
-          useBatch: false,
-          flushQueueSize: 30,
-          flushIntervalMillis: 30_000,
-          // Allow short custom ids; our device_id is a 36-char UUID anyway. The
-          // device_id is attached per-event in send() (the Node client exposes no
-          // setDeviceId), so this just keeps the SDK from rejecting it.
-          minIdLength: 1
-        });
-        this.amp = client;
-        if (!this.optedOut) this.flush(client);
-      })
-      .catch(() => {
-        // SDK failed to load — stay dark, drop the queue, never throw into the host.
-        this.started = false;
-        this.queue = [];
-      });
   }
 
   track(name: string, category: string, props: AnalyticsProps): void {
-    if (!this.started || this.optedOut) return;
-    if (this.amp) this.send(this.amp, name, category, props);
-    else this.queue.push({ name, category, props });
+    // Dark until started: a stray pre-gate (or post-revoke) call sends nothing.
+    // The recorder always start()s before it track()s, so no real event is lost.
+    if (!this.started || this.apiKey.length === 0) return;
+    this.send(name, category, props);
   }
 
   stop(): void {
-    this.optedOut = true;
     this.started = false;
-    this.queue = [];
-    if (this.amp) {
-      this.amp.setOptOut(true); // belt-and-suspenders: drop anything in flight
-      this.amp = null; // drop the client; flush nothing. A future start() re-inits.
+    this.apiKey = '';
+  }
+
+  private send(name: string, category: string, props: AnalyticsProps): void {
+    const body = JSON.stringify({
+      api_key: this.apiKey,
+      // Relax Amplitude's default 5-char id floor; our device_id is a 36-char
+      // UUID anyway and we still never send a hardware id.
+      options: { min_id_length: 1 },
+      events: [
+        {
+          event_type: name,
+          device_id: this.deviceId,
+          // user_id intentionally omitted — the extension has no sign-in.
+          time: Date.now(),
+          insert_id: randomUUID(), // 7-day dedup window
+          event_properties: { ...props, event_category: category }
+          // No `ip` → no server-side IP/geo lookup; no geo fields.
+        }
+      ]
+    });
+    // Fire-and-forget + best-effort: never throw into the extension host, never
+    // block a command. A failing Amplitude must not surface to the user.
+    void this.post(body);
+  }
+
+  private async post(body: string): Promise<void> {
+    try {
+      await this.fetchImpl(this.endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body
+      });
+    } catch {
+      /* network/host error — analytics is best-effort; stay silent. */
     }
-  }
-
-  private flush(client: NodeClient): void {
-    const pending = this.queue;
-    this.queue = [];
-    for (const e of pending) this.send(client, e.name, e.category, e.props);
-  }
-
-  private send(client: NodeClient, name: string, category: string, props: AnalyticsProps): void {
-    // Attach the anonymous device id per-event AND pin user_id undefined so the
-    // SDK can never derive identity from the host/process.
-    client.track(name, { ...props, event_category: category }, { device_id: this.deviceId, user_id: undefined });
   }
 }
