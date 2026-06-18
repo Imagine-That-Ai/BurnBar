@@ -50,10 +50,10 @@ CHANGED="$(printf '%s\n' "$CHANGED" | sort -u | sed '/^$/d')"
 RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi(IOS|Mac)?\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE)|(^|/)\.gitmodules$'
 
 # Owner-routed exceptions are narrow and explicit. The handoff Rule-0 demands
-# ("route through the legal/ownership owner") is expressed as an auditable
-# `Rule0-Ack: <reason>` trailer in a branch commit message. The trailer is
-# permanent history and is allowed only for paths whose normal lifecycle can
-# legitimately require owner-approved pointer/artifact changes:
+# ("route through the legal/ownership owner") is expressed as an auditable,
+# path-scoped `Rule0-Ack: <scope> <reason>` trailer in a branch commit message.
+# The trailer is permanent history and is allowed only for paths whose normal
+# lifecycle can legitimately require owner-approved pointer/artifact changes:
 #
 # - third_party/hermes-agent/manifest.json: provenance PIN validated by C-5.
 # - Vendor/libsignal and generated Signal FFI XCFramework paths: AGPL/legal
@@ -62,19 +62,29 @@ RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi(IOS|Mac)?\.xcfram
 # Every OTHER protected path — .gitmodules, LICENSES, NOTICE, unrelated
 # third_party paths — remains unconditional, and in degraded no-base mode the
 # exception is disabled.
-ack_present=0
+ack_lines=""
 # No `grep -q` here: under `set -o pipefail` its early exit SIGPIPEs git log
 # and fails the whole pipeline, silently disabling the ack on large branches.
-if [[ -n "${MERGE_BASE:-}" ]] && git log "$MERGE_BASE..HEAD" --format=%B 2>/dev/null | grep -E '^Rule0-Ack: \S' >/dev/null; then
-  ack_present=1
+if [[ -n "${MERGE_BASE:-}" ]]; then
+  ack_lines="$(git log "$MERGE_BASE..HEAD" --format=%B 2>/dev/null | grep -E '^Rule0-Ack: \S' || true)"
 fi
+
+rule0_ack_scope_present() {
+  local scope_regex="$1"
+  [[ -n "$ack_lines" ]] || return 1
+  printf '%s\n' "$ack_lines" | grep -Eiq "^Rule0-Ack:[[:space:]]+(${scope_regex})([[:space:]:,;-]|$)"
+}
 
 rule0_ack_allows_path() {
   local path="$1"
-  [[ "$ack_present" == "1" ]] || return 1
   case "$path" in
-    third_party/hermes-agent/manifest.json|Vendor/libsignal|Vendor/OpenBurnBarSignalFfi.xcframework|Vendor/OpenBurnBarSignalFfiIOS.xcframework|Vendor/OpenBurnBarSignalFfiMac.xcframework)
-      return 0
+    third_party/hermes-agent/manifest.json)
+      rule0_ack_scope_present 'third_party/hermes-agent/manifest\.json|hermes-agent|vendored-agent'
+      return $?
+      ;;
+    Vendor/libsignal|Vendor/libsignal/*|Vendor/OpenBurnBarSignalFfi.xcframework|Vendor/OpenBurnBarSignalFfi.xcframework/*|Vendor/OpenBurnBarSignalFfiIOS.xcframework|Vendor/OpenBurnBarSignalFfiIOS.xcframework/*|Vendor/OpenBurnBarSignalFfiMac.xcframework|Vendor/OpenBurnBarSignalFfiMac.xcframework/*)
+      rule0_ack_scope_present 'Signal FFI|Vendor/libsignal|Vendor/OpenBurnBarSignalFfi(IOS|Mac)?\.xcframework'
+      return $?
       ;;
   esac
   return 1

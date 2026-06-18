@@ -16,8 +16,41 @@ macos_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfiMac.xcframework"
 legacy_xcframework="$repo_root/Vendor/OpenBurnBarSignalFfi.xcframework"
 build_script="$repo_root/scripts/build-signal-ffi-xcframework.sh"
 
-if [[ -d "$legacy_xcframework" || ( -d "$ios_xcframework" && -d "$macos_xcframework" ) ]]; then
-  echo ">>> Using existing Signal FFI XCFramework artifacts."
+DEFAULT_SIGNAL_FFI_BUILD_TARGETS=(
+  aarch64-apple-darwin
+  x86_64-apple-darwin
+  aarch64-apple-ios
+  aarch64-apple-ios-sim
+  x86_64-apple-ios
+)
+if [[ -n "${SIGNAL_FFI_BUILD_TARGETS:-}" ]]; then
+  # shellcheck disable=SC2206
+  requested_targets=(${SIGNAL_FFI_BUILD_TARGETS})
+else
+  requested_targets=("${DEFAULT_SIGNAL_FFI_BUILD_TARGETS[@]}")
+fi
+
+needs_ios_xcframework=0
+needs_macos_xcframework=0
+for target in "${requested_targets[@]}"; do
+  case "$target" in
+    *-apple-ios*) needs_ios_xcframework=1 ;;
+    *-apple-darwin*) needs_macos_xcframework=1 ;;
+  esac
+done
+
+artifacts_satisfy_requested_targets() {
+  if [[ "$needs_ios_xcframework" == "1" && ! -d "$ios_xcframework" ]]; then
+    return 1
+  fi
+  if [[ "$needs_macos_xcframework" == "1" && ! -d "$macos_xcframework" && ! -d "$legacy_xcframework" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+if artifacts_satisfy_requested_targets; then
+  echo ">>> Using existing Signal FFI XCFramework artifacts for requested targets."
   exit 0
 fi
 

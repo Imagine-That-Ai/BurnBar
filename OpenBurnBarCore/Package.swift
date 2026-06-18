@@ -150,8 +150,8 @@ let signalFfiDependencies: [Target.Dependency] = {
     if hasSignalFfiMacXCFramework {
         dependencies.append(.target(name: "OpenBurnBarSignalFfiMac", condition: .when(platforms: [.macOS])))
     }
-    if dependencies.isEmpty && hasLegacySignalFfiXCFramework {
-        dependencies.append("OpenBurnBarSignalFfi")
+    if hasLegacySignalFfiXCFramework && !hasSignalFfiMacXCFramework {
+        dependencies.append(.target(name: "OpenBurnBarSignalFfi", condition: .when(platforms: [.macOS])))
     }
     return dependencies
 }()
@@ -175,7 +175,7 @@ let signalBinaryTargets: [Target] = {
             path: "../Vendor/OpenBurnBarSignalFfiMac.xcframework"
         ))
     }
-    if targets.isEmpty && hasLegacySignalFfiXCFramework {
+    if hasLegacySignalFfiXCFramework && !hasSignalFfiMacXCFramework {
         targets.append(.binaryTarget(
             name: "OpenBurnBarSignalFfi",
             path: "../Vendor/OpenBurnBarSignalFfi.xcframework"
