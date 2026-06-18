@@ -189,6 +189,13 @@ xcodebuild: error: Could not resolve package dependencies:
 LOG
 )"
 
+swiftpm_cache_and_signal_ffi_mapping_log="$(write_fixture swiftpm-cache-and-signal-ffi-mapping <<'LOG'
+Git command git -C /Users/runner/Library/Caches/org.swift.swiftpm/repositories/swift-testing-59a7fdfb config --get remote.origin.url failed: fatal: cannot change to /Users/runner/Library/Caches/org.swift.swiftpm/repositories/swift-testing-59a7fdfb: No such file or directory
+binary target OpenBurnBarSignalFfi could not be mapped to an artifact with expected name OpenBurnBarSignalFfi
+xcodebuild: error: Could not resolve package dependencies:
+LOG
+)"
+
 assert_true "green XCTest summary plus trailing Xcode failure is accepted" is_xcode_false_negative_pass "$false_negative_log"
 assert_false "concrete XCTest failure is not accepted as a false-negative pass" is_xcode_false_negative_pass "$concrete_failure_log"
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
@@ -204,6 +211,7 @@ assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_
 assert_true "SwiftPM binary artifact download timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_dependency_timeout_log"
 assert_true "SwiftPM package clone network timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_clone_timeout_log"
 assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_dependency_resolution_transient "$swiftpm_timeout_with_xctest_failure_log"
+assert_true "SwiftPM cache race plus Signal FFI mapping miss is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_cache_and_signal_ffi_mapping_log"
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
 
 echo "OpenBurnBar app-test classifier fixtures passed."

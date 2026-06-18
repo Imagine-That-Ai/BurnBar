@@ -18,7 +18,7 @@ prepare_libsignal_ffi() {
 
   if [[ ! -x "${build_script}" ]]; then
     if [[ -f "${repo_root}/.gitmodules" ]] && command -v git >/dev/null 2>&1; then
-      git -C "${repo_root}" submodule update --init --recursive Vendor/libsignal
+      bash "${repo_root}/scripts/ci/update-submodules-with-retry.sh" Vendor/libsignal
     fi
   fi
 

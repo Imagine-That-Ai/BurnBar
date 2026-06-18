@@ -992,7 +992,10 @@ jobs:
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
         env:
           OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP: "1"
-          OPENBURNBAR_MOBILE_TEST_ATTEMPTS: "1"
+          # Keep this targeted lane bounded but retryable. SwiftPM can race its
+          # repository cache or temporarily fail to map the freshly-built Signal
+          # FFI binary target before XCTest starts.
+          OPENBURNBAR_MOBILE_TEST_ATTEMPTS: "3"
           OPENBURNBAR_MOBILE_TEST_FILTER: >-
             OpenBurnBarMobileTests/AgentIdentityRegistryMacURITests
             OpenBurnBarMobileTests/AgentLiveStageWiringTests
