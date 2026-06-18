@@ -463,10 +463,13 @@ SHA-256 hex>, keyVersion:1..100 }`. **Recovery uses a SYMMETRIC wrap** (derive a
 wrapping key *from* the recovery key), **not** the ECDH escrow path, and
 `verificationHash = SHA-256(derived wrapping key bytes)`.
 
-Implemented clients:
+Implemented clients generate a high-entropy recovery key locally, show it once,
+wrap the vault key with the derived recovery key, and send only the envelope plus
+verification hash:
 - macOS: `DataControlCenterViewModel.setupRecoveryKey` and `confirmRecoveryKey`.
 - iOS: `DataVaultStore.setupRecoveryKey` and `confirmRecoveryKey`.
 - Android: `CloudVaultCrypto.wrapVaultKeyWithRecovery`,
+  `CloudVaultCrypto.generateRecoveryKey`, `AndroidCloudVaultKeyAccess.keyForRecoverySetup`,
   `ControlCenterStore.setupRecoveryKey`, and `confirmRecoveryKey`.
 
 **Verify:** `swift build` of OpenBurnBarCore + a round-trip unit test (wrap →

@@ -179,7 +179,7 @@ internal class ControlCenterStore(
             _error.value = null
             try {
                 val uid = FirebaseAuth.getInstance().currentUser?.uid ?: error("Sign in before setting up recovery.")
-                val vaultKey = AndroidCloudVaultKeyAccess.keyForWriting(uid).keyData
+                val vaultKey = AndroidCloudVaultKeyAccess.keyForRecoverySetup(uid).keyData
                 val wrapped = CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey, recoveryKey)
                 val result =
                     functions.setupRecovery(

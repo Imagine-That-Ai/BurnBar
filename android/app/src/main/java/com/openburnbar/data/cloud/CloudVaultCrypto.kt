@@ -209,6 +209,8 @@ object CloudVaultCrypto {
     private const val WRAP_INFO = "OpenBurnBar-Escrow-v1"
     private const val RECOVERY_SALT = "OpenBurnBar-Recovery-Salt-v1"
     private const val RECOVERY_WRAP_INFO = "OpenBurnBar-Recovery-Wrap-v1"
+    private const val RECOVERY_KEY_GROUP_SIZE = 7
+    private const val RECOVERY_KEY_RANDOM_BYTES = 35
     private const val BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
     private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
     const val SIGNAL_ENVELOPE_FORMAT_VERSION: Int = 1
@@ -928,6 +930,15 @@ object CloudVaultCrypto {
     /** Fresh 32-byte vault key — the Android mirror of Swift `CloudVaultCrypto.generateVaultKey()`. */
     fun generateVaultKey(): ByteArray = ByteArray(SHA256_DIGEST_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
 
+    fun generateRecoveryKey(): String {
+        val alphabet = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
+        val bytes = ByteArray(RECOVERY_KEY_RANDOM_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
+        return bytes
+            .map { alphabet[(it.toInt() and 0xff) % alphabet.length] }
+            .chunked(RECOVERY_KEY_GROUP_SIZE)
+            .joinToString("-") { it.joinToString("") }
+    }
+
     data class RecoveryWrappedVaultKey(
         val wrappedVaultKeyBase64: String,
         val verificationHash: String,
@@ -1107,6 +1118,15 @@ object AndroidCloudVaultKeyAccess {
                 "Cloud vault key is not active on this Android device yet. Approve this device from a " +
                     "Mac or iPhone before writing cloud chat content.",
             )
+
+    suspend fun keyForRecoverySetup(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey {
+        keyForReading(uid = uid, firestore = firestore)?.let { return it }
+        val key = CloudVaultCrypto.generateVaultKey()
+        val resolved = AndroidCloudVaultResolvedKey(key, CloudVaultCrypto.vaultKeyID(key))
+        verifyStateIfPresent(uid, firestore, resolved.vaultKeyID)
+        saveLocalKey(uid, key)
+        return resolved
+    }
 
     suspend fun keyForReading(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey? {
         val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()

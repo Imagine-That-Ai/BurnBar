@@ -319,6 +319,18 @@ class CloudVaultCryptoTest {
     }
 
     @Test
+    fun generatedRecoveryKeyMatchesNativeHighEntropyContract() {
+        val recoveryKey = CloudVaultCrypto.generateRecoveryKey()
+        val groups = recoveryKey.split("-")
+
+        assertEquals(5, groups.size)
+        assertTrue(groups.all { it.length == 7 })
+        assertTrue(recoveryKey.matches(Regex("^[ABCDEFGHJKMNPQRSTVWXYZ23456789]{7}(-[ABCDEFGHJKMNPQRSTVWXYZ23456789]{7}){4}$")))
+        assertEquals(35, recoveryKey.filter { it.isLetterOrDigit() }.length)
+        assertEquals(32, CloudVaultCrypto.deriveRecoveryWrappingKey(recoveryKey).size)
+    }
+
+    @Test
     fun recoveryWrappedVaultKeyRoundTripNeverStoresRawRecoveryKey() {
         val vaultKey = ByteArray(SHA256_DIGEST_BYTES) { (it + 7).toByte() }
         val recoveryKey = "burnbar recovery key 2026 alpha 12345"
