@@ -204,6 +204,43 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "o1-pro", providerID: "openai"), "openai:pro")
     }
 
+    func test_bundledCatalog_exposesCurrentGPTModelsThroughCodexProvider() {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        XCTAssertEqual(
+            Array(catalog.suggestedModels(forProviderID: "codex").prefix(2)).map(\.id),
+            ["codex-gpt-5.5-family", "codex-gpt-5.4-family"]
+        )
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.5", providerID: "codex"))
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.5-codex", providerID: "codex"))
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.4", providerID: "codex"))
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.5", providerID: "codex"), "gpt-5.5")
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.4", providerID: "codex"), "gpt-5.4")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "gpt-5.5", providerID: "codex"), "openai:codex")
+    }
+
+    func test_bundledCatalog_exposesOllamaCloudKimiAndGLMModels() throws {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+
+        XCTAssertTrue(catalog.supportsModel(named: "kimi-k2.7-code:cloud", providerID: "ollama"))
+        XCTAssertTrue(catalog.supportsModel(named: "glm-5.2:cloud", providerID: "ollama"))
+        XCTAssertEqual(
+            catalog.canonicalModelID(forModelName: "kimi-k2.7-code:cloud", providerID: "ollama"),
+            "kimi-k2.7-code:cloud"
+        )
+        XCTAssertEqual(
+            catalog.canonicalModelID(forModelName: "glm-5.2:cloud", providerID: "ollama"),
+            "glm-5.2:cloud"
+        )
+
+        let ollama = try XCTUnwrap(catalog.provider(id: "ollama"))
+        let kimi = try XCTUnwrap(ollama.models.first { $0.id == "kimi-k2.7-code" })
+        let glm = try XCTUnwrap(ollama.models.first { $0.id == "glm-5.2" })
+        XCTAssertEqual(kimi.modelCapabilities?.contextWindowTokens, 262_144)
+        XCTAssertTrue(kimi.modelCapabilities?.supportsImageInput == true)
+        XCTAssertEqual(glm.modelCapabilities?.contextWindowTokens, 976_000)
+        XCTAssertFalse(glm.modelCapabilities?.supportsImageInput == true)
+    }
+
     func test_bundledCatalog_usesCanonicalProviderLogoAssets() throws {
         let catalog = BurnBarCatalogLoader.bundledCatalog
         let expectedLogoNames: [String: String] = [
