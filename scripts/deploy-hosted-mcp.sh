@@ -168,11 +168,15 @@ gcloud run deploy "$SERVICE" \
   --project "$GOOGLE_CLOUD_PROJECT" \
   --platform managed \
   --allow-unauthenticated \
-  --to-latest \
   --min-instances "${MIN_INSTANCES:-0}" \
   --max-instances "${MAX_INSTANCES:-20}" \
   --set-env-vars "$ENV_VARS" \
   --set-secrets "$SET_SECRETS"
+
+gcloud run services update-traffic "$SERVICE" \
+  --region "$REGION" \
+  --project "$GOOGLE_CLOUD_PROJECT" \
+  --to-latest
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$GOOGLE_CLOUD_PROJECT" --format='value(status.url)')"
 echo "$SERVICE_URL"
