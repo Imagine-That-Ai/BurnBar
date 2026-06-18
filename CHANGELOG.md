@@ -118,6 +118,21 @@ A cross-surface performance/quality pass (website, Android, iOS/iPadOS, macOS, d
   - Post-implementation principal review found and fixed a control-dispatch gap: iOS E2E sends for `model_switch`/`approval_decision`/`oversight_mode` now emit `kind` (and control fields) at the root of the sealed payload so the agent's pinned open path dispatches to the special sealed handlers instead of dropping as empty chat text or leaking as JSON messages. Added unit coverage and updated oversight E2E delivery. All gates re-verified green.
 - Sealed the remaining same-pattern cloud privacy surfaces: approval-policy labels/paths/globs, CLI session snapshot file/path labels, rollback request scopes/errors, agent identity persona text, subscription topic labels, and Hermes Gateway typing/private routing metadata. Mac, iOS/iPadOS, Android, functions, Firestore rules, privacy scans, and registry tests cover the sealed-only contract.
 
+## [1.0.4] - 2026-06-18
+
+### Security
+
+- Shipped the Firebase rules release fix that keeps shared-artifact sealed-payload
+  and mission fanout integrity rules deployable in production without weakening
+  the enforced Firestore and Storage App Check posture.
+- Verified the live Firebase project remains App Check enforced for both
+  Firestore and Cloud Storage after the production rules deployment.
+
+### Changed
+
+- Advanced macOS direct-download release metadata to `1.0.4` build `44`.
+- Advanced iOS/TestFlight, widget, and keyboard metadata to `1.0.2` build `74`.
+
 ## [1.0.3] - 2026-06-18
 
 ### Fixed

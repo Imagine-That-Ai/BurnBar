@@ -108,8 +108,8 @@ export const SITE = {
     ],
     legacyProductIds: ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
   },
-  macReleaseLatest: "1.0.2",
-  macReleaseFile: "OpenBurnBar-1.0.2-macOS.dmg",
+  macReleaseLatest: "1.0.4",
+  macReleaseFile: "OpenBurnBar-1.0.4-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
   macDownloadBaseUrl: "https://pub-aa5c2dab05e3407ba0813655d58a810a.r2.dev",
