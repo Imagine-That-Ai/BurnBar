@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import fnmatch
 import hashlib
 import json
@@ -66,10 +67,21 @@ CODE_EXTENSIONS = {
     ".tsx",
 }
 
-SECRET_SCANNER_UNAVAILABLE_LABEL = "Secret scanner corpus unavailable"
+SCANNER_CORPUS_UNAVAILABLE_LABEL = "Secret scanner corpus unavailable"
 BASE64_SECRET_CANDIDATE_RE = re.compile(r"(?<![A-Za-z0-9+/=])(?:[A-Za-z0-9+/]{32,}={0,2})(?![A-Za-z0-9+/=])")
 HEX_SECRET_CANDIDATE_RE = re.compile(r"(?<![A-Fa-f0-9])(?:[A-Fa-f0-9]{48,})(?![A-Fa-f0-9])")
 SECRET_LIKE_TOKEN_RE = re.compile(r"[A-Za-z0-9_+/=.-]{32,}")
+
+PROJECT_ROW_COUNT_QUERIES = {
+    "agent_memories": "SELECT COUNT(*) FROM agent_memories WHERE project_id = ?",
+    "code_artifacts": "SELECT COUNT(*) FROM code_artifacts WHERE project_id = ?",
+    "code_index_checkpoints": "SELECT COUNT(*) FROM code_index_checkpoints WHERE project_id = ?",
+    "code_symbols": "SELECT COUNT(*) FROM code_symbols WHERE project_id = ?",
+    "code_references": "SELECT COUNT(*) FROM code_references WHERE project_id = ?",
+    "code_call_edges": "SELECT COUNT(*) FROM code_call_edges WHERE project_id = ?",
+    "code_diagnostics_cache": "SELECT COUNT(*) FROM code_diagnostics_cache WHERE project_id = ?",
+    "memory_audit": "SELECT COUNT(*) FROM memory_audit WHERE project_id = ?",
+}
 
 
 def _secret_corpus_path() -> Path | None:
@@ -192,7 +204,7 @@ def _decoded_secret_views(text: str) -> list[str]:
         padded = raw + ("=" * ((4 - len(raw) % 4) % 4))
         try:
             decoded = base64.b64decode(padded, validate=True)
-        except Exception:
+        except binascii.Error:
             continue
         if 0 < len(decoded) <= max_decoded_bytes:
             try:
@@ -322,7 +334,7 @@ def has_project_rows(conn: sqlite3.Connection, project_id: str) -> bool:
         "code_diagnostics_cache",
         "memory_audit",
     ):
-        row = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE project_id = ?", (project_id,)).fetchone()
+        row = conn.execute(PROJECT_ROW_COUNT_QUERIES[table], (project_id,)).fetchone()
         if row and int(row[0]) > 0:
             return True
     return False
@@ -535,7 +547,7 @@ def sqlite_compaction_decision(conn: sqlite3.Connection) -> dict[str, int | bool
 
 def scan_secrets(text: str) -> list[str]:
     if not SECRET_CORPUS_AVAILABLE:
-        return [SECRET_SCANNER_UNAVAILABLE_LABEL]
+        return [SCANNER_CORPUS_UNAVAILABLE_LABEL]
     labels: list[str] = []
     for view in _secret_scan_views(text):
         matched_explicit_pattern = False
@@ -550,7 +562,7 @@ def scan_secrets(text: str) -> list[str]:
 
 def redact_for_memory(text: str) -> tuple[str, list[str]]:
     if not SECRET_CORPUS_AVAILABLE:
-        return text, [SECRET_SCANNER_UNAVAILABLE_LABEL]
+        return text, [SCANNER_CORPUS_UNAVAILABLE_LABEL]
     labels: list[str] = []
     out = text
     for label, pattern in SECRET_PATTERNS:
@@ -2658,7 +2670,8 @@ def index_project(
     commit_sha = current_commit(root)
     version_id = active_embedding_version(conn)
     ts = now_iso()
-    files = iter_project_files(root, max(1, int(max_files)), max(4096, int(max_file_bytes)))
+    max_file_bytes_limit = max(4096, int(max_file_bytes))
+    files = iter_project_files(root, max(1, int(max_files)), max_file_bytes_limit)
     # Age-aware budget eviction: index newest-first so a project larger than its storage
     # budget keeps the most-recently-modified (most relevant) files and the over-budget
     # rejections are the oldest — deterministic, not filesystem-walk order.
@@ -3276,7 +3289,7 @@ def search_code(conn: sqlite3.Connection, query: str, project_path: str | None, 
     freshness = ArtifactFreshnessCache(conn)
     results = []
     stale_candidates = 0
-    for chunk_id, item in lexical.items():
+    for _chunk_id, item in lexical.items():
         if not artifact_is_current(conn, str(item["artifactID"]), str(item["blobSHA"]), freshness):
             stale_candidates += 1
             continue
@@ -3527,12 +3540,13 @@ def context_pack(
             break
         used += approx_tokens
         sections.append(section)
+    context_pack_text = "\n".join(sections)
     return {
         **payload,
         "tokenBudget": budget,
-        "estimatedTokens": used,
+        "estimatedTokens": estimate_context_tokens(context_pack_text),
         "tokenEstimator": estimator,
-        "contextPack": "\n".join(sections),
+        "contextPack": context_pack_text,
     }
 
 

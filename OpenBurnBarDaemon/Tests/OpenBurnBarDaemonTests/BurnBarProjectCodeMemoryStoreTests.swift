@@ -836,7 +836,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let fakeXAIKey = "xai-" + "abcdefghijklmnopqrstuvwxyz123456"
         let fakeAWSKey = "AK" + "IA1234567890ABCDEF"
         let fakePrivateKeyBlock = "-----BEGIN " + "PRIVATE KEY-----\nabc\n-----END " + "PRIVATE KEY-----"
-        let highEntropyToken = "Az9qLm8Pr2Vx7Ns4Tu6Wy1Za3Qb5Cd7Ef9Gh2Jk4Mn6"
+        let highEntropyToken = ["Az9qLm8Pr2Vx7", "Ns4Tu6Wy1Za3", "Qb5Cd7Ef9Gh2", "Jk4Mn6"].joined()
         let cases: [(String, String)] = [
             ("openai \(fakeOpenAIKey)", "OpenAI API key detected"),
             ("anthropic \(fakeAnthropicKey)", "Anthropic API key detected"),

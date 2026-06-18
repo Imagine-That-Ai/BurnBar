@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import importlib.util
-import hashlib
 import json
 import os
-import sqlite3
-import base64
 import subprocess
-import time
+import sqlite3
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -76,6 +75,26 @@ def _make_repo(path: Path, body: str) -> Path:
     ignored.mkdir()
     (ignored / "skip.py").write_text("def should_not_index(): pass\n", encoding="utf-8")
     return path
+
+
+def _run_git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+
+def _expected_audit_hash(event: dict[str, object]) -> str:
+    core = {
+        "schema": "openburnbar.memory_audit.v2",
+        "seq": event["seq"],
+        "ts": event["ts"],
+        "actor": event["actor"],
+        "action": event["action"],
+        "domain": event["domain"],
+        "projectID": event["projectID"],
+        "subjectID": event["subjectID"],
+        "labels": event["labels"],
+        "prevHash": event["prevHash"] or "",
+    }
+    return pcm.sha256_hex(json.dumps(core, sort_keys=True, separators=(",", ":")))
 
 
 def test_project_code_index_search_symbols_references_and_bleed(tmp_path: Path, monkeypatch) -> None:
@@ -635,10 +654,10 @@ data:
 """,
         encoding="utf-8",
     )
-    (repo / "entropy.py").write_text(
-        'token = "Az9qLm8Pr2Vx7Ns4Tu6Wy1Za3Qb5Cd7Ef9Gh2Jk4Mn6"\n',
-        encoding="utf-8",
+    high_entropy_fixture = "".join(
+        ["Az9qLm8Pr2Vx7", "Ns4Tu6Wy1Za3", "Qb5Cd7Ef9Gh2", "Jk4Mn6"],
     )
+    (repo / "entropy.py").write_text(f'token = "{high_entropy_fixture}"\n', encoding="utf-8")
 
     db_path = tmp_path / "openburnbar.sqlite"
     with sqlite3.connect(db_path) as conn:
@@ -932,15 +951,32 @@ def test_index_project_evicts_oldest_files_first_under_budget(tmp_path: Path) ->
     (repo / ".gitignore").write_text("ignored/\n", encoding="utf-8")
     older = repo / "older.py"
     newer = repo / "newer.py"
-    older.write_text("def older_symbol():\n    return 1\n", encoding="utf-8")
-    newer.write_text("def newer_symbol():\n    return 1\n", encoding="utf-8")
+    older_body = "def older_symbol():\n    return 1\n"
+    newer_body = "def newer_symbol():\n    return 1\n"
+    older.write_text(older_body, encoding="utf-8")
+    newer.write_text(newer_body, encoding="utf-8")
     os.utime(older, (1_000, 1_000))
     os.utime(newer, (2_000, 2_000))
     db_path = tmp_path / "openburnbar.sqlite"
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        # Budget fits exactly one ~33-byte file, forcing one eviction.
-        result = pcm.index_project(conn, str(repo), max_files=25, storage_budget_bytes=40)
+        project_id = pcm.resolve_project_id(conn, repo)
+        newer_budget = pcm.estimated_code_storage_byte_count(
+            source_bytes=len(newer_body.encode("utf-8")),
+            chunks=pcm.chunk_text(newer_body),
+            file_path="newer.py",
+            project_id=project_id,
+        )
+        older_budget = pcm.estimated_code_storage_byte_count(
+            source_bytes=len(older_body.encode("utf-8")),
+            chunks=pcm.chunk_text(older_body),
+            file_path="older.py",
+            project_id=project_id,
+        )
+        budget = max(newer_budget, older_budget)
+
+        # Budget fits exactly one file, forcing one eviction.
+        result = pcm.index_project(conn, str(repo), max_files=25, storage_budget_bytes=budget)
         assert result["indexedFiles"] == 1
         assert [r["filePath"] for r in result["rejectedFiles"]] == ["older.py"]
         assert result["rejectedFiles"][0]["labels"] == ["Storage budget cap reached"]

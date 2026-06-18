@@ -1111,7 +1111,11 @@ final class ProviderQuotaService {
     private func makeSwitcherProfileFetcher(dataStore: DataStore) -> ProviderQuotaSwitcherProfileFetcher {
         { [weak dataStore] in
             guard let dataStore else { return [] }
-            return (try? await dataStore.fetchSwitcherProfilesForQuota()) ?? []
+            do {
+                return try await dataStore.fetchSwitcherProfilesForQuota()
+            } catch {
+                return []
+            }
         }
     }
 

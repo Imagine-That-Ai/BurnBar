@@ -52,6 +52,30 @@ def _selection_for_index(selected: list[dict[str, Any]], index: int) -> dict[str
     return selected[index % len(selected)]
 
 
+def _public_candidate(candidate: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not candidate:
+        return None
+    public_fields = ("arg", "model", "displayName", "provider", "source")
+    return {
+        field: candidate[field]
+        for field in public_fields
+        if isinstance(candidate.get(field), str) and candidate[field]
+    }
+
+
+def _public_payload(payload: dict[str, Any], sibling_index: int) -> dict[str, Any]:
+    selected = payload.get("selected")
+    selected_candidates = selected if isinstance(selected, list) else []
+    selected_for_index = _selection_for_index(selected_candidates, sibling_index)
+    return {
+        "status": payload.get("status") if isinstance(payload.get("status"), str) else "ok",
+        "selectedCount": len(selected_candidates),
+        "requestedCount": payload.get("requestedCount"),
+        "reason": payload.get("reason") if isinstance(payload.get("reason"), str) else None,
+        "selectedForIndex": _public_candidate(selected_for_index),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Select model routes for an OpenBurnBar Wand fan-out.")
     parser.add_argument("--repo-root", default=os.environ.get("OPENBURNBAR_REPO_ROOT"))
@@ -75,21 +99,19 @@ def main() -> int:
             max_probes=max(1, min(args.max_probes, 12)),
             probe_ttl=max(0, args.probe_ttl),
         )
-        selected = payload.get("selected")
-        payload["selectedForIndex"] = _selection_for_index(selected if isinstance(selected, list) else [], args.sibling_index)
-        print(json.dumps(payload, sort_keys=True))
+        sys.stdout.write(json.dumps(_public_payload(payload, args.sibling_index), sort_keys=True) + "\n")
         return 0
     except Exception as exc:  # pragma: no cover - defensive CLI boundary
-        print(
+        sys.stdout.write(
             json.dumps(
                 {
                     "status": "unavailable",
                     "code": "MINISTRY_SELECT_MANY_FAILED",
-                    "reason": str(exc),
+                    "reason": type(exc).__name__,
                 },
                 sort_keys=True,
-            ),
-            file=sys.stdout,
+            )
+            + "\n",
         )
         return 1
 

@@ -117,7 +117,7 @@ private enum CLIAgentMissionWandRouter {
                 "--count",
                 "\(context.siblingCount)",
                 "--sibling-index",
-                "\(context.siblingIndex)",
+                "\(context.siblingIndex)"
             ]
             if let repoRoot {
                 arguments += ["--repo-root", repoRoot.path]

@@ -25,6 +25,22 @@ def percentile(values: list[float], pct: float) -> float:
     return ordered[index]
 
 
+def semantic_gate_report(status: dict[str, object] | None) -> dict[str, object]:
+    if status is None:
+        return {"semanticAvailable": None, "fallbackCategory": "missing"}
+    fallback = str(status.get("semanticFallbackReason") or "")
+    if "fingerprints" in fallback:
+        fallback_category = "deterministic-fingerprints"
+    elif "OPENBURNBAR_CODE_EMBEDDING_PROVIDER" in fallback:
+        fallback_category = "provider-not-configured"
+    else:
+        fallback_category = "other"
+    return {
+        "semanticAvailable": bool(status.get("semanticAvailable")),
+        "fallbackCategory": fallback_category,
+    }
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="pcm-vector-benchmark-") as raw_tmp:
         tmp = Path(raw_tmp)
@@ -77,10 +93,10 @@ def caller_{index:03}():
                 "p99": percentile(latencies_ms, 99),
                 "max": max(latencies_ms),
             },
-            "denseRetrievalGate": semantic_status,
+            "denseRetrievalGate": semantic_gate_report(semantic_status),
             "vectorBackend": "disabled-no-real-current-embeddings",
         }
-        print(json.dumps(report, indent=2, sort_keys=True))
+        sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
         if indexed["indexedFiles"] != 120:
             return 1
         if semantic_status is None or semantic_status["semanticAvailable"] is not False:

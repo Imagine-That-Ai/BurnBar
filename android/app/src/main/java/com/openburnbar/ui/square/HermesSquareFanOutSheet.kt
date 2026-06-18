@@ -55,33 +55,33 @@ internal fun HermesSquareFanOutSheet(
         onDismiss = onDismiss,
         dispatchableIdentities = dispatchableIdentities,
         uiState =
-            FanOutSheetUiState(
-                title = title,
-                prompt = prompt,
-                selected = selected,
-                maxParallel = maxParallel,
-                commandsAllowed = commandsAllowed,
-                fileEditsAllowed = fileEditsAllowed,
-                dispatching = dispatching,
+        FanOutSheetUiState(
+            title = title,
+            prompt = prompt,
+            selected = selected,
+            maxParallel = maxParallel,
+            commandsAllowed = commandsAllowed,
+            fileEditsAllowed = fileEditsAllowed,
+            dispatching = dispatching,
             errorMessage = errorMessage,
         ),
         uiCallbacks =
-            FanOutSheetUiCallbacks(
-                onTitleChange = { title = it },
-                onPromptChange = { prompt = it },
-                onToggleRuntime = { runtime, enabled ->
-                    if (enabled) {
-                        if (selected.size >= maxParallel) {
-                            unlockFeature = wandUnlockFeature(selected.size + 1)
-                        } else if (!selected.contains(runtime)) {
-                            selected.add(runtime)
-                        }
-                    } else if (selected.size > 1) {
-                        selected.remove(runtime)
+        FanOutSheetUiCallbacks(
+            onTitleChange = { title = it },
+            onPromptChange = { prompt = it },
+            onToggleRuntime = { runtime, enabled ->
+                if (enabled) {
+                    if (selected.size >= maxParallel) {
+                        unlockFeature = wandUnlockFeature(selected.size + 1)
+                    } else if (!selected.contains(runtime)) {
+                        selected.add(runtime)
                     }
-                },
-                onCommandsAllowedChange = { commandsAllowed = it },
-                onFileEditsAllowedChange = { fileEditsAllowed = it },
+                } else if (selected.size > 1) {
+                    selected.remove(runtime)
+                }
+            },
+            onCommandsAllowedChange = { commandsAllowed = it },
+            onFileEditsAllowedChange = { fileEditsAllowed = it },
             onDispatch = {
                 dispatchFanOutMission(
                     scope = scope,

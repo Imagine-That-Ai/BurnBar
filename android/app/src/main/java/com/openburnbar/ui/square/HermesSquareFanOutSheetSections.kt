@@ -35,6 +35,12 @@ import com.openburnbar.ui.components.ProviderLogo
 
 @Composable
 internal fun FanOutSheetBody(dispatchableIdentities: List<AgentIdentity>, uiState: FanOutSheetUiState, uiCallbacks: FanOutSheetUiCallbacks) {
+    val dispatchEnabled =
+        !uiState.dispatching &&
+            uiState.prompt.trim().isNotBlank() &&
+            uiState.selected.isNotEmpty() &&
+            uiState.selected.size <= uiState.maxParallel
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
         Text("Fan-out dispatch", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         Spacer(modifier = Modifier.height(10.dp))
@@ -66,7 +72,7 @@ internal fun FanOutSheetBody(dispatchableIdentities: List<AgentIdentity>, uiStat
         FanOutDispatchButton(
             dispatching = uiState.dispatching,
             selectedCount = uiState.selected.size,
-            enabled = !uiState.dispatching && uiState.prompt.trim().isNotBlank() && uiState.selected.isNotEmpty() && uiState.selected.size <= uiState.maxParallel,
+            enabled = dispatchEnabled,
             onClick = uiCallbacks.onDispatch,
         )
     }

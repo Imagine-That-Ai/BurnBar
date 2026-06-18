@@ -51,12 +51,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.cloud.CloudConversationSearchRow
 import com.openburnbar.data.hermes.AssistantRuntimeID
-import com.openburnbar.ui.pro.CloudTier
 import com.openburnbar.data.square.AgentAvailability
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxStore
+import com.openburnbar.ui.pro.CloudTier
 
 // MARK: - Hermes Square Root (Android composable, Hermes Square §3 / §6.2)
 //

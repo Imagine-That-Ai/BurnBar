@@ -6,6 +6,23 @@ struct MacWandDispatchResult: Sendable, Equatable {
     let childMissionIDs: [String]
 }
 
+private struct MacWandChildPayloadInput {
+    let uid: String
+    let missionID: String
+    let title: String
+    let prompt: String
+    let missionKind: String
+    let requestedRuntime: String
+    let targetProject: String?
+    let depth: String
+    let approvalMode: String
+    let commandsAllowed: Bool
+    let fileEditsAllowed: Bool
+    let groupID: String
+    let siblingIndex: Int
+    let siblingCount: Int
+}
+
 enum MacWandDispatchError: LocalizedError {
     case firebaseUnavailable
     case notSignedIn
@@ -95,20 +112,22 @@ struct MacWandMissionDispatcher {
             let requestRef = userRef.collection("cli_agent_mission_requests").document(missionID)
             batch.setData(
                 try childPayload(
-                    uid: uid,
-                    missionID: missionID,
-                    title: "\(trimmedTitle) · Worker \(index + 1)",
-                    prompt: trimmedPrompt,
-                    missionKind: missionKind,
-                    requestedRuntime: runtimeTokens[index],
-                    targetProject: targetProject,
-                    depth: depth,
-                    approvalMode: approvalMode,
-                    commandsAllowed: commandsAllowed,
-                    fileEditsAllowed: fileEditsAllowed,
-                    groupID: groupID,
-                    siblingIndex: index,
-                    siblingCount: workerCount,
+                    MacWandChildPayloadInput(
+                        uid: uid,
+                        missionID: missionID,
+                        title: "\(trimmedTitle) · Worker \(index + 1)",
+                        prompt: trimmedPrompt,
+                        missionKind: missionKind,
+                        requestedRuntime: runtimeTokens[index],
+                        targetProject: targetProject,
+                        depth: depth,
+                        approvalMode: approvalMode,
+                        commandsAllowed: commandsAllowed,
+                        fileEditsAllowed: fileEditsAllowed,
+                        groupID: groupID,
+                        siblingIndex: index,
+                        siblingCount: workerCount
+                    ),
                     now: now,
                     key: key
                 ),
@@ -161,7 +180,7 @@ struct MacWandMissionDispatcher {
                 "costLowUSD": 0.0,
                 "costHighUSD": 0.0,
                 "etaLow": 0.0,
-                "etaHigh": 0.0,
+                "etaHigh": 0.0
             ],
             "createdAt": now,
             "updatedAt": now,
@@ -169,7 +188,7 @@ struct MacWandMissionDispatcher {
             "source": "mac-wand",
             "contentSealed": true,
             "sealedSchemaVersion": CLIAgentMissionCloudSealer.sealedSchemaVersion,
-            "vaultKeyID": key.vaultKeyID,
+            "vaultKeyID": key.vaultKeyID
         ]
         payload["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(
             CLIAgentMissionPrivatePayload(
@@ -184,31 +203,18 @@ struct MacWandMissionDispatcher {
     }
 
     private func childPayload(
-        uid: String,
-        missionID: String,
-        title: String,
-        prompt: String,
-        missionKind: String,
-        requestedRuntime: String,
-        targetProject: String?,
-        depth: String,
-        approvalMode: String,
-        commandsAllowed: Bool,
-        fileEditsAllowed: Bool,
-        groupID: String,
-        siblingIndex: Int,
-        siblingCount: Int,
+        _ input: MacWandChildPayloadInput,
         now: String,
         key: CloudVaultResolvedKey
     ) throws -> [String: Any] {
         var payload: [String: Any] = [
-            "id": missionID,
-            "missionKind": missionKind,
-            "requestedRuntime": requestedRuntime,
-            "depth": depth,
-            "approvalMode": approvalMode,
-            "commandsAllowed": commandsAllowed,
-            "fileEditsAllowed": fileEditsAllowed,
+            "id": input.missionID,
+            "missionKind": input.missionKind,
+            "requestedRuntime": input.requestedRuntime,
+            "depth": input.depth,
+            "approvalMode": input.approvalMode,
+            "commandsAllowed": input.commandsAllowed,
+            "fileEditsAllowed": input.fileEditsAllowed,
             "source": "mac",
             "sourceSurface": "mac-wand",
             "deliveryMode": "action_only",
@@ -216,25 +222,25 @@ struct MacWandMissionDispatcher {
             "createdAt": now,
             "updatedAt": FieldValue.serverTimestamp(),
             "schemaVersion": 1,
-            "groupID": groupID,
-            "siblingIndex": siblingIndex,
-            "siblingCount": siblingCount,
+            "groupID": input.groupID,
+            "siblingIndex": input.siblingIndex,
+            "siblingCount": input.siblingCount,
             "isGroupChild": true,
             "contentSealed": true,
             "sealedSchemaVersion": CLIAgentMissionCloudSealer.sealedSchemaVersion,
-            "vaultKeyID": key.vaultKeyID,
+            "vaultKeyID": key.vaultKeyID
         ]
         payload["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(
             CLIAgentMissionPrivatePayload(
-                title: title,
-                prompt: prompt,
-                targetProject: targetProject?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                title: input.title,
+                prompt: input.prompt,
+                targetProject: input.targetProject?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ),
             vaultKey: key.keyData,
             vaultKeyID: key.vaultKeyID,
             aadContext: CLIAgentMissionCloudSealer.missionAADContext(
-                uid: uid,
-                requestID: missionID,
+                uid: input.uid,
+                requestID: input.missionID,
                 field: "sealedPayload"
             )
         )
@@ -260,7 +266,7 @@ struct MacWandMissionDispatcher {
             "isError": false,
             "contentSealed": true,
             "sealedSchemaVersion": CLIAgentMissionCloudSealer.sealedSchemaVersion,
-            "vaultKeyID": key.vaultKeyID,
+            "vaultKeyID": key.vaultKeyID
         ]
         payload["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(
             CLIAgentMissionEventPrivatePayload(

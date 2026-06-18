@@ -103,18 +103,25 @@ def main() -> int:
             query_seconds = time.perf_counter() - query_started
 
         failures: list[str] = []
+        failure_codes: list[str] = []
         if result["indexedFiles"] != FILE_COUNT:
             failures.append(f"indexedFiles={result['indexedFiles']} expected {FILE_COUNT}")
+            failure_codes.append("indexed-files")
         if symbol_count < MIN_SYMBOLS:
             failures.append(f"symbolCount={symbol_count} expected >= {MIN_SYMBOLS}")
+            failure_codes.append("symbol-count")
         if not storage_status["storageWithinBudget"]:
             failures.append("storageWithinBudget=false")
+            failure_codes.append("storage-budget")
         if not query["symbols"]:
             failures.append(f"query returned no symbols for {query_name}")
+            failure_codes.append("query-empty")
         if query_seconds > QUERY_LATENCY_SECONDS:
             failures.append(f"queryLatency={query_seconds:.3f}s expected <= {QUERY_LATENCY_SECONDS:.3f}s")
+            failure_codes.append("query-latency")
         if before_non_code != after_non_code:
             failures.append(f"nonCodeRows changed from {before_non_code} to {after_non_code}")
+            failure_codes.append("non-code-row-drift")
 
         summary = {
             "result": "failed" if failures else "passed",
@@ -127,10 +134,9 @@ def main() -> int:
             "nonCodeRowsBefore": before_non_code,
             "nonCodeRowsAfter": after_non_code,
             "failureCount": len(failures),
+            "failureCodes": failure_codes,
         }
-        if failures:
-            summary["failures"] = failures
-        print(json.dumps(summary, sort_keys=True))
+        sys.stdout.write(json.dumps(summary, sort_keys=True) + "\n")
         return 1 if failures else 0
     finally:
         shutil.rmtree(temp, ignore_errors=True)

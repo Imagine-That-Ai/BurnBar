@@ -23,19 +23,19 @@ private enum WandMissionEntitlements {
         "com.openburnbar.proMax.annual",
         "com.openburnbar.ultra.monthly",
         "com.openburnbar.ultra.annual",
-        "com.openburnbar.ultra.annual.v2",
+        "com.openburnbar.ultra.annual.v2"
     ]
 
     static let proMaxProductIDs: Set<String> = [
         "com.openburnbar.proMax.bundle.monthly",
         "com.openburnbar.proMax.v2.monthly",
-        "com.openburnbar.proMax.annual",
+        "com.openburnbar.proMax.annual"
     ]
 
     static let ultraProductIDs: Set<String> = [
         "com.openburnbar.ultra.monthly",
         "com.openburnbar.ultra.annual",
-        "com.openburnbar.ultra.annual.v2",
+        "com.openburnbar.ultra.annual.v2"
     ]
 }
 

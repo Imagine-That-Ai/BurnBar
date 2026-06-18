@@ -68,14 +68,14 @@ import {
     },
   ]);
   assert.equal(missingStorage.ok, false);
-  assert.match(String(missingStorage.error), /firebasestorage\.googleapis\.com/);
+  assert.ok(String(missingStorage.error).includes("firebasestorage.googleapis.com"));
 }
 
 {
   const malformedProbe = evaluateFirebaseAppCheckServiceSet(null);
   assert.equal(malformedProbe.ok, false);
-  assert.match(String(malformedProbe.error), /firestore\.googleapis\.com/);
-  assert.match(String(malformedProbe.error), /firebasestorage\.googleapis\.com/);
+  assert.ok(String(malformedProbe.error).includes("firestore.googleapis.com"));
+  assert.ok(String(malformedProbe.error).includes("firebasestorage.googleapis.com"));
 }
 
 console.log("commercial-launch-gate App Check probe tests passed");

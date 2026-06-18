@@ -11,7 +11,7 @@ struct InsightCardView: View {
     /// Cancellation token for the auto-resume dispatch.
     @State private var resumeWorkItem: DispatchWorkItem?
     /// Hovered carousel chevron slot (-1 left, 1 right) for the hover tint.
-    @State private var hoveredChevron: Int? = nil
+    @State private var hoveredChevron: Int?
 
     init(
         insights: [Insight],
