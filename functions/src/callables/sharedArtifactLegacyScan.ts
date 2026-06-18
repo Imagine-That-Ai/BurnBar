@@ -110,9 +110,10 @@ function decodePageToken(raw: unknown): LegacyPlaintextScanCursor | null {
   if (!decoded || typeof decoded !== "object") {
     throw new HttpsError("invalid-argument", "pageToken is invalid.");
   }
-  const candidate = decoded as Record<string, unknown>;
-  const teamID = validateCursorID(candidate["teamID"], "teamID");
-  const artifactID = candidate["artifactID"] == null ? null : validateCursorID(candidate["artifactID"], "artifactID");
+  const rawTeamID = Reflect.get(decoded, "teamID");
+  const rawArtifactID = Reflect.get(decoded, "artifactID");
+  const teamID = validateCursorID(rawTeamID, "teamID");
+  const artifactID = rawArtifactID == null ? null : validateCursorID(rawArtifactID, "artifactID");
   return { teamID, artifactID };
 }
 

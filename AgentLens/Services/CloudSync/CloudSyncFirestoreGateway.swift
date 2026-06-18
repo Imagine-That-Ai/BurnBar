@@ -44,7 +44,7 @@ protocol CloudSyncWriteBatchGateway: AnyObject, Sendable {
     func commit() async throws
 }
 
-protocol CloudSyncTransactionGateway: AnyObject, Sendable {
+protocol CloudSyncTransactionGateway: AnyObject {
     func getData(forDocument document: CloudSyncDocumentGateway) throws -> [String: Any]?
     func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) throws
 }
@@ -221,7 +221,7 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @uncheck
     }
 }
 
-final class CloudSyncTransactionLiveGateway: CloudSyncTransactionGateway, @unchecked Sendable {
+final class CloudSyncTransactionLiveGateway: CloudSyncTransactionGateway {
     private let transaction: Transaction
 
     init(transaction: Transaction) {

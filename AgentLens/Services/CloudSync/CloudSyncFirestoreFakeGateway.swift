@@ -480,7 +480,7 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
     }
 }
 
-private final class CloudSyncTransactionFakeGateway: CloudSyncTransactionGateway, Sendable {
+private final class CloudSyncTransactionFakeGateway: CloudSyncTransactionGateway {
     private typealias PendingWrite = (path: String, data: [String: Any], merge: Bool)
 
     private let store: FakeDocumentStore
