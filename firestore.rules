@@ -1436,6 +1436,21 @@ service cloud.firestore {
         && request.resource.data.teamID == teamId;
     }
 
+    function sharedArtifactNoPlaintextContent() {
+      return !request.resource.data.keys().hasAny([
+        "title",
+        "body",
+        "relativePath",
+        "contentHash",
+        "sourceMarkdown",
+        "plainText",
+        "content"
+      ])
+        && request.resource.data.contentSealed == true
+        && request.resource.data.sealedSchemaVersion == 2
+        && request.resource.data.sealedPayload is map;
+    }
+
     // --- Server-only private provider credential references ---
 
     // Cloud Functions store Secret Manager version names here. The Admin SDK
@@ -4475,12 +4490,17 @@ service cloud.firestore {
 
     match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
       allow read: if sharedArtifactOwnerRead(workspaceId);
-      allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
+      allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId)
+        && request.resource.data.artifactID == artifactId
+        && sharedArtifactNoPlaintextContent();
       allow delete: if sharedArtifactOwnerRead(workspaceId);
 
       match /versions/{revisionId} {
         allow read: if sharedArtifactOwnerRead(workspaceId);
-        allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
+        allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId)
+          && request.resource.data.artifactID == artifactId
+          && request.resource.data.revisionID == revisionId
+          && sharedArtifactNoPlaintextContent();
         allow delete: if sharedArtifactOwnerRead(workspaceId);
       }
     }

@@ -1,14 +1,11 @@
 /**
- * Firestore rules tests for shared/team artifact owner boundaries.
+ * Firestore rules tests for shared/team artifact plaintext blocking and owner boundaries.
  *
- * Production Firebase Rules rejects the stricter path-bound sealed-artifact
- * ruleset once combined with the rest of OpenBurnBar's large rules file. The
- * deployable rules boundary for this collection is therefore tenant ownership:
- * callers may write only their own `workspaces/workspace-{uid}` subtree and the
- * document body must agree with that workspace/team/owner path.
- *
- * Sealed payload correctness is enforced by the app codecs and CloudVault tests,
- * not by this Firestore rules file.
+ * The full CloudVault path-bound crypto validator is too expensive for the
+ * current monolithic production ruleset, but Firestore still enforces the
+ * deployable confidentiality boundary: no top-level plaintext artifact fields,
+ * owner/workspace/team path binding, and artifact/revision body IDs bound to
+ * their path.
  */
 import {
   initializeTestEnvironment,
@@ -28,6 +25,7 @@ const FIRESTORE_PORT = Number.parseInt(process.env.FIRESTORE_TEST_PORT || "8080"
 const aliceUid = "alice-uid";
 const bobUid = "bob-uid";
 const teamId = "team-default";
+const vaultKeyID = "v1_0123456789abcdef0123456789abcdef";
 
 function workspaceId(uid) {
   return `workspace-${uid}`;
@@ -41,7 +39,18 @@ function versionPath(uid, artifactId, revisionId) {
   return `${artifactPath(uid, artifactId)}/versions/${revisionId}`;
 }
 
-function artifactDoc(uid, artifactId, revisionId, overrides = {}) {
+function sealedPayload() {
+  return {
+    schemaVersion: 2,
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    vaultKeyID,
+    sealedBoxBase64: "U2VhbGVkU2hhcmVkQXJ0aWZhY3Q=",
+    aad: "OpenBurnBar-CloudVaultSealedPayload-v2",
+  };
+}
+
+function sealedArtifactDoc(uid, artifactId, revisionId, overrides = {}) {
   return {
     artifactID: artifactId,
     workspaceID: workspaceId(uid),
@@ -49,12 +58,25 @@ function artifactDoc(uid, artifactId, revisionId, overrides = {}) {
     ownerUserID: uid,
     visibility: "team",
     revisionID: revisionId,
-    title: "design.md",
-    body: "artifact body is protected by client-side sealing in production builds",
     isDeleted: false,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID,
+    sealedPayload: sealedPayload(),
     updatedByUserID: uid,
     updatedByDeviceID: "mac-device",
     updatedAt: Timestamp.fromMillis(Date.now()),
+    ...overrides,
+  };
+}
+
+function plaintextArtifactDoc(uid, artifactId, revisionId, overrides = {}) {
+  return {
+    ...sealedArtifactDoc(uid, artifactId, revisionId),
+    title: "design.md",
+    body: "private artifact body",
+    relativePath: "src/private/design.md",
+    contentHash: "a".repeat(64),
     ...overrides,
   };
 }
@@ -89,20 +111,62 @@ async function main() {
   const aliceDB = testEnv.authenticatedContext(aliceUid).firestore();
   const bobDB = testEnv.authenticatedContext(bobUid).firestore();
 
-  await step("owner can write a head artifact in their own workspace", async () => {
+  await step("owner can write a sealed head artifact in their own workspace", async () => {
     const artifactId = "artifact-owned";
     await assertSucceeds(
-      setDoc(doc(aliceDB, artifactPath(aliceUid, artifactId)), artifactDoc(aliceUid, artifactId, "rev-1"))
+      setDoc(doc(aliceDB, artifactPath(aliceUid, artifactId)), sealedArtifactDoc(aliceUid, artifactId, "rev-1"))
     );
   });
 
-  await step("owner can write an artifact version in their own workspace", async () => {
+  await step("owner can write a sealed artifact version in their own workspace", async () => {
     const artifactId = "artifact-owned";
     const revisionId = "rev-2";
     await assertSucceeds(
       setDoc(
         doc(aliceDB, versionPath(aliceUid, artifactId, revisionId)),
-        artifactDoc(aliceUid, artifactId, revisionId)
+        sealedArtifactDoc(aliceUid, artifactId, revisionId)
+      )
+    );
+  });
+
+  await step("head rejects top-level plaintext artifact content", async () => {
+    const artifactId = "artifact-plaintext";
+    await assertFails(
+      setDoc(
+        doc(aliceDB, artifactPath(aliceUid, artifactId)),
+        plaintextArtifactDoc(aliceUid, artifactId, "rev-1")
+      )
+    );
+  });
+
+  await step("version rejects top-level plaintext artifact content", async () => {
+    const artifactId = "artifact-version-plaintext";
+    const revisionId = "rev-1";
+    await assertFails(
+      setDoc(
+        doc(aliceDB, versionPath(aliceUid, artifactId, revisionId)),
+        plaintextArtifactDoc(aliceUid, artifactId, revisionId)
+      )
+    );
+  });
+
+  await step("head rejects artifactID mismatch against the path", async () => {
+    const artifactId = "artifact-head-mismatch";
+    await assertFails(
+      setDoc(
+        doc(aliceDB, artifactPath(aliceUid, artifactId)),
+        sealedArtifactDoc(aliceUid, "artifact-other", "rev-1")
+      )
+    );
+  });
+
+  await step("version rejects revisionID mismatch against the path", async () => {
+    const artifactId = "artifact-version-mismatch";
+    const revisionId = "rev-1";
+    await assertFails(
+      setDoc(
+        doc(aliceDB, versionPath(aliceUid, artifactId, revisionId)),
+        sealedArtifactDoc(aliceUid, artifactId, "rev-other")
       )
     );
   });
@@ -110,7 +174,7 @@ async function main() {
   await step("another user cannot write into the owner's workspace path", async () => {
     const artifactId = "artifact-cross-user";
     await assertFails(
-      setDoc(doc(bobDB, artifactPath(aliceUid, artifactId)), artifactDoc(aliceUid, artifactId, "rev-1"))
+      setDoc(doc(bobDB, artifactPath(aliceUid, artifactId)), sealedArtifactDoc(aliceUid, artifactId, "rev-1"))
     );
   });
 
@@ -119,7 +183,7 @@ async function main() {
     await assertFails(
       setDoc(
         doc(aliceDB, artifactPath(aliceUid, artifactId)),
-        artifactDoc(aliceUid, artifactId, "rev-1", { ownerUserID: bobUid })
+        sealedArtifactDoc(aliceUid, artifactId, "rev-1", { ownerUserID: bobUid })
       )
     );
   });
@@ -129,7 +193,7 @@ async function main() {
     await assertFails(
       setDoc(
         doc(aliceDB, artifactPath(aliceUid, artifactId)),
-        artifactDoc(aliceUid, artifactId, "rev-1", { workspaceID: workspaceId(bobUid) })
+        sealedArtifactDoc(aliceUid, artifactId, "rev-1", { workspaceID: workspaceId(bobUid) })
       )
     );
   });
@@ -139,7 +203,7 @@ async function main() {
     await assertFails(
       setDoc(
         doc(aliceDB, artifactPath(aliceUid, artifactId)),
-        artifactDoc(aliceUid, artifactId, "rev-1", { teamID: "team-other" })
+        sealedArtifactDoc(aliceUid, artifactId, "rev-1", { teamID: "team-other" })
       )
     );
   });

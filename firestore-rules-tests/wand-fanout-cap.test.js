@@ -6,9 +6,8 @@
  *   users/{uid}/cli_agent_mission_requests/{childID}...
  *
  * The rules cap fan-out by tier and keep CloudVault payloads path-bound.
- * Stricter request-ID, parent-child membership, and parent immutability checks
- * were intentionally kept out of Firestore rules because the production
- * evaluator rejected that shape when combined with the rest of the large ruleset.
+ * The stricter mission request/group consistency checks currently need a lower
+ * expression-cost path before they can live in Firestore rules.
  */
 import {
   initializeTestEnvironment,
@@ -183,8 +182,12 @@ function childIDsFor(groupID, count) {
 async function commitFanOut(db, uid, groupID, count, options = {}) {
   const childIDs = options.childIDs ?? childIDsFor(groupID, count);
   const parentChildIDs = options.parentChildIDs ?? childIDs;
+  const parentRuntimeTokens = options.parentRuntimeTokens;
   const batch = writeBatch(db);
-  batch.set(doc(db, `users/${uid}/mission_groups/${groupID}`), missionGroup(groupID, parentChildIDs));
+  batch.set(
+    doc(db, `users/${uid}/mission_groups/${groupID}`),
+    missionGroup(groupID, parentChildIDs, parentRuntimeTokens)
+  );
   childIDs.forEach((childID, index) => {
     batch.set(
       doc(db, `users/${uid}/cli_agent_mission_requests/${childID}`),
