@@ -88,13 +88,17 @@ build_target() {
   local target="$1"
   local features="log/release_max_level_info"
   local crate_type="staticlib"
-  local rustc_extra_args=()
+  local exports_dynamic_symbols=0
   if [[ "${target}" != "aarch64-apple-ios" ]]; then
     features="libsignal-bridge-testing ${features}"
   fi
   if [[ "${target}" == *"-apple-darwin" ]]; then
     crate_type="cdylib"
-    rustc_extra_args=(
+    exports_dynamic_symbols=1
+  fi
+  local rustc_args=(--crate-type "${crate_type}")
+  if [[ "${exports_dynamic_symbols}" == "1" ]]; then
+    rustc_args+=(
       -C "link-arg=-Wl,-install_name,@rpath/libsignal_ffi.dylib"
       -C "link-arg=-Wl,-exported_symbols_list,${EXPORTS_FILE}"
     )
@@ -113,7 +117,7 @@ build_target() {
         ${PROFILE_FLAG} \
         --target "${target}" \
         --features "${features}" \
-        -- --crate-type "${crate_type}" "${rustc_extra_args[@]}"
+        -- "${rustc_args[@]}"
   )
 }
 
