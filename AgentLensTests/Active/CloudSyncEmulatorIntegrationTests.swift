@@ -13,6 +13,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
+    private var vaultKeyProvider: TestConversationVaultKeyProvider!
     private var collaborationSync: CollaborationSyncService!
     private var coordinator: CloudSyncCoordinator!
 
@@ -29,13 +30,17 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway
         )
-        collaborationSync = CollaborationSyncService(context: context)
+        vaultKeyProvider = TestConversationVaultKeyProvider()
+        collaborationSync = CollaborationSyncService(
+            context: context,
+            sharedArtifactVaultKeyProvider: vaultKeyProvider
+        )
         coordinator = CloudSyncCoordinator(
             dataStore: dataStore,
             accountManager: accountManager,
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway,
-            conversationVaultKeyProvider: TestConversationVaultKeyProvider(),
+            conversationVaultKeyProvider: vaultKeyProvider,
             sessionLogEncryptedCloudClient: FakeSessionLogEncryptedCloudClient(),
             sessionLogVaultKeyStore: StaticSessionLogVaultKeyStore(),
             sessionLogVaultKeyPublisher: NoopSessionLogVaultKeyPublisher()
@@ -50,6 +55,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         settingsManager = nil
         accountManager = nil
         dataStore = nil
+        vaultKeyProvider = nil
 
         try super.tearDownWithError()
     }
@@ -86,13 +92,73 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
 
         let headPath = docs.keys.min()!
         let head = try XCTUnwrap(fakeGateway.documentData(at: headPath))
-        XCTAssertEqual(head["title"] as? String, "Runbook")
-        XCTAssertEqual(head["contentHash"] as? String, "hash-runbook-v1")
-        XCTAssertEqual(head["body"] as? String, "# Runbook v1")
+        XCTAssertNil(head["title"], "Shared artifact head must not store plaintext title")
+        XCTAssertNil(head["contentHash"], "Shared artifact head must not store plaintext content hash")
+        XCTAssertNil(head["body"], "Shared artifact head must not store plaintext body")
+        XCTAssertNil(head["relativePath"], "Shared artifact head must not store plaintext relative path")
+        XCTAssertEqual(head["contentSealed"] as? Bool, true)
+        XCTAssertEqual(head["vaultKeyID"] as? String, try vaultKeyProvider.resolvedKey().vaultKeyID)
+
+        let headEnvelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: head["sealedPayload"]))
+        let headAAD = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactAADCollection,
+            docID: artifact.id,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        let headPlaintext = try CloudVaultCrypto.openPayload(
+            headEnvelope,
+            keyData: vaultKeyProvider.keyData,
+            aadContext: headAAD
+        )
+        let headPrivatePayload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: headPlaintext) as? [String: Any]
+        )
+        XCTAssertEqual(headPrivatePayload["title"] as? String, "Runbook")
+        XCTAssertEqual(headPrivatePayload["contentHash"] as? String, "hash-runbook-v1")
+        XCTAssertEqual(headPrivatePayload["body"] as? String, "# Runbook v1")
+
+        let revisionID = try XCTUnwrap(head["revisionID"] as? String)
+        let versionPath = "\(headPath)/versions/\(revisionID)"
+        let version = try XCTUnwrap(fakeGateway.documentData(at: versionPath))
+        XCTAssertNil(version["title"], "Shared artifact versions must not store plaintext title")
+        let versionEnvelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: version["sealedPayload"]))
+        let versionAAD = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactVersionAADCollection,
+            docID: revisionID,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        XCTAssertNoThrow(
+            try CloudVaultCrypto.openPayload(
+                versionEnvelope,
+                keyData: vaultKeyProvider.keyData,
+                aadContext: versionAAD
+            )
+        )
 
         let syncState = try await dataStore.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
         XCTAssertEqual(syncState?.syncStatus, .synced)
         XCTAssertNil(syncState?.lastErrorCode)
+    }
+
+    func test_collaborationPush_withNoLocalArtifactsDoesNotCreateVaultKey() async throws {
+        let countingProvider = CountingConversationVaultKeyProvider()
+        let sync = CollaborationSyncService(
+            context: context,
+            sharedArtifactVaultKeyProvider: countingProvider
+        )
+        var report = SharedArtifactSyncReport(scope: .defaultScope(for: "test-uid-1"))
+
+        try await sync.pushLocalSharedArtifacts(
+            scope: .defaultScope(for: "test-uid-1"),
+            deviceId: "test-device-1",
+            report: &report
+        )
+
+        XCTAssertEqual(report.localArtifactsEvaluated, 0)
+        XCTAssertEqual(countingProvider.keyForWritingCallCount, 0)
+        XCTAssertEqual(countingProvider.keyForReadingCallCount, 0)
     }
 
     // MARK: - Collaboration pull
@@ -296,5 +362,220 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         XCTAssertEqual(fetched?.syncStatus, .synced)
         XCTAssertNil(fetched?.lastErrorCode)
         XCTAssertEqual(fetched?.revisionID, "rev-2")
+    }
+
+    func test_collaborationPull_healsLegacyPlaintextArtifact() async throws {
+        let scope = SharedArtifactScope.defaultScope(for: "test-uid-1")
+        let artifactID = "legacy-art-1"
+        let revisionID = "legacy-rev-1"
+        let plaintextPath = "workspaces/workspace-test-uid-1/teams/team-default/artifacts/\(artifactID)"
+        let plaintextDoc: [String: Any] = [
+            "artifactID": artifactID,
+            "workspaceID": "workspace-test-uid-1",
+            "teamID": "team-default",
+            "ownerUserID": "test-uid-1",
+            "visibility": "team",
+            "revisionID": revisionID,
+            "isDeleted": false,
+            "title": "Legacy Plaintext Title",
+            "body": "Legacy plaintext body that must be sealed",
+            "contentHash": "legacy-hash-123"
+        ]
+        fakeGateway.setDocumentData(plaintextDoc, at: plaintextPath)
+
+        let preData = try XCTUnwrap(fakeGateway.documentData(at: plaintextPath))
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: preData))
+
+        var report = SharedArtifactSyncReport(scope: scope)
+        try await collaborationSync.pullRemoteSharedArtifacts(
+            scope: scope,
+            deviceId: "test-device-1",
+            maxRemoteArtifacts: 10,
+            report: &report
+        )
+
+        let healedData = try XCTUnwrap(fakeGateway.documentData(at: plaintextPath))
+        XCTAssertNil(healedData["title"], "Legacy title must be deleted after heal")
+        XCTAssertNil(healedData["body"], "Legacy body must be deleted after heal")
+        XCTAssertNil(healedData["contentHash"], "Legacy contentHash must be deleted after heal")
+        XCTAssertEqual(healedData["contentSealed"] as? Bool, true)
+        XCTAssertNotNil(healedData[SharedArtifactCloudCodec.sealedPayloadField])
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: healedData))
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: healedData[SharedArtifactCloudCodec.sealedPayloadField]))
+        let aad = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactAADCollection,
+            docID: artifactID,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        let plaintext = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData, aadContext: aad)
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+        XCTAssertEqual(decoded["title"] as? String, "Legacy Plaintext Title")
+        XCTAssertEqual(decoded["body"] as? String, "Legacy plaintext body that must be sealed")
+        XCTAssertEqual(decoded["contentHash"] as? String, "legacy-hash-123")
+
+        let versionPath = "\(plaintextPath)/versions/\(revisionID)"
+        let versionData = try XCTUnwrap(fakeGateway.documentData(at: versionPath))
+        XCTAssertNil(versionData["title"], "Legacy version title must be deleted in the same heal")
+        XCTAssertNil(versionData["body"], "Legacy version body must be deleted in the same heal")
+        XCTAssertNil(versionData["contentHash"], "Legacy version contentHash must be deleted in the same heal")
+        XCTAssertEqual(versionData["contentSealed"] as? Bool, true)
+        XCTAssertNotNil(versionData[SharedArtifactCloudCodec.sealedPayloadField])
+    }
+
+    func test_collaborationPull_healsMixedSealedPlaintextArtifact() async throws {
+        let scope = SharedArtifactScope.defaultScope(for: "test-uid-1")
+        let artifactID = "mixed-art-1"
+        let revisionID = "mixed-rev-1"
+        let artifactPath = "workspaces/workspace-test-uid-1/teams/team-default/artifacts/\(artifactID)"
+        let record = SharedArtifactCloudRecord(
+            artifactID: artifactID,
+            workspaceID: scope.workspaceID,
+            teamID: scope.teamID,
+            ownerUserID: scope.ownerUserID,
+            revisionID: revisionID,
+            title: "Encrypted Source Title",
+            body: "Encrypted source body",
+            contentHash: "encrypted-hash",
+            relativePath: "mixed.md",
+            isDeleted: false,
+            updatedAt: Date(timeIntervalSince1970: 1_742_180_000)
+        )
+        let sealed = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: vaultKeyProvider.resolvedKey(),
+            ownerUserID: "test-uid-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: artifactID
+        )
+        var mixed = sealed.filter { key, _ in
+            !["title", "body", "contentHash", "relativePath"].contains(key)
+        }
+        mixed["title"] = "Leaked old title"
+        mixed["body"] = "Leaked old body"
+        mixed["contentHash"] = "leaked-old-hash"
+        fakeGateway.setDocumentData(mixed, at: artifactPath)
+
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: try XCTUnwrap(fakeGateway.documentData(at: artifactPath))))
+
+        var report = SharedArtifactSyncReport(scope: scope)
+        try await collaborationSync.pullRemoteSharedArtifacts(
+            scope: scope,
+            deviceId: "test-device-1",
+            maxRemoteArtifacts: 10,
+            report: &report
+        )
+
+        let healedData = try XCTUnwrap(fakeGateway.documentData(at: artifactPath))
+        XCTAssertNil(healedData["title"])
+        XCTAssertNil(healedData["body"])
+        XCTAssertNil(healedData["contentHash"])
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: healedData))
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: healedData[SharedArtifactCloudCodec.sealedPayloadField]))
+        let aad = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: SharedArtifactCloudCodec.artifactAADCollection,
+            docID: artifactID,
+            field: SharedArtifactCloudCodec.sealedPayloadField
+        )
+        let plaintext = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData, aadContext: aad)
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any])
+        XCTAssertEqual(decoded["title"] as? String, "Encrypted Source Title")
+        XCTAssertEqual(decoded["body"] as? String, "Encrypted source body")
+        XCTAssertEqual(decoded["contentHash"] as? String, "encrypted-hash")
+    }
+
+    func test_collaborationPull_skipsLegacyHealWhenRemoteRevisionChanged() async throws {
+        let scope = SharedArtifactScope.defaultScope(for: "test-uid-1")
+        let artifactID = "legacy-race-art-1"
+        let artifactPath = "workspaces/workspace-test-uid-1/teams/team-default/artifacts/\(artifactID)"
+        fakeGateway.setDocumentData([
+            "artifactID": artifactID,
+            "workspaceID": scope.workspaceID,
+            "teamID": scope.teamID,
+            "ownerUserID": "test-uid-1",
+            "visibility": "team",
+            "revisionID": "rev-old",
+            "isDeleted": false,
+            "title": "Old title",
+            "body": "Old body",
+            "contentHash": "old-hash"
+        ], at: artifactPath)
+        fakeGateway.beforeNextTransaction = { [fakeGateway] in
+            fakeGateway?.setDocumentData([
+                "artifactID": artifactID,
+                "workspaceID": "workspace-test-uid-1",
+                "teamID": "team-default",
+                "ownerUserID": "test-uid-1",
+                "visibility": "team",
+                "revisionID": "rev-newer",
+                "isDeleted": false,
+                "title": "Newer title",
+                "body": "Newer body",
+                "contentHash": "newer-hash"
+            ], at: artifactPath)
+        }
+
+        var report = SharedArtifactSyncReport(scope: scope)
+        try await collaborationSync.pullRemoteSharedArtifacts(
+            scope: scope,
+            deviceId: "test-device-1",
+            maxRemoteArtifacts: 10,
+            report: &report
+        )
+
+        let remoteData = try XCTUnwrap(fakeGateway.documentData(at: artifactPath))
+        XCTAssertEqual(remoteData["revisionID"] as? String, "rev-newer")
+        XCTAssertEqual(remoteData["title"] as? String, "Newer title")
+        XCTAssertEqual(remoteData["body"] as? String, "Newer body")
+        XCTAssertEqual(remoteData["contentHash"] as? String, "newer-hash")
+        XCTAssertNil(remoteData[SharedArtifactCloudCodec.sealedPayloadField])
+    }
+}
+
+private final class CountingConversationVaultKeyProvider: ConversationCloudVaultKeyProviding, @unchecked Sendable {
+    private let keyData: Data
+    private let lock = NSLock()
+    private var writeCalls = 0
+    private var readCalls = 0
+
+    init(keyData: Data = Data(repeating: 0x42, count: 32)) {
+        self.keyData = keyData
+    }
+
+    var keyForWritingCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return writeCalls
+    }
+
+    var keyForReadingCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return readCalls
+    }
+
+    func keyForWriting(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey {
+        lock.lock()
+        writeCalls += 1
+        lock.unlock()
+        return try resolvedKey()
+    }
+
+    func keyForReading(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey? {
+        lock.lock()
+        readCalls += 1
+        lock.unlock()
+        return try resolvedKey()
+    }
+
+    private func resolvedKey() throws -> CloudVaultResolvedKey {
+        try CloudVaultResolvedKey(
+            keyData: keyData,
+            vaultKeyID: CloudVaultCrypto.vaultKeyID(for: keyData)
+        )
     }
 }

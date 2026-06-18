@@ -733,7 +733,16 @@ struct ProviderRoutingCockpit: View {
         .padding(.vertical, 3)
         .background(tint.opacity(0.12))
         .clipShape(Capsule())
-        .help(help ?? "")
+        // Avoid registering an empty tooltip bubble: fall back to the pill's own
+        // label text when no explicit help is supplied so .help is never "".
+        .help(resolvedHelp(help, fallback: text))
+    }
+
+    /// Returns explicit help text when present and non-empty; otherwise the
+    /// pill label, guaranteeing `.help` never receives an empty string.
+    private func resolvedHelp(_ help: String?, fallback: String) -> String {
+        if let help, !help.isEmpty { return help }
+        return fallback
     }
 
     private func blockedAccountHelp(_ candidate: ProviderRoutingCandidate) -> String {

@@ -1,5 +1,4 @@
 import XCTest
-import GRDB
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
@@ -243,8 +242,6 @@ final class XAIQuotaAdapterTests: XCTestCase {
         // `/v1/teams` resolution with a value left over from a prior run.
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
-        let dbQueue = try DatabaseQueue()
-        let dataStoreActor = try DataStoreActor(databaseQueue: dbQueue)
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [XAIMockURLProtocol.self]
@@ -261,7 +258,6 @@ final class XAIQuotaAdapterTests: XCTestCase {
             session: session,
             environment: [:],
             homeDirectoryURL: tempDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: ClaudeQuotaBridgeManager(
                 appPaths: appPaths,

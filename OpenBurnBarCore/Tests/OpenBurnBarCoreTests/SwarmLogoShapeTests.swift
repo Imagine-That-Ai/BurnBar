@@ -200,6 +200,40 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertEqual(SwarmCanvasView.sanitizedFrameRate(30, fallback: 60), 30)
     }
 
+    func testLaunchProviderGlyphTopBitmapRowRendersAboveCenterInCanvas() {
+        let topBitmapRow = BurnBarLogoFormationGeometry.providerGlyphPoint(gx: 2, gy: 0, grid: 5)
+        let bottomBitmapRow = BurnBarLogoFormationGeometry.providerGlyphPoint(gx: 2, gy: 4, grid: 5)
+        let center = CGPoint(x: 100, y: 100)
+        let scale: CGFloat = 20
+
+        // loadPixels() samples top-left origin, so gy == 0 is the TOP of the logo and must
+        // map to a negative (above-center) Canvas Y. +Y is down in SwiftUI Canvas.
+        XCTAssertLessThan(
+            topBitmapRow.y, 0,
+            "Top bitmap row must map above center so the launch glyph is not upside down."
+        )
+        XCTAssertGreaterThan(bottomBitmapRow.y, 0)
+        XCTAssertLessThan(
+            center.y + topBitmapRow.y * scale,
+            center.y + bottomBitmapRow.y * scale,
+            "Top image row must render at a smaller Canvas Y (higher on screen) than the bottom row."
+        )
+    }
+
+    func testLaunchProviderGlyphColorsAreSaturatedAndHuePreserving() {
+        // A muted coral should come out more saturated (higher chroma) while keeping red
+        // as its dominant channel — provider marks read as their real, vivid brand colors.
+        let muted = (r: 0.62, g: 0.42, b: 0.34)
+        let vivid = BurnBarLogoFormationColor.vibrantProviderGlyphRGB(r: muted.r, g: muted.g, b: muted.b)
+        XCTAssertGreaterThan(rgbChroma(vivid), rgbChroma(muted))
+        XCTAssertTrue(vivid.r >= vivid.g && vivid.g >= vivid.b)
+
+        // Near-gray marks (e.g. a monochrome logo promoted to white) stay neutral — the
+        // boost amplifies an existing hue, it never invents one.
+        let gray = BurnBarLogoFormationColor.vibrantProviderGlyphRGB(r: 0.92, g: 0.94, b: 0.97)
+        XCTAssertLessThan(rgbChroma(gray), 0.10)
+    }
+
     @MainActor
     func testProviderLogoFormationCachesCleanProviderMetadata() {
         let simulation = SwarmSimulation(
@@ -350,6 +384,10 @@ final class SwarmLogoShapeTests: XCTestCase {
 
     private func relativeLuminance(_ color: RGBA) -> Double {
         0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b
+    }
+
+    private func rgbChroma(_ color: (r: Double, g: Double, b: Double)) -> Double {
+        max(color.r, max(color.g, color.b)) - min(color.r, min(color.g, color.b))
     }
 
     private func canvasBounds(for points: [SwarmLogoShape.Point], role: String? = nil) throws -> CGRect {

@@ -1,12 +1,7 @@
 {
   "target": 2000,
-  "total": 4,
+  "total": 3,
   "files": [
-    {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift",
-      "lines": 2261,
-      "justification": "Cohesive SQLite-backed Project Code Memory store carrying memory ops, code-index ops, daemon-owned embeddings, hybrid search, schema bootstrap, FSEvents watcher, and raw SQLite primitives. Existing decomposition debt is tracked separately; lower this baseline as +Memory/+Code/+Search/+Schema extraction lands."
-    },
     {
       "path": "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
       "lines": 2197,

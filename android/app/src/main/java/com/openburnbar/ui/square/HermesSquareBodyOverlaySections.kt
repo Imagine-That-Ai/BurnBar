@@ -93,6 +93,7 @@ private fun HermesSquareSheetOverlays(state: HermesSquareUiState, actions: Herme
     if (state.showFanOut) {
         HermesSquareFanOutSheet(
             registry = state.registry,
+            currentTier = state.currentTier,
             onDispatched = { actions.setShowFanOut(false) },
             onDismiss = { actions.setShowFanOut(false) },
         )

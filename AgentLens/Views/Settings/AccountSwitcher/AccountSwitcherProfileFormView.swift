@@ -73,9 +73,13 @@ struct ProfileFormView: View {
             // Validation error
             if let error = validationError {
                 Section {
-                    Text(error)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.error)
+                    HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(DesignSystem.Colors.error)
+                        Text(error)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.error)
+                    }
                 }
             }
 

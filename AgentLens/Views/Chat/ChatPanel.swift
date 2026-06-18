@@ -81,12 +81,12 @@ struct ChatPanel: View {
             }
         }
         .onAppear {
-            brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
             controller.syncChatBackendWithEnabledBackends()
             controller.loadPersistedMessages()
             controller.reclampPanelOffset(container: containerSize, padding: edgePadding)
             presentHermesSetupIfNeeded()
-            Task {
+            Task { @MainActor in
+                brief = await controller.buildInsightBriefSnapshotAsync(refreshRollups: false)
                 let enabled = settingsManager.enabledChatBackends
                 if enabled.contains(.hermes) {
                     await controller.probeHermesAvailability()

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Guardrail: hand-maintained functions/src/types/legacy.ts must stay aligned with
- * schema-sync generated provider-account contracts.
+ * Guardrail: legacy provider-account exports must stay aligned with schema-sync
+ * generated provider-account contracts.
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -21,6 +21,17 @@ function extractInterfaceFields(source, interfaceName) {
     throw new Error(`Could not parse interface ${interfaceName}`);
   }
   return new Set([...match[1].matchAll(/^\s*(\w+)\??:/gm)].map((m) => m[1]));
+}
+
+function extractLegacyFields(source, interfaceName, generatedFields) {
+  const generatedAliasPattern = new RegExp(
+    `export type ${interfaceName}\\s*=\\s*import\\("../generated/provider-account\\.js"\\)\\.${interfaceName};`,
+    "m"
+  );
+  if (generatedAliasPattern.test(source)) {
+    return generatedFields;
+  }
+  return extractInterfaceFields(source, interfaceName);
 }
 
 const generated = readFileSync(
@@ -46,14 +57,19 @@ if (existsSync(legacyDir)) {
 }
 
 const generatedDoc = extractInterfaceFields(generated, "ProviderAccountDoc");
-const handDoc = extractInterfaceFields(handMaintained, "ProviderAccountDoc");
+const handDoc = extractLegacyFields(
+  handMaintained,
+  "ProviderAccountDoc",
+  generatedDoc
+);
 const generatedConnect = extractInterfaceFields(
   generated,
   "ProviderAccountConnectContext"
 );
-const handConnect = extractInterfaceFields(
+const handConnect = extractLegacyFields(
   handMaintained,
-  "ProviderAccountConnectContext"
+  "ProviderAccountConnectContext",
+  generatedConnect
 );
 
 function assertSuperset(label, generatedFields, handFields) {

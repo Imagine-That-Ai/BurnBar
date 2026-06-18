@@ -47,6 +47,7 @@ struct DashboardView: View {
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
+    @State private var showMacWandComposer = false
 
     init(
         dataStore: DataStore,
@@ -224,6 +225,8 @@ struct DashboardView: View {
                         if let controller = missionConsoleController {
                             MissionFAB(host: controller.host) {
                                 controller.makeOrShow()
+                            } onCastWand: {
+                                showMacWandComposer = true
                             }
                         }
                         ChatFAB(hasNewInsights: hasNewInsightPulse) {
@@ -298,6 +301,12 @@ struct DashboardView: View {
                     AnalyticsConsentStore.shared.decline()
                 }
                 showAnalyticsConsent = false
+            }
+            .presentationBackground(Material.ultraThinMaterial)
+        }
+        .sheet(isPresented: $showMacWandComposer) {
+            MacWandComposerSheet(accountManager: accountManager) { _ in
+                Task { await missionConsoleController?.host.refresh() }
             }
             .presentationBackground(Material.ultraThinMaterial)
         }

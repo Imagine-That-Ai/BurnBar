@@ -47,8 +47,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(lexicalConversation)
-        try store.upsertConversation(semanticConversation)
+        try await store.upsertConversation(lexicalConversation)
+        try await store.upsertConversation(semanticConversation)
         try await store.enqueueConversationProjectionJob(conversationID: lexicalConversation.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: semanticConversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
@@ -173,9 +173,9 @@ final class HybridRetrievalServiceTests: XCTestCase {
             sourceType: .cliAssistant
         )
 
-        try store.upsertConversation(convClaude)
-        try store.upsertConversation(convCodex)
-        try store.upsertConversation(convCLI)
+        try await store.upsertConversation(convClaude)
+        try await store.upsertConversation(convCodex)
+        try await store.upsertConversation(convCLI)
         try await store.enqueueConversationProjectionJob(conversationID: convClaude.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: convCodex.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: convCLI.id, jobType: .project, now: base)
@@ -349,7 +349,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -488,8 +488,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             sourceType: .cliAssistant
         )
 
-        try store.upsertConversation(providerConversation)
-        try store.upsertConversation(assistantConversation)
+        try await store.upsertConversation(providerConversation)
+        try await store.upsertConversation(assistantConversation)
         try await store.enqueueConversationProjectionJob(conversationID: providerConversation.id, jobType: .project, now: base)
         try await store.enqueueConversationProjectionJob(conversationID: assistantConversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
@@ -524,7 +524,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -562,7 +562,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             sourceType: .providerLog
         )
 
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
@@ -731,7 +731,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             indexedAt: base,
             sourceType: .providerLog
         )
-        try store.upsertConversation(conversation)
+        try await store.upsertConversation(conversation)
         try await store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 

@@ -121,19 +121,79 @@ struct ArtifactDiscoveryRules: Sendable {
     ]
 }
 
+protocol ArtifactDiscoveryDataStoring: Sendable {
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) async throws -> SourceArtifactWriteDisposition
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind]
+    ) async throws -> [SourceArtifactRecord]
+    func markSourceArtifactDeleted(id: String, deletedAt: Date) async throws -> Bool
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws
+}
+
+struct DataStoreArtifactDiscoveryStore: ArtifactDiscoveryDataStoring {
+    private let dataStore: DataStore
+
+    init(dataStore: DataStore) {
+        self.dataStore = dataStore
+    }
+
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) async throws -> SourceArtifactWriteDisposition {
+        try await dataStore.upsertSourceArtifact(artifact)
+    }
+
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind]
+    ) async throws -> [SourceArtifactRecord] {
+        try await dataStore.fetchSourceArtifacts(
+            includeDeleted: includeDeleted,
+            rootPaths: rootPaths,
+            sourceKinds: sourceKinds
+        )
+    }
+
+    func markSourceArtifactDeleted(id: String, deletedAt: Date) async throws -> Bool {
+        try await dataStore.markSourceArtifactDeleted(id: id, deletedAt: deletedAt)
+    }
+
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws {
+        try await dataStore.upsertRetrievalHealth(health)
+    }
+
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {
+        try await dataStore.enqueueProjectionJob(job)
+    }
+}
+
 actor ArtifactDiscoveryService {
-    private let dataStoreActor: DataStoreActor
+    private let store: any ArtifactDiscoveryDataStoring
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let fileManager: FileManager
     private let nowProvider: @Sendable () -> Date
 
     init(
-        dataStoreActor: DataStoreActor,
+        dataStore: DataStore,
         settingsProvider: any ArtifactDiscoverySettingsProviding,
         fileManager: FileManager = .default,
         nowProvider: @escaping @Sendable () -> Date = Date.init
     ) {
-        self.dataStoreActor = dataStoreActor
+        self.store = DataStoreArtifactDiscoveryStore(dataStore: dataStore)
+        self.settingsProvider = settingsProvider
+        self.fileManager = fileManager
+        self.nowProvider = nowProvider
+    }
+
+    init(
+        store: any ArtifactDiscoveryDataStoring,
+        settingsProvider: any ArtifactDiscoverySettingsProviding,
+        fileManager: FileManager = .default,
+        nowProvider: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.store = store
         self.settingsProvider = settingsProvider
         self.fileManager = fileManager
         self.nowProvider = nowProvider
@@ -283,7 +343,7 @@ actor ArtifactDiscoveryService {
                     updatedAt: now
                 )
 
-                let disposition = try await dataStoreActor.artifactStore.upsertSourceArtifact(artifact)
+                let disposition = try await store.upsertSourceArtifact(artifact)
                 discoveredSourceIDs.insert(artifact.id)
                 report.discoveredArtifacts += 1
 
@@ -306,7 +366,7 @@ actor ArtifactDiscoveryService {
             }
         }
 
-        let existingArtifacts = try await dataStoreActor.artifactStore.fetchSourceArtifacts(
+        let existingArtifacts = try await store.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]
@@ -315,7 +375,7 @@ actor ArtifactDiscoveryService {
         for existing in existingArtifacts {
             if registeredRootSet.contains(existing.rootPath) == false {
                 let now = nowProvider()
-                if try await dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
+                if try await store.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
                     report.deletedArtifacts += 1
                     try await enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
                     report.queuedJobs += 1
@@ -327,7 +387,7 @@ actor ArtifactDiscoveryService {
             guard discoveredSourceIDs.contains(existing.id) == false else { continue }
 
             let now = nowProvider()
-            if try await dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
+            if try await store.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
                 report.deletedArtifacts += 1
                 try await enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
                 report.queuedJobs += 1
@@ -347,7 +407,7 @@ actor ArtifactDiscoveryService {
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
 
-        try await dataStoreActor.projectionStore.upsertRetrievalHealth(
+        try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .discovery,
                 status: status,
@@ -379,7 +439,7 @@ actor ArtifactDiscoveryService {
         let jobID = projectionJobID(jobType: jobType, sourceID: artifact.id, sourceVersionID: sourceVersionID)
         let priority = (jobType == .purge) ? 2 : 10
 
-        try await dataStoreActor.projectionStore.enqueueProjectionJob(
+        try await store.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: jobType,

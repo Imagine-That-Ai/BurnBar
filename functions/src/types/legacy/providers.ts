@@ -69,51 +69,7 @@ export interface ProviderAccountCredentialDescriptor {
 // Firestore: provider_accounts/{accountID}
 // ---------------------------------------------------------------------------
 
-export interface ProviderAccountDoc {
-  /** Stable account ID unique within a user namespace. */
-  id: string;
-
-  /** Canonical provider key from the catalog/cloud contract. */
-  providerID: ProviderID;
-
-  /** User-visible account label, e.g. "Work" or "Personal". */
-  label: string;
-
-  /** Optional non-secret identity hint such as email/org/team name. */
-  identityHint?: string;
-
-  status: ProviderAccountStatus;
-  credentialKind: CredentialKind;
-  storageScope: ProviderAccountStorageScope;
-
-  /** Redacted display label only. Raw secrets and secret refs are forbidden. */
-  redactedLabel: string;
-
-  /** Device that owns a local-only credential/session, if any. */
-  sourceDeviceID?: string;
-
-  /** Optional switcher/browser/CLI profile linkage. Not a credential. */
-  linkedSwitcherProfileID?: string;
-
-  isDefault: boolean;
-  sortKey: number;
-  lastValidatedAt?: string;
-  lastRefreshAt?: string;
-  lastErrorCode?: string;
-  /** Endpoint profile for multi-host providers (e.g. mimo.token-plan.sgp). */
-  endpointProfileID?: string;
-  /** Regional cluster for Token Plan accounts. */
-  region?: "cn" | "sgp" | "ams" | "global";
-  /** Token Plan tier when vendor quota API is unavailable. */
-  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
-  /** Token Plan billing cycle for credit-cap math. */
-  tokenPlanBillingCycle?: "monthly" | "annual";
-  /** Auth wizard method id (mimo-token-plan, mimo-payg, …). */
-  authMethodID?: string;
-  schemaVersion: number;
-  createdAt: string;
-  updatedAt: string;
-}
+export type ProviderAccountDoc = import("../generated/provider-account.js").ProviderAccountDoc;
 
 // ---------------------------------------------------------------------------
 // Firestore: provider_account_device_links/{accountID}_{deviceID}

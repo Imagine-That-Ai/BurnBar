@@ -19,7 +19,6 @@ struct ProviderQuotaAdapterContext: Sendable {
     let session: URLSession
     let environment: [String: String]
     let homeDirectoryURL: URL
-    let dataStoreActor: DataStoreActor
     let snapshotStore: ProviderQuotaSnapshotStore
     let bridgeManager: ClaudeQuotaBridgeManager
     let miniMaxMode: MiniMaxQuotaMode
@@ -47,7 +46,6 @@ extension ProviderQuotaAdapterContext {
             session: session,
             environment: environment,
             homeDirectoryURL: homeDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
             miniMaxMode: miniMaxMode,
@@ -70,7 +68,6 @@ extension ProviderQuotaAdapterContext {
             session: session,
             environment: environment,
             homeDirectoryURL: homeDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
             miniMaxMode: miniMaxMode,
@@ -93,7 +90,6 @@ extension ProviderQuotaAdapterContext {
             session: session,
             environment: environment,
             homeDirectoryURL: homeDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
             miniMaxMode: miniMaxMode,

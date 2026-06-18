@@ -295,18 +295,11 @@ struct ProjectsView: View {
 
                 // Project rows
                 if mergedProjects.isEmpty {
-                    VStack(spacing: DesignSystem.Spacing.lg) {
-                        Image(systemName: "folder")
-                            .font(.system(size: 48, weight: .thin))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                        Text("No projects yet")
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        Text("Projects appear when OpenBurnBar scans agent sessions or you register one for scheduled reviews.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .multilineTextAlignment(.center)
-                    }
+                    ContentUnavailableView(
+                        "No projects yet",
+                        systemImage: "folder",
+                        description: Text("Projects appear when OpenBurnBar scans agent sessions or you register one for scheduled reviews.")
+                    )
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, DesignSystem.Spacing.xxxl)
                 } else {

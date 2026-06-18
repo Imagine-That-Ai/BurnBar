@@ -86,5 +86,6 @@ struct DashboardWorkspaceNavStrip: View {
                 action: { onNavigate(.sessionLogs) }
             )
         }
+        .animation(DesignSystem.Animation.standard, value: currentRoute)
     }
 }

@@ -43,9 +43,12 @@ jobs:
     # macOS, but the matrix-level runner is set per-job to keep the matrix
     # simple. Per-language overrides handled below via `runs-on: ${{ matrix.runner }}`.
     runs-on: ${{ matrix.runner }}
-    # Swift CodeQL can spend nearly the full previous 60-minute cap importing
-    # TRAP files after a successful traced build on hosted macOS runners.
-    timeout-minutes: 90
+    # Swift CodeQL builds the full app/daemon graph plus Signal FFI on hosted
+    # macOS runners. The June 2026 main proof run hit the previous 90-minute cap
+    # during the traced Swift build, after JS/TS, Python, and Java/Kotlin had
+    # passed. Keep the lane bounded, but give Swift enough room to finish source
+    # extraction and analysis instead of silently losing coverage.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:

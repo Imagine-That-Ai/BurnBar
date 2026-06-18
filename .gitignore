@@ -52,6 +52,10 @@ Library/Logs/
 __pycache__/
 *.py[cod]
 
+# Node / local agent state
+node_modules/
+.cmux-agent-mcp/
+
 # Xcode private settings
 *.mode1v3
 *.mode2v3

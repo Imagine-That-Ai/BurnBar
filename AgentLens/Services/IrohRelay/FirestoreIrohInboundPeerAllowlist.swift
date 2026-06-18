@@ -13,13 +13,18 @@ enum FirestoreIrohInboundPeerAllowlist {
         let db = Firestore.firestore()
         var allowed = Set<String>()
 
-        // try?-ok(fail-closed empty allowlist)
-        let controllers = try? await db
-            .collection("users").document(uid)
-            .collection("iroh_pairing").document(connectionId)
-            .collection("controllers")
-            .getDocuments()
-        for doc in controllers?.documents ?? [] {
+        let controllers: QuerySnapshot
+        do {
+            controllers = try await db
+                .collection("users").document(uid)
+                .collection("iroh_pairing").document(connectionId)
+                .collection("controllers")
+                .getDocuments()
+        } catch {
+            return IrohInboundPeerPolicy(allowedPeerNodeIds: [])
+        }
+
+        for doc in controllers.documents {
             if let peer = doc.data()["peerNodeId"] as? String, !peer.isEmpty {
                 allowed.insert(peer)
             } else if !doc.documentID.isEmpty {

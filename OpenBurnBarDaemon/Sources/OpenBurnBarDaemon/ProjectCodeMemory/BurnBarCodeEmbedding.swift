@@ -54,6 +54,12 @@ enum BurnBarCodeVectorCodec {
         vector.withUnsafeBytes { Data($0) }
     }
 
+    static func base64EncodedByteCount(vectorDimension: Int) -> Int {
+        guard vectorDimension > 0 else { return 0 }
+        let rawBytes = vectorDimension * MemoryLayout<Float>.size
+        return ((rawBytes + 2) / 3) * 4
+    }
+
     static func decode(_ data: Data, dimension: Int) -> [Float]? {
         guard dimension > 0, data.count == dimension * MemoryLayout<Float>.size else { return nil }
         var out = [Float](repeating: 0, count: dimension)

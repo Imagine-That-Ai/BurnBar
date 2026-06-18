@@ -161,7 +161,7 @@ final class OpenBurnBarSearchIntegrationHarness {
             artifactDiscoveryAdditionalKnownPatterns: additionalKnownPatterns
         )
         let service = ArtifactDiscoveryService(
-            dataStoreActor: dataStore.actor,
+            dataStore: dataStore,
             settingsProvider: settings,
             fileManager: fileManager,
             nowProvider: { [clock] in clock.now() }
@@ -302,7 +302,7 @@ final class OpenBurnBarSearchIntegrationHarness {
         jobType: ProjectionJobType = .project,
         priority: Int = 5
     ) async throws -> String {
-        guard let conversation = try dataStore.fetchConversation(id: conversationID) else {
+        guard let conversation = try await dataStore.fetchConversation(id: conversationID) else {
             throw OpenBurnBarSearchIntegrationHarnessError.missingConversation(conversationID)
         }
         let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)

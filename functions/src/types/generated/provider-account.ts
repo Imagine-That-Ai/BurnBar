@@ -7,9 +7,9 @@ export interface ProviderAccountDoc {
   providerID: string;
   label: string;
   identityHint?: string;
-  status: string;
-  credentialKind: string;
-  storageScope: string;
+  status: "connected" | "deleted" | "disabled" | "disconnected" | "error" | "stale";
+  credentialKind: "bearer" | "cookie" | "plan" | "session" | "token";
+  storageScope: "cloud_refreshable" | "device_keychain" | "local_only" | "server_private";
   redactedLabel: string;
   sourceDeviceID?: string;
   linkedSwitcherProfileID?: string;

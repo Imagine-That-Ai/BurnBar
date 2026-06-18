@@ -42,15 +42,14 @@ struct InsightBriefSnapshot {
     @MainActor
     static func build(
         from dataStore: DataStore,
-        intelligenceService: SearchService? = nil,
+        intelligenceService _: SearchService? = nil,
         rollupService: WorkflowInsightRollupService? = nil,
         refreshRollups: Bool = true
     ) -> InsightBriefSnapshot {
         let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
-        let searchService = intelligenceService ?? SearchService(dataStore: dataStore)
         return assemble(
             from: dataStore,
-            conversations: searchService.recentConversations(limit: 200),
+            conversations: fetchRecentConversationsSynchronously(from: dataStore, limit: 200),
             rollupSnapshot: rollups.snapshot(refreshIfStale: refreshRollups)
         )
     }
@@ -130,6 +129,16 @@ struct InsightBriefSnapshot {
             return ad < bd
         })
     }
+
+    private static func fetchRecentConversationsSynchronously(from dataStore: DataStore, limit: Int) -> [ConversationRecord] {
+        let bounded = max(1, min(limit, 1_000))
+        do {
+            return try dataStore.fetchConversationsSynchronously(limit: bounded)
+        } catch {
+            AppLogger.search.silentFailure("insight_brief_recent_conversations_fetch_failed", error: error)
+            return []
+        }
+    }
 }
 
 // MARK: - Insight Brief Card
@@ -140,6 +149,8 @@ struct InsightBriefCard: View {
     let icon: String
     let accent: Color
     let action: () -> Void
+
+    @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
@@ -167,13 +178,16 @@ struct InsightBriefCard: View {
             .padding(DesignSystem.Spacing.md)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.9))
+                    .fill(hovered ? DesignSystem.Colors.surfaceElevated : DesignSystem.Colors.surface.opacity(0.9))
                     .overlay(
                         RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .stroke(accent.opacity(0.25), lineWidth: 0.5)
+                            .stroke(accent.opacity(hovered ? 0.45 : 0.25), lineWidth: 0.5)
                     )
             )
         }
         .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityHint("Opens this insight")
+        .animation(DesignSystem.Animation.hover, value: hovered)
     }
 }

@@ -128,9 +128,20 @@ struct QuotaCommandCenter: View {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .rotationEffect(.degrees(quotaService.isFetching ? 360 : 0))
+                        // Spin only while fetching; on stop snap to 0 with no
+                        // animation so the icon doesn't visibly reverse-spin back.
+                        .animation(
+                            quotaService.isFetching
+                                ? .linear(duration: 1.0).repeatForever(autoreverses: false)
+                                : nil,
+                            value: quotaService.isFetching
+                        )
                 }
                 .buttonStyle(.plain)
                 .disabled(quotaService.isFetching)
+                .help("Refresh every provider's quota")
+                .accessibilityLabel("Refresh all quotas")
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
 
@@ -369,6 +380,7 @@ struct QuotaCommandRow: View {
             }
             .buttonStyle(.plain)
             .frame(width: 180)
+            .help(isUnconfigured ? "Set up \(providerTitle) quota" : "Configure \(providerTitle) quota")
 
             // Expanded inline setup
             if isExpanded {

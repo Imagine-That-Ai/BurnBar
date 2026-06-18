@@ -31,7 +31,7 @@ final class ConversationIndexer {
         var report = ConversationIndexingReport.empty
 
         for (index, record) in records.enumerated() {
-            let existingConversation = try dataStore.fetchConversation(id: record.id)
+            let existingConversation = try await dataStore.fetchConversation(id: record.id)
 
             if let existingConversation,
                shouldSkipUpsert(existing: existingConversation, incoming: record) {
@@ -39,7 +39,7 @@ final class ConversationIndexer {
                 continue
             }
 
-            try dataStore.upsertConversation(record)
+            try await dataStore.upsertConversation(record)
             let jobType: ProjectionJobType = existingConversation == nil ? .project : .reproject
             try await dataStore.enqueueConversationProjectionJob(conversationID: record.id, jobType: jobType)
             report.changedRecordCount += 1

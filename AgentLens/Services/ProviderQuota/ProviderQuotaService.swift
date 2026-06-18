@@ -1,6 +1,5 @@
 import Foundation
 import os
-import GRDB
 import OpenBurnBarCore
 
 struct DaemonCredentialSlotAccountProjection {
@@ -703,7 +702,8 @@ final class ProviderQuotaService {
         refreshClaudeBridgeStatus()
 
         activeProviders = Set(refreshProviders)
-        let batch = await quotaRefreshActor.fetchAllSnapshots(dataStoreActor: dataStore.actor)
+        let switcherProfileFetcher = makeSwitcherProfileFetcher(dataStore: dataStore)
+        let batch = await quotaRefreshActor.fetchAllSnapshots(switcherProfileFetcher: switcherProfileFetcher)
         for (provider, snapshot) in batch.providerSnapshots {
             upsertSnapshot(snapshot, for: provider)
         }
@@ -726,10 +726,13 @@ final class ProviderQuotaService {
         Analytics.shared.track(.quotaRefreshStarted, ["provider_name": .string(provider.rawValue)])
 
         do {
-            let context = makeContext(dataStore: dataStore)
+            let context = makeContext()
             let snapshot = try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
             upsertSnapshot(snapshot, for: provider)
-            let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: provider, dataStoreActor: dataStore.actor)
+            let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(
+                for: provider,
+                switcherProfileFetcher: makeSwitcherProfileFetcher(dataStore: dataStore)
+            )
             replaceAccountSnapshots(
                 accountSnapshots,
                 pruningManagedAccountSnapshotsFor: [provider]
@@ -784,10 +787,13 @@ final class ProviderQuotaService {
         defer { activeProviders.remove(.claudeCode) }
 
         do {
-            let context = makeContext(dataStore: dataStore)
+            let context = makeContext()
             let snapshot = try await quotaRefreshActor.fetchSnapshot(for: .claudeCode, context: context)
             upsertSnapshot(snapshot, for: .claudeCode)
-            let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: .claudeCode, dataStoreActor: dataStore.actor)
+            let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(
+                for: .claudeCode,
+                switcherProfileFetcher: makeSwitcherProfileFetcher(dataStore: dataStore)
+            )
             replaceAccountSnapshots(
                 accountSnapshots,
                 pruningManagedAccountSnapshotsFor: [.claudeCode]
@@ -825,8 +831,7 @@ final class ProviderQuotaService {
     ) async throws -> ProviderQuotaSnapshot {
         switch provider {
         case .minimax, .zai, .deepSeek, .copilot, .ollama, .kimi:
-            let scratchDataStore = try makeScratchDataStore()
-            let context = makeContext(dataStore: scratchDataStore, apiKeyOverrides: [provider: apiKeyOverride])
+            let context = makeContext(apiKeyOverrides: [provider: apiKeyOverride])
             return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
         default:
             return ProviderQuotaSnapshot(
@@ -1066,17 +1071,7 @@ final class ProviderQuotaService {
         return snapshot?.confidence == .unavailable ? .unknown : .healthy
     }
 
-    private func makeScratchDataStore() throws -> DataStore {
-        let queue = try DatabaseQueue()
-        return try DataStore(
-            databaseQueue: queue,
-            runMigrations: true,
-            refreshOnInit: false
-        )
-    }
-
     private func makeContext(
-        dataStore: DataStore,
         apiKeyOverrides: [AgentProvider: String] = [:]
     ) -> ProviderQuotaAdapterContext {
         var resolvedKeys: [String: String?] = [:]
@@ -1103,7 +1098,6 @@ final class ProviderQuotaService {
             session: session,
             environment: environment,
             homeDirectoryURL: homeDirectoryURL,
-            dataStoreActor: dataStore.actor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
             miniMaxMode: miniMaxModeProvider(),
@@ -1122,6 +1116,17 @@ final class ProviderQuotaService {
             claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedKeys
         )
+    }
+
+    private func makeSwitcherProfileFetcher(dataStore: DataStore) -> ProviderQuotaSwitcherProfileFetcher {
+        { [weak dataStore] in
+            guard let dataStore else { return [] }
+            do {
+                return try await dataStore.fetchSwitcherProfilesForQuota()
+            } catch {
+                return []
+            }
+        }
     }
 
     private func providerQuotaAPIKey(for provider: AgentProvider) -> String? {

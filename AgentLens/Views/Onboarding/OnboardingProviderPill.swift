@@ -40,6 +40,8 @@ struct OnboardingProviderPill: View {
                         .fill(DesignSystem.Colors.success)
                         .frame(width: 6, height: 6)
                         .offset(x: -2, y: 2)
+                        .help("Detected on this Mac")
+                        .accessibilityHidden(true)
                 }
             }
             .scaleEffect(isSelected ? 1.03 : 1.0)
@@ -48,6 +50,10 @@ struct OnboardingProviderPill: View {
             .animation(DesignSystem.Animation.hover, value: isHovered)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(provider.displayName))
+        .accessibilityValue(Text(isSelected ? "Selected" : "Not selected"))
+        .accessibilityHint(Text(isDetected ? "Detected on this Mac. Double-tap to toggle." : "Double-tap to toggle."))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             isHovered = hovering
         }

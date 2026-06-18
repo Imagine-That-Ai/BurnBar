@@ -61,7 +61,7 @@ scripts/commercial-launch-gate.mjs
 ```
 
 The gate reads live App Store Connect state, App Store Server Notifications
-sandbox delivery, Firestore App Check enforcement, branch protection requiring
+sandbox delivery, Firestore and Storage App Check enforcement, branch protection requiring
 `openburnbar-pr` plus all CodeQL analysis jobs, the required `openburnbar-pr`
 check on `origin/main`, the three CodeQL analysis jobs for the exact
 `origin/main` commit, GitHub security settings and open security alerts, the

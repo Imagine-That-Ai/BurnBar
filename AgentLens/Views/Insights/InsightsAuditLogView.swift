@@ -53,25 +53,25 @@ struct InsightsAuditLogView: View {
         if isLoading {
             VStack {
                 ProgressView()
-                Text("Loading…").font(.caption).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let loadError {
-            VStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(UnifiedDesignSystem.Colors.error)
-                Text(loadError).font(.caption)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if entries.isEmpty {
-            VStack(spacing: 6) {
-                Image(systemName: "tray")
-                    .font(.system(size: 24))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                Text("No investigations yet.")
+                    .controlSize(.small)
+                Text("Loading audit log…")
                     .font(UnifiedDesignSystem.Typography.caption)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let loadError {
+            ContentUnavailableView {
+                Label("Couldn’t load audit log", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(loadError)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if entries.isEmpty {
+            ContentUnavailableView(
+                "No investigations yet",
+                systemImage: "tray",
+                description: Text("Investigations you run will be logged here for audit.")
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Table(entries) {

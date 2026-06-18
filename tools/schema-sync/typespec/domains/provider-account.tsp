@@ -4,15 +4,39 @@
  */
 namespace OpenBurnBar.Firestore.ProviderAccount;
 
+union ProviderAccountStatus {
+  connected: "connected",
+  disconnected: "disconnected",
+  stale: "stale",
+  error: "error",
+  disabled: "disabled",
+  deleted: "deleted",
+}
+
+union CredentialKind {
+  token: "token",
+  bearer: "bearer",
+  session: "session",
+  cookie: "cookie",
+  plan: "plan",
+}
+
+union ProviderAccountStorageScope {
+  cloudRefreshable: "cloud_refreshable",
+  localOnly: "local_only",
+  deviceKeychain: "device_keychain",
+  serverPrivate: "server_private",
+}
+
 /** Firestore: users/{uid}/provider_accounts/{accountID} */
 model ProviderAccountDoc {
   id: string;
   providerID: string;
   label: string;
   identityHint?: string;
-  status: string;
-  credentialKind: string;
-  storageScope: string;
+  status: ProviderAccountStatus;
+  credentialKind: CredentialKind;
+  storageScope: ProviderAccountStorageScope;
   redactedLabel: string;
   sourceDeviceID?: string;
   linkedSwitcherProfileID?: string;

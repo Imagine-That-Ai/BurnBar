@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import OpenBurnBarCore
 
 // MARK: - Quota Refresh Actor
@@ -8,6 +7,8 @@ struct ProviderQuotaRefreshBatch {
     let providerSnapshots: [AgentProvider: ProviderQuotaSnapshot]
     let accountSnapshots: [String: ProviderQuotaSnapshot]
 }
+
+typealias ProviderQuotaSwitcherProfileFetcher = @Sendable () async -> [SwitcherProfileRecord]
 
 private struct ProviderQuotaAccountCredential: Sendable {
     let provider: AgentProvider
@@ -122,8 +123,10 @@ actor QuotaRefreshActor {
         return try await adapter.fetch(context: context)
     }
 
-    func fetchAllSnapshots(dataStoreActor: DataStoreActor) async -> ProviderQuotaRefreshBatch {
-        let context = await makeContext(dataStoreActor: dataStoreActor)
+    func fetchAllSnapshots(
+        switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher
+    ) async -> ProviderQuotaRefreshBatch {
+        let context = await makeContext()
         let providerSnapshots = await fetchProviderSnapshots(for: refreshProviders, context: context)
         var accountSnapshots = await fetchAccountSnapshots(
             using: context,
@@ -131,7 +134,8 @@ actor QuotaRefreshActor {
         )
         let switcherSnapshots = await fetchSwitcherProfileSnapshots(
             using: context,
-            providers: Set(refreshProviders)
+            providers: Set(refreshProviders),
+            switcherProfileFetcher: switcherProfileFetcher
         )
         accountSnapshots.merge(switcherSnapshots) { _, replacement in replacement }
         return ProviderQuotaRefreshBatch(
@@ -142,22 +146,23 @@ actor QuotaRefreshActor {
 
     func fetchAccountSnapshots(
         for provider: AgentProvider,
-        dataStoreActor: DataStoreActor
+        switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher
     ) async -> [String: ProviderQuotaSnapshot] {
-        let context = await makeContext(dataStoreActor: dataStoreActor)
+        let context = await makeContext()
         var snapshots = await fetchAccountSnapshots(
             using: context,
             providers: [provider]
         )
         let switcherSnapshots = await fetchSwitcherProfileSnapshots(
             using: context,
-            providers: [provider]
+            providers: [provider],
+            switcherProfileFetcher: switcherProfileFetcher
         )
         snapshots.merge(switcherSnapshots) { _, replacement in replacement }
         return snapshots
     }
 
-    private func makeContext(dataStoreActor: DataStoreActor) async -> ProviderQuotaAdapterContext {
+    private func makeContext() async -> ProviderQuotaAdapterContext {
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         let bridgeManager = ClaudeQuotaBridgeManager(
             appPaths: appPaths,
@@ -184,7 +189,6 @@ actor QuotaRefreshActor {
             session: session,
             environment: environment,
             homeDirectoryURL: homeDirectoryURL,
-            dataStoreActor: dataStoreActor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
             miniMaxMode: plan.miniMaxMode,
@@ -373,10 +377,11 @@ actor QuotaRefreshActor {
 
     private func fetchSwitcherProfileSnapshots(
         using context: ProviderQuotaAdapterContext,
-        providers: Set<AgentProvider>
+        providers: Set<AgentProvider>,
+        switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher
     ) async -> [String: ProviderQuotaSnapshot] {
         let profiles = resolveSwitcherCLIQuotaProfiles(
-            dataStoreActor: context.dataStoreActor,
+            profiles: await switcherProfileFetcher(),
             homeDirectoryURL: context.homeDirectoryURL
         )
             .filter { providers.contains($0.provider) }
@@ -605,11 +610,9 @@ private func resolveDaemonAccountCredentials(
 }
 
 private func resolveSwitcherCLIQuotaProfiles(
-    dataStoreActor: DataStoreActor,
+    profiles: [SwitcherProfileRecord],
     homeDirectoryURL: URL
 ) -> [SwitcherCLIQuotaProfile] {
-    let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? [] // try?-ok(skip profile-store read)
-
     return profiles.compactMap { profile in
         guard profile.targetKind == .cli,
               !profile.isDisabled,

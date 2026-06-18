@@ -12,6 +12,10 @@ import AppKit
 extension ChatSessionController {
 
     func openHistoryThread(_ threadID: String) {
+        Task { await openHistoryThreadAsync(threadID) }
+    }
+
+    func openHistoryThreadAsync(_ threadID: String) async {
         guard threadID != activeThreadID else { return }
 
         streamTask?.cancel()
@@ -26,12 +30,15 @@ extension ChatSessionController {
 
         activeThreadID = threadID
         persistActiveThreadSlot()
+        let fetchedMessages: [ChatMessageRecord]
         do {
-            messages = try dataStore.fetchChatMessages(threadID: threadID)
+            fetchedMessages = try await dataStore.fetchChatMessages(threadID: threadID)
         } catch {
             AppLogger.chat.silentFailure("fetchChatMessages (openHistory)", error: error)
-            messages = []
+            fetchedMessages = []
         }
+        guard activeThreadID == threadID else { return }
+        messages = fetchedMessages
         firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
         ensureChatWorkspaceDirectoryExists()
     }

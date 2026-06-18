@@ -19,8 +19,8 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
     /// Fetches the persisted messages for one thread. A throwing seam so a DB read
     /// failure surfaces as an error (fail-closed) instead of an empty-thread masquerade.
     /// `@Sendable` so the genuinely-`Sendable` service can store it; the production
-    /// default reads `DataStore`'s `nonisolated` accessor through the Sendable context.
-    typealias ChatMessageFetcher = @Sendable (_ threadID: String) throws -> [ChatMessageRecord]
+    /// default reads `DataStore` through the actor-isolated async accessor.
+    typealias ChatMessageFetcher = @Sendable (_ threadID: String) async throws -> [ChatMessageRecord]
 
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
@@ -40,7 +40,7 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
         self.context = context
         self.vaultKeyProvider = vaultKeyProvider
         self.messageFetcher = messageFetcher ?? { threadID in
-            try context.dataStore.fetchChatMessages(threadID: threadID)
+            try await context.dataStore.fetchChatMessages(threadID: threadID)
         }
     }
 
@@ -99,7 +99,7 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
                 let messages: [ChatMessageRecord]
                 if includeContent {
                     do {
-                        messages = try messageFetcher(thread.id)
+                        messages = try await messageFetcher(thread.id)
                     } catch {
                         AppLogger.sync.error(
                             "chat_thread_message_fetch_failed_skipping_thread",

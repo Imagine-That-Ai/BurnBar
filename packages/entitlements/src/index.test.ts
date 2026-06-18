@@ -15,6 +15,7 @@ import {
   LEGACY_PRODUCT_IDS,
   MEDIA_PRODUCT_IDS,
   PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
+  WAND_PARALLEL_CAPS,
   entitlementExpiryMillis,
   evaluateEntitlement,
   isActiveEntitlement,
@@ -93,6 +94,10 @@ test("firestore.rules allowlists are composed from the canonical constants", () 
 
 test("entitlement document IDs match the canonical fixture", () => {
   assert.deepEqual({ ...ENTITLEMENT_DOC_IDS }, fixture.entitlementDocIds);
+});
+
+test("Wand parallel caps expose the canonical public tier ladder", () => {
+  assert.deepEqual({ ...WAND_PARALLEL_CAPS }, { free: 1, cloud: 3, pro: 8, ultra: 16 });
 });
 
 test("default catalog is assembled from the canonical product-ID constants", () => {

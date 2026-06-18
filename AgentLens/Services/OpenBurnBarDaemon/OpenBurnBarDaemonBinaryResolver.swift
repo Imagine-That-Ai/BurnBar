@@ -66,4 +66,51 @@ enum OpenBurnBarDaemonBinaryResolver {
         }
         return candidates.first { fileManager.fileExists(atPath: $0.path) }
     }
+
+    static func resolveProjectCodeMemorySecretCorpus(
+        nearBinaryURL: URL,
+        appBundleURL: URL,
+        fileManager: FileManager
+    ) -> URL? {
+        let binaryDirectory = nearBinaryURL.deletingLastPathComponent()
+        let appParent = appBundleURL.deletingLastPathComponent()
+        let resourceDirectoryName = OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName
+        let fileName = OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName
+
+        let bases = [
+            binaryDirectory,
+            binaryDirectory.appendingPathComponent("Resources", isDirectory: true),
+            appBundleURL.appendingPathComponent("Contents/Resources", isDirectory: true),
+            appParent,
+            appParent.appendingPathComponent("Resources", isDirectory: true),
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true),
+            URL(fileURLWithPath: #filePath, isDirectory: false).deletingLastPathComponent()
+        ]
+
+        var candidates: [URL] = []
+        for base in bases {
+            var cursor = base.standardizedFileURL
+            for _ in 0..<8 {
+                candidates.append(cursor.appendingPathComponent(fileName, isDirectory: false))
+                candidates.append(
+                    cursor
+                        .appendingPathComponent(resourceDirectoryName, isDirectory: true)
+                        .appendingPathComponent(fileName, isDirectory: false)
+                )
+                candidates.append(
+                    cursor
+                        .appendingPathComponent("tools", isDirectory: true)
+                        .appendingPathComponent("project-code-memory", isDirectory: true)
+                        .appendingPathComponent(fileName, isDirectory: false)
+                )
+                let parent = cursor.deletingLastPathComponent()
+                if parent.path == cursor.path {
+                    break
+                }
+                cursor = parent
+            }
+        }
+
+        return candidates.first { fileManager.fileExists(atPath: $0.path) }
+    }
 }

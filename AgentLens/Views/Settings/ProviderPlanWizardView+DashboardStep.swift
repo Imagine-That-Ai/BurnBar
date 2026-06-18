@@ -129,19 +129,10 @@ extension ProviderPlanWizardView {
 
     @ViewBuilder
     var emptyDaemonNotice: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
-            Image(systemName: "exclamationmark.bubble")
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(DesignSystem.Colors.warning)
-
-            Text("Daemon not ready")
-                .font(DesignSystem.Typography.headline)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-
+        ContentUnavailableView {
+            Label("Daemon not ready", systemImage: "exclamationmark.bubble")
+        } description: {
             Text("OpenBurnBar's daemon hasn't returned a provider list yet. Make sure it's installed and running.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(DesignSystem.Spacing.xl)
@@ -157,7 +148,7 @@ extension ProviderPlanWizardView {
     func errorCallout(_ message: String) -> some View {
         HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11, weight: .semibold))
+                .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.warning)
                 .padding(.top, 1)
             Text(message)
@@ -184,7 +175,7 @@ extension ProviderPlanWizardView {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack(spacing: DesignSystem.Spacing.md) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                         .fill(gradient)
                         .frame(width: 56, height: 56)
                     CatalogProviderLogoView(brand: provider.brand, size: 36)

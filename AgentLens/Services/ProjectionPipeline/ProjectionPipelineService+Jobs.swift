@@ -196,7 +196,7 @@ extension ProjectionPipelineService {
             return
         }
 
-        let hasConversations = (try dataStore.fetchConversations(limit: 1).isEmpty == false)
+        let hasConversations = (try await dataStore.fetchConversations(limit: 1).isEmpty == false)
         let hasArtifacts = (
             try await dataStore.fetchSourceArtifacts(
                 includeDeleted: false,
@@ -244,7 +244,7 @@ extension ProjectionPipelineService {
                 continue
             }
 
-            let conversations = try dataStore.fetchConversations(ids: sourceIDs)
+            let conversations = try await dataStore.fetchConversations(ids: sourceIDs)
             let conversationsByID = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
             for document in indexedDocuments {

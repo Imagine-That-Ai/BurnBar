@@ -99,6 +99,7 @@ struct QuotaArcDial: View {
                 .padding(2)
                 .rotationEffect(.degrees(-90))
                 .shadow(color: pressureColor(for: fraction).opacity(0.22), radius: 6, y: 0)
+                .animation(DesignSystem.Animation.gentle, value: fraction)
         } else {
             Circle()
                 .stroke(
@@ -132,6 +133,7 @@ struct QuotaArcDial: View {
                 .padding(20)
                 .rotationEffect(.degrees(-90))
                 .shadow(color: pressureColor(for: fraction).opacity(0.20), radius: 4, y: 0)
+                .animation(DesignSystem.Animation.gentle, value: fraction)
         } else {
             Circle()
                 .stroke(
@@ -178,7 +180,7 @@ struct QuotaArcDial: View {
     private var centerLabel: some View {
         VStack(spacing: 2) {
             Text(centerText)
-                .font(.system(size: 30, weight: .bold, design: .monospaced))
+                .font(DesignSystem.Typography.monoLarge)
                 .monospacedDigit()
                 .foregroundStyle(centerForeground)
                 .contentTransition(.numericText())

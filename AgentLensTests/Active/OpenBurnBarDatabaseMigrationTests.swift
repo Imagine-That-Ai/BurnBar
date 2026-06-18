@@ -68,16 +68,16 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
     /// The backup gate derives the "latest migration" from the migrator, so the
     /// last registered migration must be exactly what the gate compares against.
-    /// This is the regression guard for the stale-`v45`-constant bug.
+    /// This is the regression guard for stale latest-migration constants.
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v49_token_usage_parent_request_id",
+            "v50_project_code_memory_schema",
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }
 
-    /// A database genuinely at v46 upgrading to v47 must take a pre-migration
+    /// A database genuinely behind the latest migration must take a pre-migration
     /// backup. With the old hardcoded `latestMigrationIdentifier` constant, the
     /// gate saw the prior version already applied and skipped the backup entirely
     /// — this test fails on that code and passes once the identifier is
@@ -91,8 +91,8 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let dbPath = tempDir.appendingPathComponent("test.sqlite").path
         let queue = try DatabaseQueue(path: dbPath)
 
-        // Bring the database genuinely to v46 — the migration immediately before
-        // the latest — so the safe-migration gate must detect v47 as pending.
+        // Bring the database to an older real schema version so the
+        // safe-migration gate must detect later migrations as pending.
         try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v46_drain_target_per_provider")
 
         let database = OpenBurnBarDatabase(databaseQueue: queue)
@@ -100,15 +100,15 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let contents = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
         let backups = contents.filter { $0.contains(".backup.") }
-        XCTAssertEqual(backups.count, 1, "Upgrading v46→v47 must take exactly one pre-migration backup, got: \(backups)")
+        XCTAssertEqual(backups.count, 1, "Upgrading an older file database must take exactly one pre-migration backup, got: \(backups)")
 
         // And the upgrade actually completed through the latest migration.
         let applied = try await queue.read { db in
             try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations")
         }
         XCTAssertTrue(
-            applied.contains("v47_conversation_tombstones"),
-            "runMigrationsSafely must apply the pending v47 migration after backing up."
+            applied.contains("v50_project_code_memory_schema"),
+            "runMigrationsSafely must apply migrations through the latest schema after backing up."
         )
     }
 
@@ -182,7 +182,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             workingDirectory: nil,
             fileModifiedAt: Date(timeIntervalSince1970: 40)
         )
-        try ConversationStore(dbQueue: queue).upsertConversation(conversation)
+        try await ConversationStore(dbQueue: queue).upsertConversation(conversation)
 
         await WorkingDirectoryBackfillService(batchSize: 1).runIfNeeded(database: database)
 

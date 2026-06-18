@@ -463,7 +463,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             )
         ]
         for conversation in conversations {
-            try store.upsertConversation(conversation)
+            try await store.upsertConversation(conversation)
         }
 
         let conversationDocument = SearchDocumentRecord(

@@ -76,7 +76,7 @@ struct UpdateBannerCard: View {
     @ViewBuilder
     private func header(phase: UpdatePhase, channel: UpdateChannel) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            iconDisc(systemName: icon(for: phase), gradient: iconGradient(for: phase))
+            iconDisc(systemName: icon(for: phase), gradient: iconGradient(for: phase), phase: phase)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title(for: phase, channel: channel))
@@ -100,13 +100,17 @@ struct UpdateBannerCard: View {
         }
     }
 
-    private func iconDisc(systemName: String, gradient: LinearGradient) -> some View {
-        Image(systemName: systemName)
+    private func iconDisc(systemName: String, gradient: LinearGradient, phase: UpdatePhase) -> some View {
+        let accent: Color = {
+            if case .failed = phase { return DesignSystem.Colors.error }
+            return DesignSystem.Colors.ember
+        }()
+        return Image(systemName: systemName)
             .font(.system(size: compact ? 13 : 15, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: compact ? 26 : 30, height: compact ? 26 : 30)
             .background(Circle().fill(gradient))
-            .shadow(color: DesignSystem.Colors.ember.opacity(0.3), radius: 4, y: 1)
+            .shadow(color: accent.opacity(0.3), radius: DesignSystem.Shadows.small.radius, y: 1)
     }
 
     private func versionPill(_ text: String) -> some View {

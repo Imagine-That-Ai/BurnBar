@@ -20,6 +20,38 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 
 ---
 
+## Software factory PR loop
+
+BurnBar uses a software-factory PR loop to remove CI/review babysitting, not to launder sloppy work into `main`.
+
+Portable prompt and machine setup notes live in [`docs/SOFTWARE_FACTORY_PR_LOOP.md`](docs/SOFTWARE_FACTORY_PR_LOOP.md).
+
+The rule is not "always make tiny PRs." The rule is: ship the smallest reviewable coherent unit, with enough evidence for an independent reviewer to make a real decision.
+
+Use the right lane:
+
+- **Fast lane:** mechanical, dependency, lint, doc, small bug, or narrow feature work. Run cheap relevant checks, open a clear PR, request/label factory review, then move on.
+- **Structured large lane:** genuinely atomic cross-cutting work where splitting would make review or validation worse. Large PRs are allowed, but the PR body must include a review map, major areas touched, invariants preserved, validation matrix, known risks, and rollback/containment notes.
+- **Spike lane:** exploratory or uncertain work. Open as draft, state what is being learned, list exit criteria for becoming review-ready, and do not ask the factory to merge it.
+- **Reject lane:** known-broken, vague, mixed-goal, or mystery work. Do not hand this to the factory as a normal PR. Either keep working, split it, or mark it draft with a named blocker.
+
+When a task needs code changes, agents should:
+
+1. Finish the smallest reviewable coherent unit. This can be large when the change is genuinely atomic, but avoid vague mega-PRs that mix unrelated goals.
+2. Run the cheapest relevant local checks for the touched area.
+3. Commit the work.
+4. Push a branch and open a clear PR.
+5. Include what changed, why it changed, validation run, and known risks/blockers in the PR body. For large PRs, include a review map: major areas touched, intended order to inspect them, validation matrix, and rollback or containment notes.
+6. Request or label the PR for the factory review loop, then keep moving unless the user asked you to babysit CI.
+
+The factory handles review, small fix loops, CI waiting, re-review, merge, close, and named blockers. It should leave every selected PR in exactly one state: `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`.
+
+Do **not** dump known-broken work into the factory. Do **not** open vague mega-PRs and expect automation to discover the intent. Big PRs are acceptable only when they are coherent, well-mapped, and validated enough for an independent reviewer to reason about them. If cheap local checks fail, fix them before PR unless the failure is environmental and documented in the PR body. Do **not** treat Cursor Approval Agent output as approval evidence. Cursor/Bugbot/Cloud Agent may implement scoped fixes; Codex is the independent reviewer and approval gate; GitHub branch protection is the mechanical merge gate.
+
+Use the factory for velocity with safety: good attempts go in, finished outcomes come out.
+
+---
+
 ## Repo knowledge lives in mem0 - query it first
 
 Search the BurnBar mem0 project before reading a wiki page or scanning `docs/`. The canonical Droid wiki (`droid-wiki/`) is mirrored there verbatim as retrievable chunks, refreshed on every commit, so a query returns the exact paragraph a task needs: subsystem architecture, data schemas, the RPC surface, feature internals, Computer Use phases, and the glossary instead of a whole page.

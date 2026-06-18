@@ -201,7 +201,9 @@ private func loadPixels(_ name: String) -> PixelImage? {
     var px = [UInt8](repeating: 0, count: w * h * 4)
     let ok: Bool = px.withUnsafeMutableBytes { ptr in
         guard let ctx = CGContext(data: ptr.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-        ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1) // top-left origin
+        // A CGBitmapContext row 0 maps to the image's top row here. Keep the
+        // buffer top-left origin so sampled launch glyphs are not vertically
+        // inverted when SwiftUI Canvas draws positive Y downward.
         ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
         return true
     }
@@ -215,6 +217,37 @@ private struct GDot { let p: CGPoint; let r: Double; let g: Double; let b: Doubl
 private struct Glyph { var pos: CGPoint; var vel: CGVector; var prov: Int; var baseProv: Int; var flash: Double; var formT: Double; var seed: UInt64; var lastSwapT: Double }
 
 private let glyphStartT = 3.35
+
+enum BurnBarLogoFormationGeometry {
+    static func providerGlyphPoint(gx: Int, gy: Int, grid: Int) -> CGPoint {
+        let denominator = Double(max(grid - 1, 1))
+        return CGPoint(
+            x: Double(gx) / denominator - 0.5,
+            y: Double(gy) / denominator - 0.5
+        )
+    }
+}
+
+enum BurnBarLogoFormationColor {
+    /// Boosts saturation while preserving hue so provider marks keep their
+    /// recognizable brand color against the dark launch cube.
+    static func vibrantProviderGlyphRGB(
+        r: Double,
+        g: Double,
+        b: Double,
+        saturation: Double = 1.5
+    ) -> (r: Double, g: Double, b: Double) {
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        let rr = luminance + (r - luminance) * saturation
+        let gg = luminance + (g - luminance) * saturation
+        let bb = luminance + (b - luminance) * saturation
+        return (
+            min(max(rr, 0), 1),
+            min(max(gg, 0), 1),
+            min(max(bb, 0), 1)
+        )
+    }
+}
 
 private func sampleDots(_ logoName: String) -> [Dot] {
     guard let img = loadPixels(logoName) else { return [] }
@@ -277,9 +310,8 @@ private func sampleDots(_ logoName: String) -> [Dot] {
     return dots
 }
 
-private func sampleGlyphDots(_ name: String, maxDots: Int = 96) -> [GDot] {
+private func sampleGlyphDots(_ name: String, grid: Int = 28, maxDots: Int = 96) -> [GDot] {
     guard let img = loadPixels(name) else { return [] }
-    let grid = 28
     var dots: [GDot] = []
     for gy in 0 ..< grid {
         for gx in 0 ..< grid {
@@ -288,9 +320,7 @@ private func sampleGlyphDots(_ name: String, maxDots: Int = 96) -> [GDot] {
             let (r, g, b, a) = img.sample(px, py)
             guard a >= 0.45 else { continue }
             let (br, bg, bb) = brightenedBrandColor(RGBA(r: r, g: g, b: b, a: a))
-            let nx = (Double(gx) + 0.5) / Double(grid) - 0.5
-            let ny = 0.5 - (Double(gy) + 0.5) / Double(grid)
-            dots.append(GDot(p: CGPoint(x: nx, y: ny), r: br, g: bg, b: bb))
+            dots.append(GDot(p: BurnBarLogoFormationGeometry.providerGlyphPoint(gx: gx, gy: gy, grid: grid), r: br, g: bg, b: bb))
         }
     }
     guard dots.count > maxDots else { return dots }

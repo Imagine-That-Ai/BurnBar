@@ -73,6 +73,8 @@ private struct SmartDisplayCardLabel: View {
     let title: String
     let subtitle: String
 
+    @State private var isHovered = false
+
     var body: some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
             VStack(alignment: .leading, spacing: 2) {
@@ -87,8 +89,11 @@ private struct SmartDisplayCardLabel: View {
             Spacer(minLength: 0)
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(isHovered ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
                 .accessibilityLabel("Drag handle. Click and hold to move this display.")
+                .help("Click and hold to reorder this display")
+                .onHover { isHovered = $0 }
+                .animation(DesignSystem.Animation.hover, value: isHovered)
         }
         .padding(.horizontal, DesignSystem.Spacing.xs)
         .padding(.bottom, DesignSystem.Spacing.xs)

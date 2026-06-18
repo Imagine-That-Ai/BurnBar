@@ -258,7 +258,7 @@ struct DefaultViewSettingsDetailView: View {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     HStack {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
                             Text("Time Range")
                                 .font(DesignSystem.Typography.body)
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -283,10 +283,12 @@ struct DefaultViewSettingsDetailView: View {
                     }
                     .settingsAnchor(SettingsAnchor.defaultsTimeRange)
 
-                    Divider().background(DesignSystem.Colors.border)
+                    Rectangle()
+                        .fill(DesignSystem.Colors.borderSubtle)
+                        .frame(height: 0.5)
 
                     HStack {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
                             Text("Usage Display")
                                 .font(DesignSystem.Typography.body)
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -329,7 +331,7 @@ struct DataRefreshSettingsDetailView: View {
         ) {
             GlassCard {
                 HStack {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
                         Text("Refresh Interval")
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -458,7 +460,7 @@ struct QuotaCustomizationSettingsDetailView: View {
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                             .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, 3)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
                             .background(DesignSystem.Colors.surfaceElevated)
                             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm))
                     }
@@ -557,7 +559,7 @@ struct QuotaCustomizationSettingsDetailView: View {
                     moveProviderUp(provider)
                 } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Typography.tiny)
                 }
                 .buttonStyle(.borderless)
                 .disabled(provider == quotas.providerOrder.first)
@@ -566,7 +568,7 @@ struct QuotaCustomizationSettingsDetailView: View {
                     moveProviderDown(provider)
                 } label: {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Typography.tiny)
                 }
                 .buttonStyle(.borderless)
                 .disabled(provider == quotas.providerOrder.last)
@@ -627,7 +629,7 @@ struct QuotaCustomizationSettingsDetailView: View {
                             moveBucketUp(provider: provider, bucketKey: bucket.key, buckets: buckets)
                         } label: {
                             Image(systemName: "chevron.up")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(DesignSystem.Typography.tiny)
                         }
                         .buttonStyle(.borderless)
                         .disabled(bucket.key == buckets.first?.key)
@@ -636,7 +638,7 @@ struct QuotaCustomizationSettingsDetailView: View {
                             moveBucketDown(provider: provider, bucketKey: bucket.key, buckets: buckets)
                         } label: {
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(DesignSystem.Typography.tiny)
                         }
                         .buttonStyle(.borderless)
                         .disabled(bucket.key == buckets.last?.key)

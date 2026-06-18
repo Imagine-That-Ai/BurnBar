@@ -172,8 +172,8 @@ extension ConversationStore {
             }
         }
 
-        func fetchChatMessages(threadID: String? = nil) throws -> [ChatMessageRecord] {
-            try dbQueue.read { db in
+        func fetchChatMessages(threadID: String? = nil) async throws -> [ChatMessageRecord] {
+            try await dbQueue.read { db in
                 let rows: [Row]
                 if let threadID {
                     rows = try Row.fetchAll(

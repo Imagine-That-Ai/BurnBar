@@ -54,6 +54,7 @@ export const AUTH_ONLY_CALLABLES = [
   "seedAndroidDemoAccount",
   "backfillProviderAccountDeviceLinks",
   "backfillPrivacyPlaintext",
+  "scanLegacyPlaintextArtifacts",
   "getProfileAvatarDownloadUrl",
 ] as const;
 

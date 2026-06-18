@@ -126,6 +126,14 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         await manager.installAndStart()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: harness.paths.installedBinaryURL.path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: harness.paths.daemonDirectory
+                    .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
+                    .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
+                    .path
+            )
+        )
         XCTAssertTrue(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
         XCTAssertTrue(
             launchctlCalls.contains(where: { $0.starts(with: ["bootstrap", "gui/\(getuid())"]) })
@@ -386,6 +394,14 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             try Data(contentsOf: sourceBinaryURL)
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: harness.paths.daemonDirectory.appendingPathComponent(OpenBurnBarDaemonManager.resourceBundleName).path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: harness.paths.daemonDirectory
+                    .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
+                    .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
+                    .path
+            )
+        )
         XCTAssertTrue(
             launchctlCalls.contains(where: { $0.starts(with: ["kickstart", "-k", "gui/\(getuid())/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"]) })
         )
@@ -767,7 +783,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                 endTime: now.addingTimeInterval(-1_200)
             )
         ])
-        try store.upsertConversation(
+        try await store.upsertConversation(
             ConversationRecord(
                 id: "conversation-apollo",
                 provider: .zai,
@@ -1172,6 +1188,33 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(resolved?.standardizedFileURL, resourcesBundleURL.standardizedFileURL)
+    }
+
+    func test_projectCodeMemoryCorpusResolverFindsBundledAppResource() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BurnBarDaemonCorpusResolver-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let productsURL = rootURL.appendingPathComponent("Build/Products/Debug", isDirectory: true)
+        let daemonURL = productsURL.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        let appResourcesURL = productsURL
+            .appendingPathComponent("OpenBurnBar.app/Contents/Resources", isDirectory: true)
+        let corpusURL = appResourcesURL
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
+            .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
+        let fakeAppBundleURL = productsURL.appendingPathComponent("OpenBurnBar.app", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: corpusURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "#!/bin/sh\nexit 0\n".write(to: daemonURL, atomically: true, encoding: .utf8)
+        try #"{"version":"test","patterns":[]}"#.write(to: corpusURL, atomically: true, encoding: .utf8)
+
+        let resolved = OpenBurnBarDaemonBinaryResolver.resolveProjectCodeMemorySecretCorpus(
+            nearBinaryURL: daemonURL,
+            appBundleURL: fakeAppBundleURL,
+            fileManager: .default
+        )
+
+        XCTAssertEqual(resolved?.standardizedFileURL, corpusURL.standardizedFileURL)
     }
 }
 

@@ -56,6 +56,7 @@ import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxStore
+import com.openburnbar.ui.pro.CloudTier
 
 // MARK: - Hermes Square Root (Android composable, Hermes Square §3 / §6.2)
 //
@@ -71,11 +72,13 @@ import com.openburnbar.data.square.ThreadInboxStore
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HermesSquareScreen(
+    currentTier: CloudTier = CloudTier.NONE,
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
     onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
 ) {
     HermesSquareScreenContent(
+        currentTier = currentTier,
         onOpenLegacyRuntime = onOpenLegacyRuntime,
         onOpenBrandZone = onOpenBrandZone,
         onOpenPairedMac = onOpenPairedMac,

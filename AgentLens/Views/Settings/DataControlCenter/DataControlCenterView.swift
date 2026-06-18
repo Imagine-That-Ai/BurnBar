@@ -124,11 +124,12 @@ struct DataControlCenterView: View {
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 1) {
                 Text(row.title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.medium)
                     .lineLimit(1)
                 if row.hasRecords {
                     Text("\(row.count) records")
-                        .font(.system(size: 10))
+                        .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
             }
@@ -145,7 +146,8 @@ struct DataControlCenterView: View {
                 Image(systemName: tierIcon)
                     .foregroundStyle(PensieveTheme.brassCore)
                 Text(tierSummary)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
             .padding(.horizontal, 12)
@@ -286,25 +288,25 @@ struct DataControlCenterView: View {
     }
 
     private var emptyInspector: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "hand.tap")
-                .font(.system(size: 26))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text("Select a data domain to inspect it.")
-                .font(.system(size: 13))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-        }
+        ContentUnavailableView(
+            "No domain selected",
+            systemImage: "hand.tap",
+            description: Text("Select a data domain to inspect its footprint and actions.")
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func errorBanner(_ message: String) -> some View {
         Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(.system(size: 12))
+            .font(DesignSystem.Typography.caption)
             .foregroundStyle(DesignSystem.Colors.warning)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(DesignSystem.Colors.warning.opacity(0.1))
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.warning.opacity(0.1))
+            )
     }
 
     // MARK: Toolbar

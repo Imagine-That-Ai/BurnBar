@@ -29,6 +29,7 @@ struct ChatMinimizedPill: View {
                         .lineLimit(1).truncationMode(.tail).frame(maxWidth: 160)
                 }
                 Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 9, weight: .bold)).foregroundStyle(DesignSystem.Colors.textMuted)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, DesignSystem.Spacing.md).padding(.vertical, DesignSystem.Spacing.sm)
             .background {
@@ -42,16 +43,18 @@ struct ChatMinimizedPill: View {
                         .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
                 } else {
                     ZStack {
+                        Capsule(style: .continuous).fill(.ultraThinMaterial)
                         Capsule(style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.55))
                     }
                 }
             }
-            .liquidGlassInteractive(in: Capsule(style: .continuous), fallback: .ultraThinMaterial)
             .clipShape(Capsule(style: .continuous))
             .overlay(Capsule(style: .continuous).strokeBorder(LinearGradient(colors: [modeColor.opacity(0.5), DesignSystem.Colors.border.opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.75))
             .shadow(color: Color.black.opacity(0.15), radius: 12, y: 6)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Expand chat")
+        .accessibilityHint(controller.isStreaming ? "Assistant is responding" : "Returns to the full chat panel")
         .highPriorityGesture(
             DragGesture(minimumDistance: 6)
                 .onChanged { g in

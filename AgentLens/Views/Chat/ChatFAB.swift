@@ -31,6 +31,7 @@ struct ChatFAB: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                        .symbolEffect(.pulse, options: .repeating, isActive: hasNewInsights)
                 }
 
                 if hasNewInsights {
@@ -41,8 +42,12 @@ struct ChatFAB: View {
                         .shadow(color: DesignSystem.Colors.amber.opacity(0.7), radius: 4)
                 }
             }
+            .accessibilityHidden(true)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Open chat")
+        .accessibilityHint(hasNewInsights ? "New insights available" : "Opens the chat panel")
+        .accessibilityAddTraits(.isButton)
         .scaleEffect(appeared ? 1 : 0.001)
         .animation(.spring(response: 0.42, dampingFraction: 0.72), value: appeared)
         .onAppear {

@@ -352,7 +352,7 @@ struct ProjectHubView: View {
             }
         }
         if conversations.isEmpty {
-            let fallback = (try? dataStore.fetchConversations(limit: 500)) ?? []
+            let fallback = (try? await dataStore.fetchConversations(limit: 500)) ?? []
             let keys = Set(projectMemoryKeys)
             conversations = fallback.filter { keys.contains($0.projectName.lowercased()) }
         }

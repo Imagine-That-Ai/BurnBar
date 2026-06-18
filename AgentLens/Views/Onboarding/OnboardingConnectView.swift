@@ -93,7 +93,11 @@ struct OnboardingConnectView: View {
                     .padding(.horizontal, DesignSystem.Spacing.sm)
                     .background {
                         RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                            .fill(DesignSystem.Colors.surface)
+                            .fill((ready ? DesignSystem.Colors.success : DesignSystem.Colors.warning).opacity(0.06))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .strokeBorder((ready ? DesignSystem.Colors.success : DesignSystem.Colors.warning).opacity(0.15), lineWidth: 0.5)
                     }
                 }
             }

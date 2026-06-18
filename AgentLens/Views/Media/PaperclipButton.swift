@@ -11,11 +11,12 @@ struct PaperclipButton: View {
         Button(action: action) {
             Image(systemName: "paperclip")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(isHovering ? AnyShapeStyle(mercuryGradient) : AnyShapeStyle(Color.gray))
+                .foregroundStyle(isHovering ? AnyShapeStyle(DesignSystem.Colors.mercuryGradient) : AnyShapeStyle(DesignSystem.Colors.textMuted))
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(DesignSystem.Animation.hover, value: isHovering)
         .help("Send a file to your paired iPhone")
         .onHover { hovering in
             isHovering = hovering
@@ -37,13 +38,5 @@ struct PaperclipButton: View {
             }
             return true
         }
-    }
-
-    private var mercuryGradient: LinearGradient {
-        LinearGradient(
-            colors: [Color(red: 0.78, green: 0.74, blue: 0.69), Color(red: 0.63, green: 0.67, blue: 0.73)],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
     }
 }

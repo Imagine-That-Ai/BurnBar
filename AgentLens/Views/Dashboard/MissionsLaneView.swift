@@ -437,11 +437,13 @@ struct MissionsLaneView: View {
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
             Spacer()
-            Button("Clear filter") {
+            Button {
                 withAnimation(DesignSystem.Animation.snappy) {
                     stateFilter = .all
                     projectFilter = nil
                 }
+            } label: {
+                Label("Clear filter", systemImage: "xmark.circle")
             }
             .buttonStyle(.borderless)
             .font(DesignSystem.Typography.caption)
@@ -650,10 +652,9 @@ private struct MissionGateCard: View {
             stateStripe
             cardBody
         }
-        .liquidGlassSurface(
-            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous),
-            fallback: .ultraThinMaterial
-        )
+        // Tint must ride on top of the glass so the mission state color reads.
+        // .background (the colored wash) applies first, then .liquidGlassSurface
+        // sits behind the tint, matching the chat-bubble idiom.
         .background {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.55))
@@ -672,6 +673,10 @@ private struct MissionGateCard: View {
                         )
                 )
         }
+        .liquidGlassSurface(
+            in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous),
+            fallback: .ultraThinMaterial
+        )
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)

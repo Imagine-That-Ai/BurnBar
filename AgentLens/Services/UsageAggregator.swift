@@ -83,7 +83,7 @@ final class UsageAggregator {
         self.providerAPIKeyStore = providerAPIKeyStore
         self.quotaService = quotaService
         self.artifactDiscoveryService = artifactDiscoveryService
-            ?? ArtifactDiscoveryService(dataStoreActor: dataStore.actor, settingsProvider: settingsManager)
+            ?? ArtifactDiscoveryService(dataStore: dataStore, settingsProvider: settingsManager)
         self.projectionPipelineServiceOverride = projectionPipelineService
         self.parsers = parserOverrides ?? ParserRegistry.defaultParsers()
         self.refreshOrchestrator = RefreshOrchestrator(

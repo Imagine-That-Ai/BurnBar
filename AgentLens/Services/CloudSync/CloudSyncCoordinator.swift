@@ -88,7 +88,10 @@ final class CloudSyncCoordinator {
         self.providerAccountSync = ProviderAccountSyncService(context: context)
         self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
         self.textExpansionSync = TextExpansionSyncService(context: context)
-        self.collaborationSync = CollaborationSyncService(context: context)
+        self.collaborationSync = CollaborationSyncService(
+            context: context,
+            sharedArtifactVaultKeyProvider: conversationVaultKeyProvider
+        )
         self.downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: conversationVaultKeyProvider)
     }
 

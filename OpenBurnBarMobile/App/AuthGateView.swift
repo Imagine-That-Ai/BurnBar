@@ -89,7 +89,11 @@ struct AuthGateView: View {
         switch authStore.state {
         case .firebaseUnavailable:
             FirebaseUnavailableScene()
-        case .signedOut, .signingIn, .firestoreUnavailable:
+        case .signedOut, .signingIn:
+            // The cube sign-in screen — shown while signed out or mid-sign-in, so a
+            // signed-out user lands here instead of the empty signed-in dashboard shell.
+            SignInScene(authStore: authStore)
+        case .firestoreUnavailable:
             guestRootView
         case .signedIn, .deletingAccount:
             signedInView

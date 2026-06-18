@@ -34,9 +34,9 @@ enum BillingRefreshCoordinator {
     /// Each step that can fail appends to `Result.errors` without aborting
     /// the remaining steps.
     nonisolated static func reconcile(
-        dataStoreActor: DataStoreActor,
         usageAPIService: ProviderUsageAPIService?,
         allParsedUsages: [TokenUsage],
+        fetchCanonicalUsage: () async throws -> [TokenUsage],
         persistAndReload: ([TokenUsage]) async throws -> [TokenUsage],
         deleteAndReload: (String) async throws -> [TokenUsage],
         recordDriftEvent: (BillingDriftEvent) -> Void = { _ in }
@@ -78,7 +78,7 @@ enum BillingRefreshCoordinator {
         // VAL-CROSS-011: Use canonical multi-source baseline from database, not just parser output.
         let canonicalBaseline: [TokenUsage]
         do {
-            canonicalBaseline = try await dataStoreActor.usageStore.fetchAllUsage()
+            canonicalBaseline = try await fetchCanonicalUsage()
         } catch {
             canonicalBaseline = allParsedUsages
             result.errors.append("Failed to fetch canonical usage baseline: \(error.localizedDescription)")

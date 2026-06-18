@@ -11,7 +11,7 @@ extension ProjectionPipelineService {
 
         switch sourceKind {
         case .conversation:
-            guard let conversation = try dataStore.fetchConversation(id: sourceID) else {
+            guard let conversation = try await dataStore.fetchConversation(id: sourceID) else {
                 try await dataStore.deleteSearchDocuments(sourceKind: .conversation, sourceID: sourceID)
                 return
             }
@@ -53,7 +53,7 @@ extension ProjectionPipelineService {
         let rebuildPageSize = paginationPageSize
         var conversationOffset = 0
         while true {
-            let conversations = try dataStore.fetchConversations(limit: rebuildPageSize, offset: conversationOffset)
+            let conversations = try await dataStore.fetchConversations(limit: rebuildPageSize, offset: conversationOffset)
             guard conversations.isEmpty == false else { break }
 
             for conversation in conversations {

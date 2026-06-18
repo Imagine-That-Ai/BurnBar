@@ -3,6 +3,7 @@ import OpenBurnBarCore
 
 struct ChatEngineModelMenu: View {
     @Bindable var controller: ChatSessionController
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var quotaService = ProviderQuotaService.shared
     @State private var cliRows: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
     @State private var cliErrors: [AssistantRuntimeID: String] = [:]

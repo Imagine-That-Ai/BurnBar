@@ -1,5 +1,6 @@
 import XCTest
 import FirebaseFirestore
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 // MARK: - CloudSync Enums Tests
@@ -764,6 +765,181 @@ final class SharedArtifactCloudCodecTests: XCTestCase {
             "body": "Content",
             "contentHash": "hash"
         ]
+    }
+
+    func test_encodeSealed_roundTripsWithoutPlaintextContentFields() throws {
+        let key = try sharedArtifactTestVaultKey()
+        let record = sharedArtifactTestRecord()
+
+        let payload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: key,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+
+        XCTAssertEqual(payload["contentSealed"] as? Bool, true)
+        XCTAssertEqual(payload["sealedSchemaVersion"] as? Int, CloudVaultCrypto.currentSealedPayloadSchemaVersion)
+        XCTAssertEqual(payload["vaultKeyID"] as? String, key.vaultKeyID)
+        XCTAssertNotNil(payload["sealedPayload"])
+        XCTAssertNil(payload["title"] as? String)
+        XCTAssertNil(payload["body"] as? String)
+        XCTAssertNil(payload["contentHash"] as? String)
+        XCTAssertNil(payload["relativePath"] as? String)
+
+        let decoded = try SharedArtifactCloudCodec.decode(
+            documentID: record.artifactID,
+            data: payload,
+            vaultKeyData: key.keyData,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+
+        XCTAssertEqual(decoded.artifactID, record.artifactID)
+        XCTAssertEqual(decoded.title, record.title)
+        XCTAssertEqual(decoded.body, record.body)
+        XCTAssertEqual(decoded.contentHash, record.contentHash)
+        XCTAssertEqual(decoded.relativePath, record.relativePath)
+    }
+
+    func test_decodeSealed_requiresVaultKey() throws {
+        let key = try sharedArtifactTestVaultKey()
+        let record = sharedArtifactTestRecord()
+        let payload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: key,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+
+        XCTAssertThrowsError(
+            try SharedArtifactCloudCodec.decode(documentID: record.artifactID, data: payload)
+        ) { error in
+            guard case SharedArtifactCloudCodecError.sealedContentRequiresKey = error else {
+                XCTFail("Expected sealedContentRequiresKey, got \(error)")
+                return
+            }
+        }
+    }
+
+    func test_decodeSealed_failsWhenAADDocumentChanges() throws {
+        let key = try sharedArtifactTestVaultKey()
+        let record = sharedArtifactTestRecord()
+        let payload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: key,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+
+        XCTAssertThrowsError(
+            try SharedArtifactCloudCodec.decode(
+                documentID: record.artifactID,
+                data: payload,
+                vaultKeyData: key.keyData,
+                ownerUserID: "user-1",
+                aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+                aadDocumentID: "attacker-relocated-artifact"
+            )
+        ) { error in
+            guard case SharedArtifactCloudCodecError.sealedContentMalformed = error else {
+                XCTFail("Expected sealedContentMalformed, got \(error)")
+                return
+            }
+        }
+    }
+
+    func test_isLegacyPlaintext_detectsUnsealedPrivateFields() {
+        let plaintextDoc: [String: Any] = [
+            "artifactID": "art-1",
+            "workspaceID": "workspace-user-1",
+            "teamID": "team-default",
+            "revisionID": "rev-1",
+            "title": "Plaintext Title",
+            "body": "Plaintext body",
+            "contentHash": "hash-1"
+        ]
+
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: plaintextDoc))
+    }
+
+    func test_isLegacyPlaintext_returnsFalseForSealedDocument() throws {
+        let key = try sharedArtifactTestVaultKey()
+        let record = sharedArtifactTestRecord()
+        let sealedPayload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: key,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: sealedPayload))
+    }
+
+    func test_isLegacyPlaintext_detectsMixedSealedPlaintextLeak() throws {
+        let key = try sharedArtifactTestVaultKey()
+        let record = sharedArtifactTestRecord()
+        var sealedPayload = try SharedArtifactCloudCodec.encodeSealed(
+            record,
+            useServerTimestamp: false,
+            vaultKey: key,
+            ownerUserID: "user-1",
+            aadCollection: SharedArtifactCloudCodec.artifactAADCollection,
+            aadDocumentID: record.artifactID
+        )
+        sealedPayload["title"] = "leftover plaintext"
+
+        XCTAssertTrue(SharedArtifactCloudCodec.isLegacyPlaintext(data: sealedPayload))
+    }
+
+    func test_isLegacyPlaintext_returnsFalseForMetadataOnlyDocument() {
+        let metadataOnlyDoc: [String: Any] = [
+            "artifactID": "art-1",
+            "workspaceID": "workspace-user-1",
+            "teamID": "team-default",
+            "revisionID": "rev-1",
+            "isDeleted": true
+        ]
+
+        XCTAssertFalse(SharedArtifactCloudCodec.isLegacyPlaintext(data: metadataOnlyDoc))
+    }
+
+    private func sharedArtifactTestVaultKey() throws -> CloudVaultResolvedKey {
+        let keyData = Data(repeating: 0x42, count: 32)
+        return try CloudVaultResolvedKey(
+            keyData: keyData,
+            vaultKeyID: CloudVaultCrypto.vaultKeyID(for: keyData)
+        )
+    }
+
+    private func sharedArtifactTestRecord() -> SharedArtifactCloudRecord {
+        SharedArtifactCloudRecord(
+            artifactID: "remote-42",
+            workspaceID: "workspace-user-1",
+            teamID: "team-default",
+            ownerUserID: "user-1",
+            visibility: .team,
+            revisionID: "rev-42",
+            baseRevisionID: "rev-41",
+            title: "Shared Runbook",
+            body: "Private body content",
+            contentHash: "hash-42",
+            relativePath: "docs/runbook.md",
+            isDeleted: false,
+            updatedByUserID: "user-1",
+            updatedByDeviceID: "device-1",
+            resolvedConflictRevisionID: nil,
+            updatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
     }
 
     // MARK: - Provenance Encoding

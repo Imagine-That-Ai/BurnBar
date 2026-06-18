@@ -76,7 +76,7 @@ extension OpenBurnBarDaemonManager {
             return []
         }
 
-        exportControllerActivitySnapshot()
+        await exportControllerActivitySnapshot()
         let socketURL = paths.socketURL
         let projects = try await daemonRPC {
             try OpenBurnBarDaemonSocketClient.controllerProjects(at: socketURL)

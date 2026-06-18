@@ -88,6 +88,7 @@ internal data class FanOutDispatchRequest(
     val title: String,
     val prompt: String,
     val selected: List<String>,
+    val maxParallel: Int,
     val commandsAllowed: Boolean,
     val fileEditsAllowed: Boolean,
 )
@@ -142,6 +143,7 @@ internal data class FanOutSheetUiState(
     val title: String,
     val prompt: String,
     val selected: List<String>,
+    val maxParallel: Int,
     val commandsAllowed: Boolean,
     val fileEditsAllowed: Boolean,
     val dispatching: Boolean,

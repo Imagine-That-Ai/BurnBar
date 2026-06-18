@@ -173,7 +173,7 @@ final class DownloadSyncServiceMattersTests: XCTestCase {
         await downloadSync.sync()
 
         // FAIL CLOSED: no peer conversation imported (open could not verify / decrypt).
-        let conversations = try dataStore.fetchConversations(limit: 100, offset: 0)
+        let conversations = try await dataStore.fetchConversations(limit: 100, offset: 0)
         XCTAssertTrue(
             conversations.filter { $0.isRemote }.isEmpty,
             "A vault-key fault must skip peer conversations, never import unverified content"
@@ -203,7 +203,7 @@ final class DownloadSyncServiceMattersTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let remote = try dataStore.fetchConversations(limit: 100, offset: 0).filter { $0.isRemote }
+        let remote = try await dataStore.fetchConversations(limit: 100, offset: 0).filter { $0.isRemote }
         XCTAssertEqual(remote.count, 1, "Control case: a usable key imports the peer conversation")
         XCTAssertEqual(remote.first?.projectName, "Gamma")
     }
