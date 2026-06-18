@@ -26,6 +26,12 @@ struct AppearanceCorkboardSection: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 220)
+                    .onChange(of: settingsManager.appearanceMode) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "appearance_mode",
+                            "new_value": .string(newValue.rawValue)
+                        ])
+                    }
                 }
                 .settingsAnchor(SettingsAnchor.appearanceTheme)
 
@@ -47,6 +53,12 @@ struct AppearanceCorkboardSection: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 220)
+                    .onChange(of: settingsManager.appearanceSkin) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "appearance_skin",
+                            "new_value": .string(newValue.rawValue)
+                        ])
+                    }
                 }
                 .settingsAnchor(SettingsAnchor.appearanceSkin)
 
@@ -68,6 +80,12 @@ struct AppearanceCorkboardSection: View {
                     isOn: $settingsManager.showInMenuBar
                 )
                 .settingsAnchor(SettingsAnchor.appearanceMenuBar)
+                .onChange(of: settingsManager.showInMenuBar) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "menu_bar_visibility",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -77,6 +95,12 @@ struct AppearanceCorkboardSection: View {
                     icon: "paintpalette",
                     isOn: $settingsManager.colorfulMenuBarIcon
                 )
+                .onChange(of: settingsManager.colorfulMenuBarIcon) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "menu_bar_icon_colorful",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -87,6 +111,12 @@ struct AppearanceCorkboardSection: View {
                     isOn: $settingsManager.launchAtLogin
                 )
                 .settingsAnchor(SettingsAnchor.appearanceLaunchAtLogin)
+                .onChange(of: settingsManager.launchAtLogin) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "launch_at_login",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -97,6 +127,12 @@ struct AppearanceCorkboardSection: View {
                     isOn: $settingsManager.usePremiumSOTAUX
                 )
                 .settingsAnchor(SettingsAnchor.usePremiumSOTAUX)
+                .onChange(of: settingsManager.usePremiumSOTAUX) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "premium_sota_ux",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -107,6 +143,12 @@ struct AppearanceCorkboardSection: View {
                     isOn: $settingsManager.useWebsiteBackground
                 )
                 .settingsAnchor(SettingsAnchor.useWebsiteBackground)
+                .onChange(of: settingsManager.useWebsiteBackground) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "desktop_swarm_background",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -119,6 +161,12 @@ struct AppearanceCorkboardSection: View {
                 .disabled(!settingsManager.useWebsiteBackground)
                 .opacity(settingsManager.useWebsiteBackground ? 1.0 : 0.45)
                 .settingsAnchor(SettingsAnchor.useConstellationBackground)
+                .onChange(of: settingsManager.useConstellationBackground) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "desktop_constellation_background",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -129,6 +177,12 @@ struct AppearanceCorkboardSection: View {
                     isOn: $settingsManager.enableDesktopWallpaper
                 )
                 .settingsAnchor(SettingsAnchor.desktopWallpaperEnabled)
+                .onChange(of: settingsManager.enableDesktopWallpaper) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "desktop_wallpaper_enabled",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -153,6 +207,12 @@ struct AppearanceCorkboardSection: View {
                     icon: "eye.slash.fill",
                     isOn: $settingsManager.excludeBrandShapesFromSwarm
                 )
+                .onChange(of: settingsManager.excludeBrandShapesFromSwarm) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "desktop_exclude_brand_shapes",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -162,6 +222,12 @@ struct AppearanceCorkboardSection: View {
                     icon: "arrow.triangle.2.circlepath",
                     isOn: $settingsManager.cycleShapesScreensaver
                 )
+                .onChange(of: settingsManager.cycleShapesScreensaver) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "desktop_cycle_shapes_screensaver",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -171,6 +237,12 @@ struct AppearanceCorkboardSection: View {
                     icon: "sparkles",
                     isOn: $settingsManager.enableSwarmSparkles
                 )
+                .onChange(of: settingsManager.enableSwarmSparkles) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "desktop_enable_sparkles",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -181,6 +253,12 @@ struct AppearanceCorkboardSection: View {
                     isOn: $settingsManager.clickDesktopToCycleSwarm
                 )
                 .settingsAnchor(SettingsAnchor.desktopWallpaperClickCycle)
+                .onChange(of: settingsManager.clickDesktopToCycleSwarm) { _, newValue in
+                    Analytics.shared.track(.settingsChanged, [
+                        "setting_key": "desktop_click_cycle",
+                        "new_value": .bool(newValue)
+                    ])
+                }
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -269,6 +347,12 @@ struct AppearanceCorkboardSection: View {
 
                 Slider(value: $settingsManager.desktopWallpaperSpeed, in: 0.35...2.5, step: 0.05)
                     .tint(DesignSystem.Colors.ember)
+                    .onChange(of: settingsManager.desktopWallpaperSpeed) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "desktop_wallpaper_speed",
+                            "new_value": .string(AnalyticsBuckets.percent(newValue * 100))
+                        ])
+                    }
 
                 Image(systemName: "hare.fill")
                     .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -318,6 +402,10 @@ struct AppearanceCorkboardSection: View {
             withAnimation(.snappy(duration: 0.18)) {
                 settingsManager.desktopWallpaperBackground = background
             }
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "desktop_wallpaper_background",
+                "new_value": .string(background.rawValue)
+            ])
         } label: {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 wallpaperBackgroundSwatch(background)
@@ -478,6 +566,10 @@ struct AppearanceCorkboardSection: View {
                     selected.contains($0)
                 }
             }
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "desktop_wallpaper_provider_glyphs",
+                "new_value": .string(AnalyticsBuckets.count(settingsManager.desktopWallpaperProviderGlyphs.count))
+            ])
         } label: {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 ZStack(alignment: .bottomTrailing) {

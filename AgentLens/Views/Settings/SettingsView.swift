@@ -54,6 +54,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
             .onAppear {
+                Analytics.shared.track(.screenViewed, ["surface": "settings"])
                 consumePendingSettingsDestination()
             }
         } detail: {

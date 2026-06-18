@@ -146,6 +146,9 @@ struct GeneralSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
         .navigationTitle("General")
+        .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "settings_general"])
+        }
     }
 
     private var setupSummary: String {
@@ -271,6 +274,12 @@ struct DefaultViewSettingsDetailView: View {
                         }
                         .pickerStyle(.menu)
                         .frame(width: 160)
+                        .onChange(of: settingsManager.defaultTimeRange) { _, newValue in
+                            Analytics.shared.track(.settingsChanged, [
+                                "setting_key": "default_time_range",
+                                "new_value": .string(newValue.rawValue)
+                            ])
+                        }
                     }
                     .settingsAnchor(SettingsAnchor.defaultsTimeRange)
 
@@ -292,6 +301,12 @@ struct DefaultViewSettingsDetailView: View {
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 200)
+                        .onChange(of: settingsManager.usageDisplayMode) { _, newValue in
+                            Analytics.shared.track(.settingsChanged, [
+                                "setting_key": "usage_display_mode",
+                                "new_value": .string(newValue.rawValue)
+                            ])
+                        }
                     }
                     .settingsAnchor(SettingsAnchor.defaultsUsageMode)
                 }
@@ -332,6 +347,12 @@ struct DataRefreshSettingsDetailView: View {
                     }
                     .pickerStyle(.menu)
                     .frame(width: 110)
+                    .onChange(of: settingsManager.refreshInterval) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "refresh_interval",
+                            "new_value": .string(AnalyticsBuckets.durationSeconds(newValue))
+                        ])
+                    }
                 }
                 .padding(DesignSystem.Spacing.lg)
                 .settingsAnchor(SettingsAnchor.refreshInterval)
@@ -385,6 +406,12 @@ struct SessionSummariesDetailView: View {
                         isOn: $settingsManager.autoSessionSummariesEnabled
                     )
                     .settingsAnchor(SettingsAnchor.summariesAuto)
+                    .onChange(of: settingsManager.autoSessionSummariesEnabled) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "auto_session_summaries",
+                            "new_value": .bool(newValue)
+                        ])
+                    }
                 }
                 .padding(DesignSystem.Spacing.lg)
             }

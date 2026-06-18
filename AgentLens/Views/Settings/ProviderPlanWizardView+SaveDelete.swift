@@ -185,6 +185,10 @@ extension ProviderPlanWizardView {
                 }
 
                 await MainActor.run {
+                    Analytics.shared.track(.quotaSetupSaved, [
+                        "provider_name": .string(providerID),
+                        "setup_type": .string(method.storage.usesDaemonSlot ? "daemon_slot" : "api_key_store")
+                    ])
                     isSaving = false
                     editingCredentialSlot = nil
                     activeProviderID = providerID

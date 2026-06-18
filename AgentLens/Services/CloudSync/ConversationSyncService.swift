@@ -38,6 +38,8 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
 
         guard state.beginSyncingIfIdle() else { return }
 
+        let syncStartTime = Date()
+
         defer { state.endSyncing() }
 
         do {
@@ -109,6 +111,16 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
             }
+            let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
+            let itemCountBucket = AnalyticsBuckets.count(unsynced.count)
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncCompleted, [
+                    "domain": "conversations",
+                    "outcome": "success",
+                    "duration_ms_bucket": .string(durationBucket),
+                    "item_count_bucket": .string(itemCountBucket)
+                ])
+            }
         } catch {
             await recordSyncError(error)
         }
@@ -118,6 +130,16 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
         state.withLock { $0.lastSyncError = error.localizedDescription }
 
         let nsError = error as NSError
+        let errorType = String(describing: type(of: error))
+        let isPermissionDenied = nsError.domain == FirestoreErrorDomain
+            && FirestoreErrorCode.Code(rawValue: nsError.code) == .permissionDenied
+        Task { @MainActor in
+            Analytics.shared.track(.cloudsyncFailed, [
+                "domain": "conversations",
+                "error_type": .string(errorType),
+                "is_permission_denied": .bool(isPermissionDenied)
+            ])
+        }
         guard nsError.domain == FirestoreErrorDomain,
               let code = FirestoreErrorCode.Code(rawValue: nsError.code),
               code == .permissionDenied || code == .unauthenticated else {

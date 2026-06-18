@@ -553,6 +553,7 @@ struct ProviderDashboardView: View {
     @Environment(SettingsManager.self) private var settingsManager
     @State private var selectedSession: TokenUsage?
     @State private var quotaService = ProviderQuotaService.shared
+    @State private var didLogScreenView = false
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
 
@@ -588,6 +589,12 @@ struct ProviderDashboardView: View {
             .ignoresSafeArea()
         }
         .scrollContentBackground(.hidden)
+        .onAppear {
+            if !didLogScreenView {
+                didLogScreenView = true
+                Analytics.shared.track(.screenViewed, ["surface": "dashboard_provider", "is_first_view": .bool(true)])
+            }
+        }
         .sheet(item: $selectedSession) { session in
             SessionDetailView(session: session, theme: theme, dataStore: dataStore, onOpenSessionLog: onOpenSessionLog)
         }
@@ -778,12 +785,14 @@ struct ProviderDashboardView: View {
 
     private func openUsage(_ usage: TokenUsage) async {
         guard let target = await jumpTarget(for: usage) else {
+            Analytics.shared.track(.dashboardSessionOpened, ["surface": "dashboard_provider"])
             selectedSession = usage
             return
         }
         if let onOpenSessionLog {
             onOpenSessionLog(target)
         } else {
+            Analytics.shared.track(.dashboardSessionOpened, ["surface": "dashboard_provider"])
             selectedSession = usage
         }
     }

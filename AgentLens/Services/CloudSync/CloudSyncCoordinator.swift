@@ -135,6 +135,10 @@ final class CloudSyncCoordinator {
             }
         }
         tracker.begin(pendingSessionLogs: pendingLogs, pendingChatThreads: pendingThreads)
+        Analytics.shared.track(.cloudsyncManualBackupRun, [
+            "pending_session_logs_bucket": .string(AnalyticsBuckets.count(pendingLogs)),
+            "pending_chat_threads_bucket": .string(AnalyticsBuckets.count(pendingThreads))
+        ])
 
         await syncSessionLogs(drainAll: true, progress: tracker)
         if let err = lastSyncError, err.isEmpty == false {
@@ -150,6 +154,13 @@ final class CloudSyncCoordinator {
 
         tracker.complete()
         lastSyncDate = Date()
+        let snapshot = tracker.currentSnapshot()
+        Analytics.shared.track(.cloudsyncCompleted, [
+            "domain": "backup",
+            "outcome": "success",
+            "duration_ms_bucket": .string(AnalyticsBuckets.durationMs(Int(snapshot.elapsedSeconds * 1000))),
+            "item_count_bucket": .string(AnalyticsBuckets.count(snapshot.completedWorkItems))
+        ])
     }
 
     /// Upload and download encrypted Text Expansion snippets.

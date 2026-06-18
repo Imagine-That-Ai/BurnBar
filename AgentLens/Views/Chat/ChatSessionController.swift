@@ -961,7 +961,12 @@ final class ChatSessionController {
 
         persistActiveThreadSlot()
 
+        let previousBackend = chatBackend
         chatBackend = backend
+        Analytics.shared.track(.chatBackendSwitched, [
+            "backend": .string(backend.rawValue),
+            "previous_backend": .string(previousBackend.rawValue)
+        ])
         UserDefaults.standard.set(backend.rawValue, forKey: Self.udChatBackend)
 
         let nextThread = await resolveThreadID(for: backend, createIfMissing: true)
@@ -1161,6 +1166,10 @@ final class ChatSessionController {
     }
 
     func clearChat() {
+        Analytics.shared.track(.chatHistoryCleared, [
+            "backend": .string(chatBackend.rawValue),
+            "message_count_cleared": .string(AnalyticsBuckets.count(messages.count))
+        ])
         streamTask?.cancel()
         cliBridge.cancel()
         streamTask = nil

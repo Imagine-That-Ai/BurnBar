@@ -87,6 +87,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var cloudVaultRotationPickupObserver: NSObjectProtocol?
     private var postRevokeCloudVaultRotationPickupObserver: NSObjectProtocol?
     private var lastCloudVaultRotationPickupAt: TimeInterval = 0
+
+    // Analytics: app foreground/background lifecycle observer.
+    private var appResignActiveAnalyticsObserver: NSObjectProtocol?
     /// Foreground passes within this window of the last attempt are coalesced so
     /// rapid activate/deactivate cycles don't spam the server callable.
     private static let cloudVaultRotationPickupDebounceInterval: TimeInterval = 30
@@ -141,7 +144,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor in self?.pickUpPendingCloudVaultRotations(force: false) }
+                Task { @MainActor in
+                    Analytics.shared.track(.appForegrounded)
+                    self?.pickUpPendingCloudVaultRotations(force: false)
+                }
+            }
+        }
+        if appResignActiveAnalyticsObserver == nil {
+            appResignActiveAnalyticsObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                Task { @MainActor in
+                    Analytics.shared.track(.appBackgrounded)
+                }
             }
         }
         if postRevokeCloudVaultRotationPickupObserver == nil {
@@ -385,6 +402,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKeyAndOrderFront(nil)
+        Analytics.shared.track(.menubarPopoverShown)
     }
 
     private func ensurePopover() -> NSPopover {
@@ -556,6 +574,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let settingsManager = self.settingsManager else { return }
+                Analytics.shared.track(.wallpaperConfigChanged, ["config_type": "speed"])
                 self.sharedWallpaperViewModel.speed = settingsManager.appearance.desktopWallpaperSpeed
             }
         }
@@ -567,6 +586,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let settingsManager = self.settingsManager else { return }
+                Analytics.shared.track(.wallpaperConfigChanged, [
+                    "config_type": "provider_glyphs",
+                    "value": .string(AnalyticsBuckets.count(settingsManager.appearance.desktopWallpaperProviderGlyphs.count))
+                ])
                 self.sharedWallpaperViewModel.providerGlyphs = settingsManager.appearance.desktopWallpaperProviderGlyphs
             }
         }
@@ -578,6 +601,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let settingsManager = self.settingsManager else { return }
+                Analytics.shared.track(.wallpaperConfigChanged, [
+                    "config_type": "cycle_shapes",
+                    "value": .bool(settingsManager.appearance.cycleShapesScreensaver)
+                ])
                 self.sharedWallpaperViewModel.autoCyclesShapes = settingsManager.appearance.cycleShapesScreensaver
             }
         }
@@ -589,6 +616,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let settingsManager = self.settingsManager else { return }
+                Analytics.shared.track(.wallpaperConfigChanged, [
+                    "config_type": "sparkles",
+                    "value": .bool(settingsManager.appearance.enableSwarmSparkles)
+                ])
                 self.sharedWallpaperViewModel.enableSwarmSparkles = settingsManager.appearance.enableSwarmSparkles
             }
         }
@@ -600,6 +631,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let settingsManager = self.settingsManager else { return }
+                Analytics.shared.track(.wallpaperConfigChanged, [
+                    "config_type": "click_cycle",
+                    "value": .bool(settingsManager.appearance.clickDesktopToCycleSwarm)
+                ])
                 self.sharedWallpaperViewModel.allowsDesktopClickCycle = settingsManager.appearance.clickDesktopToCycleSwarm
             }
         }
@@ -611,12 +646,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let settingsManager = self.settingsManager else { return }
+                Analytics.shared.track(.wallpaperConfigChanged, [
+                    "config_type": "exclude_brand",
+                    "value": .bool(settingsManager.appearance.excludeBrandShapesFromSwarm)
+                ])
                 self.sharedWallpaperViewModel.excludeBrandShapesFromSwarm = settingsManager.appearance.excludeBrandShapesFromSwarm
             }
         }
     }
 
     @objc private func handleWallpaperEnabledChange() {
+        Analytics.shared.track(.wallpaperToggled, [
+            "enabled": .bool(settingsManager?.appearance.enableDesktopWallpaper ?? false)
+        ])
         self.updateWallpaperState()
         self.configureWallpaperActivityPolling()
         self.syncWallpaperColorDriver()
@@ -624,6 +666,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func handleWallpaperBackgroundChange() {
         guard let settingsManager else { return }
+        Analytics.shared.track(.wallpaperConfigChanged, [
+            "config_type": "background",
+            "value": .string(settingsManager.appearance.desktopWallpaperBackground.rawValue)
+        ])
         sharedWallpaperViewModel.background = settingsManager.appearance.desktopWallpaperBackground
         syncSystemDesktopFallback()
         refreshWallpaperPanels()
@@ -1213,6 +1259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        Analytics.shared.track(.appSessionEnded)
         uninstallStatusItemMouseFallback()
         teardownWallpaperPanels()
         teardownWallpaperObservers()
@@ -1223,6 +1270,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let observer = postRevokeCloudVaultRotationPickupObserver {
             NotificationCenter.default.removeObserver(observer)
             postRevokeCloudVaultRotationPickupObserver = nil
+        }
+        if let observer = appResignActiveAnalyticsObserver {
+            NotificationCenter.default.removeObserver(observer)
+            appResignActiveAnalyticsObserver = nil
         }
     }
 }

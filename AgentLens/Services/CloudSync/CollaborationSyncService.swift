@@ -84,6 +84,7 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
         let scope = SharedArtifactScope.defaultScope(for: uid)
         var report = SharedArtifactSyncReport(scope: scope)
         let deviceId = gate.account.deviceId
+        let syncStartTime = Date()
 
         defer {
             state.endSyncing()
@@ -109,9 +110,27 @@ final class CollaborationSyncService: CloudSyncDomain, Sendable {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = errorMessage
             }
+            let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
+            let itemCountBucket = AnalyticsBuckets.count(report.pushed + report.pulled)
+            let outcome = report.conflicts > 0 ? "degraded" : "success"
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncCompleted, [
+                    "domain": "collaboration",
+                    "outcome": .string(outcome),
+                    "duration_ms_bucket": .string(durationBucket),
+                    "item_count_bucket": .string(itemCountBucket)
+                ])
+            }
         } catch {
             let syncError = error
             await recordSyncError(syncError)
+            let errorType = String(describing: type(of: syncError))
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncFailed, [
+                    "domain": "collaboration",
+                    "error_type": .string(errorType)
+                ])
+            }
             do {
                 try await upsertCollaborationHealth(
                     status: .failed,

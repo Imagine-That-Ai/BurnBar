@@ -147,6 +147,7 @@ struct ModelDashboardView: View {
 
     @Environment(SettingsManager.self) private var settingsManager
     @State private var selectedSession: TokenUsage?
+    @State private var didLogScreenView = false
 
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: modelName) }
 
@@ -180,6 +181,12 @@ struct ModelDashboardView: View {
             .ignoresSafeArea()
         }
         .scrollContentBackground(.hidden)
+        .onAppear {
+            if !didLogScreenView {
+                didLogScreenView = true
+                Analytics.shared.track(.screenViewed, ["surface": "dashboard_model", "is_first_view": .bool(true)])
+            }
+        }
         .sheet(item: $selectedSession) { session in
             SessionDetailView(session: session, theme: theme, dataStore: dataStore, onOpenSessionLog: onOpenSessionLog)
         }
@@ -378,12 +385,14 @@ struct ModelDashboardView: View {
 
     private func openUsage(_ usage: TokenUsage) async {
         guard let target = await jumpTarget(for: usage) else {
+            Analytics.shared.track(.dashboardSessionOpened, ["surface": "dashboard_model"])
             selectedSession = usage
             return
         }
         if let onOpenSessionLog {
             onOpenSessionLog(target)
         } else {
+            Analytics.shared.track(.dashboardSessionOpened, ["surface": "dashboard_model"])
             selectedSession = usage
         }
     }

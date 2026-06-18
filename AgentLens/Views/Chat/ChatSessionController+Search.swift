@@ -53,6 +53,9 @@ extension ChatSessionController {
         let queryRevisionAtStart = searchQueryRevision
         activeSearchQuery = q
         isSearching = true
+        Analytics.shared.track(.chatSearchPerformed, [
+            "query_length": .string(AnalyticsBuckets.count(q.count))
+        ])
         let service = searchService
         searchTask = Task { [service] in
             let results = await service.search(query: q)
@@ -182,6 +185,11 @@ extension ChatSessionController {
             attachments: attachmentsToSend
         )
         messages.append(userMsg)
+        Analytics.shared.track(.chatMessageSent, [
+            "backend": .string(chatBackend.rawValue),
+            "has_attachments": .bool(!attachmentsToSend.isEmpty),
+            "attachment_count": .string(AnalyticsBuckets.count(attachmentsToSend.count))
+        ])
         do {
             try await dataStore.saveChatMessage(userMsg, threadID: activeThreadID)
         } catch {
@@ -684,6 +692,12 @@ extension ChatSessionController {
                         Self.appendStreamingText(chunk, to: &pieces)
                     case .toolUse(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
+                        Task { @MainActor in
+                            Analytics.shared.track(.chatToolInvoked, [
+                                "tool_name": .string(name),
+                                "backend": .string(self.chatBackend.rawValue)
+                            ])
+                        }
                     case .toolResult(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
                         #if canImport(AppKit) && !DISTRIBUTION_MAS
@@ -727,6 +741,14 @@ extension ChatSessionController {
                     self.activeStreamMessageId = nil
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
                         let final = self.messages[idx]
+                        Analytics.shared.track(.chatGenerationCompleted, [
+                            "backend": .string(self.chatBackend.rawValue),
+                            "model": .string(requestModel),
+                            "duration_ms": .string(AnalyticsBuckets.durationMs(
+                                final.timestamp.timeIntervalSince(streamStartedAt) * 1000
+                            )),
+                            "has_tools": .bool(final.transcriptPieces.contains { $0.kind == .toolUse })
+                        ])
                         do {
                             try await self.dataStore.saveChatMessage(final, threadID: self.activeThreadID)
                             await self.saveUsageIfNeeded(
@@ -773,6 +795,10 @@ extension ChatSessionController {
                     // Don't surface cancellation as an error — cancelGeneration() already cleaned up
                     if !(error is CancellationError) {
                         let nsError = error as NSError
+                        Analytics.shared.track(.chatGenerationFailed, [
+                            "backend": .string(self.chatBackend.rawValue),
+                            "error_type": .string(String(describing: type(of: error)))
+                        ])
                         if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut {
                             self.streamError = "Chat request timed out — try again or simplify the request."
                         } else {

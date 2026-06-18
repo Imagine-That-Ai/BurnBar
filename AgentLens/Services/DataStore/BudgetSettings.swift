@@ -79,6 +79,12 @@ final class BudgetSettings {
                 limitAtEvent: stamped.amountUSD,
                 detailJSON: encodeDetail(["label": stamped.displayLabel, "period": stamped.period.rawValue])
             ))
+            Analytics.shared.track(.budgetRuleChanged, [
+                "action": kind == .ruleUpdated ? "updated" : "created",
+                "rule_scope": .string(stamped.scope.rawValue),
+                "period": .string(stamped.period.rawValue),
+                "amount_usd_bucket": .string(AnalyticsBuckets.amountUSD(stamped.amountUSD))
+            ])
             await refresh()
         } catch {
             AppLogger.dataStore.silentFailure( // cov:ignore -- nonfatal-log
@@ -102,6 +108,12 @@ final class BudgetSettings {
                 limitAtEvent: existing.amountUSD,
                 detailJSON: encodeDetail(["label": existing.displayLabel])
             ))
+            Analytics.shared.track(.budgetRuleChanged, [
+                "action": "deleted",
+                "rule_scope": .string(existing.scope.rawValue),
+                "period": .string(existing.period.rawValue),
+                "amount_usd_bucket": .string(AnalyticsBuckets.amountUSD(existing.amountUSD))
+            ])
             await refresh()
         } catch {
             // Best-effort delete; refresh state regardless.
@@ -121,6 +133,12 @@ final class BudgetSettings {
             limitAtEvent: rule.amountUSD,
             detailJSON: encodeDetail(["pausedUntil": ISO8601DateFormatter().string(from: resumeAt)])
         ))
+        Analytics.shared.track(.budgetRuleChanged, [
+            "action": "paused",
+            "rule_scope": .string(rule.scope.rawValue),
+            "period": .string(rule.period.rawValue),
+            "amount_usd_bucket": .string(AnalyticsBuckets.amountUSD(rule.amountUSD))
+        ])
         await loadRecentEvents()
     }
 
@@ -135,6 +153,12 @@ final class BudgetSettings {
             amountAtEvent: 0,
             limitAtEvent: rule.amountUSD
         ))
+        Analytics.shared.track(.budgetRuleChanged, [
+            "action": "resumed",
+            "rule_scope": .string(rule.scope.rawValue),
+            "period": .string(rule.period.rawValue),
+            "amount_usd_bucket": .string(AnalyticsBuckets.amountUSD(rule.amountUSD))
+        ])
         await loadRecentEvents()
     }
 

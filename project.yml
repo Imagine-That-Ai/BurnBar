@@ -45,6 +45,9 @@ packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: "8.0.0"
+  AmplitudeSwift:
+    url: https://github.com/amplitude/Amplitude-Swift
+    from: "1.17.3"
   ViewInspector:
     url: https://github.com/nalexn/ViewInspector
     from: "0.10.0"
@@ -252,6 +255,8 @@ targets:
         product: GoogleSignIn
       - package: Sentry
         product: Sentry
+      - package: AmplitudeSwift
+        product: AmplitudeSwift
     scheme:
       testTargets:
         - OpenBurnBarTests
@@ -555,6 +560,11 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck: "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)"
         OPENBURNBAR_USE_DEBUG_APP_CHECK: "NO"
+        # Opt-in Amplitude analytics key. Empty in clean checkouts (COMMIT ZERO
+        # KEYS): the recorder reads `amplitude.apiKey` from Info.plist and stays
+        # dark when it is empty/placeholder. CI provides a real value via the
+        # `BURNBAR_AMPLITUDE_API_KEY` build setting (or the inject script).
+        BURNBAR_AMPLITUDE_API_KEY: ""
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     postBuildScripts:
@@ -680,6 +690,9 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         ITSAppUsesNonExemptEncryption: false
+        # Resolved from the BURNBAR_AMPLITUDE_API_KEY build setting (empty by
+        # default). AnalyticsConfig reads this; empty/placeholder → analytics dark.
+        amplitude.apiKey: "$(BURNBAR_AMPLITUDE_API_KEY)"
         NSCameraUsageDescription: OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat or start a trusted Mercury video call.
         NSMicrophoneUsageDescription: OpenBurnBar uses the microphone only when you start voice commands or a trusted Mercury audio call.
         NSSpeechRecognitionUsageDescription: OpenBurnBar uses speech recognition only while you hold the voice command control to turn your spoken command into text.
@@ -710,6 +723,8 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
+      - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
@@ -717,6 +732,8 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
+      - package: AmplitudeSwift
+        product: AmplitudeSwift
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -764,6 +781,8 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
+      - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
 
   OpenBurnBarMobileUITests:
@@ -805,11 +824,16 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar Widget
         INFOPLIST_KEY_CFBundleName: BurnBarWidget
         SKIP_INSTALL: true
+        # Opt-in analytics key (empty by default; COMMIT ZERO KEYS). The widget
+        # only emits when the HOST app granted consent (read from the shared App
+        # Group) AND this key is non-empty.
+        BURNBAR_AMPLITUDE_API_KEY: ""
     info:
       path: OpenBurnBarWidget/Info.plist
       properties:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        amplitude.apiKey: "$(BURNBAR_AMPLITUDE_API_KEY)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
@@ -818,6 +842,10 @@ targets:
       - sdk: WidgetKit.framework
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
+      - package: AmplitudeSwift
+        product: AmplitudeSwift
 
   OpenBurnBarKeyboard:
     type: app-extension
@@ -840,11 +868,16 @@ targets:
         INFOPLIST_KEY_CFBundleName: BurnBarKeyboard
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: true
+        # Opt-in analytics key (empty by default; COMMIT ZERO KEYS). The keyboard
+        # only emits usage OUTCOMES (never keystrokes/text) and only when the HOST
+        # app granted consent (read from the shared App Group) AND this is non-empty.
+        BURNBAR_AMPLITUDE_API_KEY: ""
     info:
       path: OpenBurnBarKeyboard/Info.plist
       properties:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        amplitude.apiKey: "$(BURNBAR_AMPLITUDE_API_KEY)"
         NSExtension:
           NSExtensionAttributes:
             IsASCIICapable: true
@@ -858,3 +891,7 @@ targets:
       - sdk: UIKit.framework
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
+      - package: AmplitudeSwift
+        product: AmplitudeSwift

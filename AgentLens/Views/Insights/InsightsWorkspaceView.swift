@@ -79,6 +79,9 @@ struct InsightsWorkspaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(UnifiedDesignSystem.Colors.background)
         .navigationTitle("Insights")
+        .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "insights"])
+        }
     }
 
     @ViewBuilder

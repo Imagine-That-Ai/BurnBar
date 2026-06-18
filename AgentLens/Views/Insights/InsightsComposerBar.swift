@@ -83,6 +83,9 @@ struct InsightsComposerBar: View {
             }
             Divider()
             Toggle("Privacy mode (local models only)", isOn: $environment.privacyMode)
+                .onChange(of: environment.privacyMode) { _, newValue in
+                    Analytics.shared.track(.insightsPrivacyModeToggled, ["is_enabled": .bool(newValue)])
+                }
         } label: {
             HStack(spacing: 4) {
                 if let provider = resolveProvider(for: environment.selectedModelTag.providerKey) {

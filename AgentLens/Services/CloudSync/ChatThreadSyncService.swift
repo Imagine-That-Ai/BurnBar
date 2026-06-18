@@ -60,6 +60,8 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
 
         state.beginSyncing()
 
+        let syncStartTime = Date()
+
         defer { state.endSyncing() }
 
         do {
@@ -204,6 +206,16 @@ final class ChatThreadSyncService: CloudSyncDomain, Sendable {
             state.withLock {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
+            }
+            let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
+            let itemCountBucket = AnalyticsBuckets.count(threads.count)
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncCompleted, [
+                    "domain": "chat_threads",
+                    "outcome": "success",
+                    "duration_ms_bucket": .string(durationBucket),
+                    "item_count_bucket": .string(itemCountBucket)
+                ])
             }
         } catch {
             progress?.fail(error.localizedDescription)

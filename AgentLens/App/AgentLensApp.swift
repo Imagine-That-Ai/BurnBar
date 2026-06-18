@@ -965,6 +965,9 @@ struct OpenBurnBarApp: App {
         StartupProfiler.interval("configure_sentry") {
             Self.configureSentryIfAvailable()
         }
+        StartupProfiler.interval("configure_analytics") {
+            Self.configureAnalytics()
+        }
         StartupProfiler.interval("migrate_user_defaults") {
             OpenBurnBarMigration.migrateUserDefaults()
         }
@@ -973,6 +976,27 @@ struct OpenBurnBarApp: App {
             Self.makeStartupState()
         })
         StartupProfiler.event("app_init_end")
+    }
+
+    /// Wires the consent-gated Amplitude analytics: fans `TelemetryService`
+    /// records out to the wrapper, and resumes sending for a previously-consented
+    /// user (without re-emitting the opt-in event). Sends nothing until consent is
+    /// granted — `Analytics.shared` reads the gate on every call.
+    @MainActor
+    private static func configureAnalytics() {
+        TelemetryService.shared.setForwarder { feature, outcome, durationMs in
+            Task { @MainActor in
+                var properties: [String: AnalyticsValue] = [
+                    "feature": .string(feature.rawValue),
+                    "outcome": .string(outcome.rawValue),
+                ]
+                if let durationMs {
+                    properties["duration_ms_bucket"] = .string(AnalyticsBuckets.durationMs(durationMs))
+                }
+                Analytics.shared.track(.featureUsed, properties)
+            }
+        }
+        Analytics.shared.startIfConsented()
     }
 
     @MainActor
@@ -984,6 +1008,9 @@ struct OpenBurnBarApp: App {
                 "startup_datastore_open_failed",
                 metadata: ["error": String(describing: error)]
             )
+            Analytics.shared.track(.appStartupFailed, [
+                "error_type": .string(String(describing: type(of: error)))
+            ])
             return .failed(DataStoreStartupFailure.make(error: error, archiveURL: archiveURL))
         }
     }
@@ -1318,6 +1345,8 @@ struct OpenBurnBarApp: App {
         guard !OpenBurnBarApp.didStartLiveServices else { return }
         OpenBurnBarApp.didStartLiveServices = true
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
+
+        Analytics.shared.track(.appSessionStarted)
 
         Task { @MainActor in
             StartupProfiler.event("live_services_start")

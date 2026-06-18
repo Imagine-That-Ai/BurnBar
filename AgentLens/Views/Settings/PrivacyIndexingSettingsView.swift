@@ -23,6 +23,19 @@ struct PrivacyIndexingSettingsView: View {
     @State private var reembedStatusMessage: String?
     @State private var reembedErrorMessage: String?
 
+    /// Opt-in analytics consent toggle. Reads/writes the shared tri-state consent
+    /// store and notifies the recorder so the Amplitude SDK starts on grant and
+    /// stops on revoke. Off by default; revoking stops all future sends at once.
+    private var analyticsConsentBinding: Binding<Bool> {
+        Binding(
+            get: { AnalyticsConsentStore.shared.isGranted },
+            set: { isOn in
+                if isOn { AnalyticsConsentStore.shared.grant() } else { AnalyticsConsentStore.shared.revoke() }
+                Analytics.shared.consentDidChange()
+            }
+        )
+    }
+
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -30,6 +43,14 @@ struct PrivacyIndexingSettingsView: View {
                     title: "Index Conversation Text",
                     subtitle: "Store transcripts locally for search and chat context. Never uploaded to the cloud.",
                     isOn: $settingsManager.conversationIndexingEnabled
+                )
+
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "Share Usage Analytics",
+                    subtitle: "Send privacy-preserving product-usage events to Amplitude to help improve OpenBurnBar. Off by default. Never includes conversation content, API keys, secrets, or message bodies — you can turn it off anytime.",
+                    isOn: analyticsConsentBinding
                 )
 
                 Divider().background(DesignSystem.Colors.border)
@@ -320,14 +341,28 @@ struct PrivacyIndexingSettingsView: View {
             refreshOpenAIKey()
             normalizeCrossEncoderSelection()
         }
-        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
+        .onChange(of: settingsManager.conversationIndexingEnabled) { _, newValue in
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "conversation_indexing",
+                "new_value": .bool(newValue)
+            ])
             refreshStorage()
             refreshSourceArtifactCount()
             refreshSearchCounts()
             refreshHealth()
             refreshEmbeddingLineage()
         }
-        .onChange(of: settingsManager.indexEmbeddingProvider) { _, _ in
+        .onChange(of: settingsManager.cliAssistantAllowed) { _, newValue in
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "cli_assistant",
+                "new_value": .bool(newValue)
+            ])
+        }
+        .onChange(of: settingsManager.indexEmbeddingProvider) { _, newValue in
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "index_embedding_provider",
+                "new_value": .string(newValue.rawValue)
+            ])
             reembedStatusMessage = nil
             reembedErrorMessage = nil
             refreshOpenAIKey()

@@ -12,6 +12,7 @@ struct DashboardView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var easterEggController = EasterEggController()
+    @State private var didLogScreenView = false
     var aggregator: UsageAggregator?
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?
@@ -32,6 +33,7 @@ struct DashboardView: View {
     @State var sidebarAppeared = false
     @State var chatPanelOpen = false
     @State private var showIndexingConsent = false
+    @State private var showAnalyticsConsent = false
     @State private var showCLIConsentSheet = false
     @State private var showSessionLogCloudConsent = false
     @State var sessionLogJumpTarget: ConversationJumpTarget?
@@ -91,11 +93,13 @@ struct DashboardView: View {
 
     func runScan() {
         guard let agg = aggregator else { return }
+        Analytics.shared.track(.dashboardScanRun)
         Task { await agg.refreshAll() }
     }
 
     func runRecount() {
         guard let agg = aggregator else { return }
+        Analytics.shared.track(.dashboardRecountRun)
         Task { await agg.recountAll() }
     }
 
@@ -284,6 +288,26 @@ struct DashboardView: View {
                 showSessionLogCloudConsent = false
             }
             .presentationBackground(Material.ultraThinMaterial)
+        }
+        .sheet(isPresented: $showAnalyticsConsent) {
+            AnalyticsConsentPromptView { granted in
+                if granted {
+                    AnalyticsConsentStore.shared.grant()
+                    Analytics.shared.consentDidChange()
+                } else {
+                    AnalyticsConsentStore.shared.decline()
+                }
+                showAnalyticsConsent = false
+            }
+            .presentationBackground(Material.ultraThinMaterial)
+        }
+        .onAppear {
+            // First-run analytics opt-in: show once when undecided, deferring to
+            // any other first-run consent already presenting.
+            if !AnalyticsConsentStore.shared.hasDecided
+                && !showIndexingConsent && !showCLIConsentSheet && !showSessionLogCloudConsent {
+                showAnalyticsConsent = true
+            }
         }
         .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
             chatController.refreshRetrievalHealth(sharedFeaturesAvailable: isSignedIn)
@@ -596,7 +620,13 @@ struct DashboardView: View {
                         }
                 }
             }
-            .onAppear { overviewAppeared = true }
+            .onAppear {
+                overviewAppeared = true
+                if !didLogScreenView {
+                    didLogScreenView = true
+                    Analytics.shared.track(.screenViewed, ["surface": "dashboard_overview", "is_first_view": .bool(true)])
+                }
+            }
         }
     }
 

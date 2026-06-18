@@ -37,6 +37,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
               gate.account.isSignedIn,
               let resolvedUid = gate.account.uid else { return }
         let localDeviceId = gate.account.deviceId
+        let syncStartTime = Date()
 
         state.beginSyncing()
 
@@ -49,6 +50,14 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         await enqueueProjectionForRemoteConversations(newConversationIds)
 
         state.withLock { $0.lastSyncDate = Date() }
+        let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
+        Task { @MainActor in
+            Analytics.shared.track(.cloudsyncCompleted, [
+                "domain": "download",
+                "outcome": "success",
+                "duration_ms_bucket": .string(durationBucket)
+            ])
+        }
         await fetchCloudTotal()
         await context.refreshPresentationLayer()
     }

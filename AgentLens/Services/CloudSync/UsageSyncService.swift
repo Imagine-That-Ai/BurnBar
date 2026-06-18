@@ -41,6 +41,8 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
 
         guard state.beginSyncingIfIdle() else { return }
         let deviceId = gate.account.deviceId
+        let syncStartTime = Date()
+        var lastBatchCount = 0
 
         defer { state.endSyncing() }
 
@@ -51,6 +53,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             while true {
                 let unsynced = try await context.dataStore.fetchUnsynced()
                 guard !unsynced.isEmpty else { break }
+                lastBatchCount = unsynced.count
 
                 let batch = context.firestoreGateway.batch()
 
@@ -76,6 +79,16 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             state.withLock {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
+            }
+            let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
+            let itemCountBucket = AnalyticsBuckets.count(lastBatchCount)
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncCompleted, [
+                    "domain": "usage",
+                    "outcome": "success",
+                    "duration_ms_bucket": .string(durationBucket),
+                    "item_count_bucket": .string(itemCountBucket)
+                ])
             }
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
@@ -110,6 +123,16 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         state.withLock { $0.lastSyncError = error.localizedDescription }
 
         let nsError = error as NSError
+        let errorType = String(describing: type(of: error))
+        let isPermissionDenied = nsError.domain == FirestoreErrorDomain
+            && FirestoreErrorCode.Code(rawValue: nsError.code) == .permissionDenied
+        Task { @MainActor in
+            Analytics.shared.track(.cloudsyncFailed, [
+                "domain": "usage",
+                "error_type": .string(errorType),
+                "is_permission_denied": .bool(isPermissionDenied)
+            ])
+        }
         guard nsError.domain == FirestoreErrorDomain,
               let code = FirestoreErrorCode.Code(rawValue: nsError.code),
               code == .permissionDenied || code == .unauthenticated else {

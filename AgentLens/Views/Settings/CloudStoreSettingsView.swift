@@ -90,6 +90,7 @@ struct CloudStoreSettingsView: View {
             CloudBadgePicker()
         }
         .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "settings_cloud"])
             entitlement.start()
             Task { await purchaseStore.load() }
             refreshBackupState(startAutomaticCatchUp: true)

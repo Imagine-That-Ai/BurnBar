@@ -66,9 +66,15 @@ struct AccountSettingsView: View {
         .sheet(isPresented: $showEmailLinkSheet) {
             emailLinkSheet
         }
+        .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "settings_account"])
+        }
         .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) { onDeleteAccount() }
+            Button("Delete", role: .destructive) {
+                Analytics.shared.track(.authAccountDeleted)
+                onDeleteAccount()
+            }
         } message: {
             Text("This will permanently delete your account and all associated data. This action cannot be undone.")
         }
@@ -418,7 +424,10 @@ struct AccountSettingsView: View {
     private var actionsSection: some View {
         VStack(spacing: DesignSystem.Spacing.sm) {
             if !isAnonymous {
-                Button("Sign Out") { onSignOut() }
+                Button("Sign Out") {
+                    Analytics.shared.track(.authSignedOut)
+                    onSignOut()
+                }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
             }
@@ -468,9 +477,12 @@ struct AccountSettingsView: View {
                         do {
                             switch emailMode {
                             case .signIn:
+                                // auth.sign_in.completed is emitted centrally by
+                                // AccountManager once the credential resolves.
                                 try await onEmailSignIn(emailLinkEmail, emailLinkPassword)
                             case .signUp:
                                 try await onEmailSignUp(emailLinkEmail, emailLinkPassword)
+                                Analytics.shared.track(.authSignUpCompleted, ["method": "email"])
                             }
                             showEmailLinkSheet = false
                         } catch {

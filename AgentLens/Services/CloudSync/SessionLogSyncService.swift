@@ -116,6 +116,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         guard Self.processGate.tryEnter() else { return }
 
         let deviceId = gate.account.deviceId
+        let syncStartTime = Date()
 
         state.beginSyncing()
 
@@ -464,8 +465,25 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                 $0.lastSyncDate = Date()
                 $0.lastSyncError = nil
             }
+            let durationBucket = AnalyticsBuckets.durationMs(Int(Date().timeIntervalSince(syncStartTime) * 1000))
+            let itemCountBucket = AnalyticsBuckets.count(progress?.currentSnapshot().uploadedSessionLogs ?? 0)
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncCompleted, [
+                    "domain": "session_logs",
+                    "outcome": "success",
+                    "duration_ms_bucket": .string(durationBucket),
+                    "item_count_bucket": .string(itemCountBucket)
+                ])
+            }
         } catch {
             progress?.fail(error.localizedDescription)
+            let errorType = String(describing: type(of: error))
+            Task { @MainActor in
+                Analytics.shared.track(.cloudsyncFailed, [
+                    "domain": "session_logs",
+                    "error_type": .string(errorType)
+                ])
+            }
             await recordSyncError(error)
         }
     }

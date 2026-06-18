@@ -25,6 +25,7 @@ struct DashboardProjectSpendLaneView: View {
                     VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                         ForEach(Array(summaries.prefix(8).enumerated()), id: \.element.id) { index, summary in
                             ProjectSpendCard(summary: summary, rank: index + 1) {
+                                Analytics.shared.track(.dashboardLaneCardOpened, ["lane": "project"])
                                 withAnimation(UnifiedDesignSystem.Animation.standard) {
                                     onNavigateToProject(summary)
                                 }

@@ -70,6 +70,9 @@ struct AlertsSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
         .navigationTitle("Alerts")
+        .onAppear {
+            Analytics.shared.track(.screenViewed, ["surface": "settings_alerts"])
+        }
     }
 }
 
@@ -96,6 +99,10 @@ struct SpendAlertDetailView: View {
                                 settingsManager.costAlertThreshold = enabled
                                     ? max(settingsManager.costAlertThreshold ?? 25, 1)
                                     : nil
+                                Analytics.shared.track(.settingsChanged, [
+                                    "setting_key": "cost_threshold_alert",
+                                    "new_value": .bool(enabled)
+                                ])
                             }
                         )
                     )
@@ -118,6 +125,13 @@ struct SpendAlertDetailView: View {
                                 TextField("25", value: costAlertBinding, format: .number.precision(.fractionLength(0...2)))
                                     .textFieldStyle(.roundedBorder)
                                     .frame(width: 96)
+                                    .onChange(of: settingsManager.costAlertThreshold) { _, newValue in
+                                        guard let amount = newValue else { return }
+                                        Analytics.shared.track(.settingsChanged, [
+                                            "setting_key": "cost_threshold_amount",
+                                            "new_value": .string(AnalyticsBuckets.amountUSD(amount))
+                                        ])
+                                    }
                             }
                         }
                     }
@@ -146,6 +160,12 @@ struct DailyDigestDetailView: View {
                         icon: "newspaper",
                         isOn: $settingsManager.dailyDigestEnabled
                     )
+                    .onChange(of: settingsManager.dailyDigestEnabled) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "daily_digest_enabled",
+                            "new_value": .bool(newValue)
+                        ])
+                    }
 
                     if settingsManager.dailyDigestEnabled {
                         Divider().background(DesignSystem.Colors.border)

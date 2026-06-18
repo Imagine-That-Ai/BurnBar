@@ -35,6 +35,9 @@ extension ChatSessionController {
 
     func cancelGeneration() {
         streamTask?.cancel()
+        Analytics.shared.track(.chatGenerationCancelled, [
+            "backend": .string(chatBackend.rawValue)
+        ])
         cliBridge.cancel()
         isStreaming = false
         activeStreamMessageId = nil

@@ -103,11 +103,13 @@ struct MenuBarPopoverView: View {
 
     private func runScan() {
         guard let agg = aggregator else { return }
+        Analytics.shared.track(.menubarAction, ["action": "scan"])
         Task { await agg.refreshAll() }
     }
 
     private func runRecount() {
         guard let agg = aggregator else { return }
+        Analytics.shared.track(.menubarAction, ["action": "recount"])
         Task { await agg.recountAll() }
     }
 
@@ -137,6 +139,7 @@ struct MenuBarPopoverView: View {
 
     private func castSmartHubFromTray() {
         guard !isCastingSmartHub else { return }
+        Analytics.shared.track(.menubarAction, ["action": "smartdisplay_cast"])
         isCastingSmartHub = true
         smartHubCastStatusMessage = "Casting OpenBurnBar to your smart display..."
         Task { @MainActor in
@@ -843,6 +846,7 @@ struct MenuBarPopoverView: View {
                 icon: "chart.bar.fill",
                 style: .prominent
             ) {
+                Analytics.shared.track(.menubarAction, ["action": "open_dashboard"])
                 dismiss()
                 onOpenDashboard()
             }
@@ -853,6 +857,7 @@ struct MenuBarPopoverView: View {
                 icon: "gearshape.fill",
                 style: .regular
             ) {
+                Analytics.shared.track(.menubarAction, ["action": "open_settings"])
                 dismiss()
                 onOpenSettings()
             }

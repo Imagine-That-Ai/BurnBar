@@ -37,6 +37,7 @@ struct InsightsAuditLogView: View {
             }
             Spacer()
             Button("Clear", role: .destructive) {
+                Analytics.shared.track(.insightsAuditlogCleared, ["entries_cleared_bucket": .string(AnalyticsBuckets.count(entries.count))])
                 Task {
                     try? await auditLog.clear()
                     await load()

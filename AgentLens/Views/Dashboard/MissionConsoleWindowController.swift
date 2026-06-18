@@ -23,6 +23,7 @@ final class MissionConsoleWindowController: NSObject, NSWindowDelegate {
     }
 
     func makeOrShow() {
+        Analytics.shared.track(.missionConsoleOpened)
         if let existing = window {
             existing.makeKeyAndOrderFront(nil)
             host.rebuildSnapshot()

@@ -179,6 +179,10 @@ final class InsightsMacEnvironment {
 
     func compose(prompt: String) async {
         guard !prompt.isEmpty else { return }
+        Analytics.shared.track(.insightsAnalysisRequested, [
+            "instruction": "answerFollowUp",
+            "prompt_length_bucket": .string(AnalyticsBuckets.count(prompt.count))
+        ])
         composerError = nil
         isComposing = true
         defer { isComposing = false }
@@ -247,6 +251,12 @@ final class InsightsMacEnvironment {
             failWhenSelectedGatewayUnavailable: true
         ))
         let result = try await analysisEngine.analyze(request)
+        Analytics.shared.track(.insightsAnalysisCompleted, [
+            "outcome": "succeeded",
+            "selected_model": .string(result.modelTag.modelID),
+            "egress_tier": .string(result.modelTag.egressTier.rawValue),
+            "generated_widgets": .string(AnalyticsBuckets.count(result.generatedWidgets.count))
+        ])
         try? await auditLog.append(.init(
             id: result.auditID ?? UUID(),
             canvasID: canvas?.id,
@@ -443,6 +453,9 @@ final class InsightsMacEnvironment {
     func createCanvas(from template: InsightCanvasTemplate) async {
         let canvas = template.instantiate()
         try? await store.upsert(canvas)
+        Analytics.shared.track(.insightsCanvasCreated, [
+            "template_id": .string(template.id)
+        ])
         canvases = await store.allCanvases()
         selectedCanvasID = canvas.id
         await refreshSelectedCanvasData()
@@ -451,6 +464,7 @@ final class InsightsMacEnvironment {
     func deleteCurrentCanvas() async {
         guard let id = selectedCanvasID else { return }
         try? await store.remove(id: id)
+        Analytics.shared.track(.insightsCanvasDeleted)
         canvases = await store.allCanvases()
         selectedCanvasID = canvases.first?.id
     }
@@ -463,6 +477,10 @@ final class InsightsMacEnvironment {
     func addWidget(_ widget: InsightWidget) async {
         guard var canvas = currentCanvas else { return }
         canvas.add(widget)
+        Analytics.shared.track(.insightsWidgetChanged, [
+            "action": "added",
+            "widget_kind": .string(widget.kind.rawValue)
+        ])
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
         await refreshSelectedCanvasData()
@@ -475,6 +493,10 @@ final class InsightsMacEnvironment {
         } else {
             canvas.widgets.append(generated.widget)
         }
+        Analytics.shared.track(.insightsWidgetChanged, [
+            "action": "pinned",
+            "widget_kind": .string(generated.widget.kind.rawValue)
+        ])
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
     }
@@ -482,6 +504,9 @@ final class InsightsMacEnvironment {
     func removeWidget(id widgetID: UUID) async {
         guard var canvas = currentCanvas else { return }
         canvas.remove(widgetID: widgetID)
+        Analytics.shared.track(.insightsWidgetChanged, [
+            "action": "removed"
+        ])
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
     }
@@ -489,6 +514,11 @@ final class InsightsMacEnvironment {
     func moveWidget(id widgetID: UUID, column: Int, row: Int) async {
         guard var canvas = currentCanvas else { return }
         canvas.layout.move(widgetID: widgetID, toColumn: column, toRow: row)
+        Analytics.shared.track(.insightsWidgetChanged, [
+            "action": "moved",
+            "column": .string(AnalyticsBuckets.count(column)),
+            "row": .string(AnalyticsBuckets.count(row))
+        ])
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
     }
@@ -496,6 +526,11 @@ final class InsightsMacEnvironment {
     func resizeWidget(id widgetID: UUID, colSpan: Int, rowSpan: Int) async {
         guard var canvas = currentCanvas else { return }
         canvas.layout.resize(widgetID: widgetID, colSpan: colSpan, rowSpan: rowSpan)
+        Analytics.shared.track(.insightsWidgetChanged, [
+            "action": "resized",
+            "col_span": .string(AnalyticsBuckets.count(colSpan)),
+            "row_span": .string(AnalyticsBuckets.count(rowSpan))
+        ])
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
     }
