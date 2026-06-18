@@ -309,6 +309,26 @@ jobs:
           - Do not commit, push, or open the PR yourself; the workflow will do
             that after Codex exits.
 
+          Team handoff protocol:
+          - Treat Codex and Cursor as GitHub-mediated teammates. The shared
+            truth is the PR head SHA, commits, reviews, review threads,
+            comments, and check runs.
+          - Before editing an existing repair PR, inspect current reviews,
+            unresolved review threads, issue comments, commits, and check runs.
+          - If Cursor Bugbot feedback exists and no active Cursor autofix is
+            still changing the branch, fix code-owned findings that are caused
+            by this repair branch or record the exact blocker.
+          - If a Cursor Bugbot Autofix, Cursor Cloud Agent, or another Codex run
+            is still running on the branch, do not race it. Stop and report the
+            exact active agent/check as the blocker.
+          - If Cursor or Codex pushed after this workflow trigger, refresh the
+            head, diff, reviews, and checks before deciding what remains.
+          - Do not treat Cursor Approval Agent output as approval evidence.
+            Branch protection and human/Codex review are the merge gates.
+          - In the final message, include a compact loop ledger: open Codex
+            feedback, open Cursor feedback, active autofix state, files changed,
+            validations run, and residual risk.
+
           Repair loop state:
           PROMPT
             if [[ -n "$repair_pr_url" ]]; then
