@@ -13,14 +13,8 @@ import SwiftUI
 import Sentry
 #endif
 
-/// Single source of truth for "this process is hosting an XCTest bundle, not a real user."
-///
-/// XCTest's host-bundle-loader path is sensitive: any heavyweight scene work, file I/O, or
-/// background `Task` started inside `App.init` / `App.body` can race the runner-connect window
-/// and produce the opaque `"test runner hung before establishing connection"` failure mode.
-/// We use this gate to short-circuit *every* expensive bootstrap and replace the menu-bar
-/// scene with `EmptyScene` so the test process becomes a near-empty SwiftUI host whose only
-/// job is loading and executing `OpenBurnBarTests.xctest`.
+/// Single source of truth for "this process is hosting XCTest, not a real user."
+/// Keeps test hosts from starting heavyweight scene/bootstrap work before XCTest connects.
 enum OpenBurnBarRuntime {
     @MainActor private static var harnessHostActivity: NSObjectProtocol?
 
@@ -97,8 +91,7 @@ enum OpenBurnBarRuntime {
         )
     }
 
-    /// True when we should bypass the live menu-bar scene and present `EmptyScene()` instead.
-    /// This is the gate that protects the XCTest runner-connect window.
+    /// Protects the XCTest runner-connect window by bypassing the live menu-bar scene.
     static var shouldUseTestStubScene: Bool {
         shouldUseTestStubScene(isRunningTests: isRunningTests, forceLiveScene: forceLiveScene)
     }
@@ -124,11 +117,8 @@ private enum StartupProfiler {
     }
 }
 
-/// SwiftUI auto-opens the first `Window` scene of an `App` on launch even when
-/// the app is `LSUIElement` and the live UI lives entirely in the
-/// `NSStatusItem` popover. This sentinel attaches an `NSWindow` accessor that
-/// closes the host window the moment SwiftUI hands it to AppKit, so the only
-/// visible OpenBurnBar surface at idle is the menu-bar icon.
+/// Closes SwiftUI's auto-opened background `Window` so the menu-bar icon is the
+/// only idle OpenBurnBar surface.
 private struct BackgroundSceneSentinel: View {
     var body: some View {
         Color.clear
@@ -153,8 +143,7 @@ private struct BackgroundSceneWindowDismisser: NSViewRepresentable {
     }
 }
 
-/// `MenuBarExtra` uses the label image's intrinsic size and commonly ignores SwiftUI `.frame` / layout on nested
-/// views. Rasterize the vector `AppLogo` to a small `NSImage` so the status item matches normal menu-bar icons.
+/// Rasterizes `AppLogo` so `MenuBarExtra` gets a normal menu-bar icon size.
 private enum MenuBarRasterBrandMark {
     static let side: CGFloat = 18
 
@@ -183,11 +172,8 @@ final class AppCommandRouter {
     var openSettings: (() -> Void)?
     var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)? {
         didSet {
-            // Lets AppDelegate (re)prime the menu-bar popover content off
-            // the click path the moment the real factory lands (i.e. when
-            // `startupState.runtimeContext` becomes ready) — and
-            // invalidate a prewarm that captured a stale factory, such as
-            // the startup-recovery `EmptyView` fallback.
+            // Reprime menu-bar popover content when the real factory lands and
+            // invalidate stale startup-recovery prewarms.
             onMenuBarPopoverFactoryChanged?()
         }
     }
@@ -978,10 +964,7 @@ struct OpenBurnBarApp: App {
         StartupProfiler.event("app_init_end")
     }
 
-    /// Wires the consent-gated Amplitude analytics: fans `TelemetryService`
-    /// records out to the wrapper, and resumes sending for a previously-consented
-    /// user (without re-emitting the opt-in event). Sends nothing until consent is
-    /// granted — `Analytics.shared` reads the gate on every call.
+    /// Wires consent-gated Amplitude analytics and resumes prior opt-ins.
     @MainActor
     private static func configureAnalytics() {
         TelemetryService.shared.setForwarder { feature, outcome, durationMs in
@@ -1906,11 +1889,8 @@ enum MacCrashReportingConsent {
         return defaults.bool(forKey: defaultsKey)
     }
 
-    /// A stable, non-PII per-install identifier (32 hex chars). Seeded from a
-    /// random UUID persisted in this install's own defaults — NOT from
-    /// `NSFullUserName()` / the macOS account, which is PII and survives
-    /// reinstalls. Pure given an injected `UserDefaults`, so the privacy
-    /// property is unit-testable.
+    /// Stable non-PII per-install id seeded from this install's own random UUID.
+    /// Pure with injected defaults so the privacy property is unit-testable.
     static func perInstallAnonymizedID(defaults: UserDefaults = .standard) -> String {
         let seed: String
         if let stored = defaults.string(forKey: installIDDefaultsKey),
@@ -1929,15 +1909,12 @@ enum MacCrashReportingConsent {
 
 // MARK: - Sentry payload scrubber (T-PRV-03)
 
-/// Strips user content (prompts, vault data, tokens, emails, file paths, the
-/// macOS user's home directory) from Sentry events + breadcrumbs before they
-/// leave the device. The string-level redaction is pure so the privacy decision
-/// is unit-testable without the Sentry SDK. Mirrors `MobileSentryScrubber`.
+/// Strips user content from Sentry events + breadcrumbs before they leave device.
+/// The pure redaction logic mirrors `MobileSentryScrubber`.
 enum MacSentryScrubber {
     static let redactionPlaceholder = "[redacted]"
 
-    /// Substrings whose presence in a key marks the value as sensitive and
-    /// therefore fully dropped.
+    /// Key fragments whose values are always fully redacted.
     static let sensitiveKeyFragments: [String] = [
         "token", "secret", "password", "passcode", "key", "auth",
         "credential", "cookie", "session", "email", "prompt", "message",
@@ -1951,10 +1928,7 @@ enum MacSentryScrubber {
         return sensitiveKeyFragments.contains { lower.contains($0) }
     }
 
-    /// Redacts a free-text string: collapses anything that looks like an email,
-    /// a bearer/long token, or an absolute file path (which on macOS carries the
-    /// account short-name under `/Users/<name>`). Conservative — when in doubt
-    /// it redacts.
+    /// Redacts email-like strings, bearer/long tokens, and absolute paths.
     static func redact(_ text: String) -> String {
         var result = text
         let patterns = [
@@ -1977,9 +1951,7 @@ enum MacSentryScrubber {
         return result
     }
 
-    /// Recursively redacts a `[String: Any]` map: sensitive keys are dropped to
-    /// the placeholder, string values are run through `redact`, nested maps /
-    /// arrays are walked.
+    /// Recursively redacts maps, nested maps, and arrays.
     static func redactDictionary(_ input: [String: Any]) -> [String: Any] {
         var output: [String: Any] = [:]
         for (key, value) in input {
@@ -2006,8 +1978,7 @@ enum MacSentryScrubber {
     }
 
     #if canImport(Sentry)
-    /// Scrubs a Sentry event in place and returns it. Returning the event keeps
-    /// crash signal (stack traces, OS/app version) while removing user content.
+    /// Keeps crash signal while removing user content.
     static func scrub(_ event: Event) -> Event? {
         // Never report identity.
         event.user = nil
@@ -2026,9 +1997,7 @@ enum MacSentryScrubber {
         return event
     }
 
-    /// Scrubs a breadcrumb. Returns the breadcrumb after redacting its message
-    /// and data; the conservative `redact` keeps crash-correlation signal while
-    /// dropping any embedded user content.
+    /// Redacts breadcrumb message/data while keeping crash-correlation signal.
     static func scrub(_ breadcrumb: Breadcrumb) -> Breadcrumb? {
         if let message = breadcrumb.message {
             breadcrumb.message = redact(message)
