@@ -118,7 +118,7 @@ async function patchExistingRelease(token, releaseName, update) {
         method: "PATCH",
         body: JSON.stringify({
           release: update,
-          updateMask: "ruleset_name",
+          updateMask: "rulesetName",
         }),
       });
     } catch (error) {
