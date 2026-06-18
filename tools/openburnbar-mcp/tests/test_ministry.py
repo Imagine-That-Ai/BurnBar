@@ -418,8 +418,15 @@ def test_env_cap_clamps_select_models_for_wand_end_to_end(monkeypatch, tmp_path:
     )
     assert capped["selectedCount"] == 2
 
-    # No cap (defaults to the 16 ceiling): the same request yields all 3 available.
+    # Missing cap fails closed to the free-tier single worker ceiling.
     monkeypatch.delenv("OPENBURNBAR_WAND_PARALLEL_MAX", raising=False)
+    fail_closed = ministry.select_models_for_wand(
+        store, count=10, require_provider_diversity=False, prove_headless=True, max_probes=10, probe_runner=probe
+    )
+    assert fail_closed["selectedCount"] == 1
+
+    # Explicit Ultra cap allows the same request to use all 3 available candidates.
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "16")
     full = ministry.select_models_for_wand(
         store, count=10, require_provider_diversity=False, prove_headless=True, max_probes=10, probe_runner=probe
     )

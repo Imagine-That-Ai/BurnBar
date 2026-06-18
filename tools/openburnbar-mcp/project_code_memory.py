@@ -462,8 +462,7 @@ def estimated_code_storage_byte_count(
 ) -> int:
     chunk_text_bytes = sum(_utf8_len(body) for _, _, body in chunks)
     fts_mirror_bytes = sum(
-        _utf8_len(body) + _utf8_len(file_path) + _utf8_len(project_id) + _utf8_len(provider)
-        for _, _, body in chunks
+        _utf8_len(body) + _utf8_len(file_path) + _utf8_len(project_id) + _utf8_len(provider) for _, _, body in chunks
     )
     return source_bytes + chunk_text_bytes + fts_mirror_bytes + (len(chunks) * vector_bytes_per_chunk)
 
@@ -951,9 +950,7 @@ def ensure_embedding_version(conn: sqlite3.Connection) -> str:
     return version_id
 
 
-def deterministic_fingerprint_vector(
-    text: str, dimensions: int = DETERMINISTIC_FINGERPRINT_DIMENSIONS
-) -> list[float]:
+def deterministic_fingerprint_vector(text: str, dimensions: int = DETERMINISTIC_FINGERPRINT_DIMENSIONS) -> list[float]:
     """Stable content fingerprint used for tests/dedupe only.
 
     This is intentionally not a semantic embedding and must not affect production
@@ -2046,7 +2043,11 @@ def static_parser_path() -> str | None:
 
 
 def code_helper_timeout_seconds() -> float:
-    raw = os.environ.get("OPENBURNBAR_CODE_HELPER_TIMEOUT_MS") or os.environ.get("OPENBURNBAR_CODE_LSP_TIMEOUT_MS") or "5000"
+    raw = (
+        os.environ.get("OPENBURNBAR_CODE_HELPER_TIMEOUT_MS")
+        or os.environ.get("OPENBURNBAR_CODE_LSP_TIMEOUT_MS")
+        or "5000"
+    )
     try:
         milliseconds = int(raw)
     except ValueError:
@@ -2055,9 +2056,11 @@ def code_helper_timeout_seconds() -> float:
 
 
 def code_helper_max_output_bytes() -> int:
-    raw = os.environ.get("OPENBURNBAR_CODE_HELPER_MAX_OUTPUT_BYTES") or os.environ.get(
-        "OPENBURNBAR_CODE_LSP_MAX_RESPONSE_BYTES"
-    ) or "2097152"
+    raw = (
+        os.environ.get("OPENBURNBAR_CODE_HELPER_MAX_OUTPUT_BYTES")
+        or os.environ.get("OPENBURNBAR_CODE_LSP_MAX_RESPONSE_BYTES")
+        or "2097152"
+    )
     try:
         value = int(raw)
     except ValueError:
@@ -2436,9 +2439,7 @@ def import_scip_json(
                 if range_payload is None:
                     continue
                 role_value = _scip_role_value(
-                    occurrence.get("symbolRoles")
-                    if "symbolRoles" in occurrence
-                    else occurrence.get("symbol_roles")
+                    occurrence.get("symbolRoles") if "symbolRoles" in occurrence else occurrence.get("symbol_roles")
                 )
                 if role_value & SCIP_DEFINITION_ROLE:
                     info = symbol_info_by_id.get(symbol)
@@ -2487,9 +2488,7 @@ def import_scip_json(
                 if not isinstance(symbol, str) or not symbol:
                     continue
                 role_value = _scip_role_value(
-                    occurrence.get("symbolRoles")
-                    if "symbolRoles" in occurrence
-                    else occurrence.get("symbol_roles")
+                    occurrence.get("symbolRoles") if "symbolRoles" in occurrence else occurrence.get("symbol_roles")
                 )
                 if role_value & SCIP_DEFINITION_ROLE:
                     continue
@@ -2499,9 +2498,10 @@ def import_scip_json(
                 range_payload = _scip_range(occurrence.get("range"), rel)
                 if range_payload is None:
                     continue
-                reference_id = "scip_ref_" + sha256_hex(
-                    f"{project_id}:{artifact_id}:{symbol}:{occurrence.get('range')}".encode()
-                )[:32]
+                reference_id = (
+                    "scip_ref_"
+                    + sha256_hex(f"{project_id}:{artifact_id}:{symbol}:{occurrence.get('range')}".encode())[:32]
+                )
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO code_references
@@ -2803,11 +2803,7 @@ def index_project(
                 )
                 continue
             symbols = extract_symbols(text, lang, rel, project_id, artifact_id, blob_sha, root=root)
-            chunks = (
-                ast_aware_chunks(text, symbols)
-                if lang in AST_AWARE_CHUNK_LANGUAGES
-                else chunk_text(text)
-            )
+            chunks = ast_aware_chunks(text, symbols) if lang in AST_AWARE_CHUNK_LANGUAGES else chunk_text(text)
             candidate_storage_byte_count = estimated_code_storage_byte_count(
                 source_bytes=len(data),
                 chunks=chunks,
@@ -3341,7 +3337,9 @@ def search_code(conn: sqlite3.Connection, query: str, project_path: str | None, 
 
 def semantic_retrieval_status(conn: sqlite3.Connection, project_id: str) -> dict[str, Any]:
     configured_provider = os.environ.get("OPENBURNBAR_CODE_EMBEDDING_PROVIDER", "").strip().lower()
-    configured_model = os.environ.get(SELECTED_LOCAL_EMBEDDING_MODEL_ENV, SELECTED_LOCAL_EMBEDDING_MODEL_DEFAULT).strip()
+    configured_model = os.environ.get(
+        SELECTED_LOCAL_EMBEDDING_MODEL_ENV, SELECTED_LOCAL_EMBEDDING_MODEL_DEFAULT
+    ).strip()
     if configured_provider != SELECTED_LOCAL_EMBEDDING_PROVIDER:
         return {
             "semanticAvailable": False,
@@ -3609,7 +3607,12 @@ def find_references(conn: sqlite3.Connection, symbol_name: str, project_path: st
     lim = max(1, min(int(limit), 200))
     exact_refs = exact_lsp_references_for_symbol(conn, symbol_name, project_id, root, lim)
     if exact_refs:
-        return {"status": "ok", "references": exact_refs, "confidenceTier": "exact_lsp", **project_payload(root, project_id)}
+        return {
+            "status": "ok",
+            "references": exact_refs,
+            "confidenceTier": "exact_lsp",
+            **project_payload(root, project_id),
+        }
     rows = conn.execute(
         """
         SELECT r.id, target.name, r.range_json, r.confidence_tier, a.file_path,

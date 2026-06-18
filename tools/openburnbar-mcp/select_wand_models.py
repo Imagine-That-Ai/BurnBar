@@ -57,9 +57,7 @@ def _public_candidate(candidate: dict[str, Any] | None) -> dict[str, Any] | None
         return None
     public_fields = ("arg", "model", "displayName", "provider", "source")
     return {
-        field: candidate[field]
-        for field in public_fields
-        if isinstance(candidate.get(field), str) and candidate[field]
+        field: candidate[field] for field in public_fields if isinstance(candidate.get(field), str) and candidate[field]
     }
 
 

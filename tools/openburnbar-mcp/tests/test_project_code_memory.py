@@ -523,9 +523,9 @@ def removed_delta_symbol():
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         pcm.index_project(conn, str(repo), max_files=25)
-        first_indexed_at = conn.execute(
-            "SELECT indexed_at FROM code_artifacts WHERE file_path = 'main.py'"
-        ).fetchone()[0]
+        first_indexed_at = conn.execute("SELECT indexed_at FROM code_artifacts WHERE file_path = 'main.py'").fetchone()[
+            0
+        ]
 
         time.sleep(0.02)
         (repo / "removed.py").unlink()
@@ -639,7 +639,9 @@ def clean_symbol():
     return 1
 """,
     )
-    encoded_github = base64.b64encode(("ghp_" + ("A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8")).encode("utf-8")).decode("ascii")
+    encoded_github = base64.b64encode(("ghp_" + ("A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8")).encode("utf-8")).decode(
+        "ascii"
+    )
     (repo / "encoded.py").write_text(f'payload = "{encoded_github}"\n', encoding="utf-8")
     (repo / "terraform.tfvars").write_text(
         'service_api_key = "abcdefghijklmnopqrstuvwxyz1234567890"\n',
