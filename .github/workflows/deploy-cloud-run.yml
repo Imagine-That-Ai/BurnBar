@@ -45,6 +45,10 @@ jobs:
       - name: Resolve release tag
         id: tag
         run: |
+          DEPLOY_TOOLING_SCRIPT="$RUNNER_TEMP/deploy-hosted-mcp.sh"
+          cp scripts/deploy-hosted-mcp.sh "$DEPLOY_TOOLING_SCRIPT"
+          chmod +x "$DEPLOY_TOOLING_SCRIPT"
+
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
             TAG="${{ inputs.tag }}"
           else
@@ -60,6 +64,7 @@ jobs:
             echo "tag=$TAG"
             echo "commit=$(git rev-parse HEAD)"
             echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}"
+            echo "deploy_tooling_script=$DEPLOY_TOOLING_SCRIPT"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
@@ -205,7 +210,7 @@ jobs:
             echo "::error::No Google application credentials from WIF/OIDC auth. Cloud Run deploy requires workload identity federation."
             exit 1
           fi
-          ./scripts/deploy-hosted-mcp.sh
+          "${{ steps.tag.outputs.deploy_tooling_script }}"
 
       - name: Read back hosted MCP deployment
         id: readback
