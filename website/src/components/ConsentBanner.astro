@@ -1,0 +1,145 @@
+---
+// Opt-in analytics consent banner. Renders hidden; the bundled script below
+// shows it only on first visit (consent unset) and boots analytics ONLY after
+// an explicit Accept. Declining — or never answering — keeps the site dark:
+// the Amplitude chunk is never even fetched. Revisit via any `[data-analytics-manage]`
+// control (see Footer). This is the single client entry point for analytics and
+// is included once from BaseLayout.
+---
+
+<aside id="analytics-consent" class="analytics-consent" role="dialog" aria-modal="false" aria-label="Usage analytics consent" hidden>
+  <div class="analytics-consent__body">
+    <p class="analytics-consent__text">
+      <strong>Privacy-first, opt-in analytics.</strong>
+      We'd like to measure feature usage with privacy-preserving analytics (Amplitude) to improve
+      BurnBar. No personal data, no message content, no tracking until you choose to opt in. See our
+      <a href="/privacy">Privacy Policy</a>.
+    </p>
+    <div class="analytics-consent__actions">
+      <button type="button" class="analytics-consent__btn analytics-consent__btn--ghost" data-consent-decline>
+        Not now
+      </button>
+      <button type="button" class="analytics-consent__btn analytics-consent__btn--primary" data-consent-accept>
+        Enable analytics
+      </button>
+    </div>
+  </div>
+</aside>
+
+<style>
+  .analytics-consent {
+    position: fixed;
+    inset-inline: 1rem;
+    inset-block-end: 1rem;
+    z-index: 1000;
+    max-width: 44rem;
+    margin-inline: auto;
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--color-surface, #14131a) 92%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 18px 48px -24px rgba(0, 0, 0, 0.7);
+    padding: 1rem 1.15rem;
+  }
+  .analytics-consent[hidden] {
+    display: none;
+  }
+  .analytics-consent__body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.85rem 1.25rem;
+    justify-content: space-between;
+  }
+  .analytics-consent__text {
+    flex: 1 1 22rem;
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-text-muted, #c6c4d0);
+  }
+  .analytics-consent__text strong {
+    color: var(--color-text, #f4f3f7);
+  }
+  .analytics-consent__text a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .analytics-consent__actions {
+    display: flex;
+    gap: 0.6rem;
+    flex: 0 0 auto;
+  }
+  .analytics-consent__btn {
+    font: inherit;
+    font-size: 0.83rem;
+    font-weight: 600;
+    padding: 0.5rem 0.95rem;
+    border-radius: 9px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  .analytics-consent__btn--ghost {
+    background: transparent;
+    border-color: color-mix(in srgb, currentColor 22%, transparent);
+    color: var(--color-text-muted, #c6c4d0);
+  }
+  .analytics-consent__btn--ghost:hover {
+    border-color: color-mix(in srgb, currentColor 40%, transparent);
+  }
+  .analytics-consent__btn--primary {
+    background: var(--color-accent, #6d5efc);
+    color: #fff;
+  }
+  .analytics-consent__btn--primary:hover {
+    background: color-mix(in srgb, var(--color-accent, #6d5efc) 88%, #fff);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .analytics-consent__btn {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  import {
+    analyticsConsent,
+    grantConsent,
+    declineConsent,
+    boot,
+    installDelegatedTracking,
+  } from "../lib/analytics";
+
+  const banner = document.getElementById("analytics-consent");
+  const show = () => banner?.removeAttribute("hidden");
+  const hide = () => banner?.setAttribute("hidden", "");
+
+  // CTA tracking is safe to wire immediately — every track() is dropped until
+  // consent is granted, so nothing leaks pre-opt-in.
+  installDelegatedTracking();
+
+  if (analyticsConsent.hasDecided) {
+    boot(); // resumes + emits page view if granted; stays dark if declined
+  } else {
+    show();
+  }
+
+  banner?.querySelector("[data-consent-accept]")?.addEventListener("click", () => {
+    grantConsent(); // persists, starts the transport, emits consent.granted + page view
+    hide();
+  });
+  banner?.querySelector("[data-consent-decline]")?.addEventListener("click", () => {
+    declineConsent();
+    hide();
+  });
+
+  // Let any "manage analytics" control (e.g. in the footer) reopen the prompt.
+  document.querySelectorAll("[data-analytics-manage]").forEach((el) =>
+    el.addEventListener("click", (event) => {
+      event.preventDefault();
+      show();
+    }),
+  );
+</script>

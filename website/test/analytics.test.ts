@@ -1,0 +1,169 @@
+import { describe, it, expect } from "vitest";
+import { ConsentStore, type ConsentStorage } from "../src/lib/analytics/consent";
+import { Analytics, type AnalyticsTransport } from "../src/lib/analytics/recorder";
+import { EVENT } from "../src/lib/analytics/events";
+import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
+
+/** In-memory Storage seam — vitest's node env has no localStorage. */
+function makeStorage(): ConsentStorage {
+  const m = new Map<string, string>();
+  return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) };
+}
+
+/** Records every transport call so tests can assert on the wire contract. */
+class FakeTransport implements AnalyticsTransport {
+  started = false;
+  startCount = 0;
+  stopCount = 0;
+  sent: { name: string; category: string; props: Record<string, string | boolean> }[] = [];
+  get isStarted() {
+    return this.started;
+  }
+  start() {
+    this.started = true;
+    this.startCount++;
+  }
+  track(name: string, category: string, props: Record<string, string | boolean>) {
+    this.sent.push({ name, category, props });
+  }
+  stop() {
+    this.started = false;
+    this.stopCount++;
+  }
+}
+
+function make(granted: boolean, apiKey = "test-key") {
+  const consent = new ConsentStore(makeStorage());
+  if (granted) consent.grant();
+  const transport = new FakeTransport();
+  const analytics = new Analytics({
+    consent,
+    transport,
+    apiKey,
+    superProperties: () => ({ platform: "website", app_version: "1.0.0" }),
+  });
+  return { analytics, transport, consent };
+}
+
+describe("ConsentStore", () => {
+  it("defaults to unset — dark", () => {
+    const c = new ConsentStore(makeStorage());
+    expect(c.state).toBe("unset");
+    expect(c.isGranted).toBe(false);
+    expect(c.hasDecided).toBe(false);
+  });
+
+  it("treats unset and declined identically (both dark)", () => {
+    const c = new ConsentStore(makeStorage());
+    expect(c.isGranted).toBe(false);
+    c.decline();
+    expect(c.state).toBe("declined");
+    expect(c.isGranted).toBe(false);
+    expect(c.hasDecided).toBe(true);
+  });
+
+  it("grant/revoke persist across instances", () => {
+    const s = makeStorage();
+    const c = new ConsentStore(s);
+    c.grant();
+    expect(c.isGranted).toBe(true);
+    expect(new ConsentStore(s).isGranted).toBe(true);
+    c.revoke();
+    expect(c.state).toBe("declined");
+    expect(new ConsentStore(s).isGranted).toBe(false);
+  });
+});
+
+describe("Analytics recorder — consent contract", () => {
+  it("sends nothing and never starts before consent", () => {
+    const { analytics, transport } = make(false);
+    analytics.track(EVENT.downloadCtaClicked, { platform: "macos" });
+    expect(transport.sent).toHaveLength(0);
+    expect(transport.isStarted).toBe(false);
+    expect(transport.startCount).toBe(0);
+  });
+
+  it("after grant, emits name + category + super-props", () => {
+    const { analytics, transport } = make(true);
+    analytics.track(EVENT.downloadCtaClicked, { platform: "macos", placement: "hero" });
+    expect(transport.sent).toHaveLength(1);
+    const e = transport.sent[0];
+    expect(e.name).toBe("download.cta.clicked");
+    expect(e.category).toBe("conversion_auth");
+    expect(e.props.platform).toBe("macos");
+    expect(e.props.placement).toBe("hero");
+    expect(e.props.app_version).toBe("1.0.0");
+  });
+
+  it("consentDidChange→granted starts the transport and emits consent.granted exactly once", () => {
+    const { analytics, transport, consent } = make(false);
+    consent.grant();
+    analytics.consentDidChange();
+    expect(transport.isStarted).toBe(true);
+    expect(transport.sent.filter((e) => e.name === "consent.analytics.granted")).toHaveLength(1);
+    analytics.consentDidChange();
+    expect(transport.sent.filter((e) => e.name === "consent.analytics.granted")).toHaveLength(1);
+  });
+
+  it("revoke stops the transport and silences further tracks", () => {
+    const { analytics, transport, consent } = make(true);
+    analytics.track(EVENT.screenViewed, { surface: "home" });
+    expect(transport.sent).toHaveLength(1);
+    consent.revoke();
+    analytics.consentDidChange();
+    expect(transport.isStarted).toBe(false);
+    expect(transport.stopCount).toBe(1);
+    const n = transport.sent.length;
+    analytics.track(EVENT.screenViewed, { surface: "home" });
+    expect(transport.sent).toHaveLength(n);
+  });
+
+  it("stays dark with no API key even when consent is granted", () => {
+    const { analytics, transport } = make(true, "");
+    analytics.track(EVENT.screenViewed, { surface: "home" });
+    expect(transport.isStarted).toBe(false);
+    expect(transport.sent).toHaveLength(0);
+  });
+
+  it("lazily starts the transport on the first track after grant", () => {
+    const { analytics, transport } = make(true);
+    expect(transport.isStarted).toBe(false);
+    analytics.track(EVENT.appSessionStarted);
+    expect(transport.isStarted).toBe(true);
+  });
+
+  it("startIfConsented resumes a consented session without re-emitting grant", () => {
+    const { analytics, transport } = make(true);
+    analytics.startIfConsented();
+    expect(transport.isStarted).toBe(true);
+    expect(transport.sent).toHaveLength(0);
+  });
+
+  it("startIfConsented stays dark when not consented", () => {
+    const { analytics, transport } = make(false);
+    analytics.startIfConsented();
+    expect(transport.isStarted).toBe(false);
+  });
+});
+
+describe("buckets match the macOS labels verbatim", () => {
+  it("count boundaries", () => {
+    expect(bucketCount(0)).toBe("0");
+    expect(bucketCount(1)).toBe("1");
+    expect(bucketCount(3)).toBe("2-5");
+    expect(bucketCount(50)).toBe("21-100");
+    expect(bucketCount(1000)).toBe(">500");
+  });
+
+  it("durationMs boundaries", () => {
+    expect(bucketDurationMs(50)).toBe("<100ms");
+    expect(bucketDurationMs(2000)).toBe("1-3s");
+    expect(bucketDurationMs(99999)).toBe(">30s");
+  });
+
+  it("durationSeconds boundaries", () => {
+    expect(bucketDurationSeconds(2)).toBe("<5s");
+    expect(bucketDurationSeconds(90)).toBe("30s-2m");
+    expect(bucketDurationSeconds(9999)).toBe(">60m");
+  });
+});

@@ -96,7 +96,12 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       </ul>
     </div>
 
-    <a class="btn btn--ghost plan__cta" href="/download">Get OpenBurnBar</a>
+    <a
+      class="btn btn--ghost plan__cta"
+      href="/download"
+      data-analytics-event="pricing.cta.clicked"
+      data-analytics-prop-plan="free"
+    >Get OpenBurnBar</a>
   </article>
 
   <!-- CLOUD — most popular -->
@@ -153,7 +158,12 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       </ul>
     </div>
 
-    <a class="btn btn--ember plan__cta" href="/download">
+    <a
+      class="btn btn--ember plan__cta"
+      href="/download"
+      data-analytics-event="pricing.cta.clicked"
+      data-analytics-prop-plan="cloud"
+    >
       {cloud.cta}
       <span class="btn-arrow" aria-hidden="true">→</span>
     </a>
@@ -218,7 +228,12 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       </ul>
     </div>
 
-    <a class="btn btn--ember plan__cta" href="/download">
+    <a
+      class="btn btn--ember plan__cta"
+      href="/download"
+      data-analytics-event="pricing.cta.clicked"
+      data-analytics-prop-plan="cloud_pro"
+    >
       {cloudPro.cta}
       <span class="btn-arrow" aria-hidden="true">→</span>
     </a>
@@ -291,7 +306,12 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
       </ul>
     </div>
 
-    <a class="btn btn--ember plan__cta" href="/download">
+    <a
+      class="btn btn--ember plan__cta"
+      href="/download"
+      data-analytics-event="pricing.cta.clicked"
+      data-analytics-prop-plan="ultra"
+    >
       {ultra.cta}
       <span class="btn-arrow" aria-hidden="true">→</span>
     </a>
@@ -1037,6 +1057,26 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
 <script>
   import "../scripts/animateOnView.ts";
+  import { trackEvent, EVENT } from "../lib/analytics";
+
+  // Pricing impression (consent-gated, dark until opt-in): fire once when the
+  // plans grid first scrolls into view, so the funnel is impression → CTA click.
+  const pricingGrid = document.querySelector<HTMLElement>(".plans__grid");
+  if (pricingGrid && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            trackEvent(EVENT.pricingPlanViewed);
+            obs.disconnect();
+            break;
+          }
+        }
+      },
+      { threshold: 0.4 },
+    );
+    io.observe(pricingGrid);
+  }
 
   const grid = document.querySelector<HTMLElement>(".plans__grid");
   const billing = document.querySelector<HTMLElement>(".billing");

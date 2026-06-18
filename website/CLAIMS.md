@@ -174,6 +174,7 @@ treats Kimi as exact, which matches the running code.
 | Three trust-zone architecture diagram                          | Synthesized from `docs/THREAT_MODEL.md:48-156` + `docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md:5-26` |
 | Account deletion paths                                         | `docs/PRIVACY.md:87-92`                                                                          |
 | Sentry diagnostic seed                                         | `docs/reviews/SECURITY_PRIVACY_REVIEW.md:180`. **[verify]** matches shipping build                            |
+| Opt-in Amplitude usage analytics, off by default              | `docs/PRIVACY.md` § Optional Usage Analytics; `website/src/pages/legal/privacy-policy.astro` §5 |
 
 ---
 
