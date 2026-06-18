@@ -46,7 +46,7 @@ struct ChatFAB: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open chat")
-        .accessibilityHint(hasNewInsights ? "New insights available" : "")
+        .accessibilityHint(hasNewInsights ? "New insights available" : "Opens the chat panel")
         .accessibilityAddTraits(.isButton)
         .scaleEffect(appeared ? 1 : 0.001)
         .animation(.spring(response: 0.42, dampingFraction: 0.72), value: appeared)

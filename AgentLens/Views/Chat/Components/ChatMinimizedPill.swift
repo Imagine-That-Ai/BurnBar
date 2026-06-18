@@ -43,18 +43,18 @@ struct ChatMinimizedPill: View {
                         .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
                 } else {
                     ZStack {
+                        Capsule(style: .continuous).fill(.ultraThinMaterial)
                         Capsule(style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.55))
                     }
                 }
             }
-            .liquidGlassInteractive(in: Capsule(style: .continuous), fallback: .ultraThinMaterial)
             .clipShape(Capsule(style: .continuous))
             .overlay(Capsule(style: .continuous).strokeBorder(LinearGradient(colors: [modeColor.opacity(0.5), DesignSystem.Colors.border.opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.75))
             .shadow(color: Color.black.opacity(0.15), radius: 12, y: 6)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Expand chat")
-        .accessibilityHint(controller.isStreaming ? "Assistant is responding" : "")
+        .accessibilityHint(controller.isStreaming ? "Assistant is responding" : "Returns to the full chat panel")
         .highPriorityGesture(
             DragGesture(minimumDistance: 6)
                 .onChanged { g in

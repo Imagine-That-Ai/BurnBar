@@ -313,67 +313,82 @@ private struct SessionLedgerEntryRow: View {
 
     var body: some View {
         Button(action: onTap) {
-        GlassCard(interactive: true) {
-            HStack(spacing: DesignSystem.Spacing.md) {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(theme.gradient)
-                    .frame(width: 3)
+            GlassCard(interactive: false) {
+                rowContent
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SessionLedgerEntryButtonStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(usage.projectName), \(usage.model)")
+        .accessibilityHint("Opens session details")
+    }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Text(usage.startTime.formatted(date: .omitted, time: .shortened))
-                                .font(DesignSystem.Typography.monoSmall)
-                                .foregroundStyle(theme.primaryColor)
+    private var rowContent: some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(theme.gradient)
+                .frame(width: 3)
 
-                            if showsAgentBadge {
-                                Text(usage.provider.displayName)
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.primary(for: usage.provider))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(DesignSystem.Colors.primary(for: usage.provider).opacity(0.12))
-                                    .clipShape(.capsule)
-                            }
-                        }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Text(usage.startTime.formatted(date: .omitted, time: .shortened))
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(theme.primaryColor)
 
-                        Text(usage.projectName)
-                            .font(DesignSystem.Typography.body)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            .lineLimit(2)
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(
-                            displayMode == .currency
-                                ? usage.cost.formatAsCost()
-                                : usage.totalTokens.formatAsTokenVolume()
-                        )
-                            .font(DesignSystem.Typography.mono)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                        Text(usage.model)
+                    if showsAgentBadge {
+                        Text(usage.provider.displayName)
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .lineLimit(1)
-
-                        if cacheEfficient {
-                            Text("Cache efficient")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.success)
-                        }
+                            .foregroundStyle(DesignSystem.Colors.primary(for: usage.provider))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(DesignSystem.Colors.primary(for: usage.provider).opacity(0.12))
+                            .clipShape(.capsule)
                     }
                 }
-                .padding(.horizontal, DesignSystem.Spacing.md)
-                .padding(.vertical, DesignSystem.Spacing.sm)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .stroke(cacheEfficient ? DesignSystem.Colors.success : Color.clear, lineWidth: 1.5)
+
+                Text(usage.projectName)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(
+                    displayMode == .currency
+                        ? usage.cost.formatAsCost()
+                        : usage.totalTokens.formatAsTokenVolume()
                 )
+                    .font(DesignSystem.Typography.mono)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Text(usage.model)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+
+                if cacheEfficient {
+                    Text("Cache efficient")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.success)
+                }
             }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(usage.projectName), \(usage.model)")
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(cacheEfficient ? DesignSystem.Colors.success : Color.clear, lineWidth: 1.5)
+        )
+    }
+}
+
+private struct SessionLedgerEntryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(DesignSystem.Animation.snappy, value: configuration.isPressed)
     }
 }

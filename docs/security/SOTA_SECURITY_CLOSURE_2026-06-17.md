@@ -59,3 +59,46 @@ Safe after this pass:
 Avoid until migration telemetry confirms old records are rewritten:
 
 - "No legacy plaintext shared artifact fields exist in the production dataset."
+
+## Current-Main Pass 2 - 2026-06-18
+
+This follow-up was rebuilt on current `origin/main` instead of merging the stale
+`codex/sota-security-remediation-20260617` worktree wholesale:
+
+- Base commit: `c39b8c5d35b42aa5a2674b2b75e6b677899f9fd8`
+- Short SHA: `c39b8c5d35`
+- Subject: `Fix mobile control stream stale supervisor cleanup`
+- Commit time: `2026-06-17T23:51:29-05:00`
+
+Additional remediated controls:
+
+1. Legacy plaintext shared-artifact documents are detected on trusted-device
+   pull and re-written through the sealed CloudVault envelope using the local
+   vault key. The repair deletes plaintext `title`, `body`, and `contentHash`
+   fields from the head document and writes a sealed version document with its
+   own authenticated-data context.
+2. The backend exposes `scanLegacyPlaintextArtifacts`, an authenticated,
+   App-Check-enforced, read-only callable that returns only document paths,
+   identifiers, and field-presence flags. It does not return plaintext content
+   and scopes scans to the caller's own workspace path.
+3. Gateway auth-token generation now throws on CSPRNG failure so callers can
+   fail closed instead of crashing or launching an unauthenticated gateway.
+
+Additional verification passed locally:
+
+- `npm exec vitest run src/__tests__/sharedArtifactLegacyScan.test.ts --reporter=verbose`
+- `npm run build` from `functions/`
+- `bash scripts/ci/check-no-suppressions.sh`
+- `git diff --check`
+- `./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/SharedArtifactCloudCodecTests`
+- `./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/CloudSyncEmulatorIntegrationTests/test_collaborationPull_healsLegacyPlaintextArtifact`
+- `./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/SettingsManagerSecretStorageTests/test_generateGatewayAuthToken_producesUniqueURLSafeSecrets`
+
+Claim guidance update:
+
+- Safe: trusted clients automatically clean up legacy plaintext shared-artifact
+  fields when those records are pulled and the local vault key is available.
+- Safe: the backend can inventory likely legacy plaintext shared-artifact
+  records without returning plaintext content.
+- Still avoid: "No legacy plaintext shared artifact fields exist in production"
+  until scan results and client-heal telemetry show the corpus is clean.

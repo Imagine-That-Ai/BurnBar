@@ -53,9 +53,9 @@ struct InsightsAuditLogView: View {
             VStack {
                 ProgressView()
                     .controlSize(.small)
-                Text("Loading…")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("Loading audit log…")
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let loadError {

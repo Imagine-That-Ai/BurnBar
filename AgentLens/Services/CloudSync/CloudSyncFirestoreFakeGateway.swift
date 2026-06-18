@@ -22,6 +22,11 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
         set { state.nextError = newValue }
     }
 
+    var beforeNextTransaction: (@Sendable () -> Void)? {
+        get { state.beforeNextTransaction }
+        set { state.beforeNextTransaction = newValue }
+    }
+
     /// Number of batch commits that have been executed.
     var batchCommitCount: Int { state.batchCommitCount }
 
@@ -35,6 +40,19 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
             nextError: { [weak state] in state?.nextError },
             onCommit: { [weak state] in state?.incrementBatchCommitCount() }
         )
+    }
+
+    func runTransaction(
+        _ updateBlock: @escaping (CloudSyncTransactionGateway) throws -> Bool
+    ) async throws -> Bool {
+        if let error = state.nextError { throw error }
+        state.consumeBeforeNextTransaction()?()
+        let transaction = CloudSyncTransactionFakeGateway(store: store)
+        let shouldCommit = try updateBlock(transaction)
+        if shouldCommit {
+            transaction.commit()
+        }
+        return shouldCommit
     }
 
     /// Direct access to stored document data for test assertions.
@@ -57,6 +75,7 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
     private struct State {
         var storedNextError: Error?
         var storedBatchCommitCount = 0
+        var storedBeforeNextTransaction: (@Sendable () -> Void)?
     }
 
     private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
@@ -70,8 +89,21 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
         state.withLockUnchecked { $0.storedBatchCommitCount }
     }
 
+    var beforeNextTransaction: (@Sendable () -> Void)? {
+        get { state.withLockUnchecked { $0.storedBeforeNextTransaction } }
+        set { state.withLockUnchecked { $0.storedBeforeNextTransaction = newValue } }
+    }
+
     func incrementBatchCommitCount() {
         state.withLockUnchecked { $0.storedBatchCommitCount += 1 }
+    }
+
+    func consumeBeforeNextTransaction() -> (@Sendable () -> Void)? {
+        state.withLockUnchecked { state in
+            let hook = state.storedBeforeNextTransaction
+            state.storedBeforeNextTransaction = nil
+            return hook
+        }
     }
 }
 
@@ -114,6 +146,26 @@ private final class FakeDocumentStore: Sendable {
                 }
             }
             documents[path] = existing
+        }
+    }
+
+    func applyWrites(_ writes: [(path: String, data: [String: Any], merge: Bool)]) {
+        box.withLockUnchecked { documents in
+            for write in writes {
+                if write.merge {
+                    var existing = documents[write.path] ?? [:]
+                    for (key, value) in write.data {
+                        if value is FakeFieldDelete {
+                            existing.removeValue(forKey: key)
+                        } else {
+                            existing[key] = value
+                        }
+                    }
+                    documents[write.path] = existing
+                } else {
+                    documents[write.path] = write.data
+                }
+            }
         }
     }
 
@@ -425,6 +477,42 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
             }
         }
         onCommit?()
+    }
+}
+
+private final class CloudSyncTransactionFakeGateway: CloudSyncTransactionGateway {
+    private typealias PendingWrite = (path: String, data: [String: Any], merge: Bool)
+
+    private let store: FakeDocumentStore
+    private let pending = OSAllocatedUnfairLock<[PendingWrite]>(uncheckedState: [])
+
+    init(store: FakeDocumentStore) {
+        self.store = store
+    }
+
+    func getData(forDocument document: CloudSyncDocumentGateway) throws -> [String: Any]? {
+        guard let fakeDoc = document as? CloudSyncDocumentFakeGateway else {
+            throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentFakeGateway")
+        }
+        return store.documentData(at: fakeDoc.path)
+    }
+
+    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) throws {
+        guard let fakeDoc = document as? CloudSyncDocumentFakeGateway else {
+            throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentFakeGateway")
+        }
+        pending.withLockUnchecked {
+            $0.append((path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
+        }
+    }
+
+    func commit() {
+        let writes = pending.withLockUnchecked { pending -> [PendingWrite] in
+            let writes = pending
+            pending.removeAll()
+            return writes
+        }
+        store.applyWrites(writes)
     }
 }
 

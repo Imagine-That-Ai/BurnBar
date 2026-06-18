@@ -29,6 +29,12 @@ enum OpenBurnBarSecureToken {
             .replacingOccurrences(of: "=", with: "")
     }
 
+    /// Last-resort variant that traps on CSPRNG failure instead of throwing.
+    ///
+    /// Prefer `randomBase64URL(byteCount:)` in call sites so callers can fail
+    /// closed rather than crashing the host process. This escape hatch remains
+    /// only for contexts where a non-throwing signature is unavoidable.
+    @_disfavoredOverload
     static func randomBase64URLOrPreconditionFailure(byteCount: Int = defaultByteCount) -> String {
         do {
             return try randomBase64URL(byteCount: byteCount)
