@@ -173,8 +173,49 @@ gcloud run deploy "$SERVICE" \
   --set-env-vars "$ENV_VARS" \
   --set-secrets "$SET_SECRETS"
 
+gcloud run services update-traffic "$SERVICE" \
+  --region "$REGION" \
+  --project "$GOOGLE_CLOUD_PROJECT" \
+  --to-latest
+
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$GOOGLE_CLOUD_PROJECT" --format='value(status.url)')"
 echo "$SERVICE_URL"
+
+SERVICE_READBACK="$(mktemp)"
+gcloud run services describe "$SERVICE" \
+  --region "$REGION" \
+  --project "$GOOGLE_CLOUD_PROJECT" \
+  --format=json > "$SERVICE_READBACK"
+python3 - "$SERVICE_READBACK" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    service = json.load(handle)
+
+status = service.get("status", {})
+latest_ready = status.get("latestReadyRevisionName")
+traffic = status.get("traffic", [])
+if not latest_ready:
+    print("Cloud Run service has no latestReadyRevisionName after deploy", file=sys.stderr)
+    sys.exit(1)
+
+latest_entries = [
+    entry
+    for entry in traffic
+    if entry.get("revisionName") == latest_ready or entry.get("latestRevision") is True
+]
+latest_percent = sum(int(entry.get("percent") or 0) for entry in latest_entries)
+if latest_percent != 100:
+    print(
+        f"Cloud Run traffic is not pinned to the latest ready revision "
+        f"{latest_ready}: {json.dumps(traffic, sort_keys=True)}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print(f"Cloud Run traffic verified: 100% -> {latest_ready}")
+PY
 
 HEALTH_PATH="${MCP_HEALTH_PATH:-/healthz}"
 HEALTH_URL="${SERVICE_URL%/}${HEALTH_PATH}"

@@ -50,7 +50,7 @@ jobs:
     # Keep release builds on the same current GA macOS/Xcode image as PR app
     # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 180
     outputs:
       dmg_path: ${{ steps.dmg.outputs.dmg_path }}
       dmg_name: ${{ steps.dmg.outputs.dmg_name }}
