@@ -30,6 +30,16 @@ on:
         required: false
         type: string
         default: ""
+      run_mobile_unit_tests:
+        description: "Run iOS simulator mobile unit tests before publishing release artifacts. Disable only for an owner-approved manual release with independent mobile validation evidence."
+        required: false
+        type: boolean
+        default: true
+      mobile_unit_test_bypass_reason:
+        description: "Required when run_mobile_unit_tests=false; include the independent mobile validation evidence and owner approval."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: release-${{ github.ref }}
@@ -162,6 +172,17 @@ jobs:
             echo "- Scope: runtime-readiness and legal-release-review holds only; all signing, notarization, secret scanning, and artifact verification still run."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Validate mobile unit test bypass reason
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
+        env:
+          MOBILE_UNIT_TEST_BYPASS_REASON: ${{ inputs.mobile_unit_test_bypass_reason }}
+        run: |
+          compact="${MOBILE_UNIT_TEST_BYPASS_REASON//[[:space:]]/}"
+          if [[ -z "$compact" ]]; then
+            echo "::error::run_mobile_unit_tests=false requires mobile_unit_test_bypass_reason with independent mobile validation evidence."
+            exit 1
+          fi
+
       - name: Release preflight summary
         env:
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
@@ -284,8 +305,27 @@ jobs:
         run: OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh
 
       - name: Run OpenBurnBar mobile unit tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_mobile_unit_tests }}
+        timeout-minutes: 45
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
+        # Release gates need pass/fail proof; coverage collection belongs to CI, not notarized artifact publication.
+        run: ./scripts/test-openburnbar-mobile.sh
+
+      - name: Record owner-approved mobile unit test bypass
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_mobile_unit_tests }}
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MOBILE_UNIT_TEST_BYPASS_REASON: ${{ inputs.mobile_unit_test_bypass_reason }}
+        run: |
+          echo "::warning::Bypassing OpenBurnBar mobile unit tests for manual release ${TAG_NAME}: ${MOBILE_UNIT_TEST_BYPASS_REASON}"
+          {
+            echo "## Owner-approved mobile unit test bypass"
+            echo "- Tag: ${TAG_NAME}"
+            echo "- Version: ${VERSION}"
+            echo "- Reason/evidence: ${MOBILE_UNIT_TEST_BYPASS_REASON}"
+            echo "- Scope: iOS simulator mobile unit-test gate only; Swift tests, app tests, SQLCipher codec checks, TypeScript tests, Firestore rules, Android tests, supply-chain checks, signing, notarization, and artifact verification still run."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run retrieval replay evals
         run: ./scripts/test-openburnbar-retrieval-evals.sh
