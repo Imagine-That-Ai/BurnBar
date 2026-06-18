@@ -1206,6 +1206,11 @@ jobs:
   verify-live-update-feed:
     name: Verify live update feed
     needs: [build-and-release, publish]
+    # Tag pushes intentionally publish stable assets without repointing
+    # `releases/latest`. Only an explicit promote=true dispatch changes the
+    # update channel, so only that promoted run can truthfully verify the live
+    # updater feed for this release.
+    if: ${{ needs.build-and-release.outputs.is_prerelease == 'false' && github.event_name == 'workflow_dispatch' && inputs.promote == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
