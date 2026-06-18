@@ -74,8 +74,8 @@ environment-bound work (a real Mac with Xcode, a Gradle host, live consoles).
       `onKnowledgeRepoPush` (webhook secret `KNOWLEDGE_GITHUB_WEBHOOK_SECRET`).
 
 **Deferred client features (backend already done; only client crypto/UX remain):**
-- [ ] **E1. Native recovery-key crypto + re-entry UI** (current clients send a
-      plaintext key that fails server validation — must be *replaced*, not added to).
+- [x] **E1. Native recovery-key crypto + re-entry UI** (macOS, iOS, and Android
+      derive the wrapper/hash locally; raw recovery keys are never sent).
 - [ ] **E2. `verifyPasskeyAssertion` callable** + web sign-in wiring.
 - [ ] **E3. Web in-app Pensieve recall** (browser embedder + cloak → `searchKnowledge`).
 
@@ -457,38 +457,23 @@ always test with a connected repo.)
 > + UX + the one new auth callable remain.
 
 ### E1. Native recovery-key crypto + re-entry UI
-**Why it's needed:** current clients send a **plaintext** key
-(`DataVaultStore.swift:349-356` sends `["recoveryKey": key]`) which **fails**
-server validation. The server requires an envelope:
+**Status:** Complete for macOS, iOS, and Android. The server requires an envelope:
 `{ algorithm:"AES-256-GCM", wrappedVaultKey:<=8192 base64, verificationHash:<lowercase
 SHA-256 hex>, keyVersion:1..100 }`. **Recovery uses a SYMMETRIC wrap** (derive a
 wrapping key *from* the recovery key), **not** the ECDH escrow path, and
 `verificationHash = SHA-256(derived wrapping key bytes)`.
 
-1. Add to `OpenBurnBarCore/.../SharedModels/CloudVaultCrypto.swift`:
-   - `generateRecoveryKey()` → high-entropy human-shown string (e.g. Crockford
-     base32, ~168 bits from `SecRandomCopyBytes`).
-   - `deriveRecoveryWrappingKey(from:)` → `SymmetricKey` via HKDF-SHA256 (salt
-     `OpenBurnBar-Recovery-Salt-v1`, info `OpenBurnBar-Recovery-Wrap-v1`, 32 bytes).
-   - `wrapVaultKeyWithRecovery(vaultKey:recoveryKey:)` → `(wrappedVaultKeyBase64,
-     verificationHash)` where wrap = `AES.GCM.seal(...).combined.base64` and
-     `verificationHash = sha256Hex(Data(wrappingKey))`.
-   - `recoveryVerificationHash(for:)` → re-derive + hash for re-entry.
-   - Raw vault key source: `CloudVaultKeyStore.loadKey(uid)`/`getOrCreateKey(uid)`
-     (Keychain `com.openburnbar.cloud-vault`, `WhenUnlockedThisDeviceOnly`).
-2. Rewrite the iOS setup path (`DataVaultStore.swift:349-356`) and macOS
-   (`DataControlCenterViewModel.swift:309-330` + `DataControlCenterActions.swift:156`)
-   to build the real envelope and call `setupRecovery(method:"recovery_key",
-   payload:[...])`; display the recovery key **once** (copyable, never persisted).
-3. Add a re-entry sheet: re-derive `verificationHash` and call
-   `confirmRecovery(recoveryId:verificationHash:)` (signatures already accept the
-   optional hash). Map `permission-denied` → "That recovery key did not match";
-   `failed-precondition` → missing hash.
+Implemented clients:
+- macOS: `DataControlCenterViewModel.setupRecoveryKey` and `confirmRecoveryKey`.
+- iOS: `DataVaultStore.setupRecoveryKey` and `confirmRecoveryKey`.
+- Android: `CloudVaultCrypto.wrapVaultKeyWithRecovery`,
+  `ControlCenterStore.setupRecoveryKey`, and `confirmRecoveryKey`.
 
 **Verify:** `swift build` of OpenBurnBarCore + a round-trip unit test (wrap →
 re-derive → unwrap returns the original 32 bytes; `recoveryVerificationHash` ==
-wrap's hash). Against the deployed callable, setup returns `{ok:true, recoveryId}`
-and re-entry flips `confirmed:true` in `listRecovery`.
+wrap's hash). Android mirror coverage lives in `CloudVaultCryptoTest`.
+Against the deployed callable, setup returns `{ok:true, recoveryId}` and re-entry
+flips `confirmed:true` in `listRecovery`.
 
 ### E2. `verifyPasskeyAssertion` callable + web wiring
 1. `functions/src/callables/passkey.ts`: a `registerPasskey` + `verifyPasskeyAssertion`

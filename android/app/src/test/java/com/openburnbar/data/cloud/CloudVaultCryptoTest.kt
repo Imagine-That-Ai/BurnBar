@@ -319,6 +319,30 @@ class CloudVaultCryptoTest {
     }
 
     @Test
+    fun recoveryWrappedVaultKeyRoundTripNeverStoresRawRecoveryKey() {
+        val vaultKey = ByteArray(SHA256_DIGEST_BYTES) { (it + 7).toByte() }
+        val recoveryKey = "burnbar recovery key 2026 alpha 12345"
+
+        val wrapped = CloudVaultCrypto.wrapVaultKeyWithRecovery(vaultKey, recoveryKey)
+        val opened = CloudVaultCrypto.unwrapVaultKeyWithRecovery(wrapped.wrappedVaultKeyBase64, recoveryKey)
+
+        assertArrayEquals(vaultKey, opened)
+        assertEquals(64, wrapped.verificationHash.length)
+        assertTrue(wrapped.verificationHash.matches(Regex("^[a-f0-9]{64}$")))
+        assertEquals(
+            wrapped.verificationHash,
+            CloudVaultCrypto.recoveryVerificationHash("BURNBAR-RECOVERY-KEY-2026-ALPHA-12345"),
+        )
+        assertFalse(wrapped.wrappedVaultKeyBase64.contains(recoveryKey, ignoreCase = true))
+        assertNotEquals(CloudVaultCryptoSupport.encodeBase64(vaultKey), wrapped.wrappedVaultKeyBase64)
+        assertTrue(
+            runCatching {
+                CloudVaultCrypto.unwrapVaultKeyWithRecovery(wrapped.wrappedVaultKeyBase64, "wrong recovery key 2026")
+            }.isFailure,
+        )
+    }
+
+    @Test
     fun signalBindingToAadMatchesCanonicalGrammarAndRejectsInjection() {
         val binding =
             SignalEnvelopeBinding(

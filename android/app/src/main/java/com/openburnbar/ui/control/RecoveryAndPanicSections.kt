@@ -25,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.openburnbar.data.domains.PensieveControlTokens
 import com.openburnbar.ui.components.AuroraGlassCard
@@ -52,11 +54,14 @@ import com.openburnbar.ui.theme.AuroraType
 internal fun RecoverySection(
     methods: List<RecoveryMethod>,
     busy: Boolean,
-    onSetupKey: () -> Unit,
+    onSetupKey: (String) -> Unit,
     onSetupContact: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: (RecoveryMethod, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var setupKeyDialogOpen by remember { mutableStateOf(false) }
+    var keyToConfirm by remember { mutableStateOf<RecoveryMethod?>(null) }
+
     AuroraGlassCard(modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -82,14 +87,25 @@ internal fun RecoverySection(
             if (methods.isEmpty()) {
                 Text("No recovery method yet.", style = AuroraType.body, color = PensieveControlTokens.textDim)
             } else {
-                methods.forEach { method -> RecoveryMethodRow(method = method, onConfirm = onConfirm) }
+                methods.forEach { method ->
+                    RecoveryMethodRow(
+                        method = method,
+                        onConfirm = {
+                            if (method.kind == "recovery_key") {
+                                keyToConfirm = method
+                            } else {
+                                onConfirm(method, null)
+                            }
+                        },
+                    )
+                }
             }
 
             ControlActionButton(
                 label = "Add a recovery key",
                 icon = Icons.Filled.Key,
                 enabled = !busy,
-                onClick = onSetupKey,
+                onClick = { setupKeyDialogOpen = true },
             )
             ControlActionButton(
                 label = "Add a recovery contact",
@@ -99,10 +115,36 @@ internal fun RecoverySection(
             )
         }
     }
+
+    if (setupKeyDialogOpen) {
+        RecoveryKeyDialog(
+            title = "Add recovery key",
+            confirmLabel = "Register",
+            busy = busy,
+            onDismiss = { setupKeyDialogOpen = false },
+            onConfirm = { recoveryKey ->
+                setupKeyDialogOpen = false
+                onSetupKey(recoveryKey)
+            },
+        )
+    }
+
+    keyToConfirm?.let { method ->
+        RecoveryKeyDialog(
+            title = "Confirm recovery key",
+            confirmLabel = "Confirm",
+            busy = busy,
+            onDismiss = { keyToConfirm = null },
+            onConfirm = { recoveryKey ->
+                keyToConfirm = null
+                onConfirm(method, recoveryKey)
+            },
+        )
+    }
 }
 
 @Composable
-private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: (String) -> Unit) {
+private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: () -> Unit) {
     val accent = if (method.confirmed) PensieveControlTokens.tierEndToEnd else PensieveControlTokens.brassBright
     Row(
         modifier =
@@ -128,10 +170,59 @@ private fun RecoveryMethodRow(method: RecoveryMethod, onConfirm: (String) -> Uni
                 "Confirm",
                 style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
                 color = PensieveControlTokens.brassBright,
-                modifier = Modifier.clickable { onConfirm(method.recoveryId) },
+                modifier = Modifier.clickable { onConfirm() },
             )
         }
     }
+}
+
+@Composable
+private fun RecoveryKeyDialog(
+    title: String,
+    confirmLabel: String,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var recoveryKey by remember { mutableStateOf("") }
+    val trimmed = recoveryKey.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, color = PensieveControlTokens.mercuryBright) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
+                OutlinedTextField(
+                    value = recoveryKey,
+                    onValueChange = { recoveryKey = it },
+                    label = { Text("Recovery key") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "The key is used locally to wrap the vault key and derive a verification hash. " +
+                        "The raw key is never sent.",
+                    style = AuroraType.caption,
+                    color = PensieveControlTokens.textMute,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && trimmed.isNotEmpty(),
+                onClick = { onConfirm(trimmed) },
+            ) {
+                Text(confirmLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 /**
